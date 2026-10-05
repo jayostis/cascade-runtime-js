@@ -8,7 +8,7 @@ vectors and, later, its conformance kit.
 
 It is being built in the steps of
 [cascade-vocabulary#39](https://github.com/jayostis/cascade-vocabulary/issues/39).
-Today it replays a story's pod creation; imports, entries, the matcher and the
+Today it replays a story's creation, imports and entries; the matcher and the
 views follow.
 
 ## Running it
@@ -48,11 +48,12 @@ them:
 | ------------ | ----------------------------------------------------------------------- | -------------------------------------------- |
 | `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory                       |
 | `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output  |
-| `Store`      | runs SPARQL over named graphs                                           | Oxigraph's JavaScript build                  |
+| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                  |
 | `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times |
 
 Code that needs Node (a local folder, git, the command line) is under
-`packages/runtime/src/node/`.
+`packages/runtime/src/node/`. The core knows an importer only by the name
+`cascade-runtime.json` gives it; `src/node/importers.ts` finds each by name.
 
 ## Which version of each component a run uses
 

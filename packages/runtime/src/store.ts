@@ -20,6 +20,8 @@ export interface LoadOptions {
  */
 export interface Store {
   loadTurtle(turtle: Uint8Array | string, options: LoadOptions): Promise<void>;
+  /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
+  parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
   select(query: string): Promise<Rows>;
   ask(query: string): Promise<boolean>;
