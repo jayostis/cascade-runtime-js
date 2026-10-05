@@ -1,0 +1,8 @@
+{
+  "name": "@cascade-runtime/graphdb",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The GraphDB loader. Empty until the loader is ported.",
+  "license": "Apache-2.0"
+}
