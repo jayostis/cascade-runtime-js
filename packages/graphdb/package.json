@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The GraphDB loader. Empty until the loader is ported.",
-  "license": "Apache-2.0"
+  "description": "The GraphDB loader: puts a pod and its derived state into a GraphDB repository, and asks it questions.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "dependencies": {
+    "@cascade-runtime/runtime": "0.0.0"
+  }
 }
