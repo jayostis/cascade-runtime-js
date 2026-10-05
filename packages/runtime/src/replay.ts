@@ -81,6 +81,7 @@ export interface ReplayOptions {
   readonly source: Files;
   /** The story's folder within `source`, without a trailing slash. */
   readonly folder: string;
+  /** An empty pod at the story's address: a story is replayed from the pod's creation. */
   readonly pod: Files;
   readonly layout: Layout;
   readonly newStore: StoreFactory;
