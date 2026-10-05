@@ -42,7 +42,7 @@ import {
 import { notIsomorphic, triples } from "./graphs.js";
 import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
-const ALEX = "example-pods/alex-rivera/";
+const ALEX = "conformance/alex-rivera/";
 const TYPE = `${RDF}type`;
 const REVISION = `${REC}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
@@ -86,23 +86,28 @@ interface Saved {
 }
 
 /**
- * A document of Alex's export as an import step converted it: in the envelope for one resource, with the facts it was
- * converted with, and the Bridge's saved output. The command line that saved it named the document by its path, which
- * the findings give relative to themselves; a runtime names it by its N5 name.
+ * A document of Alex's export as an import step of her story converted it: in the envelope for one resource, with the
+ * facts the importer writes for it at the step's time, and the Bridge's saved output. The command line that saved it
+ * named the document by its path, which the findings give relative to themselves; a runtime names it by its N5 name.
  */
 async function saved(step: string, stem: string): Promise<Saved> {
   const files = await vocabulary();
-  const path = `${ALEX}downloads/x-${step}/apple_health_export/clinical-records/${stem}.json`;
-  const folder = `${ALEX}conversions/${step}/${stem}/`;
-  const [bytes, facts, graph, findings] = await Promise.all([
-    files.read(path),
-    files.read(`${folder}facts.ttl`),
+  const story = parseStory(await readText(files, `${ALEX}story.json`));
+  const found = story.steps.find(({ name }) => name === step.toUpperCase());
+  if (found?.happened.kind !== "import")
+    throw new Error(`Alex's story has no import step ${step}`);
+  const exportFolder = `${ALEX}${found.happened.export}`;
+  const path = `${exportFolder}/clinical-records/${stem}.json`;
+  const folder = `${ALEX}${found.happened.converted}/${stem}/`;
+  const [documents, graph, findings] = await Promise.all([
+    appleHealthExport.documents(files, exportFolder),
     files.read(`${folder}graph.ttl`),
     files.read(`${folder}findings.ttl`),
   ]);
-  if (bytes === undefined || facts === undefined || graph === undefined)
-    throw new Error(`Alex's pod saves no conversion of ${stem} at ${step}`);
-  const name = await documentName(bytes);
+  const document = documents?.find((each) => each.path === path);
+  if (document === undefined || graph === undefined)
+    throw new Error(`Alex's kit saves no conversion of ${stem} at ${step}`);
+  const name = await documentName(document.bytes);
   const named = (triple: Triple): Triple => {
     const [subject, predicate, object] = triple;
     return object.termType === "NamedNode" &&
@@ -113,9 +118,9 @@ async function saved(step: string, stem: string): Promise<Saved> {
   return {
     document: {
       iri: name,
-      bytes,
+      bytes: document.bytes,
       envelope,
-      facts: { iri: `${name}#facts`, bytes: facts },
+      facts: { iri: `${name}#facts`, bytes: document.facts(found.when) },
     },
     graph: triples(graph),
     findings:

@@ -71,7 +71,7 @@ export interface ReplayedStep {
 /** A story replayed into a pod, as far as the runtime can perform its steps. */
 export interface Replayed {
   readonly story: Story;
-  /** The name of the story's folder, which a pod's manifest takes as its title. */
+  /** What a pod's manifest takes as its title: the name the source's crate gives the story's folder, or else the folder's own. */
   readonly title: string;
   readonly layout: Layout;
   readonly pod: Files;
@@ -97,17 +97,32 @@ export interface ReplayOptions {
   readonly build?: { readonly lens: string; readonly derive: Derive };
 }
 
+async function titleOf(source: Files, folder: string): Promise<string> {
+  const bytes = await source.read("ro-crate-metadata.json");
+  if (bytes !== undefined) {
+    const crate = JSON.parse(new TextDecoder().decode(bytes)) as {
+      "@graph"?: readonly { "@id"?: unknown; name?: unknown }[];
+    };
+    const name = crate["@graph"]?.find(
+      (entity) => entity["@id"] === `${folder}/`,
+    )?.name;
+    if (typeof name === "string" && name !== "") return name;
+  }
+  return (
+    (folder || new URL(source.iri).pathname)
+      .replace(/\/$/, "")
+      .split("/")
+      .at(-1) ?? ""
+  );
+}
+
 export async function replay(options: ReplayOptions): Promise<Replayed> {
   const performers = options.performers ?? PERFORMERS;
   const importers = options.importers ?? [];
   const time = new StoryTime();
   const steps: ReplayedStep[] = [];
   const activities = new Map<string, string>();
-  const title =
-    (options.folder || new URL(options.source.iri).pathname)
-      .replace(/\/$/, "")
-      .split("/")
-      .at(-1) ?? "";
+  const title = await titleOf(options.source, options.folder);
   const replayed = (stopped?: Replayed["stopped"]): Replayed => ({
     story: options.story,
     title,

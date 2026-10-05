@@ -24,8 +24,7 @@
     "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
     "build:example": "tsc -b && node packages/site/dist/src/node/cli.js build-example",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
-    "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js",
-    "build:story-site": "tsc -b && node packages/site/dist/src/node/cli.js build-story-site"
+    "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

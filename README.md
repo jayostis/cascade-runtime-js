@@ -4,54 +4,45 @@ The reference implementation of
 [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)'s runtime
 rules: a TypeScript runtime that fills a Cascade pod, loading the Bridge and
 the adapters in-process. It proves itself by passing the vocabulary's rule
-vectors and, later, its conformance kit.
+vectors and its conformance kit, Alex Rivera's story.
 
-It is being built in the steps of
-[cascade-vocabulary#39](https://github.com/jayostis/cascade-vocabulary/issues/39).
-Today it replays every kind of step a story holds, the matcher's runs among them,
-builds the views, and documents a pod in a static site.
-
-## Running it
-
-Node 22 or later.
+Node 22 or later. To build Alex's pod and the site that documents it:
 
 ```sh
 npm install
-npm test                                  # the unit tests and one run of the rule vectors
-npm run typecheck
-npm run lint
-npm run conformance -- --report earl.nt   # runs the vocabulary's rule vectors, writes the EARL report
+npm run build:example alex-rivera        # the pod, then the site
+npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
+npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
 ```
 
-`npm run conformance` is for conformance testing only, as the Bridge's command
-line is. Its exit code means nothing; the report does. `--folder
-<repository>=<folder>` hands in a folder for a repository, and `--manifest`
-names another manifest in the vocabulary.
-
-```sh
-npm run build:example <name>        # the pod, then the site
-npm run build:example-pod <name>    # build/<name>/pod from the vocabulary's conformance kit
-npm run build:example-site <name>   # build/<name>/site from build/<name>/pod
-```
-
-`build:example-pod` will build an example's pod from the vocabulary's
-conformance kit; until the kit exists it says so and builds nothing, and so does
-`build:example`. The site is built from any pod folder: `--pod <folder>` reads
+Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
+`conformance/alex-rivera/` replayed with the Bridge's saved output, so it needs
+only Node. The site is built from any pod folder: `--pod <folder>` reads
 another, `--out <folder>` writes elsewhere and `--lens <lens>` builds it under
-another lens. To see a site now, replay one of the vocabulary's stories:
-
-```sh
-npm run build:story-site -- runtime/vectors/matching/story.json --through entry
-```
-
-It writes `build/matching/pod` and `build/matching/site`; open
-`build/matching/site/index.html`. Every question on the site says how to ask it
-yourself:
+another lens. Every question on the site says how to ask it yourself:
 
 ```sh
 npm run ask -- <name> "<question>"            # one question's rows, under the runtime's lens
 npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the pod and its questions
 ```
+
+## Running it
+
+```sh
+npm test                                  # the unit tests, and one run of the conformance command
+npm run typecheck
+npm run lint
+npm run conformance -- --report earl.nt   # the rule vectors and the conformance kit, as one EARL report
+```
+
+`npm run conformance` is for conformance testing only, as the Bridge's command
+line is. Its exit code means nothing; the report does. It reports each rule
+vector, each case of each kit under the vocabulary's `conformance/`, and the
+kit's four checks that are not manifest entries (the final views equal
+`expected/`, every file conforms to the vocabulary's shapes, every name follows
+its rule, every file is where the layout says), replaying each story once. `--folder
+<repository>=<folder>` hands in a folder for a repository, and `--manifest`
+runs one other manifest of the vocabulary instead.
 
 ## Packages
 
@@ -104,5 +95,4 @@ which `compatibility.json` declares this repository to as a runtime: it checks
 the vocabulary and the adapters out beside this repository, at their pins or
 with the pull requests a `Depends-On:` line names merged in, and runs
 `npm run conformance` on them. The tests and the pod build then read those
-checkouts. CI publishes a pod and its site as an artifact: Alex's once the
-vocabulary has its conformance kit, until then the matching vector story's.
+checkouts. CI publishes Alex's pod and site as an artifact.

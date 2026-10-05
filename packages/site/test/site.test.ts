@@ -15,9 +15,9 @@ import {
   findRoot,
   type LocalVocabulary,
   localVocabulary,
+  storyPod,
 } from "@cascade-runtime/runtime/node";
 import { markup } from "../src/html.js";
-import { storyPod } from "../src/node/story-pod.js";
 import { Site } from "../src/site.js";
 import { shown } from "../src/terms.js";
 import { type Page, readPage } from "./page.js";
