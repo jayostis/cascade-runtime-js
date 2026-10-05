@@ -56,7 +56,7 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
 }
 
 function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
-  const { lens, name } = site.options;
+  const { defaultLens, name } = site.options;
   const question = answer.question;
   const about =
     answer.about !== undefined &&
@@ -64,14 +64,14 @@ function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
 <code>${answer.thing?.value}</code>.</p>
 `;
   const graphdb =
-    answer.lens === lens
+    answer.lens === defaultLens
       ? markup`<p>Or in GraphDB, open the saved query <code>${question}</code> in the repository <code>${name}</code>.</p>`
-      : markup`<p>GraphDB holds the pod under the ${lens} lens only.</p>`;
+      : markup`<p>GraphDB holds the pod under the ${defaultLens} lens only.</p>`;
   const runIt =
     question !== undefined &&
     markup`
 <p>Run it yourself, from the runtime's root:</p>
-<pre><code>${site.options.ask} "${question}"${answer.lens !== lens && ` --lens ${answer.lens}`}</code></pre>
+<pre><code>${site.options.ask} "${question}"${answer.lens !== defaultLens && ` --lens ${answer.lens}`}</code></pre>
 ${about}${graphdb}`;
   return markup`
 <section class="query"${id !== undefined && markup` id="${id}"`}>

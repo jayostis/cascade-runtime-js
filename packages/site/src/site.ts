@@ -33,6 +33,8 @@ export interface SiteOptions {
   readonly pod: Files;
   /** The lens the site is built under; every other lens the vocabulary offers is shown beside it. */
   readonly lens: string;
+  /** The lens `ask` and the GraphDB loader build the pod under when given none. */
+  readonly defaultLens: string;
   readonly newStore: StoreFactory;
   /** The pod's title when its manifest gives none, and the GraphDB repository a reader finds it in. */
   readonly name: string;

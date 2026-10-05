@@ -45,6 +45,7 @@ before(async () => {
     build: vocabulary.build,
     pod,
     lens: vocabulary.config.lens,
+    defaultLens: vocabulary.config.lens,
     newStore: () => new OxigraphStore(),
     name: "matching",
     at: "2026-03-03T08:00:00Z",
@@ -255,4 +256,36 @@ test("a time is shown in UTC to the minute whatever its offset, and only an xsd:
   assert.equal(time("2027-01-01T09:00:00"), "2027-01-01 09:00 UTC");
   assert.equal(shown(literal("2027-01-01", `${XSD}date`)), "2027-01-01");
   assert.equal(shown(literal("2027-01-01T09:00:00Z")), "2027-01-01T09:00:00Z");
+});
+
+test("a site built under a lens other than the one `ask` and GraphDB use names that lens in every command it prints", async () => {
+  const fallback = vocabulary.config.lens;
+  const other = [...site.pipeline.keys()].find((lens) => lens !== fallback);
+  assert.ok(other);
+  const pod = new MemoryFiles("https://pod.example/");
+  await storyPod(vocabulary, STORY, pod, THROUGH);
+  const options = {
+    vocabulary: vocabulary.files,
+    layout: vocabulary.layout,
+    build: vocabulary.build,
+    pod,
+    lens: other,
+    defaultLens: fallback,
+    newStore: () => new OxigraphStore(),
+    name: "matching",
+    at: "2026-03-03T08:00:00Z",
+    ask: "npm run ask -- matching",
+  };
+  const built = await (await Site.build(options)).files();
+  const home = readPage(new TextDecoder().decode(built.get("index.html")));
+  const run = home.blocks.filter(({ said }) =>
+    said.includes("Run it yourself"),
+  );
+  assert.ok(run.length > 0);
+  for (const { title, said } of run) {
+    assert.ok(said.includes(`--lens ${other}`), title);
+    assert.ok(said.includes(`under the ${fallback} lens only`), title);
+  }
+  for (const { title, said } of page("index.html").blocks)
+    assert.ok(!said.includes("--lens"), title);
 });

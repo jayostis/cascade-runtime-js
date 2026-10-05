@@ -79,6 +79,7 @@ async function writeSite(
     build: vocabulary.build,
     pod,
     lens: lens ?? vocabulary.config.lens,
+    defaultLens: vocabulary.config.lens,
     newStore: () => new OxigraphStore(),
     name,
     at: clock.now(),
