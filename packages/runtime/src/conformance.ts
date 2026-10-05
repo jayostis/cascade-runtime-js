@@ -49,18 +49,23 @@ function required(
   return value;
 }
 
-/** Runs every entry of a manifest of replayed stories, replaying each story once and building each dataset once. */
-export async function runManifest(
-  options: ConformanceOptions,
-): Promise<Assertion[]> {
-  const { vocabulary } = options;
-  let layout: Promise<Layout> | undefined;
-  const replays = new Map<string, Promise<Replayed>>();
-  const datasets = new Map<string, Promise<Store>>();
+/** Each story replayed once, and the pod at each step under each lens built once, however many entries and checks read them. */
+export class Replays {
+  readonly #options: ConformanceOptions;
+  #layout: Promise<Layout> | undefined;
+  readonly #replays = new Map<string, Promise<Replayed>>();
+  readonly #datasets = new Map<string, Promise<Store>>();
 
-  const replayed = (story: string): Promise<Replayed> => {
-    let found = replays.get(story);
+  constructor(options: ConformanceOptions) {
+    this.#options = options;
+  }
+
+  /** The story at the path in the vocabulary, replayed. */
+  replayed(story: string): Promise<Replayed> {
+    let found = this.#replays.get(story);
     if (found === undefined) {
+      const options = this.#options;
+      const { vocabulary } = options;
       found = (async () => {
         const parsed = parseStory(await readText(vocabulary, story));
         return replay({
@@ -69,7 +74,7 @@ export async function runManifest(
           vocabulary,
           folder: folderOf(story),
           pod: options.newPod(parsed.address),
-          layout: await (layout ??=
+          layout: await (this.#layout ??=
             options.layout === undefined
               ? Layout.read(vocabulary, options.newStore)
               : Promise.resolve(options.layout)),
@@ -78,10 +83,38 @@ export async function runManifest(
           performers: options.performers,
         });
       })();
-      replays.set(story, found);
+      this.#replays.set(story, found);
     }
     return found;
-  };
+  }
+
+  /** The pod of the story as it stood after the step, under the lens, as a test's query reads it. */
+  dataset(story: string, step: string, lens: string): Promise<Store> {
+    const key = JSON.stringify([story, step, lens]);
+    let found = this.#datasets.get(key);
+    if (found === undefined) {
+      found = this.replayed(story).then((done) =>
+        dataset(
+          done,
+          step,
+          lens,
+          this.#options.newStore(),
+          this.#options.derive,
+        ),
+      );
+      this.#datasets.set(key, found);
+    }
+    return found;
+  }
+}
+
+/** Runs every entry of a manifest of replayed stories, replaying each story once and building each dataset once. */
+export async function runManifest(
+  options: ConformanceOptions,
+  replays: Replays = new Replays(options),
+  manifest: string = options.manifest,
+): Promise<Assertion[]> {
+  const { vocabulary } = options;
 
   const built = async (entry: ManifestEntry): Promise<Store> => {
     const story = relative(vocabulary, required(entry, "story"));
@@ -90,16 +123,7 @@ export async function runManifest(
     if (lens === undefined || (await vocabulary.read(lensFile)) === undefined) {
       throw new Error(`${lensFile} is no lens's query file`);
     }
-    const step = required(entry, "step");
-    const key = JSON.stringify([story, step, lens]);
-    let found = datasets.get(key);
-    if (found === undefined) {
-      found = replayed(story).then((done) =>
-        dataset(done, step, lens, options.newStore(), options.derive),
-      );
-      datasets.set(key, found);
-    }
-    return found;
+    return replays.dataset(story, required(entry, "step"), lens);
   };
 
   const outcome = async (entry: ManifestEntry): Promise<Assertion> => {
@@ -148,7 +172,7 @@ export async function runManifest(
   const assertions: Assertion[] = [];
   for (const entry of await readManifest(
     vocabulary,
-    options.manifest,
+    manifest,
     options.newStore,
   )) {
     assertions.push(await outcome(entry));

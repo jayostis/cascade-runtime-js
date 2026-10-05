@@ -1,17 +1,10 @@
-import {
-  type Files,
-  folderOf,
-  OxigraphStore,
-  parseStory,
-  readText,
-  type Replayed,
-  replay,
-  vocabularyDerive,
-} from "@cascade-runtime/runtime";
-import {
-  importersNamed,
-  type LocalVocabulary,
-} from "@cascade-runtime/runtime/node";
+import { folderOf, type Files, readText } from "../files.js";
+import { OxigraphStore } from "../oxigraph-store.js";
+import { type Replayed, replay } from "../replay.js";
+import { parseStory } from "../story.js";
+import { vocabularyDerive } from "../build.js";
+import { importersNamed } from "./importers.js";
+import type { LocalVocabulary } from "./runtime.js";
 
 /**
  * A story of the vocabulary replayed into the pod through the step, the whole story when none is named, with the

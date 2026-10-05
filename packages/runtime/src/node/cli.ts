@@ -1,18 +1,34 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { vocabularyDerive } from "../build.js";
-import { type Assertion, earl, runManifest } from "../conformance.js";
+import {
+  type Assertion,
+  type ConformanceOptions,
+  earl,
+  Replays,
+  runManifest,
+} from "../conformance.js";
+import { kitsOf, runKit } from "../kit.js";
+import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
 import { importersNamed } from "./importers.js";
-import { findRoot, readConfig, resolveVocabulary } from "./runtime.js";
+import {
+  findRoot,
+  localVocabulary,
+  readConfig,
+  resolveVocabulary,
+} from "./runtime.js";
+import { storyPod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 
 const RUNTIME = "cascade-runtime-js";
 const VECTORS = "runtime/vectors/manifest.ttl";
+const KIT = "conformance/";
+const log = (line: string): void => console.error(line);
 
 function folderMap(pairs: readonly string[]): Map<string, string> {
   return new Map(
@@ -36,7 +52,7 @@ async function conformance(args: string[]): Promise<number> {
     args,
     options: {
       report: { type: "string" },
-      manifest: { type: "string", default: VECTORS },
+      manifest: { type: "string" },
       folder: { type: "string", multiple: true, default: [] },
     },
   });
@@ -45,7 +61,6 @@ async function conformance(args: string[]): Promise<number> {
   const report = absolute(
     values.report ?? join(root, "build", "conformance", "earl.nt"),
   );
-  const log = (line: string): void => console.error(line);
   const vocabulary = await resolveVocabulary(
     root,
     config,
@@ -54,31 +69,55 @@ async function conformance(args: string[]): Promise<number> {
   );
   const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
   const layout = await Layout.read(files, () => new OxigraphStore());
-  const assertions = await runManifest({
+  const options: ConformanceOptions = {
     vocabulary: files,
-    manifest: values.manifest,
+    manifest: values.manifest ?? VECTORS,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
-  });
+  };
+  const replays = new Replays(options);
+  const assertions = await runManifest(options, replays);
+  if (values.manifest === undefined) {
+    const shapes = await Shapes.read(files, () => new OxigraphStore());
+    for (const kit of await kitsOf(files))
+      assertions.push(...(await runKit(options, kit, replays, shapes)));
+  }
   await mkdir(dirname(report), { recursive: true });
   await writeFile(report, earl(assertions, RUNTIME));
   console.error(`${summary(assertions)}; the EARL report is ${report}`);
   return 0;
 }
 
-function buildExamplePod(args: string[]): number {
-  const [name = "<name>"] = args;
-  console.error(
-    `build:example-pod ${name}: cascade-vocabulary has no conformance kit to build it from yet; ` +
-      "the kit, and this command, arrive with step 11 of jayostis/cascade-vocabulary#39",
-  );
-  return 2;
+/** Replays the vocabulary's conformance kit `conformance/<name>/` into build/<name>/pod. */
+async function buildExamplePod(args: string[]): Promise<number> {
+  const [name] = args;
+  if (name === undefined || name === "")
+    throw new Error(
+      "name the example, as in conformance/<name>/ in the vocabulary",
+    );
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const vocabulary = await localVocabulary(root, log);
+  const story = `${KIT}${name}/story.json`;
+  if ((await vocabulary.files.read(story)) === undefined) {
+    console.error(
+      `build:example-pod ${name}: the vocabulary has no ${story} to build the pod from`,
+    );
+    return 2;
+  }
+  const folder = join(root, "build", name, "pod");
+  await rm(folder, { recursive: true, force: true });
+  const { steps } = await storyPod(vocabulary, story, new FolderFiles(folder));
+  const refused = steps.filter(({ refused }) => refused !== undefined);
+  for (const { step, refused: why } of refused)
+    console.error(`step ${step.name} was refused: ${why}`);
+  console.error(`${story} replayed into ${folder}`);
+  return 0;
 }
 
-const COMMANDS: Record<string, (args: string[]) => number | Promise<number>> = {
+const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   conformance,
   "build-example-pod": buildExamplePod,
 };

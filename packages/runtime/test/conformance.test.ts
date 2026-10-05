@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { before, test } from "node:test";
 import { promisify } from "node:util";
 import { runManifest } from "../src/conformance.js";
+import { KIT_CHECKS, kitsOf } from "../src/kit.js";
 import { MemoryFiles, readText, relative } from "../src/files.js";
 import {
   type ManifestEntry,
@@ -26,6 +27,8 @@ let files: FolderFiles;
 let entries: ManifestEntry[];
 const stories = new Map<string, Story>();
 let outcomes: Map<string, Outcome[]>;
+/** Each entry and check the report must hold, by its IRI, with its name. */
+const tested = new Map<string, string>();
 
 interface Outcome {
   readonly outcome: string;
@@ -67,6 +70,18 @@ before(async () => {
     if (!stories.has(path))
       stories.set(path, parseStory(await readText(files, path)));
   }
+  for (const entry of entries) tested.set(entry.iri, entry.name);
+  for (const kit of await kitsOf(files)) {
+    for (const entry of await readManifest(
+      files,
+      `${kit}/cases/manifest.ttl`,
+      () => new OxigraphStore(),
+    ))
+      tested.set(entry.iri, entry.name);
+    for (const check of Object.values(KIT_CHECKS))
+      tested.set(`${files.iri}${kit}/#${check}`, check);
+  }
+  assert.ok(tested.size > entries.length, "the vocabulary has no kit");
   outcomes = await reported;
 });
 
@@ -102,21 +117,18 @@ test("the manifest reader finds every rule vector, with its story, a step of it,
   }
 });
 
-test("the conformance command reports each rule vector once, and nothing else", () => {
-  assert.deepEqual(
-    [...outcomes.keys()].sort(),
-    entries.map((entry) => entry.iri).sort(),
-  );
+test("the conformance command reports each rule vector, each case of each kit and each of its checks once, and nothing else", () => {
+  assert.deepEqual([...outcomes.keys()].sort(), [...tested.keys()].sort());
   for (const [test, found] of outcomes) assert.equal(found.length, 1, test);
 });
 
-test("every rule vector passes", () => {
-  for (const entry of entries) {
-    const found = outcomes.get(entry.iri);
+test("every rule vector, every case of each kit and each of its checks passes", () => {
+  for (const [iri, name] of tested) {
+    const found = outcomes.get(iri);
     assert.deepEqual(
       found?.map(({ outcome }) => outcome),
       [`${EARL}passed`],
-      `${entry.name}: ${found?.[0]?.why}`,
+      `${name}: ${found?.[0]?.why}`,
     );
   }
 });

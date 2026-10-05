@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
-  folderOf,
   OxigraphStore,
   podDataset,
   questions,
@@ -18,7 +17,6 @@ import {
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
 import { Site } from "../site.js";
-import { storyPod } from "./story-pod.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const RUNTIME_CLI = join(
@@ -93,31 +91,6 @@ async function writeSite(
   return 0;
 }
 
-/** Replays a story of the vocabulary into build/<its folder's name>/pod, then builds that pod's site. */
-async function buildStorySite(args: string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    options: { through: { type: "string" } },
-  });
-  const [story] = positionals;
-  if (story === undefined)
-    throw new Error("name the story, by its path in the vocabulary");
-  const vocabulary = await localVocabulary(ROOT, log);
-  const name = folderOf(story).split("/").at(-1) ?? "";
-  const folder = join(ROOT, "build", name, "pod");
-  await rm(folder, { recursive: true, force: true });
-  const pod = new FolderFiles(folder);
-  await storyPod(vocabulary, story, pod, values.through);
-  console.error(`the story replayed into ${folder}`);
-  return writeSite(
-    vocabulary,
-    { name, pod, named: name },
-    undefined,
-    undefined,
-  );
-}
-
 async function buildExample(args: string[]): Promise<number> {
   const [name] = args;
   try {
@@ -171,7 +144,6 @@ async function ask(args: string[]): Promise<number> {
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   "build-example-site": buildExampleSite,
   "build-example": buildExample,
-  "build-story-site": buildStorySite,
   ask,
 };
 
