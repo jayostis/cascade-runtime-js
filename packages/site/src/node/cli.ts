@@ -1,21 +1,30 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
+  kitsOf,
   OxigraphStore,
   podDataset,
   questions,
+  repositoryName,
+  titleOf,
+  treeIri,
   written,
 } from "@cascade-runtime/runtime";
 import {
+  checkout,
   FolderFiles,
   findRoot,
   type LocalVocabulary,
   localVocabulary,
+  type Resolved,
+  resolve,
+  siblingsOf,
 } from "@cascade-runtime/runtime/node";
+import { type Example, type Ingredient, pagesTree } from "../front-page.js";
 import { Site } from "../site.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -28,6 +37,9 @@ const RUNTIME_CLI = join(
   "node",
   "cli.js",
 );
+const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
+const BRIDGE = "cascade-bridge-rs";
+const KIT = "conformance/";
 const log = (line: string): void => console.error(line);
 
 interface Target {
@@ -108,6 +120,95 @@ async function buildExample(args: string[]): Promise<number> {
   return buildExampleSite(args.slice(0, 1));
 }
 
+function atCommit(
+  name: string,
+  href: string,
+  commit: string,
+  uncommitted = 0,
+): Ingredient {
+  const changes =
+    uncommitted === 0 ? "" : `, with ${uncommitted} uncommitted files`;
+  return { name, version: `${commit.slice(0, 12)}${changes}`, href };
+}
+
+const resolvedIngredient = (resolved: Resolved): Ingredient =>
+  atCommit(
+    repositoryName(resolved.pin),
+    resolved.iri,
+    resolved.commit ?? resolved.pin.commit,
+    resolved.uncommitted,
+  );
+
+/** The Bridge release the runtime package depends on, named by the release its tarball is downloaded from. */
+async function bridgeRelease(): Promise<Ingredient> {
+  const { dependencies } = JSON.parse(
+    await readFile(join(ROOT, "packages", "runtime", "package.json"), "utf8"),
+  ) as { dependencies: Record<string, string> };
+  const url = dependencies[BRIDGE] ?? "";
+  const release = /^(https:\/\/\S+)\/releases\/download\/([^/]+)\//.exec(url);
+  if (release === null)
+    throw new Error(`${BRIDGE} is not a release's download: ${url}`);
+  const [, repository = "", tag = ""] = release;
+  return {
+    name: BRIDGE,
+    version: tag,
+    href: `${repository}/releases/tag/${tag}`,
+  };
+}
+
+/** Builds every kit's pod and site with build-example, and writes them under build/pages beneath a front page. */
+async function buildPages(): Promise<number> {
+  const vocabulary = await localVocabulary(ROOT, log);
+  const examples: Example[] = [];
+  for (const kit of await kitsOf(vocabulary.files)) {
+    const name = kit.slice(KIT.length);
+    const built = await buildExample([name]);
+    if (built !== 0) return built;
+    const folder = new FolderFiles(join(ROOT, "build", name, "site"));
+    const site = new Map<string, Uint8Array>();
+    for (const path of await folder.list("")) {
+      const bytes = await folder.read(path);
+      if (bytes !== undefined) site.set(path, bytes);
+    }
+    examples.push({
+      folder: name,
+      title: await titleOf(vocabulary.files, kit),
+      site,
+    });
+  }
+  const siblingsIn = await siblingsOf(ROOT);
+  const adapters = await Promise.all(
+    vocabulary.config.adapters.map((pin) =>
+      resolve(pin, { siblingsIn, cache: join(ROOT, "build", "cache"), log }),
+    ),
+  );
+  const runtime = await checkout(ROOT);
+  if (runtime === undefined)
+    throw new Error(
+      `${ROOT} is not a git checkout, so no commit built the pages`,
+    );
+  const pin = { repository: RUNTIME, commit: runtime.commit };
+  const tree = pagesTree(examples, {
+    ingredients: [
+      atCommit(
+        repositoryName(pin),
+        treeIri(pin, runtime.commit),
+        runtime.commit,
+        runtime.uncommitted,
+      ),
+      resolvedIngredient(vocabulary.resolved),
+    ],
+    configured: [...adapters.map(resolvedIngredient), await bridgeRelease()],
+    at: clock.now(),
+  });
+  const out = join(ROOT, "build", "pages");
+  await rm(out, { recursive: true, force: true });
+  const pages = new FolderFiles(out);
+  for (const [path, bytes] of tree) await pages.write(path, bytes);
+  console.error(`${tree.size} files written to ${out}`);
+  return 0;
+}
+
 async function ask(args: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
@@ -144,6 +245,7 @@ async function ask(args: string[]): Promise<number> {
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   "build-example-site": buildExampleSite,
   "build-example": buildExample,
+  "build-pages": buildPages,
   ask,
 };
 
