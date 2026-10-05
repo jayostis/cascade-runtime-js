@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MemoryFiles } from "../src/files.js";
-import { fileCreation, Refusal, replay } from "../src/replay.js";
+import { OxigraphStore } from "../src/oxigraph-store.js";
+import { fileCreation, replay } from "../src/replay.js";
+import { Refusal } from "../src/step.js";
 import { parseStory } from "../src/story.js";
 
 test("a refused step writes nothing and the replay goes on; a step it cannot perform stops it, naming the kind", async () => {
@@ -26,6 +28,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
     source: new MemoryFiles("https://vocabulary.example/"),
     folder: "",
     pod,
+    newStore: () => new OxigraphStore(),
     performers: {
       creation: fileCreation,
       entry: ({ writes }) => {

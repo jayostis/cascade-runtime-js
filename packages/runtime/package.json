@@ -10,6 +10,8 @@
     "./node": "./dist/src/node/index.js"
   },
   "dependencies": {
-    "oxigraph": "0.5.11"
+    "@cascade-runtime/apple-health": "0.0.0",
+    "oxigraph": "0.5.11",
+    "rdf-canonize": "5.0.0"
   }
 }

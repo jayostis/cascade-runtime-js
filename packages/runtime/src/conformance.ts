@@ -1,10 +1,12 @@
 import { differences } from "./compare.js";
 import { type Derive, dataset } from "./dataset.js";
 import { type Files, folderOf, readText, relative } from "./files.js";
+import type { Importer } from "./importer.js";
 import { type ManifestEntry, readManifest, REPLAY_TEST } from "./manifest.js";
 import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
-import { type Performers, type Replayed, replay } from "./replay.js";
+import { type Replayed, replay } from "./replay.js";
 import { parseResults } from "./sparql-results.js";
+import type { Performers } from "./step.js";
 import type { Store, StoreFactory } from "./store.js";
 import { parseStory } from "./story.js";
 
@@ -29,6 +31,7 @@ export interface ConformanceOptions {
   readonly newStore: StoreFactory;
   /** An empty pod at the address, for a story to be replayed into. */
   readonly newPod: (address: string) => Files;
+  readonly importers?: readonly Importer[];
   readonly performers?: Performers;
   readonly derive?: Derive;
 }
@@ -60,6 +63,8 @@ export async function runManifest(
           source: vocabulary,
           folder: folderOf(story),
           pod: options.newPod(parsed.address),
+          newStore: options.newStore,
+          importers: options.importers,
           performers: options.performers,
         });
       })();
