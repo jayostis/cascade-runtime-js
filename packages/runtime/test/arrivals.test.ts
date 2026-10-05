@@ -3,11 +3,10 @@ import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { MemoryFiles, folderOf, readText } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
-import { isRdf } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
 import { parseStory, type Story } from "../src/story.js";
-import { vocabulary } from "./vocabulary.js";
+import { layout, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -27,6 +26,7 @@ async function replayed(path: string, through?: string) {
     folder: folderOf(path),
     pod: new MemoryFiles(story.address),
     newStore,
+    layout: await layout(),
     importers: [appleHealthExport],
   });
 }
@@ -39,7 +39,7 @@ test("an import writes its content-addressed files first, then its revisions, an
   const wrote = steps[1]?.wrote ?? [];
   const ranks: number[] = [];
   for (const path of wrote) {
-    if (!isRdf(path)) {
+    if (!(await layout()).isRdf(path)) {
       ranks.push(0);
       continue;
     }
@@ -137,6 +137,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
     folder: "s",
     pod: new MemoryFiles(story.address),
     newStore,
+    layout: await layout(),
     importers: [appleHealthExport],
   });
   assert.match(
@@ -181,6 +182,7 @@ test("an export the importer cannot read is refused, and the replay goes on", as
     folder: "s",
     pod: new MemoryFiles(story.address),
     newStore,
+    layout: await layout(),
     importers: [appleHealthExport],
   });
   assert.match(

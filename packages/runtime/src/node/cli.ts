@@ -2,8 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { vocabularyDerive } from "../build.js";
 import { type Assertion, earl, runManifest } from "../conformance.js";
 import { MemoryFiles } from "../files.js";
+import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
 import { importersNamed } from "./importers.js";
 import { findRoot, readConfig, resolveVocabulary } from "./runtime.js";
@@ -50,12 +52,16 @@ async function conformance(args: string[]): Promise<number> {
     folderMap(values.folder),
     log,
   );
+  const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
+  const layout = await Layout.read(files, () => new OxigraphStore());
   const assertions = await runManifest({
-    vocabulary: new FolderFiles(vocabulary.folder, vocabulary.iri),
+    vocabulary: files,
     manifest: values.manifest,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     importers: importersNamed(config.importers),
+    layout,
+    derive: await vocabularyDerive(files, layout),
   });
   await mkdir(dirname(report), { recursive: true });
   await writeFile(report, earl(assertions, RUNTIME));

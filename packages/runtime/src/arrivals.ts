@@ -2,7 +2,7 @@ import type { BridgeDocument, LoadedAdapter } from "./bridge.js";
 import type { Files } from "./files.js";
 import { Graph, parseGraph } from "./graph.js";
 import type { ExportDocument } from "./importer.js";
-import { attachment, FOLDERS, fanned, RECORD_FOLDERS } from "./layout.js";
+import type { Layout, Placement } from "./layout.js";
 import {
   canonical,
   contentName,
@@ -50,7 +50,7 @@ const DRAFT = /^urn:cascade:output-(\d+)$/;
 /** One arrival of a record, as a revision would carry it (runtime/rules.md, N4). */
 interface Arrival {
   readonly record: NamedNode;
-  readonly folder: string;
+  readonly place: Placement;
   readonly recordTriples: readonly Triple[];
   readonly version: NamedNode;
   readonly versionTriples: readonly Triple[];
@@ -97,30 +97,35 @@ async function named(
   }
 }
 
-/** The folder the pod files a record of the node's type in; a type it files nowhere is refused (A14). */
-function recordFolder(
+/** Where the layout files a record of the node's type; a type it files nowhere is refused (A14). */
+function recordPlace(
+  layout: Layout,
   graph: Graph,
   record: Term,
   where: string,
-): { folder: string; kind: NamedNode } {
+): { place: Placement; kind: NamedNode } {
   const filed = graph
     .objects(record, TYPE)
-    .filter((kind): kind is NamedNode => RECORD_FOLDERS.has(kind.value));
-  const folders = new Set(filed.map((kind) => RECORD_FOLDERS.get(kind.value)));
+    .filter(
+      (kind): kind is NamedNode =>
+        kind.termType === "NamedNode" &&
+        layout.records(kind.value) !== undefined,
+    );
+  const places = new Set(filed.map((kind) => layout.records(kind.value)));
   const [kind] = filed;
-  const [folder] = folders;
-  if (kind === undefined || folder === undefined)
+  const [place] = places;
+  if (kind === undefined || place === undefined)
     throw new Refusal(
       `${where}: ${record.value} is of no type the pod files: ${graph
         .objects(record, TYPE)
         .map((type) => type.value)
         .join(", ")}`,
     );
-  if (folders.size > 1)
+  if (places.size > 1)
     throw new Refusal(
       `${where}: ${record.value} is of types the pod files apart`,
     );
-  return { folder, kind };
+  return { place, kind };
 }
 
 /** Each record's revisions as the pod holds them, and the revisions a step adds after them. */
@@ -129,12 +134,20 @@ class Revisions {
   readonly #sourceVersions = new Map<string, Set<string>>();
   readonly #files: [string, Uint8Array][] = [];
 
-  static async of(pod: Files, newStore: StoreFactory): Promise<Revisions> {
+  private constructor(readonly layout: Layout) {}
+
+  static async of(
+    pod: Files,
+    newStore: StoreFactory,
+    layout: Layout,
+  ): Promise<Revisions> {
     const store = newStore();
-    for (const path of await pod.list(FOLDERS.records)) {
-      const bytes = await pod.read(path);
-      if (bytes !== undefined)
-        await store.loadTurtle(bytes, { graph: pod.iri + path });
+    for (const { folder } of layout.recordPlacements) {
+      for (const path of await pod.list(folder ?? "")) {
+        const bytes = await pod.read(path);
+        if (bytes !== undefined)
+          await store.loadTurtle(bytes, { graph: pod.iri + path });
+      }
     }
     const { rows } = await store.select(`
       PREFIX rec: <${REC}>
@@ -145,7 +158,7 @@ class Revisions {
         OPTIONAL { ?revision prov:wasRevisionOf ?previous }
         OPTIONAL { ?revision pav:version ?sourceVersion }
       }`);
-    const revisions = new Revisions();
+    const revisions = new Revisions(layout);
     const revised = new Set(rows.map((row) => row.get("previous")?.value));
     for (const row of rows) {
       const [record, revision, version] = ["record", "revision", "version"].map(
@@ -184,9 +197,9 @@ class Revisions {
   /** Adds the record and its version, and holds the revision after the record's last (A2, A5) until `write`. */
   async revise(arrival: Arrival, writes: StepWrites): Promise<void> {
     const record = arrival.record.value;
-    writes.add(fanned(arrival.folder, record), ntriples(arrival.recordTriples));
+    writes.add(arrival.place.path(record), ntriples(arrival.recordTriples));
     writes.add(
-      fanned(arrival.folder, arrival.version.value),
+      this.layout.version(arrival.place, arrival.version.value),
       ntriples(arrival.versionTriples),
     );
     const placeholder = iri(THIS_REVISION);
@@ -210,7 +223,7 @@ class Revisions {
     ];
     const { value: name } = await named(triples, `the revision of ${record}`);
     this.#files.push([
-      fanned(arrival.folder, name),
+      this.layout.revision(arrival.place, name),
       ntriples(renamed(triples, placeholder, iri(name))),
     ]);
     this.#last.set(record, { revision: name, version: arrival.version.value });
@@ -256,7 +269,12 @@ function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
 }
 
 /** Each record's arrival in a document's graph, in the order of their versions' names. */
-function arrivals(graph: Graph, by: string, where: string): Arrival[] {
+function arrivals(
+  layout: Layout,
+  graph: Graph,
+  by: string,
+  where: string,
+): Arrival[] {
   return graph
     .subjects(ARRIVED_AS)
     .flatMap((arrival) =>
@@ -280,7 +298,7 @@ function arrivals(graph: Graph, by: string, where: string): Arrival[] {
         );
       return {
         record,
-        folder: recordFolder(graph, record, where).folder,
+        place: recordPlace(layout, graph, record, where).place,
         recordTriples: graph.match(record),
         version,
         versionTriples: graph.triples.filter(([s]) => inVersion(s, version)),
@@ -357,13 +375,14 @@ export async function fileExport(
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
   const started = time.now();
-  const revisions = await Revisions.of(pod, newStore);
+  const { layout } = context;
+  const revisions = await Revisions.of(pod, newStore, layout);
   const kept = new Map<string, Triple[]>();
   for (const found of documents) {
     const documentIri = await documentName(found.bytes);
     if (
       kept.has(documentIri) ||
-      (await pod.read(attachment(documentIri))) !== undefined
+      (await pod.read(layout.storedBytes.path(documentIri))) !== undefined
     )
       continue;
     const document: BridgeDocument = {
@@ -379,7 +398,7 @@ export async function fileExport(
     const subject = iri(documentIri);
     refuseUnaccounted(graph, subject, found.path);
     let revised = false;
-    for (const arrival of arrivals(graph, name, found.path)) {
+    for (const arrival of arrivals(layout, graph, name, found.path)) {
       if (revisions.repeats(arrival)) continue;
       await revisions.revise(arrival, writes);
       revised = true;
@@ -388,9 +407,9 @@ export async function fileExport(
       revised ||
       (await hasFindings(conversion.findings, documentIri, newStore))
     ) {
-      writes.add(attachment(documentIri), found.bytes);
+      writes.add(layout.storedBytes.path(documentIri), found.bytes);
       writes.add(
-        fanned(FOLDERS.documents, documentIri),
+        layout.place(`${PROV}Entity`).path(documentIri),
         ntriples(graph.closure(subject)),
       );
       kept.set(
@@ -408,7 +427,7 @@ export async function fileExport(
       `step ${context.step.name}'s documents disagree on the import's label, start or association`,
     );
   writes.add(
-    fanned(FOLDERS.imports, name),
+    layout.place(`${PROV}Activity`, [USED]).path(name),
     ntriples([
       ...(descriptions[0] ?? []),
       ...[...kept.keys()].map((document): Triple => [
@@ -513,7 +532,17 @@ export const fileEntry: Perform = async (context) => {
         iri(await recordName([context.story.subject, started, position])),
       );
   }
-  const revisions = await Revisions.of(context.pod, context.newStore);
+  const { layout } = context;
+  const sessions = layout.place(`${PROV}Activity`);
+  const stated = layout.place(
+    `${PROV}Activity`,
+    graph.match(session).map(([, p]) => p.value),
+  );
+  if (stated !== sessions)
+    throw new Refusal(
+      `${happened.file}: its session states what the layout files in ${stated.folder}, not ${sessions.folder}`,
+    );
+  const revisions = await Revisions.of(context.pod, context.newStore, layout);
   const placeholder = iri(THIS_VERSION);
   const drafts = graph
     .subjects(SPECIALIZATION_OF)
@@ -525,7 +554,7 @@ export const fileEntry: Perform = async (context) => {
       throw new Refusal(
         `${happened.file}: ${draftVersion.value} is the version of no draft`,
       );
-    const { folder, kind } = recordFolder(graph, draft, happened.file);
+    const { place, kind } = recordPlace(layout, graph, draft, happened.file);
     const content = graph
       .match(draftVersion)
       .map(([, p, o]): Triple => [
@@ -540,7 +569,7 @@ export const fileEntry: Perform = async (context) => {
     await revisions.revise(
       {
         record,
-        folder,
+        place,
         recordTriples: [[record, iri(TYPE), kind]],
         version,
         versionTriples: renamed(content, placeholder, version),
@@ -553,7 +582,7 @@ export const fileEntry: Perform = async (context) => {
   }
   revisions.write(context.writes);
   context.writes.add(
-    fanned(FOLDERS.activities, session.value),
+    sessions.path(session.value),
     ntriples(graph.closure(session)),
   );
 };
