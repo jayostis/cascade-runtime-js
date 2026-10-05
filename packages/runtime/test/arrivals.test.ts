@@ -148,3 +148,45 @@ test("a step whose content to be named holds a blank node is refused, and the re
   assert.equal(steps[3]?.refused, undefined);
   assert.notDeepEqual(steps[3]?.wrote, []);
 });
+
+test("an export the importer cannot read is refused, and the replay goes on", async () => {
+  const source = new MemoryFiles("https://story.example/");
+  await source.write(
+    "s/apple_health_export/export.xml",
+    new TextEncoder().encode(
+      '<HealthData><ClinicalRecord sourceName="Example Hospital" fhirVersion="4.0.1" receivedDate="2026-01-02 10:00:00 +0000" resourceFilePath="/clinical-records/AllergyIntolerance-peanut.json"/></HealthData>',
+    ),
+  );
+  await source.write(
+    "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
+  );
+  const story = parseStory(
+    JSON.stringify({
+      address: "https://pod.example/",
+      subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+      steps: [
+        {
+          name: "import",
+          when: "2026-06-02T09:00:00Z",
+          import: { export: "apple_health_export", converted: "bridge" },
+        },
+        { name: "create", when: "2026-06-03T09:00:00Z", creation: {} },
+      ],
+    }),
+  );
+  const { steps } = await replay({
+    story,
+    source,
+    folder: "s",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    importers: [appleHealthExport],
+  });
+  assert.match(
+    steps[0]?.refused ?? "",
+    /AllergyIntolerance-peanut.json: .*has no sourceURL/,
+  );
+  assert.deepEqual(steps[0]?.wrote, []);
+  assert.notDeepEqual(steps[1]?.wrote, []);
+});
