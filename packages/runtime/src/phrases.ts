@@ -78,7 +78,7 @@ export interface Compiled {
   person?: Person;
   readonly steps: Step[];
   /** The step the pod is read as it stood after, by its name, and the lens; the last step under everyday otherwise. */
-  at?: { readonly step: string; readonly lens: string };
+  at?: { readonly index: number; readonly lens: string };
   readonly checks: { readonly text: string; readonly check: Check }[];
   /** Whether a check reads the lens's derived state, or the files built from it. */
   derived?: boolean;
@@ -171,8 +171,11 @@ function happen(
   const before = compiled.steps.at(-1)?.when;
   if (before !== undefined && Date.parse(when) < Date.parse(before))
     throw new Error(`${when} is before the step before it, ${before}`);
+  const name = label ?? quoted ?? happened.kind.replace("creation", "pod");
+  if (compiled.steps.some((step) => step.name === name))
+    throw new Error(`two steps of the example are named "${name}": label one`);
   compiled.steps.push({
-    name: label ?? quoted ?? happened.kind.replace("creation", "pod"),
+    name,
     when,
     happened,
   });
@@ -607,7 +610,9 @@ const DEFINITIONS: [string, Act][] = [
     "the pod is read as it stood after {step}",
     (compiled, [said]) => {
       compiled.at = {
-        step: named(compiled.steps, said as string).name,
+        index: compiled.steps.lastIndexOf(
+          named(compiled.steps, said as string),
+        ),
         lens: "everyday",
       };
     },
@@ -616,7 +621,9 @@ const DEFINITIONS: [string, Act][] = [
     "the pod is read as it stood after {step}, under the {lens} lens",
     (compiled, [said, lens]) => {
       compiled.at = {
-        step: named(compiled.steps, said as string).name,
+        index: compiled.steps.lastIndexOf(
+          named(compiled.steps, said as string),
+        ),
         lens: lens as string,
       };
     },

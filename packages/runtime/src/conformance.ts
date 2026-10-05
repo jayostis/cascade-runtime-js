@@ -107,7 +107,22 @@ function grow(root: Node, steps: readonly Step[]): Node[] {
     ]);
     let child = node.children.get(key);
     if (child === undefined) {
-      child = newNode(step);
+      // A shared step is performed under its position, which every example that shares it gives it alike.
+      child = newNode({
+        name: String(index),
+        when: step.when,
+        happened:
+          happened.kind === "matcher" && happened.takes !== undefined
+            ? {
+                ...happened,
+                takes: String(
+                  steps
+                    .slice(0, index)
+                    .findLastIndex(({ name }) => name === happened.takes),
+                ),
+              }
+            : happened,
+      });
       node.children.set(key, child);
     }
     path.push(child);
@@ -300,6 +315,10 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
+    if (replayed.stopped !== undefined)
+      throw new Error(
+        `the replay stopped at step ${replayed.stopped.step.name}: ${replayed.stopped.why}`,
+      );
     const store = new LazyStore(
       () =>
         this.dataset(
@@ -339,15 +358,14 @@ class Run {
     const { example, compiled, path } = planned;
     const named = { test: example.iri, name: example.name };
     const at = compiled.at ?? {
-      step: compiled.steps.at(-1)?.name ?? "",
+      index: compiled.steps.length - 1,
       lens: "everyday",
     };
-    const node =
-      path[compiled.steps.findLastIndex(({ name }) => name === at.step)];
+    const node = path[at.index];
     let reading: Reading;
     try {
       if (node === undefined)
-        throw new Error(`the example takes no step ${at.step}`);
+        throw new Error("the example takes no step to read the pod after");
       reading = await this.#reading(
         planned,
         node,
@@ -392,7 +410,12 @@ export async function runConformance(
   const results = new Map<string, Assertion>();
   const plans: Planned[] = [];
   const roots = new Map<string, Root>();
-  const kits: { feature: Feature; person: Person; path: Node[] }[] = [];
+  const kits: {
+    feature: Feature;
+    person: Person;
+    names: string[];
+    path: Node[];
+  }[] = [];
   const rootOf = (person: Person, feature: Feature): Node => {
     let root = roots.get(person.folder);
     if (root === undefined) {
@@ -422,12 +445,24 @@ export async function runConformance(
       });
       continue;
     }
-    const people = await peopleOf(
-      vocabulary,
-      feature.folder,
-      async (turtle, base) =>
-        new Graph(await options.newStore().parse(turtle, base)),
-    );
+    let people: Map<string, Person>;
+    try {
+      people = await peopleOf(
+        vocabulary,
+        feature.folder,
+        async (turtle, base) =>
+          new Graph(await options.newStore().parse(turtle, base)),
+      );
+    } catch (error) {
+      for (const example of feature.examples)
+        results.set(example.iri, {
+          test: example.iri,
+          name: example.name,
+          outcome: "failed",
+          why: `${ruleOf(example)}${failure(error)}`,
+        });
+      continue;
+    }
     const compiling = run.compiling(people);
     for (const example of feature.examples) {
       try {
@@ -463,6 +498,7 @@ export async function runConformance(
         kits.push({
           feature,
           person,
+          names: story.steps.map(({ name }) => name),
           path: grow(rootOf(person, feature), story.steps),
         });
       } catch (error) {
@@ -474,17 +510,18 @@ export async function runConformance(
   await run.replayAll(roots.values());
   for (const planned of plans)
     results.set(planned.example.iri, await run.outcome(planned));
-  for (const { feature, person, path } of kits) {
+  for (const { feature, person, names, path } of kits) {
     const node = path.at(-1);
     try {
-      if (node?.replayed === undefined)
+      const replayed = named(node?.replayed, names);
+      if (node === undefined || replayed === undefined)
         throw new Error(`${feature.path} tells no story`);
       for (const assertion of await kitChecks({
         vocabulary,
         kit: feature.folder,
         folder: person.folder,
-        replayed: node.replayed,
-        final: await run.dataset(node, KIT_LENS),
+        replayed,
+        final: await run.dataset(node, KIT_LENS, names),
         layout,
         shapes: options.shapes as Shapes,
       }))

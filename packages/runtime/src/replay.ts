@@ -190,7 +190,13 @@ export class Replay {
         this.#steps.push({ step, wrote, activity });
       } else this.#steps.push({ step, wrote });
     } catch (error) {
-      if (!(error instanceof Refusal)) throw error;
+      if (!(error instanceof Refusal)) {
+        this.#stopped = {
+          step,
+          why: error instanceof Error ? error.message : String(error),
+        };
+        return;
+      }
       this.#steps.push({ step, wrote: [], refused: error.message });
     }
     if (options.build !== undefined) {

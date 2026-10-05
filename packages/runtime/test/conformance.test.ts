@@ -80,7 +80,7 @@ test("every example and each kit's checks pass", () => {
   }
 });
 
-test("an example with a step no phrase of runtime/steps.md reads fails, naming its rule", async () => {
+test("each example fails or passes on its own: a step no phrase reads, a step that throws, and a pod read before a later step of the same name", async () => {
   const files = new MemoryFiles("https://vocabulary.example/");
   const write = (path: string, text: string) =>
     files.write(path, new TextEncoder().encode(text));
@@ -90,28 +90,55 @@ test("an example with a step no phrase of runtime/steps.md reads fails, naming i
        <http://www.w3.org/ns/pim/space#storage> <https://pod.example/> .`,
   );
   await write(
+    "runtime/scripted-input/ada/judgments/same.ttl",
+    `<urn:uuid:0f4a8c26-5b3e-4d79-a1e8-6c2f9b4d7a15> a <https://ns.cascadeprotocol.org/judgments/v1-draft#Judgment> .`,
+  );
+  await write(
     "runtime/broken.feature",
     `Feature: Broken
   Rule: Z1. A rule
     Example: a step nobody wrote
       Given a new pod for Ada on 2026-01-01 at 09:00
       Then the pod is made of cheese
+
+    Example: an entry whose file is missing
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When Ada enters "missing" on 2026-01-02 at 09:00
+      Then that step wrote no file
+
+    Example: a judgment filed twice, read after the first
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      And Ada files the judgment "same" on 2026-01-02 at 09:00
+      When the pod is read as it stood after "same"
+      And Ada files the judgment "same" on 2026-01-03 at 09:00 (again)
+      Then that step wrote 1 file
 `,
   );
-  const [assertion, ...others] = await runConformance({
+  const assertions = await runConformance({
     vocabulary: files,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     layout: await layout(),
   });
-  assert.equal(others.length, 0);
-  assert.equal(assertion?.outcome, "failed");
-  assert.equal(
-    assertion?.test,
-    "https://vocabulary.example/runtime/broken.feature#a-step-nobody-wrote",
+  const outcome = new Map(
+    assertions.map(({ test, outcome, why }) => [
+      test.slice(test.indexOf("#") + 1),
+      [outcome, why ?? ""],
+    ]),
   );
+  assert.equal(outcome.size, 3);
+  const [cheese, why] = outcome.get("a-step-nobody-wrote") ?? [];
+  assert.equal(cheese, "failed");
   assert.match(
-    assertion?.why ?? "",
+    why ?? "",
     /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
   );
+  const [missing, stopped] =
+    outcome.get("an-entry-whose-file-is-missing") ?? [];
+  assert.equal(missing, "failed");
+  assert.match(stopped ?? "", /^Z1\. A rule: the replay stopped at step/);
+  assert.deepEqual(outcome.get("a-judgment-filed-twice-read-after-the-first"), [
+    "passed",
+    "",
+  ]);
 });
