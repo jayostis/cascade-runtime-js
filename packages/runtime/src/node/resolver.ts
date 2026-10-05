@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
-import { join, resolve as absolute } from "node:path";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { dirname, join, resolve as absolute } from "node:path";
 import { type Pin, repositoryName, treeIri } from "../config.js";
 import { checkout, git } from "./git.js";
 
@@ -69,12 +69,15 @@ async function onDisk(
   };
 }
 
+async function atPin(folder: string, pin: Pin): Promise<boolean> {
+  return (await checkout(folder))?.commit === pin.commit;
+}
+
 async function fetched(pin: Pin, cache: string): Promise<Resolved> {
   const folder = absolute(cache, repositoryName(pin), pin.commit);
-  if ((await checkout(folder))?.commit !== pin.commit) {
-    const partial = `${folder}.partial`;
-    await rm(partial, { recursive: true, force: true });
-    await mkdir(partial, { recursive: true });
+  if (!(await atPin(folder, pin))) {
+    await mkdir(dirname(folder), { recursive: true });
+    const partial = await mkdtemp(`${folder}.partial-`);
     await git(partial, "init", "--quiet");
     await git(
       partial,
@@ -94,8 +97,16 @@ async function fetched(pin: Pin, cache: string): Promise<Resolved> {
       "--detach",
       "FETCH_HEAD",
     );
-    await rm(folder, { recursive: true, force: true });
-    await rename(partial, folder);
+    if (existsSync(folder) && !(await atPin(folder, pin))) {
+      await rm(folder, { recursive: true, force: true });
+    }
+    try {
+      await rename(partial, folder);
+    } catch (error) {
+      // Another run fetching the same pin may have put it in place first.
+      if (!(await atPin(folder, pin))) throw error;
+    }
+    await rm(partial, { recursive: true, force: true });
   }
   return {
     pin,

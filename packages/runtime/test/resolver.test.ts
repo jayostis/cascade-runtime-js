@@ -84,11 +84,18 @@ test("without a sibling, a folder handed in is used, and the run says so", async
   );
 });
 
-test("otherwise the pin is fetched at its commit into the cache, and the run says so", async () => {
-  const { found, said } = await resolved({
+test("otherwise the pin is fetched at its commit into the cache, by any number of runs at once, and the run says so", async () => {
+  const options = {
     siblingsIn: join(root, "no-siblings"),
     cache: join(root, "cache"),
-  });
+  };
+  const [{ found, said }, second, third] = await Promise.all([
+    resolved(options),
+    resolved(options),
+    resolved(options),
+  ]);
+  assert.equal(second.found.folder, found.folder);
+  assert.equal(third.found.folder, found.folder);
   assert.equal(found.source, "pin");
   assert.equal(found.folder, join(root, "cache", "cascade-vocabulary", commit));
   assert.equal(found.iri, `${repository}/tree/${commit}/`);

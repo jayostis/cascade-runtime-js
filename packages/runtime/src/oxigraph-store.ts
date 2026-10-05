@@ -53,12 +53,15 @@ export class OxigraphStore implements Store {
     turtle: Uint8Array | string,
     options: LoadOptions,
   ): Promise<void> {
-    for (const graph of graphs(options)) {
-      this.#store.load(turtle, {
-        format: TURTLE,
-        base_iri: options.graph,
-        to_graph_name: graph,
-      });
+    const parsed = new oxigraph.Store();
+    parsed.load(turtle, { format: TURTLE, base_iri: options.graph });
+    const targets = graphs(options);
+    for (const quad of parsed.match()) {
+      for (const graph of targets) {
+        this.#store.add(
+          oxigraph.quad(quad.subject, quad.predicate, quad.object, graph),
+        );
+      }
     }
   }
 
