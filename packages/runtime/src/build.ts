@@ -105,11 +105,20 @@ function manifest(file: string, title: string, at: string): Triple[] {
   ];
 }
 
-/** The vocabulary's derivations and the queries that write the layout's files, read once, run as they are. */
-export async function vocabularyDerive(
+/** The vocabulary's derivations, and the queries that write the layout's files, read once, run as they are. */
+export interface VocabularyBuild {
+  readonly derivations: Derivations;
+  /** Adds the files the build writes to a store holding a pod and its derived state; returns them. */
+  files(
+    store: Store,
+    pod: PodState,
+  ): Promise<ReadonlyMap<string, readonly Triple[]>>;
+}
+
+export async function vocabularyBuild(
   vocabulary: Files,
   layout: Layout,
-): Promise<Derive> {
+): Promise<VocabularyBuild> {
   const derivations = await Derivations.of(vocabulary);
   const queries = new Map<string, string>();
   const read = async (path: string): Promise<void> => {
@@ -131,8 +140,10 @@ export async function vocabularyDerive(
       .sort((a, b) => (a.file < b.file ? -1 : 1)),
   );
 
-  return async (store, lens, pod) => {
-    await derivations.derive(store, lens);
+  const written = async (
+    store: Store,
+    pod: PodState,
+  ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
     const used = rows.flatMap((row) => row.get("version")?.value ?? []);
     const files = new Map<string, readonly Triple[]>();
@@ -159,5 +170,18 @@ export async function vocabularyDerive(
       manifest(pod.address + layout.manifest, pod.title, pod.at),
     );
     return files;
+  };
+  return { derivations, files: written };
+}
+
+/** The vocabulary's derivations and the queries that write the layout's files, read once, run as they are. */
+export async function vocabularyDerive(
+  vocabulary: Files,
+  layout: Layout,
+): Promise<Derive> {
+  const { derivations, files } = await vocabularyBuild(vocabulary, layout);
+  return async (store, lens, pod) => {
+    await derivations.derive(store, lens);
+    return files(store, pod);
   };
 }

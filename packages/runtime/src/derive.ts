@@ -6,7 +6,7 @@ export const DERIVED = "urn:cascade:derived:";
 export const QUERIES = "queries/v1-draft/";
 const CRATE = "ro-crate-metadata.json";
 const DERIVATIONS = `${QUERIES}derivations`;
-const LENSES = `${QUERIES}lenses/`;
+export const LENSES = `${QUERIES}lenses/`;
 
 interface CrateEntity {
   readonly "@id"?: string;
@@ -15,6 +15,12 @@ interface CrateEntity {
 
 function key(triple: Triple): string {
   return triple.map(written).join(" ");
+}
+
+/** One derivation, or the lens, by its path in the vocabulary, and what it added that the store did not hold. */
+export interface DerivedStep {
+  readonly path: string;
+  readonly added: readonly Triple[];
 }
 
 /** The vocabulary's derivations and lenses, read once, each with the position its crate gives it. */
@@ -72,9 +78,9 @@ export class Derivations {
 
   /**
    * Runs the lens's derivations in turn over the store's default graph, each adding what it constructs that the store
-   * did not already hold, and puts all they added in `urn:cascade:derived:<lens>` as well; returns those triples.
+   * did not already hold, and puts all they added in `urn:cascade:derived:<lens>` as well; returns what each added.
    */
-  async derive(store: Store, lens: string): Promise<Triple[]> {
+  async derive(store: Store, lens: string): Promise<DerivedStep[]> {
     const { rows } = await store.select("SELECT ?s ?p ?o WHERE { ?s ?p ?o }");
     const held = new Set(
       rows.map((row) =>
@@ -88,8 +94,8 @@ export class Derivations {
           .join(" "),
       ),
     );
-    const added: Triple[] = [];
-    for (const { query } of this.for(lens)) {
+    const added: DerivedStep[] = [];
+    for (const { path, query } of this.for(lens)) {
       const fresh: Triple[] = [];
       for (const triple of await store.construct(query)) {
         if (held.has(key(triple))) continue;
@@ -97,7 +103,7 @@ export class Derivations {
         fresh.push(triple);
       }
       await store.add(fresh, { graph: DERIVED + lens });
-      added.push(...fresh);
+      added.push({ path, added: fresh });
     }
     return added;
   }

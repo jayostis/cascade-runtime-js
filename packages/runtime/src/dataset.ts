@@ -1,13 +1,26 @@
-import type { Derive } from "./build.js";
+import type { Derive, VocabularyBuild } from "./build.js";
+import type { DerivedStep } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
-import { iri, type Triple } from "./rdf.js";
+import { iri, type Term, type Triple } from "./rdf.js";
 import type { Replayed, ReplayedStep } from "./replay.js";
 import type { Store } from "./store.js";
 
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
 const GENERATED = "http://www.w3.org/ns/prov#generated";
+const STORAGE = "http://www.w3.org/ns/pim/space#storage";
+const DCT = "http://purl.org/dc/terms/";
+
+async function addLayout(
+  store: Store,
+  layout: Layout,
+  address: string,
+): Promise<void> {
+  await store.add(await store.parse(layout.turtle, address), {
+    graph: LAYOUT_GRAPH,
+  });
+}
 
 /** The pod as the steps left it, in the store, each RDF file a named graph; and what `derive` builds from it. */
 export async function built(
@@ -65,9 +78,7 @@ export async function dataset(
     store,
     derive,
   );
-  await store.add(await store.parse(replayed.layout.turtle, address), {
-    graph: LAYOUT_GRAPH,
-  });
+  await addLayout(store, replayed.layout, address);
   await store.add(
     steps.flatMap(({ step, wrote }) =>
       wrote.map(
@@ -78,4 +89,84 @@ export async function dataset(
     { graph: STEPS_GRAPH, alone: true },
   );
   return store;
+}
+
+/** A pod read from its own files and built under a lens. */
+export interface PodBuild {
+  readonly address: string;
+  readonly title: string;
+  /** Every file of the pod, and each file the build writes that the pod lacks. */
+  readonly files: readonly string[];
+  readonly store: Store;
+  readonly derived: readonly DerivedStep[];
+  /** The files the build wrote again, which the store holds in place of the pod's copies. */
+  readonly built: ReadonlyMap<string, readonly Triple[]>;
+}
+
+async function triplesOf(
+  pod: Files,
+  path: string,
+  store: Store,
+): Promise<readonly Triple[] | undefined> {
+  const bytes = await pod.read(path);
+  return bytes === undefined ? undefined : store.parse(bytes, pod.iri + path);
+}
+
+function valueOf(
+  triples: readonly Triple[] | undefined,
+  predicate: string,
+): Term | undefined {
+  return triples?.find(([, p]) => p.value === predicate)?.[2];
+}
+
+/**
+ * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
+ * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
+ * time and title the pod's manifest gives, or else those given; and the layout.
+ */
+export async function podDataset(
+  pod: Files,
+  layout: Layout,
+  build: VocabularyBuild,
+  lens: string,
+  store: Store,
+  otherwise: { readonly title: string; readonly at: string },
+): Promise<PodBuild> {
+  const storage = valueOf(await triplesOf(pod, layout.card, store), STORAGE);
+  if (storage?.termType !== "NamedNode")
+    throw new Error(`${pod.iri}${layout.card} names no storage for the pod`);
+  const address = storage.value;
+  const manifest = await triplesOf(pod, layout.manifest, store);
+  const title = valueOf(manifest, `${DCT}title`)?.value ?? otherwise.title;
+  const at = valueOf(manifest, `${DCT}created`)?.value ?? otherwise.at;
+  const rebuilt = new Set([
+    ...layout.built.flatMap(({ file }) => file ?? []),
+    layout.typeIndex,
+    layout.manifest,
+  ]);
+  const held = await pod.list("");
+  for (const path of held.filter(
+    (path) => layout.isRdf(path) && !rebuilt.has(path),
+  )) {
+    const bytes = await pod.read(path);
+    if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
+    try {
+      await store.loadTurtle(bytes, { graph: address + path });
+    } catch (error) {
+      throw new Error(`${pod.iri}${path} is no Turtle: ${String(error)}`, {
+        cause: error,
+      });
+    }
+  }
+  const derived = await build.derivations.derive(store, lens);
+  const built = await build.files(store, { address, at, title });
+  await addLayout(store, layout, address);
+  return {
+    address,
+    title,
+    files: [...new Set([...held, ...built.keys()])].sort(),
+    store,
+    derived,
+    built,
+  };
 }

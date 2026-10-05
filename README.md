@@ -8,8 +8,9 @@ vectors and, later, its conformance kit.
 
 It is being built in the steps of
 [cascade-vocabulary#39](https://github.com/jayostis/cascade-vocabulary/issues/39).
-Today it replays a story's creation, imports and entries; the matcher and the
-views follow.
+Today it replays a story's creation, imports, entries, judgments and reference
+tables, builds the views, and documents a pod in a static site; the matcher
+follows.
 
 ## Running it
 
@@ -28,9 +29,30 @@ line is. Its exit code means nothing; the report does. `--folder
 <repository>=<folder>` hands in a folder for a repository, and `--manifest`
 names another manifest in the vocabulary.
 
-`npm run build:example-pod <name>` will build an example's pod from the
-vocabulary's conformance kit; until the kit exists it says so and builds
-nothing.
+```sh
+npm run build:example <name>        # the pod, then the site
+npm run build:example-pod <name>    # build/<name>/pod from the vocabulary's conformance kit
+npm run build:example-site <name>   # build/<name>/site from build/<name>/pod
+```
+
+`build:example-pod` will build an example's pod from the vocabulary's
+conformance kit; until the kit exists it says so and builds nothing, and so does
+`build:example`. The site is built from any pod folder: `--pod <folder>` reads
+another, `--out <folder>` writes elsewhere and `--lens <lens>` builds it under
+another lens. To see a site now, replay one of the vocabulary's stories:
+
+```sh
+npm run build:story-site -- runtime/vectors/matching/story.json --through entry
+```
+
+It writes `build/matching/pod` and `build/matching/site`; open
+`build/matching/site/index.html`. Every question on the site says how to ask it
+yourself:
+
+```sh
+npm run ask -- <name> "<question>"            # one question's rows, under the runtime's lens
+npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the pod and its questions
+```
 
 ## Packages
 
@@ -39,7 +61,7 @@ nothing.
 | `packages/runtime`      | files arrivals, names things, runs the matcher and the views   |
 | `packages/apple-health` | the importer: the documents in an export and the facts of each |
 | `packages/site`         | the site that documents a pod and its queries                  |
-| `packages/graphdb`      | the GraphDB loader                                             |
+| `packages/graphdb`      | puts a pod and its derived state in GraphDB, and asks it       |
 
 The core in `packages/runtime/src` knows four interfaces and nothing behind
 them:
@@ -78,4 +100,6 @@ build falls through to the pin, and the run says which it used.
 Each is named, as `runtime/rules.md` N8 says, by its tree at the commit it is
 at, so an EARL report names the same entries on every machine.
 
-CI checks out `cascade-vocabulary` at the pin beside this repository.
+CI checks out `cascade-vocabulary` at the pin beside this repository, and
+publishes a pod and its site as an artifact: Alex's once the vocabulary has its
+conformance kit, until then the matching vector story's.

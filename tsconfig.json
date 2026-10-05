@@ -6,6 +6,12 @@
     },
     {
       "path": "packages/runtime"
+    },
+    {
+      "path": "packages/site"
+    },
+    {
+      "path": "packages/graphdb"
     }
   ]
 }
