@@ -1,12 +1,11 @@
 import { Derivations, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
-import { BUILT, type BuiltFiles } from "./layout.js";
+import type { Layout } from "./layout.js";
 import { blank, iri, literal, RDF, type Triple, XSD } from "./rdf.js";
 import type { Store } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const DCT = "http://purl.org/dc/terms/";
-const LDP = "http://www.w3.org/ns/ldp#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
@@ -17,8 +16,6 @@ const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference vers
 /** The pod a build is made for, as it stood after a step. */
 export interface PodState {
   readonly address: string;
-  /** The path of every file the steps through this one wrote. */
-  readonly files: readonly string[];
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
   readonly title: string;
@@ -51,51 +48,41 @@ function marked(
   ];
 }
 
-/** The type index of a pod at `address`: a registration for each view, and one for the folder the views are in. */
-export function typeIndex(
-  address: string,
-  built: BuiltFiles = BUILT,
-): Triple[] {
-  const index = address + built.typeIndex;
-  const registration = (name: string): Triple[0] => iri(`${index}#${name}`);
-  const views = registration("views");
+/**
+ * The type index of a pod at `address`: a registration for each view the layout lists, and one for the views' folder,
+ * each named for the file or folder it registers, with its class, its file or folder, and its title.
+ */
+export function typeIndex(address: string, layout: Layout): Triple[] {
+  const index = address + layout.typeIndex;
+  const folder = layout.viewsPlacement;
+  const registered = [
+    ...layout.views.map((view) => ({
+      placement: view,
+      listing: `${SOLID}instance`,
+      path: view.file ?? "",
+    })),
+    {
+      placement: folder,
+      listing: `${SOLID}instanceContainer`,
+      path: folder.folder ?? "",
+    },
+  ];
   return [
     [iri(index), iri(TYPE), iri(`${SOLID}TypeIndex`)],
     [iri(index), iri(TYPE), iri(`${SOLID}UnlistedDocument`)],
-    [views, iri(TYPE), iri(`${SOLID}TypeRegistration`)],
-    [views, iri(`${SOLID}forClass`), iri(`${REC}View`)],
-    [views, iri(`${SOLID}instanceContainer`), iri(address + built.viewsFolder)],
-    ...built.views.flatMap(({ file, kind }): Triple[] => {
-      const named = registration(
-        file.replace(/^.*\//, "").replace(/\.ttl$/, ""),
-      );
+    ...registered.flatMap(({ placement, listing, path }): Triple[] => {
+      const name = path
+        .replace(/\/$/, "")
+        .replace(/^.*\//, "")
+        .replace(/\.ttl$/, "");
+      const registration = iri(`${index}#${name}`);
       return [
-        [named, iri(TYPE), iri(`${SOLID}TypeRegistration`)],
-        [named, iri(`${SOLID}forClass`), iri(kind)],
-        [named, iri(`${SOLID}instance`), iri(address + file)],
+        [registration, iri(TYPE), iri(`${SOLID}TypeRegistration`)],
+        [registration, iri(`${SOLID}forClass`), iri(placement.kind ?? "")],
+        [registration, iri(listing), iri(address + path)],
+        [registration, iri(`${DCT}title`), literal(placement.title ?? "")],
       ];
     }),
-  ];
-}
-
-function index(address: string, files: readonly string[]): Triple[] {
-  const root = iri(address);
-  const folders = [
-    ...new Set(
-      files
-        .filter((path) => path.includes("/") && !path.startsWith("."))
-        .map((path) => path.slice(0, path.indexOf("/"))),
-    ),
-  ].sort();
-  return [
-    [root, iri(TYPE), iri(`${LDP}Container`)],
-    [root, iri(TYPE), iri(`${LDP}BasicContainer`)],
-    [root, iri(`${DCT}title`), literal("Pod Root Container")],
-    ...folders.map((folder): Triple => [
-      root,
-      iri(`${LDP}contains`),
-      iri(`${address}${folder}/`),
-    ]),
   ];
 }
 
@@ -118,19 +105,31 @@ function manifest(file: string, title: string, at: string): Triple[] {
   ];
 }
 
-/** The vocabulary's derivations, views and labels, read once, run as they are. */
+/** The vocabulary's derivations and the queries that write the layout's files, read once, run as they are. */
 export async function vocabularyDerive(
   vocabulary: Files,
-  built: BuiltFiles = BUILT,
+  layout: Layout,
 ): Promise<Derive> {
   const derivations = await Derivations.of(vocabulary);
   const queries = new Map<string, string>();
-  for (const path of [
-    CURRENT_REFERENCE_VERSIONS,
-    ...[...built.views, ...built.others].map(({ query }) => QUERIES + query),
-  ])
+  const read = async (path: string): Promise<void> => {
     queries.set(path, await readText(vocabulary, path));
+  };
+  await read(CURRENT_REFERENCE_VERSIONS);
+  for (const { writtenBy } of layout.built) await read(QUERIES + writtenBy);
   const query = (path: string): string => queries.get(path) ?? "";
+  const views = layout.views.map(({ file }) => file);
+  const groups = [
+    layout.built.filter(({ file }) => views.includes(file)),
+    layout.built.filter(({ file }) => !views.includes(file)),
+  ].map((group) =>
+    group
+      .map(({ file, writtenBy }) => ({
+        file: file ?? "",
+        query: QUERIES + (writtenBy ?? ""),
+      }))
+      .sort((a, b) => (a.file < b.file ? -1 : 1)),
+  );
 
   return async (store, lens, pod) => {
     await derivations.derive(store, lens);
@@ -141,26 +140,23 @@ export async function vocabularyDerive(
       files.set(path, triples);
       await store.add(triples, { graph: pod.address + path });
     };
-    for (const group of [built.views, built.others]) {
+    for (const group of groups) {
       const made = await Promise.all(
         group.map(async ({ file, query: path }) => ({
           file,
           triples: marked(
             pod.address + file,
-            await store.construct(query(QUERIES + path)),
+            await store.construct(query(path)),
             used,
           ),
         })),
       );
       for (const { file, triples } of made) await add(file, triples);
     }
+    await add(layout.typeIndex, typeIndex(pod.address, layout));
     await add(
-      built.index,
-      index(pod.address, [...pod.files, ...built.derived]),
-    );
-    await add(
-      built.manifest,
-      manifest(pod.address + built.manifest, pod.title, pod.at),
+      layout.manifest,
+      manifest(pod.address + layout.manifest, pod.title, pod.at),
     );
     return files;
   };

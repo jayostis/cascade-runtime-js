@@ -6,6 +6,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, written } from "../src/rdf.js";
 import { replay } from "../src/replay.js";
 import { parseStory } from "../src/story.js";
+import { layout } from "./vocabulary.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const SERIES = "urn:uuid:2e8a6d14-7b9c-4f3e-9a52-6c1d8f4b7e30";
@@ -48,6 +49,7 @@ test("a reference version's arrival files its description, revising the version 
     source,
     folder: "story",
     pod: new MemoryFiles(story.address),
+    layout: await layout(),
     newStore,
   });
 

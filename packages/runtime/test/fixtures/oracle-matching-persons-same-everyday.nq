@@ -4,24 +4,30 @@
 <https://pod.example/clinical/labels.ttl> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/records/v1-draft#View> <https://pod.example/clinical/labels.ttl> .
 <https://pod.example/clinical/patient-profile.ttl> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/records/v1-draft#View> <https://pod.example/clinical/patient-profile.ttl> .
 <https://pod.example/clinical/procedures.ttl> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/records/v1-draft#View> <https://pod.example/clinical/procedures.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#allergies> <http://purl.org/dc/terms/title> "Allergies" <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#allergies> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#allergies> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#allergies> <http://www.w3.org/ns/solid/terms#instance> <https://pod.example/clinical/allergies.ttl> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#clinical> <http://purl.org/dc/terms/title> "Rebuildable views" <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#clinical> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#clinical> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/records/v1-draft#View> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#clinical> <http://www.w3.org/ns/solid/terms#instanceContainer> <https://pod.example/clinical/> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#conditions> <http://purl.org/dc/terms/title> "Conditions" <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#conditions> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#conditions> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/health/v1#ConditionRecord> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#conditions> <http://www.w3.org/ns/solid/terms#instance> <https://pod.example/clinical/conditions.ttl> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#immunizations> <http://purl.org/dc/terms/title> "Immunizations" <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#immunizations> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#immunizations> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/health/v1#ImmunizationRecord> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#immunizations> <http://www.w3.org/ns/solid/terms#instance> <https://pod.example/clinical/immunizations.ttl> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#patient-profile> <http://purl.org/dc/terms/title> "Patient profile" <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#patient-profile> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#patient-profile> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/core/v1#PatientProfile> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#patient-profile> <http://www.w3.org/ns/solid/terms#instance> <https://pod.example/clinical/patient-profile.ttl> <https://pod.example/settings/privateTypeIndex.ttl> .
+<https://pod.example/settings/privateTypeIndex.ttl#procedures> <http://purl.org/dc/terms/title> "Procedures" <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#procedures> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#procedures> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/clinical/v1#Procedure> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl#procedures> <http://www.w3.org/ns/solid/terms#instance> <https://pod.example/clinical/procedures.ttl> <https://pod.example/settings/privateTypeIndex.ttl> .
-<https://pod.example/settings/privateTypeIndex.ttl#views> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeRegistration> <https://pod.example/settings/privateTypeIndex.ttl> .
-<https://pod.example/settings/privateTypeIndex.ttl#views> <http://www.w3.org/ns/solid/terms#forClass> <https://ns.cascadeprotocol.org/records/v1-draft#View> <https://pod.example/settings/privateTypeIndex.ttl> .
-<https://pod.example/settings/privateTypeIndex.ttl#views> <http://www.w3.org/ns/solid/terms#instanceContainer> <https://pod.example/clinical/> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#TypeIndex> <https://pod.example/settings/privateTypeIndex.ttl> .
 <https://pod.example/settings/privateTypeIndex.ttl> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/solid/terms#UnlistedDocument> <https://pod.example/settings/privateTypeIndex.ttl> .
 <ni:///sha-256;0WVFItoLTE1SiTeUTnte7dNfAs0Yh2KegBfdUtyj2-0> <http://www.w3.org/2000/01/rdf-schema#label> "Allergy version · Penicillin · active · penicillin · first received 2026-03-02" <https://pod.example/clinical/labels.ttl> .

@@ -8,12 +8,11 @@ import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
 import { DERIVED } from "../src/derive.js";
 import { folderOf, MemoryFiles, readText } from "../src/files.js";
-import { BUILT } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Term, written } from "../src/rdf.js";
 import { replay } from "../src/replay.js";
 import { parseStory } from "../src/story.js";
-import { ROOT, vocabulary } from "./vocabulary.js";
+import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
 const STORY = "runtime/vectors/matching/story.json";
 const THROUGH = "persons-same";
@@ -55,6 +54,7 @@ test("the derived state, the views, the labels and the type index equal, as grap
     folder: folderOf(STORY),
     pod: new MemoryFiles(story.address),
     newStore: () => new OxigraphStore(),
+    layout: await layout(),
     importers: [appleHealthExport],
   });
   const store = await dataset(
@@ -62,7 +62,7 @@ test("the derived state, the views, the labels and the type index equal, as grap
     THROUGH,
     LENS,
     new OxigraphStore(),
-    await vocabularyDerive(files),
+    await vocabularyDerive(files, await layout()),
   );
 
   const renames = new Map<string, string>();
@@ -95,8 +95,8 @@ test("the derived state, the views, the labels and the type index equal, as grap
 
   const { rows } = await store.select(`SELECT ?g ?s ?p ?o WHERE {
       GRAPH ?g { ?s ?p ?o }
-      FILTER (?g IN (<${DERIVED}${LENS}>, <${story.address}${BUILT.typeIndex}>)
-        || STRSTARTS(STR(?g), "${story.address}${BUILT.viewsFolder}")) }`);
+      FILTER (?g IN (<${DERIVED}${LENS}>, <${story.address}${(await layout()).typeIndex}>)
+        || STRSTARTS(STR(?g), "${story.address}${(await layout()).viewsFolder}")) }`);
   const found = new Set(
     rows.map((row) =>
       ["s", "p", "o", "g"]

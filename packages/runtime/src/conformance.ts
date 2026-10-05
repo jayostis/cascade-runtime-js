@@ -3,6 +3,7 @@ import type { Derive } from "./build.js";
 import { dataset } from "./dataset.js";
 import { type Files, folderOf, readText, relative } from "./files.js";
 import type { Importer } from "./importer.js";
+import { Layout } from "./layout.js";
 import { type ManifestEntry, readManifest, REPLAY_TEST } from "./manifest.js";
 import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type Replayed, replay } from "./replay.js";
@@ -35,6 +36,8 @@ export interface ConformanceOptions {
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
   readonly derive?: Derive;
+  /** The vocabulary's layout, when already read. */
+  readonly layout?: Layout;
 }
 
 function required(
@@ -51,6 +54,7 @@ export async function runManifest(
   options: ConformanceOptions,
 ): Promise<Assertion[]> {
   const { vocabulary } = options;
+  let layout: Promise<Layout> | undefined;
   const replays = new Map<string, Promise<Replayed>>();
   const datasets = new Map<string, Promise<Store>>();
 
@@ -64,6 +68,10 @@ export async function runManifest(
           source: vocabulary,
           folder: folderOf(story),
           pod: options.newPod(parsed.address),
+          layout: await (layout ??=
+            options.layout === undefined
+              ? Layout.read(vocabulary, options.newStore)
+              : Promise.resolve(options.layout)),
           newStore: options.newStore,
           importers: options.importers,
           performers: options.performers,

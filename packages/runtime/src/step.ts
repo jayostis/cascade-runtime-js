@@ -1,6 +1,7 @@
 import type { Files } from "./files.js";
 import type { IdsAndTime } from "./ids.js";
 import type { Importer } from "./importer.js";
+import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
 import type { StoreFactory } from "./store.js";
 import type { Step, StepKind, Story } from "./story.js";
@@ -24,6 +25,8 @@ export interface StepContext {
   readonly time: IdsAndTime;
   readonly writes: StepWrites;
   readonly newStore: StoreFactory;
+  /** Where the pod files what a step writes. */
+  readonly layout: Layout;
   /** The importers `cascade-runtime.json` names, in its order. */
   readonly importers: readonly Importer[];
 }

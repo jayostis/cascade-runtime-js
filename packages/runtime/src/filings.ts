@@ -1,8 +1,7 @@
 import { readText } from "./files.js";
 import { parseGraph } from "./graph.js";
-import { FOLDERS, fanned } from "./layout.js";
 import { iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
-import { inStory, type Perform } from "./step.js";
+import { inStory, type Perform, REC } from "./step.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -37,7 +36,10 @@ export const fileJudgment: Perform = async (context) => {
     throw new Error(
       `${happened.file} holds ${judgments.length} judgments, not one`,
     );
-  context.writes.add(fanned(FOLDERS.judgments, judgment.value), bytes);
+  context.writes.add(
+    context.layout.place(`${JDG}Judgment`).path(judgment.value),
+    bytes,
+  );
 };
 
 /** A reference version's arrival: its description, as the story's reference tables list it, filed by its name. */
@@ -65,7 +67,10 @@ export const fileReference: Perform = async (context) => {
         ]),
     ];
     context.writes.add(
-      fanned(FOLDERS.references, found.name),
+      context.layout.version(
+        context.layout.place(`${REC}ReferenceSeries`),
+        found.name,
+      ),
       ntriples(triples),
     );
     return;

@@ -19,10 +19,14 @@ function key(triple: Triple): string {
 
 /** The vocabulary's derivations and lenses, read once, each with the position its crate gives it. */
 export class Derivations {
-  readonly #steps: readonly { path: string; query: string; position: number }[];
+  readonly #steps: readonly {
+    path: string;
+    query: string;
+    position?: number;
+  }[];
 
   private constructor(
-    steps: readonly { path: string; query: string; position: number }[],
+    steps: readonly { path: string; query: string; position?: number }[],
   ) {
     this.#steps = steps;
   }
@@ -45,7 +49,7 @@ export class Derivations {
     const steps = await Promise.all(
       paths.map(async (path) => {
         const position = positions.get(path);
-        if (position === undefined)
+        if (position === undefined && under(DERIVATIONS, path))
           throw new Error(`${CRATE} gives ${path} no position`);
         return { path, query: await readText(vocabulary, path), position };
       }),
@@ -56,11 +60,14 @@ export class Derivations {
   /** The lens's derivations, the lens among them, in the order their positions give. */
   for(lens: string): readonly { path: string; query: string }[] {
     const lensFile = `${LENSES}${lens}.rq`;
-    if (!this.#steps.some(({ path }) => path === lensFile))
+    const found = this.#steps.find(({ path }) => path === lensFile);
+    if (found === undefined)
       throw new Error(`the vocabulary has no lens ${lens}`);
+    if (found.position === undefined)
+      throw new Error(`${CRATE} gives ${lensFile} no position`);
     return this.#steps
       .filter(({ path }) => under(DERIVATIONS, path) || path === lensFile)
-      .sort((a, b) => a.position - b.position);
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   }
 
   /**

@@ -6,6 +6,7 @@ import { iri, literal, RDF } from "../src/rdf.js";
 import { fileCreation, replay } from "../src/replay.js";
 import { Refusal } from "../src/step.js";
 import { parseStory } from "../src/story.js";
+import { layout } from "./vocabulary.js";
 
 test("a refused step writes nothing and the replay goes on; a step it cannot perform stops it, naming the kind", async () => {
   const story = parseStory(
@@ -29,6 +30,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
     source: new MemoryFiles("https://vocabulary.example/"),
     folder: "",
     pod,
+    layout: await layout(),
     newStore: () => new OxigraphStore(),
     performers: {
       creation: fileCreation,
@@ -46,7 +48,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
       refused,
     ]),
     [
-      ["create", 2, undefined],
+      ["create", 3, undefined],
       ["refused", 0, "an entry holding two activities"],
     ],
   );
@@ -76,11 +78,12 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
     source: new MemoryFiles("https://vocabulary.example/"),
     folder: "",
     pod,
+    layout: await layout(),
     newStore: () => new OxigraphStore(),
     build: {
       lens: "everyday",
-      derive: (_store, lens, { at, files }) => {
-        seen.push(`${lens} ${at} ${files.length}`);
+      derive: (_store, lens, { at }) => {
+        seen.push(`${lens} ${at}`);
         return Promise.resolve(
           new Map([
             [
@@ -94,8 +97,8 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
   });
 
   assert.deepEqual(seen, [
-    "everyday 2026-02-01T08:00:00Z 2",
-    "everyday 2026-02-02T08:00:00Z 2",
+    "everyday 2026-02-01T08:00:00Z",
+    "everyday 2026-02-02T08:00:00Z",
   ]);
   assert.ok(
     !replayed.steps.some(({ wrote }) => wrote.includes("clinical/built.ttl")),

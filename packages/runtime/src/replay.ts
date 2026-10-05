@@ -1,27 +1,46 @@
 import { fileEntry, fileImport } from "./arrivals.js";
 import { fileJudgment, fileReference } from "./filings.js";
-import { type Derive, typeIndex } from "./build.js";
+import type { Derive } from "./build.js";
 import { built } from "./dataset.js";
 import type { Files } from "./files.js";
 import { StoryTime } from "./ids.js";
 import type { Importer } from "./importer.js";
-import { BUILT, FOLDERS, fanned } from "./layout.js";
+import type { Layout } from "./layout.js";
 import { StepWrites } from "./pod.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import { type Perform, type Performers, REC, Refusal } from "./step.js";
 import type { StoreFactory } from "./store.js";
 import type { Step, Story } from "./story.js";
 
-/** Rule A13: the pod's creation writes the subject as a rec:Subject, and the type index that lists the views. */
+/**
+ * Rule A13: the pod's creation writes the subject as a rec:Subject, the owner's profile, saying who the owner is and
+ * where the pod's root and the preferences file are, and the preferences file, saying where the type index is.
+ */
 export const fileCreation: Perform = (context) => {
-  const subject = context.story.subject;
-  context.writes.add(
-    fanned(FOLDERS.subject, subject),
-    ntriples([[iri(subject), iri(`${RDF}type`), iri(`${REC}Subject`)]]),
+  const { layout, story, writes } = context;
+  const { subject, address } = story;
+  const type = iri(`${RDF}type`);
+  writes.add(
+    layout.place(`${REC}Subject`).path(subject),
+    ntriples([[iri(subject), type, iri(`${REC}Subject`)]]),
   );
-  context.writes.add(
-    BUILT.typeIndex,
-    ntriples(typeIndex(context.story.address)),
+  const owner = iri(`${address}${layout.card}#me`);
+  const preferences = iri(address + layout.preferences);
+  writes.add(
+    layout.card,
+    ntriples([
+      [owner, type, iri(`${FOAF}Person`)],
+      [owner, type, iri(`${PROV}Person`)],
+      [owner, iri(`${PIM}storage`), iri(address)],
+      [owner, iri(`${PIM}preferencesFile`), preferences],
+    ]),
+  );
+  writes.add(
+    layout.preferences,
+    ntriples([
+      [preferences, type, iri(`${PIM}ConfigurationFile`)],
+      [owner, iri(`${SOLID}privateTypeIndex`), iri(address + layout.typeIndex)],
+    ]),
   );
   return Promise.resolve();
 };
@@ -33,6 +52,11 @@ export const PERFORMERS: Performers = {
   judgment: fileJudgment,
   reference: fileReference,
 };
+const FOAF = "http://xmlns.com/foaf/0.1/";
+const PROV = "http://www.w3.org/ns/prov#";
+const PIM = "http://www.w3.org/ns/pim/space#";
+const SOLID = "http://www.w3.org/ns/solid/terms#";
+
 export interface ReplayedStep {
   readonly step: Step;
   /** The files new to the pod that the step wrote, in the order it wrote them. */
@@ -45,6 +69,7 @@ export interface Replayed {
   readonly story: Story;
   /** The name of the story's folder, which a pod's manifest takes as its title. */
   readonly title: string;
+  readonly layout: Layout;
   readonly pod: Files;
   readonly steps: readonly ReplayedStep[];
   /** The step the replay stopped at, and why, when it could not perform it. */
@@ -57,6 +82,7 @@ export interface ReplayOptions {
   /** The story's folder within `source`, without a trailing slash. */
   readonly folder: string;
   readonly pod: Files;
+  readonly layout: Layout;
   readonly newStore: StoreFactory;
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
@@ -77,6 +103,7 @@ export async function replay(options: ReplayOptions): Promise<Replayed> {
   const replayed = (stopped?: Replayed["stopped"]): Replayed => ({
     story: options.story,
     title,
+    layout: options.layout,
     pod: options.pod,
     steps,
     ...(stopped === undefined ? {} : { stopped }),
@@ -101,6 +128,7 @@ export async function replay(options: ReplayOptions): Promise<Replayed> {
     if (options.build !== undefined) {
       const files = await built(
         options.pod,
+        options.layout,
         options.story.address,
         steps,
         title,

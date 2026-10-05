@@ -12,7 +12,6 @@ import { fileExport, fileImport } from "../src/arrivals.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
-import { FOLDERS, isRdf } from "../src/layout.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { StepWrites } from "../src/pod.js";
@@ -41,7 +40,7 @@ import {
   WasmBridge,
 } from "../src/wasm-bridge.js";
 import { notIsomorphic, triples } from "./graphs.js";
-import { ROOT, vocabulary } from "./vocabulary.js";
+import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
 const ALEX = "example-pods/alex-rivera/";
 const TYPE = `${RDF}type`;
@@ -195,7 +194,12 @@ test("a conversion in the main thread is the conversion in a worker", async () =
 async function filed(pod: MemoryFiles): Promise<Triple[]> {
   const triples: Triple[] = [];
   for (const path of await pod.list("")) {
-    if (!isRdf(path) || path.startsWith(`${FOLDERS.imports}/`)) continue;
+    const { folder: imports } = (await layout()).place(
+      "http://www.w3.org/ns/prov#Activity",
+      ["http://www.w3.org/ns/prov#used"],
+    );
+    if (!(await layout()).isRdf(path) || path.startsWith(imports ?? ""))
+      continue;
     const bytes = await pod.read(path);
     if (bytes !== undefined)
       triples.push(
@@ -250,6 +254,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
       time,
       writes,
       newStore,
+      layout: await layout(),
       importers: [appleHealthExport],
     });
     await writes.commit(pod);

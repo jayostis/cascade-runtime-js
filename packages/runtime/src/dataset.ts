@@ -1,6 +1,6 @@
 import type { Derive } from "./build.js";
 import type { Files } from "./files.js";
-import { isRdf } from "./layout.js";
+import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, type Triple } from "./rdf.js";
 import type { Replayed, ReplayedStep } from "./replay.js";
 import type { Store } from "./store.js";
@@ -12,6 +12,7 @@ const GENERATED = "http://www.w3.org/ns/prov#generated";
 /** The pod as the steps left it, in the store, each RDF file a named graph; and what `derive` builds from it. */
 export async function built(
   pod: Files,
+  layout: Layout,
   address: string,
   steps: readonly ReplayedStep[],
   title: string,
@@ -20,7 +21,7 @@ export async function built(
   derive?: Derive,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   const files = steps.flatMap(({ wrote }) => wrote);
-  for (const path of files.filter(isRdf)) {
+  for (const path of files.filter((path) => layout.isRdf(path))) {
     const bytes = await pod.read(path);
     if (bytes === undefined)
       throw new Error(`${address}${path} was written and is gone`);
@@ -28,7 +29,7 @@ export async function built(
   }
   const at = steps.at(-1)?.step.when;
   if (derive === undefined || at === undefined) return new Map();
-  return derive(store, lens, { address, files, at, title });
+  return derive(store, lens, { address, at, title });
 }
 
 /**
@@ -56,6 +57,7 @@ export async function dataset(
   const address = replayed.story.address;
   await built(
     replayed.pod,
+    replayed.layout,
     address,
     steps,
     replayed.title,
@@ -63,6 +65,9 @@ export async function dataset(
     store,
     derive,
   );
+  await store.add(await store.parse(replayed.layout.turtle, address), {
+    graph: LAYOUT_GRAPH,
+  });
   await store.add(
     steps.flatMap(({ step, wrote }) =>
       wrote.map(
