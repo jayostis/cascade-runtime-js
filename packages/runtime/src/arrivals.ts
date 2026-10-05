@@ -83,6 +83,20 @@ function renamed(
   );
 }
 
+/** The name of a version's or a revision's content (N3, N4); content that cannot be named is refused. */
+async function named(
+  triples: readonly Triple[],
+  where: string,
+): Promise<NamedNode> {
+  try {
+    return iri(await contentName(triples));
+  } catch (error) {
+    throw new Refusal(
+      `${where}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 /** The folder the pod files a record of the node's type in; a type it files nowhere is refused (A14). */
 function recordFolder(
   graph: Graph,
@@ -194,7 +208,7 @@ class Revisions {
             [placeholder, iri(`${PROV}wasRevisionOf`), iri(previous)] as Triple,
           ]),
     ];
-    const name = await contentName(triples);
+    const { value: name } = await named(triples, `the revision of ${record}`);
     this.#files.push([
       fanned(arrival.folder, name),
       ntriples(renamed(triples, placeholder, iri(name))),
@@ -502,7 +516,10 @@ export const fileEntry: Perform = async (context) => {
         p,
         o.termType === "NamedNode" ? (records.get(o.value) ?? o) : o,
       ]);
-    const version = iri(await contentName(content));
+    const version = await named(
+      content,
+      `${happened.file}: ${draftVersion.value}`,
+    );
     await revisions.revise(
       {
         record,

@@ -8,6 +8,7 @@ const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const RECORDS = "clinical-records";
 const ENVELOPE = "#envelope-resource";
+const SLICE = 1 << 24;
 
 /** The files an export is read from, by path. */
 export interface ExportFiles {
@@ -29,8 +30,28 @@ function quoted(text: string): string {
   return `"${text
     .replaceAll("\\", "\\\\")
     .replaceAll('"', '\\"')
-    .replaceAll("\n", "\n")
-    .replaceAll("\r", "\r")}"`;
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")}"`;
+}
+
+/** An attribute of a record, which the facts state as given or not at all. */
+function attribute(entry: Entry, name: string): string {
+  const value = entry[name];
+  if (value === undefined)
+    throw new Error(
+      `${entry.resourceFilePath ?? "a ClinicalRecord"} has no ${name}`,
+    );
+  return value;
+}
+
+/** An absolute IRI as Turtle writes one. */
+function iriRef(value: string): string {
+  if (
+    !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) ||
+    [...value].some((char) => char <= " " || '<>"{}|^`\\'.includes(char))
+  )
+    throw new Error(`${value} is not an IRI`);
+  return `<${value}>`;
 }
 
 /** An Apple Health date, `YYYY-MM-DD hh:mm:ss ±hhmm`, as an `xsd:dateTime` in UTC. */
@@ -48,7 +69,7 @@ function utc(appleDate: string): string {
 }
 
 /** What export.xml says of each clinical record file, by its `resourceFilePath`. */
-function clinicalRecords(exportXml: string): Map<string, Entry> {
+function clinicalRecords(exportXml: Uint8Array): Map<string, Entry> {
   const entries = new Map<string, Entry>();
   const parser = new SaxesParser();
   parser.on("opentag", (tag) => {
@@ -56,7 +77,12 @@ function clinicalRecords(exportXml: string): Map<string, Entry> {
     if (tag.name === "ClinicalRecord" && path !== undefined)
       entries.set(path, { ...tag.attributes });
   });
-  parser.write(exportXml).close();
+  const decoder = new TextDecoder();
+  for (let at = 0; at < exportXml.length; at += SLICE)
+    parser.write(
+      decoder.decode(exportXml.subarray(at, at + SLICE), { stream: true }),
+    );
+  parser.write(decoder.decode()).close();
   return entries;
 }
 
@@ -80,13 +106,13 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
   };
   attribution("Apple Health", "transmitter", 0);
   if (entry !== undefined) {
-    const sourceUrl = entry.sourceURL ?? "";
-    attribution(entry.sourceName ?? "", "author", 1);
+    const sourceUrl = attribute(entry, "sourceURL");
+    attribution(attribute(entry, "sourceName"), "author", 1);
     lines.push(
       `${document} <${BRIDGE}serverBaseUrl> ${quoted(sourceUrl.split("/").slice(0, -2).join("/"))} .`,
-      `${document} <${PAV}retrievedFrom> <${sourceUrl}> .`,
-      `${document} <${PAV}retrievedOn> ${dateTime(utc(entry.receivedDate ?? ""))} .`,
-      `${document} <${BRIDGE}sourceFormatVersion> ${quoted(entry.fhirVersion ?? "")} .`,
+      `${document} <${PAV}retrievedFrom> ${iriRef(sourceUrl)} .`,
+      `${document} <${PAV}retrievedOn> ${dateTime(utc(attribute(entry, "receivedDate")))} .`,
+      `${document} <${BRIDGE}sourceFormatVersion> ${quoted(attribute(entry, "fhirVersion"))} .`,
     );
   }
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
@@ -102,7 +128,7 @@ export const appleHealthExport = {
   ): Promise<AppleHealthDocument[] | undefined> {
     const exportXml = await files.read(`${folder}/export.xml`);
     if (exportXml === undefined) return undefined;
-    const entries = clinicalRecords(new TextDecoder().decode(exportXml));
+    const entries = clinicalRecords(exportXml);
     const prefix = `${folder}/${RECORDS}/`;
     const documents: AppleHealthDocument[] = [];
     for (const path of await files.list(`${folder}/${RECORDS}`)) {

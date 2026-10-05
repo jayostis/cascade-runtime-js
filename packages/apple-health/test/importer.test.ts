@@ -79,3 +79,66 @@ test("an export's documents are its clinical record files, each with what export
     false,
   );
 });
+
+async function onlyDocument(record: string) {
+  const [document] =
+    (await appleHealthExport.documents(
+      folder({
+        "e/export.xml": `<HealthData>
+ <ClinicalRecord ${record} resourceFilePath="/clinical-records/Condition-x.json"/>
+</HealthData>`,
+        "e/clinical-records/Condition-x.json": "{}",
+      }),
+      "e",
+    )) ?? [];
+  assert.ok(document);
+  return document;
+}
+
+const record = (attributes: Record<string, string>): string =>
+  Object.entries({
+    sourceName: "Example Hospital",
+    sourceURL: "https://fhir.example.org/r4/Condition/x",
+    fhirVersion: "4.0.1",
+    receivedDate: "2026-01-02 11:00:00 +0100",
+    ...attributes,
+  })
+    .map(([name, value]) => `${name}="${value}"`)
+    .join(" ");
+
+test("a line break in an attribute is kept in the facts' Turtle", async () => {
+  const document = await onlyDocument(
+    record({ sourceName: "Clinic&#10;North&#13;" }),
+  );
+  const store = new oxigraph.Store();
+  store.load(document.facts("2026-01-02T10:00:00Z"), {
+    format: "text/turtle",
+  });
+  assert.equal(
+    store.query(
+      `ASK { ?agent <http://www.w3.org/2000/01/rdf-schema#label> "Clinic\\nNorth\\r" }`,
+    ),
+    true,
+  );
+});
+
+test("a record whose attributes the facts cannot state is refused, not given made-up values", async () => {
+  for (const missing of [
+    "sourceName",
+    "sourceURL",
+    "fhirVersion",
+    "receivedDate",
+  ]) {
+    const document = await onlyDocument(
+      record({}).replace(new RegExp(`${missing}="[^"]*" ?`), ""),
+    );
+    assert.throws(
+      () => document.facts("2026-01-02T10:00:00Z"),
+      new RegExp(`has no ${missing}`),
+    );
+  }
+  const document = await onlyDocument(
+    record({ sourceURL: "https://fhir.example.org/r4/Condition/x y" }),
+  );
+  assert.throws(() => document.facts("2026-01-02T10:00:00Z"), /is not an IRI/);
+});

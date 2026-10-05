@@ -88,3 +88,63 @@ test("a refused step says which rule refused it", async () => {
     /holds 2 activities, not one/,
   );
 });
+
+test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
+  const files = await vocabulary();
+  const scripted = "runtime/vectors/refusals/scripted-input/stray-statement";
+  const source = new MemoryFiles("https://story.example/");
+  for (const path of await files.list(scripted)) {
+    const bytes = (await files.read(path)) ?? new Uint8Array();
+    await source.write(
+      `s/${path.slice(scripted.length + 1)}`,
+      path.endsWith("graph.ttl")
+        ? new TextEncoder().encode(
+            new TextDecoder()
+              .decode(bytes)
+              .replace(/^<urn:example:stray>.*$/m, "")
+              .replace('bridge:selector ""', "bridge:selector _:selector"),
+          )
+        : bytes,
+    );
+  }
+  const entry = (allergen: string): Uint8Array =>
+    new TextEncoder()
+      .encode(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+<urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+  <https://ns.cascadeprotocol.org/health/v1#allergen> ${allergen} .`);
+  await source.write("s/blank.ttl", entry("[ <urn:example:value> 2 ]"));
+  await source.write("s/plain.ttl", entry('"Peanut"'));
+  const story = parseStory(
+    JSON.stringify({
+      address: "https://pod.example/",
+      subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
+      steps: [
+        { name: "create", when: "2026-06-01T09:00:00Z", creation: {} },
+        {
+          name: "import",
+          when: "2026-06-02T09:00:00Z",
+          import: { export: "apple_health_export", converted: "bridge" },
+        },
+        { name: "entry", when: "2026-06-03T09:00:00Z", entry: "blank.ttl" },
+        { name: "plain", when: "2026-06-04T09:00:00Z", entry: "plain.ttl" },
+      ],
+    }),
+  );
+  const { steps } = await replay({
+    story,
+    source,
+    folder: "s",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    importers: [appleHealthExport],
+  });
+  assert.match(
+    steps[1]?.refused ?? "",
+    /^the revision of urn:uuid:.*holds a blank node/,
+  );
+  assert.match(steps[2]?.refused ?? "", /^blank\.ttl: .*holds a blank node/);
+  for (const step of steps.slice(1, 3)) assert.deepEqual(step.wrote, []);
+  assert.equal(steps[3]?.refused, undefined);
+  assert.notDeepEqual(steps[3]?.wrote, []);
+});
