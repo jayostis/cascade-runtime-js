@@ -28,6 +28,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
   const replayed = await replay({
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: new MemoryFiles("https://vocabulary.example/"),
     folder: "",
     pod,
     layout: await layout(),
@@ -76,6 +77,7 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
   const replayed = await replay({
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: new MemoryFiles("https://vocabulary.example/"),
     folder: "",
     pod,
     layout: await layout(),

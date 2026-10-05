@@ -371,7 +371,7 @@ export async function fileExport(
   context: StepContext,
   documents: readonly ExportDocument[],
   adapters: readonly LoadedAdapter[],
-): Promise<void> {
+): Promise<string> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
   const started = time.now();
@@ -419,7 +419,7 @@ export async function fileExport(
     }
   }
   revisions.write(writes);
-  if (kept.size === 0) return;
+  if (kept.size === 0) return name;
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
   if (forms.size > 1)
@@ -437,6 +437,7 @@ export async function fileExport(
       ]),
     ]),
   );
+  return name;
 }
 
 /** The import step of a story: its export's documents, converted by the Bridge output the story saved for them. */
@@ -470,7 +471,7 @@ export const fileImport: Perform = async (context) => {
     files: new Map(),
   });
   try {
-    await fileExport(context, documents, [adapter]);
+    return await fileExport(context, documents, [adapter]);
   } finally {
     await adapter.free();
   }
@@ -585,4 +586,5 @@ export const fileEntry: Perform = async (context) => {
     sessions.path(session.value),
     ntriples(graph.closure(session)),
   );
+  return session.value;
 };

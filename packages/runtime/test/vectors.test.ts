@@ -110,34 +110,14 @@ test("the conformance command reports each rule vector once, and nothing else", 
   for (const [test, found] of outcomes) assert.equal(found.length, 1, test);
 });
 
-/** The kinds of the steps the entry's story takes through its step. */
-function kindsThrough(entry: ManifestEntry): Set<string> {
-  const { steps } = storyOf(entry);
-  return new Set(
-    steps
-      .slice(0, steps.findIndex((step) => step.name === entry.step) + 1)
-      .map((step) => step.happened.kind),
-  );
-}
-
-test("every vector whose story, by its step, has no matcher run passes", () => {
+test("every rule vector passes", () => {
   for (const entry of entries) {
-    if (kindsThrough(entry).has("matcher")) continue;
     const found = outcomes.get(entry.iri);
     assert.deepEqual(
       found?.map(({ outcome }) => outcome),
       [`${EARL}passed`],
       `${entry.name}: ${found?.[0]?.why}`,
     );
-  }
-});
-
-test("a vector whose story, by its step, has a matcher run fails, naming that kind", () => {
-  for (const entry of entries) {
-    if (!kindsThrough(entry).has("matcher")) continue;
-    const [found] = outcomes.get(entry.iri) ?? [];
-    assert.equal(found?.outcome, `${EARL}failed`, entry.name);
-    assert.match(found?.why ?? "", /a step of kind matcher$/, entry.name);
   }
 });
 

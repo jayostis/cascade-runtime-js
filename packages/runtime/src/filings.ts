@@ -1,23 +1,9 @@
-import { readText } from "./files.js";
 import { parseGraph } from "./graph.js";
-import { iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
+import { iri, ntriples, RDF } from "./rdf.js";
+import { References } from "./references.js";
 import { inStory, type Perform, REC } from "./step.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
-const PROV = "http://www.w3.org/ns/prov#";
-const PAV = "http://purl.org/pav/";
-const REFERENCES = "scripted-input/references/references.json";
-
-interface ReferenceVersion {
-  readonly name: string;
-  readonly version: string;
-  readonly revises?: string;
-}
-
-interface ReferenceSeries {
-  readonly name: string;
-  readonly versions: readonly ReferenceVersion[];
-}
 
 /** A person's judgment: its file, as it is, filed by the judgment's name. */
 export const fileJudgment: Perform = async (context) => {
@@ -42,38 +28,21 @@ export const fileJudgment: Perform = async (context) => {
   );
 };
 
-/** A reference version's arrival: its description, as the story's reference tables list it, filed by its name. */
+/** A reference version's arrival: what the story's reference index states about it, filed by its name. */
 export const fileReference: Perform = async (context) => {
   const { happened } = context.step;
   if (happened.kind !== "reference")
     throw new Error(`step ${context.step.name} is no reference`);
-  const { series } = JSON.parse(
-    await readText(context.source, inStory(context, REFERENCES)),
-  ) as { series: readonly ReferenceSeries[] };
-  for (const { name: seriesName, versions } of series) {
-    const found = versions.find(({ name }) => name === happened.name);
-    if (found === undefined) continue;
-    const version = iri(found.name);
-    const triples: Triple[] = [
-      [version, iri(`${RDF}type`), iri(`${PROV}Entity`)],
-      [version, iri(`${PROV}specializationOf`), iri(seriesName)],
-      [version, iri(`${PAV}version`), literal(found.version)],
-      ...versions
-        .filter(({ version: other }) => other === found.revises)
-        .map(({ name }): Triple => [
-          version,
-          iri(`${PROV}wasRevisionOf`),
-          iri(name),
-        ]),
-    ];
-    context.writes.add(
-      context.layout.version(
-        context.layout.place(`${REC}ReferenceSeries`),
-        found.name,
-      ),
-      ntriples(triples),
+  const references = await References.of(context);
+  if (!references.isVersion(happened.name))
+    throw new Error(
+      `step ${context.step.name} names ${happened.name}, a version references.ttl does not list`,
     );
-    return;
-  }
-  throw new Error(`${REFERENCES} lists no reference version ${happened.name}`);
+  context.writes.add(
+    context.layout.version(
+      context.layout.place(`${REC}ReferenceSeries`),
+      happened.name,
+    ),
+    ntriples(references.description(happened.name)),
+  );
 };

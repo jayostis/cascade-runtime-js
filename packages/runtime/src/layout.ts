@@ -171,6 +171,15 @@ export class Layout {
     );
   }
 
+  /** Each file a build writes again, from the pod's other files. */
+  get rebuilt(): readonly string[] {
+    return [
+      ...this.built.flatMap(({ file }) => file ?? []),
+      this.typeIndex,
+      this.manifest,
+    ];
+  }
+
   /** Each file a query writes. */
   get built(): readonly Placement[] {
     return this.placements.filter(({ writtenBy }) => writtenBy !== undefined);

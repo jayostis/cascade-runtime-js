@@ -51,6 +51,7 @@ test("the derived state, the views, the labels and the type index equal, as grap
       ),
     },
     source: files,
+    vocabulary: files,
     folder: folderOf(STORY),
     pod: new MemoryFiles(story.address),
     newStore: () => new OxigraphStore(),
