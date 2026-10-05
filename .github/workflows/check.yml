@@ -4,15 +4,25 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, edited]
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  runtime:
-    name: runtime
+  compatibility:
+    name: compatibility
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: cascade-runtime-js
@@ -20,23 +30,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cascade-runtime-js
-      - id: pin
-        run: echo "vocabulary=$(jq -r .vocabulary.commit cascade-runtime.json)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v7
-        with:
-          repository: jayostis/cascade-vocabulary
-          ref: ${{ steps.pin.outputs.vocabulary }}
-          path: cascade-vocabulary
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+      # Checks the vocabulary and the adapters out beside this repository; every step after it reads those.
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - if: ${{ !cancelled() }}
+        run: npm run typecheck
+      - if: ${{ !cancelled() }}
+        run: npm run lint
+      - if: ${{ !cancelled() }}
+        run: npm test
       - name: Build a pod and its site
+        if: ${{ !cancelled() }}
         run: |
           if [ -f ../cascade-vocabulary/conformance/alex-rivera/story.json ]; then
             npm run build:example alex-rivera
@@ -44,9 +53,21 @@ jobs:
             npm run build:story-site -- runtime/vectors/matching/story.json
           fi
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
           name: pod-and-site
           path: |
             cascade-runtime-js/build/*/pod
             cascade-runtime-js/build/*/site
           if-no-files-found: error
+
+  ready-to-merge:
+    name: ready-to-merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          check: ready-to-merge
