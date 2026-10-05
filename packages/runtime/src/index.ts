@@ -17,6 +17,7 @@ export * from "./manifest.js";
 export * from "./names.js";
 export * from "./oxigraph-store.js";
 export * from "./pod.js";
+export * from "./questions.js";
 export * from "./rdf.js";
 export * from "./replay.js";
 export * from "./saved-output-bridge.js";
