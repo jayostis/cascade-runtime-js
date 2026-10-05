@@ -1,0 +1,10 @@
+{
+  "@context": "https://ns.cascadeprotocol.org/bridge/v1-draft/compatibility.jsonld",
+  "host": [
+    {
+      "name": "node",
+      "setup": ["npm", "ci"],
+      "command": ["npm", "run", "--silent", "conformance", "--"]
+    }
+  ]
+}

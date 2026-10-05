@@ -99,6 +99,10 @@ build falls through to the pin, and the run says which it used.
 Each is named, as `runtime/rules.md` N8 says, by its tree at the commit it is
 at, so an EARL report names the same entries on every machine.
 
-CI checks out `cascade-vocabulary` at the pin beside this repository, and
-publishes a pod and its site as an artifact: Alex's once the vocabulary has its
-conformance kit, until then the matching vector story's.
+CI runs [cascade-bridge-spec's compatibility check](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md),
+which `compatibility.json` declares this repository to as a runtime: it checks
+the vocabulary and the adapters out beside this repository, at their pins or
+with the pull requests a `Depends-On:` line names merged in, and runs
+`npm run conformance` on them. The tests and the pod build then read those
+checkouts. CI publishes a pod and its site as an artifact: Alex's once the
+vocabulary has its conformance kit, until then the matching vector story's.
