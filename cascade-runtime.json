@@ -1,7 +1,7 @@
 {
   "vocabulary": {
     "repository": "https://github.com/jayostis/cascade-vocabulary",
-    "commit": "ba712bfe678ad0de78a409bb126c7b87f80564d4"
+    "commit": "103b16fb60e670718f89894d294cef3f0369d5a5"
   },
   "adapters": [
     {
