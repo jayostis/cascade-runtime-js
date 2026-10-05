@@ -53,16 +53,15 @@ export class OxigraphStore implements Store {
     turtle: Uint8Array | string,
     options: LoadOptions,
   ): Promise<void> {
-    const parsed = new oxigraph.Store();
-    parsed.load(turtle, { format: TURTLE, base_iri: options.graph });
-    const targets = graphs(options);
-    for (const quad of parsed.match()) {
-      for (const graph of targets) {
-        this.#store.add(
-          oxigraph.quad(quad.subject, quad.predicate, quad.object, graph),
-        );
-      }
-    }
+    this.#store.load(turtle, {
+      format: TURTLE,
+      base_iri: options.graph,
+      to_graph_name: oxigraph.namedNode(options.graph),
+    });
+    if (!options.alone)
+      this.#store.update(
+        `INSERT { ?s ?p ?o } WHERE { GRAPH <${options.graph}> { ?s ?p ?o } }`,
+      );
   }
 
   async parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {
