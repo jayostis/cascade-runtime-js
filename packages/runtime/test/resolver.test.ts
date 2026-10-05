@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { before, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { checkout, git } from "../src/node/git.js";
 import { type ResolverOptions, resolve } from "../src/node/resolver.js";
+import { siblingsOf } from "../src/node/runtime.js";
 
 let root: string;
 let commit: string;
@@ -105,4 +106,17 @@ test("otherwise the pin is fetched at its commit into the cache, by any number o
     said,
     /^cascade-vocabulary: the pin, [0-9a-f]{12}, fetched into /,
   );
+});
+
+test("a worktree finds its siblings beside the checkout it was made from", async () => {
+  const main = join(root, "checkouts", "cascade-runtime-js");
+  await repositoryAt(main);
+  const worktree = join(root, "worktrees", "runtime-4");
+  await git(main, "worktree", "add", "--quiet", "--detach", worktree);
+  const real = (path: string): Promise<string> => realpath(path);
+  assert.equal(
+    await real(await siblingsOf(worktree)),
+    await real(dirname(main)),
+  );
+  assert.equal(await real(await siblingsOf(main)), await real(dirname(main)));
 });

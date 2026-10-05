@@ -325,6 +325,17 @@ async function hasFindings(
   );
 }
 
+/** What the export says of a document; an export the importer cannot read is refused (A14). */
+function read(found: ExportDocument, started: string): Uint8Array {
+  try {
+    return found.facts(started);
+  } catch (error) {
+    throw new Refusal(
+      `${found.path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 async function accepting(
   adapters: readonly LoadedAdapter[],
   document: BridgeDocument,
@@ -359,7 +370,7 @@ export async function fileExport(
       iri: documentIri,
       bytes: found.bytes,
       envelope: found.envelope,
-      facts: { iri: `${documentIri}#facts`, bytes: found.facts(started) },
+      facts: { iri: `${documentIri}#facts`, bytes: read(found, started) },
     };
     const adapter = await accepting(adapters, document);
     if (adapter === undefined) continue;
@@ -418,7 +429,13 @@ export const fileImport: Perform = async (context) => {
   const converted = inStory(context, happened.converted);
   let documents: readonly ExportDocument[] | undefined;
   for (const importer of context.importers) {
-    documents = await importer.documents(context.source, folder);
+    try {
+      documents = await importer.documents(context.source, folder);
+    } catch (error) {
+      throw new Refusal(
+        `${folder}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     if (documents !== undefined) break;
   }
   if (documents === undefined)
