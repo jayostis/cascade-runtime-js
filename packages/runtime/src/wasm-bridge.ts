@@ -99,10 +99,10 @@ function failure(error: unknown): Failure {
       path,
     };
   }
-  if (error instanceof WebAssembly.RuntimeError)
-    return { name: "BridgeError", message: error.message, kind: "bridge" };
-  if (error instanceof Error)
+  if (error instanceof TypeError)
     return { name: error.name, message: error.message };
+  if (error instanceof Error)
+    return { name: "BridgeError", message: error.message, kind: "bridge" };
   return { name: "Error", message: String(error) };
 }
 
@@ -181,9 +181,10 @@ export interface Channel {
 /** Starts a new Bridge instance. */
 export type Spawn = () => Promise<Channel>;
 
+let instances = 0;
+
 /** A fresh instance in the main thread: the glue module is imported anew, so a spoiled one is never reused. */
 export function inThread(compiled: CompiledBridge): Spawn {
-  let instances = 0;
   return async () => {
     const glue = new URL(compiled.glue);
     glue.searchParams.set("instance", String(++instances));

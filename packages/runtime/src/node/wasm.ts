@@ -162,34 +162,44 @@ export async function loadPinnedAdapters(
   options: PinnedAdapterOptions,
 ): Promise<PinnedAdapter[]> {
   const loaded: PinnedAdapter[] = [];
-  for (const pin of adapters) {
-    const resolved = await resolve(pin, options);
-    const adapter = await loadAdapter(
-      bridge,
-      {
-        iri: resolved.iri,
-        files: new FolderFiles(resolved.folder, resolved.iri),
-        whole: true,
-      },
-      async (vocabularyPin) => {
-        if (vocabularyPin === undefined)
-          throw new Error(
-            `${repositoryName(pin)} names vocabulary files but pins no vocabulary`,
-          );
-        const vocabulary = await resolve(commitPin(vocabularyPin), {
-          ...options,
-          log: (line) =>
-            options.log?.(
-              `the vocabulary ${repositoryName(pin)} pins, ${line}`,
-            ),
-        });
-        return {
-          iri: vocabulary.iri,
-          files: new FolderFiles(vocabulary.folder, vocabulary.iri),
-        };
-      },
-    );
-    loaded.push({ ...adapter, resolved });
+  try {
+    for (const pin of adapters)
+      loaded.push(await loadPinned(bridge, pin, options));
+  } catch (error) {
+    await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
+    throw error;
   }
   return loaded;
+}
+
+async function loadPinned(
+  bridge: Bridge,
+  pin: Pin,
+  options: PinnedAdapterOptions,
+): Promise<PinnedAdapter> {
+  const resolved = await resolve(pin, options);
+  const adapter = await loadAdapter(
+    bridge,
+    {
+      iri: resolved.iri,
+      files: new FolderFiles(resolved.folder, resolved.iri),
+      whole: true,
+    },
+    async (vocabularyPin) => {
+      if (vocabularyPin === undefined)
+        throw new Error(
+          `${repositoryName(pin)} names vocabulary files but pins no vocabulary`,
+        );
+      const vocabulary = await resolve(commitPin(vocabularyPin), {
+        ...options,
+        log: (line) =>
+          options.log?.(`the vocabulary ${repositoryName(pin)} pins, ${line}`),
+      });
+      return {
+        iri: vocabulary.iri,
+        files: new FolderFiles(vocabulary.folder, vocabulary.iri),
+      };
+    },
+  );
+  return { ...adapter, resolved };
 }
