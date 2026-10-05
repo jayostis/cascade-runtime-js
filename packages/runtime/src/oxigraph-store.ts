@@ -65,6 +65,16 @@ export class OxigraphStore implements Store {
     }
   }
 
+  async parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {
+    return oxigraph
+      .parse(turtle, { format: TURTLE, base_iri: base })
+      .map((quad): Triple => [
+        fromOxigraph(quad.subject) as Triple[0],
+        fromOxigraph(quad.predicate) as Triple[1],
+        fromOxigraph(quad.object),
+      ]);
+  }
+
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
     const targets = graphs(options);
     for (const [subject, predicate, object] of triples) {
