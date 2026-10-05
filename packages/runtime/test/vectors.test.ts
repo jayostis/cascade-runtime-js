@@ -26,7 +26,6 @@ let files: FolderFiles;
 let entries: ManifestEntry[];
 const stories = new Map<string, Story>();
 let outcomes: Map<string, Outcome[]>;
-const UNBUILT = ["judgment", "reference", "matcher"];
 
 interface Outcome {
   readonly outcome: string;
@@ -121,9 +120,9 @@ function kindsThrough(entry: ManifestEntry): Set<string> {
   );
 }
 
-test("every vector whose story, by its step, needs only a creation, imports and entries passes", () => {
+test("every vector whose story, by its step, has no matcher run passes", () => {
   for (const entry of entries) {
-    if (UNBUILT.some((kind) => kindsThrough(entry).has(kind))) continue;
+    if (kindsThrough(entry).has("matcher")) continue;
     const found = outcomes.get(entry.iri);
     assert.deepEqual(
       found?.map(({ outcome }) => outcome),
@@ -133,17 +132,12 @@ test("every vector whose story, by its step, needs only a creation, imports and 
   }
 });
 
-test("a vector whose story, by its step, needs a judgment, a reference or a matcher run fails, naming that kind", () => {
+test("a vector whose story, by its step, has a matcher run fails, naming that kind", () => {
   for (const entry of entries) {
-    const kinds = kindsThrough(entry);
-    if (!UNBUILT.some((kind) => kinds.has(kind))) continue;
+    if (!kindsThrough(entry).has("matcher")) continue;
     const [found] = outcomes.get(entry.iri) ?? [];
-    const named = /a step of kind (\w+)$/.exec(found?.why ?? "")?.[1] ?? "";
     assert.equal(found?.outcome, `${EARL}failed`, entry.name);
-    assert.ok(
-      UNBUILT.includes(named) && kinds.has(named),
-      `${entry.name}: ${found?.why}`,
-    );
+    assert.match(found?.why ?? "", /a step of kind matcher$/, entry.name);
   }
 });
 
