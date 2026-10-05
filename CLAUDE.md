@@ -21,8 +21,8 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 - **Fewer, better, faster tests.** One test per behaviour, on the smallest input
   that shows it; before adding one, change the test that already shows the
   behaviour. No combinatorial padding. Build a pod or a dataset once and share
-  it. `npm test` runs in seconds; the run of the vocabulary's vectors is its one
-  slower check.
+  it. `npm test` runs in seconds; the one run of the conformance command, the
+  vectors and the kit, is its slower check.
 - **A rule is implemented where its vectors say,** and a vector is passed, never
   skipped: a step the runtime cannot yet perform fails its entries, naming the
   step's kind.

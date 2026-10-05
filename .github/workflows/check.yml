@@ -46,21 +46,16 @@ jobs:
         run: npm run lint
       - if: ${{ !cancelled() }}
         run: npm test
-      - name: Build a pod and its site
+      - name: Build Alex Rivera's pod and site
         if: ${{ !cancelled() }}
-        run: |
-          if [ -f ../cascade-vocabulary/conformance/alex-rivera/story.json ]; then
-            npm run build:example alex-rivera
-          else
-            npm run build:story-site -- runtime/vectors/matching/story.json
-          fi
+        run: npm run build:example alex-rivera
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: pod-and-site
+          name: alex-rivera
           path: |
-            cascade-runtime-js/build/*/pod
-            cascade-runtime-js/build/*/site
+            cascade-runtime-js/build/alex-rivera/pod
+            cascade-runtime-js/build/alex-rivera/site
           if-no-files-found: error
 
   ready-to-merge:
