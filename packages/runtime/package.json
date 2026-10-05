@@ -1,0 +1,15 @@
+{
+  "name": "@cascade-runtime/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Files arrivals, names things, runs the matcher and the views.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./node": "./dist/src/node/index.js"
+  },
+  "dependencies": {
+    "oxigraph": "0.5.11"
+  }
+}
