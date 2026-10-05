@@ -68,6 +68,7 @@ jobs:
     needs: compatibility
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     concurrency:
@@ -77,8 +78,20 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/configure-pages@v6
+      - id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          if [ "$head" = "${{ github.sha }}" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main is at $head, not ${{ github.sha }}; the run for $head deploys"
+          fi
+      - if: ${{ steps.tip.outputs.latest == 'true' }}
+        uses: actions/configure-pages@v6
       - id: deployment
+        if: ${{ steps.tip.outputs.latest == 'true' }}
         uses: actions/deploy-pages@v5
 
   ready-to-merge:
