@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The site that documents a pod and its queries. Empty until the site is ported.",
-  "license": "Apache-2.0"
+  "description": "The site that documents a pod and its queries.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "dependencies": {
+    "@cascade-runtime/runtime": "0.0.0"
+  }
 }

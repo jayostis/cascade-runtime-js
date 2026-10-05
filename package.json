@@ -20,7 +20,12 @@
     "format": "prettier --write .",
     "test": "tsc -b && node --test \"packages/*/dist/test/**/*.test.js\"",
     "conformance": "tsc -b && node packages/runtime/dist/src/node/cli.js conformance",
-    "build:example-pod": "tsc -b && node packages/runtime/dist/src/node/cli.js build-example-pod"
+    "build:example-pod": "tsc -b && node packages/runtime/dist/src/node/cli.js build-example-pod",
+    "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
+    "build:example": "tsc -b && node packages/site/dist/src/node/cli.js build-example",
+    "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
+    "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js",
+    "build:story-site": "tsc -b && node packages/site/dist/src/node/cli.js build-story-site"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
