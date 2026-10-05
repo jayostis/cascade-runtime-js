@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve as absolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type Assertion, earl, runManifest } from "../conformance.js";
 import { MemoryFiles } from "../files.js";
@@ -36,7 +37,7 @@ async function conformance(args: string[]): Promise<number> {
       folder: { type: "string", multiple: true, default: [] },
     },
   });
-  const root = findRoot(process.cwd());
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const config = await readConfig(root);
   const report = absolute(
     values.report ?? join(root, "build", "conformance", "earl.nt"),

@@ -1,5 +1,5 @@
 import type { Files } from "./files.js";
-import { StoryTime } from "./ids.js";
+import { type IdsAndTime, StoryTime } from "./ids.js";
 import { FOLDERS, fanned } from "./layout.js";
 import { StepWrites } from "./pod.js";
 import { iri, ntriples, RDF } from "./rdf.js";
@@ -21,7 +21,7 @@ export interface StepContext {
   readonly folder: string;
   /** The pod as the steps before this one left it. */
   readonly pod: Files;
-  readonly time: StoryTime;
+  readonly time: IdsAndTime;
   readonly writes: StepWrites;
 }
 

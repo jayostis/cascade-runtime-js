@@ -24,6 +24,17 @@ export class BridgeError extends Error {
   }
 }
 
+/** Whether a thrown value is a Bridge failure, whether this class made it or the Bridge itself threw it. */
+export function isBridgeError(
+  error: unknown,
+): error is Error & { readonly kind: BridgeErrorKind } {
+  return (
+    error instanceof Error &&
+    error.name === "BridgeError" &&
+    typeof (error as { kind?: unknown }).kind === "string"
+  );
+}
+
 export type Format = "turtle" | "ntriples";
 
 /** Files keyed by the paths the crate or a `bridge:vocabularyFile` writes, and the IRI those paths resolve against. */

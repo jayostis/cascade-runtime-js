@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError } from "../src/bridge.js";
+import { isBridgeError } from "../src/bridge.js";
 import { MemoryFiles } from "../src/files.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -61,9 +61,6 @@ test("the saved-output Bridge answers a conversion from what the step saved, and
 
   await assert.rejects(
     adapter.convert({ iri: await documentName(mango), bytes: mango }),
-    (error) =>
-      error instanceof BridgeError &&
-      error.kind === "document" &&
-      error.name === "BridgeError",
+    (error) => isBridgeError(error) && error.kind === "document",
   );
 });
