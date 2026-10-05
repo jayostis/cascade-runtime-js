@@ -2,7 +2,7 @@ import type { Derive, VocabularyBuild } from "./build.js";
 import type { DerivedStep } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
-import { iri, type Term, type Triple } from "./rdf.js";
+import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed, ReplayedStep } from "./replay.js";
 import type { Store } from "./store.js";
 
@@ -12,14 +12,25 @@ const GENERATED = "http://www.w3.org/ns/prov#generated";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const DCT = "http://purl.org/dc/terms/";
 
+/** The layout read with each pod's address as its base, as N-Triples, once per address. */
+const writtenLayouts = new WeakMap<Layout, Map<string, Promise<Uint8Array>>>();
+
 async function addLayout(
   store: Store,
   layout: Layout,
   address: string,
 ): Promise<void> {
-  await store.add(await store.parse(layout.turtle, address), {
-    graph: LAYOUT_GRAPH,
-  });
+  let byAddress = writtenLayouts.get(layout);
+  if (byAddress === undefined) {
+    byAddress = new Map();
+    writtenLayouts.set(layout, byAddress);
+  }
+  let triples = byAddress.get(address);
+  if (triples === undefined) {
+    triples = store.parse(layout.turtle, address).then(ntriples);
+    byAddress.set(address, triples);
+  }
+  await store.loadTurtle(await triples, { graph: LAYOUT_GRAPH });
 }
 
 /** The pod as the steps left it, in the store, each RDF file a named graph; and what `derive` builds from it. */
@@ -57,7 +68,9 @@ export async function dataset(
   store: Store,
   derive?: Derive,
 ): Promise<Store> {
-  const index = replayed.steps.findIndex(({ step }) => step.name === through);
+  const index = replayed.steps.findLastIndex(
+    ({ step }) => step.name === through,
+  );
   if (index < 0) {
     if (replayed.stopped !== undefined) {
       throw new Error(

@@ -6,7 +6,7 @@ import { inStory, REC, Refusal, type StepContext } from "./step.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const FOLDER = "scripted-input/references/";
+const FOLDER = "references/";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
 

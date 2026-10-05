@@ -17,7 +17,7 @@ import {
   findRoot,
   type LocalVocabulary,
   localVocabulary,
-  storyPod,
+  featurePod,
 } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, pagesTree } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
@@ -25,7 +25,9 @@ import { Site } from "../src/site.js";
 import { shown } from "../src/terms.js";
 import { type Page, readPage } from "./page.js";
 
-const STORY = "runtime/vectors/matching/story.json";
+const FEATURE = "runtime/matcher.feature";
+const EXAMPLE =
+  "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "entry";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
 const RECORD = "https://ns.cascadeprotocol.org/records/v1-draft#Record";
@@ -41,7 +43,10 @@ before(async () => {
     findRoot(dirname(fileURLToPath(import.meta.url))),
   );
   const pod = new MemoryFiles("https://pod.example/");
-  await storyPod(vocabulary, STORY, pod, THROUGH);
+  await featurePod(vocabulary, FEATURE, pod, {
+    example: EXAMPLE,
+    through: THROUGH,
+  });
   site = await Site.build({
     vocabulary: vocabulary.files,
     layout: vocabulary.layout,
@@ -266,7 +271,10 @@ test("a site built under a lens other than the one `ask` and GraphDB use names t
   const other = [...site.pipeline.keys()].find((lens) => lens !== fallback);
   assert.ok(other);
   const pod = new MemoryFiles("https://pod.example/");
-  await storyPod(vocabulary, STORY, pod, THROUGH);
+  await featurePod(vocabulary, FEATURE, pod, {
+    example: EXAMPLE,
+    through: THROUGH,
+  });
   const options = {
     vocabulary: vocabulary.files,
     layout: vocabulary.layout,

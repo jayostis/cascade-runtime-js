@@ -1,30 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { MemoryFiles, folderOf, readText } from "../src/files.js";
+import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
-import { parseStory, type Story } from "../src/story.js";
-import { layout, vocabulary } from "./vocabulary.js";
+import type { Story } from "../src/story.js";
+import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
 
-async function replayed(path: string, through?: string) {
+async function replayed(feature: string, example: string) {
   const files = await vocabulary();
-  const story: Story = parseStory(await readText(files, path));
-  const steps =
-    through === undefined
-      ? story.steps
-      : story.steps.slice(
-          0,
-          story.steps.findIndex((step) => step.name === through) + 1,
-        );
+  const { story, folder } = await storyFrom(feature, example);
   return replay({
-    story: { ...story, steps },
+    story,
     source: files,
     vocabulary: files,
-    folder: folderOf(path),
+    folder,
+    title: "",
     pod: new MemoryFiles(story.address),
     newStore,
     layout: await layout(),
@@ -34,8 +28,8 @@ async function replayed(path: string, through?: string) {
 
 test("an import writes its content-addressed files first, then its revisions, and its own description last", async () => {
   const { pod, steps } = await replayed(
-    "runtime/vectors/arrivals/story.json",
-    "first-export",
+    "runtime/arrivals.feature",
+    "each record's first arrival is its first version and a revision that follows none",
   );
   const wrote = steps[1]?.wrote ?? [];
   const ranks: number[] = [];
@@ -68,10 +62,16 @@ test("an import writes its content-addressed files first, then its revisions, an
 });
 
 test("a refused step says which rule refused it", async () => {
-  const { steps } = await replayed("runtime/vectors/refusals/story.json");
-  const refused = new Map(
-    steps.map(({ step, refused }) => [step.name, refused]),
-  );
+  const refused = new Map<string, string | undefined>();
+  for (const example of [
+    "a Bridge graph holding a statement about nothing the pod files",
+    "a record of a type the pod files nowhere",
+    "one import's documents disagreeing on the import's description, so not even the agreeing one is written",
+    "an entry holding two activities",
+  ]) {
+    const { steps } = await replayed("runtime/arrivals.feature", example);
+    for (const { step, refused: why } of steps) refused.set(step.name, why);
+  }
   assert.match(
     refused.get("stray-statement") ?? "",
     /holds a statement about no record, version, arrival, document or import/,
@@ -92,12 +92,18 @@ test("a refused step says which rule refused it", async () => {
 
 test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
   const files = await vocabulary();
-  const scripted = "runtime/vectors/refusals/scripted-input/stray-statement";
+  const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
-  for (const path of await files.list(scripted)) {
+  for (const path of [
+    ...(await files.list(`${finn}/downloads/stray-statement`)),
+    ...(await files.list(`${finn}/bridge/stray-statement`)),
+  ]) {
     const bytes = (await files.read(path)) ?? new Uint8Array();
     await source.write(
-      `s/${path.slice(scripted.length + 1)}`,
+      `s/${path
+        .slice(finn.length + 1)
+        .replace("downloads/stray-statement/", "")
+        .replace("bridge/stray-statement/", "bridge/")}`,
       path.endsWith("graph.ttl")
         ? new TextEncoder().encode(
             new TextDecoder()
@@ -116,27 +122,42 @@ test("a step whose content to be named holds a blank node is refused, and the re
   <https://ns.cascadeprotocol.org/health/v1#allergen> ${allergen} .`);
   await source.write("s/blank.ttl", entry("[ <urn:example:value> 2 ]"));
   await source.write("s/plain.ttl", entry('"Peanut"'));
-  const story = parseStory(
-    JSON.stringify({
-      address: "https://pod.example/",
-      subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
-      steps: [
-        { name: "create", when: "2026-06-01T09:00:00Z", creation: {} },
-        {
-          name: "import",
-          when: "2026-06-02T09:00:00Z",
-          import: { export: "apple_health_export", converted: "bridge" },
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
+    steps: [
+      {
+        name: "create",
+        when: "2026-06-01T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+      {
+        name: "import",
+        when: "2026-06-02T09:00:00Z",
+        happened: {
+          kind: "import",
+          export: "apple_health_export",
+          converted: "bridge",
         },
-        { name: "entry", when: "2026-06-03T09:00:00Z", entry: "blank.ttl" },
-        { name: "plain", when: "2026-06-04T09:00:00Z", entry: "plain.ttl" },
-      ],
-    }),
-  );
+      },
+      {
+        name: "entry",
+        when: "2026-06-03T09:00:00Z",
+        happened: { kind: "entry", file: "blank.ttl" },
+      },
+      {
+        name: "plain",
+        when: "2026-06-04T09:00:00Z",
+        happened: { kind: "entry", file: "plain.ttl" },
+      },
+    ],
+  };
   const { steps } = await replay({
     story,
     source,
     vocabulary: source,
     folder: "s",
+    title: "",
     pod: new MemoryFiles(story.address),
     newStore,
     layout: await layout(),
@@ -164,25 +185,32 @@ test("an export the importer cannot read is refused, and the replay goes on", as
     "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
     new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
   );
-  const story = parseStory(
-    JSON.stringify({
-      address: "https://pod.example/",
-      subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
-      steps: [
-        {
-          name: "import",
-          when: "2026-06-02T09:00:00Z",
-          import: { export: "apple_health_export", converted: "bridge" },
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+    steps: [
+      {
+        name: "import",
+        when: "2026-06-02T09:00:00Z",
+        happened: {
+          kind: "import",
+          export: "apple_health_export",
+          converted: "bridge",
         },
-        { name: "create", when: "2026-06-03T09:00:00Z", creation: {} },
-      ],
-    }),
-  );
+      },
+      {
+        name: "create",
+        when: "2026-06-03T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+    ],
+  };
   const { steps } = await replay({
     story,
     source,
     vocabulary: source,
     folder: "s",
+    title: "",
     pod: new MemoryFiles(story.address),
     newStore,
     layout: await layout(),

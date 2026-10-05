@@ -9,14 +9,13 @@ import {
 } from "../src/bridge.js";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { fileExport, fileImport } from "../src/arrivals.js";
-import { MemoryFiles, readText } from "../src/files.js";
+import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { StepWrites } from "../src/pod.js";
 import { REC, type StepContext } from "../src/step.js";
-import { parseStory } from "../src/story.js";
 import { readConfig, siblingsOf } from "../src/node/runtime.js";
 import {
   compiledBridge,
@@ -40,9 +39,9 @@ import {
   WasmBridge,
 } from "../src/wasm-bridge.js";
 import { notIsomorphic, triples } from "./graphs.js";
-import { layout, ROOT, vocabulary } from "./vocabulary.js";
+import { layout, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
-const ALEX = "conformance/alex-rivera/";
+const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
 const REVISION = `${REC}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
@@ -92,13 +91,13 @@ interface Saved {
  */
 async function saved(step: string, stem: string): Promise<Saved> {
   const files = await vocabulary();
-  const story = parseStory(await readText(files, `${ALEX}story.json`));
+  const { story, folder: alex } = await storyFrom(ALEX);
   const found = story.steps.find(({ name }) => name === step.toUpperCase());
   if (found?.happened.kind !== "import")
     throw new Error(`Alex's story has no import step ${step}`);
-  const exportFolder = `${ALEX}${found.happened.export}`;
+  const exportFolder = `${alex}/${found.happened.export}`;
   const path = `${exportFolder}/clinical-records/${stem}.json`;
-  const folder = `${ALEX}${found.happened.converted}/${stem}/`;
+  const folder = `${alex}/${found.happened.converted}/${stem}/`;
   const [documents, graph, findings] = await Promise.all([
     appleHealthExport.documents(files, exportFolder),
     files.read(`${folder}graph.ttl`),
@@ -231,8 +230,10 @@ async function filed(pod: MemoryFiles): Promise<Triple[]> {
 
 test("an export imported through the WebAssembly Bridge files what it files through the saved output", async () => {
   const files = await vocabulary();
-  const folder = "runtime/vectors/arrivals";
-  const story = parseStory(await readText(files, `${folder}/story.json`));
+  const { story, folder } = await storyFrom(
+    "runtime/arrivals.feature",
+    "the latex allergy arrives again under a source version it already has, with other content",
+  );
   const step = story.steps.find(({ name }) => name === "known-source-version");
   if (step?.happened.kind !== "import") throw new Error("no such import");
   const exported = `${folder}/${step.happened.export}`;
