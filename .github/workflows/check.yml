@@ -36,6 +36,8 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
+      # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
+      - run: npm ci
       # Checks the vocabulary and the adapters out beside this repository; every step after it reads those.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - if: ${{ !cancelled() }}
