@@ -12,6 +12,7 @@ import {
   canonical,
   contentName,
   documentName,
+  earlierInUtc,
   fileStem,
   inUtc,
   recordName,
@@ -57,6 +58,15 @@ export interface KitRun {
   readonly layout: Layout;
   readonly shapes: Shapes;
 }
+
+const failure = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const checkEntry = (vocabulary: Files, kit: string, check: string) => ({
+  iri: `${vocabulary.iri}${kit}/#${check}`,
+  name: check,
+  types: [],
+});
 
 const base = (term: Term): string => term.value.split("#")[0] ?? "";
 
@@ -323,7 +333,7 @@ async function namesFollowTheirRules(
           earlierRecord?.value !== record.value ||
           time === undefined ||
           earlierTime === undefined ||
-          !(inUtc(earlierTime.value) < inUtc(time.value))
+          !earlierInUtc(earlierTime.value, time.value)
         )
           failures.push(
             `N4: ${revision.value} follows ${earlier.value}, which is no earlier revision of its record`,
@@ -585,11 +595,7 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
   ];
   const assertions: Assertion[] = [];
   for (const [check, made] of checks) {
-    const entry = {
-      iri: `${run.vocabulary.iri}${run.kit}/#${check}`,
-      name: check,
-      types: [],
-    };
+    const entry = checkEntry(run.vocabulary, run.kit, check);
     try {
       const failures = await made();
       assertions.push(
@@ -598,11 +604,7 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
           : { entry, outcome: "failed", why: failures.join("\n") },
       );
     } catch (error) {
-      assertions.push({
-        entry,
-        outcome: "failed",
-        why: error instanceof Error ? error.message : String(error),
-      });
+      assertions.push({ entry, outcome: "failed", why: failure(error) });
     }
   }
   return assertions;
@@ -622,16 +624,38 @@ export async function runKit(
   replays: Replays,
   shapes: Shapes,
 ): Promise<Assertion[]> {
-  const cases = await runManifest(
-    options,
-    replays,
-    `${kit}/cases/manifest.ttl`,
-  );
+  const { vocabulary } = options;
+  const manifest = `${kit}/cases/manifest.ttl`;
+  let cases: Assertion[];
+  try {
+    cases = await runManifest(options, replays, manifest);
+  } catch (error) {
+    cases = [
+      {
+        entry: { iri: vocabulary.iri + manifest, name: manifest, types: [] },
+        outcome: "failed",
+        why: failure(error),
+      },
+    ];
+  }
   const story = `${kit}/story.json`;
-  const replayed = await replays.replayed(story);
-  const last = replayed.story.steps.at(-1)?.name;
-  if (last === undefined) throw new Error(`${story} has no step`);
-  const final = await replays.dataset(story, last, KIT_LENS);
+  let replayed: Replayed;
+  let final: Store;
+  try {
+    replayed = await replays.replayed(story);
+    const last = replayed.story.steps.at(-1)?.name;
+    if (last === undefined) throw new Error(`${story} has no step`);
+    final = await replays.dataset(story, last, KIT_LENS);
+  } catch (error) {
+    return [
+      ...cases,
+      ...Object.values(KIT_CHECKS).map((check): Assertion => ({
+        entry: checkEntry(vocabulary, kit, check),
+        outcome: "failed",
+        why: failure(error),
+      })),
+    ];
+  }
   return [
     ...cases,
     ...(await kitChecks({

@@ -114,6 +114,20 @@ export function inUtc(dateTime: string): string {
   return `${moment.toISOString().slice(0, 19)}${fraction === "" ? "" : `.${fraction}`}Z`;
 }
 
+/** Whether the first `xsd:dateTime` is an instant before the second. */
+export function earlierInUtc(first: string, second: string): boolean {
+  const [[firstWhole, firstFraction], [secondWhole, secondFraction]] = [
+    first,
+    second,
+  ].map((dateTime) => {
+    const [whole = "", fraction = ""] = inUtc(dateTime).slice(0, -1).split(".");
+    return [whole, fraction];
+  }) as [[string, string], [string, string]];
+  if (firstWhole !== secondWhole) return firstWhole < secondWhole;
+  const width = Math.max(firstFraction.length, secondFraction.length);
+  return firstFraction.padEnd(width, "0") < secondFraction.padEnd(width, "0");
+}
+
 /** The name a file holding the named thing takes, before its folder and suffix (runtime/rules.md, N9). */
 export function fileStem(name: string): string {
   if (name.startsWith(UUID)) return name.slice(UUID.length);
