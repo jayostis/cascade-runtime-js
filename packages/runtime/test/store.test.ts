@@ -41,6 +41,11 @@ test("the store answers over named graphs, and its default graph holds what was 
     "SELECT ?o WHERE { <urn:b> <urn:r> ?o . GRAPH <urn:blank> { <urn:b> <urn:r> ?o } }",
   );
   assert.equal(joined.rows.length, 2);
+  await store.loadTurtle("<urn:b> <urn:r> _:x .", { graph: "urn:other" });
+  const apart = await store.select(
+    "SELECT DISTINCT ?o WHERE { <urn:b> <urn:r> ?o }",
+  );
+  assert.equal(apart.rows.length, 3);
   const built = await store.construct(
     "CONSTRUCT { ?s <urn:q> ?o } WHERE { GRAPH <urn:aside> { ?s ?p ?o } }",
   );

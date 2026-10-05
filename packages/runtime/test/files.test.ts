@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { type Files, MemoryFiles } from "../src/files.js";
+import { type Files, folderOf, MemoryFiles } from "../src/files.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 
 const POD = "https://pod.example/";
@@ -40,4 +40,8 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
       );
     }
   }
+  assert.deepEqual(
+    ["runtime/vectors/arrivals/story.json", "story.json"].map(folderOf),
+    ["runtime/vectors/arrivals", ""],
+  );
 });

@@ -1,6 +1,6 @@
 import { differences } from "./compare.js";
 import { type Derive, dataset } from "./dataset.js";
-import { type Files, readText, relative } from "./files.js";
+import { type Files, folderOf, readText, relative } from "./files.js";
 import { type ManifestEntry, readManifest, REPLAY_TEST } from "./manifest.js";
 import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type Performers, type Replayed, replay } from "./replay.js";
@@ -58,7 +58,7 @@ export async function runManifest(
         return replay({
           story: parsed,
           source: vocabulary,
-          folder: story.slice(0, story.lastIndexOf("/")),
+          folder: folderOf(story),
           pod: options.newPod(parsed.address),
           performers: options.performers,
         });
