@@ -7,7 +7,17 @@ import {
   isBridgeError,
   type LoadedAdapter,
 } from "../src/bridge.js";
+import { appleHealthExport } from "@cascade-runtime/apple-health";
+import { fileExport, fileImport } from "../src/arrivals.js";
+import { MemoryFiles, readText } from "../src/files.js";
+import { parseGraph } from "../src/graph.js";
+import { StoryTime } from "../src/ids.js";
+import { FOLDERS, isRdf } from "../src/layout.js";
 import { documentName } from "../src/names.js";
+import { OxigraphStore } from "../src/oxigraph-store.js";
+import { StepWrites } from "../src/pod.js";
+import { REC, type StepContext } from "../src/step.js";
+import { parseStory } from "../src/story.js";
 import { readConfig, siblingsOf } from "../src/node/runtime.js";
 import {
   compiledBridge,
@@ -16,7 +26,14 @@ import {
   loadPinnedAdapters,
   type PinnedAdapterOptions,
 } from "../src/node/wasm.js";
-import { iri, type Triple } from "../src/rdf.js";
+import {
+  blank,
+  type BlankNode,
+  iri,
+  RDF,
+  type Term,
+  type Triple,
+} from "../src/rdf.js";
 import {
   type CompiledBridge,
   inThread,
@@ -27,6 +44,10 @@ import { notIsomorphic, triples } from "./graphs.js";
 import { ROOT, vocabulary } from "./vocabulary.js";
 
 const ALEX = "example-pods/alex-rivera/";
+const TYPE = `${RDF}type`;
+const REVISION = `${REC}Revision`;
+const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
+const newStore = (): OxigraphStore => new OxigraphStore();
 
 let compiled: CompiledBridge;
 let options: PinnedAdapterOptions;
@@ -168,4 +189,73 @@ test("a conversion in the main thread is the conversion in a worker", async () =
       undefined,
     );
   }
+});
+
+/** A pod's files as one graph, but the imports' own, with each revision and the import that made it as blank nodes. */
+async function filed(pod: MemoryFiles): Promise<Triple[]> {
+  const triples: Triple[] = [];
+  for (const path of await pod.list("")) {
+    if (!isRdf(path) || path.startsWith(`${FOLDERS.imports}/`)) continue;
+    const bytes = await pod.read(path);
+    if (bytes !== undefined)
+      triples.push(
+        ...(await parseGraph(bytes, pod.iri + path, newStore)).triples,
+      );
+  }
+  const runDependent = new Set(
+    triples.flatMap(([s, p, o]) =>
+      p.value === GENERATED_BY
+        ? [s.value, o.value]
+        : p.value === TYPE && o.value === REVISION
+          ? [s.value]
+          : [],
+    ),
+  );
+  const blanked = <T extends Term>(term: T): T | BlankNode =>
+    term.termType === "NamedNode" && runDependent.has(term.value)
+      ? blank(term.value)
+      : term;
+  return triples.map(
+    ([s, p, o]) => [blanked(s), p, blanked(o)] as unknown as Triple,
+  );
+}
+
+test("an export imported through the WebAssembly Bridge files what it files through the saved output", async () => {
+  const files = await vocabulary();
+  const folder = "runtime/vectors/arrivals";
+  const story = parseStory(await readText(files, `${folder}/story.json`));
+  const step = story.steps.find(({ name }) => name === "known-source-version");
+  if (step?.happened.kind !== "import") throw new Error("no such import");
+  const exported = `${folder}/${step.happened.export}`;
+  const pods: Triple[][] = [];
+  for (const perform of [
+    fileImport,
+    async (context: StepContext) =>
+      fileExport(
+        context,
+        (await appleHealthExport.documents(files, exported)) ?? [],
+        [inWorkerAdapter],
+      ),
+  ]) {
+    const pod = new MemoryFiles(story.address);
+    const time = new StoryTime();
+    time.begin(step.when);
+    const writes = new StepWrites();
+    await perform({
+      story,
+      step,
+      source: files,
+      folder,
+      pod,
+      time,
+      writes,
+      newStore,
+      importers: [appleHealthExport],
+    });
+    await writes.commit(pod);
+    pods.push(await filed(pod));
+  }
+  const [saved, live] = pods;
+  assert.ok((saved?.length ?? 0) > 0);
+  assert.equal(notIsomorphic(saved ?? [], live ?? []), undefined);
 });
