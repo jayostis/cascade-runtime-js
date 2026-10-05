@@ -1,5 +1,6 @@
 import {
   type Bridge,
+  type BridgeDocument,
   type Description,
   isBridgeError,
   type LoadedAdapter,
@@ -121,26 +122,41 @@ export async function loadAdapter(
     }
   };
 
-  let loaded = loading();
-  await loaded;
-  const reload = (stale: Promise<LoadedAdapter>): void => {
-    if (loaded !== stale) return;
-    loaded = stale
-      .then((on) => on.free())
-      .catch(() => undefined)
-      .then(loading);
+  let loaded: Promise<LoadedAdapter> | undefined;
+  /** The adapter as loaded now, loading it again when the last load failed or was let go. */
+  const current = (): Promise<LoadedAdapter> => {
+    if (loaded === undefined) {
+      const next = loading();
+      next.catch(() => {
+        if (loaded === next) loaded = undefined;
+      });
+      loaded = next;
+    }
+    return loaded;
   };
+  await current();
+  const envelopeOf = (document: BridgeDocument): BridgeDocument =>
+    document.envelope === undefined
+      ? document
+      : {
+          ...document,
+          envelope: new URL(document.envelope, `${source.iri}${METADATA}`).href,
+        };
   const retrying = async <T>(
     call: (on: LoadedAdapter) => Promise<T>,
   ): Promise<T> => {
     for (;;) {
-      const current = loaded;
+      const now = current();
+      const on = await now;
       try {
-        return await call(await current);
+        return await call(on);
       } catch (error) {
-        if (!missing(error) || (loaded === current && !(await fetched(error))))
+        if (!missing(error) || (loaded === now && !(await fetched(error))))
           throw error;
-        reload(current);
+        if (loaded === now) {
+          loaded = undefined;
+          void on.free().catch(() => undefined);
+        }
       }
     }
   };
@@ -148,10 +164,14 @@ export async function loadAdapter(
     description,
     ...(vocabularySource && { vocabulary: vocabularySource }),
     adapter: {
-      accepts: (document) => retrying((on) => on.accepts(document)),
+      accepts: (document) => retrying((on) => on.accepts(envelopeOf(document))),
       convert: (document, options) =>
-        retrying((on) => on.convert(document, options)),
-      free: async () => (await loaded).free(),
+        retrying((on) => on.convert(envelopeOf(document), options)),
+      free: async () => {
+        const last = loaded;
+        loaded = undefined;
+        await (await last)?.free();
+      },
     },
   };
 }

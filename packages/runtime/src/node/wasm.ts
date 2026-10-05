@@ -62,16 +62,22 @@ export async function findBridgePackage(
     if (built === undefined || !existsSync(join(dist, WASM))) {
       passedOver = `the sibling checkout ${checkout} holds no build`;
     } else {
-      const { stdout } = await promisify(execFile)(process.execPath, [
+      const sources = await promisify(execFile)(process.execPath, [
         join(checkout, "package", "sources.mjs"),
-      ]);
-      if (stdout.trim() === built.sources) {
+      ]).then(
+        ({ stdout }) => stdout.trim(),
+        (error: Error) => error,
+      );
+      if (sources instanceof Error) {
+        passedOver = `the sources of the checkout ${checkout} could not be read: ${sources.message.split("\n")[0]}`;
+      } else if (sources === built.sources) {
         log?.(
           `${PACKAGE}: the sibling checkout's build in ${dist}, of ${short(built.commit)}${built.dirty ? " with uncommitted changes" : ""}`,
         );
         return { source: "sibling", folder: dist, ...built };
+      } else {
+        passedOver = `the build in ${dist} is stale: it was made from other sources than the checkout holds`;
       }
-      passedOver = `the build in ${dist} is stale: it was made from other sources than the checkout holds`;
     }
   }
   const folder = fileURLToPath(new URL(".", import.meta.resolve(PACKAGE)));

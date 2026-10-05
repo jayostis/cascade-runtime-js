@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { before, test } from "node:test";
@@ -113,6 +113,10 @@ test("a worktree finds its siblings beside the checkout it was made from", async
   await repositoryAt(main);
   const worktree = join(root, "worktrees", "runtime-4");
   await git(main, "worktree", "add", "--quiet", "--detach", worktree);
-  assert.equal(await siblingsOf(worktree), dirname(main));
-  assert.equal(await siblingsOf(main), dirname(main));
+  const real = (path: string): Promise<string> => realpath(path);
+  assert.equal(
+    await real(await siblingsOf(worktree)),
+    await real(dirname(main)),
+  );
+  assert.equal(await real(await siblingsOf(main)), await real(dirname(main)));
 });

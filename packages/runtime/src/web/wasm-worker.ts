@@ -25,7 +25,24 @@ scope.onmessage = async (event) => {
     });
     return;
   }
-  if (served === undefined) throw new Error("the worker was sent no Bridge");
-  const { reply, transfer } = (await served)(message.request);
-  scope.postMessage({ id: message.id, reply }, transfer);
+  try {
+    if (served === undefined) throw new Error("the worker was sent no Bridge");
+    const { reply, transfer } = (await served)(message.request);
+    scope.postMessage({ id: message.id, reply }, transfer);
+  } catch (error) {
+    scope.postMessage(
+      {
+        id: message.id,
+        reply: {
+          ok: false,
+          failure: {
+            name: "BridgeError",
+            kind: "bridge",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      },
+      [],
+    );
+  }
 };
