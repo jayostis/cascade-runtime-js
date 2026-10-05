@@ -23,8 +23,18 @@ export interface Ingredient {
 
 export interface BuiltFrom {
   readonly ingredients: readonly Ingredient[];
+  /** What the runtime is configured with that the build itself did not run, such as the adapters a kit's saved output stands in for. */
+  readonly configured: readonly Ingredient[];
   readonly at: string;
 }
+
+const ingredients = (listed: readonly Ingredient[]) => markup`<ul class="about">
+${listed.map(
+  ({ name, version, href }) =>
+    markup`<li><a href="${href}">${name} ${version}</a></li>
+`,
+)}</ul>
+`;
 
 function frontPage(examples: readonly Example[], built: BuiltFrom): string {
   return markup`<!DOCTYPE html>
@@ -49,12 +59,8 @@ ${examples.map(
 </main>
 <footer>
 <p class="about">Built at <time datetime="${built.at}">${built.at}</time> from:</p>
-<ul class="about">
-${built.ingredients.map(
-  ({ name, version, href }) =>
-    markup`<li><a href="${href}">${name} ${version}</a></li>\n`,
-)}</ul>
-</footer>
+${ingredients(built.ingredients)}<p class="about">The runtime is configured with:</p>
+${ingredients(built.configured)}</footer>
 </body>
 </html>
 `.text;

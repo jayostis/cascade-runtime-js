@@ -310,6 +310,7 @@ test("the Pages front page links each kit of the vocabulary, by its name, to a s
   };
   const tree = pagesTree(examples, {
     ingredients: [vocabularyAt],
+    configured: [],
     at: "2026-03-03T08:00:00Z",
   });
   const text = new TextDecoder().decode(tree.get(FRONT_PAGE));

@@ -197,9 +197,8 @@ async function buildPages(): Promise<number> {
         runtime.uncommitted,
       ),
       resolvedIngredient(vocabulary.resolved),
-      ...adapters.map(resolvedIngredient),
-      await bridgeRelease(),
     ],
+    configured: [...adapters.map(resolvedIngredient), await bridgeRelease()],
     at: clock.now(),
   });
   const out = join(ROOT, "build", "pages");
