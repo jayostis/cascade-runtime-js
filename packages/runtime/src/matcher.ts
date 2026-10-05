@@ -122,8 +122,16 @@ function grouped(
 }
 
 /** A time's place in time order: its seconds in UTC, then the digits of any fraction of a second. */
-function arrival(moment: string): [string, string] {
-  const [whole = "", fraction = ""] = inUtc(moment).slice(0, -1).split(".");
+export function arrival(moment: string): [string, string] {
+  let utc: string;
+  try {
+    utc = inUtc(moment);
+  } catch (error) {
+    throw new Refusal(
+      `a first revision's time: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const [whole = "", fraction = ""] = utc.slice(0, -1).split(".");
   return [whole, fraction];
 }
 

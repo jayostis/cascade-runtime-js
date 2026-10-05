@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Graph } from "../src/graph.js";
-import { matcherRules } from "../src/matcher.js";
+import { arrival, matcherRules } from "../src/matcher.js";
 import { documentName } from "../src/names.js";
 import { blank, iri, literal, type Triple } from "../src/rdf.js";
 import { REC, Refusal } from "../src/step.js";
@@ -53,5 +53,15 @@ test("a rule list naming a query outside matcher/, by any path, or giving one ju
     sameCode.filter(([, predicate]) => predicate.value !== `${REC}queryHash`),
   ]) {
     await assert.rejects(matcherRules(new Graph(rows), files), Refusal);
+  }
+});
+
+test("a first revision's time with no zone, or no time at all, refuses the run rather than aborting the replay", () => {
+  assert.deepEqual(arrival("2026-05-02T09:00:00.50+01:00"), [
+    "2026-05-02T08:00:00",
+    "5",
+  ]);
+  for (const moment of ["2026-05-02T09:00:00", "tomorrow"]) {
+    assert.throws(() => arrival(moment), Refusal, moment);
   }
 });

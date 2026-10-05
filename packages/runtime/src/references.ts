@@ -64,7 +64,15 @@ export class References {
   }
 
   async rows(version: string): Promise<Triple[]> {
-    const path = `${this.#folder}${fileStem(version)}.ttl`;
+    let stem: string;
+    try {
+      stem = fileStem(version);
+    } catch (error) {
+      throw new Refusal(
+        `${this.#folder} lists ${version}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    const path = `${this.#folder}${stem}.ttl`;
     const bytes = await this.#source.read(path);
     if (bytes === undefined)
       throw new Refusal(`${this.#folder} holds no rows for ${version}`);
