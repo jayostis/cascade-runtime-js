@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The importer: finds the documents in an Apple Health export and the facts about each. Empty until arrivals are filed.",
-  "license": "Apache-2.0"
+  "description": "The importer: finds the documents in an Apple Health export and the facts about each.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "dependencies": {
+    "saxes": "6.0.0"
+  },
+  "devDependencies": {
+    "oxigraph": "0.5.11"
+  }
 }

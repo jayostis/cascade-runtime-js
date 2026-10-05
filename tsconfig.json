@@ -1,4 +1,11 @@
 {
   "files": [],
-  "references": [{ "path": "packages/runtime" }]
+  "references": [
+    {
+      "path": "packages/apple-health"
+    },
+    {
+      "path": "packages/runtime"
+    }
+  ]
 }
