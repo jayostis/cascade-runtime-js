@@ -76,6 +76,8 @@ export interface LocalVocabulary {
   readonly files: FolderFiles;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
+  /** Which checkout or pin the vocabulary was read from. */
+  readonly resolved: Resolved;
 }
 
 export async function localVocabulary(
@@ -86,5 +88,11 @@ export async function localVocabulary(
   const resolved = await resolveVocabulary(root, config, undefined, log);
   const files = new FolderFiles(resolved.folder, resolved.iri);
   const layout = await Layout.read(files, () => new OxigraphStore());
-  return { config, files, layout, build: await vocabularyBuild(files, layout) };
+  return {
+    config,
+    files,
+    layout,
+    build: await vocabularyBuild(files, layout),
+    resolved,
+  };
 }

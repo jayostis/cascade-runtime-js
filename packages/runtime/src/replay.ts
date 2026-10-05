@@ -97,7 +97,8 @@ export interface ReplayOptions {
   readonly build?: { readonly lens: string; readonly derive: Derive };
 }
 
-async function titleOf(source: Files, folder: string): Promise<string> {
+/** The name the source's crate gives the folder, or else the folder's own. */
+export async function titleOf(source: Files, folder: string): Promise<string> {
   const bytes = await source.read("ro-crate-metadata.json");
   if (bytes !== undefined) {
     const crate = JSON.parse(new TextDecoder().decode(bytes)) as {

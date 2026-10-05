@@ -46,9 +46,9 @@ jobs:
         run: npm run lint
       - if: ${{ !cancelled() }}
         run: npm test
-      - name: Build Alex Rivera's pod and site
+      - name: Build every kit's pod and site, and the front page above them
         if: ${{ !cancelled() }}
-        run: npm run build:example alex-rivera
+        run: npm run build:pages
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -57,6 +57,29 @@ jobs:
             cascade-runtime-js/build/alex-rivera/pod
             cascade-runtime-js/build/alex-rivera/site
           if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v5
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        with:
+          path: cascade-runtime-js/build/pages
+
+  pages:
+    name: pages
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: compatibility
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - id: deployment
+        uses: actions/deploy-pages@v5
 
   ready-to-merge:
     name: ready-to-merge

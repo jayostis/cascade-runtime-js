@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 import { before, test } from "node:test";
 import {
   iri,
+  kitsOf,
   literal,
   MemoryFiles,
   OxigraphStore,
   questions,
+  titleOf,
   written,
   XSD,
 } from "@cascade-runtime/runtime";
@@ -17,7 +19,8 @@ import {
   localVocabulary,
   storyPod,
 } from "@cascade-runtime/runtime/node";
-import { markup } from "../src/html.js";
+import { FRONT_PAGE, pagesTree } from "../src/front-page.js";
+import { escape, markup } from "../src/html.js";
 import { Site } from "../src/site.js";
 import { shown } from "../src/terms.js";
 import { type Page, readPage } from "./page.js";
@@ -288,4 +291,36 @@ test("a site built under a lens other than the one `ask` and GraphDB use names t
   }
   for (const { title, said } of page("index.html").blocks)
     assert.ok(!said.includes("--lens"), title);
+});
+
+test("the Pages front page links each kit of the vocabulary, by its name, to a site and a pod in the tree, and names what built it", async () => {
+  const kits = await kitsOf(vocabulary.files);
+  assert.ok(kits.length > 0);
+  const examples = await Promise.all(
+    kits.map(async (kit) => ({
+      folder: kit.slice(kit.lastIndexOf("/") + 1),
+      title: await titleOf(vocabulary.files, kit),
+      site: files,
+    })),
+  );
+  const vocabularyAt = {
+    name: "cascade-vocabulary",
+    version: vocabulary.resolved.commit ?? vocabulary.resolved.pin.commit,
+    href: vocabulary.resolved.iri,
+  };
+  const tree = pagesTree(examples, {
+    ingredients: [vocabularyAt],
+    at: "2026-03-03T08:00:00Z",
+  });
+  const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
+  const front = readPage(text);
+  for (const { folder, title } of examples)
+    assert.ok(
+      text.includes(`<a href="${folder}/index.html">${escape(title)}</a>`),
+      title,
+    );
+  const local = front.hrefs.filter((href) => !/^https?:/.test(href));
+  assert.ok(local.length > examples.length);
+  for (const href of local) assert.ok(tree.has(href), href);
+  assert.ok(front.hrefs.includes(vocabularyAt.href));
 });

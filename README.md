@@ -6,6 +6,9 @@ rules: a TypeScript runtime that fills a Cascade pod, loading the Bridge and
 the adapters in-process. It proves itself by passing the vocabulary's rule
 vectors and its conformance kit, Alex Rivera's story.
 
+The pod and site each kit builds, from `main`, are at
+<https://jayostis.github.io/cascade-runtime-js/>.
+
 Node 22 or later. To build Alex's pod and the site that documents it:
 
 ```sh
@@ -13,6 +16,7 @@ npm install
 npm run build:example alex-rivera        # the pod, then the site
 npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
 npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
+npm run build:pages                      # every kit's pod and site, under a front page, in build/pages
 ```
 
 Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
