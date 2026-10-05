@@ -25,9 +25,15 @@ const CLI = join(ROOT, "packages", "runtime", "dist", "src", "node", "cli.js");
 let files: FolderFiles;
 let entries: ManifestEntry[];
 const stories = new Map<string, Story>();
-let outcomes: Map<string, string[]>;
+let outcomes: Map<string, Outcome[]>;
+const UNBUILT = ["judgment", "reference", "matcher"];
 
-async function report(): Promise<Map<string, string[]>> {
+interface Outcome {
+  readonly outcome: string;
+  readonly why?: string;
+}
+
+async function report(): Promise<Map<string, Outcome[]>> {
   const file = join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt");
   await promisify(execFile)(process.execPath, [
     CLI,
@@ -38,13 +44,16 @@ async function report(): Promise<Map<string, string[]>> {
   const store = new OxigraphStore();
   await store.loadTurtle(await readFile(file), { graph: "urn:report" });
   const { rows } = await store.select(`PREFIX earl: <${EARL}>
-    SELECT ?test ?outcome WHERE { ?assertion a earl:Assertion ; earl:test ?test ; earl:result/earl:outcome ?outcome }`);
-  const found = new Map<string, string[]>();
+    SELECT ?test ?outcome ?why WHERE {
+      ?assertion a earl:Assertion ; earl:test ?test ; earl:result ?result . ?result earl:outcome ?outcome
+      OPTIONAL { ?result <http://purl.org/dc/terms/description> ?why }
+    }`);
+  const found = new Map<string, Outcome[]>();
   for (const row of rows) {
     const test = row.get("test")?.value ?? "";
     found.set(test, [
       ...(found.get(test) ?? []),
-      row.get("outcome")?.value ?? "",
+      { outcome: row.get("outcome")?.value ?? "", why: row.get("why")?.value },
     ]);
   }
   return found;
@@ -102,31 +111,39 @@ test("the conformance command reports each rule vector once, and nothing else", 
   for (const [test, found] of outcomes) assert.equal(found.length, 1, test);
 });
 
-test("the subject the pod's creation files passes", () => {
-  assert.deepEqual(
-    outcomes.get(`${files.iri}${MANIFEST}#creation-files-the-subject`),
-    [`${EARL}passed`],
+/** The kinds of the steps the entry's story takes through its step. */
+function kindsThrough(entry: ManifestEntry): Set<string> {
+  const { steps } = storyOf(entry);
+  return new Set(
+    steps
+      .slice(0, steps.findIndex((step) => step.name === entry.step) + 1)
+      .map((step) => step.happened.kind),
   );
+}
+
+test("every vector whose story, by its step, needs only a creation, imports and entries passes", () => {
+  for (const entry of entries) {
+    if (UNBUILT.some((kind) => kindsThrough(entry).has(kind))) continue;
+    const found = outcomes.get(entry.iri);
+    assert.deepEqual(
+      found?.map(({ outcome }) => outcome),
+      [`${EARL}passed`],
+      `${entry.name}: ${found?.[0]?.why}`,
+    );
+  }
 });
 
-test("no vector passes whose story, by its step, needs an import, an entry or a matcher run", () => {
+test("a vector whose story, by its step, needs a judgment, a reference or a matcher run fails, naming that kind", () => {
   for (const entry of entries) {
-    const { steps } = storyOf(entry);
-    const through = steps.slice(
-      0,
-      steps.findIndex((step) => step.name === entry.step) + 1,
+    const kinds = kindsThrough(entry);
+    if (!UNBUILT.some((kind) => kinds.has(kind))) continue;
+    const [found] = outcomes.get(entry.iri) ?? [];
+    const named = /a step of kind (\w+)$/.exec(found?.why ?? "")?.[1] ?? "";
+    assert.equal(found?.outcome, `${EARL}failed`, entry.name);
+    assert.ok(
+      UNBUILT.includes(named) && kinds.has(named),
+      `${entry.name}: ${found?.why}`,
     );
-    if (
-      through.some((step) =>
-        ["import", "entry", "matcher"].includes(step.happened.kind),
-      )
-    ) {
-      assert.notDeepEqual(
-        outcomes.get(entry.iri),
-        [`${EARL}passed`],
-        entry.name,
-      );
-    }
   }
 });
 

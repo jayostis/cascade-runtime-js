@@ -1,33 +1,13 @@
+import { fileEntry, fileImport } from "./arrivals.js";
 import type { Files } from "./files.js";
-import { type IdsAndTime, StoryTime } from "./ids.js";
+import { StoryTime } from "./ids.js";
+import type { Importer } from "./importer.js";
 import { FOLDERS, fanned } from "./layout.js";
 import { StepWrites } from "./pod.js";
 import { iri, ntriples, RDF } from "./rdf.js";
-import type { Step, StepKind, Story } from "./story.js";
-
-export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-
-/** A step the rules refuse: it writes nothing, and the replay goes on. */
-export class Refusal extends Error {
-  override readonly name = "Refusal";
-}
-
-/** What a step is performed with. */
-export interface StepContext {
-  readonly story: Story;
-  readonly step: Step;
-  /** The story's own files, which its steps name relative to `folder`. */
-  readonly source: Files;
-  readonly folder: string;
-  /** The pod as the steps before this one left it. */
-  readonly pod: Files;
-  readonly time: IdsAndTime;
-  readonly writes: StepWrites;
-}
-
-export type Perform = (context: StepContext) => Promise<void>;
-
-export type Performers = Partial<Record<StepKind, Perform>>;
+import { type Perform, type Performers, REC, Refusal } from "./step.js";
+import type { StoreFactory } from "./store.js";
+import type { Step, Story } from "./story.js";
 
 /** Rule A13: the pod's creation writes the subject as a rec:Subject. */
 export const fileCreation: Perform = (context) => {
@@ -39,7 +19,11 @@ export const fileCreation: Perform = (context) => {
   return Promise.resolve();
 };
 
-export const PERFORMERS: Performers = { creation: fileCreation };
+export const PERFORMERS: Performers = {
+  creation: fileCreation,
+  import: fileImport,
+  entry: fileEntry,
+};
 
 export interface ReplayedStep {
   readonly step: Step;
@@ -63,11 +47,14 @@ export interface ReplayOptions {
   /** The story's folder within `source`, without a trailing slash. */
   readonly folder: string;
   readonly pod: Files;
+  readonly newStore: StoreFactory;
+  readonly importers?: readonly Importer[];
   readonly performers?: Performers;
 }
 
 export async function replay(options: ReplayOptions): Promise<Replayed> {
   const performers = options.performers ?? PERFORMERS;
+  const importers = options.importers ?? [];
   const time = new StoryTime();
   const steps: ReplayedStep[] = [];
   for (const step of options.story.steps) {
@@ -86,7 +73,7 @@ export async function replay(options: ReplayOptions): Promise<Replayed> {
     time.begin(step.when);
     const writes = new StepWrites();
     try {
-      await perform({ ...options, step, time, writes });
+      await perform({ ...options, importers, step, time, writes });
     } catch (error) {
       if (!(error instanceof Refusal)) throw error;
       steps.push({ step, wrote: [], refused: error.message });
