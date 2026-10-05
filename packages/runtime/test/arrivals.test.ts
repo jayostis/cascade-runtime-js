@@ -23,6 +23,7 @@ async function replayed(path: string, through?: string) {
   return replay({
     story: { ...story, steps },
     source: files,
+    vocabulary: files,
     folder: folderOf(path),
     pod: new MemoryFiles(story.address),
     newStore,
@@ -134,6 +135,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
   const { steps } = await replay({
     story,
     source,
+    vocabulary: source,
     folder: "s",
     pod: new MemoryFiles(story.address),
     newStore,
@@ -179,6 +181,7 @@ test("an export the importer cannot read is refused, and the replay goes on", as
   const { steps } = await replay({
     story,
     source,
+    vocabulary: source,
     folder: "s",
     pod: new MemoryFiles(story.address),
     newStore,

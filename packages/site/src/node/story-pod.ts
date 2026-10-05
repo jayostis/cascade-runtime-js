@@ -32,6 +32,7 @@ export async function storyPod(
   const replayed = await replay({
     story: { ...story, steps: story.steps.slice(0, end) },
     source: vocabulary.files,
+    vocabulary: vocabulary.files,
     folder: folderOf(storyPath),
     pod,
     layout: vocabulary.layout,

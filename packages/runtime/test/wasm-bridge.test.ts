@@ -249,6 +249,8 @@ test("an export imported through the WebAssembly Bridge files what it files thro
       story,
       step,
       source: files,
+      vocabulary: files,
+      activities: new Map(),
       folder,
       pod,
       time,

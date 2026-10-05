@@ -139,11 +139,7 @@ export async function podDataset(
   const manifest = await triplesOf(pod, layout.manifest, store);
   const title = valueOf(manifest, `${DCT}title`)?.value ?? otherwise.title;
   const at = valueOf(manifest, `${DCT}created`)?.value ?? otherwise.at;
-  const rebuilt = new Set([
-    ...layout.built.flatMap(({ file }) => file ?? []),
-    layout.typeIndex,
-    layout.manifest,
-  ]);
+  const rebuilt = new Set(layout.rebuilt);
   const held = await pod.list("");
   for (const path of held.filter(
     (path) => layout.isRdf(path) && !rebuilt.has(path),

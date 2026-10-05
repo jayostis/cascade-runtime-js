@@ -66,6 +66,7 @@ export async function runManifest(
         return replay({
           story: parsed,
           source: vocabulary,
+          vocabulary,
           folder: folderOf(story),
           pod: options.newPod(parsed.address),
           layout: await (layout ??=

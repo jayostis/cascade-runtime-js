@@ -29,9 +29,14 @@ export interface StepContext {
   readonly layout: Layout;
   /** The importers `cascade-runtime.json` names, in its order. */
   readonly importers: readonly Importer[];
+  /** The vocabulary, whose queries the matcher runs. */
+  readonly vocabulary: Files;
+  /** The import or entry session each step before this one made, by the step's name. */
+  readonly activities: ReadonlyMap<string, string>;
 }
 
-export type Perform = (context: StepContext) => Promise<void>;
+/** Performs a step; resolves to the import or entry session it made, if it made one. */
+export type Perform = (context: StepContext) => Promise<string | void>;
 
 export type Performers = Partial<Record<StepKind, Perform>>;
 

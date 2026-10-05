@@ -8,9 +8,8 @@ vectors and, later, its conformance kit.
 
 It is being built in the steps of
 [cascade-vocabulary#39](https://github.com/jayostis/cascade-vocabulary/issues/39).
-Today it replays a story's creation, imports, entries, judgments and reference
-tables, builds the views, and documents a pod in a static site; the matcher
-follows.
+Today it replays every kind of step a story holds, the matcher's runs among them,
+builds the views, and documents a pod in a static site.
 
 ## Running it
 

@@ -1,5 +1,6 @@
 import { fileEntry, fileImport } from "./arrivals.js";
 import { fileJudgment, fileReference } from "./filings.js";
+import { runMatcher } from "./matcher.js";
 import type { Derive } from "./build.js";
 import { built } from "./dataset.js";
 import type { Files } from "./files.js";
@@ -51,6 +52,7 @@ export const PERFORMERS: Performers = {
   entry: fileEntry,
   judgment: fileJudgment,
   reference: fileReference,
+  matcher: runMatcher,
 };
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -62,6 +64,8 @@ export interface ReplayedStep {
   /** The files new to the pod that the step wrote, in the order it wrote them. */
   readonly wrote: readonly string[];
   readonly refused?: string;
+  /** The import or entry session the step made. */
+  readonly activity?: string;
 }
 
 /** A story replayed into a pod, as far as the runtime can perform its steps. */
@@ -79,6 +83,8 @@ export interface Replayed {
 export interface ReplayOptions {
   readonly story: Story;
   readonly source: Files;
+  /** The vocabulary, whose queries the matcher runs. */
+  readonly vocabulary: Files;
   /** The story's folder within `source`, without a trailing slash. */
   readonly folder: string;
   /** An empty pod at the story's address: a story is replayed from the pod's creation. */
@@ -96,6 +102,7 @@ export async function replay(options: ReplayOptions): Promise<Replayed> {
   const importers = options.importers ?? [];
   const time = new StoryTime();
   const steps: ReplayedStep[] = [];
+  const activities = new Map<string, string>();
   const title =
     (options.folder || new URL(options.source.iri).pathname)
       .replace(/\/$/, "")
@@ -120,8 +127,19 @@ export async function replay(options: ReplayOptions): Promise<Replayed> {
     time.begin(step.when);
     const writes = new StepWrites();
     try {
-      await perform({ ...options, importers, step, time, writes });
-      steps.push({ step, wrote: await writes.commit(options.pod) });
+      const activity = await perform({
+        ...options,
+        importers,
+        step,
+        time,
+        writes,
+        activities,
+      });
+      const wrote = await writes.commit(options.pod);
+      if (typeof activity === "string") {
+        activities.set(step.name, activity);
+        steps.push({ step, wrote, activity });
+      } else steps.push({ step, wrote });
     } catch (error) {
       if (!(error instanceof Refusal)) throw error;
       steps.push({ step, wrote: [], refused: error.message });
