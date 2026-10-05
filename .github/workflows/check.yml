@@ -36,3 +36,17 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      - name: Build a pod and its site
+        run: |
+          if [ -f ../cascade-vocabulary/conformance/alex-rivera/story.json ]; then
+            npm run build:example alex-rivera
+          else
+            npm run build:story-site -- runtime/vectors/matching/story.json --through entry
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pod-and-site
+          path: |
+            cascade-runtime-js/build/*/pod
+            cascade-runtime-js/build/*/site
+          if-no-files-found: error
