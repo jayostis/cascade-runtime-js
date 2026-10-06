@@ -1,0 +1,20 @@
+{
+  "name": "cascade-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "pod:load": "node pod.mjs load",
+    "pod:new": "node pod.mjs new",
+    "pod:reset": "node pod.mjs reset",
+    "ask": "node ask.mjs",
+    "console": "node console.mjs"
+  },
+  "dependencies": {
+    "cascade-runtime": "0.0.0"
+  }
+}
