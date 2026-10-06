@@ -45,11 +45,10 @@ export async function siblingsOf(root: string): Promise<string[]> {
     if (
       top !== undefined &&
       common !== undefined &&
-      common !== join(top, ".git") &&
       (await realpath(top)) === (await realpath(root)) &&
       basename(common) === ".git"
     )
-      return [dirname(root), dirname(dirname(common))];
+      return [...new Set([dirname(root), dirname(dirname(common))])];
   } catch {
     // Not a git checkout: its siblings are beside it.
   }
