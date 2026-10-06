@@ -6,10 +6,10 @@ import {
   featuresOf,
   readFeature,
 } from "./features.js";
-import type { Files } from "./files.js";
+import { type Files, folderOf, MemoryFiles } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
-import { kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
+import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
 import {
   type Compiled,
@@ -93,36 +93,27 @@ function grow(root: Node, steps: readonly Step[]): Node[] {
   const path: Node[] = [];
   let node = root;
   for (const [index, step] of steps.entries()) {
+    // A shared step is performed under its position, which every example that shares it gives it alike.
     const { happened } = step;
-    const key = JSON.stringify([
-      step.when,
-      happened.kind === "matcher" && happened.takes !== undefined
-        ? {
-            ...happened,
-            takes: steps
-              .slice(0, index)
-              .findLastIndex(({ name }) => name === happened.takes),
-          }
-        : happened,
-    ]);
+    const positioned: Step = {
+      name: String(index),
+      when: step.when,
+      happened:
+        happened.kind === "matcher" && happened.takes !== undefined
+          ? {
+              ...happened,
+              takes: String(
+                steps
+                  .slice(0, index)
+                  .findLastIndex(({ name }) => name === happened.takes),
+              ),
+            }
+          : happened,
+    };
+    const key = JSON.stringify([positioned.when, positioned.happened]);
     let child = node.children.get(key);
     if (child === undefined) {
-      // A shared step is performed under its position, which every example that shares it gives it alike.
-      child = newNode({
-        name: String(index),
-        when: step.when,
-        happened:
-          happened.kind === "matcher" && happened.takes !== undefined
-            ? {
-                ...happened,
-                takes: String(
-                  steps
-                    .slice(0, index)
-                    .findLastIndex(({ name }) => name === happened.takes),
-                ),
-              }
-            : happened,
-      });
+      child = newNode(positioned);
       node.children.set(key, child);
     }
     path.push(child);
@@ -155,10 +146,22 @@ function named(
     ...done,
     step: { ...done.step, name: names[index] ?? done.step.name },
   }));
+  const { stopped } = replayed;
   return {
     ...replayed,
     story: { ...replayed.story, steps: steps.map(({ step }) => step) },
     steps,
+    ...(stopped === undefined
+      ? {}
+      : {
+          stopped: {
+            ...stopped,
+            step: {
+              ...stopped.step,
+              name: names[steps.length] ?? stopped.step.name,
+            },
+          },
+        }),
   };
 }
 
@@ -443,6 +446,8 @@ export async function runConformance(
         outcome: "failed",
         why: failure(error),
       });
+      if (isKitStory(path) && options.shapes !== undefined)
+        kitFailed(folderOf(path), failure(error));
       continue;
     }
     let people: Map<string, Person>;
@@ -461,6 +466,8 @@ export async function runConformance(
           outcome: "failed",
           why: `${ruleOf(example)}${failure(error)}`,
         });
+      if (isKitStory(feature.path) && options.shapes !== undefined)
+        kitFailed(feature.folder, failure(error));
       continue;
     }
     const compiling = run.compiling(people);
@@ -488,10 +495,7 @@ export async function runConformance(
         });
       }
     }
-    if (
-      feature.folder.startsWith("conformance/") &&
-      options.shapes !== undefined
-    ) {
+    if (isKitStory(feature.path) && options.shapes !== undefined) {
       try {
         const story = await run.compile(feature.background, compiling);
         const person = story.person as Person;
@@ -571,7 +575,7 @@ export async function storyOf(
   layout: Layout,
 ): Promise<{ readonly person: Person; readonly steps: readonly Step[] }> {
   const run = new Run(
-    { vocabulary, newStore, newPod: () => vocabulary },
+    { vocabulary, newStore, newPod: (address) => new MemoryFiles(address) },
     layout,
   );
   const people = await peopleOf(

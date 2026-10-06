@@ -606,13 +606,17 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
   return assertions;
 }
 
-/** Every kit of the vocabulary: each folder under `conformance/` that holds a feature file. */
+const KIT_STORY = /^conformance\/([^/]+)\/([^/]+)\.feature$/;
+
+/** Whether the feature file is a kit's: `conformance/<name>/<name>.feature`, whose Background is the kit's story. */
+export function isKitStory(path: string): boolean {
+  const found = KIT_STORY.exec(path);
+  return found !== null && found[1] === found[2];
+}
+
+/** Every kit of the vocabulary: each folder `conformance/<name>/` holding `<name>.feature`. */
 export async function kitsOf(vocabulary: Files): Promise<string[]> {
-  return [
-    ...new Set(
-      (await vocabulary.list("conformance"))
-        .filter((path) => /^conformance\/[^/]+\/[^/]+\.feature$/.test(path))
-        .map((path) => path.slice(0, path.lastIndexOf("/"))),
-    ),
-  ];
+  return (await vocabulary.list("conformance"))
+    .filter(isKitStory)
+    .map((path) => path.slice(0, path.lastIndexOf("/")));
 }

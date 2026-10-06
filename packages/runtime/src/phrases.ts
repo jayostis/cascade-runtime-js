@@ -185,9 +185,13 @@ function happen(
 }
 
 function stepsOf(reading: Reading, said: string): ReplayedStep[] {
-  if (said === "that step") {
-    const last = reading.replayed.steps.at(-1);
-    if (last === undefined) throw new Error("the example took no step");
+  if (said === "that step" || said === "that import" || said === "that entry") {
+    const kind = said.slice("that ".length);
+    const last = reading.replayed.steps.findLast(
+      ({ step }) => kind === "step" || step.happened.kind === kind,
+    );
+    if (last === undefined)
+      throw new Error(`the example took no step that is ${said}`);
     return [last];
   }
   return [...said.matchAll(/"([^"]*)"/g)].map(([, name]) =>
@@ -479,16 +483,6 @@ async function comparedJudgments(
 ${names}`;
 }
 
-/** A literal or a thing a table cell gives, as the field it is in reads it. */
-async function valueOf(
-  reading: Reading,
-  cell: string,
-  isThing: boolean,
-): Promise<string> {
-  if (isThing) return reading.words.shown(await reading.words.thing(cell));
-  return cell;
-}
-
 function literalShown(term: Term): string {
   if (term.termType !== "Literal") return `<${term.value}>`;
   return term.datatype.value === `${XSD}date` ||
@@ -530,11 +524,9 @@ async function expectedValue(
   field: string,
   thing: boolean,
 ): Promise<string> {
-  if (field === "type" || !thing) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(cell) || field === "type") return cell;
-    return cell;
-  }
-  return valueOf(reading, cell, true);
+  return field === "type" || !thing
+    ? cell
+    : reading.words.shown(await reading.words.thing(cell));
 }
 
 const reasonWords = (reason: string): string =>
@@ -588,7 +580,7 @@ async function queryAnswers(
   ))
     prefixes[prefix ?? ""] = base ?? "";
   const declared = new Set(
-    [...query.matchAll(/PREFIXs+([w-]*):/gi)].map(([, prefix]) => prefix),
+    [...query.matchAll(/PREFIX\s+([\w-]*):/gi)].map(([, prefix]) => prefix),
   );
   const found = await reading.store.select(
     Object.entries(PREFIXES)
@@ -1019,14 +1011,14 @@ const DEFINITIONS: [string, Act][] = [
               : await reading.store.select(
                   `SELECT ?s ?p ?o WHERE { ${graphs(files)} GRAPH ?file { ?s ?p ?o } }`,
                 );
-          const written = new Graph(
+          const heldGraph = new Graph(
             triples.map(
               (row) =>
                 [row.get("s"), row.get("p"), row.get("o")] as unknown as Triple,
             ),
           );
           const judgments = new Set(
-            written
+            heldGraph
               .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
               .map(({ value }) => value),
           );
@@ -1043,13 +1035,13 @@ const DEFINITIONS: [string, Act][] = [
             `${PROV}used`,
           ]);
           for (const name of judgments) {
-            for (const [, p, o] of written.match(iri(name)))
+            for (const [, p, o] of heldGraph.match(iri(name)))
               if (
                 !allowed.has(p.value) ||
                 (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
               )
-                failures.push(`${name} also states ${p.value} ${written_(o)}`);
-            const at = written
+                failures.push(`${name} also states ${p.value} ${written(o)}`);
+            const at = heldGraph
               .objects(iri(name), `${PROV}generatedAtTime`)
               .map(({ value }) => shownTime(value));
             if (at.length !== 1 || at[0] !== shownTime(step.step.when))
@@ -1059,15 +1051,15 @@ const DEFINITIONS: [string, Act][] = [
             if (!found.some((judged) => judged.name === name))
               failures.push(`${name} is no Same the matcher made`);
           }
-          for (const subject of written
+          for (const subject of heldGraph
             .subjects(`${RDF}type`)
-            .concat(written.triples.map(([s]) => s))) {
+            .concat(heldGraph.triples.map(([s]) => s))) {
             const value = subject.value;
             if (judgments.has(value)) continue;
             if (value === THE_MATCHER) {
-              const described = written
+              const described = heldGraph
                 .match(iri(THE_MATCHER))
-                .map(([, p, o]) => `${p.value} ${written_(o)}`)
+                .map(([, p, o]) => `${p.value} ${written(o)}`)
                 .sort();
               const wanted = [
                 `${RDF}type <${PROV}SoftwareAgent>`,
@@ -1080,12 +1072,12 @@ const DEFINITIONS: [string, Act][] = [
               continue;
             }
             const isReference =
-              written.match(
+              heldGraph.match(
                 iri(value),
                 `${RDF}type`,
                 iri(`${REC}ReferenceSeries`),
               ).length > 0 ||
-              written.match(iri(value), `${PROV}specializationOf`).length > 0;
+              heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
             if (!isReference) failures.push(`the step also wrote of ${value}`);
           }
           const problem = await comparedJudgments(
@@ -1413,10 +1405,6 @@ async function entryInputs(
       : [`its entry started ${held[1]}, not ${start ?? ""}`]),
   ];
   return wrong.length === 0 ? undefined : wrong.join("; ");
-}
-
-function written_(term: Term): string {
-  return written(term);
 }
 
 function entryShows(

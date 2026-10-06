@@ -74,6 +74,10 @@ export async function peopleOf(
     const [name] = graph.objects(subject, `${FOAF}name`);
     const [address] = graph.objects(subject, `${PIM}storage`);
     if (name === undefined || address === undefined) continue;
+    if (!address.value.endsWith("/"))
+      throw new Error(
+        `${path} gives ${name.value} the pod ${address.value}, which does not end in a slash`,
+      );
     people.set(name.value, {
       name: name.value,
       subject: subject.value,
