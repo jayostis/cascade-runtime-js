@@ -35,7 +35,7 @@ function multiset(rows: readonly Record<string, unknown>[]): string[] {
     .sort();
 }
 
-test("the developer story prints Alex's active allergies as the replay through J1 answers them", async () => {
+test("the developer story prints Alex's active allergies as the replay through J1 answers them", async (t) => {
   const vocabulary =
     APP === undefined
       ? await localVocabulary(ROOT)
@@ -103,6 +103,7 @@ test("the developer story prints Alex's active allergies as the replay through J
       for (const [column, value] of Object.entries(row))
         assert.equal(typeof value, "string", `?${column} is no string`);
     }
+    for (const row of printed) t.diagnostic(JSON.stringify(row));
     assert.deepEqual(multiset(printed), multiset(expected));
   } finally {
     await rm(APP === undefined ? folder : join(APP, "alex-pod"), {

@@ -200,24 +200,6 @@ jobs:
             console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
           '
 
-      - name: "Once, to be removed: the run cannot reach outside the folder"
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: |
-          beside="$RUNNER_TEMP/beside"
-          mkdir -p "$beside"
-          cp -r "$RUNNER_TEMP/app" "$beside/app"
-          git clone --quiet --depth 1 https://github.com/jayostis/cascade-vocabulary "$beside/cascade-vocabulary"
-          cd "$beside/app"
-          rm -rf alex-pod node_modules/cascade-runtime/components/cascade-vocabulary
-          for flags in "--permission --allow-fs-read=$beside/app --allow-fs-write=$beside/app --allow-worker" ""; do
-            echo "node $flags allergies.mjs export"
-            if node $flags allergies.mjs export 2> "$RUNNER_TEMP/stderr.txt"; then
-              echo "the script ran without the vocabulary"
-              exit 1
-            fi
-            grep "the package carries no cascade-vocabulary" "$RUNNER_TEMP/stderr.txt"
-          done
-
   # The tested tarball, as the pre-release build-<commit>, never the latest.
   release:
     name: release
