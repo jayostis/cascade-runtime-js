@@ -1,7 +1,5 @@
 # Building an app on a Cascade pod
 
-<!-- PREVIEW.md -->
-
 ## What this is
 
 A pod holds one person's health records, from their hospitals and their own

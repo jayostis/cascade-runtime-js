@@ -71,8 +71,6 @@ ${ingredients(built.configured)}</footer>
 
 /** What the front page gives a newcomer to start with. */
 export interface Start {
-  /** The preview notice, a sentence a line. */
-  readonly notice: string;
   /** The line that makes an app. */
   readonly command: string;
   /** What a person hands a coding agent. */
@@ -93,11 +91,10 @@ export function viewTitles(layout: Layout): string[] {
 }
 
 function frontPage(
-  { notice, command, prompt, kinds, example }: Start,
+  { command, prompt, kinds, example }: Start,
   { title }: Example,
   tried: boolean,
 ): string {
-  const lines = notice.trim().split(/\r?\n/);
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -108,7 +105,6 @@ function frontPage(
 </head>
 <body>
 <main>
-<p class="notice">${lines.map((line, index) => markup`${index === 0 ? "" : markup`<br>\n`}${line}`)}</p>
 <h1>Build an app on a Cascade pod</h1>
 <p class="prose">A pod holds one person's health records as files, and an app answers questions from it. Here is one:
 <a href="${example}/index.html">${title}</a>'s site shows what the pod holds and the questions that read it, and

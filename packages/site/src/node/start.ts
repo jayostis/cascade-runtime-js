@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Layout } from "@cascade-runtime/runtime";
@@ -35,10 +34,6 @@ export async function startOf(
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(root);
   const address = tarballAddress(commit);
   return {
-    notice: await readFile(
-      join(root, "packages", "cascade-runtime", "PREVIEW.md"),
-      "utf8",
-    ),
     command: startLine(address, APP),
     prompt: agentPrompt(APP, address),
     kinds: viewTitles(layout),

@@ -50,14 +50,6 @@ function dependencyOn(address: string): string {
     : `file:${absolute(address).replaceAll("\\", "/")}`;
 }
 
-function quoted(notice: string): string {
-  return notice
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join("\n>\n");
-}
-
 async function recordedAddress(): Promise<string | undefined> {
   const manifest = JSON.parse(
     await readFile(join(PACKAGE, "package.json"), "utf8"),
@@ -87,7 +79,6 @@ async function copyStarter(
   target: string,
   name: string,
   dependency: string,
-  notice: string,
 ): Promise<void> {
   await cp(STARTER, target, { recursive: true });
   await rename(join(target, "gitignore"), join(target, ".gitignore"));
@@ -100,14 +91,8 @@ async function copyStarter(
     manifest.dependencies["cascade-runtime"] = dependency;
     return `${JSON.stringify(manifest, null, 2)}\n`;
   });
-  await rewrite(
-    join(target, "README.md"),
-    (text) =>
-      `${quoted(notice)}\n\n${text.replace(/^# .*$/m, () => `# ${name}`)}`,
-  );
-  await rewrite(
-    join(target, "AGENTS.md"),
-    (text) => `${quoted(notice)}\n\n${text}`,
+  await rewrite(join(target, "README.md"), (text) =>
+    text.replace(/^# .*$/m, () => `# ${name}`),
   );
 }
 
@@ -153,9 +138,8 @@ export async function create(
     );
 
   const name = basename(target);
-  const notice = await readFile(join(PACKAGE, "PREVIEW.md"), "utf8");
   try {
-    await copyStarter(target, name, dependencyOn(address), notice);
+    await copyStarter(target, name, dependencyOn(address));
   } catch (error) {
     terminal.err(
       `the starter could not be copied into ${target}, which may be left half made: ${(error as Error).message}
@@ -183,8 +167,6 @@ export async function create(
       "To have a coding agent build your app, give it this, with your idea in its last line:",
       "",
       agentPrompt(folder, address),
-      "",
-      quoted(notice),
       "",
     ].join("\n"),
   );
