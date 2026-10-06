@@ -289,7 +289,7 @@ async function npmPack(): Promise<{ filename: string; integrity: string }> {
   const { stdout } = await promisify(execFile)(
     process.execPath,
     [npm, ...args],
-    { cwd: STAGE },
+    { cwd: STAGE, maxBuffer: 64 * 1024 * 1024 },
   );
   const [packed] = JSON.parse(stdout) as {
     filename: string;
