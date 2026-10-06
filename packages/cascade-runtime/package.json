@@ -19,7 +19,10 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "browser": "./dist/browser/index.js",
+      "browser": {
+        "types": "./dist/src/browser/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "default": "./dist/src/index.js"
     },
     "./fixtures": {
@@ -35,7 +38,8 @@
     "guide/AGENTS.md"
   ],
   "dependencies": {
-    "@cascade-runtime/runtime": "0.0.0"
+    "@cascade-runtime/runtime": "0.0.0",
+    "oxigraph": "0.5.11"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

@@ -34,7 +34,9 @@ export class IndexedDbFiles implements Files {
   static async open(name: string, iri: string): Promise<IndexedDbFiles> {
     const opening = indexedDB.open(name, 1);
     opening.onupgradeneeded = () => opening.result.createObjectStore(STORE);
-    return new IndexedDbFiles(await settled(opening), iri);
+    const database = await settled(opening);
+    database.onversionchange = () => database.close();
+    return new IndexedDbFiles(database, iri);
   }
 
   /** Deletes the database, once every connection to it is closed. */
@@ -43,8 +45,6 @@ export class IndexedDbFiles implements Files {
     await new Promise<void>((resolve, reject) => {
       deleting.onsuccess = () => resolve();
       deleting.onerror = () => reject(deleting.error);
-      deleting.onblocked = () =>
-        reject(new Error(`the database ${name} is still open`));
     });
   }
 

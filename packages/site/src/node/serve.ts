@@ -24,9 +24,15 @@ export async function servePages(folder: string, port = 0): Promise<Served> {
   const root = absolute(folder);
   const server = createServer((request, response) => {
     void (async () => {
-      const path = decodeURIComponent(
-        new URL(request.url ?? "/", "http://127.0.0.1").pathname,
-      );
+      let path: string;
+      try {
+        path = decodeURIComponent(
+          new URL(request.url ?? "/", "http://127.0.0.1").pathname,
+        );
+      } catch {
+        response.writeHead(400).end();
+        return;
+      }
       const file = join(root, path.endsWith("/") ? `${path}index.html` : path);
       if (file !== root && !file.startsWith(root + sep)) {
         response.writeHead(403).end();

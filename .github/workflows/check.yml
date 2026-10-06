@@ -90,7 +90,6 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      # In the same job as the pages, so the pods and the vocabulary try/ reads are resolved at the heads moments apart.
       - name: Pack the package, whose browser build try/ serves
         run: npm run build:package
         env:

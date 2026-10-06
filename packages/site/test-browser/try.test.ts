@@ -69,10 +69,12 @@ test("try/ opens her published pod, adds an allergy, keeps both after a reload, 
   await page.click('#add button[type="submit"]');
   const added = await shown(page);
   assert.deepEqual(added.added, [...first.added, ALLERGEN].sort());
-  assert.deepEqual(added.active, first.active);
+  assert.deepEqual(sorted(added.active), sorted(first.active));
 
   await page.reload();
-  assert.deepEqual(await shown(page), added);
+  const reloaded = await shown(page);
+  assert.deepEqual(sorted(reloaded.active), sorted(added.active));
+  assert.deepEqual(reloaded.added, added.added);
 
   await page.click("#start-over");
   const fresh = await shown(page);

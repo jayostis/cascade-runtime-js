@@ -85,7 +85,9 @@ function deleted(name) {
     const deleting = indexedDB.deleteDatabase(name);
     deleting.onsuccess = () => resolve();
     deleting.onerror = () => reject(deleting.error);
-    deleting.onblocked = () => reject(new Error(`${name} is still open`));
+    deleting.onblocked = () => {
+      status.textContent = "Close this page in your other tabs to start over.";
+    };
   });
 }
 
@@ -123,6 +125,7 @@ form.addEventListener("submit", (event) => {
 startOver.addEventListener("click", () =>
   busy("Copying the published pod again…", async () => {
     await pod?.close();
+    pod = undefined;
     await deleted(`cascade-pod:${NAME}`);
     pod = await openPod(NAME, { from: FROM });
     await show();
