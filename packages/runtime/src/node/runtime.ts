@@ -25,10 +25,10 @@ export async function readConfig(root: string): Promise<RuntimeConfig> {
 }
 
 /**
- * The folder the runtime at `root` finds sibling checkouts in: the one holding its checkout, or, for a linked
- * worktree, the one holding the checkout it was made from.
+ * The folders the runtime at `root` finds sibling checkouts in: the one holding its checkout, and, for a linked
+ * worktree, after it the one holding the checkout it was made from.
  */
-export async function siblingsOf(root: string): Promise<string> {
+export async function siblingsOf(root: string): Promise<string[]> {
   try {
     const [top, common] = (
       await git(
@@ -48,11 +48,11 @@ export async function siblingsOf(root: string): Promise<string> {
       (await realpath(top)) === (await realpath(root)) &&
       basename(common) === ".git"
     )
-      return dirname(dirname(common));
+      return [...new Set([dirname(root), dirname(dirname(common))])];
   } catch {
     // Not a git checkout: its siblings are beside it.
   }
-  return dirname(root);
+  return [dirname(root)];
 }
 
 /** The vocabulary the runtime at `root` uses, resolved beside it, from the folders handed in, or from its pin. */

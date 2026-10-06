@@ -31,7 +31,9 @@ test("a sibling's build is used only when made from the checkout as it is; other
   const root = await mkdtemp(join(tmpdir(), "bridge-package-"));
   const found = async (siblings: string) => {
     const lines: string[] = [];
-    const used = await findBridgePackage(siblings, (line) => lines.push(line));
+    const used = await findBridgePackage([siblings], (line) =>
+      lines.push(line),
+    );
     return { ...used, said: lines.join("\n") };
   };
 

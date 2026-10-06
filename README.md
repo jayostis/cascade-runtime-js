@@ -82,9 +82,9 @@ commit, and names the importers and the lens. For each, first match wins:
 2. a folder handed in with `--folder`, as the compatibility tooling does;
 3. otherwise the pin, fetched at its commit into `build/cache/`.
 
-A worktree's siblings are those of the checkout it was made from. An adapter
-is given every file of its folder, and the vocabulary at the commit the adapter
-pins, resolved the same way.
+A worktree looks for each sibling beside itself first, then beside the checkout
+it was made from. An adapter is given every file of its folder, and the
+vocabulary at the commit the adapter pins, resolved the same way.
 
 The Bridge is pinned in `package.json`, by its release's URL and the lockfile's
 integrity hash. A sibling `cascade-bridge-rs` checkout's `package/dist` is used
