@@ -27,6 +27,9 @@ section.query { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1px solid var(-
 .answer { overflow-x: auto; }
 .lenses { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; }
 .also { font-size: .8rem; }
+.notice { margin: 1rem 0; padding: .75rem 1rem; border-left: 4px solid #b5651d; background: #fdf4ea; max-width: 46rem; }
+pre.command { background: var(--panel); padding: .75rem; border-radius: 4px; max-width: 46rem; white-space: pre-wrap;
+              overflow-wrap: anywhere; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; vertical-align: top; padding: .3rem .6rem; border-bottom: 1px solid var(--line);
          overflow-wrap: anywhere; }

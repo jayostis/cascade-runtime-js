@@ -18,6 +18,10 @@ export interface Block {
 
 export interface Page {
   readonly h1: string;
+  /** The page's text, its tags left out. */
+  readonly said: string;
+  /** The text of each preformatted block, as it is. */
+  readonly code: readonly string[];
   readonly hrefs: readonly string[];
   readonly ids: ReadonlySet<string>;
   readonly blocks: readonly Block[];
@@ -70,15 +74,21 @@ function block(markup: string): Block {
           ),
         ),
     ),
-    said: unescaped(markup.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")),
+    said: said(markup),
     hrefs: all(/href="([^"]*)"/g, markup),
   };
+}
+
+function said(markup: string): string {
+  return unescaped(markup.replace(/<[^>]*>/g, " ").replace(/\s+/g, " "));
 }
 
 /** A page of the site as a reader sees it: its heading, its links and anchors, and each block on it. */
 export function readPage(markup: string): Page {
   return {
     h1: first(/<h1>([\s\S]*?)<\/h1>/, markup),
+    said: said(markup),
+    code: all(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: all(/href="([^"]*)"/g, markup),
     ids: new Set(all(/\sid="([^"]*)"/g, markup)),
     blocks: markup
