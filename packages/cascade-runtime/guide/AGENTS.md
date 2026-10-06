@@ -321,11 +321,11 @@ const [theirs] = await search("hypertension");
 if (mine && theirs) {
   const pair = [...inEntry(mine.entry), ...inEntry(theirs.entry)];
   const joined = await judged(same(pod, pair, "the same blood pressure"));
-  await judged(retraction(pod, joined, "my doctor says these are different"));
+  if (joined) await judged(retraction(pod, joined, "my doctor disagrees"));
 }
 
-const [wrong] = inEntry((await search("back pain"))[0]?.entry);
-if (wrong) await judged(erroneous(pod, wrong, "I never had this"));
+const neverHad = inEntry((await search("back pain"))[0]?.entry);
+for (const one of neverHad) await judged(erroneous(pod, one, "never had it"));
 ```
 
 `sameInstead` confirms the matcher's join, so it rests on the person. A
@@ -396,5 +396,5 @@ await alex.close();
 
 - The matcher's tables are alpha test tables: a real export gets few joins.
 - Alex's story runs into 2027: a record entered today orders before hers.
-- Node 22 only, the pod in a folder or in memory; each call rebuilds its views.
+- Node 22 or later, the pod in a folder or in memory; each call rebuilds its views.
 - No server, sign-in or sharing, and not for a real person's records.
