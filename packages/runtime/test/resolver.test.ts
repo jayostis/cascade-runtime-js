@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { before, test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { packed } from "../src/node/components.js";
 import { checkout, git } from "../src/node/git.js";
 import { type ResolverOptions, resolve } from "../src/node/resolver.js";
 import { siblingsOf } from "../src/node/runtime.js";
@@ -151,4 +152,37 @@ test("a worktree finds each sibling beside itself, and otherwise beside the chec
     await realpath(join(checkouts, "cascade-adapter")),
   );
   assert.deepEqual(await siblingsOf(main), [dirname(main)]);
+});
+
+test("a package's components resolve to the trees it carries at the commits it recorded, and a repository it does not carry is refused, named", async () => {
+  const carried = join(root, "package", "components");
+  const commit = "9990bdf0000000000000000000000000000000aa";
+  const vocabulary = "https://example.org/cascade-vocabulary";
+  await mkdir(join(carried, "cascade-vocabulary", commit), { recursive: true });
+  await writeFile(
+    join(carried, "cascade-runtime.json"),
+    JSON.stringify({
+      vocabulary: { repository: vocabulary },
+      adapters: [{ repository: "https://example.org/cascade-adapter" }],
+      importers: [],
+      lens: "everyday",
+    }),
+  );
+  await writeFile(
+    join(carried, "packed.json"),
+    JSON.stringify({
+      components: [{ repository: vocabulary, commit }],
+      bridge: { release: "build-0", commit: "0" },
+    }),
+  );
+  const components = await packed(carried);
+  const found = await components.resolve(components.config.vocabulary);
+  assert.equal(found.source, "packed");
+  assert.equal(found.folder, join(carried, "cascade-vocabulary", commit));
+  assert.equal(found.commit, commit);
+  assert.equal(found.iri, `${vocabulary}/tree/${commit}/`);
+  await assert.rejects(
+    components.resolve({ repository: "https://example.org/cascade-adapter" }),
+    /cascade-adapter/,
+  );
 });

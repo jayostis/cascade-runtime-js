@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { after, before, test } from "node:test";
 import {
   type BridgeDocument,
@@ -16,14 +15,12 @@ import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
 import { REC } from "../src/step.js";
-import { readConfig, siblingsOf } from "../src/node/runtime.js";
+import { checkouts, type Components } from "../src/node/components.js";
 import {
   compiledBridge,
-  findBridgePackage,
   inWorker,
   loadConfiguredAdapters,
 } from "../src/node/wasm.js";
-import type { ResolverOptions } from "../src/node/resolver.js";
 import {
   blank,
   type BlankNode,
@@ -48,7 +45,7 @@ const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 let compiled: CompiledBridge;
-let options: ResolverOptions;
+let components: Components;
 const bridges: WasmBridge[] = [];
 const adapters: LoadedAdapter[] = [];
 let inWorkerAdapter: LoadedAdapter;
@@ -57,8 +54,11 @@ let envelope: string;
 async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
   const bridge = new WasmBridge(spawn);
   bridges.push(bridge);
-  const { adapters: configured } = await readConfig(ROOT);
-  const [fhir] = await loadConfiguredAdapters(bridge, configured, options);
+  const [fhir] = await loadConfiguredAdapters(
+    bridge,
+    components.config.adapters,
+    components,
+  );
   if (fhir === undefined)
     throw new Error("cascade-runtime.json names no adapter");
   adapters.push(fhir.adapter);
@@ -67,9 +67,8 @@ async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
 }
 
 before(async () => {
-  const siblingsIn = await siblingsOf(ROOT);
-  options = { siblingsIn, cache: join(ROOT, "build", "cache") };
-  compiled = await compiledBridge((await findBridgePackage(options)).folder);
+  components = await checkouts(ROOT);
+  compiled = await compiledBridge((await components.bridge()).folder);
   inWorkerAdapter = await loaded(inWorker(compiled));
 });
 

@@ -4,7 +4,7 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src", "test"],
+  "include": ["src", "test", "pack"],
   "references": [
     {
       "path": "../runtime"

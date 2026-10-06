@@ -4,7 +4,7 @@ import { dirname, join, resolve as absolute } from "node:path";
 import { type Followed, repositoryName, treeIri } from "../config.js";
 import { checkout, git } from "./git.js";
 
-export type Source = "sibling" | "folder" | "fetched";
+export type Source = "sibling" | "folder" | "fetched" | "packed";
 
 export interface Resolved {
   readonly component: Followed;
@@ -50,6 +50,8 @@ export function said(resolved: Resolved): string {
   const name = repositoryName(resolved.component);
   if (resolved.source === "fetched")
     return `${name}: ${resolved.branch} at ${short(resolved.version)}, fetched into ${resolved.folder}`;
+  if (resolved.source === "packed")
+    return `${name}: the package's ${short(resolved.version)}, in ${resolved.folder}`;
   const where =
     resolved.source === "sibling"
       ? "the sibling checkout"

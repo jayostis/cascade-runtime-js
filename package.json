@@ -25,6 +25,7 @@
     "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
     "build:example": "tsc -b && node packages/site/dist/src/node/cli.js build-example",
     "build:pages": "tsc -b && node packages/site/dist/src/node/cli.js build-pages",
+    "build:package": "tsc -b && node packages/cascade-runtime/dist/pack/pack.js",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
     "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js"
   },

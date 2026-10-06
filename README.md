@@ -61,14 +61,32 @@ and print her active allergies. It is the developer story of
 acceptance test. `packages/runtime/test/developer-story.test.ts` runs it and
 compares its rows with the replay of her story through `J1`.
 
+## The package
+
+`packages/cascade-runtime` is the package an app installs. It is not on npm:
+
+```sh
+npm run build:package    # build/cascade-runtime-0.0.0-commit-<commit>.tgz and build/release-notes.md
+```
+
+The tarball holds the package's code, the workspaces under it and the Bridge's
+build, bundled, and the vocabulary's and each adapter's files at the head of
+each default branch when it ran, which `components/packed.json` records.
+Installed, it reads nothing outside its own folder. CI installs it into an empty
+folder on Linux, Windows and macOS and runs the developer story there, and every
+merge to `main` attaches it to the pre-release `build-<commit>` under
+[releases](https://github.com/jayostis/cascade-runtime-js/releases), from which
+an app installs it by its URL.
+
 ## Packages
 
-| Package                 | What it does                                                   |
-| ----------------------- | -------------------------------------------------------------- |
-| `packages/runtime`      | files arrivals, names things, runs the matcher and the views   |
-| `packages/apple-health` | the importer: the documents in an export and the facts of each |
-| `packages/site`         | the site that documents a pod and its queries                  |
-| `packages/graphdb`      | puts a pod and its derived state in GraphDB, and asks it       |
+| Package                    | What it does                                                   |
+| -------------------------- | -------------------------------------------------------------- |
+| `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
+| `packages/apple-health`    | the importer: the documents in an export and the facts of each |
+| `packages/site`            | the site that documents a pod and its queries                  |
+| `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
+| `packages/cascade-runtime` | what an app imports, and the build that packs it               |
 
 The core in `packages/runtime/src` knows four interfaces and nothing behind
 them:

@@ -11,12 +11,8 @@ import { type Loaded, loadAdapter } from "../load-adapter.js";
 import { type CompiledBridge, type Spawn, Waiting } from "../wasm-bridge.js";
 import { BUILD, latestBuild, releasedBuild } from "./bridge-build.js";
 import { FolderFiles } from "./folder-files.js";
-import {
-  type Resolved,
-  type ResolverOptions,
-  resolve,
-  siblingIn,
-} from "./resolver.js";
+import type { Components } from "./components.js";
+import { type Resolved, type ResolverOptions, siblingIn } from "./resolver.js";
 
 const PACKAGE = "cascade-bridge-rs";
 /** The repository whose default branch the Bridge's build is followed on. */
@@ -26,7 +22,7 @@ const GLUE = "cascade_bridge.js";
 const WASM = "cascade_bridge_bg.wasm";
 
 export interface BridgePackageFound {
-  readonly source: "sibling" | "folder" | "release";
+  readonly source: "sibling" | "folder" | "release" | "packed";
   /** The folder holding the built package. */
   readonly folder: string;
   /** The commit it was built from. */
@@ -107,17 +103,36 @@ export async function findBridgePackage(
     );
     return { source, folder: found.dist, ...found.built };
   }
-  const cache = join(options.cache, PACKAGE);
-  const commit = await latestBuild(BRIDGE_REPOSITORY, cache);
-  const folder = await releasedBuild(BRIDGE_REPOSITORY, commit, cache);
+  const found = await releasedBridgePackage(options.cache);
+  options.log?.(
+    `${PACKAGE}: the release ${found.release}, the newest build of its default branch${passedOver.map((why) => `; ${why}`).join("")}`,
+  );
+  return found;
+}
+
+/** The release cascade-bridge-rs published for the newest commit of its default branch that has one, downloaded under `cache`. */
+export async function releasedBridgePackage(
+  cache: string,
+): Promise<BridgePackageFound> {
+  const at = join(cache, PACKAGE);
+  const commit = await latestBuild(BRIDGE_REPOSITORY, at);
+  const folder = await releasedBuild(BRIDGE_REPOSITORY, commit, at);
   const built = await builtFrom(folder);
   if (built === undefined)
     throw new Error(`${folder} records no commit it was built from`);
-  const release = `${BUILD}${commit}`;
-  options.log?.(
-    `${PACKAGE}: the release ${release}, the newest build of its default branch${passedOver.map((why) => `; ${why}`).join("")}`,
-  );
-  return { source: "release", folder, ...built, release };
+  return { source: "release", folder, ...built, release: `${BUILD}${commit}` };
+}
+
+/** The Bridge's package a package carries in `nodeModules`, as the build copied it from the release named. */
+export async function bundledBridge(
+  nodeModules: string,
+  release: string,
+): Promise<BridgePackageFound> {
+  const folder = join(nodeModules, PACKAGE);
+  const built = await builtFrom(folder);
+  if (built === undefined || !existsSync(join(folder, WASM)))
+    throw new Error(`the package carries no ${PACKAGE} in ${nodeModules}`);
+  return { source: "packed", folder, ...built, release };
 }
 
 const compiled = new Map<string, Promise<CompiledBridge>>();
@@ -182,12 +197,12 @@ export interface ConfiguredAdapter extends Loaded {
 export async function loadConfiguredAdapters(
   bridge: Bridge,
   adapters: readonly Followed[],
-  options: ResolverOptions,
+  components: Components,
 ): Promise<ConfiguredAdapter[]> {
   const loaded: ConfiguredAdapter[] = [];
   try {
     for (const followed of adapters)
-      loaded.push(await loadConfigured(bridge, followed, options));
+      loaded.push(await loadConfigured(bridge, followed, components));
   } catch (error) {
     await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
     throw error;
@@ -198,9 +213,9 @@ export async function loadConfiguredAdapters(
 async function loadConfigured(
   bridge: Bridge,
   followed: Followed,
-  options: ResolverOptions,
+  components: Components,
 ): Promise<ConfiguredAdapter> {
-  const resolved = await resolve(followed, options);
+  const resolved = await components.resolve(followed);
   const adapter = await loadAdapter(
     bridge,
     {
@@ -213,16 +228,7 @@ async function loadConfigured(
         throw new Error(
           `${repositoryName(followed)} names vocabulary files but no vocabulary repository`,
         );
-      const vocabulary = await resolve(
-        { repository },
-        {
-          ...options,
-          log: (line) =>
-            options.log?.(
-              `the vocabulary ${repositoryName(followed)} reads, ${line}`,
-            ),
-        },
-      );
+      const vocabulary = await components.resolve({ repository });
       return {
         iri: vocabulary.iri,
         files: new FolderFiles(vocabulary.folder, vocabulary.iri),
