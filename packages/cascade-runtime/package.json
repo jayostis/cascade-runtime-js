@@ -18,11 +18,11 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
       "browser": {
         "types": "./dist/src/browser/index.d.ts",
         "default": "./dist/browser/index.js"
       },
+      "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
     "./fixtures": {
