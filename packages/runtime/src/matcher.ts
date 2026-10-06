@@ -233,7 +233,12 @@ const derivations = new WeakMap<Files, Promise<Derivations>>();
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, in
  * the default graph of a new store.
  */
-async function view(context: StepContext): Promise<Store> {
+export async function matcherView(
+  context: Pick<
+    StepContext,
+    "layout" | "pod" | "address" | "vocabulary" | "newStore"
+  >,
+): Promise<Store> {
   const { layout, pod, address } = context;
   let read = derivations.get(context.vocabulary);
   if (read === undefined) {
@@ -276,7 +281,7 @@ class Matcher {
     context: StepContext,
     references: References,
   ): Promise<Matcher> {
-    const store = await view(context);
+    const store = await matcherView(context);
     const named = grouped(
       await column(
         store,

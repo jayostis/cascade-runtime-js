@@ -24,7 +24,22 @@ export interface AppleHealthDocument {
   facts(importStarted: string): Uint8Array;
 }
 
+export interface AppleHealthIndexEntry {
+  readonly source?: string;
+  readonly server?: string;
+  readonly kind?: string;
+  readonly received?: string;
+}
+
 type Entry = Readonly<Record<string, string>>;
+
+/** The word `rec:kind` gives each type of clinical record that is a record. */
+const KINDS: ReadonlyMap<string, string> = new Map([
+  ["HKClinicalTypeIdentifierAllergyRecord", "Allergy"],
+  ["HKClinicalTypeIdentifierConditionRecord", "Condition"],
+  ["HKClinicalTypeIdentifierImmunizationRecord", "Immunization"],
+  ["HKClinicalTypeIdentifierProcedureRecord", "Procedure"],
+]);
 
 function quoted(text: string): string {
   return `"${text
@@ -86,6 +101,11 @@ function clinicalRecords(exportXml: Uint8Array): Map<string, Entry> {
   return entries;
 }
 
+/** The server base URL of a record's source, cut from its `sourceURL`. */
+function server(sourceUrl: string): string {
+  return sourceUrl.split("/").slice(0, -2).join("/");
+}
+
 /** What the export says of one document and of its import, as Turtle, for the Bridge to state. */
 function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
   const document = `<${BRIDGE}thisDocument>`;
@@ -109,7 +129,7 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
     const sourceUrl = attribute(entry, "sourceURL");
     attribution(attribute(entry, "sourceName"), "author", 1);
     lines.push(
-      `${document} <${BRIDGE}serverBaseUrl> ${quoted(sourceUrl.split("/").slice(0, -2).join("/"))} .`,
+      `${document} <${BRIDGE}serverBaseUrl> ${quoted(server(sourceUrl))} .`,
       `${document} <${PAV}retrievedFrom> ${iriRef(sourceUrl)} .`,
       `${document} <${PAV}retrievedOn> ${dateTime(utc(attribute(entry, "receivedDate")))} .`,
       `${document} <${BRIDGE}sourceFormatVersion> ${quoted(attribute(entry, "fhirVersion"))} .`,
@@ -145,5 +165,22 @@ export const appleHealthExport = {
       });
     }
     return documents;
+  },
+
+  async index(
+    files: ExportFiles,
+    folder: string,
+  ): Promise<AppleHealthIndexEntry[] | undefined> {
+    const exportXml = await files.read(`${folder}/export.xml`);
+    if (exportXml === undefined) return undefined;
+    return [...clinicalRecords(exportXml).values()].map((entry) => {
+      const { sourceName, sourceURL, type, receivedDate } = entry;
+      return {
+        ...(sourceName === undefined ? {} : { source: sourceName }),
+        ...(sourceURL === undefined ? {} : { server: server(sourceURL) }),
+        ...(type === undefined ? {} : { kind: KINDS.get(type) ?? type }),
+        ...(receivedDate === undefined ? {} : { received: utc(receivedDate) }),
+      };
+    });
   },
 };

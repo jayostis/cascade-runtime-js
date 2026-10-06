@@ -25,7 +25,7 @@ import {
   written,
   XSD,
 } from "./rdf.js";
-import { REC, Refusal, type StepContext } from "./step.js";
+import { REC, Refusal, type StepContext, type StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -436,13 +436,7 @@ export async function fileExport(
 /** An entry: its session's description, and each draft as a record (N2) with its version and first revision (A12). */
 export async function fileEntry(
   context: StepContext,
-  entry: {
-    readonly bytes: Uint8Array;
-    /** The IRI its Turtle is parsed against. */
-    readonly base: string;
-    /** What its refusals and errors call it. */
-    readonly name: string;
-  },
+  entry: StepFile,
 ): Promise<string> {
   let graph = await parseGraph(entry.bytes, entry.base, context.newStore);
   const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));

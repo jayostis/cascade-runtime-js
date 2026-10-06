@@ -1,17 +1,12 @@
-import { fileEntry, fileExport } from "./arrivals.js";
-import { fileCreation, fileJudgment, fileReference } from "./filings.js";
-import { runMatcher } from "./matcher.js";
+import { CorePod, type Performed } from "./core-pod.js";
 import type { Derive } from "./build.js";
-import { built } from "./dataset.js";
 import { StoryTime } from "./ids.js";
-import { type Files, MemoryFiles } from "./files.js";
-import type { ExportDocument, Importer } from "./importer.js";
+import type { Files } from "./files.js";
+import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
-import { StepWrites } from "./pod.js";
-import { ntriples } from "./rdf.js";
 import { References } from "./references.js";
 import { SavedOutputBridge } from "./saved-output-bridge.js";
-import { Refusal, type StepContext } from "./step.js";
+import type { StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
 import type { Step, StepKind, Story } from "./story.js";
 
@@ -20,70 +15,46 @@ interface StorySide {
   /** The story's own files, which its steps name relative to `folder`. */
   readonly source: Files;
   readonly folder: string;
-  /** The importers `cascade-runtime.json` names, in its order. */
-  readonly importers: readonly Importer[];
   /** The import or entry session each step before this one made, by the step's name. */
   readonly activities: ReadonlyMap<string, string>;
+  /** The time the pod's steps are performed at, which a performer begins at its step's. */
+  readonly time: StoryTime;
 }
 
-/** Performs a story's step by calling a step with its inputs; resolves to the import or entry session it made, if it made one. */
+/** Performs a story's step by turning it into its inputs and calling the pod's step of its kind. */
 export type Perform = (
-  context: StepContext,
+  pod: CorePod,
   step: Step,
   story: StorySide,
-) => Promise<string | void>;
+) => Promise<Performed>;
 
 export type Performers = Partial<Record<StepKind, Perform>>;
 
 /** The path of a file a step names, within the story's own files. */
-function inStory(story: StorySide, path: string): string {
-  return story.folder === "" ? path : `${story.folder}/${path}`;
+function inStory(folder: string, path: string): string {
+  return folder === "" ? path : `${folder}/${path}`;
 }
 
 /** A file a step names, named in messages by its path in the story. */
-async function storyFile(
-  story: StorySide,
-  path: string,
-): Promise<{ bytes: Uint8Array; base: string; name: string }> {
-  const at = inStory(story, path);
+async function storyFile(story: StorySide, path: string): Promise<StepFile> {
+  const at = inStory(story.folder, path);
   const bytes = await story.source.read(at);
   if (bytes === undefined)
     throw new Error(`${story.source.iri}${at} does not exist`);
   return { bytes, base: story.source.iri + at, name: path };
 }
 
-/** The tables in the person's folder's `references/`. */
-function storyReferences(
-  context: StepContext,
-  story: StorySide,
-): Promise<References> {
-  return References.of(
-    story.source,
-    inStory(story, "references/"),
-    context.newStore,
-  );
+/** The step happened when the story says. */
+function begun(story: StorySide, step: Step): void {
+  story.time.begin(step.when);
 }
 
 /** An import: its export's documents, converted by the Bridge output the story saved for them. */
-const importSaved: Perform = async (context, { happened }, story) => {
+const importSaved: Perform = async (pod, step, story) => {
+  const { happened } = step;
   if (happened.kind !== "import") throw new Error("the step is no import");
-  const folder = inStory(story, happened.export);
-  const converted = inStory(story, happened.converted);
-  let documents: readonly ExportDocument[] | undefined;
-  for (const importer of story.importers) {
-    try {
-      documents = await importer.documents(story.source, folder);
-    } catch (error) {
-      throw new Refusal(
-        `${folder}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (documents !== undefined) break;
-  }
-  if (documents === undefined)
-    throw new Error(
-      `no importer of ${story.importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
-    );
+  const folder = inStory(story.folder, happened.export);
+  const converted = inStory(story.folder, happened.converted);
   const bridge = await SavedOutputBridge.of(story.source, {
     export: folder,
     converted,
@@ -93,42 +64,52 @@ const importSaved: Perform = async (context, { happened }, story) => {
     files: new Map(),
   });
   try {
-    return await fileExport(context, documents, [adapter]);
+    begun(story, step);
+    return await pod.import(story.source, folder, [adapter]);
   } finally {
     await adapter.free();
   }
 };
 
 export const PERFORMERS: Performers = {
-  creation: fileCreation,
-  import: importSaved,
-  entry: async (context, { happened }, story) => {
-    if (happened.kind !== "entry") throw new Error("the step is no entry");
-    return fileEntry(context, await storyFile(story, happened.file));
+  creation: (pod, step, story) => {
+    begun(story, step);
+    return pod.create();
   },
-  judgment: async (context, { happened }, story) => {
+  import: importSaved,
+  entry: async (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "entry") throw new Error("the step is no entry");
+    const entry = await storyFile(story, happened.file);
+    begun(story, step);
+    return pod.enter(entry);
+  },
+  judgment: async (pod, step, story) => {
+    const { happened } = step;
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
-    await fileJudgment(context, await storyFile(story, happened.file));
+    const judgment = await storyFile(story, happened.file);
+    begun(story, step);
+    return pod.judge(judgment);
   },
-  reference: async (context, { happened }, story) => {
+  reference: (pod, step, story) => {
+    const { happened } = step;
     if (happened.kind !== "reference")
       throw new Error("the step is no reference");
-    await fileReference(
-      context,
-      await storyReferences(context, story),
-      happened.name,
-    );
+    begun(story, step);
+    return pod.reference(happened.name);
   },
-  matcher: async (context, { happened }, story) => {
+  matcher: (pod, step, story) => {
+    const { happened } = step;
     if (happened.kind !== "matcher")
       throw new Error("the step is no matcher run");
-    const references = await storyReferences(context, story);
-    if (happened.takes === undefined) return runMatcher(context, references);
+    begun(story, step);
+    if (happened.takes === undefined) return pod.match();
     const activity = story.activities.get(happened.takes);
     // A step that made no import or entry session began no records, so there are none to take.
-    if (activity !== undefined)
-      return runMatcher(context, references, activity);
+    return activity === undefined
+      ? Promise.resolve({ wrote: [] })
+      : pod.match(activity);
   },
 };
 
@@ -193,39 +174,54 @@ export async function titleOf(source: Files, folder: string): Promise<string> {
   );
 }
 
-/** A copy of the pod's files, in memory, to replay one way while the pod is replayed another. */
-async function copied(pod: Files): Promise<Files> {
-  const copy = new MemoryFiles(pod.iri);
-  for (const path of await pod.list("")) {
-    const bytes = await pod.read(path);
-    if (bytes !== undefined) await copy.write(path, bytes);
-  }
-  return copy;
+/** Where a fork of a replay stands. */
+interface Standing {
+  readonly pod: CorePod;
+  readonly time: StoryTime;
+  readonly steps: readonly ReplayedStep[];
+  readonly stopped: Replayed["stopped"];
 }
 
 /** A story being replayed step by step, which can be forked to replay two ways from where it stands. */
 export class Replay {
   readonly #options: ReplayOptions;
-  readonly #pod: Files;
+  readonly #pod: CorePod;
+  readonly #time: StoryTime;
   readonly #steps: ReplayedStep[];
   readonly #activities: Map<string, string>;
   #stopped: Replayed["stopped"];
 
-  constructor(
-    options: ReplayOptions,
-    pod: Files = options.pod,
-    steps: readonly ReplayedStep[] = [],
-    stopped?: Replayed["stopped"],
-  ) {
+  constructor(options: ReplayOptions, standing?: Standing) {
     this.#options = options;
-    this.#pod = pod;
+    this.#time = standing?.time ?? new StoryTime();
+    this.#pod =
+      standing?.pod ??
+      new CorePod({
+        pod: options.pod,
+        address: options.story.address,
+        subject: options.story.subject,
+        title: options.title,
+        vocabulary: options.vocabulary,
+        layout: options.layout,
+        newStore: options.newStore,
+        time: this.#time,
+        importers: options.importers ?? [],
+        references: () =>
+          References.of(
+            options.source,
+            inStory(options.folder, "references/"),
+            options.newStore,
+          ),
+        ...(options.build === undefined ? {} : { build: options.build }),
+      });
+    const steps = standing?.steps ?? [];
     this.#steps = [...steps];
     this.#activities = new Map(
       steps.flatMap(({ step, activity }) =>
         activity === undefined ? [] : [[step.name, activity] as const],
       ),
     );
-    this.#stopped = stopped;
+    this.#stopped = standing?.stopped;
   }
 
   /** Performs the step, unless the replay stopped at one it could not perform. */
@@ -240,68 +236,40 @@ export class Replay {
       };
       return;
     }
-    const time = new StoryTime();
-    time.begin(step.when);
-    const writes = new StepWrites();
+    let performed: Performed;
     try {
-      const activity = await perform(
-        {
-          address: options.story.address,
-          subject: options.story.subject,
-          pod: this.#pod,
-          time,
-          writes,
-          newStore: options.newStore,
-          layout: options.layout,
-          vocabulary: options.vocabulary,
-        },
-        step,
-        {
-          source: options.source,
-          folder: options.folder,
-          importers: options.importers ?? [],
-          activities: this.#activities,
-        },
-      );
-      const wrote = await writes.commit(this.#pod);
-      if (typeof activity === "string") {
-        this.#activities.set(step.name, activity);
-        this.#steps.push({ step, wrote, activity });
-      } else this.#steps.push({ step, wrote });
+      performed = await perform(this.#pod, step, {
+        source: options.source,
+        folder: options.folder,
+        activities: this.#activities,
+        time: this.#time,
+      });
     } catch (error) {
-      if (!(error instanceof Refusal)) {
-        this.#stopped = {
-          step,
-          why: error instanceof Error ? error.message : String(error),
-        };
-        return;
-      }
-      this.#steps.push({ step, wrote: [], refused: error.message });
+      this.#stopped = {
+        step,
+        why: error instanceof Error ? error.message : String(error),
+      };
+      return;
     }
-    if (options.build !== undefined) {
-      const files = await built(
-        this.#pod,
-        options.layout,
-        options.story.address,
-        this.#steps,
-        options.title,
-        options.build.lens,
-        options.newStore(),
-        options.build.derive,
-      );
-      for (const [path, triples] of files)
-        await this.#pod.write(path, ntriples(triples));
-    }
+    const { wrote, refused, activity } = performed;
+    if (activity !== undefined) this.#activities.set(step.name, activity);
+    this.#steps.push({
+      step,
+      wrote,
+      ...(refused === undefined ? {} : { refused }),
+      ...(activity === undefined ? {} : { activity }),
+    });
   }
 
   /** A replay that stands where this one does, over a copy of its pod. */
   async fork(): Promise<Replay> {
-    return new Replay(
-      this.#options,
-      await copied(this.#pod),
-      this.#steps,
-      this.#stopped,
-    );
+    const time = new StoryTime();
+    return new Replay(this.#options, {
+      pod: await this.#pod.fork(time),
+      time,
+      steps: this.#steps,
+      stopped: this.#stopped,
+    });
   }
 
   /** The replay as it stands. Every file a step wrote stays as it was written, so a later step never changes it. */
@@ -313,7 +281,7 @@ export class Replay {
       },
       title: this.#options.title,
       layout: this.#options.layout,
-      pod: this.#pod,
+      pod: this.#pod.files,
       steps: [...this.#steps],
       ...(this.#stopped === undefined ? {} : { stopped: this.#stopped }),
     };
