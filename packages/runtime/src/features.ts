@@ -4,11 +4,7 @@ import {
   GherkinClassicTokenMatcher,
   Parser,
 } from "@cucumber/gherkin";
-import {
-  type GherkinDocument,
-  IdGenerator,
-  type PickleStep,
-} from "@cucumber/messages";
+import { type GherkinDocument, IdGenerator } from "@cucumber/messages";
 import { type Files, folderOf, readText } from "./files.js";
 
 /** One step as an example states it: its text, and the table or the text beneath it. */
@@ -38,23 +34,21 @@ export interface Feature {
   readonly background: readonly StatedStep[];
 }
 
-export function slug(name: string): string {
+function slug(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 }
 
-function stated(step: {
-  readonly text: string;
-  readonly argument?: PickleStep["argument"];
-}): StatedStep {
-  const table = step.argument?.dataTable?.rows.map((row) =>
-    row.cells.map((cell) => cell.value),
-  );
-  const docString = step.argument?.docString?.content;
+function stated(
+  text: string,
+  rows?: readonly { readonly cells: readonly { readonly value: string }[] }[],
+  docString?: string,
+): StatedStep {
+  const table = rows?.map((row) => row.cells.map((cell) => cell.value));
   return {
-    text: step.text,
+    text,
     ...(table === undefined ? {} : { table }),
     ...(docString === undefined ? {} : { docString }),
   };
@@ -91,7 +85,13 @@ export async function readFeature(
       ...(rule === undefined ? {} : { rule }),
       name: pickle.name,
       iri: `${uri}#${slug(pickle.name)}`,
-      steps: pickle.steps.map(stated),
+      steps: pickle.steps.map((step) =>
+        stated(
+          step.text,
+          step.argument?.dataTable?.rows,
+          step.argument?.docString?.content,
+        ),
+      ),
     };
   });
   const repeated = examples.find(
@@ -108,23 +108,7 @@ export async function readFeature(
     folder: folderOf(path),
     examples,
     background: background.map((step) =>
-      stated({
-        text: step.text,
-        argument: {
-          ...(step.dataTable === undefined
-            ? {}
-            : {
-                dataTable: {
-                  rows: step.dataTable.rows.map((row) => ({
-                    cells: row.cells.map(({ value }) => ({ value })),
-                  })),
-                },
-              }),
-          ...(step.docString === undefined
-            ? {}
-            : { docString: { content: step.docString.content } }),
-        },
-      }),
+      stated(step.text, step.dataTable?.rows, step.docString?.content),
     ),
   };
 }
