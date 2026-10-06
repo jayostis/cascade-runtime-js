@@ -385,7 +385,7 @@ for (const { entry, needs } of await pod.ask("entry/What needs review")) {
 }
 await pod.close();
 
-import { replayKit } from "cascade-runtime/fixtures";
+import { replayKit } from "cascade-runtime/fixtures"; // in a test only
 await replayKit("alex-rivera", "pods/alex-rivera", { through: "J1" });
 const her = await openPod("pods/alex-rivera");
 await showPerson(await her.ask("pod/My active allergies", { lens: "export" }));

@@ -166,8 +166,8 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   export's index and writes nothing" in
   `packages/cascade-runtime/test/pod.test.ts`.) Meridian's counts include Sam's
   allergy and two conditions, which the look cannot tell apart. The app calls
-  `import` only after her yes; on a no it writes nothing, and an `import`
-  without the claim is a wrong turn.
+  `import` only after her yes and writes nothing on a no: an `import` on a no,
+  claimed or not, is a wrong turn.
 - **W2.** With her yes, six records arrive, all from Larkspur's new server: two
   allergies, two conditions, an immunization, a procedure (E12 in "each import
   and entry writes the scenario's numbers of records, versions, revisions,
