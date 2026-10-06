@@ -238,14 +238,22 @@ test("an entry is filed and matched by default; a person's judgment records the 
   );
   assert.deepEqual(await filesIn(folder), held);
 
-  const twice = await pod.enter(
-    a1.replace(
-      "<urn:cascade:output-0>",
-      "<urn:cascade:another> a prov:Activity .\n<urn:cascade:output-0>",
-    ),
-  );
-  assert.ok(twice.refused);
-  assert.deepEqual(twice.wrote, []);
+  for (const [entry, names] of [
+    [
+      a1.replace(
+        "<urn:cascade:output-0>",
+        "<urn:cascade:another> a prov:Activity .\n<urn:cascade:output-0>",
+      ),
+      "activities",
+    ],
+    [a1.replace('"Peanuts"', '""'), "allergen"],
+    [a1.replace('"high"', '"extreme"'), "criticality"],
+  ] as const) {
+    const refused = await pod.enter(entry);
+    assert.match(refused.refused ?? "", new RegExp(names), names);
+    assert.deepEqual(refused.wrote, [], names);
+  }
+  assert.deepEqual(await filesIn(folder), held);
 });
 
 test("ask runs a question by name or the caller's own query, under the lens named", async () => {
