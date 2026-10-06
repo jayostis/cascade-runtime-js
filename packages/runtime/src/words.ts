@@ -230,23 +230,6 @@ export class Words {
     return found[0] as Replayed["steps"][number];
   }
 
-  async #draft(position: string, entry: string | undefined): Promise<string> {
-    const entries = this.#replayed.steps.filter(
-      ({ step, refused }) =>
-        step.happened.kind === "entry" &&
-        refused === undefined &&
-        (entry === undefined || step.name === entry),
-    );
-    if (entries.length !== 1)
-      throw new Error(
-        entry === undefined
-          ? `"draft ${position}" names a draft of one entry, and the example made ${entries.length}`
-          : `the example made no entry "${entry}"`,
-      );
-    const [{ step }] = entries as [Replayed["steps"][number]];
-    return recordName([this.#person.subject, inUtc(step.when), position]);
-  }
-
   async #handle(handle: string): Promise<string | undefined> {
     const judgment = this.#handles?.judgments?.[handle];
     if (judgment !== undefined) return judgment;
@@ -294,32 +277,33 @@ export class Words {
     return documentName(bytes);
   }
 
-  /** A record in words: a handle, `<kind> <system> <code>` or `<kind> "<name>"`, and `from <source>` where needed. */
+  /** A record in words: a handle, or its kind with its code, its name or both, and `from <source>` where needed. */
   async record(words: string): Promise<string> {
     const handled = await this.#handle(words);
     if (handled !== undefined) return this.#remember(words, handled);
     const said =
-      /^(allergy|condition|immunization|procedure) (?:(SNOMED|RxNorm|CVX) (\S+)|"([^"]*)")(?: from (?:draft (\d+)(?: of "([^"]*)")?|(\S+)))?$/.exec(
+      /^(allergy|condition|immunization|procedure)(?: (SNOMED|RxNorm|CVX) (\S+))?(?: "([^"]*)")?(?: from (\S+))?$/.exec(
         words,
       );
-    if (said === null) throw new Error(`"${words}" names no record`);
-    const [, kind, system, code, name, draft, entry, source] = said;
+    if (said === null || (said[2] === undefined && said[4] === undefined))
+      throw new Error(`"${words}" names no record`);
+    const [, kind, system, code, name, source] = said;
     const type = KINDS[kind ?? ""] ?? "";
-    const identity =
-      system !== undefined
-        ? (CODES[system] as (code: string) => string)(code ?? "")
-        : `?version ?named ${JSON.stringify(name)} FILTER (?named IN (${NAMES.map((n) => `<${n}>`).join(", ")}))`;
+    const coded =
+      system === undefined
+        ? ""
+        : `${(CODES[system] as (code: string) => string)(code ?? "")} .`;
+    const named =
+      name === undefined
+        ? ""
+        : `?version ?named ${JSON.stringify(name)} FILTER (?named IN (${NAMES.map((n) => `<${n}>`).join(", ")})) .`;
     const from =
       source === undefined
         ? ""
         : `?record <${HEALTH}sourceRecordId> ${JSON.stringify(source)} .`;
-    const only =
-      draft === undefined
-        ? ""
-        : `FILTER (?record = <${await this.#draft(draft, entry)}>)`;
     return this.#one(
       words,
-      `SELECT DISTINCT ?record WHERE { ?record a <${type}> . ?version <${PROV}specializationOf> ?record . ${identity} . ${from} ${only} }`,
+      `SELECT DISTINCT ?record WHERE { ?record a <${type}> . ?version <${PROV}specializationOf> ?record . ${coded} ${named} ${from} }`,
       "record",
     );
   }

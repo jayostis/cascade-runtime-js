@@ -5,10 +5,10 @@ import {
 } from "@cucumber/cucumber-expressions";
 import { differences } from "./compare.js";
 import type { StatedStep } from "./features.js";
-import { type Files, readText } from "./files.js";
+import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
-import { documentName } from "./names.js";
+import { documentName, inUtc } from "./names.js";
 import {
   iri,
   literal,
@@ -43,6 +43,7 @@ const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export const PREFIXES: Readonly<Record<string, string>> = {
+  npx: "http://purl.org/nanopub/x/",
   rdf: RDF,
   rdfs: RDFS,
   xsd: XSD,
@@ -80,6 +81,8 @@ export interface Compiled {
   /** The step the pod is read as it stood after, by its name, and the lens; the last step under everyday otherwise. */
   at?: { readonly index: number; readonly lens: string };
   readonly checks: { readonly text: string; readonly check: Check }[];
+  /** The query the last `When the query is:` gave, which the `it answers` steps after it read. */
+  query?: string;
   /** Whether a check reads the lens's derived state, or the files built from it. */
   derived?: boolean;
 }
@@ -257,23 +260,71 @@ const graphs = (files: readonly string[]): string =>
   `VALUES ?file { ${files.map((file) => `<${file}>`).join(" ")} }`;
 
 /** Each revision of the record: when it arrived, the number of the version it sets, and when the one it follows arrived. */
+/** A property of a version named in words: `verification status` names any property whose local name is `verificationStatus`. */
+const propertyOf = (words: string): string =>
+  words.replace(/ ([a-z])/g, (_, letter: string) => letter.toUpperCase());
+
+/** The values of a version's field, as a revision table's cell shows them. */
+async function fieldOf(
+  reading: Reading,
+  version: string,
+  field: string,
+): Promise<string> {
+  const wanted = propertyOf(field);
+  return (
+    await select(reading.store, `SELECT ?p ?o WHERE { <${version}> ?p ?o }`)
+  )
+    .filter(([p]) => localName(p ?? "") === wanted)
+    .map(([, o]) => o ?? "")
+    .sort()
+    .join(", ");
+}
+
+/** The columns of a revision table that name a version's fields. */
+const fieldsOf = (stated: StatedStep, fixed: readonly string[]): string[] =>
+  (stated.table?.[0] ?? [])
+    .map((cell) => cell.trim())
+    .filter((column) => !fixed.includes(column));
+
+const expectedFields = (
+  row: Record<string, string>,
+  fields: readonly string[],
+): string =>
+  fields
+    .map((field) =>
+      (row[field] ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value !== "")
+        .sort()
+        .join(", "),
+    )
+    .map((cell) => ` | ${cell}`)
+    .join("");
+
+/** Each revision of the record: when it arrived, the number of the version it sets, the version's fields, and when the one it follows arrived. */
 async function revisionsOf(
   reading: Reading,
   record: string,
+  fields: readonly string[] = [],
 ): Promise<string[]> {
   const versions = await reading.words.versions(record);
-  return (
-    await select(
-      reading.store,
-      `SELECT ?revision ?version ?at ?after WHERE {
+  const rows: string[] = [];
+  for (const [, version, at, after] of await select(
+    reading.store,
+    `SELECT ?revision ?version ?at ?after WHERE {
         ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at .
         OPTIONAL { ?revision <${PROV}wasRevisionOf> ?previous . ?previous <${PROV}generatedAtTime> ?after }
       }`,
-    )
-  ).map(
-    ([, version, at, after]) =>
-      `${shownTime(at ?? "")} | ${versions.indexOf(version ?? "") + 1} | ${shownTime(after ?? "")}`,
-  );
+  )) {
+    let shown = "";
+    for (const field of fields)
+      shown += ` | ${await fieldOf(reading, version ?? "", field)}`;
+    rows.push(
+      `${shownTime(at ?? "")} | ${versions.indexOf(version ?? "") + 1}${shown} | ${shownTime(after ?? "")}`,
+    );
+  }
+  return rows;
 }
 
 const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
@@ -340,6 +391,13 @@ function judgmentRow(
           return [...judged.at].join(", ");
         case "used":
           return sorted(judged.used);
+        case "inputs":
+          return [
+            THE_MATCHER,
+            judged.justification,
+            ...[...judged.members].sort(),
+            ...[...judged.used].sort(),
+          ].join(", ");
         case "name":
           return judged.name;
         default:
@@ -382,7 +440,44 @@ async function expectedJudgmentRow(
   return cells.join(" | ");
 }
 
-const JUDGMENT_COLUMNS = ["justification", "members", "at", "used", "name"];
+const JUDGMENT_COLUMNS = [
+  "justification",
+  "members",
+  "at",
+  "used",
+  "inputs",
+  "name",
+];
+
+/**
+ * How the judgments found differ from the table's: first everything but the names, the inputs among it, then the names,
+ * so a wrong input and a wrong hash each fail with their own message.
+ */
+async function comparedJudgments(
+  reading: Reading,
+  rows: readonly Record<string, string>[],
+  found: readonly Judged[],
+  columns: readonly string[],
+): Promise<string | undefined> {
+  const unnamed = columns.filter((column) => column !== "name");
+  const before = compared(
+    await Promise.all(
+      rows.map((row) => expectedJudgmentRow(reading, row, unnamed)),
+    ),
+    found.map((judged) => judgmentRow(reading, judged, unnamed)),
+  );
+  if (before !== undefined || unnamed.length === columns.length) return before;
+  const names = compared(
+    await Promise.all(
+      rows.map((row) => expectedJudgmentRow(reading, row, columns)),
+    ),
+    found.map((judged) => judgmentRow(reading, judged, columns)),
+  );
+  return names === undefined
+    ? undefined
+    : `each judgment is as the table says but its name:
+${names}`;
+}
 
 /** A literal or a thing a table cell gives, as the field it is in reads it. */
 async function valueOf(
@@ -483,18 +578,27 @@ function cellTerm(
 
 async function queryAnswers(
   reading: Reading,
-  file: string,
+  query: string,
   stated: StatedStep,
   none: boolean,
 ): Promise<string | undefined> {
-  const path = `${reading.folder}/${file}`;
-  const query = await readText(reading.vocabulary, path);
   const prefixes: Record<string, string> = { ...PREFIXES };
   for (const [, prefix, base] of query.matchAll(
     /PREFIX\s+([\w-]*):\s*<([^>]*)>/gi,
   ))
     prefixes[prefix ?? ""] = base ?? "";
-  const found = await reading.store.select(query);
+  const declared = new Set(
+    [...query.matchAll(/PREFIXs+([w-]*):/gi)].map(([, prefix]) => prefix),
+  );
+  const found = await reading.store.select(
+    Object.entries(PREFIXES)
+      .filter(([prefix]) => !declared.has(prefix))
+      .map(
+        ([prefix, base]) => `PREFIX ${prefix}: <${base}>
+`,
+      )
+      .join("") + query,
+  );
   const [header = [], ...rows] = none
     ? [found.variables]
     : (stated.table ?? []);
@@ -727,7 +831,9 @@ const DEFINITIONS: [string, Act][] = [
   [
     "{record} has these revisions:",
     (compiled, [words], stated) => {
-      const rows = table(stated, ["arrived", "version", "after"]);
+      const fixed = ["arrived", "version", "after"];
+      const fields = fieldsOf(stated, fixed);
+      const rows = table(stated, [...fixed, ...fields]);
       compiled.checks.push({
         text: stated.text,
         check: async (reading) => {
@@ -735,9 +841,9 @@ const DEFINITIONS: [string, Act][] = [
           return compared(
             rows.map(
               (row) =>
-                `${cellTime(row.arrived ?? "")} | ${row.version ?? ""} | ${cellTime(row.after ?? "")}`,
+                `${cellTime(row.arrived ?? "")} | ${row.version ?? ""}${expectedFields(row, fields)} | ${cellTime(row.after ?? "")}`,
             ),
-            await revisionsOf(reading, record),
+            await revisionsOf(reading, record, fields),
           );
         },
       });
@@ -746,7 +852,9 @@ const DEFINITIONS: [string, Act][] = [
   [
     "the records have these revisions:",
     (compiled, _args, stated) => {
-      const rows = table(stated, ["record", "arrived", "version", "after"]);
+      const fixed = ["record", "arrived", "version", "after"];
+      const fields = fieldsOf(stated, fixed);
+      const rows = table(stated, [...fixed, ...fields]);
       compiled.checks.push({
         text: stated.text,
         check: async (reading) => {
@@ -755,14 +863,14 @@ const DEFINITIONS: [string, Act][] = [
           for (const words of new Set(rows.map((row) => row.record ?? ""))) {
             const record = await reading.words.record(words);
             found.push(
-              ...(await revisionsOf(reading, record)).map(
+              ...(await revisionsOf(reading, record, fields)).map(
                 (row) => `${words} | ${row}`,
               ),
             );
           }
           for (const row of rows)
             expected.push(
-              `${row.record ?? ""} | ${cellTime(row.arrived ?? "")} | ${row.version ?? ""} | ${cellTime(row.after ?? "")}`,
+              `${row.record ?? ""} | ${cellTime(row.arrived ?? "")} | ${row.version ?? ""}${expectedFields(row, fields)} | ${cellTime(row.after ?? "")}`,
             );
           return compared(expected, found);
         },
@@ -863,13 +971,7 @@ const DEFINITIONS: [string, Act][] = [
           const found = (await matcherJudgments(reading.store)).filter(
             (judged) => [...judged.members].some((member) => held.has(member)),
           );
-          const expected = await Promise.all(
-            rows.map((row) => expectedJudgmentRow(reading, row, columns)),
-          );
-          return compared(
-            expected,
-            found.map((judged) => judgmentRow(reading, judged, columns)),
-          );
+          return comparedJudgments(reading, rows, found, columns);
         },
       });
     },
@@ -986,11 +1088,11 @@ const DEFINITIONS: [string, Act][] = [
               written.match(iri(value), `${PROV}specializationOf`).length > 0;
             if (!isReference) failures.push(`the step also wrote of ${value}`);
           }
-          const problem = compared(
-            await Promise.all(
-              rows.map((row) => expectedJudgmentRow(reading, row, columns)),
-            ),
-            found.map((judged) => judgmentRow(reading, judged, columns)),
+          const problem = await comparedJudgments(
+            reading,
+            rows,
+            found,
+            columns,
           );
           if (problem !== undefined) failures.push(problem);
           return failures.length === 0
@@ -1203,12 +1305,23 @@ const DEFINITIONS: [string, Act][] = [
   [
     "these are named:",
     (compiled, _args, stated) => {
-      const rows = table(stated, ["thing", "name"]);
+      const rows = table(stated, ["thing", "inputs", "name"]);
       compiled.checks.push({
         text: stated.text,
         check: async (reading) => {
           const failures: string[] = [];
           for (const row of rows) {
+            if (row.inputs !== undefined && row.inputs !== "") {
+              const why = await entryInputs(
+                reading,
+                row.thing ?? "",
+                row.inputs,
+              );
+              if (why !== undefined) {
+                failures.push(`${row.thing ?? ""}: ${why}`);
+                continue;
+              }
+            }
             const name = await reading.words.thing(row.thing ?? "");
             if (name !== row.name)
               failures.push(
@@ -1239,25 +1352,68 @@ const DEFINITIONS: [string, Act][] = [
       ),
   ],
   [
-    "the query {name} answers:",
-    (compiled, [file], stated) => {
+    "the query is:",
+    (compiled, _args, stated) => {
+      if (stated.docString === undefined)
+        throw new Error("the step gives no query beneath it");
+      compiled.query = stated.docString;
+    },
+  ],
+  [
+    "it answers:",
+    (compiled, _args, stated) => {
+      const { query } = compiled;
+      if (query === undefined)
+        throw new Error("no query comes before this step");
       compiled.checks.push({
         text: stated.text,
-        check: (reading) =>
-          queryAnswers(reading, file as string, stated, false),
+        check: (reading) => queryAnswers(reading, query, stated, false),
       });
     },
   ],
   [
-    "the query {name} answers nothing",
-    (compiled, [file], stated) => {
+    "it answers nothing",
+    (compiled, _args, stated) => {
+      const { query } = compiled;
+      if (query === undefined)
+        throw new Error("no query comes before this step");
       compiled.checks.push({
         text: stated.text,
-        check: (reading) => queryAnswers(reading, file as string, stated, true),
+        check: (reading) => queryAnswers(reading, query, stated, true),
       });
     },
   ],
 ];
+
+/**
+ * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
+ * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ */
+async function entryInputs(
+  reading: Reading,
+  words: string,
+  inputs: string,
+): Promise<string | undefined> {
+  const [subject, start, position] = inputs.split(", ");
+  if (position === undefined || !/^\d+$/.test(position))
+    return `"${inputs}" is no subject, start and position`;
+  const record = await reading.words.record(words);
+  const [first] = await select(
+    reading.store,
+    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
+      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+  );
+  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
+  const wrong = [
+    ...(held[0] === subject
+      ? []
+      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
+    ...(held[1] === start
+      ? []
+      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
+  ];
+  return wrong.length === 0 ? undefined : wrong.join("; ");
+}
 
 function written_(term: Term): string {
   return written(term);
@@ -1382,8 +1538,8 @@ const DERIVED = new Set([
   "{records} is/are in no view",
   "these records are in no view, for these reasons:",
   "the pod neither names nor stores the document {name}",
-  "the query {name} answers:",
-  "the query {name} answers nothing",
+  "it answers:",
+  "it answers nothing",
   "the pod is read as it stood after {step}",
   "the pod is read as it stood after {step}, under the {lens} lens",
 ]);
