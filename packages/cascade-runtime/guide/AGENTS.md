@@ -23,13 +23,13 @@ only from an Apple Health export, unzipped, whose clinical records are FHIR R4.
 It never writes a pod's files, and reads them only through `ask`. It never
 parses Turtle: it asks a question. It never names a thing: it uses the
 templates' placeholders and IRIs that `ask` or a call returned. It never
-imports an export the person has not said is theirs. It opens a folder once,
-awaits each call, and passes no address. A result with `refused` is the rules
-turning the person's data down: nothing was written; show them the reason. A
-rejected promise is the app's mistake: an unknown question or lens, a query
-that is no `SELECT`, Turtle that is not one judgment, a member that names no
-record, a folder holding files but no pod, a call after `close`. Only `look`
-of a folder that is no export is the person's doing, as the flow below shows.
+imports or claims what the person has not said is theirs. It opens a folder
+once, awaits each call, and passes no address. A result with `refused` is the
+rules turning the person's data down: nothing was written; show them the
+reason. A rejected promise is the app's mistake: an unknown question or lens,
+a query that is no `SELECT`, Turtle that is not one judgment, a member that
+names no record, a folder holding files but no pod, a call after `close`. Only
+`look` of a folder that is no export is the person's doing, caught below.
 
 ## The starter
 
@@ -82,14 +82,14 @@ async function recordsBy(question, by) {
     rows.filter((row) => row[by] === key).map((row) => row.record);
 }
 
-async function bringIn(exportFolder, options = { aboutSubject: true }) {
-  const sources = await pod.look(exportFolder).catch(async (error) => {
+async function bringIn(folder, options = {}) {
+  const sources = await pod.look(folder).catch(async (error) => {
     if (!/^no importer .* reads /.test(error.message)) throw error;
     await showPerson("That folder is not an unzipped Apple Health export.");
   });
   if (sources === undefined) return undefined;
   if (!(await askPerson("Are these records yours?", sources))) return undefined;
-  const imported = await pod.import(exportFolder, options);
+  const imported = await pod.import(folder, { aboutSubject: true, ...options });
   if (imported.refused) await showPerson(`Not brought in: ${imported.refused}`);
   const naming = await recordsBy("profile/Which records name it", "profile");
   const claimed = imported.claimed.map(({ profile: p }) => [p, naming(p)]);
@@ -360,21 +360,21 @@ await confirmClaims(await bringIn(pickExport()));
 After the yes, `import` with `{ match: false }` only files, and without
 `aboutSubject` claims nothing, so each profile is asked about alone: claim each
 `unclaimed` one with an About, then `match` the import's `activity`; `match()`
-rechecks the pod. Then show `entry/What needs review`: here a new server's
-record joined two the person had kept apart. `replayKit`, behind
+rechecks the pod. Then show `entry/What needs review`. `replayKit`, behind
 `npm run pod:load`, is for tests, never code the app runs: it fills an empty
 folder with a kit's story, one `{ step, kind, wrote, refused }` per step, `kind`
 one of `creation`, `import`, `entry`, `judgment`, `reference` or `matcher`.
 
 ```js
-const filed = await bringIn(pickExport(), { match: false });
+const fileOnly = { aboutSubject: false, match: false };
+const filed = await bringIn(pickExport(), fileOnly);
 const naming = await recordsBy("profile/Which records name it", "profile");
 for (const profile of filed?.unclaimed ?? []) {
   const records = naming(profile);
   if (await askPerson("Are these your records?", { profile, records }))
     await judged(about(pod, profile));
 }
-if (filed) await pod.match(filed.activity);
+if (filed?.activity) await pod.match(filed.activity);
 await pod.match();
 const showing = await recordsBy("record/Which entry shows it", "entry");
 for (const { entry, needs } of await pod.ask("entry/What needs review")) {
@@ -387,9 +387,9 @@ await pod.close();
 
 import { replayKit } from "cascade-runtime/fixtures";
 await replayKit("alex-rivera", "pods/alex-rivera", { through: "J1" });
-const alex = await openPod("pods/alex-rivera");
-await showPerson(await alex.ask("pod/My active allergies"));
-await alex.close();
+const her = await openPod("pods/alex-rivera");
+await showPerson(await her.ask("pod/My active allergies", { lens: "export" }));
+await her.close();
 ```
 
 ## What it cannot do yet

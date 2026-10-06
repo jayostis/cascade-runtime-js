@@ -66,7 +66,7 @@ test("given a folder, it makes the project and names it", async () => {
   for (const line of [
     "npm run pod:load alex-rivera",
     "npm start",
-    agentPrompt(folder),
+    agentPrompt("my-app"),
   ])
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
   assert.ok(

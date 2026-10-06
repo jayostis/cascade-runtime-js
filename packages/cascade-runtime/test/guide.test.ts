@@ -225,12 +225,23 @@ test("the reading example shows each allergy as its entry states it, its records
   ))
     if (record && value && field?.endsWith("#criticality"))
       stated.set(record, (stated.get(record) ?? new Set()).add(value));
-  for (const { allergen, status, records, from } of allergies) {
+  const severity = ["unable-to-assess", "low", "high"];
+  const mostSevere = (records: readonly string[]): string | undefined =>
+    records
+      .flatMap((record) => [...(stated.get(record) ?? [])])
+      .sort((a, b) => severity.indexOf(a) - severity.indexOf(b))
+      .at(-1);
+  for (const { allergen, status, criticality, records, from } of allergies) {
     assert.equal(status, "active", `${allergen} is shown with no status`);
     assert.equal(
       from.length,
       Number(records),
       `${allergen}'s records are not beneath it`,
+    );
+    assert.equal(
+      criticality,
+      mostSevere(from),
+      `${allergen} is not shown with its entry's criticality`,
     );
   }
   assert.ok(
@@ -239,7 +250,7 @@ test("the reading example shows each allergy as its entry states it, its records
         criticality !== undefined &&
         !from.every((record) => stated.get(record)?.has(criticality)),
     ),
-    "no allergy shows the criticality its entry gives over its records",
+    "no shown allergy's records disagree on its criticality",
   );
 });
 

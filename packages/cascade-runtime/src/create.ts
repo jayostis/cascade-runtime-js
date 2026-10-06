@@ -156,7 +156,7 @@ export async function create(
       "",
       `Made ${target}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
       "",
-      agentPrompt(folder),
+      agentPrompt(name),
       "",
       "To run the app yourself instead:",
       "",

@@ -14,4 +14,4 @@ An app never:
 - writes a pod's files, or reads them but through `ask`;
 - parses Turtle: it asks a question instead;
 - names a thing: it uses the guide's placeholders and the IRIs calls return;
-- imports an export the person has not said is theirs.
+- imports or claims what the person has not said is theirs.
