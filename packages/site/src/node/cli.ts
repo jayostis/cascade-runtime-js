@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -15,8 +15,11 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import {
+  BRIDGE_REPOSITORY,
+  type BridgePackageFound,
   checkout,
   FolderFiles,
+  findBridgePackage,
   findRoot,
   type LocalVocabulary,
   localVocabulary,
@@ -133,27 +136,25 @@ function atCommit(
 
 const resolvedIngredient = (resolved: Resolved): Ingredient =>
   atCommit(
-    repositoryName(resolved.pin),
+    repositoryName(resolved.component),
     resolved.iri,
-    resolved.commit ?? resolved.pin.commit,
+    resolved.version,
     resolved.uncommitted,
   );
 
-/** The Bridge release the runtime package depends on, named by the release its tarball is downloaded from. */
-async function bridgeRelease(): Promise<Ingredient> {
-  const { dependencies } = JSON.parse(
-    await readFile(join(ROOT, "packages", "runtime", "package.json"), "utf8"),
-  ) as { dependencies: Record<string, string> };
-  const url = dependencies[BRIDGE] ?? "";
-  const release = /^(https:\/\/\S+)\/releases\/download\/([^/]+)\//.exec(url);
-  if (release === null)
-    throw new Error(`${BRIDGE} is not a release's download: ${url}`);
-  const [, repository = "", tag = ""] = release;
-  return {
-    name: BRIDGE,
-    version: tag,
-    href: `${repository}/releases/tag/${tag}`,
-  };
+/** The Bridge's build a run uses, named by its release, or by the commit a checkout's build was made from. */
+function bridgeIngredient(found: BridgePackageFound): Ingredient {
+  return found.release === undefined
+    ? {
+        name: BRIDGE,
+        version: `${found.commit.slice(0, 12)}${found.dirty ? ", with uncommitted changes" : ""}`,
+        href: treeIri({ repository: BRIDGE_REPOSITORY }, found.commit),
+      }
+    : {
+        name: BRIDGE,
+        version: found.release,
+        href: `${BRIDGE_REPOSITORY}/releases/tag/${found.release}`,
+      };
 }
 
 /** Builds every kit's pod and site with build-example, and writes them under build/pages beneath a front page. */
@@ -177,11 +178,13 @@ async function buildPages(): Promise<number> {
     });
   }
   const siblingsIn = await siblingsOf(ROOT);
+  const cache = join(ROOT, "build", "cache");
   const adapters = await Promise.all(
-    vocabulary.config.adapters.map((pin) =>
-      resolve(pin, { siblingsIn, cache: join(ROOT, "build", "cache"), log }),
+    vocabulary.config.adapters.map((followed) =>
+      resolve(followed, { siblingsIn, cache, log }),
     ),
   );
+  const bridge = await findBridgePackage({ siblingsIn, cache, log });
   const runtime = await checkout(ROOT);
   if (runtime === undefined)
     throw new Error(
@@ -198,7 +201,7 @@ async function buildPages(): Promise<number> {
       ),
       resolvedIngredient(vocabulary.resolved),
     ],
-    configured: [...adapters.map(resolvedIngredient), await bridgeRelease()],
+    configured: [...adapters.map(resolvedIngredient), bridgeIngredient(bridge)],
     at: clock.now(),
   });
   const out = join(ROOT, "build", "pages");

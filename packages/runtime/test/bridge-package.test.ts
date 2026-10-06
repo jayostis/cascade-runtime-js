@@ -3,14 +3,16 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { findBridgePackage } from "../src/node/wasm.js";
+import { pathToFileURL } from "node:url";
+import { latestBuild } from "../src/node/bridge-build.js";
+import { git } from "../src/node/git.js";
+import { BRIDGE_REPOSITORY, findBridgePackage } from "../src/node/wasm.js";
 
-async function sibling(siblings: string, sources: string): Promise<string> {
-  const checkout = join(siblings, "cascade-bridge-rs");
-  const dist = join(checkout, "package", "dist");
+async function checkout(folder: string, sources: string): Promise<string> {
+  const dist = join(folder, "package", "dist");
   await mkdir(dist, { recursive: true });
   await writeFile(
-    join(checkout, "package", "sources.mjs"),
+    join(folder, "package", "sources.mjs"),
     `process.stdout.write(${JSON.stringify(sources)});\n`,
   );
   await writeFile(join(dist, "cascade_bridge_bg.wasm"), new Uint8Array());
@@ -27,33 +29,70 @@ async function sibling(siblings: string, sources: string): Promise<string> {
   return dist;
 }
 
-test("a sibling's build is used only when made from the checkout as it is; otherwise the pin, and the run says why", async () => {
+test("a checkout's build is used only when made from the checkout as it is, a sibling's before one handed in, and the run says why one was passed over", async () => {
   const root = await mkdtemp(join(tmpdir(), "bridge-package-"));
-  const found = async (siblings: string) => {
+  const found = async (siblings: string, handedIn?: string) => {
     const lines: string[] = [];
-    const used = await findBridgePackage([siblings], (line) =>
-      lines.push(line),
-    );
+    const used = await findBridgePackage({
+      siblingsIn: [siblings],
+      ...(handedIn === undefined
+        ? {}
+        : { folders: new Map([[BRIDGE_REPOSITORY, handedIn]]) }),
+      cache: join(root, "cache"),
+      log: (line) => lines.push(line),
+    });
     return { ...used, said: lines.join("\n") };
   };
 
-  const none = await found(join(root, "none"));
-  assert.equal(none.source, "pin");
-  assert.match(none.said, /^cascade-bridge-rs: the pin, [0-9a-f]{12}$/);
-
-  const built = await sibling(join(root, "fresh"), "sha256-built");
+  const fresh = await checkout(
+    join(root, "fresh", "cascade-bridge-rs"),
+    "sha256-built",
+  );
   const used = await found(join(root, "fresh"));
   assert.deepEqual(
     [used.source, used.folder, used.commit],
-    ["sibling", built, "c".repeat(40)],
+    ["sibling", fresh, "c".repeat(40)],
   );
   assert.match(
     used.said,
     /the sibling checkout's build .* with uncommitted changes$/,
   );
 
-  await sibling(join(root, "stale"), "sha256-edited");
-  const stale = await found(join(root, "stale"));
-  assert.equal(stale.source, "pin");
-  assert.match(stale.said, /is stale/);
+  await checkout(join(root, "stale", "cascade-bridge-rs"), "sha256-edited");
+  const handed = await found(
+    join(root, "stale"),
+    join(root, "fresh", "cascade-bridge-rs"),
+  );
+  assert.deepEqual([handed.source, handed.folder], ["folder", fresh]);
+  assert.match(handed.said, /is stale/);
+});
+
+test("the newest build of main is its head's release, or while that one builds the nearest commit before it with one", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bridge-build-"));
+  const origin = join(root, "cascade-bridge-rs");
+  await mkdir(origin);
+  await git(origin, "init", "--quiet", "--initial-branch=main");
+  const commits: string[] = [];
+  for (const message of ["one", "two", "three"]) {
+    await git(
+      origin,
+      "-c",
+      "user.name=test",
+      "-c",
+      "user.email=test@example.org",
+      "commit",
+      "--quiet",
+      "--allow-empty",
+      "-m",
+      message,
+    );
+    commits.push((await git(origin, "rev-parse", "HEAD")).trim());
+  }
+  const [, two = "", three = ""] = commits;
+  await git(origin, "tag", `build-${two}`, two);
+  const repository = pathToFileURL(origin).href;
+
+  assert.equal(await latestBuild(repository, "main", join(root, "at")), two);
+  await git(origin, "tag", `build-${three}`, three);
+  assert.equal(await latestBuild(repository, "main", join(root, "at")), three);
 });

@@ -17,8 +17,10 @@ permissions:
   contents: read
 
 jobs:
+  # Before a merge and nightly: a pair of pull requests is proven together before either merges.
   compatibility:
     name: compatibility
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,9 +48,13 @@ jobs:
         run: npm run lint
       - if: ${{ !cancelled() }}
         run: npm test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Build every kit's pod and site, and the front page above them
         if: ${{ !cancelled() }}
         run: npm run build:pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -57,15 +63,32 @@ jobs:
             cascade-runtime-js/build/alex-rivera/pod
             cascade-runtime-js/build/alex-rivera/site
           if-no-files-found: error
-      - uses: actions/upload-pages-artifact@v5
-        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+  # The vocabulary, the adapters and the Bridge are each read at the head of their main.
+  build-pages:
+    name: build-pages
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
         with:
-          path: cascade-runtime-js/build/pages
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build every kit's pod and site, and the front page above them
+        run: npm run build:pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/pages
 
   pages:
     name: pages
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: compatibility
+    needs: build-pages
     runs-on: ubuntu-latest
     permissions:
       contents: read

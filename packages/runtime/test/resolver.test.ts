@@ -15,7 +15,7 @@ let repository: string;
 
 async function repositoryAt(folder: string): Promise<string> {
   await mkdir(folder, { recursive: true });
-  await git(folder, "init", "--quiet");
+  await git(folder, "init", "--quiet", "--initial-branch=main");
   await writeFile(join(folder, "rules.md"), "the rules\n");
   await git(folder, "add", ".");
   await git(
@@ -43,7 +43,7 @@ before(async () => {
 async function resolved(options: Omit<ResolverOptions, "log">) {
   const lines: string[] = [];
   const found = await resolve(
-    { repository, commit },
+    { repository, branch: "main" },
     { ...options, log: (line) => lines.push(line) },
   );
   assert.equal(lines.length, 1);
@@ -81,11 +81,25 @@ test("without a sibling, a folder handed in is used, and the run says so", async
   assert.equal(found.folder, handedIn);
   assert.match(
     said,
-    /^cascade-vocabulary: the folder handed in, .* \(the pin\) with no uncommitted changes$/,
+    /^cascade-vocabulary: the folder handed in, .*, at [0-9a-f]{12} with no uncommitted changes$/,
   );
 });
 
-test("otherwise the pin is fetched at its commit into the cache, by any number of runs at once, and the run says so", async () => {
+test("otherwise the head of main is fetched as it is now into the cache, by any number of runs at once, and the run says which commit", async () => {
+  const published = join(root, "published", "cascade-vocabulary");
+  await git(
+    published,
+    "-c",
+    "user.name=test",
+    "-c",
+    "user.email=test@example.org",
+    "commit",
+    "--quiet",
+    "--allow-empty",
+    "-m",
+    "later",
+  );
+  const head = (await git(published, "rev-parse", "HEAD")).trim();
   const options = {
     siblingsIn: [join(root, "no-siblings")],
     cache: join(root, "cache"),
@@ -97,14 +111,14 @@ test("otherwise the pin is fetched at its commit into the cache, by any number o
   ]);
   assert.equal(second.found.folder, found.folder);
   assert.equal(third.found.folder, found.folder);
-  assert.equal(found.source, "pin");
-  assert.equal(found.folder, join(root, "cache", "cascade-vocabulary", commit));
-  assert.equal(found.iri, `${repository}/tree/${commit}/`);
-  assert.equal((await checkout(found.folder))?.commit, commit);
+  assert.equal(found.source, "fetched");
+  assert.equal(found.folder, join(root, "cache", "cascade-vocabulary", head));
+  assert.equal(found.iri, `${repository}/tree/${head}/`);
+  assert.equal((await checkout(found.folder))?.commit, head);
   assert.ok(existsSync(join(found.folder, "rules.md")));
-  assert.match(
+  assert.equal(
     said,
-    /^cascade-vocabulary: the pin, [0-9a-f]{12}, fetched into /,
+    `cascade-vocabulary: main at ${head.slice(0, 12)}, fetched into ${found.folder}`,
   );
 });
 

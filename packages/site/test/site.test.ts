@@ -313,7 +313,7 @@ test("the Pages front page links each kit of the vocabulary, by its name, to a s
   );
   const vocabularyAt = {
     name: "cascade-vocabulary",
-    version: vocabulary.resolved.commit ?? vocabulary.resolved.pin.commit,
+    version: vocabulary.resolved.version,
     href: vocabulary.resolved.iri,
   };
   const tree = pagesTree(examples, {
