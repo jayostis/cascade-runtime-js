@@ -2,13 +2,20 @@
 
 ## What the Cascade Protocol is
 
-The Cascade Protocol is a way to build health apps on a person's health
-records. Each person's records are in their own pod, a single-tenant
-RDF graph kept as Turtle files. Records arrive from a source format through a
-Bridge running an adapter, and apps read a pod through standard SPARQL
-questions.
+The Cascade Protocol is an open standard for health apps that put patients in
+control of their own data.
 
-It is built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate and EARL reports.
+- **The patient holds the data.** Each person's records are in their own pod, a
+  single-tenant RDF graph kept as Turtle files. Apps come to the pod; the pod
+  does not go to the apps.
+- **Anyone with an idea can build an app.** One command starts an app on a pod,
+  and a coding agent can build on it from there.
+- **Apps interoperate.** Records arrive from each source format through a Bridge
+  running an adapter, so every app reads the same records with the same
+  standard SPARQL questions.
+
+It is open source, and built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate
+and EARL reports.
 FHIR R4 is the first source format this runtime files.
 
 Status: a draft. No compatibility is promised before a numbered v1, and no
