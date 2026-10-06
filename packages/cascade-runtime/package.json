@@ -30,7 +30,8 @@
     "dist/src",
     "README.md",
     "PREVIEW.md",
-    "starter"
+    "starter",
+    "guide/AGENTS.md"
   ],
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0"
