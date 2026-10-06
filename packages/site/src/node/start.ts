@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Start } from "../front-page.js";
+import type { Layout } from "@cascade-runtime/runtime";
+import { type Start, viewTitles } from "../front-page.js";
 
 const APP = "my-app";
 
@@ -23,13 +24,20 @@ export async function startFunctions(
   return { tarballAddress, startLine, agentPrompt };
 }
 
-/** What the quick start gives a newcomer, for the release of the commit. */
-export async function startOf(root: string, commit: string): Promise<Start> {
+/** What the front page gives a newcomer, for the release of the commit, with the example's pod. */
+export async function startOf(
+  root: string,
+  commit: string,
+  layout: Layout,
+  example: string,
+): Promise<Start> {
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(root);
   const address = tarballAddress(commit);
   return {
     command: startLine(address, APP),
     app: APP,
     prompt: agentPrompt(APP),
+    kinds: viewTitles(layout),
+    example,
   };
 }

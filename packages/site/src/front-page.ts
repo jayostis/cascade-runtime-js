@@ -71,7 +71,7 @@ ${ingredients(built.configured)}</footer>
 `.text;
 }
 
-/** What the quick start gives a newcomer to make an app. */
+/** What the front page and the quick start give a newcomer to start with. */
 export interface Start {
   /** The line that makes an app. */
   readonly command: string;
@@ -79,10 +79,6 @@ export interface Start {
   readonly app: string;
   /** What a person hands a coding agent. */
   readonly prompt: string;
-}
-
-/** What the front page shows of a pod. */
-export interface Explore {
   /** The title of each kind of record a pod holds. */
   readonly kinds: readonly string[];
   /** The folder of the example shown as a pod. */
@@ -99,7 +95,7 @@ export function viewTitles(layout: Layout): string[] {
 }
 
 function frontPage(
-  { kinds, example }: Explore,
+  { kinds, example }: Start,
   { title }: Example,
   tried: boolean,
 ): string {
@@ -190,12 +186,11 @@ export function pagesTree(
   examples: readonly Example[],
   built: BuiltFrom,
   start: Start,
-  explore: Explore,
   tried: ReadonlyMap<string, Uint8Array>,
 ): Map<string, Uint8Array> {
-  const shown = examples.find(({ folder }) => folder === explore.example);
+  const shown = examples.find(({ folder }) => folder === start.example);
   if (shown === undefined)
-    throw new Error(`no example ${explore.example} among the kits`);
+    throw new Error(`no example ${start.example} among the kits`);
   const encoder = new TextEncoder();
   const tree = new Map<string, Uint8Array>([
     [EXAMPLES_PAGE, encoder.encode(examplesPage(examples, built))],
@@ -216,6 +211,6 @@ export function pagesTree(
   for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
   const hasTry = tree.has(TRY_PAGE);
   tree.set(START_PAGE, encoder.encode(startPage(start, shown, hasTry)));
-  tree.set(FRONT_PAGE, encoder.encode(frontPage(explore, shown, hasTry)));
+  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, shown, hasTry)));
   return tree;
 }
