@@ -459,11 +459,12 @@ function pair(record: string | undefined, other: string | undefined): string {
 /** The matcher's Sames that nothing retracts and no unretracted judgment supersedes, in order of name. */
 async function recheckable(store: Store): Promise<Judged[]> {
   const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same .
-    FILTER NOT EXISTS { ?retraction npx:retracts ?judgment }
     FILTER NOT EXISTS {
-      ?later npx:supersedes ?judgment
-      FILTER NOT EXISTS { ?undoing npx:retracts ?later }
-    }`;
+      ?superseding npx:supersedes ?judgment
+      OPTIONAL { ?undoing npx:retracts ?superseding }
+      FILTER (!BOUND(?undoing))
+    }
+    FILTER NOT EXISTS { ?retracting npx:retracts ?judgment }`;
   const [justifications, members, used] = await Promise.all(
     ["jdg:justification", "prov:hadMember", "prov:used"].map(
       async (predicate) =>
