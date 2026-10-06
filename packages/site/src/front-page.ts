@@ -5,6 +5,7 @@ import { STYLESHEET } from "./stylesheet.js";
 import { COPY } from "./terms.js";
 
 export const FRONT_PAGE = "index.html";
+export const START_PAGE = "start.html";
 export const EXAMPLES_PAGE = "examples.html";
 export const TRY = "try/";
 export const TRY_PAGE = `${TRY}index.html`;
@@ -70,7 +71,7 @@ ${ingredients(built.configured)}</footer>
 `.text;
 }
 
-/** What the front page gives a newcomer to start with. */
+/** What the front page and the quick start give a newcomer to start with. */
 export interface Start {
   /** The line that makes an app. */
   readonly command: string;
@@ -94,7 +95,7 @@ export function viewTitles(layout: Layout): string[] {
 }
 
 function frontPage(
-  { command, app, prompt, kinds, example }: Start,
+  { kinds, example }: Start,
   { title }: Example,
   tried: boolean,
 ): string {
@@ -103,21 +104,59 @@ function frontPage(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build an app on a Cascade pod</title>
+<title>Cascade pods</title>
 <link rel="stylesheet" href="${STYLESHEET_FILE}">
 </head>
 <body>
 <main>
-<h1>Build an app on a Cascade pod</h1>
-<p class="prose">A pod holds one person's health records as files, and an app answers questions from it. Here is one:
-<a href="${example}/index.html">${title}</a>'s site shows what the pod holds and the questions that read it, and
-<a href="${example}/${COPY}${POD_ENTRY}">the pod's files</a> are the pod itself.</p>
-<h2 class="part">What a pod holds today</h2>
+<h1>Cascade pods</h1>
+<p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
+<code>cascade-runtime</code>.</p>
+<h2 class="part">Build an app</h2>
+<p class="prose">One command makes a working app on a pod, and a coding agent builds your idea on it.</p>
+<ul>
+<li><a href="${START_PAGE}">Quick start</a></li>
+${
+  tried &&
+  markup`<li><a href="${TRY_PAGE}">See an app running in your browser, nothing to install</a></li>
+`
+}</ul>
+<h2 class="part">Explore a pod</h2>
+<p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
+question that reads it is a SPARQL query.</p>
+<ul>
+<li><a href="${example}/index.html">Browse ${title}'s pod</a>: its records, its views, and every question with its SPARQL query. <a class="also" href="${example}/${COPY}${POD_ENTRY}">The pod's files</a></li>
+<li><a href="${EXAMPLES_PAGE}">Every example pod, and what built these pages</a></li>
+</ul>
+<h3>What a pod holds today</h3>
 <ul>
 ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
 <p class="prose">Records come in only from the clinical records of an Apple Health export; observations, medications, lab
 results and daily measurements are not yet held. The reference tables the matcher uses to join records of the same thing are
 alpha test data, so a real export shows fewer automatic joins than ${title}'s pod.</p>
+</main>
+</body>
+</html>
+`.text;
+}
+
+function startPage(
+  { command, app, prompt }: Start,
+  { title }: Example,
+  tried: boolean,
+): string {
+  return markup`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start an app on a Cascade pod</title>
+<link rel="stylesheet" href="${STYLESHEET_FILE}">
+</head>
+<body>
+<nav><a href="${FRONT_PAGE}">Cascade pods</a></nav>
+<main>
+<h1>Start an app on a Cascade pod</h1>
 <h2 class="part">1. Make the app</h2>
 <p class="prose">With Node 22 or later, run this in a folder of your choice:</p>
 <pre class="command"><code>${command}</code></pre>
@@ -130,18 +169,16 @@ its last line, <code>My idea: …</code>, replaced by your idea:</p>
 installed package, and loads a pod, such as ${title}'s, when your idea needs one.</p>
 ${
   tried &&
-  markup`<p class="prose"><a href="${TRY_PAGE}">Try it in your browser, nothing to install</a></p>
+  markup`<p class="prose"><a href="${TRY_PAGE}">See an app running in your browser, nothing to install</a></p>
 `
-}<h2 class="part">Further</h2>
-<p class="prose"><a href="${EXAMPLES_PAGE}">Every example</a>, and what built these pages.</p>
-</main>
+}</main>
 </body>
 </html>
 `.text;
 }
 
 /**
- * The Pages tree: the newcomer's front page, the examples' page, each example's site in its folder with its pod's
+ * The Pages tree: the newcomer's front page, the quick start, the examples' page, each example's site in its folder with its pod's
  * files listed, and the page that tries a pod in a browser, `tried`, under `try/`.
  */
 export function pagesTree(
@@ -171,9 +208,8 @@ export function pagesTree(
     );
   }
   for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
-  tree.set(
-    FRONT_PAGE,
-    encoder.encode(frontPage(start, shown, tree.has(TRY_PAGE))),
-  );
+  const hasTry = tree.has(TRY_PAGE);
+  tree.set(START_PAGE, encoder.encode(startPage(start, shown, hasTry)));
+  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, shown, hasTry)));
   return tree;
 }

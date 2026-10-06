@@ -1,15 +1,100 @@
 # cascade-runtime-js
 
-The reference implementation of
-[cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)'s runtime
-rules: a TypeScript runtime that fills a Cascade pod, loading the Bridge and
-the adapters in-process. It proves itself by passing every example of the
-vocabulary's feature files: its rules and its conformance kit, Alex Rivera's
-story.
+## What the Cascade Protocol is
 
-To start an app on a pod, go to
-<https://jayostis.github.io/cascade-runtime-js/>; the pod and site each kit
-builds, from `main`, are under it.
+The Cascade Protocol is an open standard for health apps that put patients in
+control of their own data.
+
+- **The patient holds the data.** Each person's records are in their own pod, a
+  single-tenant RDF graph kept as Turtle files. Apps come to the pod; the pod
+  does not go to the apps.
+- **Anyone with an idea can build an app.** One command starts an app,
+  and a coding agent can build on it from there.
+- **Apps interoperate.** Records arrive from each source format through a Bridge
+  running an adapter, so every app reads the same records with the same
+  standard SPARQL questions.
+
+It is open source and built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate
+and EARL reports.
+FHIR R4 is the first source format this runtime files.
+
+Status: a draft. No compatibility is promised before a numbered v1, and no
+claim is made that it is fit for clinical use.
+
+## What this repository is
+
+The reference runtime, in TypeScript. It files what arrives into a pod and
+answers questions from it, in Node or entirely in a browser, and proves itself
+against the vocabulary's executable examples.
+
+## Get going
+
+- [The quick start](https://jayostis.github.io/cascade-runtime-js/start.html)
+- [An app running in the browser](https://jayostis.github.io/cascade-runtime-js/try/index.html)
+- [The example pods](https://jayostis.github.io/cascade-runtime-js/examples.html)
+- [Build from source](#working-on-this-repository)
+
+## The protocol's repositories
+
+| Repository                                                                                   | What it is                                                                                                                                       |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)                         | The contract a Cascade pod is built and read by: the ontologies and shapes, the standard queries, the runtime rules and the conformance kit.     |
+| [cascade-bridge-spec](https://github.com/jayostis/cascade-bridge-spec)                       | The Cascade Bridge Specification: the contract every adapter and every Bridge follows. Draft: no compatibility is promised before a numbered v1. |
+| [cascade-bridge-rs](https://github.com/jayostis/cascade-bridge-rs)                           | The Cascade Bridge for Rust, also built for WebAssembly. Draft.                                                                                  |
+| [cascade-bridge-js](https://github.com/jayostis/cascade-bridge-js)                           | The Cascade Bridge for JavaScript. Draft.                                                                                                        |
+| [cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4) | The adapter for FHIR R4 JSON, alone or in a Bundle. Import-only.                                                                                 |
+| [cascade-bridge-adapter-clinvar](https://github.com/jayostis/cascade-bridge-adapter-clinvar) | The adapter for NCBI ClinVar VCV XML. Import-only; the pilot adapter.                                                                            |
+| cascade-runtime-js (this repository)                                                         | The reference runtime.                                                                                                                           |
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  doc["A source document"] --> bridge["A Bridge running an adapter"]
+  bridge --> records["Records"]
+  records --> runtime["The runtime: filing, the matcher, the views"]
+  runtime --> pod["A pod"]
+  pod --> questions["SPARQL questions"]
+  questions --> app["An app"]
+```
+
+An adapter is data: mappings, schemas, fixtures and a manifest, with no code. A
+Bridge runs it, and there is one Bridge per language.
+
+The core in `packages/runtime/src` knows four interfaces and nothing behind
+them. That is how the same runtime runs in Node and in a browser:
+
+| Interface    | What it does                                                            | What plugs in today                             |
+| ------------ | ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory, the browser's IndexedDB |
+| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output     |
+| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                     |
+| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times    |
+
+Code that needs Node (a local folder, git, the command line) is under
+`packages/runtime/src/node/`. The core knows an importer only by the name
+`cascade-runtime.json` gives it; `src/node/importers.ts` finds each by name.
+Code that needs a browser (IndexedDB, the Bridge's worker) is under
+`packages/runtime/src/web/`, and only the browser entry,
+`packages/cascade-runtime/src/browser/`, imports from there.
+
+Conformance is executable. Each rule of the vocabulary is a Gherkin `Rule:`
+with the examples that show it, and a runtime reports each example in EARL.
+
+### Packages
+
+| Package                    | What it does                                                   |
+| -------------------------- | -------------------------------------------------------------- |
+| `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
+| `packages/apple-health`    | the importer: the documents in an export and the facts of each |
+| `packages/site`            | the site that documents a pod and its queries                  |
+| `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
+| `packages/cascade-runtime` | what an app imports, and the build that packs it               |
+
+## Working on this repository
+
+The runtime loads the Bridge and the adapters in-process. The vocabulary's
+conformance kit is Alex Rivera's story.
 
 Node 22 or later. To build Alex's pod and the site that documents it:
 
@@ -32,7 +117,7 @@ npm run ask -- <name> "<question>"            # one question's rows, under the r
 npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the pod and its questions
 ```
 
-## Running it
+### Running it
 
 ```sh
 npm test                                  # the unit tests, and one run of the conformance command
@@ -53,7 +138,7 @@ and a failed example's report names its rule and the step that failed.
 `--folder <repository>=<folder>` hands in a folder for a repository, and
 `--feature <path>` runs only that feature file of the vocabulary.
 
-## The developer story
+### The developer story
 
 `developer-story/allergies.mjs` is what an app would write against the package
 `cascade-runtime`: open a pod, look at Alex's first export, import it as hers
@@ -62,7 +147,7 @@ and print her active allergies. It is the developer story of
 acceptance test. `packages/runtime/test/developer-story.test.ts` runs it and
 compares its rows with the replay of her story through `J1`.
 
-## The package
+### The package
 
 `packages/cascade-runtime` is the package an app installs. It is not on npm:
 
@@ -79,31 +164,7 @@ merge to `main` attaches it to the pre-release `build-<commit>` under
 [releases](https://github.com/jayostis/cascade-runtime-js/releases), from which
 an app installs it by its URL.
 
-## Packages
-
-| Package                    | What it does                                                   |
-| -------------------------- | -------------------------------------------------------------- |
-| `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
-| `packages/apple-health`    | the importer: the documents in an export and the facts of each |
-| `packages/site`            | the site that documents a pod and its queries                  |
-| `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
-| `packages/cascade-runtime` | what an app imports, and the build that packs it               |
-
-The core in `packages/runtime/src` knows four interfaces and nothing behind
-them:
-
-| Interface    | What it does                                                            | What plugs in today                             |
-| ------------ | ----------------------------------------------------------------------- | ----------------------------------------------- |
-| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory, the browser's IndexedDB |
-| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output     |
-| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                     |
-| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times    |
-
-Code that needs Node (a local folder, git, the command line) is under
-`packages/runtime/src/node/`. The core knows an importer only by the name
-`cascade-runtime.json` gives it; `src/node/importers.ts` finds each by name.
-
-## Which version of each component a run uses
+### Which version of each component a run uses
 
 Nothing pins a version, as
 [cascade-bridge-spec's `compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md)

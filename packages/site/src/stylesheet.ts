@@ -14,6 +14,7 @@ a { color: var(--link); }
 h1 { font-size: 1.6rem; line-height: 1.25; margin: .25rem 0 .5rem; overflow-wrap: anywhere; }
 h2 { font-size: 1.15rem; margin: 0 0 .25rem; }
 h2.part { font-size: 1.35rem; margin: 2.5rem 0 .5rem; }
+h3 { font-size: 1.05rem; margin: 1.5rem 0 .25rem; }
 code, pre { font: .875rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
 p code, dd code, dt code, td code { overflow-wrap: anywhere; }
 .kind { color: var(--quiet); margin: 0; text-transform: uppercase; letter-spacing: .04em; font-size: .8rem; }

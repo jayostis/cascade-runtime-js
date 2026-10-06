@@ -48,7 +48,7 @@ async function answered(url: string): Promise<Response> {
   }
 }
 
-test("the deployed site serves the front page of the commit, its release, the examples, Alex's site and try/", async () => {
+test("the deployed site serves the quick start of the commit, its release, the front page, the examples, Alex's site and try/", async () => {
   const site = required("PAGES_URL").replace(/\/?$/, "/");
   const commit = required("COMMIT");
   const { packageVersion } = (await import(
@@ -58,16 +58,17 @@ test("the deployed site serves the front page of the commit, its release, the ex
   )) as Address;
 
   const began = Date.now();
-  let front: string;
+  let start: string;
   for (;;) {
-    const response = await fetch(`${site}?commit=${commit}&at=${Date.now()}`, {
-      cache: "no-store",
-    }).catch(() => undefined);
-    front = response?.ok === true ? await response.text() : "";
-    if (front.includes(`build-${commit}`)) break;
+    const response = await fetch(
+      `${site}start.html?commit=${commit}&at=${Date.now()}`,
+      { cache: "no-store" },
+    ).catch(() => undefined);
+    start = response?.ok === true ? await response.text() : "";
+    if (start.includes(`build-${commit}`)) break;
     if (Date.now() - began > DEPLOY)
       assert.fail(
-        `the front page at ${site} did not name build-${commit} within ${DEPLOY / 60_000} minutes; it names ${/build-[0-9a-f]+/.exec(front)?.[0] ?? "no build"}`,
+        `${site}start.html did not name build-${commit} within ${DEPLOY / 60_000} minutes; it names ${/build-[0-9a-f]+/.exec(start)?.[0] ?? "no build"}`,
       );
     await sleep(BETWEEN);
   }
@@ -75,13 +76,23 @@ test("the deployed site serves the front page of the commit, its release, the ex
     `waited ${Math.round((Date.now() - began) / 1000)}s for the deploy of ${commit}`,
   );
 
-  for (const path of ["", "examples.html", "alex-rivera/index.html"]) {
+  const front = await answered(`${site}?at=${Date.now()}`);
+  assert.equal(front.status, 200, site);
+  assert.ok(
+    (await front.text()).includes(`href="start.html"`),
+    `${site} is not the front page that leads to start.html`,
+  );
+  for (const path of [
+    "start.html",
+    "examples.html",
+    "alex-rivera/index.html",
+  ]) {
     const response = await answered(`${site}${path}?at=${Date.now()}`);
     assert.equal(response.status, 200, `${site}${path}`);
   }
 
-  const address = /https:\/\/[^\s"<>]+\.tgz/.exec(front)?.[0];
-  assert.ok(address, "the front page's command names no tarball");
+  const address = /https:\/\/[^\s"<>]+\.tgz/.exec(start)?.[0];
+  assert.ok(address, "start.html's command names no tarball");
   const tarball = await answered(address);
   assert.equal(tarball.status, 200, address);
   const manifest = fromTar(
