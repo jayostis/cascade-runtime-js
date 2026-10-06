@@ -16,6 +16,8 @@ const EARL = "http://www.w3.org/ns/earl#";
 const CLI = join(ROOT, "packages", "runtime", "dist", "src", "node", "cli.js");
 
 let outcomes: Map<string, Outcome[]>;
+/** Each version the report says the runtime was run with, by doap:name. */
+let requires: Map<string, string>;
 /** Each example and check the report must hold, by its IRI, with its name. */
 const tested = new Map<string, string>();
 
@@ -24,7 +26,10 @@ interface Outcome {
   readonly why?: string;
 }
 
-async function report(): Promise<Map<string, Outcome[]>> {
+async function report(): Promise<{
+  found: Map<string, Outcome[]>;
+  requires: Map<string, string>;
+}> {
   const file = join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt");
   await promisify(execFile)(process.execPath, [
     CLI,
@@ -47,7 +52,19 @@ async function report(): Promise<Map<string, Outcome[]>> {
       { outcome: row.get("outcome")?.value ?? "", why: row.get("why")?.value },
     ]);
   }
-  return found;
+  const used = await store.select(`SELECT ?name ?revision WHERE {
+      ?subject a <${EARL}TestSubject> ; <http://purl.org/dc/terms/requires> ?used .
+      ?used <http://usefulinc.com/ns/doap#name> ?name ; <http://usefulinc.com/ns/doap#revision> ?revision
+    }`);
+  return {
+    found,
+    requires: new Map(
+      used.rows.map((row) => [
+        row.get("name")?.value ?? "",
+        row.get("revision")?.value ?? "",
+      ]),
+    ),
+  };
 }
 
 before(async () => {
@@ -61,12 +78,34 @@ before(async () => {
   for (const kit of kits)
     for (const check of Object.values(KIT_CHECKS))
       tested.set(`${files.iri}${kit}/#${check}`, check);
-  outcomes = await reported;
+  ({ found: outcomes, requires } = await reported);
 });
 
 test("the conformance command reports each example of every feature file and each kit's checks once, and nothing else", () => {
   assert.deepEqual([...outcomes.keys()].sort(), [...tested.keys()].sort());
   for (const [test, found] of outcomes) assert.equal(found.length, 1, test);
+});
+
+test("the report names the commit of the vocabulary and of each adapter, and the Bridge build, the run used", async () => {
+  const { adapters } = JSON.parse(
+    await readFile(join(ROOT, "cascade-runtime.json"), "utf8"),
+  ) as { adapters: { repository: string }[] };
+  assert.deepEqual(
+    [...requires.keys()].sort(),
+    [
+      "cascade-vocabulary",
+      "cascade-bridge-rs",
+      ...adapters.map(({ repository }) => repository.split("/").at(-1) ?? ""),
+    ].sort(),
+  );
+  assert.equal(
+    requires.get("cascade-vocabulary"),
+    (await vocabulary()).iri.split("/").at(-2),
+  );
+  assert.match(
+    requires.get("cascade-bridge-rs") ?? "",
+    /^(build-)?[0-9a-f]{40}$/,
+  );
 });
 
 test("every example and each kit's checks pass", () => {
