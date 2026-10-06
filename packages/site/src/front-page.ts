@@ -125,8 +125,7 @@ ${
 <p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
 question that reads it is a SPARQL query.</p>
 <ul>
-<li><a href="${example}/index.html">Browse ${title}'s pod: its records, views and every question with its SPARQL</a>, or
-<a href="${example}/${COPY}${POD_ENTRY}">its files</a></li>
+<li><a href="${example}/index.html">Browse ${title}'s pod</a>: its records, its views, and every question with its SPARQL query. <a class="also" href="${example}/${COPY}${POD_ENTRY}">The pod's files</a></li>
 <li><a href="${EXAMPLES_PAGE}">Every example pod, and what built these pages</a></li>
 </ul>
 <h3>What a pod holds today</h3>

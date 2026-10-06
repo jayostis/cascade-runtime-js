@@ -24,7 +24,7 @@ export async function startFunctions(
   return { tarballAddress, startLine, agentPrompt };
 }
 
-/** What the front page gives a newcomer, for the release of the commit, with the example's pod. */
+/** What the front page and the quick start give a newcomer, for the release of the commit, with the example's pod. */
 export async function startOf(
   root: string,
   commit: string,
