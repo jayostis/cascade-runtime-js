@@ -228,7 +228,7 @@ export class CorePod {
       time,
     });
     fork.#references = this.#references;
-    fork.#readShapes = this.#readShapes;
+    if (this.#readShapes !== undefined) fork.#holdShapes(this.#readShapes);
     return fork;
   }
 
@@ -238,17 +238,21 @@ export class CorePod {
   }
 
   #shapes(): Promise<Shapes> {
-    if (this.#readShapes === undefined) {
-      const reading = Shapes.read(
-        this.#options.vocabulary,
-        this.#options.newStore,
-      );
-      this.#readShapes = reading;
-      reading.catch(() => {
-        if (this.#readShapes === reading) this.#readShapes = undefined;
-      });
-    }
-    return this.#readShapes;
+    return (
+      this.#readShapes ??
+      this.#holdShapes(
+        Shapes.read(this.#options.vocabulary, this.#options.newStore),
+      )
+    );
+  }
+
+  /** Holds a read of the shapes until it fails, so a failed read is tried again. */
+  #holdShapes(reading: Promise<Shapes>): Promise<Shapes> {
+    this.#readShapes = reading;
+    reading.catch(() => {
+      if (this.#readShapes === reading) this.#readShapes = undefined;
+    });
+    return reading;
   }
 
   async #step(
