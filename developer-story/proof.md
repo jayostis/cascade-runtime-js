@@ -14,18 +14,21 @@ unasked. Each run starts fresh and gets its own sheet, a comment on #33.
 ### Before each round: re-check the facts
 
 The facts below were checked on vocabulary commit
-`9990bdf299469d56686a40d14430042f590640fc`. The package follows the vocabulary,
-so read the commit the round's package records, in a made app:
+`9990bdf299469d56686a40d14430042f590640fc`, FHIR R4 adapter
+`212e7677fa3367634a8b793fa4a6302845a85407` and Bridge release
+`build-e1bdff0a4cb325d75f618a95c050a47b9bbd0776`. The package follows each at
+the head of its branch, so read what the round's package records, in a made app:
 
 ```sh
 node -p "require('./node_modules/cascade-runtime/components/packed.json').components.map(c => c.repository + ' ' + c.commit).join('\n')"
 ```
 
-If the vocabulary's commit differs, diff the kit
-(`git diff <old>..<new> -- conformance/alex-rivera queries` in
-cascade-vocabulary), re-read each example a fact cites, and correct the fact here
-before the round runs. Record the commit you checked against in the round's
-results.
+If the vocabulary's commit differs, diff it
+(`git diff <old>..<new> -- conformance/alex-rivera queries runtime ontologies`
+in cascade-vocabulary), re-read each example and rule a fact cites, and correct
+the fact here before the round runs. If the adapter or the Bridge differs, check
+W1 and W2's counts again with `look` and `import` on a pod through M3. Record
+the commits you checked against in the round's results.
 
 ### Starting state
 
@@ -41,6 +44,9 @@ agent. The person runs the command in it, so the app is `my-app/`.
   `build/cascade-runtime-0.0.0-commit-<sha>.tgz`. That commit has no release, so
   give its path twice:
   `npx --yes --package=<path to the .tgz> create-cascade-app my-app --tarball <path to the .tgz>`.
+  The prompt it prints carries no `--tarball`: an agent that runs that command
+  again gets an install pointing at a release that does not exist. Record it as
+  a wrong turn the prompt caused.
 
 Then, per idea:
 
@@ -55,8 +61,9 @@ Then, per idea:
   cp -r node_modules/cascade-runtime/components/cascade-vocabulary/<commit>/conformance/alex-rivera/scripted-input/alex/downloads/x-e12/apple_health_export .
   ```
 
-  `<commit>` is the vocabulary commit above. x-e12 is the one thing left to
-  bring in.
+  `<commit>` is the vocabulary commit this app's `packed.json` records (the
+  only folder under `cascade-vocabulary/`). x-e12 is the one thing left to bring
+  in.
 
 Start a new session of the agent **in the folder that holds `my-app/`**, not
 inside it (the prompt creates `my-app` when it is missing and then works inside
@@ -107,8 +114,8 @@ otherwise) and use its screens:
 
 ### Stop
 
-A run stops at 90 minutes of the agent's work or ten messages, whichever comes
-first. A stopped run is not clean.
+A run stops at 90 minutes of the agent's work or ten of the person's messages
+after the first prompt, whichever comes first. A stopped run is not clean.
 
 ## The facts a correct app shows
 
@@ -137,9 +144,11 @@ review` lists it as "members disagree on criticality". (Under `Rule: P4.`,
 
 ### Writing, on the pod through M3, with x-e12 brought in
 
-The import, its claim and its matcher run are stamped with the day the run
-happens, earlier in the story than M3. That moves one status in W2, as stated
-there.
+The import, its claim and its matcher run are stamped with the moment the run
+happens, earlier in the story than M3. An entry shows the name, code and status
+of its last-arrived member (`rec:latestMember`, by its current revision's time),
+so where an x-e12 record joins an entry, what the entry is called, and in W2 one
+status, depend on the run's date. Judge a fact by meaning, not by the name.
 
 - **W1.** Before bringing the download in, the app shows where it came from and
   asks whether it is hers: Meridian Health System at
@@ -162,17 +171,18 @@ there.
   nothing of them and does not claim his profile, so they stay in no view
   (`rec:PatientNotClaimed` in `record/Why it is in no view`). The matcher joins
   what E13 joined ("E13 writes J13 to J18 as the scenario gives them, and the
-  reference descriptions it was the first to use"): Essential hypertension is
-  one active condition of three records, where before it had two; Penicillin
+  reference descriptions it was the first to use"): hypertension is one active
+  condition of three records, where before it had two (named "Hypertension"
+  before 2026-10-14 15:42 UTC, Larkspur's old record's arrival); Penicillin
   (Larkspur's, still apart from Meridian's Penicillin G until J21) and
   Sulfamethoxazole each gain Larkspur's new record; and Larkspur's new Asthma
   joins the entry that her own Same (J10) made of Meridian's resolved bronchitis
-  and Larkspur's old asthma, three records in one condition. **That entry's
-  status is its last-arrived member's** (`rec:latestMember`, by the current
-  revision's time): the new asthma record arrives on the run's day, so before
-  2026-11-20 (the bronchitis record's arrival, x-e6 at E6) the entry shows
-  resolved and `pod/My active conditions` lists hypertension alone; from that
-  day on it shows active, as at E13 (under `Rule: P22.`, "J16 adds
+  and Larkspur's old asthma, three records in one condition. **Its status
+  depends on the run's date:** before 2026-11-20 09:00:04 UTC (the bronchitis
+  record's arrival, x-e6 at E6) the bronchitis record is still the last arrival,
+  so the entry shows Acute bronchitis, resolved, and `pod/My active conditions`
+  lists hypertension alone; after it, the entry shows Asthma, active, as at E13
+  (under `Rule: P22.`, "J16 adds
   H2F-CON-ASTHMA, the latest arrival, whose active status the entry now
   shows"). An app that shows Sam's records as hers, or claims his profile, is
   wrong.
@@ -201,20 +211,20 @@ there.
 Copy into a comment on #33, one per run, every line filled.
 
 ```markdown
-| Line                  | Written                                                                                                                                                                                                                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Run                   | idea: · round: · run: · agent: · version: · model: · tarball: · `cascadeRuntime.commit`: · `dirty`: · vocabulary commit: · adapter commit: · Bridge release:                                                                                                                                                                                |
-| Command               | worked / failed (output):                                                                                                                                                                                                                                                                                                                   |
-| Pod                   | reading: loaded `pods/alex-rivera/` with `pod:load alex-rivera`? found it from: · writing: left the loaded pod as it was?                                                                                                                                                                                                                   |
-| Started               | yes / no                                                                                                                                                                                                                                                                                                                                    |
-| Facts                 | R1–R3 or W1–W6, each: shown right / shown wrong (what was shown) / not shown                                                                                                                                                                                                                                                                |
-| Out of place          | rows of `npm run ask -- --pod alex-rivera "pod/Which files are out of place"`:                                                                                                                                                                                                                                                              |
-| Outside the interface | each, with file and line: wrote, changed or deleted a file under `pods/`; read a pod file or parsed Turtle other than to fill a template; named a thing; imported anything but `cascade-runtime`'s root (`cascade-runtime/fixtures` included); ran the conformance command or a script of this repository; read the repositories or the web |
-| `enter` and `judge`   | each call: Turtle passed (attached); filed / refused / rejected and why; the template followed and what it changed                                                                                                                                                                                                                          |
-| Wrong turns           | each: what the agent did, how it noticed or not, the line of the guide, starter or prompt that caused it or failed to prevent it (always one: an explicit `match` with matching on; writing: a `pod:reset` or `pod:load` of the person's pod)                                                                                               |
-| Calls                 | which of the interface's calls the app makes                                                                                                                                                                                                                                                                                                |
-| Effort                | minutes of the agent's work; the person's messages, verbatim; finished in one session?                                                                                                                                                                                                                                                      |
-| Clean                 | yes / no, and why                                                                                                                                                                                                                                                                                                                           |
+| Line                  | Written                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run                   | idea: · round: · run: · agent: · version: · model: · tarball: · `cascadeRuntime.commit`: · `dirty`: · vocabulary commit: · adapter commit: · Bridge release:                                                                                                                                                                                                                     |
+| Command               | worked / failed (output):                                                                                                                                                                                                                                                                                                                                                        |
+| Pod                   | reading: loaded `pods/alex-rivera/` with `pod:load alex-rivera`? found it from: · writing: left the loaded pod as it was?                                                                                                                                                                                                                                                        |
+| Started               | yes / no                                                                                                                                                                                                                                                                                                                                                                         |
+| Facts                 | R1–R3 or W1–W6, each: shown right / shown wrong (what was shown) / not shown                                                                                                                                                                                                                                                                                                     |
+| Out of place          | rows of `npm run ask -- --pod alex-rivera "pod/Which files are out of place"`:                                                                                                                                                                                                                                                                                                   |
+| Outside the interface | each, with file and line: wrote, changed or deleted a file under `pods/`; read a pod file or parsed Turtle other than to fill a template; named a thing; imported, in code the agent wrote or changed, anything but `cascade-runtime`'s root (`cascade-runtime/fixtures` included); ran the conformance command or a script of this repository; read the repositories or the web |
+| `enter` and `judge`   | each call: Turtle passed (attached); filed / refused / rejected and why; the template followed and what it changed                                                                                                                                                                                                                                                               |
+| Wrong turns           | each: what the agent did, how it noticed or not, the line of the guide, starter or prompt that caused it or failed to prevent it (always one: an explicit `match` with matching on; writing: a `pod:reset` or `pod:load` of the person's pod)                                                                                                                                    |
+| Calls                 | which of the interface's calls the app makes                                                                                                                                                                                                                                                                                                                                     |
+| Effort                | minutes of the agent's work; the person's messages, verbatim; finished in one session?                                                                                                                                                                                                                                                                                           |
+| Clean                 | yes / no, and why                                                                                                                                                                                                                                                                                                                                                                |
 ```
 
 ## The bar
@@ -222,10 +232,10 @@ Copy into a comment on #33, one per run, every line filled.
 - **A run is clean** when the command worked, the app started, every fact for
   its idea is shown right, nothing is out of place, nothing went outside the
   interface, it finished in one session, and the person sent at most three
-  messages. Going outside the interface always makes a run unclean, even when
-  every fact is right.
+  messages after the first prompt. Going outside the interface always makes a
+  run unclean, even when every fact is right.
 - **A round passes** when, for each idea, at least two of the first agent's
-  three runs are clean and at least one of the second agent's is.
+  three runs are clean and the second agent's one run is clean.
 - **The step is proven** when a round passes with the guide, the starter's
   files, the prompt and the interface as they will merge, and every finding of
   every round has an outcome.
