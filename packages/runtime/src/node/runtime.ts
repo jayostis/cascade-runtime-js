@@ -55,7 +55,7 @@ export async function siblingsOf(root: string): Promise<string[]> {
   return [dirname(root)];
 }
 
-/** The vocabulary the runtime at `root` uses, resolved beside it, from the folders handed in, or from its pin. */
+/** The vocabulary the runtime at `root` uses: beside it, from the folders handed in, or at the head of its branch. */
 export async function resolveVocabulary(
   root: string,
   config: RuntimeConfig,
@@ -76,7 +76,7 @@ export interface LocalVocabulary {
   readonly files: FolderFiles;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
-  /** Which checkout or pin the vocabulary was read from. */
+  /** Which checkout, or which commit of its branch, the vocabulary was read from. */
   readonly resolved: Resolved;
 }
 

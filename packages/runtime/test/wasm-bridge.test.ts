@@ -21,9 +21,9 @@ import {
   compiledBridge,
   findBridgePackage,
   inWorker,
-  loadPinnedAdapters,
-  type PinnedAdapterOptions,
+  loadConfiguredAdapters,
 } from "../src/node/wasm.js";
+import type { ResolverOptions } from "../src/node/resolver.js";
 import {
   blank,
   type BlankNode,
@@ -48,7 +48,7 @@ const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 let compiled: CompiledBridge;
-let options: PinnedAdapterOptions;
+let options: ResolverOptions;
 const bridges: WasmBridge[] = [];
 const adapters: LoadedAdapter[] = [];
 let inWorkerAdapter: LoadedAdapter;
@@ -57,10 +57,10 @@ let envelope: string;
 async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
   const bridge = new WasmBridge(spawn);
   bridges.push(bridge);
-  const { adapters: pins } = await readConfig(ROOT);
-  const [fhir] = await loadPinnedAdapters(bridge, pins, options);
+  const { adapters: configured } = await readConfig(ROOT);
+  const [fhir] = await loadConfiguredAdapters(bridge, configured, options);
   if (fhir === undefined)
-    throw new Error("cascade-runtime.json pins no adapter");
+    throw new Error("cascade-runtime.json names no adapter");
   adapters.push(fhir.adapter);
   envelope = `${fhir.resolved.iri}ro-crate-metadata.json#envelope-resource`;
   return fhir.adapter;
@@ -68,8 +68,8 @@ async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
 
 before(async () => {
   const siblingsIn = await siblingsOf(ROOT);
-  compiled = await compiledBridge((await findBridgePackage(siblingsIn)).folder);
   options = { siblingsIn, cache: join(ROOT, "build", "cache") };
+  compiled = await compiledBridge((await findBridgePackage(options)).folder);
   inWorkerAdapter = await loaded(inWorker(compiled));
 });
 

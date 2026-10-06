@@ -66,7 +66,7 @@ export interface Description {
   readonly loadFiles: readonly string[];
   readonly crateFiles: readonly string[];
   readonly vocabulary?: {
-    readonly pin?: string;
+    readonly repository?: string;
     readonly files: readonly string[];
   };
 }

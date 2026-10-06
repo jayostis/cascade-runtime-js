@@ -523,10 +523,21 @@ export async function runConformance(
   return [...results.values()];
 }
 
-/** The EARL report of the assertions, with the runtime as the subject, as N-Triples. */
+/** A repository the runtime was run with: its name, the IRI of the version used, and that version's revision. */
+export interface TestedWith {
+  readonly name: string;
+  readonly iri: string;
+  readonly revision: string;
+}
+
+/**
+ * The EARL report of the assertions, with the runtime as the subject, as N-Triples. The subject requires each version
+ * it was run with (`dct:requires`), named by its IRI with its `doap:name` and `doap:revision`.
+ */
 export function earl(
   assertions: readonly Assertion[],
   runtime: string,
+  testedWith: readonly TestedWith[] = [],
 ): Uint8Array {
   const subject = blank("runtime");
   const type = iri(`${RDF}type`);
@@ -534,6 +545,12 @@ export function earl(
     [subject, type, iri(`${EARL}TestSubject`)],
     [subject, iri(`${DOAP}name`), literal(runtime)],
   ];
+  for (const used of testedWith)
+    triples.push(
+      [subject, iri(`${DCT}requires`), iri(used.iri)],
+      [iri(used.iri), iri(`${DOAP}name`), literal(used.name)],
+      [iri(used.iri), iri(`${DOAP}revision`), literal(used.revision)],
+    );
   assertions.forEach(({ test, outcome, why }, index) => {
     const assertion = blank(`assertion${index}`);
     const result = blank(`result${index}`);

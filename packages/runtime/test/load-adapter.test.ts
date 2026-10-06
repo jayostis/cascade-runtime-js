@@ -9,7 +9,7 @@ import {
 import { MemoryFiles } from "../src/files.js";
 import { loadAdapter } from "../src/load-adapter.js";
 
-const PIN = `https://vocabulary.example/repository/commit/${"a".repeat(40)}`;
+const REPOSITORY = "https://vocabulary.example/repository";
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 type Given = [adapter: string[], vocabulary: string[]];
@@ -27,7 +27,7 @@ function bridge(loads: Given[]): Bridge {
         envelopes: [],
         loadFiles: ["ro-crate-metadata.json", "in/detect.rq"],
         crateFiles: [],
-        vocabulary: { pin: PIN, files: ["core.ttl"] },
+        vocabulary: { repository: REPOSITORY, files: ["core.ttl"] },
       } satisfies Description),
     load: (adapter, vocabulary) => {
       loads.push([keys(adapter), keys(vocabulary)]);
@@ -76,20 +76,20 @@ test("an adapter is given the files its description lists, and each file a call 
   const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
   for (const path of ["core.ttl", "records.ttl", "health.ttl"])
     await vocabulary.write(path, bytes(path));
-  const pins: (string | undefined)[] = [];
+  const asked: (string | undefined)[] = [];
   const loads: Given[] = [];
 
   const { adapter } = await loadAdapter(
     bridge(loads),
     { iri: "https://adapter.example/tree/c/", files: await adapterFiles() },
-    (pin) => {
-      pins.push(pin);
+    (repository) => {
+      asked.push(repository);
       return Promise.resolve({ iri: vocabulary.iri, files: vocabulary });
     },
   );
   await adapter.convert({ iri: "urn:document", bytes: bytes("{}") });
 
-  assert.deepEqual(pins, [PIN]);
+  assert.deepEqual(asked, [REPOSITORY]);
   assert.deepEqual(loads, [
     [["in/detect.rq", "ro-crate-metadata.json"], ["core.ttl"]],
     [

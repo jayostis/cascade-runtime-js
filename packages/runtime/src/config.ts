@@ -1,28 +1,30 @@
-export interface Pin {
+/** A repository read at the head of its default branch, whatever commit that is when the run starts. */
+export interface Followed {
   readonly repository: string;
-  readonly commit: string;
 }
 
-/** What `cascade-runtime.json` says the runtime loads: names and pins only. */
+/** What `cascade-runtime.json` says the runtime loads: repositories, never a commit of one, and names. */
 export interface RuntimeConfig {
-  readonly vocabulary: Pin;
-  readonly adapters: readonly Pin[];
+  readonly vocabulary: Followed;
+  readonly adapters: readonly Followed[];
   readonly importers: readonly string[];
   readonly lens: string;
 }
 
-function pin(value: unknown, where: string): Pin {
-  const { repository, commit } = (value ?? {}) as Record<string, unknown>;
+function followed(value: unknown, where: string): Followed {
+  const { repository, ...rest } = (value ?? {}) as Record<string, unknown>;
   if (
     typeof repository !== "string" ||
     !/^https:\/\/\S+[^/]$/.test(repository)
   ) {
     throw new Error(`${where}.repository is not a repository's URL`);
   }
-  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) {
-    throw new Error(`${where}.commit is not a full commit SHA`);
-  }
-  return { repository, commit };
+  const other = Object.keys(rest);
+  if (other.length > 0)
+    throw new Error(
+      `${where} names ${other.join(", ")}, and names nothing but its repository`,
+    );
+  return { repository };
 }
 
 export function parseConfig(text: string): RuntimeConfig {
@@ -38,9 +40,9 @@ export function parseConfig(text: string): RuntimeConfig {
   if (typeof lens !== "string" || lens === "")
     throw new Error("lens is not a name");
   return {
-    vocabulary: pin(config.vocabulary, "vocabulary"),
+    vocabulary: followed(config.vocabulary, "vocabulary"),
     adapters: adapters.map((adapter, index) =>
-      pin(adapter, `adapters[${index}]`),
+      followed(adapter, `adapters[${index}]`),
     ),
     importers: importers as string[],
     lens,
@@ -48,11 +50,11 @@ export function parseConfig(text: string): RuntimeConfig {
 }
 
 /** The repository's name, which is also the folder a sibling checkout of it is in. */
-export function repositoryName(pin: Pin): string {
-  return pin.repository.slice(pin.repository.lastIndexOf("/") + 1);
+export function repositoryName(followed: Followed): string {
+  return followed.repository.slice(followed.repository.lastIndexOf("/") + 1);
 }
 
 /** The IRI a checkout of the repository at a commit is named by (runtime/rules.md, N8). */
-export function treeIri(pin: Pin, commit: string): string {
-  return `${pin.repository}/tree/${commit}/`;
+export function treeIri(followed: Followed, commit: string): string {
+  return `${followed.repository}/tree/${commit}/`;
 }

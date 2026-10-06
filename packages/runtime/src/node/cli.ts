@@ -3,17 +3,26 @@ import { dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { vocabularyDerive } from "../build.js";
-import { type Assertion, earl, runConformance } from "../conformance.js";
+import {
+  type Assertion,
+  earl,
+  runConformance,
+  type TestedWith,
+} from "../conformance.js";
+import { repositoryName } from "../config.js";
 import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
 import { importersNamed } from "./importers.js";
+import { type Resolved, resolve } from "./resolver.js";
+import { BRIDGE_REPOSITORY, findBridgePackage } from "./wasm.js";
 import {
   findRoot,
   localVocabulary,
   readConfig,
   resolveVocabulary,
+  siblingsOf,
 } from "./runtime.js";
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
@@ -39,6 +48,14 @@ function summary(assertions: readonly Assertion[]): string {
   return `${assertions.length} tests: ${count("passed")} passed, ${count("failed")} failed, ${count("inapplicable")} inapplicable`;
 }
 
+function testedWith(resolved: Resolved): TestedWith {
+  return {
+    name: repositoryName(resolved.component),
+    iri: resolved.iri,
+    revision: resolved.version,
+  };
+}
+
 async function conformance(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
@@ -53,12 +70,18 @@ async function conformance(args: string[]): Promise<number> {
   const report = absolute(
     values.report ?? join(root, "build", "conformance", "earl.nt"),
   );
-  const vocabulary = await resolveVocabulary(
-    root,
-    config,
-    folderMap(values.folder),
+  const folders = folderMap(values.folder);
+  const vocabulary = await resolveVocabulary(root, config, folders, log);
+  const options = {
+    siblingsIn: await siblingsOf(root),
+    folders,
+    cache: join(root, "build", "cache"),
     log,
+  };
+  const adapters = await Promise.all(
+    config.adapters.map((adapter) => resolve(adapter, options)),
   );
+  const bridge = await findBridgePackage(options);
   const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
   const layout = await Layout.read(files, () => new OxigraphStore());
   const assertions = await runConformance({
@@ -72,7 +95,20 @@ async function conformance(args: string[]): Promise<number> {
     ...(values.feature === undefined ? {} : { features: values.feature }),
   });
   await mkdir(dirname(report), { recursive: true });
-  await writeFile(report, earl(assertions, RUNTIME));
+  await writeFile(
+    report,
+    earl(assertions, RUNTIME, [
+      ...[vocabulary, ...adapters].map(testedWith),
+      {
+        name: repositoryName({ repository: BRIDGE_REPOSITORY }),
+        iri:
+          bridge.release === undefined
+            ? `${BRIDGE_REPOSITORY}/tree/${bridge.commit}/`
+            : `${BRIDGE_REPOSITORY}/releases/tag/${bridge.release}`,
+        revision: bridge.release ?? bridge.commit,
+      },
+    ]),
+  );
   for (const { test, outcome, why } of assertions)
     if (outcome !== "passed")
       console.error(
