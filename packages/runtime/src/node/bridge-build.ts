@@ -20,10 +20,19 @@ const HISTORY = 100;
  * The newest commit of the default branch with a published build: its head, or the nearest before it while that one
  * builds.
  */
-export async function latestBuild(
-  repository: string,
-  at: string,
-): Promise<string> {
+export function latestBuild(repository: string, at: string): Promise<string> {
+  let found = latest.get(repository);
+  if (found === undefined) {
+    found = newestBuild(repository, at);
+    latest.set(repository, found);
+  }
+  return found;
+}
+
+/** Read once per process, so every part of one run uses the same build. */
+const latest = new Map<string, Promise<string>>();
+
+async function newestBuild(repository: string, at: string): Promise<string> {
   await mkdir(at, { recursive: true });
   const head = "HEAD";
   const tags = `refs/tags/${BUILD}`;
@@ -107,6 +116,8 @@ export function untar(gzipped: Uint8Array): Map<string, Uint8Array> {
       /^package\//,
       "",
     );
+    if (path.split("/").includes("..") || path.startsWith("/"))
+      throw new Error(`the package holds ${path}, outside its folder`);
     if (type === "" || type === "0")
       files.set(path, bytes.subarray(at + 512, at + 512 + size));
     at += 512 + Math.ceil(size / 512) * 512;
@@ -159,6 +170,10 @@ export async function releasedBuild(
   }
   if ((await recorded(partial)) !== commit)
     throw new Error(`the package of ${tag} records no build of ${commit}`);
+  if ((await recorded(folder)) === commit) {
+    await rm(partial, { recursive: true, force: true });
+    return folder;
+  }
   if (existsSync(folder)) await rm(folder, { recursive: true, force: true });
   try {
     await rename(partial, folder);

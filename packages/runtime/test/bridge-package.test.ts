@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -67,7 +67,7 @@ test("a checkout's build is used only when made from the checkout as it is, a si
   assert.match(handed.said, /is stale/);
 });
 
-test("the newest build of the default branch is its head's release, or while that one builds the nearest commit before it with one", async () => {
+test("the newest build of the default branch is its head's release, or while that one builds the nearest commit before it with one, read once per run", async () => {
   const root = await mkdtemp(join(tmpdir(), "bridge-build-"));
   const origin = join(root, "cascade-bridge-rs");
   await mkdir(origin);
@@ -94,5 +94,11 @@ test("the newest build of the default branch is its head's release, or while tha
 
   assert.equal(await latestBuild(repository, join(root, "at")), two);
   await git(origin, "tag", `build-${three}`, three);
-  assert.equal(await latestBuild(repository, join(root, "at")), three);
+  assert.equal(await latestBuild(repository, join(root, "at")), two);
+  const later = join(root, "later", "cascade-bridge-rs");
+  await cp(origin, later, { recursive: true });
+  assert.equal(
+    await latestBuild(pathToFileURL(later).href, join(root, "at")),
+    three,
+  );
 });

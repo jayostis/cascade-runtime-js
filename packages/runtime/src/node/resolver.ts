@@ -80,11 +80,25 @@ async function onDisk(
   };
 }
 
-/** The repository's default branch and the commit at its head, as the repository has them now. */
-export async function headOf(
-  repository: string,
-  at: string,
-): Promise<{ branch: string; commit: string }> {
+interface Head {
+  readonly branch: string;
+  readonly commit: string;
+}
+
+/** Read once per process, so every part of one run reads the same commit of a repository. */
+const heads = new Map<string, Promise<Head>>();
+
+/** The repository's default branch and the commit at its head, as the repository had them when this run first asked. */
+export function headOf(repository: string, at: string): Promise<Head> {
+  let found = heads.get(repository);
+  if (found === undefined) {
+    found = remoteHead(repository, at);
+    heads.set(repository, found);
+  }
+  return found;
+}
+
+async function remoteHead(repository: string, at: string): Promise<Head> {
   await mkdir(at, { recursive: true });
   let branch: string | undefined;
   let commit: string | undefined;
