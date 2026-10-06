@@ -109,8 +109,14 @@ let vocabulary: LocalVocabulary;
 let guide: { sections: Map<string, string[]>; blocks: Block[] };
 let ran: { code: number; stderr: string };
 let folder: string;
-let pod: Pod;
+let opened: Pod | undefined;
 let notTheirs: string;
+
+/** The pod the examples left, opened only when they all ran: a missing folder would open as a new, empty pod. */
+function examplesPod(): Pod {
+  assert.ok(opened, "the guide's examples did not all run, so no pod is read");
+  return opened;
+}
 
 /** The profile a judgment of Alex's kit names. */
 async function profileOf(judgment: string): Promise<string> {
@@ -182,11 +188,11 @@ before(async () => {
       stderr: error.stderr ?? String(error),
     }),
   );
-  pod = await openPod(join(folder, "pods", "mine"));
+  if (ran.code === 0) opened = await openPod(join(folder, "pods", "mine"));
 });
 
 after(async () => {
-  await pod?.close();
+  await opened?.close();
   if (folder !== undefined) await rm(folder, { recursive: true, force: true });
 });
 
@@ -199,6 +205,7 @@ test("every example in the guide runs, in order", () => {
 });
 
 test("the pod the examples leave conforms to the vocabulary's shapes", async () => {
+  const pod = examplesPod();
   const at = join(folder, "pods", "mine");
   const labelled = new Set(
     vocabulary.layout.built
@@ -230,6 +237,7 @@ test("the pod the examples leave conforms to the vocabulary's shapes", async () 
 });
 
 test("each template does what the guide says, read through the vocabulary's questions", async () => {
+  const pod = examplesPod();
   const ask = (question: string): Promise<Row[]> => pod.ask(question);
   const entryOf = new Map(
     (await ask("record/Which entry shows it")).flatMap(({ record, entry }) =>
