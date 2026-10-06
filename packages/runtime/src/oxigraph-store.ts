@@ -78,14 +78,15 @@ export class OxigraphStore implements Store {
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
     const targets = graphs(options);
     const ground: string[] = [];
+    const blanks: oxigraph.Quad[] = [];
     for (const triple of triples) {
       const [subject, predicate, object] = triple;
       if (subject.termType !== "BlankNode" && object.termType !== "BlankNode") {
         ground.push(`${triple.map(written).join(" ")} .\n`);
         continue;
       }
-      for (const graph of targets) {
-        this.#store.add(
+      for (const graph of targets)
+        blanks.push(
           oxigraph.quad(
             toOxigraph(subject) as oxigraph.NamedNode | oxigraph.BlankNode,
             oxigraph.namedNode(predicate.value),
@@ -93,12 +94,13 @@ export class OxigraphStore implements Store {
             graph,
           ),
         );
-      }
     }
-    if (ground.length === 0) return;
-    const lines = ground.join("");
-    for (const graph of targets)
-      this.#store.load(lines, { format: N_TRIPLES, to_graph_name: graph });
+    if (ground.length > 0) {
+      const lines = ground.join("");
+      for (const graph of targets)
+        this.#store.load(lines, { format: N_TRIPLES, to_graph_name: graph });
+    }
+    for (const quad of blanks) this.#store.add(quad);
   }
 
   async select(query: string): Promise<Rows> {

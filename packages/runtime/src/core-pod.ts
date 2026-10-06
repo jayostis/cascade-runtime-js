@@ -62,7 +62,8 @@ export class BuildFailure extends Error {
 /**
  * The pod's files as listed once, each read from the pod once and then held, which holds while the pod is written
  * only through them: a write goes through to the pod, but not one giving a file the bytes it already holds. A file
- * not held is looked for in the pod, so a step never writes over one that reached the pod another way.
+ * not held is looked for in the pod, so a step never writes over one that reached the pod another way; it is held,
+ * but not listed.
  */
 class HeldFiles implements Files {
   readonly #pod: Files;
@@ -94,7 +95,6 @@ class HeldFiles implements Files {
     const bytes = await this.#pod.read(path);
     if (bytes === undefined) return undefined;
     this.#bytes.set(path, bytes);
-    (await this.#listed()).add(path);
     return bytes;
   }
 
@@ -107,9 +107,10 @@ class HeldFiles implements Files {
     const path = relative(this, pathOrIri);
     const held = await this.#held(path);
     if (held !== undefined && same(held, bytes)) return;
+    const listed = await this.#listed();
     await this.#pod.write(path, bytes);
     this.#bytes.set(path, new Uint8Array(bytes));
-    (await this.#listed()).add(path);
+    listed.add(path);
   }
 
   async list(folder: string): Promise<string[]> {
