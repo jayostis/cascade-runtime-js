@@ -117,6 +117,118 @@ jobs:
         if: ${{ steps.tip.outputs.latest == 'true' }}
         uses: actions/deploy-pages@v5
 
+  # The package, packed once from the head of every default branch, so every system below tests the same bytes.
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build:package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: |
+            build/cascade-runtime-*.tgz
+            build/release-notes.md
+          if-no-files-found: error
+
+  # Step 1's script, run on the installed package in an empty folder that it can neither read nor write outside.
+  package-install:
+    name: package-install (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - name: Install the tarball into an empty folder
+        working-directory: ${{ runner.temp }}/package
+        env:
+          CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
+        run: |
+          tarball=$(node -p "require('node:path').resolve(process.argv[1])" cascade-runtime-*.tgz)
+          mkdir "$CASCADE_RUNTIME_APP"
+          cd "$CASCADE_RUNTIME_APP"
+          npm install "$tarball"
+      - name: Step 1's script on the installed package
+        env:
+          CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
+        run: |
+          cp developer-story/allergies.mjs "$CASCADE_RUNTIME_APP/"
+          node --test packages/runtime/dist/test/developer-story.test.js
+      - name: Everything installed is the package, bundled in it, or from npm's registry
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const { packages } = JSON.parse(readFileSync("package-lock.json", "utf8"));
+            const elsewhere = Object.entries(packages).filter(
+              ([path, entry]) =>
+                path !== "" &&
+                path !== "node_modules/cascade-runtime" &&
+                entry.inBundle !== true &&
+                !entry.resolved?.startsWith("https://registry.npmjs.org/"),
+            );
+            for (const [path, entry] of elsewhere) console.error(`${path} came from ${entry.resolved}`);
+            if (elsewhere.length > 0) process.exit(1);
+            console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
+          '
+
+  # The tested tarball, as the pre-release build-<commit>, never the latest.
+  release:
+    name: release
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: package-install
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: package
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-$GITHUB_SHA"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::$tag is a release already"
+            exit 0
+          fi
+          gh release create "$tag" package/cascade-runtime-*.tgz \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --notes-file package/release-notes.md \
+            --prerelease \
+            --latest=false
+
   ready-to-merge:
     name: ready-to-merge
     runs-on: ubuntu-latest

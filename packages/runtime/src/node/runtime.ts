@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { parseConfig, type RuntimeConfig } from "../config.js";
-import { vocabularyBuild, type VocabularyBuild } from "../build.js";
-import { Layout } from "../layout.js";
-import { OxigraphStore } from "../oxigraph-store.js";
-import { FolderFiles } from "./folder-files.js";
+import type { VocabularyBuild } from "../build.js";
+import type { Layout } from "../layout.js";
+import { checkouts, vocabularyOf } from "./components.js";
+import type { FolderFiles } from "./folder-files.js";
 import { git } from "./git.js";
 import { type Resolved, resolve } from "./resolver.js";
 
@@ -84,15 +84,5 @@ export async function localVocabulary(
   root: string,
   log?: (line: string) => void,
 ): Promise<LocalVocabulary> {
-  const config = await readConfig(root);
-  const resolved = await resolveVocabulary(root, config, undefined, log);
-  const files = new FolderFiles(resolved.folder, resolved.iri);
-  const layout = await Layout.read(files, () => new OxigraphStore());
-  return {
-    config,
-    files,
-    layout,
-    build: await vocabularyBuild(files, layout),
-    resolved,
-  };
+  return vocabularyOf(await checkouts(root, log));
 }

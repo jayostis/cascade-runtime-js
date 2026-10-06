@@ -5,10 +5,29 @@
   "type": "module",
   "description": "What an app imports: a pod it opens, looks into an export with, imports, enters, judges, matches and asks.",
   "license": "Apache-2.0",
-  "exports": {
-    ".": "./dist/src/index.js",
-    "./fixtures": "./dist/src/fixtures.js"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayostis/cascade-runtime-js.git",
+    "directory": "packages/cascade-runtime"
   },
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/src/fixtures.d.ts",
+      "default": "./dist/src/fixtures.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "PREVIEW.md"
+  ],
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0"
   }

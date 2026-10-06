@@ -1,4 +1,4 @@
-import { basename, dirname, join, resolve as absolute } from "node:path";
+import { basename, dirname, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   OxigraphStore,
@@ -7,16 +7,13 @@ import {
 } from "@cascade-runtime/runtime";
 import {
   compiledBridge,
-  findBridgePackage,
-  findRoot,
+  componentsOf,
   FolderFiles,
   importersNamed,
   inWorker,
   loadConfiguredAdapters,
   type LocalVocabulary,
-  localVocabulary,
-  type ResolverOptions,
-  siblingsOf,
+  vocabularyOf,
 } from "@cascade-runtime/runtime/node";
 import type { Parts } from "../pod.js";
 
@@ -29,14 +26,12 @@ export interface ResolvedParts extends Parts {
 }
 
 async function resolve(): Promise<ResolvedParts> {
-  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
-  const local = await localVocabulary(root);
+  const components = await componentsOf(
+    fileURLToPath(new URL("../../../", import.meta.url)),
+  );
+  const local = await vocabularyOf(components);
   const { config, files, layout, build } = local;
   const newStore = () => new OxigraphStore();
-  const options: ResolverOptions = {
-    siblingsIn: await siblingsOf(root),
-    cache: join(root, "build", "cache"),
-  };
   return {
     local,
     vocabulary: files,
@@ -55,7 +50,7 @@ async function resolve(): Promise<ResolvedParts> {
       };
     },
     loadBridge: async () => {
-      const found = await findBridgePackage(options);
+      const found = await components.bridge();
       const bridge = new WasmBridge(
         inWorker(await compiledBridge(found.folder)),
       );
@@ -63,7 +58,7 @@ async function resolve(): Promise<ResolvedParts> {
         const loaded = await loadConfiguredAdapters(
           bridge,
           config.adapters,
-          options,
+          components,
         );
         const adapters = loaded.map(({ adapter }) => adapter);
         return {
@@ -83,7 +78,7 @@ async function resolve(): Promise<ResolvedParts> {
 
 let found: Promise<ResolvedParts> | undefined;
 
-/** What a pod is opened with, resolved once per process from inside the repository, as every run on main resolves it. */
+/** What a pod is opened with, resolved once per process: from what the package carries, or in the repository as every run on main resolves it. */
 export function resolved(): Promise<ResolvedParts> {
   if (found === undefined) {
     const resolving = resolve();

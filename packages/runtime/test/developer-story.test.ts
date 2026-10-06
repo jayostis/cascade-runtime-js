@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { podDataset } from "../src/dataset.js";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { questions } from "../src/questions.js";
+import { packed, vocabularyOf } from "../src/node/components.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
 import { ROOT } from "./vocabulary.js";
@@ -17,6 +18,11 @@ const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const FIRST_EXPORT =
   "conformance/alex-rivera/scripted-input/alex/downloads/x-e2/apple_health_export";
 const QUESTION = "pod/My active allergies";
+/** A folder cascade-runtime's tarball is installed in, beside a copy of the script, to run the installed package. */
+const APP =
+  process.env.CASCADE_RUNTIME_APP === undefined
+    ? undefined
+    : resolve(process.env.CASCADE_RUNTIME_APP);
 
 /** Each row as one string, its columns in name order, so two answers compare as multisets. */
 function multiset(rows: readonly Record<string, unknown>[]): string[] {
@@ -29,8 +35,15 @@ function multiset(rows: readonly Record<string, unknown>[]): string[] {
     .sort();
 }
 
-test("the developer story prints Alex's active allergies as the replay through J1 answers them", async () => {
-  const vocabulary = await localVocabulary(ROOT);
+test("the developer story prints Alex's active allergies as the replay through J1 answers them", async (t) => {
+  const vocabulary =
+    APP === undefined
+      ? await localVocabulary(ROOT)
+      : await vocabularyOf(
+          await packed(
+            join(APP, "node_modules", "cascade-runtime", "components"),
+          ),
+        );
   const replayed = await featurePod(
     vocabulary,
     ALEX,
@@ -61,14 +74,21 @@ test("the developer story prints Alex's active allergies as the replay through J
     Object.fromEntries([...row].map(([column, term]) => [column, term.value])),
   );
 
-  const folder = await mkdtemp(join(tmpdir(), "developer-story-"));
+  const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
+  const script =
+    APP === undefined
+      ? [join(ROOT, "developer-story", "allergies.mjs")]
+      : [
+          "--permission",
+          `--allow-fs-read=${APP}`,
+          `--allow-fs-write=${APP}`,
+          "--allow-worker",
+          join(APP, "allergies.mjs"),
+        ];
   try {
     const { stdout } = await promisify(execFile)(
       process.execPath,
-      [
-        join(ROOT, "developer-story", "allergies.mjs"),
-        join(vocabulary.files.folder, FIRST_EXPORT),
-      ],
+      [...script, join(vocabulary.files.folder, FIRST_EXPORT)],
       { cwd: folder, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
     ).catch((error: { stderr?: string; code?: unknown; signal?: unknown }) => {
       throw new Error(
@@ -83,8 +103,12 @@ test("the developer story prints Alex's active allergies as the replay through J
       for (const [column, value] of Object.entries(row))
         assert.equal(typeof value, "string", `?${column} is no string`);
     }
+    for (const row of printed) t.diagnostic(JSON.stringify(row));
     assert.deepEqual(multiset(printed), multiset(expected));
   } finally {
-    await rm(folder, { recursive: true, force: true });
+    await rm(APP === undefined ? folder : join(APP, "alex-pod"), {
+      recursive: true,
+      force: true,
+    });
   }
 });
