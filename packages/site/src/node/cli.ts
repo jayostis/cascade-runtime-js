@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -7,6 +8,7 @@ import {
   clock,
   kitsOf,
   OxigraphStore,
+  parseConfig,
   podDataset,
   questions,
   repositoryName,
@@ -18,17 +20,22 @@ import {
   BRIDGE_REPOSITORY,
   type BridgePackageFound,
   checkout,
+  CONFIG_FILE,
   FolderFiles,
   findBridgePackage,
   findRoot,
   type LocalVocabulary,
   localVocabulary,
+  PACKED,
+  type Packed,
   type Resolved,
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
 import { type Example, type Ingredient, pagesTree } from "../front-page.js";
 import { Site } from "../site.js";
+import { TRY_PACKAGE, tryPage } from "../try-page.js";
+import { servePages } from "./serve.js";
 import { startOf } from "./start.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -45,6 +52,9 @@ const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
 const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
+const STAGE = join(ROOT, "build", "package");
+const PAGES = join(ROOT, "build", "pages");
+const APP = join(ROOT, "packages", "site", "try", "app.js");
 const log = (line: string): void => console.error(line);
 
 interface Target {
@@ -159,9 +169,53 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
       };
 }
 
+/** What the page under try/ serves of the package `npm run build:package` staged: its browser build, and the vocabulary it carries. */
+async function stagedPackage(): Promise<{
+  readonly files: Map<string, Uint8Array>;
+  readonly vocabulary: string;
+}> {
+  const components = join(STAGE, "components");
+  if (!existsSync(join(components, PACKED)))
+    throw new Error(
+      `${STAGE} holds no package; run npm run build:package first`,
+    );
+  const config = parseConfig(
+    await readFile(join(components, CONFIG_FILE), "utf8"),
+  );
+  const packed = JSON.parse(
+    await readFile(join(components, PACKED), "utf8"),
+  ) as Packed;
+  const followed = config.vocabulary;
+  const commit = packed.components.find(
+    ({ repository }) => repository === followed.repository,
+  )?.commit;
+  if (commit === undefined)
+    throw new Error(
+      `${join(components, PACKED)} records no ${followed.repository}`,
+    );
+  const staged = new FolderFiles(STAGE);
+  const paths = [
+    ...(await staged.list("dist/browser")),
+    `components/${CONFIG_FILE}`,
+    `components/${PACKED}`,
+    ...(await staged.list(`components/${repositoryName(followed)}/${commit}`)),
+  ];
+  const files = new Map<string, Uint8Array>();
+  for (const path of paths) {
+    const bytes = await staged.read(path);
+    if (bytes === undefined) throw new Error(`${STAGE} holds no ${path}`);
+    files.set(TRY_PACKAGE + path, bytes);
+  }
+  return { files, vocabulary: commit };
+}
+
 /** Builds every kit's pod and site with build-example, and writes them under build/pages beneath the newcomer's page and the examples' page. */
 async function buildPages(): Promise<number> {
+  const staged = await stagedPackage();
   const vocabulary = await localVocabulary(ROOT, log);
+  log(
+    `the pods are built from cascade-vocabulary at ${vocabulary.resolved.version}; try/ reads the one the package carries, at ${staged.vocabulary}`,
+  );
   const examples: Example[] = [];
   for (const kit of await kitsOf(vocabulary.files)) {
     const name = kit.slice(KIT.length);
@@ -212,12 +266,35 @@ async function buildPages(): Promise<number> {
       at: clock.now(),
     },
     await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
+    new Map([
+      ["index.html", new TextEncoder().encode(tryPage(shownTitle(examples)))],
+      ["app.js", await readFile(APP)],
+      ...staged.files,
+    ]),
   );
-  const out = join(ROOT, "build", "pages");
+  const out = PAGES;
   await rm(out, { recursive: true, force: true });
   const pages = new FolderFiles(out);
   for (const [path, bytes] of tree) await pages.write(path, bytes);
   console.error(`${tree.size} files written to ${out}`);
+  return 0;
+}
+
+function shownTitle(examples: readonly Example[]): string {
+  const shown = examples.find(({ folder }) => folder === EXAMPLE);
+  if (shown === undefined)
+    throw new Error(`no example ${EXAMPLE} among the kits`);
+  return shown.title;
+}
+
+/** Serves build/pages until stopped. */
+async function servePagesCommand(args: string[]): Promise<number> {
+  const { values } = parseArgs({ args, options: { port: { type: "string" } } });
+  if (!existsSync(join(PAGES, "index.html")))
+    throw new Error(`${PAGES} holds no pages; run npm run build:pages first`);
+  const { url } = await servePages(PAGES, Number(values.port ?? 0));
+  console.log(`serving ${PAGES} at ${url}`);
+  await new Promise(() => undefined);
   return 0;
 }
 
@@ -258,6 +335,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   "build-example-site": buildExampleSite,
   "build-example": buildExample,
   "build-pages": buildPages,
+  "serve-pages": servePagesCommand,
   ask,
 };
 

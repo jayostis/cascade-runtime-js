@@ -68,3 +68,6 @@ export class MemoryFiles implements Files {
     return [...this.#files.keys()].filter((path) => under(prefix, path)).sort();
   }
 }
+
+/** What a folder served over HTTP lists of itself: every path under it but this file, sorted, as a JSON array. */
+export const FILES_JSON = "files.json";

@@ -1,4 +1,4 @@
-import type { Layout } from "@cascade-runtime/runtime";
+import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
 import { markup } from "./html.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
@@ -6,7 +6,8 @@ import { COPY } from "./terms.js";
 
 export const FRONT_PAGE = "index.html";
 export const EXAMPLES_PAGE = "examples.html";
-export const TRY_PAGE = "try/index.html";
+export const TRY = "try/";
+export const TRY_PAGE = `${TRY}index.html`;
 const POD_ENTRY = "manifest.ttl";
 
 /** An example's site, placed in the folder named after its kit. */
@@ -129,8 +130,7 @@ its last line, <code>My idea: …</code>, replaced by your idea:</p>
 installed package, and loads a pod, such as ${title}'s, when your idea needs one.</p>
 ${
   tried &&
-  markup`<h2 class="part">Try it in your browser</h2>
-<p class="prose"><a href="${TRY_PAGE}">Open the demo</a>; there is nothing to install.</p>
+  markup`<p class="prose"><a href="${TRY_PAGE}">Try it in your browser, nothing to install</a></p>
 `
 }<h2 class="part">Further</h2>
 <p class="prose"><a href="${EXAMPLES_PAGE}">Every example</a>, and what built these pages.</p>
@@ -140,11 +140,15 @@ ${
 `.text;
 }
 
-/** The Pages tree: the newcomer's front page, the examples' page, and each example's site in its folder. */
+/**
+ * The Pages tree: the newcomer's front page, the examples' page, each example's site in its folder with its pod's
+ * files listed, and the page that tries a pod in a browser, `tried`, under `try/`.
+ */
 export function pagesTree(
   examples: readonly Example[],
   built: BuiltFrom,
   start: Start,
+  tried: ReadonlyMap<string, Uint8Array>,
 ): Map<string, Uint8Array> {
   const shown = examples.find(({ folder }) => folder === start.example);
   if (shown === undefined)
@@ -154,8 +158,19 @@ export function pagesTree(
     [EXAMPLES_PAGE, encoder.encode(examplesPage(examples, built))],
     [STYLESHEET_FILE, encoder.encode(STYLESHEET)],
   ]);
-  for (const { folder, site } of examples)
+  for (const { folder, site } of examples) {
     for (const [path, bytes] of site) tree.set(`${folder}/${path}`, bytes);
+    const pod = [...site.keys()]
+      .filter((path) => path.startsWith(COPY))
+      .map((path) => path.slice(COPY.length))
+      .filter((path) => path !== FILES_JSON)
+      .sort();
+    tree.set(
+      `${folder}/${COPY}${FILES_JSON}`,
+      encoder.encode(`${JSON.stringify(pod, null, 2)}\n`),
+    );
+  }
+  for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
   tree.set(
     FRONT_PAGE,
     encoder.encode(frontPage(start, shown, tree.has(TRY_PAGE))),

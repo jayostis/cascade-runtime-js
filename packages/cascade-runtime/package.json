@@ -18,6 +18,10 @@
   },
   "exports": {
     ".": {
+      "browser": {
+        "types": "./dist/src/browser/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
@@ -28,11 +32,16 @@
   },
   "files": [
     "dist/src",
+    "dist/browser",
     "README.md",
     "starter",
     "guide/AGENTS.md"
   ],
   "dependencies": {
-    "@cascade-runtime/runtime": "0.0.0"
+    "@cascade-runtime/runtime": "0.0.0",
+    "oxigraph": "0.5.11"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }
