@@ -2,10 +2,11 @@
 
 ## What the Cascade Protocol is
 
-The Cascade Protocol is a way to build health apps on a person's health records.
-Each person's health records are in their own pod: RDF, kept as Turtle files.
-Records arrive from a source format through a Bridge running an adapter, and
-apps read a pod through the vocabulary's standard SPARQL questions.
+The Cascade Protocol is a way to build health apps on records a person holds
+themselves. Each person's records are in their own pod, a single-tenant RDF
+graph kept as Turtle files. Records arrive from a source format through a
+Bridge running an adapter, and apps read a pod through standard SPARQL
+questions.
 
 It is built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate and EARL reports.
 FHIR R4 is the first source format this runtime files.
@@ -28,15 +29,15 @@ against the vocabulary's executable examples.
 
 ## The protocol's repositories
 
-| Repository | What it is |
-| --- | --- |
-| [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary) | The contract a Cascade pod is built and read by: the ontologies and shapes, the standard queries, the runtime rules and the conformance kit. |
-| [cascade-bridge-spec](https://github.com/jayostis/cascade-bridge-spec) | The Cascade Bridge Specification: the contract every adapter and every Bridge follows. Draft: no compatibility is promised before a numbered v1. |
-| [cascade-bridge-rs](https://github.com/jayostis/cascade-bridge-rs) | The Cascade Bridge for Rust, also built for WebAssembly. This runtime runs it. Draft. |
-| [cascade-bridge-js](https://github.com/jayostis/cascade-bridge-js) | The Cascade Bridge for JavaScript. Draft. |
-| [cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4) | The adapter for FHIR R4 JSON, alone or in a Bundle. Import-only. |
-| [cascade-bridge-adapter-clinvar](https://github.com/jayostis/cascade-bridge-adapter-clinvar) | The adapter for NCBI ClinVar VCV XML. Import-only; the pilot adapter. |
-| cascade-runtime-js (this repository) | The reference runtime. |
+| Repository                                                                                   | What it is                                                                                                                                       |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)                         | The contract a Cascade pod is built and read by: the ontologies and shapes, the standard queries, the runtime rules and the conformance kit.     |
+| [cascade-bridge-spec](https://github.com/jayostis/cascade-bridge-spec)                       | The Cascade Bridge Specification: the contract every adapter and every Bridge follows. Draft: no compatibility is promised before a numbered v1. |
+| [cascade-bridge-rs](https://github.com/jayostis/cascade-bridge-rs)                           | The Cascade Bridge for Rust, also built for WebAssembly. Draft.                                                                                  |
+| [cascade-bridge-js](https://github.com/jayostis/cascade-bridge-js)                           | The Cascade Bridge for JavaScript. Draft.                                                                                                        |
+| [cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4) | The adapter for FHIR R4 JSON, alone or in a Bundle. Import-only.                                                                                 |
+| [cascade-bridge-adapter-clinvar](https://github.com/jayostis/cascade-bridge-adapter-clinvar) | The adapter for NCBI ClinVar VCV XML. Import-only; the pilot adapter.                                                                            |
+| cascade-runtime-js (this repository)                                                         | The reference runtime.                                                                                                                           |
 
 ## How it fits together
 
@@ -66,6 +67,9 @@ them. That is how the same runtime runs in Node and in a browser:
 Code that needs Node (a local folder, git, the command line) is under
 `packages/runtime/src/node/`. The core knows an importer only by the name
 `cascade-runtime.json` gives it; `src/node/importers.ts` finds each by name.
+Code that needs a browser (IndexedDB, the Bridge's worker) is under
+`packages/runtime/src/web/`, and only the browser entry,
+`packages/cascade-runtime/src/browser/`, imports from there.
 
 Conformance is executable. Each rule of the vocabulary is a Gherkin `Rule:`
 with the examples that show it, and a runtime reports each example in EARL.
@@ -82,12 +86,8 @@ with the examples that show it, and a runtime reports each example in EARL.
 
 ## Working on this repository
 
-The reference implementation of
-[cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)'s runtime
-rules: a TypeScript runtime that fills a Cascade pod, loading the Bridge and
-the adapters in-process. It proves itself by passing every example of the
-vocabulary's feature files: its rules and its conformance kit, Alex Rivera's
-story.
+The runtime loads the Bridge and the adapters in-process. The vocabulary's
+conformance kit is Alex Rivera's story.
 
 Node 22 or later. To build Alex's pod and the site that documents it:
 
