@@ -21,9 +21,16 @@ export interface Terminal {
   readonly install: (folder: string) => Promise<boolean>;
 }
 
+/** The word as a shell reads it: quoted when it holds a space or a character a shell would act on. */
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./\\-]+$/.test(word)
+    ? word
+    : `"${word.replaceAll('"', '\\"')}"`;
+}
+
 /** The one line that makes an app in the folder from the package at the address. */
 export function startLine(address: string, folder: string): string {
-  return `npx --yes --package=${address} ${COMMAND} ${folder}`;
+  return `npx --yes --package=${shellWord(address)} ${COMMAND} ${shellWord(folder)}`;
 }
 
 /** What a person gives a coding agent to build their app in the folder from the package at the address. */
@@ -147,7 +154,15 @@ export async function create(
 
   const name = basename(target);
   const notice = await readFile(join(PACKAGE, "PREVIEW.md"), "utf8");
-  await copyStarter(target, name, dependencyOn(address), notice);
+  try {
+    await copyStarter(target, name, dependencyOn(address), notice);
+  } catch (error) {
+    terminal.err(
+      `the starter could not be copied into ${target}, which may be left half made: ${(error as Error).message}
+`,
+    );
+    return 1;
+  }
   if (!(await terminal.install(target))) {
     terminal.err(
       `the install failed; ${target} is left as it is: run \`npm install\` in it\n`,
@@ -159,7 +174,7 @@ export async function create(
       "",
       `Made ${target}. To start it:`,
       "",
-      `  cd ${folder}`,
+      `  cd ${shellWord(folder)}`,
       "  npm run pod:load alex-rivera",
       "  npm start",
       "",

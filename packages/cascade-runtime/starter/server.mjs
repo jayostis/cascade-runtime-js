@@ -23,7 +23,7 @@ function escaped(text) {
 
 const notice = readFileSync(
   fileURLToPath(
-    new URL("node_modules/cascade-runtime/PREVIEW.md", import.meta.url),
+    new URL("../../PREVIEW.md", import.meta.resolve("cascade-runtime")),
   ),
   "utf8",
 )

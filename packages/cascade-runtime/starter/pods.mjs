@@ -14,14 +14,18 @@ export function podFolder(name) {
   return join(PODS, name);
 }
 
-/** The pods there are, by name. */
+/** The pods there are, by name: a folder still empty is none, so reading it never makes a pod. */
 export async function podNames() {
   try {
     const entries = await readdir(PODS, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
+    const names = [];
+    for (const entry of entries)
+      if (
+        entry.isDirectory() &&
+        (await readdir(podFolder(entry.name))).length > 0
+      )
+        names.push(entry.name);
+    return names.sort();
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
