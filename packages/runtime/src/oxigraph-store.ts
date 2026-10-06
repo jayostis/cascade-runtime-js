@@ -1,9 +1,17 @@
 import * as oxigraph from "oxigraph";
-import { blank, iri, literal, type Term, type Triple } from "./rdf.js";
+import {
+  blank,
+  iri,
+  literal,
+  ntriples,
+  type Term,
+  type Triple,
+} from "./rdf.js";
 import { parseResults } from "./sparql-results.js";
 import type { LoadOptions, Rows, Store } from "./store.js";
 
 const TURTLE = "text/turtle";
+const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
 
 function fromOxigraph(term: oxigraph.Term): Term {
@@ -76,7 +84,13 @@ export class OxigraphStore implements Store {
 
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
     const targets = graphs(options);
-    for (const [subject, predicate, object] of triples) {
+    const ground: Triple[] = [];
+    for (const triple of triples) {
+      const [subject, predicate, object] = triple;
+      if (subject.termType !== "BlankNode" && object.termType !== "BlankNode") {
+        ground.push(triple);
+        continue;
+      }
       for (const graph of targets) {
         this.#store.add(
           oxigraph.quad(
@@ -88,6 +102,10 @@ export class OxigraphStore implements Store {
         );
       }
     }
+    if (ground.length === 0) return;
+    const written = ntriples(ground);
+    for (const graph of targets)
+      this.#store.load(written, { format: N_TRIPLES, to_graph_name: graph });
   }
 
   async select(query: string): Promise<Rows> {

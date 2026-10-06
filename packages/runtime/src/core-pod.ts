@@ -2,13 +2,13 @@ import { fileEntry, fileExport } from "./arrivals.js";
 import type { LoadedAdapter } from "./bridge.js";
 import type { Derive } from "./build.js";
 import { built } from "./dataset.js";
-import { type Files, MemoryFiles } from "./files.js";
+import { type Files, MemoryFiles, relative, under } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { matcherView, runMatcher } from "./matcher.js";
-import { StepWrites } from "./pod.js";
+import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
 import type { References } from "./references.js";
 import { Refusal, type StepContext, type StepFile } from "./step.js";
@@ -59,6 +59,57 @@ export class BuildFailure extends Error {
   }
 }
 
+/**
+ * The pod's files, each read from the pod once and then held, which holds while the pod is written only through them:
+ * a write goes through to the pod, but not one giving a file the bytes it already holds.
+ */
+class HeldFiles implements Files {
+  readonly #pod: Files;
+  readonly #bytes = new Map<string, Uint8Array>();
+  #paths: Promise<Set<string>> | undefined;
+
+  constructor(pod: Files) {
+    this.#pod = pod;
+  }
+
+  get iri(): string {
+    return this.#pod.iri;
+  }
+
+  #listed(): Promise<Set<string>> {
+    this.#paths ??= this.#pod.list("").then((paths) => new Set(paths));
+    return this.#paths;
+  }
+
+  async read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    const path = relative(this, pathOrIri);
+    let bytes = this.#bytes.get(path);
+    if (bytes === undefined) {
+      if (!(await this.#listed()).has(path)) return undefined;
+      bytes = await this.#pod.read(path);
+      if (bytes === undefined) return undefined;
+      this.#bytes.set(path, bytes);
+    }
+    return bytes.slice();
+  }
+
+  async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    const path = relative(this, pathOrIri);
+    const held = await this.read(path);
+    if (held !== undefined && same(held, bytes)) return;
+    await this.#pod.write(path, bytes);
+    this.#bytes.set(path, bytes.slice());
+    (await this.#listed()).add(path);
+  }
+
+  async list(folder: string): Promise<string[]> {
+    const prefix = relative(this, folder);
+    return [...(await this.#listed())]
+      .filter((path) => under(prefix, path))
+      .sort();
+  }
+}
+
 /** A copy of the pod's files, in memory. */
 async function copied(pod: Files): Promise<Files> {
   const copy = new MemoryFiles(pod.iri);
@@ -78,7 +129,7 @@ export class CorePod {
   #references: Promise<References> | undefined;
 
   constructor(options: CorePodOptions) {
-    this.#options = options;
+    this.#options = { ...options, pod: new HeldFiles(options.pod) };
   }
 
   get files(): Files {
