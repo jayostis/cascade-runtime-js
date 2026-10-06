@@ -133,9 +133,6 @@ async function walk(node: Node, replay: Replay): Promise<void> {
   }
 }
 
-/** The dataset of the pod's files alone, for an example none of whose checks reads the lens's derived state. */
-const FILES_ONLY = "";
-
 /** A replay as an example names its steps: one that takes the same steps under other labels shares it. */
 function named(
   replayed: Replayed | undefined,
@@ -273,9 +270,9 @@ class Run {
             : dataset(
                 replayed,
                 replayed.steps.at(-1)?.step.name ?? "",
-                lens === FILES_ONLY ? KIT_LENS : lens,
+                lens,
                 this.#options.newStore(),
-                lens === FILES_ONLY ? undefined : this.#options.derive,
+                this.#options.derive,
               );
       found.catch(() => undefined);
       node.datasets.set(key, found);
@@ -369,11 +366,7 @@ class Run {
     try {
       if (node === undefined)
         throw new Error("the example takes no step to read the pod after");
-      reading = await this.#reading(
-        planned,
-        node,
-        compiled.derived === true ? at.lens : FILES_ONLY,
-      );
+      reading = await this.#reading(planned, node, at.lens);
     } catch (error) {
       return {
         ...named,

@@ -83,8 +83,6 @@ export interface Compiled {
   readonly checks: { readonly text: string; readonly check: Check }[];
   /** The query the last `When the query is:` gave, which the `it answers` steps after it read. */
   query?: string;
-  /** Whether a check reads the lens's derived state, or the files built from it. */
-  derived?: boolean;
 }
 
 export interface Compiling {
@@ -276,7 +274,11 @@ async function fieldOf(
 ): Promise<string> {
   const wanted = propertyOf(field);
   return (
-    await select(reading.store, `SELECT ?p ?o WHERE { <${version}> ?p ?o }`)
+    await select(
+      reading.store,
+      `SELECT DISTINCT ?p ?o WHERE { GRAPH ?file { <${version}> ?p ?o }
+        FILTER (STRSTARTS(STR(?file), "${reading.replayed.story.address}")) }`,
+    )
   )
     .filter(([p]) => localName(p ?? "") === wanted)
     .map(([, o]) => o ?? "")
@@ -1514,24 +1516,6 @@ const EXPRESSIONS = DEFINITIONS.map(
     [new CucumberExpression(expression, registry), act, expression] as const,
 );
 
-/** The phrases whose checks read the lens's derived state or the files built from it; the others read only the pod's files. */
-const DERIVED = new Set([
-  "these records have:",
-  "{judgment} counts",
-  "{judgment} does not count",
-  "the {view} view holds these entries:",
-  "the {view} view has no entry",
-  "the entry of {record} shows:",
-  "the entry of {record} shows only:",
-  "{records} is/are in no view",
-  "these records are in no view, for these reasons:",
-  "the pod neither names nor stores the document {name}",
-  "it answers:",
-  "it answers nothing",
-  "the pod is read as it stood after {step}",
-  "the pod is read as it stood after {step}, under the {lens} lens",
-]);
-
 /** Every phrase a feature file may use, as runtime/steps.md lists them. */
 export const PHRASES: readonly string[] = DEFINITIONS.map(
   ([expression]) => expression,
@@ -1558,8 +1542,7 @@ export async function compileStep(
         ? `no step of runtime/steps.md reads "${stated.text}"`
         : `"${stated.text}" reads as ${matches.map(({ source }) => source).join(" and as ")}`,
     );
-  const [{ act, args, source }] = matches as [(typeof matches)[number]];
-  if (DERIVED.has(source)) compiled.derived = true;
+  const [{ act, args }] = matches as [(typeof matches)[number]];
   await act(
     compiled,
     await Promise.all(args.map((arg) => arg.getValue(null))),
