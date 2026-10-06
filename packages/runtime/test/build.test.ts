@@ -3,12 +3,15 @@ import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
+import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
 import { MemoryFiles, readText } from "../src/files.js";
-import { LAYOUT_FILE } from "../src/layout.js";
+import { clock } from "../src/ids.js";
+import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
 import type { Store } from "../src/store.js";
+import { notIsomorphic } from "./graphs.js";
 import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/matcher.feature";
@@ -29,10 +32,34 @@ let store: Store;
 /** The vocabulary's pod layout as it reads, its paths resolved against the pod's address, read without `Layout`. */
 let laidOut: Store;
 let address: string;
+let layout: Layout;
+/** The pod the story was replayed into, with a build after every step. */
+let pod: CountedFiles;
+/** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
+let reopened: () => CorePod;
+
+/** Files in memory, counting each read that finds a file, and each write, by path. */
+class CountedFiles extends MemoryFiles {
+  readonly found = new Map<string, number>();
+  readonly writes = new Map<string, number>();
+
+  override async read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    const bytes = await super.read(pathOrIri);
+    if (bytes !== undefined)
+      this.found.set(pathOrIri, (this.found.get(pathOrIri) ?? 0) + 1);
+    return bytes;
+  }
+
+  override write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    this.writes.set(pathOrIri, (this.writes.get(pathOrIri) ?? 0) + 1);
+    return super.write(pathOrIri, bytes);
+  }
+}
 
 before(async () => {
   const files = await vocabulary();
-  const layout = await readLayout();
+  layout = await readLayout();
+  const derive = await vocabularyDerive(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
   laidOut = new OxigraphStore();
@@ -46,18 +73,27 @@ before(async () => {
     vocabulary: files,
     folder,
     title: "matching",
-    pod: new MemoryFiles(story.address),
+    pod: (pod = new CountedFiles(story.address)),
     newStore: () => new OxigraphStore(),
     layout,
     importers: [appleHealthExport],
+    build: { lens: LENS, derive },
   });
-  store = await dataset(
-    replayed,
-    THROUGH,
-    LENS,
-    new OxigraphStore(),
-    await vocabularyDerive(files, layout),
-  );
+  store = await dataset(replayed, THROUGH, LENS, new OxigraphStore(), derive);
+  reopened = () =>
+    new CorePod({
+      pod,
+      address,
+      subject: story.subject,
+      title: "matching",
+      vocabulary: files,
+      layout,
+      newStore: () => new OxigraphStore(),
+      time: clock,
+      importers: [],
+      references: () => Promise.reject(new Error("no step here matches")),
+      build: { lens: LENS, derive },
+    });
 });
 
 async function values(on: Store, where: string): Promise<string[]> {
@@ -109,6 +145,34 @@ test("the build writes each file the layout says a query writes, as a view, and 
         ?placement a rec:Placement ; solid:forClass ${registration}
         { ?placement rec:writtenBy [] ; solid:instance [] } UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
     ),
+  );
+});
+
+test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
+  assert.deepEqual([...pod.found.keys()], []);
+  assert.equal(pod.writes.get(layout.typeIndex), 1);
+  assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
+  const parser = new OxigraphStore();
+  for (const path of layout.rebuilt) {
+    const bytes = await pod.read(path);
+    assert.ok(bytes, path);
+    const full = await store.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address}${path}> { ?s ?p ?o } }`,
+    );
+    assert.equal(
+      notIsomorphic(full, await parser.parse(bytes, address + path)),
+      undefined,
+      path,
+    );
+  }
+  pod.found.clear();
+  const opened = reopened();
+  await opened.refuse("a first step");
+  await opened.refuse("a second step");
+  assert.ok(pod.found.size > 0);
+  assert.deepEqual(
+    [...pod.found].filter(([, reads]) => reads > 1),
+    [],
   );
 });
 

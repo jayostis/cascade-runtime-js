@@ -46,6 +46,19 @@ test("the store answers over named graphs, and its default graph holds what was 
     "SELECT DISTINCT ?o WHERE { <urn:b> <urn:r> ?o }",
   );
   assert.equal(apart.rows.length, 3);
+  const [[, , loaded] = []] = await store.construct(
+    "CONSTRUCT { <urn:b> <urn:r> ?o } WHERE { GRAPH <urn:other> { <urn:b> <urn:r> ?o } }",
+  );
+  assert.equal(loaded?.termType, "BlankNode");
+  await store.add([[loaded, iri("urn:t"), literal("z")]], {
+    graph: "urn:added",
+  });
+  assert.equal(
+    await store.ask(
+      'ASK { GRAPH <urn:other> { <urn:b> <urn:r> ?o } GRAPH <urn:added> { ?o <urn:t> "z" } ?o <urn:t> "z" }',
+    ),
+    true,
+  );
   const built = await store.construct(
     "CONSTRUCT { ?s <urn:q> ?o } WHERE { GRAPH <urn:aside> { ?s ?p ?o } }",
   );
