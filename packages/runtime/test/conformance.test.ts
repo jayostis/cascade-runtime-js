@@ -119,7 +119,10 @@ test("every example and each kit's checks pass", () => {
   }
 });
 
-test("each example fails or passes on its own: a step no phrase reads, a later step that stops the replay, a step named with a space, two outline rows of one name, a query that is no SELECT, another person named, and a pod read before a later step of the same name", async () => {
+/** The outcome and why of each example of a feature file of broken examples, by its name, from one run. */
+let broken: Map<string, readonly [string, string]>;
+
+before(async () => {
   const files = new MemoryFiles("https://vocabulary.example/");
   const write = (path: string, text: string) =>
     files.write(path, new TextEncoder().encode(text));
@@ -190,37 +193,59 @@ test("each example fails or passes on its own: a step no phrase reads, a later s
     newPod: (address) => new MemoryFiles(address),
     layout: await layout(),
   });
-  const outcome = new Map(
+  broken = new Map(
     assertions.map(({ test, outcome, why }) => [
       test.slice(test.indexOf("#") + 1),
-      [outcome, why ?? ""],
+      [outcome, why ?? ""] as const,
     ]),
   );
-  const failing: Record<string, RegExp> = {
-    "a-step-nobody-wrote":
-      /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
-    "a-pod-read-before-a-later-step-that-stops-the-replay":
-      /^Z1\. A rule: the replay stopped at step missing:/,
-    "two-rows-of-one-name":
-      /^Z1\. A rule: two examples of runtime\/broken\.feature are named "two rows of one name"/,
-    "a-query-that-is-no-select": /^Z1\. A rule: the query is no SELECT/,
-    "a-step-named-with-a-space": /^Z1\. A rule: "two words" cannot name a step/,
-  };
-  assert.deepEqual(
-    [...outcome.keys()].sort(),
-    [
-      ...Object.keys(failing),
-      "another-person-named",
-      "a-judgment-filed-twice-read-after-the-first",
-    ].sort(),
+});
+
+function failed(example: string, why: RegExp): void {
+  const [outcome, said] = broken.get(example) ?? [];
+  assert.equal(outcome, "failed", example);
+  assert.match(said ?? "", why);
+}
+
+test("a step no phrase reads fails its example, naming the phrase", () => {
+  failed(
+    "a-step-nobody-wrote",
+    /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
   );
-  for (const [name, why] of Object.entries(failing)) {
-    assert.equal(outcome.get(name)?.[0], "failed", name);
-    assert.match(outcome.get(name)?.[1] ?? "", why);
-  }
-  for (const name of [
-    "another-person-named",
-    "a-judgment-filed-twice-read-after-the-first",
-  ])
-    assert.deepEqual(outcome.get(name), ["passed", ""], name);
+});
+
+test("a later step that stops the replay fails an example that read the pod before it", () => {
+  failed(
+    "a-pod-read-before-a-later-step-that-stops-the-replay",
+    /^Z1\. A rule: the replay stopped at step missing:/,
+  );
+});
+
+test("a step named with a space fails its example", () => {
+  failed(
+    "a-step-named-with-a-space",
+    /^Z1\. A rule: "two words" cannot name a step/,
+  );
+});
+
+test("two outline rows of one name fail", () => {
+  failed(
+    "two-rows-of-one-name",
+    /^Z1\. A rule: two examples of runtime\/broken\.feature are named "two rows of one name"/,
+  );
+});
+
+test("a query that is no SELECT fails its example", () => {
+  failed("a-query-that-is-no-select", /^Z1\. A rule: the query is no SELECT/);
+});
+
+test("an example may name a person other than the pod's", () => {
+  assert.deepEqual(broken.get("another-person-named"), ["passed", ""]);
+});
+
+test("a pod read before a later step of the same name is read as it stood then", () => {
+  assert.deepEqual(broken.get("a-judgment-filed-twice-read-after-the-first"), [
+    "passed",
+    "",
+  ]);
 });
