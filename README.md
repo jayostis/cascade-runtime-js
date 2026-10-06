@@ -3,8 +3,9 @@
 The reference implementation of
 [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary)'s runtime
 rules: a TypeScript runtime that fills a Cascade pod, loading the Bridge and
-the adapters in-process. It proves itself by passing the vocabulary's rule
-vectors and its conformance kit, Alex Rivera's story.
+the adapters in-process. It proves itself by passing every example of the
+vocabulary's feature files: its rules and its conformance kit, Alex Rivera's
+story.
 
 The pod and site each kit builds, from `main`, are at
 <https://jayostis.github.io/cascade-runtime-js/>.
@@ -36,17 +37,20 @@ npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the
 npm test                                  # the unit tests, and one run of the conformance command
 npm run typecheck
 npm run lint
-npm run conformance -- --report earl.nt   # the rule vectors and the conformance kit, as one EARL report
+npm run conformance -- --report earl.nt   # every example and each kit's checks, as one EARL report
 ```
 
 `npm run conformance` is for conformance testing only, as the Bridge's command
-line is. Its exit code means nothing; the report does. It reports each rule
-vector, each case of each kit under the vocabulary's `conformance/`, and the
-kit's four checks that are not manifest entries (the final views equal
-`expected/`, every file conforms to the vocabulary's shapes, every name follows
-its rule, every file is where the layout says), replaying each story once. `--folder
-<repository>=<folder>` hands in a folder for a repository, and `--manifest`
-runs one other manifest of the vocabulary instead.
+line is. Its exit code means nothing; the report does. It reads every feature
+file of the vocabulary, under `runtime/` and each kit's under `conformance/`,
+with Gherkin's own parser, and reports each example, and each kit's four checks
+that are not examples (the final views equal `expected/`, every file conforms to
+the vocabulary's shapes, every name follows its rule, every file is where the
+layout says). Each step of `runtime/steps.md` is implemented once, in
+`packages/runtime/src/phrases.ts`; the steps examples share are replayed once,
+and a failed example's report names its rule and the step that failed.
+`--folder <repository>=<folder>` hands in a folder for a repository, and
+`--feature <path>` runs only that feature file of the vocabulary.
 
 ## Packages
 

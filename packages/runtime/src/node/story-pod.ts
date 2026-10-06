@@ -1,35 +1,42 @@
-import { folderOf, type Files, readText } from "../files.js";
+import { featureStory } from "../conformance.js";
+import type { Files } from "../files.js";
 import { OxigraphStore } from "../oxigraph-store.js";
-import { type Replayed, replay } from "../replay.js";
-import { parseStory } from "../story.js";
+import { type Replayed, replay, titleOf } from "../replay.js";
 import { vocabularyDerive } from "../build.js";
 import { importersNamed } from "./importers.js";
 import type { LocalVocabulary } from "./runtime.js";
 
 /**
- * A story of the vocabulary replayed into the pod through the step, the whole story when none is named, with the
- * files the build writes rebuilt under the runtime's lens after every step.
+ * The steps of a feature file of the vocabulary replayed into the pod through the step named, all of them when none
+ * is: its background's, a kit's story, or those of the example named. The files the build writes are rebuilt under
+ * the runtime's lens after every step.
  */
-export async function storyPod(
+export async function featurePod(
   vocabulary: LocalVocabulary,
-  storyPath: string,
+  path: string,
   pod: Files,
-  through?: string,
+  options: { readonly example?: string; readonly through?: string } = {},
 ): Promise<Replayed> {
-  const story = parseStory(await readText(vocabulary.files, storyPath));
-  const end =
-    through === undefined
-      ? story.steps.length
-      : story.steps.findIndex(({ name }) => name === through) + 1;
-  if (end === 0) throw new Error(`${storyPath} has no step ${through}`);
+  const newStore = () => new OxigraphStore();
+  const { feature, person, steps } = await featureStory(
+    vocabulary.files,
+    path,
+    newStore,
+    options,
+  );
   const replayed = await replay({
-    story: { ...story, steps: story.steps.slice(0, end) },
+    story: {
+      address: person.address,
+      subject: person.subject,
+      steps,
+    },
     source: vocabulary.files,
     vocabulary: vocabulary.files,
-    folder: folderOf(storyPath),
+    folder: person.folder,
+    title: await titleOf(vocabulary.files, feature.folder),
     pod,
     layout: vocabulary.layout,
-    newStore: () => new OxigraphStore(),
+    newStore,
     importers: importersNamed(vocabulary.config.importers),
     build: {
       lens: vocabulary.config.lens,
@@ -38,7 +45,7 @@ export async function storyPod(
   });
   if (replayed.stopped !== undefined)
     throw new Error(
-      `the replay of ${storyPath} stopped at step ${replayed.stopped.step.name}: ${replayed.stopped.why}`,
+      `the replay of ${path} stopped at step ${replayed.stopped.step.name}: ${replayed.stopped.why}`,
     );
   return replayed;
 }

@@ -424,7 +424,7 @@ export async function fileExport(
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
   if (forms.size > 1)
     throw new Refusal(
-      `step ${context.step.name}'s documents disagree on the import's label, start or association`,
+      "its documents disagree on the import's label, start or association",
     );
   writes.add(
     layout.place(`${PROV}Activity`, [USED]).path(name),
@@ -443,8 +443,7 @@ export async function fileExport(
 /** The import step of a story: its export's documents, converted by the Bridge output the story saved for them. */
 export const fileImport: Perform = async (context) => {
   const { happened } = context.step;
-  if (happened.kind !== "import")
-    throw new Error(`step ${context.step.name} is no import`);
+  if (happened.kind !== "import") throw new Error("the step is no import");
   const folder = inStory(context, happened.export);
   const converted = inStory(context, happened.converted);
   let documents: readonly ExportDocument[] | undefined;
@@ -480,8 +479,7 @@ export const fileImport: Perform = async (context) => {
 /** An entry: its session's description, and each draft as a record (N2) with its version and first revision (A12). */
 export const fileEntry: Perform = async (context) => {
   const { happened } = context.step;
-  if (happened.kind !== "entry")
-    throw new Error(`step ${context.step.name} is no entry`);
+  if (happened.kind !== "entry") throw new Error("the step is no entry");
   const path = inStory(context, happened.file);
   const bytes = await context.source.read(path);
   if (bytes === undefined)

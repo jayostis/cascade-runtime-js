@@ -5,8 +5,9 @@ import { iri, RDF, type Triple } from "./rdf.js";
 import { inStory, REC, Refusal, type StepContext } from "./step.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
+const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const FOLDER = "scripted-input/references/";
+const FOLDER = "references/";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
 
@@ -123,4 +124,35 @@ export class References {
       );
     return version;
   }
+}
+
+/** A person's reference index, `references/references.ttl` under their folder: empty when they have none. */
+export async function referenceIndex(
+  files: Files,
+  folder: string,
+  parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>,
+): Promise<Graph> {
+  const path = `${folder}/references/references.ttl`;
+  const bytes = await files.read(path);
+  return new Graph(
+    bytes === undefined ? [] : await parse(bytes, files.iri + path),
+  );
+}
+
+/** The versions the index numbers so (`pav:version`) of the series so labelled. */
+export function versionsNumbered(
+  index: Graph,
+  label: string,
+  version: string,
+): string[] {
+  return index
+    .subjects(`${RDFS}label`)
+    .filter(
+      (series) => index.objects(series, `${RDFS}label`)[0]?.value === label,
+    )
+    .flatMap((series) => index.subjects(SPECIALIZATION_OF, series))
+    .filter(
+      (found) => index.objects(found, `${PAV}version`)[0]?.value === version,
+    )
+    .map(({ value }) => value);
 }

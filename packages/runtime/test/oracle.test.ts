@@ -7,14 +7,15 @@ import * as oxigraph from "oxigraph";
 import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
 import { DERIVED } from "../src/derive.js";
-import { folderOf, MemoryFiles, readText } from "../src/files.js";
+import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Term, written } from "../src/rdf.js";
 import { replay } from "../src/replay.js";
-import { parseStory } from "../src/story.js";
-import { layout, ROOT, vocabulary } from "./vocabulary.js";
+import { layout, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
-const STORY = "runtime/vectors/matching/story.json";
+const FEATURE = "runtime/matcher.feature";
+const EXAMPLE =
+  "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "persons-same";
 const LENS = "everyday";
 /**
@@ -41,18 +42,13 @@ function fromOxigraph(term: oxigraph.Term): Term {
 
 test("the derived state, the views, the labels and the type index equal, as graphs, what the vocabulary's Python builds", async () => {
   const files = await vocabulary();
-  const story = parseStory(await readText(files, STORY));
+  const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   const replayed = await replay({
-    story: {
-      ...story,
-      steps: story.steps.slice(
-        0,
-        story.steps.findIndex(({ name }) => name === THROUGH) + 1,
-      ),
-    },
+    story,
     source: files,
     vocabulary: files,
-    folder: folderOf(STORY),
+    folder,
+    title: "matching",
     pod: new MemoryFiles(story.address),
     newStore: () => new OxigraphStore(),
     layout: await layout(),

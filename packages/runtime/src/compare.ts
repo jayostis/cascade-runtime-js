@@ -8,10 +8,19 @@ function key(row: Row): string {
     .join(" ");
 }
 
-function counted(rows: readonly Row[]): Map<string, number> {
+/** How two multisets of rows differ, each row as a string, or undefined when they do not. */
+export function compared(
+  expected: readonly string[],
+  found: readonly string[],
+): string | undefined {
   const counts = new Map<string, number>();
-  for (const row of rows) counts.set(key(row), (counts.get(key(row)) ?? 0) + 1);
-  return counts;
+  for (const row of expected) counts.set(row, (counts.get(row) ?? 0) + 1);
+  for (const row of found) counts.set(row, (counts.get(row) ?? 0) - 1);
+  const lines: string[] = [];
+  for (const [row, count] of counts)
+    for (let i = 0; i < Math.abs(count); i++)
+      lines.push(`${count > 0 ? "missing" : "unexpected"}: ${row}`);
+  return lines.length === 0 ? undefined : lines.sort().join("\n");
 }
 
 /**
@@ -32,17 +41,5 @@ export function differences(expected: Rows, found: Rows): string | undefined {
   if (wanted.join(" ") !== got.join(" ")) {
     return `expected the variables ${wanted.join(", ")}, found ${got.join(", ")}`;
   }
-  const expectedCounts = counted(expected.rows);
-  const foundCounts = counted(found.rows);
-  const lines: string[] = [];
-  for (const row of new Set([
-    ...expectedCounts.keys(),
-    ...foundCounts.keys(),
-  ])) {
-    const difference =
-      (expectedCounts.get(row) ?? 0) - (foundCounts.get(row) ?? 0);
-    for (let i = 0; i < Math.abs(difference); i++)
-      lines.push(`${difference > 0 ? "missing" : "unexpected"}: ${row}`);
-  }
-  return lines.length === 0 ? undefined : lines.sort().join("\n");
+  return compared(expected.rows.map(key), found.rows.map(key));
 }

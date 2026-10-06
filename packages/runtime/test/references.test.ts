@@ -7,10 +7,7 @@ import { Refusal, type StepContext } from "../src/step.js";
 
 test("a version whose name names no file refuses the step rather than aborting the replay", async () => {
   const source = new MemoryFiles("https://story.example/");
-  await source.write(
-    "scripted-input/references/references.ttl",
-    new TextEncoder().encode(""),
-  );
+  await source.write("references/references.ttl", new TextEncoder().encode(""));
   const references = await References.of({
     source,
     folder: "",

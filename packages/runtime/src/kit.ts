@@ -1,9 +1,4 @@
-import {
-  type Assertion,
-  type ConformanceOptions,
-  type Replays,
-  runManifest,
-} from "./conformance.js";
+import type { Assertion } from "./conformance.js";
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
@@ -52,8 +47,10 @@ export interface KitRun {
   readonly vocabulary: Files;
   /** The kit's folder in the vocabulary, as `conformance/<name>`. */
   readonly kit: string;
+  /** The folder its story's steps name their files under. */
+  readonly folder: string;
   readonly replayed: Replayed;
-  /** The pod after the story's last step, as the dataset of a manifest entry holds it. */
+  /** The pod after the story's last step, as an example's dataset holds it. */
   readonly final: Store;
   readonly layout: Layout;
   readonly shapes: Shapes;
@@ -62,10 +59,9 @@ export interface KitRun {
 const failure = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const checkEntry = (vocabulary: Files, kit: string, check: string) => ({
-  iri: `${vocabulary.iri}${kit}/#${check}`,
+const checkTest = (vocabulary: Files, kit: string, check: string) => ({
+  test: `${vocabulary.iri}${kit}/#${check}`,
   name: check,
-  types: [],
 });
 
 const base = (term: Term): string => term.value.split("#")[0] ?? "";
@@ -235,11 +231,11 @@ async function namesFollowTheirRules(
   run: KitRun,
   held: Written,
 ): Promise<string[]> {
-  const { replayed, vocabulary, kit, layout } = run;
+  const { replayed, vocabulary, kit, folder, layout } = run;
   const { story } = replayed;
   const { files, whole, by } = held;
   const failures: string[] = [];
-  const at = (path: string): string => `${kit}/${path}`;
+  const at = (path: string): string => `${folder}/${path}`;
   const activityOf = new Map(
     replayed.steps.flatMap(({ step, activity }) =>
       activity === undefined ? [] : [[step.name, activity] as const],
@@ -542,7 +538,7 @@ async function namesFollowTheirRules(
 async function everyInput(vocabulary: Files, kit: string): Promise<string> {
   const texts: string[] = [];
   for (const path of await vocabulary.list(kit))
-    if (/\.(json|ttl|rq|srj|xml)$/.test(path))
+    if (/\.(json|ttl|rq|xml|feature)$/.test(path))
       texts.push(await readText(vocabulary, path));
   return texts.join("\n");
 }
@@ -595,76 +591,32 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
   ];
   const assertions: Assertion[] = [];
   for (const [check, made] of checks) {
-    const entry = checkEntry(run.vocabulary, run.kit, check);
+    const test = checkTest(run.vocabulary, run.kit, check);
     try {
       const failures = await made();
       assertions.push(
         failures.length === 0
-          ? { entry, outcome: "passed" }
-          : { entry, outcome: "failed", why: failures.join("\n") },
+          ? { ...test, outcome: "passed" }
+          : { ...test, outcome: "failed", why: failures.join("\n") },
       );
     } catch (error) {
-      assertions.push({ entry, outcome: "failed", why: failure(error) });
+      assertions.push({ ...test, outcome: "failed", why: failure(error) });
     }
   }
   return assertions;
 }
 
-/** Every kit of the vocabulary: each folder under `conformance/` that holds a story. */
-export async function kitsOf(vocabulary: Files): Promise<string[]> {
-  return (await vocabulary.list("conformance"))
-    .filter((path) => /^conformance\/[^/]+\/story\.json$/.test(path))
-    .map((path) => path.slice(0, -"/story.json".length));
+const KIT_STORY = /^conformance\/([^/]+)\/([^/]+)\.feature$/;
+
+/** Whether the feature file is a kit's: `conformance/<name>/<name>.feature`, whose Background is the kit's story. */
+export function isKitStory(path: string): boolean {
+  const found = KIT_STORY.exec(path);
+  return found !== null && found[1] === found[2];
 }
 
-/** A kit, as runtime/rules.md says a runtime passes it: every case of its manifest, then checks 2 to 5, on one replay. */
-export async function runKit(
-  options: ConformanceOptions,
-  kit: string,
-  replays: Replays,
-  shapes: Shapes,
-): Promise<Assertion[]> {
-  const { vocabulary } = options;
-  const manifest = `${kit}/cases/manifest.ttl`;
-  let cases: Assertion[];
-  try {
-    cases = await runManifest(options, replays, manifest);
-  } catch (error) {
-    cases = [
-      {
-        entry: { iri: vocabulary.iri + manifest, name: manifest, types: [] },
-        outcome: "failed",
-        why: failure(error),
-      },
-    ];
-  }
-  const story = `${kit}/story.json`;
-  let replayed: Replayed;
-  let final: Store;
-  try {
-    replayed = await replays.replayed(story);
-    const last = replayed.story.steps.at(-1)?.name;
-    if (last === undefined) throw new Error(`${story} has no step`);
-    final = await replays.dataset(story, last, KIT_LENS);
-  } catch (error) {
-    return [
-      ...cases,
-      ...Object.values(KIT_CHECKS).map((check): Assertion => ({
-        entry: checkEntry(vocabulary, kit, check),
-        outcome: "failed",
-        why: failure(error),
-      })),
-    ];
-  }
-  return [
-    ...cases,
-    ...(await kitChecks({
-      vocabulary: options.vocabulary,
-      kit,
-      replayed,
-      final,
-      layout: replayed.layout,
-      shapes,
-    })),
-  ];
+/** Every kit of the vocabulary: each folder `conformance/<name>/` holding `<name>.feature`. */
+export async function kitsOf(vocabulary: Files): Promise<string[]> {
+  return (await vocabulary.list("conformance"))
+    .filter(isKitStory)
+    .map((path) => path.slice(0, path.lastIndexOf("/")));
 }

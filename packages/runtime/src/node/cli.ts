@@ -3,14 +3,7 @@ import { dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { vocabularyDerive } from "../build.js";
-import {
-  type Assertion,
-  type ConformanceOptions,
-  earl,
-  Replays,
-  runManifest,
-} from "../conformance.js";
-import { kitsOf, runKit } from "../kit.js";
+import { type Assertion, earl, runConformance } from "../conformance.js";
 import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
@@ -22,11 +15,10 @@ import {
   readConfig,
   resolveVocabulary,
 } from "./runtime.js";
-import { storyPod } from "./story-pod.js";
+import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 
 const RUNTIME = "cascade-runtime-js";
-const VECTORS = "runtime/vectors/manifest.ttl";
 const KIT = "conformance/";
 const log = (line: string): void => console.error(line);
 
@@ -44,7 +36,7 @@ function folderMap(pairs: readonly string[]): Map<string, string> {
 function summary(assertions: readonly Assertion[]): string {
   const count = (outcome: Assertion["outcome"]): number =>
     assertions.filter((a) => a.outcome === outcome).length;
-  return `${assertions.length} entries: ${count("passed")} passed, ${count("failed")} failed, ${count("inapplicable")} inapplicable`;
+  return `${assertions.length} tests: ${count("passed")} passed, ${count("failed")} failed, ${count("inapplicable")} inapplicable`;
 }
 
 async function conformance(args: string[]): Promise<number> {
@@ -52,7 +44,7 @@ async function conformance(args: string[]): Promise<number> {
     args,
     options: {
       report: { type: "string" },
-      manifest: { type: "string" },
+      feature: { type: "string", multiple: true },
       folder: { type: "string", multiple: true, default: [] },
     },
   });
@@ -69,24 +61,23 @@ async function conformance(args: string[]): Promise<number> {
   );
   const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
   const layout = await Layout.read(files, () => new OxigraphStore());
-  const options: ConformanceOptions = {
+  const assertions = await runConformance({
     vocabulary: files,
-    manifest: values.manifest ?? VECTORS,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     importers: importersNamed(config.importers),
     layout,
     derive: await vocabularyDerive(files, layout),
-  };
-  const replays = new Replays(options);
-  const assertions = await runManifest(options, replays);
-  if (values.manifest === undefined) {
-    const shapes = await Shapes.read(files, () => new OxigraphStore());
-    for (const kit of await kitsOf(files))
-      assertions.push(...(await runKit(options, kit, replays, shapes)));
-  }
+    shapes: await Shapes.read(files, () => new OxigraphStore()),
+    ...(values.feature === undefined ? {} : { features: values.feature }),
+  });
   await mkdir(dirname(report), { recursive: true });
   await writeFile(report, earl(assertions, RUNTIME));
+  for (const { test, outcome, why } of assertions)
+    if (outcome !== "passed")
+      console.error(
+        `${outcome}: ${test}\n  ${(why ?? "").replaceAll("\n", "\n  ")}`,
+      );
   console.error(`${summary(assertions)}; the EARL report is ${report}`);
   return 0;
 }
@@ -100,7 +91,7 @@ async function buildExamplePod(args: string[]): Promise<number> {
     );
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const vocabulary = await localVocabulary(root, log);
-  const story = `${KIT}${name}/story.json`;
+  const story = `${KIT}${name}/${name}.feature`;
   if ((await vocabulary.files.read(story)) === undefined) {
     console.error(
       `build:example-pod ${name}: the vocabulary has no ${story} to build the pod from`,
@@ -109,7 +100,11 @@ async function buildExamplePod(args: string[]): Promise<number> {
   }
   const folder = join(root, "build", name, "pod");
   await rm(folder, { recursive: true, force: true });
-  const { steps } = await storyPod(vocabulary, story, new FolderFiles(folder));
+  const { steps } = await featurePod(
+    vocabulary,
+    story,
+    new FolderFiles(folder),
+  );
   const refused = steps.filter(({ refused }) => refused !== undefined);
   for (const { step, refused: why } of refused)
     console.error(`step ${step.name} was refused: ${why}`);

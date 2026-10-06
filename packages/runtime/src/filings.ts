@@ -8,8 +8,7 @@ const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 /** A person's judgment: its file, as it is, filed by the judgment's name. */
 export const fileJudgment: Perform = async (context) => {
   const { happened } = context.step;
-  if (happened.kind !== "judgment")
-    throw new Error(`step ${context.step.name} is no judgment`);
+  if (happened.kind !== "judgment") throw new Error("the step is no judgment");
   const path = inStory(context, happened.file);
   const bytes = await context.source.read(path);
   if (bytes === undefined)
@@ -32,11 +31,11 @@ export const fileJudgment: Perform = async (context) => {
 export const fileReference: Perform = async (context) => {
   const { happened } = context.step;
   if (happened.kind !== "reference")
-    throw new Error(`step ${context.step.name} is no reference`);
+    throw new Error("the step is no reference");
   const references = await References.of(context);
   if (!references.isVersion(happened.name))
     throw new Error(
-      `step ${context.step.name} names ${happened.name}, a version references.ttl does not list`,
+      `it names ${happened.name}, a version references.ttl does not list`,
     );
   context.writes.add(
     context.layout.version(

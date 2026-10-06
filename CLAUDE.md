@@ -3,7 +3,7 @@
 The reference implementation of cascade-vocabulary's runtime rules;
 [`README.md`](README.md) names the parts. The contract is
 [cascade-vocabulary](https://github.com/jayostis/cascade-vocabulary): its
-`runtime/rules.md`, its vectors and its queries. This repository copies none of
+`runtime/rules.md`, its feature files and its queries. This repository copies none of
 it; it resolves the vocabulary as `cascade-runtime.json` says.
 
 ## The rules
@@ -21,11 +21,11 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 - **Fewer, better, faster tests.** One test per behaviour, on the smallest input
   that shows it; before adding one, change the test that already shows the
   behaviour. No combinatorial padding. Build a pod or a dataset once and share
-  it. `npm test` runs in seconds; the one run of the conformance command, the
-  vectors and the kit, is its slower check.
-- **A rule is implemented where its vectors say,** and a vector is passed, never
-  skipped: a step the runtime cannot yet perform fails its entries, naming the
-  step's kind.
+  it. `npm test` runs in seconds; the one run of the conformance command, every
+  example of the feature files, is its slower check.
+- **A rule is implemented where its examples say,** and an example is passed,
+  never skipped: a step the runtime cannot yet perform fails its examples,
+  naming the step's kind.
 
 ## Conventions
 

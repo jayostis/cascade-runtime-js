@@ -511,7 +511,7 @@ async function read(store: Store, references: References): Promise<Pod> {
 export const runMatcher: Perform = async (context) => {
   const { happened } = context.step;
   if (happened.kind !== "matcher")
-    throw new Error(`step ${context.step.name} is no matcher run`);
+    throw new Error("the step is no matcher run");
   const matcher = await Matcher.of(context);
   if (happened.takes === undefined) await matcher.recheck();
   else await matcher.take(context.activities.get(happened.takes));

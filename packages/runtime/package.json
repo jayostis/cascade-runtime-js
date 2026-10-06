@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@cascade-runtime/apple-health": "0.0.0",
+    "@cucumber/cucumber-expressions": "20.1.0",
+    "@cucumber/gherkin": "42.0.1",
+    "@cucumber/messages": "34.2.1",
     "cascade-bridge-rs": "https://github.com/jayostis/cascade-bridge-rs/releases/download/build-4301ad373d5779e6f810657a1b7edbc162e4c825/cascade-bridge-rs-0.1.0-commit-4301ad373d5779e6f810657a1b7edbc162e4c825.tgz",
     "oxigraph": "0.5.11",
     "rdf-canonize": "5.0.0",

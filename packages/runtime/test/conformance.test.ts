@@ -5,29 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
 import { promisify } from "node:util";
-import { runManifest } from "../src/conformance.js";
+import { runConformance } from "../src/conformance.js";
+import { featuresOf, readFeature } from "../src/features.js";
+import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, kitsOf } from "../src/kit.js";
-import { MemoryFiles, readText, relative } from "../src/files.js";
-import {
-  type ManifestEntry,
-  MF,
-  readManifest,
-  REPLAY_TEST,
-} from "../src/manifest.js";
-import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { parseStory, type Story } from "../src/story.js";
-import { ROOT, vocabulary } from "./vocabulary.js";
+import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
-const MANIFEST = "runtime/vectors/manifest.ttl";
 const CLI = join(ROOT, "packages", "runtime", "dist", "src", "node", "cli.js");
 
-let files: FolderFiles;
-let entries: ManifestEntry[];
-const stories = new Map<string, Story>();
 let outcomes: Map<string, Outcome[]>;
-/** Each entry and check the report must hold, by its IRI, with its name. */
+/** Each example and check the report must hold, by its IRI, with its name. */
 const tested = new Map<string, string>();
 
 interface Outcome {
@@ -63,66 +52,24 @@ async function report(): Promise<Map<string, Outcome[]>> {
 
 before(async () => {
   const reported = report();
-  files = await vocabulary();
-  entries = await readManifest(files, MANIFEST, () => new OxigraphStore());
-  for (const entry of entries) {
-    const path = relative(files, entry.story ?? "");
-    if (!stories.has(path))
-      stories.set(path, parseStory(await readText(files, path)));
-  }
-  for (const entry of entries) tested.set(entry.iri, entry.name);
-  for (const kit of await kitsOf(files)) {
-    for (const entry of await readManifest(
-      files,
-      `${kit}/cases/manifest.ttl`,
-      () => new OxigraphStore(),
-    ))
-      tested.set(entry.iri, entry.name);
+  const files = await vocabulary();
+  for (const path of await featuresOf(files))
+    for (const { iri, name } of (await readFeature(files, path)).examples)
+      tested.set(iri, name);
+  const kits = await kitsOf(files);
+  assert.ok(kits.length > 0, "the vocabulary has no kit");
+  for (const kit of kits)
     for (const check of Object.values(KIT_CHECKS))
       tested.set(`${files.iri}${kit}/#${check}`, check);
-  }
-  assert.ok(tested.size > entries.length, "the vocabulary has no kit");
   outcomes = await reported;
 });
 
-function storyOf(entry: ManifestEntry): Story {
-  const story = stories.get(relative(files, entry.story ?? ""));
-  assert.ok(story, entry.name);
-  return story;
-}
-
-test("the manifest reader finds every rule vector, with its story, a step of it, its lens, query and result", async () => {
-  const store = new OxigraphStore();
-  await store.loadTurtle(await readText(files, MANIFEST), {
-    graph: files.iri + MANIFEST,
-  });
-  const { rows } = await store.select(
-    `SELECT (COUNT(DISTINCT ?entry) AS ?n) WHERE { ?entry <${MF}action> ?action }`,
-  );
-  assert.equal(entries.length, Number(rows[0]?.get("n")?.value));
-  assert.equal(new Set(entries.map((entry) => entry.iri)).size, entries.length);
-  for (const entry of entries) {
-    assert.ok(entry.types.includes(REPLAY_TEST), entry.name);
-    for (const file of [entry.lens, entry.query, entry.result]) {
-      assert.ok(
-        file !== undefined &&
-          (await files.read(relative(files, file))) !== undefined,
-        `${entry.name}: ${file}`,
-      );
-    }
-    assert.ok(
-      storyOf(entry).steps.some((step) => step.name === entry.step),
-      `${entry.name}: ${entry.step}`,
-    );
-  }
-});
-
-test("the conformance command reports each rule vector, each case of each kit and each of its checks once, and nothing else", () => {
+test("the conformance command reports each example of every feature file and each kit's checks once, and nothing else", () => {
   assert.deepEqual([...outcomes.keys()].sort(), [...tested.keys()].sort());
   for (const [test, found] of outcomes) assert.equal(found.length, 1, test);
 });
 
-test("every rule vector, every case of each kit and each of its checks passes", () => {
+test("every example and each kit's checks pass", () => {
   for (const [iri, name] of tested) {
     const found = outcomes.get(iri);
     assert.deepEqual(
@@ -133,21 +80,108 @@ test("every rule vector, every case of each kit and each of its checks passes", 
   }
 });
 
-test("an entry of a type the runner does not know is inapplicable", async () => {
-  const vocabularyFiles = new MemoryFiles("https://vocabulary.example/");
-  await vocabularyFiles.write(
-    "manifest.ttl",
-    new TextEncoder().encode(`
-      @prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
-      <> a mf:Manifest ; mf:entries ( <#other> ) .
-      <#other> a <https://tests.example/OtherTest> ; mf:name "other" ; mf:action [] .`),
+test("each example fails or passes on its own: a step no phrase reads, a later step that stops the replay, a step named with a space, two outline rows of one name, a query that is no SELECT, another person named, and a pod read before a later step of the same name", async () => {
+  const files = new MemoryFiles("https://vocabulary.example/");
+  const write = (path: string, text: string) =>
+    files.write(path, new TextEncoder().encode(text));
+  await write(
+    "runtime/scripted-input/people.ttl",
+    `<urn:uuid:1b4e6a52-8c3f-4d71-9e0a-5f2c7d8b9a10> <http://xmlns.com/foaf/0.1/name> "Ada" ;
+       <http://www.w3.org/ns/pim/space#storage> <https://pod.example/> .
+     <urn:uuid:6d1f3b8a-2c4e-4a9f-8b7d-3e5a1c9f0b24> <http://xmlns.com/foaf/0.1/name> "Bob" ;
+       <http://www.w3.org/ns/pim/space#storage> <https://bob.example/> .`,
   );
-  const [assertion, ...others] = await runManifest({
-    vocabulary: vocabularyFiles,
-    manifest: "manifest.ttl",
+  await write(
+    "runtime/scripted-input/ada/judgments/same.ttl",
+    `<urn:uuid:0f4a8c26-5b3e-4d79-a1e8-6c2f9b4d7a15> a <https://ns.cascadeprotocol.org/judgments/v1-draft#Judgment> .`,
+  );
+  await write(
+    "runtime/broken.feature",
+    `Feature: Broken
+  Rule: Z1. A rule
+    Example: a step nobody wrote
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      Then the pod is made of cheese
+
+    Example: a pod read before a later step that stops the replay
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When the pod is read as it stood after "pod"
+      And Ada enters "missing" on 2026-01-02 at 09:00
+      Then the pod holds no revision
+
+    Example: a step named with a space
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When Ada files the judgment "two words" on 2026-01-02 at 09:00
+      Then the pod holds no revision
+
+    Scenario Outline: two rows of one name
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      Then the pod holds no revision
+
+      Examples:
+        | row |
+        | 1   |
+        | 2   |
+
+    Example: a query that is no SELECT
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When the query is:
+        """
+        ASK { ?s ?p ?o }
+        """
+      Then it answers nothing
+
+    Example: another person named
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      Then these are named:
+        | thing | name                                          |
+        | Bob   | urn:uuid:6d1f3b8a-2c4e-4a9f-8b7d-3e5a1c9f0b24 |
+
+    Example: a judgment filed twice, read after the first
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      And Ada files the judgment "same" on 2026-01-02 at 09:00
+      When the pod is read as it stood after "same"
+      And Ada files the judgment "same" on 2026-01-03 at 09:00 (again)
+      Then that step wrote 1 file
+`,
+  );
+  const assertions = await runConformance({
+    vocabulary: files,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
+    layout: await layout(),
   });
-  assert.equal(others.length, 0);
-  assert.equal(assertion?.outcome, "inapplicable");
+  const outcome = new Map(
+    assertions.map(({ test, outcome, why }) => [
+      test.slice(test.indexOf("#") + 1),
+      [outcome, why ?? ""],
+    ]),
+  );
+  const failing: Record<string, RegExp> = {
+    "a-step-nobody-wrote":
+      /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
+    "a-pod-read-before-a-later-step-that-stops-the-replay":
+      /^Z1\. A rule: the replay stopped at step missing:/,
+    "two-rows-of-one-name":
+      /^Z1\. A rule: two examples of runtime\/broken\.feature are named "two rows of one name"/,
+    "a-query-that-is-no-select": /^Z1\. A rule: the query is no SELECT/,
+    "a-step-named-with-a-space": /^Z1\. A rule: "two words" cannot name a step/,
+  };
+  assert.deepEqual(
+    [...outcome.keys()].sort(),
+    [
+      ...Object.keys(failing),
+      "another-person-named",
+      "a-judgment-filed-twice-read-after-the-first",
+    ].sort(),
+  );
+  for (const [name, why] of Object.entries(failing)) {
+    assert.equal(outcome.get(name)?.[0], "failed", name);
+    assert.match(outcome.get(name)?.[1] ?? "", why);
+  }
+  for (const name of [
+    "another-person-named",
+    "a-judgment-filed-twice-read-after-the-first",
+  ])
+    assert.deepEqual(outcome.get(name), ["passed", ""], name);
 });
