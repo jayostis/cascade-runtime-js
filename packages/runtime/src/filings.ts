@@ -1,4 +1,4 @@
-import { parseGraph } from "./graph.js";
+import { parseStepFile } from "./graph.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import type { References } from "./references.js";
 import { REC, Refusal, type StepContext, type StepFile } from "./step.js";
@@ -45,9 +45,10 @@ export async function fileJudgment(
   context: StepContext,
   judgment: StepFile,
 ): Promise<void> {
-  const judgments = (
-    await parseGraph(judgment.bytes, judgment.base, context.newStore)
-  ).subjects(`${RDF}type`, iri(`${JDG}Judgment`));
+  const judgments = (await parseStepFile(judgment, context.newStore)).subjects(
+    `${RDF}type`,
+    iri(`${JDG}Judgment`),
+  );
   const [found] = judgments;
   if (judgments.length !== 1 || found === undefined)
     throw new Refusal(

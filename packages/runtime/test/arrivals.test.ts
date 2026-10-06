@@ -186,6 +186,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
   );
   await source.write("s/no-judgment.ttl", new Uint8Array());
+  await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
   await source.write("s/references/references.ttl", new Uint8Array());
   const refusals: readonly [Step["happened"], RegExp][] = [
     [
@@ -202,6 +203,10 @@ test("a step given bad input by its story is refused, and the replay goes on", a
       /^no-judgment\.ttl holds 0 judgments, not one$/,
     ],
     [
+      { kind: "judgment", file: "no-turtle.ttl" },
+      /^no-turtle\.ttl is no Turtle: /,
+    ],
+    [
       { kind: "reference", name: "urn:example:unlisted" },
       /urn:example:unlisted, a version references\.ttl does not list$/,
     ],
@@ -212,12 +217,12 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     steps: [
       ...refusals.map(([happened], index) => ({
         name: `refused-${index}`,
-        when: `2026-06-0${index + 1}T09:00:00Z`,
+        when: `2026-06-${String(index + 1).padStart(2, "0")}T09:00:00Z`,
         happened,
       })),
       {
         name: "create",
-        when: "2026-06-09T09:00:00Z",
+        when: "2026-06-29T09:00:00Z",
         happened: { kind: "creation" },
       },
     ],

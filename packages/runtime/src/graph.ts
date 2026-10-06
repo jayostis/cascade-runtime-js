@@ -1,4 +1,5 @@
 import { type Term, type Triple, written } from "./rdf.js";
+import { Refusal, type StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
 
 type Subject = Triple[0];
@@ -53,6 +54,20 @@ export class Graph {
 }
 
 /** The Turtle as a graph, as it writes it: no literal is rewritten, as a store would. */
+/** A step's file, parsed: Turtle that does not parse refuses the step. */
+export async function parseStepFile(
+  file: StepFile,
+  newStore: StoreFactory,
+): Promise<Graph> {
+  try {
+    return await parseGraph(file.bytes, file.base, newStore);
+  } catch (error) {
+    throw new Refusal(
+      `${file.name} is no Turtle: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export async function parseGraph(
   turtle: Uint8Array,
   base: string,

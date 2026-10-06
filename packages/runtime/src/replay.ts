@@ -80,16 +80,16 @@ export const PERFORMERS: Performers = {
   entry: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "entry") throw new Error("the step is no entry");
-    begun(story, step);
     const entry = await storyFile(story, happened.file);
+    begun(story, step);
     return pod.enter(entry);
   },
   judgment: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
-    begun(story, step);
     const judgment = await storyFile(story, happened.file);
+    begun(story, step);
     return pod.judge(judgment);
   },
   reference: (pod, step, story) => {
@@ -245,6 +245,7 @@ export class Replay {
         time: this.#time,
       }).catch((error: unknown) => {
         if (!(error instanceof Refusal)) throw error;
+        this.#time.begin(step.when);
         return this.#pod.refuse(error.message);
       });
     } catch (error) {

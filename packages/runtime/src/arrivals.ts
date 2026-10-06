@@ -1,6 +1,6 @@
 import type { BridgeDocument, LoadedAdapter } from "./bridge.js";
 import type { Files } from "./files.js";
-import { Graph, parseGraph } from "./graph.js";
+import { Graph, parseGraph, parseStepFile } from "./graph.js";
 import type { ExportDocument } from "./importer.js";
 import type { Layout, Placement } from "./layout.js";
 import {
@@ -438,7 +438,7 @@ export async function fileEntry(
   context: StepContext,
   entry: StepFile,
 ): Promise<string> {
-  let graph = await parseGraph(entry.bytes, entry.base, context.newStore);
+  let graph = await parseStepFile(entry, context.newStore);
   const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));
   if (activities.length !== 1)
     throw new Refusal(
