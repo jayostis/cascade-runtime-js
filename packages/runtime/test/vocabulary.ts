@@ -5,12 +5,7 @@ import { Layout } from "../src/layout.js";
 import type { Story } from "../src/story.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { vocabularyBuild } from "../src/build.js";
-import {
-  type LocalVocabulary,
-  readConfig,
-  resolveVocabulary,
-} from "../src/node/runtime.js";
+import { readConfig, resolveVocabulary } from "../src/node/runtime.js";
 
 export const ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -20,26 +15,13 @@ export const ROOT = join(
   "..",
 );
 
-let configured:
-  Promise<Pick<LocalVocabulary, "config" | "resolved">> | undefined;
-
-function configuration(): Promise<
-  Pick<LocalVocabulary, "config" | "resolved">
-> {
-  configured ??= readConfig(ROOT).then(async (config) => ({
-    config,
-    resolved: await resolveVocabulary(ROOT, config),
-  }));
-  return configured;
-}
-
 let resolved: Promise<FolderFiles> | undefined;
 
 /** The vocabulary this checkout runs against, resolved once per run as the commands resolve it. */
 export function vocabulary(): Promise<FolderFiles> {
-  resolved ??= configuration().then(
-    ({ resolved: found }) => new FolderFiles(found.folder, found.iri),
-  );
+  resolved ??= readConfig(ROOT)
+    .then((config) => resolveVocabulary(ROOT, config))
+    .then((found) => new FolderFiles(found.folder, found.iri));
   return resolved;
 }
 
@@ -51,22 +33,6 @@ export function layout(): Promise<Layout> {
     Layout.read(files, () => new OxigraphStore()),
   );
   return read;
-}
-
-let local: Promise<LocalVocabulary> | undefined;
-
-/** The vocabulary as the commands hold it, with its configuration and its build, from the same one resolution. */
-export function localVocabulary(): Promise<LocalVocabulary> {
-  local ??= Promise.all([configuration(), vocabulary(), layout()]).then(
-    async ([{ config, resolved: found }, files, read]) => ({
-      config,
-      files,
-      layout: read,
-      build: await vocabularyBuild(files, read),
-      resolved: found,
-    }),
-  );
-  return local;
 }
 
 /**

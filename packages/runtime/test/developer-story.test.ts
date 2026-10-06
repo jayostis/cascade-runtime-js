@@ -9,8 +9,9 @@ import { podDataset } from "../src/dataset.js";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { questions } from "../src/questions.js";
+import { localVocabulary } from "../src/node/runtime.js";
 import { featurePod } from "../src/node/story-pod.js";
-import { localVocabulary, ROOT, vocabulary } from "./vocabulary.js";
+import { ROOT } from "./vocabulary.js";
 
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const FIRST_EXPORT =
@@ -32,15 +33,43 @@ test(
   "the developer story prints Alex's active allergies as the replay through J1 answers them",
   { todo: "waits for #20's step 2b, the app-facing interface (#28)" },
   async () => {
-    const files = await vocabulary();
+    const vocabulary = await localVocabulary(ROOT);
+    const replayed = await featurePod(
+      vocabulary,
+      ALEX,
+      new MemoryFiles("https://pod.example/"),
+      { through: "J1" },
+    );
+    assert.deepEqual(
+      replayed.steps.find(({ step }) => step.name === "M5")?.wrote,
+      [],
+      "M5 wrote files, so the replay, which claims after the matcher run, may no longer answer as the script, which claims at the import",
+    );
+    const last = replayed.steps.at(-1);
+    assert.ok(last, `the replay of ${ALEX} through J1 performed no step`);
+    const { store } = await podDataset(
+      replayed.pod,
+      vocabulary.layout,
+      vocabulary.build,
+      vocabulary.config.lens,
+      new OxigraphStore(),
+      { title: replayed.title, at: last.step.when },
+    );
+    const query = (await questions(vocabulary.files)).get(QUESTION);
+    assert.ok(query, `the vocabulary has no question ${QUESTION}`);
+    const expected = (await store.select(query.text)).rows.map((row) =>
+      Object.fromEntries(
+        [...row].map(([column, term]) => [column, term.value]),
+      ),
+    );
+
     const folder = await mkdtemp(join(tmpdir(), "developer-story-"));
-    let stdout: string;
     try {
-      ({ stdout } = await promisify(execFile)(
+      const { stdout } = await promisify(execFile)(
         process.execPath,
         [
           join(ROOT, "developer-story", "allergies.mjs"),
-          join(files.folder, FIRST_EXPORT),
+          join(vocabulary.files.folder, FIRST_EXPORT),
         ],
         { cwd: folder },
       ).catch(
@@ -49,51 +78,20 @@ test(
             `the script stopped (code ${String(error.code)}, signal ${String(error.signal)}): ${error.stderr || String(error)}`,
           );
         },
-      ));
+      );
+      const printed = stdout
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) =>
+          Object.fromEntries(
+            Object.entries(JSON.parse(line) as Record<string, unknown>).map(
+              ([column, value]) => [column, String(value)],
+            ),
+          ),
+        );
+      assert.deepEqual(multiset(printed), multiset(expected));
     } finally {
       await rm(folder, { recursive: true, force: true });
     }
-    const printed = stdout
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) =>
-        Object.fromEntries(
-          Object.entries(JSON.parse(line) as Record<string, unknown>).map(
-            ([column, value]) => [column, String(value)],
-          ),
-        ),
-      );
-
-    const local = await localVocabulary();
-    const replayed = await featurePod(
-      local,
-      ALEX,
-      new MemoryFiles("https://pod.example/"),
-      { through: "J1" },
-    );
-    assert.deepEqual(
-      replayed.steps.find(({ step }) => step.name === "M5")?.wrote,
-      [],
-      "M5 wrote files, so a replay that claims after the matcher run may no longer answer as the script, which claims at the import, does",
-    );
-    const last = replayed.steps.at(-1);
-    assert.ok(last, `the replay of ${ALEX} through J1 performed no step`);
-    const { store } = await podDataset(
-      replayed.pod,
-      local.layout,
-      local.build,
-      local.config.lens,
-      new OxigraphStore(),
-      { title: replayed.title, at: last.step.when },
-    );
-    const query = (await questions(files)).get(QUESTION);
-    assert.ok(query, `the vocabulary has no question ${QUESTION}`);
-    const expected = (await store.select(query.text)).rows.map((row) =>
-      Object.fromEntries(
-        [...row].map(([column, term]) => [column, term.value]),
-      ),
-    );
-
-    assert.deepEqual(multiset(printed), multiset(expected));
   },
 );
