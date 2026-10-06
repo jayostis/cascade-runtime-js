@@ -125,6 +125,8 @@ interface Planned {
   readonly example: Example;
   readonly feature: Feature;
   readonly compiled: Compiled & { readonly person: Person };
+  /** Everyone the feature file's scripted input names, whom a `Then` step may name too. */
+  readonly people: ReadonlyMap<string, Person>;
   /** The node of each of the example's steps, in order. */
   readonly path: readonly Node[];
 }
@@ -319,7 +321,6 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
-    if (replayed.stopped !== undefined) throw stopped(replayed.stopped);
     const store = new LazyStore(
       () =>
         this.dataset(
@@ -348,7 +349,7 @@ class Run {
         replayed,
         vocabulary,
         person,
-        people: new Map([[person.name, person]]),
+        people: planned.people,
         folder: feature.folder,
         ...(handled === undefined ? {} : { handles: handled }),
       }),
@@ -362,6 +363,12 @@ class Run {
       lens: "everyday",
     };
     const node = path[at.index];
+    const end = named(
+      path.at(-1)?.replayed,
+      compiled.steps.map(({ name }) => name),
+    );
+    if (end?.stopped !== undefined)
+      return failed(example, stopped(end.stopped));
     let reading: Reading;
     try {
       if (node === undefined)
@@ -445,13 +452,25 @@ export async function runConformance(
       continue;
     }
     const compiling = run.compiling(people);
+    const iris = feature.examples.map(({ iri }) => iri);
     for (const example of feature.examples) {
+      if (iris.indexOf(example.iri) !== iris.lastIndexOf(example.iri)) {
+        results.set(
+          example.iri,
+          failed(
+            example,
+            `two examples of ${path} are named "${example.name}": an outline's need a <placeholder> in their name`,
+          ),
+        );
+        continue;
+      }
       try {
         const compiled = await compile(example.steps, compiling);
         plans.push({
           example,
           feature,
           compiled,
+          people,
           path: grow(rootOf(compiled.person, feature), compiled.steps),
         });
         results.set(example.iri, {

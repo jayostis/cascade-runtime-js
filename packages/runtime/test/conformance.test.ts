@@ -80,14 +80,16 @@ test("every example and each kit's checks pass", () => {
   }
 });
 
-test("each example fails or passes on its own: a step no phrase reads, a step that throws, and a pod read before a later step of the same name", async () => {
+test("each example fails or passes on its own: a step no phrase reads, a later step that stops the replay, a step named with a space, two outline rows of one name, a query that is no SELECT, another person named, and a pod read before a later step of the same name", async () => {
   const files = new MemoryFiles("https://vocabulary.example/");
   const write = (path: string, text: string) =>
     files.write(path, new TextEncoder().encode(text));
   await write(
     "runtime/scripted-input/people.ttl",
     `<urn:uuid:1b4e6a52-8c3f-4d71-9e0a-5f2c7d8b9a10> <http://xmlns.com/foaf/0.1/name> "Ada" ;
-       <http://www.w3.org/ns/pim/space#storage> <https://pod.example/> .`,
+       <http://www.w3.org/ns/pim/space#storage> <https://pod.example/> .
+     <urn:uuid:6d1f3b8a-2c4e-4a9f-8b7d-3e5a1c9f0b24> <http://xmlns.com/foaf/0.1/name> "Bob" ;
+       <http://www.w3.org/ns/pim/space#storage> <https://bob.example/> .`,
   );
   await write(
     "runtime/scripted-input/ada/judgments/same.ttl",
@@ -101,10 +103,39 @@ test("each example fails or passes on its own: a step no phrase reads, a step th
       Given a new pod for Ada on 2026-01-01 at 09:00
       Then the pod is made of cheese
 
-    Example: an entry whose file is missing
+    Example: a pod read before a later step that stops the replay
       Given a new pod for Ada on 2026-01-01 at 09:00
-      When Ada enters "missing" on 2026-01-02 at 09:00
-      Then that step wrote no file
+      When the pod is read as it stood after "pod"
+      And Ada enters "missing" on 2026-01-02 at 09:00
+      Then the pod holds no revision
+
+    Example: a step named with a space
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When Ada files the judgment "two words" on 2026-01-02 at 09:00
+      Then the pod holds no revision
+
+    Scenario Outline: two rows of one name
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      Then the pod holds no revision
+
+      Examples:
+        | row |
+        | 1   |
+        | 2   |
+
+    Example: a query that is no SELECT
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      When the query is:
+        """
+        ASK { ?s ?p ?o }
+        """
+      Then it answers nothing
+
+    Example: another person named
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      Then these are named:
+        | thing | name                                          |
+        | Bob   | urn:uuid:6d1f3b8a-2c4e-4a9f-8b7d-3e5a1c9f0b24 |
 
     Example: a judgment filed twice, read after the first
       Given a new pod for Ada on 2026-01-01 at 09:00
@@ -126,19 +157,31 @@ test("each example fails or passes on its own: a step no phrase reads, a step th
       [outcome, why ?? ""],
     ]),
   );
-  assert.equal(outcome.size, 3);
-  const [cheese, why] = outcome.get("a-step-nobody-wrote") ?? [];
-  assert.equal(cheese, "failed");
-  assert.match(
-    why ?? "",
-    /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
+  const failing: Record<string, RegExp> = {
+    "a-step-nobody-wrote":
+      /^Z1\. A rule: no step of runtime\/steps\.md reads "the pod is made of cheese"/,
+    "a-pod-read-before-a-later-step-that-stops-the-replay":
+      /^Z1\. A rule: the replay stopped at step missing:/,
+    "two-rows-of-one-name":
+      /^Z1\. A rule: two examples of runtime\/broken\.feature are named "two rows of one name"/,
+    "a-query-that-is-no-select": /^Z1\. A rule: the query is no SELECT/,
+    "a-step-named-with-a-space": /^Z1\. A rule: "two words" cannot name a step/,
+  };
+  assert.deepEqual(
+    [...outcome.keys()].sort(),
+    [
+      ...Object.keys(failing),
+      "another-person-named",
+      "a-judgment-filed-twice-read-after-the-first",
+    ].sort(),
   );
-  const [missing, stopped] =
-    outcome.get("an-entry-whose-file-is-missing") ?? [];
-  assert.equal(missing, "failed");
-  assert.match(stopped ?? "", /^Z1\. A rule: the replay stopped at step/);
-  assert.deepEqual(outcome.get("a-judgment-filed-twice-read-after-the-first"), [
-    "passed",
-    "",
-  ]);
+  for (const [name, why] of Object.entries(failing)) {
+    assert.equal(outcome.get(name)?.[0], "failed", name);
+    assert.match(outcome.get(name)?.[1] ?? "", why);
+  }
+  for (const name of [
+    "another-person-named",
+    "a-judgment-filed-twice-read-after-the-first",
+  ])
+    assert.deepEqual(outcome.get(name), ["passed", ""], name);
 });

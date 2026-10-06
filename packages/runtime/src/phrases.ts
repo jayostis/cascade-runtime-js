@@ -211,6 +211,10 @@ function happen(
   if (before !== undefined && Date.parse(when) < Date.parse(before))
     throw new Error(`${when} is before the step before it, ${before}`);
   const name = label ?? quoted ?? happened.kind.replace("creation", "pod");
+  if (!/^[A-Za-z0-9][\w.-]*$/.test(name))
+    throw new Error(
+      `"${name}" cannot name a step: a step's name is letters, digits, "-", "_" and "."`,
+    );
   if (compiled.steps.some((step) => step.name === name))
     throw new Error(`two steps of the example are named "${name}": label one`);
   compiled.steps.push({
@@ -943,6 +947,10 @@ const DEFINITIONS: Definition[] = [
     (compiled, _args, stated) => {
       if (stated.docString === undefined)
         throw new Error("the step gives no query beneath it");
+      const prologue =
+        /^(?:\s+|#[^\n]*|BASE\s*<[^>]*>|PREFIX\s+[\w-]*:\s*<[^>]*>)*/i;
+      if (!/^SELECT\b/i.test(stated.docString.replace(prologue, "")))
+        throw new Error("the query is no SELECT: an answer is rows");
       compiled.query = stated.docString;
     },
   ],

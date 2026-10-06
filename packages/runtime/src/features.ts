@@ -94,12 +94,6 @@ export async function readFeature(
       ),
     };
   });
-  const repeated = examples.find(
-    (example, index) =>
-      examples.findIndex(({ iri }) => iri === example.iri) !== index,
-  );
-  if (repeated !== undefined)
-    throw new Error(`${path} names two examples ${repeated.name}`);
   const background =
     document.feature?.children.find((child) => child.background)?.background
       ?.steps ?? [];
