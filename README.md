@@ -2,9 +2,9 @@
 
 ## What the Cascade Protocol is
 
-The Cascade Protocol is a way to build health apps on records a person holds
-themselves. Each person's records are in their own pod, a single-tenant RDF
-graph kept as Turtle files. Records arrive from a source format through a
+The Cascade Protocol is a way to build health apps on a person's health
+records. Each person's records are in their own pod, a single-tenant
+RDF graph kept as Turtle files. Records arrive from a source format through a
 Bridge running an adapter, and apps read a pod through standard SPARQL
 questions.
 
