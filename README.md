@@ -52,6 +52,17 @@ and a failed example's report names its rule and the step that failed.
 `--folder <repository>=<folder>` hands in a folder for a repository, and
 `--feature <path>` runs only that feature file of the vocabulary.
 
+## The developer story
+
+`developer-story/allergies.mjs` is what an app would write against the package
+`cascade-runtime`: open a pod, look at Alex's first export, import it as hers
+and print her active allergies. It is the developer story of
+[#20](https://github.com/jayostis/cascade-runtime-js/issues/20) and that epic's
+acceptance test. It does not run yet: the package it imports does not exist, so
+`packages/runtime/test/developer-story.test.ts`, which compares its rows with
+the replay of her story through `J1`, is reported as a todo and shows where the
+script stopped.
+
 ## Packages
 
 | Package                 | What it does                                                   |
