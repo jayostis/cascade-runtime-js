@@ -200,11 +200,41 @@ jobs:
             console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
           '
 
+  # The starter made by the command from the same tarball, and used as a person would, on each system.
+  starter:
+    name: starter (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - name: The starter's check, against the tarball
+        working-directory: ${{ runner.temp }}
+        run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" package/cascade-runtime-*.tgz
+
   # The tested tarball, as the pre-release build-<commit>, never the latest.
   release:
     name: release
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: package-install
+    needs: [package-install, starter]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -228,6 +258,26 @@ jobs:
             --notes-file package/release-notes.md \
             --prerelease \
             --latest=false
+
+  # The command exactly as a person is told to run it, from the release just made.
+  starter-release:
+    name: starter-release
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: The starter's check, against the release
+        working-directory: ${{ runner.temp }}
+        run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" --release "$GITHUB_SHA"
 
   ready-to-merge:
     name: ready-to-merge

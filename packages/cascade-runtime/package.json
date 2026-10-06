@@ -13,6 +13,9 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "create-cascade-app": "dist/src/create-cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -26,7 +29,8 @@
   "files": [
     "dist/src",
     "README.md",
-    "PREVIEW.md"
+    "PREVIEW.md",
+    "starter"
   ],
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0"
