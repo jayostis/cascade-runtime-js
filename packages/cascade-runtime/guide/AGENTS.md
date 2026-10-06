@@ -67,6 +67,14 @@ A missing or empty folder is a new pod, the only time `title` is read;
 who keeps the pod, `address` a random base its names are made from: no identity
 is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 
+In a browser the same `openPod`, `enter`, `judge`, `match` and `ask` run
+through the same specifier, served with the package's `components/` beside its
+`dist/`; `look` and `import` do not yet, and reject. There a pod's name names
+its IndexedDB database, `cascade-pod:<name>`, and `openPod(name, { from })`
+starts an empty one as a copy of the pod published at the URL `from`, as its
+`files.json` lists it. The address is a name, never the page's. A browser may
+clear its storage, and the pod with it. The site's `try/` page shows this.
+
 ## Bring in an export
 
 The default flow, on each export the person picks. `look` reads the export's

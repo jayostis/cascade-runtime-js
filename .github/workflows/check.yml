@@ -50,9 +50,21 @@ jobs:
         run: npm test
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Pack the package, whose browser build try/ serves
+        if: ${{ !cancelled() }}
+        run: npm run build:package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Build every kit's pod and site, and the front page above them
         if: ${{ !cancelled() }}
         run: npm run build:pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: ${{ !cancelled() }}
+        run: npx playwright install --with-deps chromium
+      - name: try/ in Chromium, served from build/pages
+        if: ${{ !cancelled() }}
+        run: npm run test:browser
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v7
@@ -78,6 +90,11 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      # In the same job as the pages, so the pods and the vocabulary try/ reads are resolved at the heads moments apart.
+      - name: Pack the package, whose browser build try/ serves
+        run: npm run build:package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Build every kit's pod and site, and the front page above them
         run: npm run build:pages
         env:
@@ -100,6 +117,8 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      deployed: ${{ steps.tip.outputs.latest }}
     steps:
       - id: tip
         env:
@@ -116,6 +135,28 @@ jobs:
       - id: deployment
         if: ${{ steps.tip.outputs.latest == 'true' }}
         uses: actions/deploy-pages@v5
+
+  # The deployed site, as a person reaches it, once its deploy is served.
+  live:
+    name: live
+    needs: pages
+    if: ${{ needs.pages.outputs.deployed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:live
+        env:
+          PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+          COMMIT: ${{ github.sha }}
 
   # The package, packed once from the head of every default branch, so every system below tests the same bytes.
   package:

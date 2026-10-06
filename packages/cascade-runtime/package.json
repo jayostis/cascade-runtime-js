@@ -19,6 +19,7 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
+      "browser": "./dist/browser/index.js",
       "default": "./dist/src/index.js"
     },
     "./fixtures": {
@@ -28,11 +29,15 @@
   },
   "files": [
     "dist/src",
+    "dist/browser",
     "README.md",
     "starter",
     "guide/AGENTS.md"
   ],
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

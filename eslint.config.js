@@ -8,6 +8,16 @@ export default tseslint.config(
   tseslint.configs.recommended,
   prettier,
   {
+    files: ["packages/site/try/**/*.js"],
+    languageOptions: {
+      globals: {
+        document: "readonly",
+        FormData: "readonly",
+        indexedDB: "readonly",
+      },
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",

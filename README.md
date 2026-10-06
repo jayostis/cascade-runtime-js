@@ -92,12 +92,12 @@ an app installs it by its URL.
 The core in `packages/runtime/src` knows four interfaces and nothing behind
 them:
 
-| Interface    | What it does                                                            | What plugs in today                          |
-| ------------ | ----------------------------------------------------------------------- | -------------------------------------------- |
-| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory                       |
-| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output  |
-| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                  |
-| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times |
+| Interface    | What it does                                                            | What plugs in today                             |
+| ------------ | ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `Files`      | reads and writes bytes, by path or IRI                                  | a local folder, memory, the browser's IndexedDB |
+| `Bridge`     | describes and loads an adapter, asks if it accepts a document, converts | cascade-bridge-rs in a worker; saved output     |
+| `Store`      | runs SPARQL over named graphs, and reads Turtle as it is written        | Oxigraph's JavaScript build                     |
+| `IdsAndTime` | mints the ID of an import or an entry session, and gives the time       | random UUIDs; the clock or the story's times    |
 
 Code that needs Node (a local folder, git, the command line) is under
 `packages/runtime/src/node/`. The core knows an importer only by the name

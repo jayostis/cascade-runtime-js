@@ -316,6 +316,7 @@ async function pagesOf() {
     at: "2026-03-03T08:00:00Z",
   };
   const commit = "0123456789abcdef0123456789abcdef01234567";
+  const tried = new Map([["index.html", new Uint8Array()]]);
   const start = await startOf(
     ROOT,
     commit,
@@ -328,7 +329,8 @@ async function pagesOf() {
     built,
     commit,
     start,
-    tree: pagesTree(examples, built, start),
+    tried,
+    tree: pagesTree(examples, built, start, tried),
   };
 }
 let pagesTreeOf: ReturnType<typeof pagesOf> | undefined;
@@ -347,10 +349,22 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   assert.ok(local.length > examples.length);
   for (const href of local) assert.ok(tree.has(href), href);
   assert.ok(front.hrefs.includes(vocabularyAt.href));
+  for (const { folder } of examples) {
+    const pod = `${folder}/pod/`;
+    const listed = JSON.parse(
+      new TextDecoder().decode(tree.get(`${pod}files.json`)),
+    ) as unknown;
+    const held = [...tree.keys()]
+      .filter((path) => path.startsWith(pod) && path !== `${pod}files.json`)
+      .map((path) => path.slice(pod.length))
+      .sort();
+    assert.ok(held.length > 0);
+    assert.deepEqual(listed, held, folder);
+  }
 });
 
 test("the Pages front page gives the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
-  const { examples, built, commit, start, tree } = await shared();
+  const { examples, built, commit, start, tried, tree } = await shared();
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
   const address = tarballAddress(commit);
   const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
@@ -372,11 +386,11 @@ test("the Pages front page gives the example's pod, the kinds a pod holds, the c
     `${start.example}/index.html`,
     `${start.example}/pod/manifest.ttl`,
     EXAMPLES_PAGE,
+    TRY_PAGE,
   ])
     assert.ok(front.hrefs.includes(href), href);
-  assert.ok(!front.hrefs.includes(TRY_PAGE));
   assert.throws(
-    () => pagesTree(examples, built, { ...start, example: "nobody" }),
+    () => pagesTree(examples, built, { ...start, example: "nobody" }, tried),
     /nobody/,
   );
 });

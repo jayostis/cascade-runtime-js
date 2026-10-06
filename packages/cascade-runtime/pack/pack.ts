@@ -12,7 +12,9 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { build } from "esbuild";
 import {
+  FILES_JSON,
   type Followed,
   kitsOf,
   repositoryName,
@@ -43,6 +45,8 @@ const CACHE = join(BUILD, "cache");
 const COMPONENTS = join(STAGE, "components");
 const NODE_MODULES = join(STAGE, "node_modules");
 const METADATA = "ro-crate-metadata.json";
+const BROWSER = join(WORKSPACE, "dist", "browser");
+const WASM = "web_bg.wasm";
 /** The workspaces bundled into the package, which are on no registry. */
 const BUNDLED = ["runtime", "apple-health"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */
@@ -188,7 +192,40 @@ async function packComponents(): Promise<{
     bridge: { release: bridge.release, commit: bridge.commit },
   };
   await writeJson(join(COMPONENTS, PACKED), record);
+  for (const component of resolved) await writeFilesJson(treeOf(component));
   return { resolved, bridge: record.bridge, bridgeFolder: bridge.folder };
+}
+
+/** Lists every file under the folder, as a browser reads it over HTTP. */
+async function writeFilesJson(folder: string): Promise<void> {
+  const paths = (
+    await readdir(folder, { recursive: true, withFileTypes: true })
+  )
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      relative(folder, join(entry.parentPath, entry.name)).split(sep).join("/"),
+    )
+    .filter((path) => path !== FILES_JSON)
+    .sort();
+  await writeJson(join(folder, FILES_JSON), paths);
+}
+
+/** The browser entry as one module, with Oxigraph's web build beside it. */
+async function bundleBrowser(): Promise<void> {
+  await rm(BROWSER, { recursive: true, force: true });
+  await build({
+    entryPoints: [join(WORKSPACE, "dist", "src", "browser", "index.js")],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2023",
+    outfile: join(BROWSER, "index.js"),
+    logLevel: "warning",
+  });
+  await copyFile(
+    fileURLToPath(new URL(WASM, import.meta.resolve("oxigraph/web.js"))),
+    join(BROWSER, WASM),
+  );
 }
 
 /** The workspaces and the Bridge as real folders under the package's `node_modules/`, and the dependencies they bring. */
@@ -322,6 +359,7 @@ async function main(): Promise<void> {
   await mkdir(STAGE, { recursive: true });
   const { resolved, bridge, bridgeFolder } = await packComponents();
   const { bundled, dependencies } = await packCode(bridgeFolder);
+  await bundleBrowser();
   await packOwnFiles(manifest, address);
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
