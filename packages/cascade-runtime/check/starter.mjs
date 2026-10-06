@@ -214,7 +214,7 @@ await behaviour("the command makes the app", async () => {
         )
       : await run(startLine(address, "my-app"), [], { cwd: work, shell: true });
   assert.equal(code, 0, "the command failed");
-  assert.ok(out.includes(agentPrompt("my-app", address)), "no agent prompt");
+  assert.ok(out.includes(agentPrompt("my-app")), "no agent prompt");
   assert.equal(existsSync(join(app, "pods")), false, "the app has pods/");
   if (release !== undefined) {
     const manifest = JSON.parse(
