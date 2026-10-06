@@ -238,10 +238,12 @@ test("an export imported through the WebAssembly Bridge files what it files thro
   const step = story.steps.find(({ name }) => name === "known-source-version");
   if (step?.happened.kind !== "import") throw new Error("no such import");
   const exported = `${folder}/${step.happened.export}`;
+  const importSaved = PERFORMERS.import;
+  assert.ok(importSaved);
   const pods: Triple[][] = [];
   for (const perform of [
     (context: StepContext) =>
-      PERFORMERS.import?.(context, step, {
+      importSaved(context, step, {
         source: files,
         folder,
         importers: [appleHealthExport],

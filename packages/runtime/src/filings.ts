@@ -13,7 +13,7 @@ const SOLID = "http://www.w3.org/ns/solid/terms#";
  * Rule A13: the pod's creation writes the subject as a rec:Subject, the owner's profile, saying who the owner is and
  * where the pod's root and the preferences file are, and the preferences file, saying where the type index is.
  */
-export function fileCreation(context: StepContext): Promise<void> {
+export async function fileCreation(context: StepContext): Promise<void> {
   const { layout, subject, address, writes } = context;
   const type = iri(`${RDF}type`);
   writes.add(
@@ -38,7 +38,6 @@ export function fileCreation(context: StepContext): Promise<void> {
       [owner, iri(`${SOLID}privateTypeIndex`), iri(address + layout.typeIndex)],
     ]),
   );
-  return Promise.resolve();
 }
 
 /** A person's judgment: its file, as it is, filed by the judgment's name. */
@@ -67,14 +66,14 @@ export async function fileJudgment(
 }
 
 /** A reference version's arrival: what the reference index states about it, filed by its name. */
-export function fileReference(
+export async function fileReference(
   context: StepContext,
   references: References,
   version: string,
 ): Promise<void> {
   if (!references.isVersion(version))
-    return Promise.reject(
-      new Error(`it names ${version}, a version references.ttl does not list`),
+    throw new Error(
+      `it names ${version}, a version references.ttl does not list`,
     );
   context.writes.add(
     context.layout.version(
@@ -83,5 +82,4 @@ export function fileReference(
     ),
     ntriples(references.description(version)),
   );
-  return Promise.resolve();
 }
