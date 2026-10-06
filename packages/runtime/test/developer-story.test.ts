@@ -19,7 +19,7 @@ const FIRST_EXPORT =
 const QUESTION = "pod/My active allergies";
 
 /** Each row as one string, its columns in name order, so two answers compare as multisets. */
-function multiset(rows: readonly Record<string, string>[]): string[] {
+function multiset(rows: readonly Record<string, unknown>[]): string[] {
   return rows
     .map((row) =>
       JSON.stringify(
@@ -40,8 +40,11 @@ test(
       new MemoryFiles("https://pod.example/"),
       { through: "J1" },
     );
+    const matched = replayed.steps.find(({ step }) => step.name === "M5");
+    assert.ok(matched, "the replay through J1 has no matcher run M5");
+    assert.equal(matched.refused, undefined, "M5 was refused");
     assert.deepEqual(
-      replayed.steps.find(({ step }) => step.name === "M5")?.wrote,
+      matched.wrote,
       [],
       "M5 wrote files, so the replay, which claims after the matcher run, may no longer answer as the script, which claims at the import",
     );
@@ -71,7 +74,7 @@ test(
           join(ROOT, "developer-story", "allergies.mjs"),
           join(vocabulary.files.folder, FIRST_EXPORT),
         ],
-        { cwd: folder },
+        { cwd: folder, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
       ).catch(
         (error: { stderr?: string; code?: unknown; signal?: unknown }) => {
           throw new Error(
@@ -82,13 +85,11 @@ test(
       const printed = stdout
         .split("\n")
         .filter((line) => line !== "")
-        .map((line) =>
-          Object.fromEntries(
-            Object.entries(JSON.parse(line) as Record<string, unknown>).map(
-              ([column, value]) => [column, String(value)],
-            ),
-          ),
-        );
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      for (const row of printed) {
+        for (const [column, value] of Object.entries(row))
+          assert.equal(typeof value, "string", `?${column} is no string`);
+      }
       assert.deepEqual(multiset(printed), multiset(expected));
     } finally {
       await rm(folder, { recursive: true, force: true });
