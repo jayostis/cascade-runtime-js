@@ -8,13 +8,14 @@ import {
   type LoadedAdapter,
 } from "../src/bridge.js";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { fileExport, fileImport } from "../src/arrivals.js";
+import { fileExport } from "../src/arrivals.js";
 import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { StepWrites } from "../src/pod.js";
+import { PERFORMERS } from "../src/replay.js";
 import { REC, type StepContext } from "../src/step.js";
 import { readConfig, siblingsOf } from "../src/node/runtime.js";
 import {
@@ -237,9 +238,17 @@ test("an export imported through the WebAssembly Bridge files what it files thro
   const step = story.steps.find(({ name }) => name === "known-source-version");
   if (step?.happened.kind !== "import") throw new Error("no such import");
   const exported = `${folder}/${step.happened.export}`;
+  const importSaved = PERFORMERS.import;
+  assert.ok(importSaved);
   const pods: Triple[][] = [];
   for (const perform of [
-    fileImport,
+    (context: StepContext) =>
+      importSaved(context, step, {
+        source: files,
+        folder,
+        importers: [appleHealthExport],
+        activities: new Map(),
+      }),
     async (context: StepContext) =>
       fileExport(
         context,
@@ -252,18 +261,14 @@ test("an export imported through the WebAssembly Bridge files what it files thro
     time.begin(step.when);
     const writes = new StepWrites();
     await perform({
-      story,
-      step,
-      source: files,
+      address: story.address,
+      subject: story.subject,
       vocabulary: files,
-      activities: new Map(),
-      folder,
       pod,
       time,
       writes,
       newStore,
       layout: await layout(),
-      importers: [appleHealthExport],
     });
     await writes.commit(pod);
     pods.push(await filed(pod));

@@ -2,17 +2,17 @@ import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import { fileStem } from "./names.js";
 import { iri, RDF, type Triple } from "./rdf.js";
-import { inStory, REC, Refusal, type StepContext } from "./step.js";
+import { REC, Refusal } from "./step.js";
+import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const FOLDER = "references/";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
 
 /**
- * A story's reference tables: `references.ttl`, the index of each series and its versions, and one file per version
+ * Reference tables: `references.ttl`, the index of each series and its versions, and one file per version
  * holding its rows, named from the version's name.
  */
 export class References {
@@ -33,19 +33,21 @@ export class References {
     this.index = index;
   }
 
-  static async of(context: StepContext): Promise<References> {
-    const folder = inStory(context, FOLDER);
+  /** The tables in `folder` of the files, which ends in a slash or is empty. */
+  static async of(
+    files: Files,
+    folder: string,
+    newStore: StoreFactory,
+  ): Promise<References> {
     const path = `${folder}references.ttl`;
     const parse = (bytes: Uint8Array, base: string): Promise<Triple[]> =>
-      context.newStore().parse(bytes, base);
-    const turtle = new TextEncoder().encode(
-      await readText(context.source, path),
-    );
+      newStore().parse(bytes, base);
+    const turtle = new TextEncoder().encode(await readText(files, path));
     return new References(
-      context.source,
+      files,
       folder,
       parse,
-      new Graph(await parse(turtle, context.source.iri + path)),
+      new Graph(await parse(turtle, files.iri + path)),
     );
   }
 
