@@ -23,6 +23,7 @@ import {
   EXAMPLES_PAGE,
   FRONT_PAGE,
   pagesTree,
+  START_PAGE,
   TRY_PAGE,
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
@@ -363,30 +364,39 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   }
 });
 
-test("the Pages front page gives the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
+test("the Pages front page leads to the quick start, try/, the example's pod and the kinds a pod holds; the quick start gives the command and the prompt; neither links what the tree does not hold", async () => {
   const { examples, built, commit, start, tried, tree } = await shared();
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
   const address = tarballAddress(commit);
-  const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
-  const front = readPage(text);
-  assert.deepEqual(front.code, [
+  const page = (path: string) =>
+    readPage(new TextDecoder().decode(tree.get(path)));
+  const front = page(FRONT_PAGE);
+  const quick = page(START_PAGE);
+  assert.deepEqual(quick.code, [
     startLine(address, "my-app"),
     agentPrompt("my-app"),
   ]);
-  assert.equal(front.said.split(address).length - 1, 1);
+  assert.equal(quick.said.split(address).length - 1, 1);
+  assert.ok(quick.hrefs.includes(FRONT_PAGE));
+  assert.deepEqual(front.code, []);
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
   assert.ok(titles.length > 0);
   assert.ok(front.said.includes(titles.join(" ")));
-  assert.deepEqual(
-    front.hrefs.filter((href) => !tree.has(href)),
-    [],
-    "a link to a file the tree does not hold",
-  );
+  for (const [path, { hrefs }] of [
+    [FRONT_PAGE, front],
+    [START_PAGE, quick],
+  ] as const)
+    assert.deepEqual(
+      hrefs.filter((href) => !tree.has(href)),
+      [],
+      `${path} links a file the tree does not hold`,
+    );
   for (const href of [
+    START_PAGE,
+    TRY_PAGE,
     `${start.example}/index.html`,
     `${start.example}/pod/manifest.ttl`,
     EXAMPLES_PAGE,
-    TRY_PAGE,
   ])
     assert.ok(front.hrefs.includes(href), href);
   assert.throws(
