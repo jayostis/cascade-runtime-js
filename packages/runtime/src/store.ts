@@ -29,3 +29,14 @@ export interface Store {
 }
 
 export type StoreFactory = () => Store;
+
+/** The query's rows, each the values of its variables in order, an unbound one as "". */
+export async function selected(
+  store: Store,
+  query: string,
+): Promise<string[][]> {
+  const { rows, variables } = await store.select(query);
+  return rows.map((row) =>
+    variables.map((variable) => row.get(variable)?.value ?? ""),
+  );
+}
