@@ -21,6 +21,11 @@ let requires: Map<string, string>;
 /** Each example and check the report must hold, by its IRI, with its name. */
 const tested = new Map<string, string>();
 
+/** The outcome and why of each example of a feature file of broken examples, by its name, from one run. */
+let broken: Map<string, readonly [string, string]>;
+/** The name of each example that run reported, once for each time it reported it. */
+let brokenNames: string[];
+
 interface Outcome {
   readonly outcome: string;
   readonly why?: string;
@@ -69,6 +74,7 @@ async function report(): Promise<{
 
 before(async () => {
   const reported = report();
+  const ranBroken = runBroken();
   const files = await vocabulary();
   for (const path of await featuresOf(files))
     for (const { iri, name } of (await readFeature(files, path)).examples)
@@ -79,6 +85,12 @@ before(async () => {
     for (const check of Object.values(KIT_CHECKS))
       tested.set(`${files.iri}${kit}/#${check}`, check);
   ({ found: outcomes, requires } = await reported);
+  const named = (await ranBroken).map(
+    ({ test, outcome, why }) =>
+      [test.slice(test.indexOf("#") + 1), [outcome, why ?? ""]] as const,
+  );
+  brokenNames = named.map(([name]) => name);
+  broken = new Map(named);
 });
 
 test("the conformance command reports each example of every feature file and each kit's checks once, and nothing else", () => {
@@ -119,10 +131,8 @@ test("every example and each kit's checks pass", () => {
   }
 });
 
-/** The outcome and why of each example of a feature file of broken examples, by its name, from one run. */
-let broken: Map<string, readonly [string, string]>;
-
-before(async () => {
+/** Runs the conformance command, in memory, on a vocabulary whose one feature file is of broken examples. */
+async function runBroken(): ReturnType<typeof runConformance> {
   const files = new MemoryFiles("https://vocabulary.example/");
   const write = (path: string, text: string) =>
     files.write(path, new TextEncoder().encode(text));
@@ -187,18 +197,24 @@ before(async () => {
       Then that step wrote 1 file
 `,
   );
-  const assertions = await runConformance({
+  return runConformance({
     vocabulary: files,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     layout: await layout(),
   });
-  broken = new Map(
-    assertions.map(({ test, outcome, why }) => [
-      test.slice(test.indexOf("#") + 1),
-      [outcome, why ?? ""] as const,
-    ]),
-  );
+}
+
+test("the run of the feature file of broken examples reports each of its examples once, and nothing else", () => {
+  assert.deepEqual(brokenNames.sort(), [
+    "a-judgment-filed-twice-read-after-the-first",
+    "a-pod-read-before-a-later-step-that-stops-the-replay",
+    "a-query-that-is-no-select",
+    "a-step-named-with-a-space",
+    "a-step-nobody-wrote",
+    "another-person-named",
+    "two-rows-of-one-name",
+  ]);
 });
 
 function failed(example: string, why: RegExp): void {
