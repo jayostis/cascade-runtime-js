@@ -8,13 +8,13 @@ control of their own data.
 - **The patient holds the data.** Each person's records are in their own pod, a
   single-tenant RDF graph kept as Turtle files. Apps come to the pod; the pod
   does not go to the apps.
-- **Anyone with an idea can build an app.** One command starts an app on a pod,
+- **Anyone with an idea can build an app.** One command starts an app,
   and a coding agent can build on it from there.
 - **Apps interoperate.** Records arrive from each source format through a Bridge
   running an adapter, so every app reads the same records with the same
   standard SPARQL questions.
 
-It is open source, and built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate
+It is open source and built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate
 and EARL reports.
 FHIR R4 is the first source format this runtime files.
 
