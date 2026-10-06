@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { readFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
@@ -27,13 +27,9 @@ import {
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import {
-  type Example,
-  type Ingredient,
-  pagesTree,
-  viewTitles,
-} from "../front-page.js";
+import { type Example, type Ingredient, pagesTree } from "../front-page.js";
 import { Site } from "../site.js";
+import { startOf } from "./start.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const RUNTIME_CLI = join(
@@ -45,16 +41,8 @@ const RUNTIME_CLI = join(
   "node",
   "cli.js",
 );
-const PACKAGE = join(ROOT, "packages", "cascade-runtime");
-const { tarballAddress } = (await import(
-  pathToFileURL(join(PACKAGE, "dist", "pack", "address.js")).href
-)) as typeof import("../../../cascade-runtime/pack/address.js");
-const { agentPrompt, startLine } = (await import(
-  pathToFileURL(join(PACKAGE, "dist", "src", "create.js")).href
-)) as typeof import("../../../cascade-runtime/src/create.js");
 const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
 const EXAMPLE = "alex-rivera";
-const APP = "my-app";
 const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
 const log = (line: string): void => console.error(line);
@@ -205,7 +193,6 @@ async function buildPages(): Promise<number> {
       `${ROOT} is not a git checkout, so no commit built the pages`,
     );
   const self = { repository: RUNTIME };
-  const address = tarballAddress(runtime.commit);
   const tree = pagesTree(
     examples,
     {
@@ -224,13 +211,7 @@ async function buildPages(): Promise<number> {
       ],
       at: clock.now(),
     },
-    {
-      notice: await readFile(join(PACKAGE, "PREVIEW.md"), "utf8"),
-      command: startLine(address, APP),
-      prompt: agentPrompt(APP, address),
-      kinds: viewTitles(vocabulary.layout),
-      example: EXAMPLE,
-    },
+    await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
   );
   const out = join(ROOT, "build", "pages");
   await rm(out, { recursive: true, force: true });

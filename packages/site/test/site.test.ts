@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { before, test } from "node:test";
 import {
   iri,
@@ -25,11 +25,11 @@ import {
   FRONT_PAGE,
   pagesTree,
   TRY_PAGE,
-  viewTitles,
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
 import { shown } from "../src/terms.js";
+import { startFunctions, startOf } from "../src/node/start.js";
 import { type Page, readPage } from "./page.js";
 
 const FEATURE = "runtime/matcher.feature";
@@ -316,26 +316,18 @@ async function pagesOf() {
     configured: [],
     at: "2026-03-03T08:00:00Z",
   };
-  const runtime = join(ROOT, "packages", "cascade-runtime");
-  const { tarballAddress } = (await import(
-    pathToFileURL(join(runtime, "dist", "pack", "address.js")).href
-  )) as typeof import("../../cascade-runtime/pack/address.js");
-  const { agentPrompt, startLine } = (await import(
-    pathToFileURL(join(runtime, "dist", "src", "create.js")).href
-  )) as typeof import("../../cascade-runtime/src/create.js");
-  const address = tarballAddress("0123456789abcdef0123456789abcdef01234567");
-  const start = {
-    notice: await readFile(join(runtime, "PREVIEW.md"), "utf8"),
-    command: startLine(address, "my-app"),
-    prompt: agentPrompt("my-app", address),
-    kinds: viewTitles(vocabulary.layout),
-    example: examples[0]?.folder ?? "",
-  };
+  const commit = "0123456789abcdef0123456789abcdef01234567";
+  const start = await startOf(
+    ROOT,
+    commit,
+    vocabulary.layout,
+    examples[0]?.folder ?? "",
+  );
   return {
     examples,
     vocabularyAt,
     built,
-    address,
+    commit,
     start,
     tree: pagesTree(examples, built, start),
   };
@@ -359,12 +351,25 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
 });
 
 test("the Pages front page gives the notice first, the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
-  const { examples, built, address, start, tree } = await shared();
+  const { examples, built, commit, start, tree } = await shared();
+  const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
+  const address = tarballAddress(commit);
   const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
   const front = readPage(text);
-  assert.deepEqual(front.code, [start.command, start.prompt]);
+  assert.deepEqual(front.code, [
+    startLine(address, "my-app"),
+    agentPrompt("my-app", address),
+  ]);
   assert.equal(front.said.split(address).length - 1, 2);
-  const notice = start.notice.trim().split(/\r?\n/).join(" ");
+  const notice = (
+    await readFile(
+      join(ROOT, "packages", "cascade-runtime", "PREVIEW.md"),
+      "utf8",
+    )
+  )
+    .trim()
+    .split(/\r?\n/)
+    .join(" ");
   const [beforeHeading = ""] = text.split("<h1>");
   assert.ok(readPage(beforeHeading).said.includes(notice));
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
