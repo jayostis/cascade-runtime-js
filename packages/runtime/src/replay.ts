@@ -6,7 +6,7 @@ import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { References } from "./references.js";
 import { SavedOutputBridge } from "./saved-output-bridge.js";
-import type { StepFile } from "./step.js";
+import { Refusal, type StepFile } from "./step.js";
 import type { StoreFactory } from "./store.js";
 import type { Step, StepKind, Story } from "./story.js";
 
@@ -40,7 +40,7 @@ async function storyFile(story: StorySide, path: string): Promise<StepFile> {
   const at = inStory(story.folder, path);
   const bytes = await story.source.read(at);
   if (bytes === undefined)
-    throw new Error(`${story.source.iri}${at} does not exist`);
+    throw new Refusal(`${story.source.iri}${at} does not exist`);
   return { bytes, base: story.source.iri + at, name: path };
 }
 
@@ -80,16 +80,16 @@ export const PERFORMERS: Performers = {
   entry: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "entry") throw new Error("the step is no entry");
-    const entry = await storyFile(story, happened.file);
     begun(story, step);
+    const entry = await storyFile(story, happened.file);
     return pod.enter(entry);
   },
   judgment: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
-    const judgment = await storyFile(story, happened.file);
     begun(story, step);
+    const judgment = await storyFile(story, happened.file);
     return pod.judge(judgment);
   },
   reference: (pod, step, story) => {
@@ -243,6 +243,9 @@ export class Replay {
         folder: options.folder,
         activities: this.#activities,
         time: this.#time,
+      }).catch((error: unknown) => {
+        if (!(error instanceof Refusal)) throw error;
+        return this.#pod.refuse(error.message);
       });
     } catch (error) {
       if (error instanceof BuildFailure) {

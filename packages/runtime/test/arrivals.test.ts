@@ -5,7 +5,7 @@ import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
-import type { Story } from "../src/story.js";
+import type { Step, Story } from "../src/story.js";
 import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
@@ -173,7 +173,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
   assert.notDeepEqual(steps[3]?.wrote, []);
 });
 
-test("an export the importer cannot read is refused, and the replay goes on", async () => {
+test("a step given bad input by its story is refused, and the replay goes on", async () => {
   const source = new MemoryFiles("https://story.example/");
   await source.write(
     "s/apple_health_export/export.xml",
@@ -185,27 +185,44 @@ test("an export the importer cannot read is refused, and the replay goes on", as
     "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
     new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
   );
+  await source.write("s/no-judgment.ttl", new Uint8Array());
+  await source.write("s/references/references.ttl", new Uint8Array());
+  const refusals: readonly [Step["happened"], RegExp][] = [
+    [
+      { kind: "import", export: "apple_health_export", converted: "bridge" },
+      /AllergyIntolerance-peanut.json: .*has no sourceURL/,
+    ],
+    [
+      { kind: "import", export: "nothing", converted: "bridge" },
+      /^no importer of .* reads s\/nothing$/,
+    ],
+    [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
+    [
+      { kind: "judgment", file: "no-judgment.ttl" },
+      /^no-judgment\.ttl holds 0 judgments, not one$/,
+    ],
+    [
+      { kind: "reference", name: "urn:example:unlisted" },
+      /urn:example:unlisted, a version references\.ttl does not list$/,
+    ],
+  ];
   const story: Story = {
     address: "https://pod.example/",
     subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
     steps: [
-      {
-        name: "import",
-        when: "2026-06-02T09:00:00Z",
-        happened: {
-          kind: "import",
-          export: "apple_health_export",
-          converted: "bridge",
-        },
-      },
+      ...refusals.map(([happened], index) => ({
+        name: `refused-${index}`,
+        when: `2026-06-0${index + 1}T09:00:00Z`,
+        happened,
+      })),
       {
         name: "create",
-        when: "2026-06-03T09:00:00Z",
+        when: "2026-06-09T09:00:00Z",
         happened: { kind: "creation" },
       },
     ],
   };
-  const { steps } = await replay({
+  const { steps, stopped } = await replay({
     story,
     source,
     vocabulary: source,
@@ -216,10 +233,10 @@ test("an export the importer cannot read is refused, and the replay goes on", as
     layout: await layout(),
     importers: [appleHealthExport],
   });
-  assert.match(
-    steps[0]?.refused ?? "",
-    /AllergyIntolerance-peanut.json: .*has no sourceURL/,
-  );
-  assert.deepEqual(steps[0]?.wrote, []);
-  assert.notDeepEqual(steps[1]?.wrote, []);
+  assert.equal(stopped, undefined);
+  refusals.forEach(([happened, why], index) => {
+    assert.match(steps[index]?.refused ?? "", why, happened.kind);
+    assert.deepEqual(steps[index]?.wrote, []);
+  });
+  assert.notDeepEqual(steps.at(-1)?.wrote, []);
 });

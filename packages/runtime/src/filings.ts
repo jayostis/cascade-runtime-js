@@ -1,7 +1,7 @@
 import { parseGraph } from "./graph.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import type { References } from "./references.js";
-import { REC, type StepContext, type StepFile } from "./step.js";
+import { REC, Refusal, type StepContext, type StepFile } from "./step.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
@@ -50,7 +50,7 @@ export async function fileJudgment(
   ).subjects(`${RDF}type`, iri(`${JDG}Judgment`));
   const [found] = judgments;
   if (judgments.length !== 1 || found === undefined)
-    throw new Error(
+    throw new Refusal(
       `${judgment.name} holds ${judgments.length} judgments, not one`,
     );
   context.writes.add(
@@ -66,7 +66,7 @@ export async function fileReference(
   version: string,
 ): Promise<void> {
   if (!references.isVersion(version))
-    throw new Error(
+    throw new Refusal(
       `it names ${version}, a version references.ttl does not list`,
     );
   context.writes.add(
