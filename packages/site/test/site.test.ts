@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { before, test } from "node:test";
 import {
   iri,
@@ -19,7 +20,13 @@ import {
   localVocabulary,
   featurePod,
 } from "@cascade-runtime/runtime/node";
-import { FRONT_PAGE, pagesTree } from "../src/front-page.js";
+import {
+  EXAMPLES_PAGE,
+  FRONT_PAGE,
+  pagesTree,
+  TRY_PAGE,
+  viewTitles,
+} from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
 import { shown } from "../src/terms.js";
@@ -33,6 +40,8 @@ const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
 const RECORD = "https://ns.cascadeprotocol.org/records/v1-draft#Record";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
+const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
+
 let vocabulary: LocalVocabulary;
 let options: SiteOptions;
 let site: Site;
@@ -40,9 +49,7 @@ let files: Map<string, Uint8Array>;
 let pages: Map<string, Page>;
 
 before(async () => {
-  vocabulary = await localVocabulary(
-    findRoot(dirname(fileURLToPath(import.meta.url))),
-  );
+  vocabulary = await localVocabulary(ROOT);
   const pod = new MemoryFiles("https://pod.example/");
   await featurePod(vocabulary, FEATURE, pod, {
     example: EXAMPLE,
@@ -288,7 +295,8 @@ test("a site built under a lens other than the one `ask` and GraphDB use names t
     assert.ok(!said.includes("--lens"), title);
 });
 
-test("the Pages front page links each kit of the vocabulary, by its name, to a site and a pod in the tree, and names what built it", async () => {
+/** The Pages tree over the suite's site, built once for the tests of its two pages. */
+async function pagesOf() {
   const kits = await kitsOf(vocabulary.files);
   assert.ok(kits.length > 0);
   const examples = await Promise.all(
@@ -303,12 +311,41 @@ test("the Pages front page links each kit of the vocabulary, by its name, to a s
     version: vocabulary.resolved.version,
     href: vocabulary.resolved.iri,
   };
-  const tree = pagesTree(examples, {
+  const built = {
     ingredients: [vocabularyAt],
     configured: [],
     at: "2026-03-03T08:00:00Z",
-  });
-  const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
+  };
+  const runtime = join(ROOT, "packages", "cascade-runtime");
+  const { tarballAddress } = (await import(
+    pathToFileURL(join(runtime, "dist", "pack", "address.js")).href
+  )) as typeof import("../../cascade-runtime/pack/address.js");
+  const { agentPrompt, startLine } = (await import(
+    pathToFileURL(join(runtime, "dist", "src", "create.js")).href
+  )) as typeof import("../../cascade-runtime/src/create.js");
+  const address = tarballAddress("0123456789abcdef0123456789abcdef01234567");
+  const start = {
+    notice: await readFile(join(runtime, "PREVIEW.md"), "utf8"),
+    command: startLine(address, "my-app"),
+    prompt: agentPrompt("my-app", address),
+    kinds: viewTitles(vocabulary.layout),
+    example: examples[0]?.folder ?? "",
+  };
+  return {
+    examples,
+    vocabularyAt,
+    built,
+    address,
+    start,
+    tree: pagesTree(examples, built, start),
+  };
+}
+let pagesTreeOf: ReturnType<typeof pagesOf> | undefined;
+const shared = () => (pagesTreeOf ??= pagesOf());
+
+test("the Pages examples page links each kit of the vocabulary, by its name, to a site and a pod in the tree, and names what built it", async () => {
+  const { examples, vocabularyAt, tree } = await shared();
+  const text = new TextDecoder().decode(tree.get(EXAMPLES_PAGE));
   const front = readPage(text);
   for (const { folder, title } of examples)
     assert.ok(
@@ -319,4 +356,34 @@ test("the Pages front page links each kit of the vocabulary, by its name, to a s
   assert.ok(local.length > examples.length);
   for (const href of local) assert.ok(tree.has(href), href);
   assert.ok(front.hrefs.includes(vocabularyAt.href));
+});
+
+test("the Pages front page gives the notice first, the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
+  const { examples, built, address, start, tree } = await shared();
+  const text = new TextDecoder().decode(tree.get(FRONT_PAGE));
+  const front = readPage(text);
+  assert.deepEqual(front.code, [start.command, start.prompt]);
+  assert.equal(front.said.split(address).length - 1, 2);
+  const notice = start.notice.trim().split(/\r?\n/).join(" ");
+  const [beforeHeading = ""] = text.split("<h1>");
+  assert.ok(readPage(beforeHeading).said.includes(notice));
+  const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
+  assert.ok(titles.length > 0);
+  assert.ok(front.said.includes(titles.join(" ")));
+  assert.deepEqual(
+    front.hrefs.filter((href) => !tree.has(href)),
+    [],
+    "a link to a file the tree does not hold",
+  );
+  for (const href of [
+    `${start.example}/index.html`,
+    `${start.example}/pod/manifest.ttl`,
+    EXAMPLES_PAGE,
+  ])
+    assert.ok(front.hrefs.includes(href), href);
+  assert.ok(!front.hrefs.includes(TRY_PAGE));
+  assert.throws(
+    () => pagesTree(examples, built, { ...start, example: "nobody" }),
+    /nobody/,
+  );
 });

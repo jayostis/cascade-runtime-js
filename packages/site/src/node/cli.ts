@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
@@ -27,7 +27,12 @@ import {
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import { type Example, type Ingredient, pagesTree } from "../front-page.js";
+import {
+  type Example,
+  type Ingredient,
+  pagesTree,
+  viewTitles,
+} from "../front-page.js";
 import { Site } from "../site.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -40,7 +45,16 @@ const RUNTIME_CLI = join(
   "node",
   "cli.js",
 );
+const PACKAGE = join(ROOT, "packages", "cascade-runtime");
+const { tarballAddress } = (await import(
+  pathToFileURL(join(PACKAGE, "dist", "pack", "address.js")).href
+)) as typeof import("../../../cascade-runtime/pack/address.js");
+const { agentPrompt, startLine } = (await import(
+  pathToFileURL(join(PACKAGE, "dist", "src", "create.js")).href
+)) as typeof import("../../../cascade-runtime/src/create.js");
 const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
+const EXAMPLE = "alex-rivera";
+const APP = "my-app";
 const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
 const log = (line: string): void => console.error(line);
@@ -157,7 +171,7 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
       };
 }
 
-/** Builds every kit's pod and site with build-example, and writes them under build/pages beneath a front page. */
+/** Builds every kit's pod and site with build-example, and writes them under build/pages beneath the newcomer's page and the examples' page. */
 async function buildPages(): Promise<number> {
   const vocabulary = await localVocabulary(ROOT, log);
   const examples: Example[] = [];
@@ -191,19 +205,33 @@ async function buildPages(): Promise<number> {
       `${ROOT} is not a git checkout, so no commit built the pages`,
     );
   const self = { repository: RUNTIME };
-  const tree = pagesTree(examples, {
-    ingredients: [
-      atCommit(
-        repositoryName(self),
-        treeIri(self, runtime.commit),
-        runtime.commit,
-        runtime.uncommitted,
-      ),
-      resolvedIngredient(vocabulary.resolved),
-    ],
-    configured: [...adapters.map(resolvedIngredient), bridgeIngredient(bridge)],
-    at: clock.now(),
-  });
+  const address = tarballAddress(runtime.commit);
+  const tree = pagesTree(
+    examples,
+    {
+      ingredients: [
+        atCommit(
+          repositoryName(self),
+          treeIri(self, runtime.commit),
+          runtime.commit,
+          runtime.uncommitted,
+        ),
+        resolvedIngredient(vocabulary.resolved),
+      ],
+      configured: [
+        ...adapters.map(resolvedIngredient),
+        bridgeIngredient(bridge),
+      ],
+      at: clock.now(),
+    },
+    {
+      notice: await readFile(join(PACKAGE, "PREVIEW.md"), "utf8"),
+      command: startLine(address, APP),
+      prompt: agentPrompt(APP, address),
+      kinds: viewTitles(vocabulary.layout),
+      example: EXAMPLE,
+    },
+  );
   const out = join(ROOT, "build", "pages");
   await rm(out, { recursive: true, force: true });
   const pages = new FolderFiles(out);
