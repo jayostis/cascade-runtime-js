@@ -119,8 +119,12 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
   assert.ok(
     !replayed.steps.some(({ wrote }) => wrote.includes("clinical/built.ttl")),
   );
-  assert.match(
-    new TextDecoder().decode(await pod.read("clinical/built.ttl")),
-    /"2026-02-02T08:00:00Z"/,
+  const built = await new OxigraphStore().parse(
+    (await pod.read("clinical/built.ttl")) ?? new Uint8Array(),
+    story.address,
+  );
+  assert.deepEqual(
+    built.map(([, , value]) => value),
+    [literal("2026-02-02T08:00:00Z")],
   );
 });

@@ -23,6 +23,12 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
   behaviour. No combinatorial padding. Build a pod or a dataset once and share
   it. `npm test` runs in seconds; the one run of the conformance command, every
   example of the feature files, is its slower check.
+- **Bad input is a refusal, never a plain `Error` that escapes.** A step given
+  input the rules refuse throws `Refusal`, from `packages/runtime/src/step.ts`:
+  it writes nothing, the replay records why and goes on. Any other error stops
+  the replay, and says the runtime is broken, never that an input was bad.
+  Refusals are tested once, as a table of each input and the reason it is
+  refused, not one test per case.
 - **A rule is implemented where its examples say,** and an example is passed,
   never skipped: a step the runtime cannot yet perform fails its examples,
   naming the step's kind.

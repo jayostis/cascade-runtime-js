@@ -21,7 +21,7 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, pagesTree } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
-import { Site } from "../src/site.js";
+import { Site, type SiteOptions } from "../src/site.js";
 import { shown } from "../src/terms.js";
 import { type Page, readPage } from "./page.js";
 
@@ -34,6 +34,7 @@ const RECORD = "https://ns.cascadeprotocol.org/records/v1-draft#Record";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
 let vocabulary: LocalVocabulary;
+let options: SiteOptions;
 let site: Site;
 let files: Map<string, Uint8Array>;
 let pages: Map<string, Page>;
@@ -47,7 +48,7 @@ before(async () => {
     example: EXAMPLE,
     through: THROUGH,
   });
-  site = await Site.build({
+  options = {
     vocabulary: vocabulary.files,
     layout: vocabulary.layout,
     build: vocabulary.build,
@@ -58,7 +59,8 @@ before(async () => {
     name: "matching",
     at: "2026-03-03T08:00:00Z",
     ask: "npm run ask -- matching",
-  });
+  };
+  site = await Site.build(options);
   files = await site.files();
   pages = new Map(
     [...files]
@@ -270,24 +272,9 @@ test("a site built under a lens other than the one `ask` and GraphDB use names t
   const fallback = vocabulary.config.lens;
   const other = [...site.pipeline.keys()].find((lens) => lens !== fallback);
   assert.ok(other);
-  const pod = new MemoryFiles("https://pod.example/");
-  await featurePod(vocabulary, FEATURE, pod, {
-    example: EXAMPLE,
-    through: THROUGH,
-  });
-  const options = {
-    vocabulary: vocabulary.files,
-    layout: vocabulary.layout,
-    build: vocabulary.build,
-    pod,
-    lens: other,
-    defaultLens: fallback,
-    newStore: () => new OxigraphStore(),
-    name: "matching",
-    at: "2026-03-03T08:00:00Z",
-    ask: "npm run ask -- matching",
-  };
-  const built = await (await Site.build(options)).files();
+  const built = await (
+    await Site.build({ ...options, lens: other, defaultLens: fallback })
+  ).files();
   const home = readPage(new TextDecoder().decode(built.get("index.html")));
   const run = home.blocks.filter(({ said }) =>
     said.includes("Run it yourself"),
