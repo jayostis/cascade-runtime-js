@@ -32,6 +32,7 @@ import {
   type StepContext,
   type StepFile,
 } from "./step.js";
+import type { Shapes } from "./shapes.js";
 import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -443,6 +444,7 @@ export async function fileExport(
 export async function fileEntry(
   context: StepContext,
   entry: StepFile,
+  shapes: Shapes,
 ): Promise<string> {
   let graph = await parseStepFile(entry, context.newStore);
   const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));
@@ -478,6 +480,11 @@ export async function fileEntry(
       `${entry.name}'s session's start: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  const unfit = await shapes.violations(graph.triples);
+  if (unfit.length > 0)
+    throw new Refusal(
+      `${entry.name} does not conform to the vocabulary's shapes: ${unfit.join("; ")}`,
+    );
   const records = new Map<string, NamedNode>();
   for (const draft of graph.subjects(TYPE)) {
     const position = DRAFT.exec(draft.value)?.[1];

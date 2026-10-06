@@ -16,7 +16,6 @@ import {
   randomId,
   RDF,
   type References,
-  Shapes,
   type StoreFactory,
   type Triple,
   type VocabularyBuild,
@@ -179,7 +178,6 @@ class OpenPod implements Pod {
   readonly #title: string;
   #queue: Promise<unknown> = Promise.resolve();
   #bridge: Promise<LoadedBridge> | undefined;
-  #shapes: Promise<Shapes> | undefined;
   #closed = false;
 
   constructor(
@@ -211,12 +209,6 @@ class OpenPod implements Pod {
 
   enter(turtle: string, options: { match?: boolean } = {}): Promise<Done> {
     return this.#next(async () => {
-      const unfit = await this.#unfit(turtle);
-      if (unfit.length > 0)
-        return {
-          wrote: [],
-          refused: `the entry does not conform to the vocabulary's shapes: ${unfit.join("; ")}`,
-        };
       const entered = await this.#core.enter({
         bytes: new TextEncoder().encode(turtle),
         base: this.address,
@@ -388,18 +380,6 @@ class OpenPod implements Pod {
         }
       } ORDER BY ?profile`);
     return rows.flatMap((row) => row.get("profile")?.value ?? []);
-  }
-
-  /** What the vocabulary's shapes say of an entry's statements: nothing when they conform, or when it is no Turtle, which `enter` turns down itself. */
-  async #unfit(turtle: string): Promise<string[]> {
-    let stated: Triple[];
-    try {
-      stated = await this.#parts.newStore().parse(turtle, this.address);
-    } catch {
-      return [];
-    }
-    this.#shapes ??= Shapes.read(this.#parts.vocabulary, this.#parts.newStore);
-    return (await this.#shapes).violations(stated);
   }
 
   async #judge(turtle: string): Promise<Done> {

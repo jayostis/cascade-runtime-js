@@ -11,6 +11,7 @@ import { matcherView, runMatcher } from "./matcher.js";
 import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
 import type { References } from "./references.js";
+import { Shapes } from "./shapes.js";
 import { Refusal, type StepContext, type StepFile } from "./step.js";
 import type { Rows, StoreFactory } from "./store.js";
 
@@ -138,6 +139,7 @@ async function copied(pod: Files): Promise<Files> {
 export class CorePod {
   readonly #options: CorePodOptions;
   #references: Promise<References> | undefined;
+  #readShapes: Promise<Shapes> | undefined;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -182,9 +184,11 @@ export class CorePod {
     });
   }
 
-  /** An entry (A12). */
+  /** An entry (A12), refused where its statements break the vocabulary's shapes. */
   enter(entry: StepFile): Promise<Performed> {
-    return this.#step((context) => fileEntry(context, entry));
+    return this.#step(async (context) =>
+      fileEntry(context, entry, await this.#shapes()),
+    );
   }
 
   /** A person's judgment, filed as it is (N10). */
@@ -224,12 +228,27 @@ export class CorePod {
       time,
     });
     fork.#references = this.#references;
+    fork.#readShapes = this.#readShapes;
     return fork;
   }
 
   #tables(): Promise<References> {
     this.#references ??= this.#options.references();
     return this.#references;
+  }
+
+  #shapes(): Promise<Shapes> {
+    if (this.#readShapes === undefined) {
+      const reading = Shapes.read(
+        this.#options.vocabulary,
+        this.#options.newStore,
+      );
+      this.#readShapes = reading;
+      reading.catch(() => {
+        if (this.#readShapes === reading) this.#readShapes = undefined;
+      });
+    }
+    return this.#readShapes;
   }
 
   async #step(

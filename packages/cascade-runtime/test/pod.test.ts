@@ -244,13 +244,13 @@ test("an entry is filed and matched by default; a person's judgment records the 
         "<urn:cascade:output-0>",
         "<urn:cascade:another> a prov:Activity .\n<urn:cascade:output-0>",
       ),
-      "activities",
+      "activities, not one",
     ],
-    [a1.replace('"Peanuts"', '""'), "allergen"],
-    [a1.replace('"high"', '"extreme"'), "criticality"],
+    [a1.replace('"Peanuts"', '""'), "health/v1#allergen:"],
+    [a1.replace('"high"', '"extreme"'), "clinical/v1#criticality:"],
   ] as const) {
     const refused = await pod.enter(entry);
-    assert.match(refused.refused ?? "", new RegExp(names), names);
+    assert.ok(refused.refused?.includes(names), `${names}: ${refused.refused}`);
     assert.deepEqual(refused.wrote, [], names);
   }
   assert.deepEqual(await filesIn(folder), held);
