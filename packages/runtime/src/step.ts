@@ -1,4 +1,5 @@
 import type { Files } from "./files.js";
+import { Graph } from "./graph.js";
 import type { IdsAndTime } from "./ids.js";
 import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
@@ -34,4 +35,21 @@ export interface StepFile {
   readonly base: string;
   /** What its refusals and errors call it. */
   readonly name: string;
+}
+
+/** A step's file, parsed: Turtle that does not parse refuses the step. */
+export async function parseStepFile(
+  file: StepFile,
+  newStore: StoreFactory,
+): Promise<Graph> {
+  const store = newStore();
+  let triples;
+  try {
+    triples = await store.parse(file.bytes, file.base);
+  } catch (error) {
+    throw new Refusal(
+      `${file.name} is no Turtle: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return new Graph(triples);
 }

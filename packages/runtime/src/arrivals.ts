@@ -1,6 +1,6 @@
 import type { BridgeDocument, LoadedAdapter } from "./bridge.js";
 import type { Files } from "./files.js";
-import { Graph, parseGraph, parseStepFile } from "./graph.js";
+import { Graph, parseGraph } from "./graph.js";
 import type { ExportDocument } from "./importer.js";
 import type { Layout, Placement } from "./layout.js";
 import {
@@ -25,7 +25,13 @@ import {
   written,
   XSD,
 } from "./rdf.js";
-import { REC, Refusal, type StepContext, type StepFile } from "./step.js";
+import {
+  parseStepFile,
+  REC,
+  Refusal,
+  type StepContext,
+  type StepFile,
+} from "./step.js";
 import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";

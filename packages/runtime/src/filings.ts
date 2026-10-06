@@ -1,7 +1,12 @@
-import { parseStepFile } from "./graph.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import type { References } from "./references.js";
-import { REC, Refusal, type StepContext, type StepFile } from "./step.js";
+import {
+  parseStepFile,
+  REC,
+  Refusal,
+  type StepContext,
+  type StepFile,
+} from "./step.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
