@@ -18,13 +18,23 @@ export interface Resolved {
 }
 
 export interface ResolverOptions {
-  /** The folder a sibling checkout of each repository would be in, under the repository's name. */
-  readonly siblingsIn: string;
+  /** The folders a sibling checkout of each repository would be in, under the repository's name; the first holding one wins. */
+  readonly siblingsIn: readonly string[];
   /** A folder for each repository, by its URL, as the compatibility tooling or CI hands them in. */
   readonly folders?: ReadonlyMap<string, string>;
   /** Where a pin is fetched to, a folder per repository and commit. */
   readonly cache: string;
   readonly log?: (line: string) => void;
+}
+
+/** The sibling checkout named `name` in the first of `folders` that holds one. */
+export function siblingIn(
+  folders: readonly string[],
+  name: string,
+): string | undefined {
+  return folders
+    .map((folder) => join(absolute(folder), name))
+    .find((sibling) => existsSync(sibling));
 }
 
 function short(commit: string): string {
@@ -126,13 +136,14 @@ export async function resolve(
   pin: Pin,
   options: ResolverOptions,
 ): Promise<Resolved> {
-  const sibling = join(absolute(options.siblingsIn), repositoryName(pin));
+  const sibling = siblingIn(options.siblingsIn, repositoryName(pin));
   const handedIn = options.folders?.get(pin.repository);
-  const resolved = existsSync(sibling)
-    ? await onDisk(pin, "sibling", sibling)
-    : handedIn !== undefined
-      ? await onDisk(pin, "folder", absolute(handedIn))
-      : await fetched(pin, options.cache);
+  const resolved =
+    sibling !== undefined
+      ? await onDisk(pin, "sibling", sibling)
+      : handedIn !== undefined
+        ? await onDisk(pin, "folder", absolute(handedIn))
+        : await fetched(pin, options.cache);
   options.log?.(said(resolved));
   return resolved;
 }

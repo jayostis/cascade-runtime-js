@@ -10,7 +10,7 @@ import { type Pin, repositoryName } from "../config.js";
 import { commitPin, type Loaded, loadAdapter } from "../load-adapter.js";
 import { type CompiledBridge, type Spawn, Waiting } from "../wasm-bridge.js";
 import { FolderFiles } from "./folder-files.js";
-import { type Resolved, resolve } from "./resolver.js";
+import { type Resolved, resolve, siblingIn } from "./resolver.js";
 
 const PACKAGE = "cascade-bridge-rs";
 const GLUE = "cascade_bridge.js";
@@ -51,13 +51,13 @@ function short(commit: string): string {
  * otherwise the pin in package.json. The run says which, and why a sibling's build was passed over.
  */
 export async function findBridgePackage(
-  siblingsIn: string,
+  siblingsIn: readonly string[],
   log?: (line: string) => void,
 ): Promise<BridgePackageFound> {
-  const checkout = join(siblingsIn, PACKAGE);
-  const dist = join(checkout, "package", "dist");
+  const checkout = siblingIn(siblingsIn, PACKAGE);
   let passedOver: string | undefined;
-  if (existsSync(checkout)) {
+  if (checkout !== undefined) {
+    const dist = join(checkout, "package", "dist");
     const built = await builtFrom(dist);
     if (built === undefined || !existsSync(join(dist, WASM))) {
       passedOver = `the sibling checkout ${checkout} holds no build`;
@@ -142,7 +142,7 @@ export function inWorker(bridge: CompiledBridge): Spawn {
 }
 
 export interface PinnedAdapterOptions {
-  readonly siblingsIn: string;
+  readonly siblingsIn: readonly string[];
   readonly folders?: ReadonlyMap<string, string>;
   readonly cache: string;
   readonly log?: (line: string) => void;
