@@ -4,6 +4,7 @@ export * from "./build.js";
 export * from "./compare.js";
 export * from "./config.js";
 export * from "./conformance.js";
+export * from "./core-pod.js";
 export * from "./dataset.js";
 export * from "./features.js";
 export * from "./derive.js";

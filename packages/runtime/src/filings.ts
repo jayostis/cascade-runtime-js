@@ -1,7 +1,7 @@
 import { parseGraph } from "./graph.js";
 import { iri, ntriples, RDF } from "./rdf.js";
 import type { References } from "./references.js";
-import { REC, type StepContext } from "./step.js";
+import { REC, type StepContext, type StepFile } from "./step.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
@@ -43,13 +43,7 @@ export async function fileCreation(context: StepContext): Promise<void> {
 /** A person's judgment: its file, as it is, filed by the judgment's name. */
 export async function fileJudgment(
   context: StepContext,
-  judgment: {
-    readonly bytes: Uint8Array;
-    /** The IRI its Turtle is parsed against. */
-    readonly base: string;
-    /** What its refusals and errors call it. */
-    readonly name: string;
-  },
+  judgment: StepFile,
 ): Promise<void> {
   const judgments = (
     await parseGraph(judgment.bytes, judgment.base, context.newStore)

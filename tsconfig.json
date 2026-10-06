@@ -12,6 +12,9 @@
     },
     {
       "path": "packages/graphdb"
+    },
+    {
+      "path": "packages/cascade-runtime"
     }
   ]
 }

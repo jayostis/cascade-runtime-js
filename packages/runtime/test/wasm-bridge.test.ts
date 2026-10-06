@@ -8,15 +8,14 @@ import {
   type LoadedAdapter,
 } from "../src/bridge.js";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { fileExport } from "../src/arrivals.js";
+import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { StepWrites } from "../src/pod.js";
 import { PERFORMERS } from "../src/replay.js";
-import { REC, type StepContext } from "../src/step.js";
+import { REC } from "../src/step.js";
 import { readConfig, siblingsOf } from "../src/node/runtime.js";
 import {
   compiledBridge,
@@ -242,35 +241,35 @@ test("an export imported through the WebAssembly Bridge files what it files thro
   assert.ok(importSaved);
   const pods: Triple[][] = [];
   for (const perform of [
-    (context: StepContext) =>
-      importSaved(context, step, {
+    (pod: CorePod, time: StoryTime) =>
+      importSaved(pod, step, {
         source: files,
         folder,
-        importers: [appleHealthExport],
         activities: new Map(),
+        time,
       }),
-    async (context: StepContext) =>
-      fileExport(
-        context,
-        (await appleHealthExport.documents(files, exported)) ?? [],
-        [inWorkerAdapter],
-      ),
+    (pod: CorePod, time: StoryTime) => {
+      time.begin(step.when);
+      return pod.import(files, exported, [inWorkerAdapter]);
+    },
   ]) {
     const pod = new MemoryFiles(story.address);
     const time = new StoryTime();
-    time.begin(step.when);
-    const writes = new StepWrites();
-    await perform({
-      address: story.address,
-      subject: story.subject,
-      vocabulary: files,
-      pod,
+    await perform(
+      new CorePod({
+        pod,
+        address: story.address,
+        subject: story.subject,
+        title: "",
+        vocabulary: files,
+        layout: await layout(),
+        newStore,
+        time,
+        importers: [appleHealthExport],
+        references: () => Promise.reject(new Error("an import reads no table")),
+      }),
       time,
-      writes,
-      newStore,
-      layout: await layout(),
-    });
-    await writes.commit(pod);
+    );
     pods.push(await filed(pod));
   }
   const [saved, live] = pods;

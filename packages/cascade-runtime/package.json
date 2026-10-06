@@ -1,0 +1,15 @@
+{
+  "name": "cascade-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "What an app imports: a pod it opens, looks into an export with, imports, enters, judges, matches and asks.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./fixtures": "./dist/src/fixtures.js"
+  },
+  "dependencies": {
+    "@cascade-runtime/runtime": "0.0.0"
+  }
+}

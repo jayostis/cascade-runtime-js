@@ -3,9 +3,7 @@ import { test } from "node:test";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, RDF } from "../src/rdf.js";
-import { fileCreation } from "../src/filings.js";
-import { replay } from "../src/replay.js";
-import { Refusal } from "../src/step.js";
+import { PERFORMERS, replay } from "../src/replay.js";
 import type { Story } from "../src/story.js";
 import { layout } from "./vocabulary.js";
 
@@ -42,10 +40,21 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
     layout: await layout(),
     newStore: () => new OxigraphStore(),
     performers: {
-      creation: fileCreation,
-      entry: ({ writes }) => {
-        writes.add("records/half-written.ttl", new Uint8Array([1]));
-        return Promise.reject(new Refusal("an entry holding two activities"));
+      creation: PERFORMERS.creation,
+      entry: (pod, step, { time }) => {
+        time.begin(step.when);
+        return pod.enter({
+          bytes: new TextEncoder().encode(
+            `@prefix prov: <http://www.w3.org/ns/prov#> .
+            <urn:cascade:this-entry> a prov:Activity .
+            <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+            <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
+              <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${story.subject}> .
+            <urn:cascade:zz-version> prov:specializationOf <urn:cascade:no-draft> .`,
+          ),
+          base: story.address,
+          name: "entry.ttl",
+        });
       },
     },
   });
@@ -58,7 +67,11 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
     ]),
     [
       ["create", 3, undefined],
-      ["refused", 0, "an entry holding two activities"],
+      [
+        "refused",
+        0,
+        "entry.ttl: urn:cascade:zz-version is the version of no draft",
+      ],
     ],
   );
   assert.deepEqual(

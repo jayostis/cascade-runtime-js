@@ -26,3 +26,12 @@ export interface StepContext {
   /** The vocabulary, whose queries the matcher runs. */
   readonly vocabulary: Files;
 }
+
+/** A file a step is given: an entry's or a person's judgment's Turtle. */
+export interface StepFile {
+  readonly bytes: Uint8Array;
+  /** The IRI its Turtle is parsed against. */
+  readonly base: string;
+  /** What its refusals and errors call it. */
+  readonly name: string;
+}
