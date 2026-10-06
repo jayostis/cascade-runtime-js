@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, test } from "node:test";
 import {
@@ -350,7 +349,7 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   assert.ok(front.hrefs.includes(vocabularyAt.href));
 });
 
-test("the Pages front page gives the notice first, the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
+test("the Pages front page gives the example's pod, the kinds a pod holds, the command and the prompt, and links only what the tree holds", async () => {
   const { examples, built, commit, start, tree } = await shared();
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
   const address = tarballAddress(commit);
@@ -361,17 +360,6 @@ test("the Pages front page gives the notice first, the example's pod, the kinds 
     agentPrompt("my-app", address),
   ]);
   assert.equal(front.said.split(address).length - 1, 2);
-  const notice = (
-    await readFile(
-      join(ROOT, "packages", "cascade-runtime", "PREVIEW.md"),
-      "utf8",
-    )
-  )
-    .trim()
-    .split(/\r?\n/)
-    .join(" ");
-  const [beforeHeading = ""] = text.split("<h1>");
-  assert.ok(readPage(beforeHeading).said.includes(notice));
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
   assert.ok(titles.length > 0);
   assert.ok(front.said.includes(titles.join(" ")));

@@ -1,5 +1,3 @@
-<!-- PREVIEW.md -->
-
 # cascade-runtime
 
 <!-- INSTALL -->

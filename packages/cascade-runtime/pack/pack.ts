@@ -42,7 +42,6 @@ const STAGE = join(BUILD, "package");
 const CACHE = join(BUILD, "cache");
 const COMPONENTS = join(STAGE, "components");
 const NODE_MODULES = join(STAGE, "node_modules");
-const PREVIEW = "PREVIEW.md";
 const METADATA = "ro-crate-metadata.json";
 /** The workspaces bundled into the package, which are on no registry. */
 const BUNDLED = ["runtime", "apple-health"];
@@ -229,31 +228,20 @@ async function packCode(bridgeFolder: string): Promise<{
   return { bundled, dependencies };
 }
 
-/** A Markdown file the package ships, with the notice and the install line where it asks for them. */
-function shipped(text: string, notice: string, address: string): string {
+/** A Markdown file the package ships, with the install line where it asks for it. */
+function shipped(text: string, address: string): string {
   return text
     .split(/\r?\n/)
     .flatMap((line) =>
-      line === "<!-- PREVIEW.md -->"
-        ? [quoted(notice)]
-        : line === "<!-- INSTALL -->"
-          ? ["```sh", `npm install ${address}`, "```"]
-          : [line],
+      line === "<!-- INSTALL -->"
+        ? ["```sh", `npm install ${address}`, "```"]
+        : [line],
     )
     .join("\n");
 }
 
-function quoted(notice: string): string {
-  return notice
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join("\n>\n");
-}
-
 async function packOwnFiles(
   manifest: Manifest,
-  notice: string,
   address: string,
 ): Promise<void> {
   await copyFile(join(ROOT, "LICENSE"), join(STAGE, "LICENSE"));
@@ -272,10 +260,7 @@ async function packOwnFiles(
         ? [to]
         : [];
     for (const file of markdown)
-      await writeFile(
-        file,
-        shipped(await readFile(file, "utf8"), notice, address),
-      );
+      await writeFile(file, shipped(await readFile(file, "utf8"), address));
   }
 }
 
@@ -300,7 +285,6 @@ async function npmPack(): Promise<{ filename: string; integrity: string }> {
 }
 
 function releaseNotes(
-  notice: string,
   address: string,
   commit: string,
   integrity: string,
@@ -308,8 +292,6 @@ function releaseNotes(
   bridge: Packed["bridge"],
 ): string {
   return [
-    quoted(notice),
-    "",
     "```sh",
     `npm install ${address}`,
     "```",
@@ -335,13 +317,12 @@ async function main(): Promise<void> {
   const { commit } = head;
   const address = tarballAddress(commit);
   const manifest = await manifestOf(WORKSPACE);
-  const notice = await readFile(join(WORKSPACE, PREVIEW), "utf8");
 
   await rm(STAGE, { recursive: true, force: true });
   await mkdir(STAGE, { recursive: true });
   const { resolved, bridge, bridgeFolder } = await packComponents();
   const { bundled, dependencies } = await packCode(bridgeFolder);
-  await packOwnFiles(manifest, notice, address);
+  await packOwnFiles(manifest, address);
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
     version: packageVersion(commit),
@@ -358,7 +339,7 @@ async function main(): Promise<void> {
   const { filename, integrity } = await npmPack();
   await writeFile(
     join(BUILD, "release-notes.md"),
-    releaseNotes(notice, address, commit, integrity, resolved, bridge),
+    releaseNotes(address, commit, integrity, resolved, bridge),
   );
   log(
     `packed ${join(BUILD, filename)}${head.uncommitted > 0 ? `, from ${commit} with ${head.uncommitted} uncommitted files` : `, from ${commit}`}`,

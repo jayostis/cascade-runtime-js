@@ -1,8 +1,7 @@
 // The app: a page for each pod, showing three of the vocabulary's questions. `npm start`, then open the address it prints.
-import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import process, { env, exit, stdout } from "node:process";
-import { fileURLToPath, URL } from "node:url";
+import { URL } from "node:url";
 import { openPod } from "cascade-runtime";
 import { NO_POD, podFolder, podNames } from "./pods.mjs";
 
@@ -20,17 +19,6 @@ function escaped(text) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
-
-const notice = readFileSync(
-  fileURLToPath(
-    new URL("../../PREVIEW.md", import.meta.resolve("cascade-runtime")),
-  ),
-  "utf8",
-)
-  .trim()
-  .split(/\r?\n/)
-  .map((line) => `<p>${escaped(line)}</p>`)
-  .join("\n");
 
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
@@ -53,13 +41,11 @@ function page(title, body) {
 <title>${escaped(title)}</title>
 <style>
 body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
-.notice { border-left: 4px solid #c60; padding: 0 1rem; color: #555; }
 table { border-collapse: collapse; margin-bottom: 2rem; }
 th, td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
 </style>
 </head>
 <body>
-<div class="notice">${notice}</div>
 ${body}
 </body>
 </html>
