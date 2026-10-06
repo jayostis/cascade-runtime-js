@@ -76,8 +76,13 @@ test("the deployed site serves the quick start of the commit, its release, the f
     `waited ${Math.round((Date.now() - began) / 1000)}s for the deploy of ${commit}`,
   );
 
+  const front = await answered(`${site}?at=${Date.now()}`);
+  assert.equal(front.status, 200, site);
+  assert.ok(
+    (await front.text()).includes(`href="start.html"`),
+    `${site} is not the front page that leads to start.html`,
+  );
   for (const path of [
-    "",
     "start.html",
     "examples.html",
     "alex-rivera/index.html",

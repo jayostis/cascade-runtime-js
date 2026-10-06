@@ -25,6 +25,7 @@ import {
   pagesTree,
   START_PAGE,
   TRY_PAGE,
+  viewTitles,
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
@@ -318,20 +319,20 @@ async function pagesOf() {
   };
   const commit = "0123456789abcdef0123456789abcdef01234567";
   const tried = new Map([["index.html", new Uint8Array()]]);
-  const start = await startOf(
-    ROOT,
-    commit,
-    vocabulary.layout,
-    examples[0]?.folder ?? "",
-  );
+  const start = await startOf(ROOT, commit);
+  const explore = {
+    kinds: viewTitles(vocabulary.layout),
+    example: examples[0]?.folder ?? "",
+  };
   return {
     examples,
     vocabularyAt,
     built,
     commit,
     start,
+    explore,
     tried,
-    tree: pagesTree(examples, built, start, tried),
+    tree: pagesTree(examples, built, start, explore, tried),
   };
 }
 let pagesTreeOf: ReturnType<typeof pagesOf> | undefined;
@@ -364,8 +365,9 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   }
 });
 
-test("the Pages front page leads to the quick start, try/, the example's pod and the kinds a pod holds; the quick start gives the command and the prompt; neither links what the tree does not hold", async () => {
-  const { examples, built, commit, start, tried, tree } = await shared();
+test("the Pages front page leads to the quick start, try/, the example's pod and the kinds a pod holds; the quick start gives the command, the prompt and try/; neither links what the tree does not hold", async () => {
+  const { examples, built, commit, start, explore, tried, tree } =
+    await shared();
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
   const address = tarballAddress(commit);
   const page = (path: string) =>
@@ -378,6 +380,7 @@ test("the Pages front page leads to the quick start, try/, the example's pod and
   ]);
   assert.equal(quick.said.split(address).length - 1, 1);
   assert.ok(quick.hrefs.includes(FRONT_PAGE));
+  assert.ok(quick.hrefs.includes(TRY_PAGE));
   assert.deepEqual(front.code, []);
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
   assert.ok(titles.length > 0);
@@ -394,13 +397,20 @@ test("the Pages front page leads to the quick start, try/, the example's pod and
   for (const href of [
     START_PAGE,
     TRY_PAGE,
-    `${start.example}/index.html`,
-    `${start.example}/pod/manifest.ttl`,
+    `${explore.example}/index.html`,
+    `${explore.example}/pod/manifest.ttl`,
     EXAMPLES_PAGE,
   ])
     assert.ok(front.hrefs.includes(href), href);
   assert.throws(
-    () => pagesTree(examples, built, { ...start, example: "nobody" }, tried),
+    () =>
+      pagesTree(
+        examples,
+        built,
+        start,
+        { ...explore, example: "nobody" },
+        tried,
+      ),
     /nobody/,
   );
 });

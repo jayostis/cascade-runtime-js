@@ -32,7 +32,12 @@ import {
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import { type Example, type Ingredient, pagesTree } from "../front-page.js";
+import {
+  type Example,
+  type Ingredient,
+  pagesTree,
+  viewTitles,
+} from "../front-page.js";
 import { Site } from "../site.js";
 import { TRY_PACKAGE, tryPage } from "../try-page.js";
 import { servePages } from "./serve.js";
@@ -265,7 +270,8 @@ async function buildPages(): Promise<number> {
       ],
       at: clock.now(),
     },
-    await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
+    await startOf(ROOT, runtime.commit),
+    { kinds: viewTitles(vocabulary.layout), example: EXAMPLE },
     new Map([
       ["index.html", new TextEncoder().encode(tryPage(shownTitle(examples)))],
       ["app.js", await readFile(APP)],
