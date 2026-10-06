@@ -72,9 +72,7 @@ async function report(): Promise<{
   };
 }
 
-before(async () => {
-  const reported = report();
-  const ranBroken = runBroken();
+async function readTested(): Promise<void> {
   const files = await vocabulary();
   for (const path of await featuresOf(files))
     for (const { iri, name } of (await readFeature(files, path)).examples)
@@ -84,8 +82,16 @@ before(async () => {
   for (const kit of kits)
     for (const check of Object.values(KIT_CHECKS))
       tested.set(`${files.iri}${kit}/#${check}`, check);
-  ({ found: outcomes, requires } = await reported);
-  const named = (await ranBroken).map(
+}
+
+before(async () => {
+  const [reported, ranBroken] = await Promise.all([
+    report(),
+    runBroken(),
+    readTested(),
+  ]);
+  ({ found: outcomes, requires } = reported);
+  const named = ranBroken.map(
     ({ test, outcome, why }) =>
       [test.slice(test.indexOf("#") + 1), [outcome, why ?? ""]] as const,
   );
