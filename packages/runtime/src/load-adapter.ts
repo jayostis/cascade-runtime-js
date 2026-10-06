@@ -6,7 +6,6 @@ import {
   type LoadedAdapter,
   type Named,
 } from "./bridge.js";
-import type { Pin } from "./config.js";
 import type { Files } from "./files.js";
 
 const METADATA = "ro-crate-metadata.json";
@@ -22,22 +21,15 @@ export interface Source {
   readonly whole?: boolean;
 }
 
-/** The vocabulary an adapter pins, by the IRI of its `bridge:cascadeVocabularyPin`, or none to load it without. */
+/** The vocabulary an adapter reads, by its `bridge:cascadeVocabularyRepository`, or none to load it without. */
 export type VocabularyAt = (
-  pin: string | undefined,
+  repository: string | undefined,
 ) => Promise<Source | undefined>;
 
 export interface Loaded {
   readonly description: Description;
   readonly vocabulary?: Source;
   readonly adapter: LoadedAdapter;
-}
-
-/** The repository and commit a `<repository>/commit/<sha>` pin names. */
-export function commitPin(iri: string): Pin {
-  const found = /^(https:\/\/\S+)\/commit\/([0-9a-f]{40})$/.exec(iri);
-  if (found === null) throw new Error(`${iri} names no repository at a commit`);
-  return { repository: found[1] ?? "", commit: found[2] ?? "" };
 }
 
 function missing(error: unknown): boolean {
@@ -87,7 +79,7 @@ export async function loadAdapter(
   const vocabularySource =
     listed.length === 0
       ? undefined
-      : await vocabularyAt(description.vocabulary?.pin);
+      : await vocabularyAt(description.vocabulary?.repository);
   const vocabulary: Named | undefined = vocabularySource && {
     iri: vocabularySource.iri,
     files: await read(vocabularySource.files, listed),

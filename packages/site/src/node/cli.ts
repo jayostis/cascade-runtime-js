@@ -190,12 +190,12 @@ async function buildPages(): Promise<number> {
     throw new Error(
       `${ROOT} is not a git checkout, so no commit built the pages`,
     );
-  const pin = { repository: RUNTIME, commit: runtime.commit };
+  const self = { repository: RUNTIME };
   const tree = pagesTree(examples, {
     ingredients: [
       atCommit(
-        repositoryName(pin),
-        treeIri(pin, runtime.commit),
+        repositoryName(self),
+        treeIri(self, runtime.commit),
         runtime.commit,
         runtime.uncommitted,
       ),

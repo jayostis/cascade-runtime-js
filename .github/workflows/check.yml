@@ -64,7 +64,7 @@ jobs:
             cascade-runtime-js/build/alex-rivera/site
           if-no-files-found: error
 
-  # The vocabulary, the adapters and the Bridge are each read at the head of their main.
+  # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
   build-pages:
     name: build-pages
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

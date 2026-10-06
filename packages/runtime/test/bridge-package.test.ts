@@ -67,7 +67,7 @@ test("a checkout's build is used only when made from the checkout as it is, a si
   assert.match(handed.said, /is stale/);
 });
 
-test("the newest build of main is its head's release, or while that one builds the nearest commit before it with one", async () => {
+test("the newest build of the default branch is its head's release, or while that one builds the nearest commit before it with one", async () => {
   const root = await mkdtemp(join(tmpdir(), "bridge-build-"));
   const origin = join(root, "cascade-bridge-rs");
   await mkdir(origin);
@@ -92,7 +92,7 @@ test("the newest build of main is its head's release, or while that one builds t
   await git(origin, "tag", `build-${two}`, two);
   const repository = pathToFileURL(origin).href;
 
-  assert.equal(await latestBuild(repository, "main", join(root, "at")), two);
+  assert.equal(await latestBuild(repository, join(root, "at")), two);
   await git(origin, "tag", `build-${three}`, three);
-  assert.equal(await latestBuild(repository, "main", join(root, "at")), three);
+  assert.equal(await latestBuild(repository, join(root, "at")), three);
 });

@@ -10,7 +10,6 @@ import { type ResolverOptions, resolve } from "../src/node/resolver.js";
 import { siblingsOf } from "../src/node/runtime.js";
 
 let root: string;
-let commit: string;
 let repository: string;
 
 async function repositoryAt(folder: string): Promise<string> {
@@ -34,7 +33,7 @@ async function repositoryAt(folder: string): Promise<string> {
 
 before(async () => {
   root = await mkdtemp(join(tmpdir(), "resolver-"));
-  commit = await repositoryAt(join(root, "published", "cascade-vocabulary"));
+  await repositoryAt(join(root, "published", "cascade-vocabulary"));
   repository = pathToFileURL(
     join(root, "published", "cascade-vocabulary"),
   ).href;
@@ -43,7 +42,7 @@ before(async () => {
 async function resolved(options: Omit<ResolverOptions, "log">) {
   const lines: string[] = [];
   const found = await resolve(
-    { repository, branch: "main" },
+    { repository },
     { ...options, log: (line) => lines.push(line) },
   );
   assert.equal(lines.length, 1);
@@ -85,7 +84,7 @@ test("without a sibling, a folder handed in is used, and the run says so", async
   );
 });
 
-test("otherwise the head of main is fetched as it is now into the cache, by any number of runs at once, and the run says which commit", async () => {
+test("otherwise the head of the default branch is fetched as it is now into the cache, by any number of runs at once, and the run says which commit", async () => {
   const published = join(root, "published", "cascade-vocabulary");
   await git(
     published,
@@ -134,11 +133,13 @@ test("a worktree finds each sibling beside itself, and otherwise beside the chec
   await repositoryAt(join(worktrees, "cascade-vocabulary"));
   const siblingsIn = await siblingsOf(worktree);
   const folderOf = async (name: string): Promise<string> => {
-    const pin = { repository: `${pathToFileURL(root).href}/${name}`, commit };
-    const { folder } = await resolve(pin, {
-      siblingsIn,
-      cache: join(root, "cache"),
-    });
+    const { folder } = await resolve(
+      { repository: `${pathToFileURL(root).href}/${name}` },
+      {
+        siblingsIn,
+        cache: join(root, "cache"),
+      },
+    );
     return realpath(folder);
   };
   assert.equal(

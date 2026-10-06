@@ -16,14 +16,16 @@ import { git } from "./git.js";
 export const BUILD = "build-";
 const HISTORY = 100;
 
-/** The newest commit of the branch with a published build: its head, or the nearest before it while that one builds. */
+/**
+ * The newest commit of the default branch with a published build: its head, or the nearest before it while that one
+ * builds.
+ */
 export async function latestBuild(
   repository: string,
-  branch: string,
   at: string,
 ): Promise<string> {
   await mkdir(at, { recursive: true });
-  const head = `refs/heads/${branch}`;
+  const head = "HEAD";
   const tags = `refs/tags/${BUILD}`;
   let tip: string | undefined;
   const built = new Set<string>();
@@ -35,8 +37,7 @@ export async function latestBuild(
     else if (ref.startsWith(tags) && !ref.endsWith("^{}"))
       built.add(ref.slice(tags.length));
   }
-  if (tip === undefined)
-    throw new Error(`${repository} has no branch ${branch}`);
+  if (tip === undefined) throw new Error(`${repository} has no default branch`);
   if (built.has(tip)) return tip;
   const history = await mkdtemp(join(at, "history-"));
   try {
@@ -57,7 +58,7 @@ export async function latestBuild(
       .find((commit) => built.has(commit.trim()));
     if (found === undefined)
       throw new Error(
-        `none of the last ${HISTORY} commits of ${repository} ${branch} has a ${BUILD}<commit> release`,
+        `none of the last ${HISTORY} commits of ${repository}'s default branch has a ${BUILD}<commit> release`,
       );
     return found.trim();
   } finally {

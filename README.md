@@ -77,43 +77,38 @@ Code that needs Node (a local folder, git, the command line) is under
 
 ## Which version of each component a run uses
 
-`cascade-runtime.json` names the vocabulary and the adapters by repository and
-the branch each is followed on, `main`, and names the importers and the lens.
-Nothing is pinned to a commit: a change the runtime must follow lands as a pair
-of pull requests, tried together before either merges. For each, first match
-wins:
+Nothing pins a version, as
+[cascade-bridge-spec's `compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md)
+says. `cascade-runtime.json` names the vocabulary and the adapters by
+repository, and names the importers and the lens. For each, first match wins:
 
 1. a sibling checkout, in the folder beside this one named as the repository,
    as it is on disk; the run prints its commit and how many files it has
    uncommitted;
 2. a folder handed in with `--folder`, as the compatibility tooling does;
-3. otherwise the head of its branch as it is when the run starts, fetched into
-   `build/cache/`; the run prints the commit.
+3. otherwise the head of its default branch as it is when the run starts,
+   fetched into `build/cache/`; the run prints the branch and the commit.
 
 A worktree looks for each sibling beside itself first, then beside the checkout
 it was made from. An adapter is given every file of its folder, and the
-vocabulary at the commit the adapter pins, resolved the same way.
+vocabulary repository its `bridge:cascadeVocabularyRepository` names, resolved
+the same way.
 
 The Bridge is the build cascade-bridge-rs publishes as the release
-`build-<commit>` on every push to its `main`: a sibling `cascade-bridge-rs`
-checkout's `package/dist`, then that of a checkout handed in with `--folder`,
-is used only when it was built from the checkout as it is; otherwise the newest
-commit of `main` with a release, downloaded into `build/cache/` and checked
-against the digest the release gives. The run says which it used, and why a
-checkout's build was passed over.
+`build-<commit>` on every push to its default branch: a sibling
+`cascade-bridge-rs` checkout's `package/dist`, then that of a checkout handed in
+with `--folder`, is used only when it was built from the checkout as it is;
+otherwise the newest commit of the default branch with a release, downloaded
+into `build/cache/` and checked against the digest the release gives. The run
+says which it used, and why a checkout's build was passed over.
 
 Each is named, as `runtime/rules.md` N8 says, by its tree at the commit it is
 at, so an EARL report names the same entries on every machine.
 
-A release of this runtime, when one is cut, records the commit of each
-repository it was tested with; none is cut yet.
-
-CI runs [cascade-bridge-spec's compatibility check](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md)
-on every pull request and nightly, never on a push to `main`: a pair was tried
-together before it merged. `compatibility.json` declares this repository to it
-as a runtime: it checks the vocabulary and the adapters out beside this
-repository, at the head of their `main` or with the pull requests a
-`Depends-On:` line names merged in, and runs `npm run conformance` on them.
-The tests and the pod build then read those checkouts. CI publishes Alex's pod
-and site as an artifact, and on a push to `main` builds the pages from the head
-of every `main` and deploys them.
+CI runs the compatibility check on every pull request and nightly, never on a
+push to `main`. `compatibility.json` declares this repository to it as a
+runtime: it checks the vocabulary and the adapters out beside this repository,
+picked as any counterpart is, and runs `npm run conformance` on them. The tests
+and the pod build then read those checkouts. CI publishes Alex's pod and site as
+an artifact, and on a push to `main` builds the pages from the head of every
+default branch and deploys them.

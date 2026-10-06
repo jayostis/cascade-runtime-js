@@ -1,12 +1,10 @@
 {
   "vocabulary": {
-    "repository": "https://github.com/jayostis/cascade-vocabulary",
-    "branch": "main"
+    "repository": "https://github.com/jayostis/cascade-vocabulary"
   },
   "adapters": [
     {
-      "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4",
-      "branch": "main"
+      "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
     }
   ],
   "importers": ["apple-health-export"],
