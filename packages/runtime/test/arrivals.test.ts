@@ -188,6 +188,19 @@ test("a step given bad input by its story is refused, and the replay goes on", a
   await source.write("s/no-judgment.ttl", new Uint8Array());
   await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
   await source.write("s/references/references.ttl", new Uint8Array());
+  for (const [file, allergen, criticality] of [
+    ["blank-allergen.ttl", "", "high"],
+    ["made-up-criticality.ttl", "Peanuts", "extreme"],
+  ])
+    await source.write(
+      `s/${file}`,
+      new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:cascade:this-entry> a prov:Activity .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+<urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
+  <https://ns.cascadeprotocol.org/health/v1#allergen> "${allergen}" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#criticality> "${criticality}" .`),
+    );
   const refusals: readonly [Step["happened"], RegExp][] = [
     [
       { kind: "import", export: "apple_health_export", converted: "bridge" },
@@ -198,6 +211,14 @@ test("a step given bad input by its story is refused, and the replay goes on", a
       /^no importer of .* reads s\/nothing$/,
     ],
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
+    [
+      { kind: "entry", file: "blank-allergen.ttl" },
+      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*health\/v1#allergen: /,
+    ],
+    [
+      { kind: "entry", file: "made-up-criticality.ttl" },
+      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*clinical\/v1#criticality: /,
+    ],
     [
       { kind: "judgment", file: "no-judgment.ttl" },
       /^no-judgment\.ttl holds 0 judgments, not one$/,
@@ -230,7 +251,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
   const { steps, stopped } = await replay({
     story,
     source,
-    vocabulary: source,
+    vocabulary: await vocabulary(),
     folder: "s",
     title: "",
     pod: new MemoryFiles(story.address),

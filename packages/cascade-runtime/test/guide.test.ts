@@ -17,6 +17,7 @@ import {
   lenses,
   OxigraphStore,
   questions,
+  recordName,
   Shapes,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -30,7 +31,8 @@ import { openPod, type Pod, type Row } from "cascade-runtime";
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE = join(ROOT, "packages", "cascade-runtime");
 const GUIDE = join(PACKAGE, "guide", "AGENTS.md");
-const ALEX = "conformance/alex-rivera/scripted-input/alex";
+const KIT = "conformance/alex-rivera";
+const ALEX = `${KIT}/scripted-input/alex`;
 /** The exports `pickExport()` gives, in turn. */
 const PICKED = ["x-e2", "x-e4", "x-e10", "x-e12"];
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
@@ -111,6 +113,9 @@ let ran: { code: number; stderr: string };
 let folder: string;
 let opened: Pod | undefined;
 let notTheirs: string;
+let bronchitis: string;
+/** Larkspur's old and new asthma records, which the person says are not the same. */
+let notTheSame: readonly [string, string];
 
 /** The pod the examples left, opened only when they all ran: a missing folder would open as a new, empty pod. */
 function examplesPod(): Pod {
@@ -134,6 +139,24 @@ async function profileOf(judgment: string): Promise<string> {
   return member;
 }
 
+/** A hospital's record in Alex's kit, by its handle. */
+async function recordOf(handle: string): Promise<string> {
+  const { records } = JSON.parse(
+    await readFile(
+      join(
+        vocabulary.files.folder,
+        ...`${KIT}/expected/handles.json`.split("/"),
+      ),
+      "utf8",
+    ),
+  ) as {
+    records: Record<string, { server?: string; type?: string; id?: string }>;
+  };
+  const { server, type, id } = records[handle] ?? {};
+  assert.ok(server && type && id, `${handle} is no hospital's record`);
+  return recordName([server, type, id]);
+}
+
 /** The module the guide's blocks make, in order, after the stand-ins for the person. */
 function examples(blocks: readonly Block[]): string {
   const exports = PICKED.map((name) =>
@@ -154,7 +177,9 @@ function pickExport() {
   return picked;
 }
 async function askPerson(question, shown) {
-  return !JSON.stringify(shown).includes(${JSON.stringify(notTheirs)});
+  const said = JSON.stringify(shown);
+  if (said.includes(${JSON.stringify(notTheirs)})) return false;
+  return !${JSON.stringify(notTheSame)}.every((record) => said.includes(record));
 }
 async function showPerson(shown) {
   process.stderr.write(\`\${JSON.stringify({ example: __example, shown })}\\n\`);
@@ -172,6 +197,11 @@ async function showPerson(shown) {
 before(async () => {
   vocabulary = await localVocabulary(ROOT);
   notTheirs = await profileOf("J22");
+  bronchitis = await recordOf("H1-CON-BRONCH");
+  notTheSame = [
+    await recordOf("H2O-CON-ASTHMA"),
+    await recordOf("H2F-CON-ASTHMA"),
+  ];
   guide = read(await readFile(GUIDE, "utf8"));
   const module = join(ROOT, "build", "guide", "examples.mjs");
   await mkdir(dirname(module), { recursive: true });
@@ -244,13 +274,13 @@ test("the reading example shows each allergy as its entry states it, its records
       `${allergen} is not shown with its entry's criticality`,
     );
   }
+  const penicillin = allergies.find(
+    ({ allergen }) => allergen === "Penicillin",
+  );
+  assert.equal(penicillin?.criticality, "high", "Penicillin is not shown high");
   assert.ok(
-    allergies.some(
-      ({ criticality, from }) =>
-        criticality !== undefined &&
-        !from.every((record) => stated.get(record)?.has(criticality)),
-    ),
-    "no shown allergy's records disagree on its criticality",
+    penicillin.from.some((record) => !stated.has(record)),
+    "every record beneath Penicillin states a criticality",
   );
 });
 
@@ -390,6 +420,27 @@ test("each template does what the guide says, read through the vocabulary's ques
       `a member of the Different ${name} is in no entry`,
     );
   }
+  const [oldAsthma, newAsthma] = notTheSame;
+  const asthma = entryOf.get(newAsthma);
+  assert.deepEqual(
+    [...entryOf].flatMap(([record, entry]) =>
+      entry === asthma ? [record] : [],
+    ),
+    [newAsthma],
+    "the new asthma record is not alone in its entry",
+  );
+  assert.ok(
+    (await ask("pod/My active conditions")).some(
+      ({ entry, condition }) => entry === asthma && condition === "Asthma",
+    ),
+    "the new asthma record's entry is not active Asthma",
+  );
+  assert.equal(
+    entryOf.get(oldAsthma),
+    entryOf.get(bronchitis),
+    "the old asthma record is no longer with bronchitis",
+  );
+
   const hidden = await ask("record/Why it is in no view");
   const hiddenFor = (record: string, why: string) =>
     hidden.some((row) => row.record === record && row.why === REC + why);
