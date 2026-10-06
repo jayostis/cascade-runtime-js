@@ -35,13 +35,18 @@ function inStory(folder: string, path: string): string {
   return folder === "" ? path : `${folder}/${path}`;
 }
 
-/** A file a step names, named in messages by its path in the story. */
-async function storyFile(story: StorySide, path: string): Promise<StepFile> {
+/** The pod's step given a file the step names, named in messages by its path in the story; refused when the story has no such file. */
+async function withStoryFile(
+  pod: CorePod,
+  story: StorySide,
+  path: string,
+  perform: (file: StepFile) => Promise<Performed>,
+): Promise<Performed> {
   const at = inStory(story.folder, path);
   const bytes = await story.source.read(at);
-  if (bytes === undefined)
-    throw new Error(`${story.source.iri}${at} does not exist`);
-  return { bytes, base: story.source.iri + at, name: path };
+  return bytes === undefined
+    ? pod.refuse(`${story.source.iri}${at} does not exist`)
+    : perform({ bytes, base: story.source.iri + at, name: path });
 }
 
 /** The step happened when the story says. */
@@ -80,17 +85,19 @@ export const PERFORMERS: Performers = {
   entry: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "entry") throw new Error("the step is no entry");
-    const entry = await storyFile(story, happened.file);
     begun(story, step);
-    return pod.enter(entry);
+    return withStoryFile(pod, story, happened.file, (entry) =>
+      pod.enter(entry),
+    );
   },
   judgment: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
-    const judgment = await storyFile(story, happened.file);
     begun(story, step);
-    return pod.judge(judgment);
+    return withStoryFile(pod, story, happened.file, (judgment) =>
+      pod.judge(judgment),
+    );
   },
   reference: (pod, step, story) => {
     const { happened } = step;

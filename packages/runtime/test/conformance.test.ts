@@ -10,6 +10,7 @@ import { featuresOf, readFeature } from "../src/features.js";
 import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, kitsOf } from "../src/kit.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { PERFORMERS } from "../src/replay.js";
 import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -208,6 +209,10 @@ async function runBroken(): ReturnType<typeof runConformance> {
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     layout: await layout(),
+    performers: {
+      creation: PERFORMERS.creation,
+      judgment: PERFORMERS.judgment,
+    },
   });
 }
 
@@ -239,7 +244,7 @@ test("a step no phrase reads fails its example, naming the phrase", () => {
 test("a later step that stops the replay fails an example that read the pod before it", () => {
   failed(
     "a-pod-read-before-a-later-step-that-stops-the-replay",
-    /^Z1\. A rule: the replay stopped at step missing:/,
+    /^Z1\. A rule: the replay stopped at step missing: this runtime cannot yet perform a step of kind entry/,
   );
 });
 

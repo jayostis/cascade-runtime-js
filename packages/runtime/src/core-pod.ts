@@ -113,7 +113,7 @@ export class CorePod {
         if (documents !== undefined) break;
       }
       if (documents === undefined)
-        throw new Error(
+        throw new Refusal(
           `no importer of ${importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
         );
       return fileExport(context, documents, adapters);
@@ -128,6 +128,11 @@ export class CorePod {
   /** A person's judgment, filed as it is (N10). */
   judge(judgment: StepFile): Promise<Performed> {
     return this.#step((context) => fileJudgment(context, judgment));
+  }
+
+  /** A step refused before the pod is given its inputs: it writes nothing, and the build is rebuilt as after any step. */
+  refuse(why: string): Promise<Performed> {
+    return this.#step(() => Promise.reject(new Refusal(why)));
   }
 
   /** A reference version's arrival. */
