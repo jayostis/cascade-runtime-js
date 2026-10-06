@@ -3,8 +3,10 @@ import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
+import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
 import { MemoryFiles, readText } from "../src/files.js";
+import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
@@ -33,15 +35,19 @@ let address: string;
 let layout: Layout;
 /** The pod the story was replayed into, with a build after every step. */
 let pod: CountedFiles;
+/** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
+let reopened: () => CorePod;
 
-/** Files in memory, counting each read and each write of a path. */
+/** Files in memory, counting each read that finds a file, and each write, by path. */
 class CountedFiles extends MemoryFiles {
-  reads = 0;
+  readonly found = new Map<string, number>();
   readonly writes = new Map<string, number>();
 
-  override read(pathOrIri: string): Promise<Uint8Array | undefined> {
-    this.reads += 1;
-    return super.read(pathOrIri);
+  override async read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    const bytes = await super.read(pathOrIri);
+    if (bytes !== undefined)
+      this.found.set(pathOrIri, (this.found.get(pathOrIri) ?? 0) + 1);
+    return bytes;
   }
 
   override write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
@@ -74,6 +80,20 @@ before(async () => {
     build: { lens: LENS, derive },
   });
   store = await dataset(replayed, THROUGH, LENS, new OxigraphStore(), derive);
+  reopened = () =>
+    new CorePod({
+      pod,
+      address,
+      subject: story.subject,
+      title: "matching",
+      vocabulary: files,
+      layout,
+      newStore: () => new OxigraphStore(),
+      time: clock,
+      importers: [],
+      references: () => Promise.reject(new Error("no step here matches")),
+      build: { lens: LENS, derive },
+    });
 });
 
 async function values(on: Store, where: string): Promise<string[]> {
@@ -128,8 +148,8 @@ test("the build writes each file the layout says a query writes, as a view, and 
   );
 });
 
-test("a build after each step reads none of the pod's files back and writes only the files it changes, each as a build of the whole pod writes it", async () => {
-  assert.equal(pod.reads, 0);
+test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
+  assert.deepEqual([...pod.found.keys()], []);
   assert.equal(pod.writes.get(layout.typeIndex), 1);
   assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
   const parser = new OxigraphStore();
@@ -145,6 +165,15 @@ test("a build after each step reads none of the pod's files back and writes only
       path,
     );
   }
+  pod.found.clear();
+  const opened = reopened();
+  await opened.refuse("a first step");
+  await opened.refuse("a second step");
+  assert.ok(pod.found.size > 0);
+  assert.deepEqual(
+    [...pod.found].filter(([, reads]) => reads > 1),
+    [],
+  );
 });
 
 test("the labels label every record, current revision and current version of the derived state, each document a current revision came from, the subject, and every entry of a view", async () => {

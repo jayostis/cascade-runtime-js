@@ -60,8 +60,9 @@ export class BuildFailure extends Error {
 }
 
 /**
- * The pod's files, each read from the pod once and then held, which holds while the pod is written only through them:
- * a write goes through to the pod, but not one giving a file the bytes it already holds.
+ * The pod's files as listed once, each read from the pod once and then held, which holds while the pod is written
+ * only through them: a write goes through to the pod, but not one giving a file the bytes it already holds. A file
+ * not held is looked for in the pod, so a step never writes over one that reached the pod another way.
  */
 class HeldFiles implements Files {
   readonly #pod: Files;
@@ -77,28 +78,37 @@ class HeldFiles implements Files {
   }
 
   #listed(): Promise<Set<string>> {
-    this.#paths ??= this.#pod.list("").then((paths) => new Set(paths));
+    if (this.#paths === undefined) {
+      const listing = this.#pod.list("").then((paths) => new Set(paths));
+      this.#paths = listing;
+      listing.catch(() => {
+        if (this.#paths === listing) this.#paths = undefined;
+      });
+    }
     return this.#paths;
   }
 
+  async #held(path: string): Promise<Uint8Array | undefined> {
+    const held = this.#bytes.get(path);
+    if (held !== undefined) return held;
+    const bytes = await this.#pod.read(path);
+    if (bytes === undefined) return undefined;
+    this.#bytes.set(path, bytes);
+    (await this.#listed()).add(path);
+    return bytes;
+  }
+
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
-    const path = relative(this, pathOrIri);
-    let bytes = this.#bytes.get(path);
-    if (bytes === undefined) {
-      if (!(await this.#listed()).has(path)) return undefined;
-      bytes = await this.#pod.read(path);
-      if (bytes === undefined) return undefined;
-      this.#bytes.set(path, bytes);
-    }
-    return bytes.slice();
+    const bytes = await this.#held(relative(this, pathOrIri));
+    return bytes === undefined ? undefined : new Uint8Array(bytes);
   }
 
   async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     const path = relative(this, pathOrIri);
-    const held = await this.read(path);
+    const held = await this.#held(path);
     if (held !== undefined && same(held, bytes)) return;
     await this.#pod.write(path, bytes);
-    this.#bytes.set(path, bytes.slice());
+    this.#bytes.set(path, new Uint8Array(bytes));
     (await this.#listed()).add(path);
   }
 
