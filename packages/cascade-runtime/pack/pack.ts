@@ -209,7 +209,14 @@ async function packCode(bridgeFolder: string): Promise<{
     });
     await writeJson(join(to, "package.json"), kept(manifest, KEPT_BY_BUNDLED));
     bundled[manifest.name] = manifest.version;
-    Object.assign(required, manifest.dependencies);
+    for (const [name, version] of Object.entries(manifest.dependencies ?? {})) {
+      const pinned = required[name];
+      if (pinned !== undefined && pinned !== version)
+        throw new Error(
+          `${manifest.name} pins ${name} at ${version}, but another bundled workspace pins it at ${pinned}`,
+        );
+      required[name] = version;
+    }
   }
   const bridge = await manifestOf(bridgeFolder);
   await cp(bridgeFolder, join(NODE_MODULES, bridge.name), { recursive: true });
@@ -275,15 +282,15 @@ async function packOwnFiles(
 async function npmPack(): Promise<{ filename: string; integrity: string }> {
   const args = ["pack", "--json", "--pack-destination", BUILD];
   const npm = process.env.npm_execpath;
-  const { stdout } =
-    npm === undefined
-      ? await promisify(execFile)("npm", args, {
-          cwd: STAGE,
-          shell: process.platform === "win32",
-        })
-      : await promisify(execFile)(process.execPath, [npm, ...args], {
-          cwd: STAGE,
-        });
+  if (npm === undefined)
+    throw new Error(
+      "npm_execpath is unset: run the pack as `npm run build:package`",
+    );
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [npm, ...args],
+    { cwd: STAGE },
+  );
   const [packed] = JSON.parse(stdout) as {
     filename: string;
     integrity: string;

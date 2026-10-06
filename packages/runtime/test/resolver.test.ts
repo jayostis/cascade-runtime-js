@@ -154,11 +154,20 @@ test("a worktree finds each sibling beside itself, and otherwise beside the chec
   assert.deepEqual(await siblingsOf(main), [dirname(main)]);
 });
 
-test("a package's components resolve to the trees it carries at the commits it recorded, and a repository it does not carry is refused, named", async () => {
+test("a package's components resolve to the trees it carries at the commits it recorded, and a repository it does not carry, or a bundled Bridge built from another commit, is refused, named", async () => {
   const carried = join(root, "package", "components");
   const commit = "9990bdf0000000000000000000000000000000aa";
   const vocabulary = "https://example.org/cascade-vocabulary";
   await mkdir(join(carried, "cascade-vocabulary", commit), { recursive: true });
+  const bridge = join(root, "package", "node_modules", "cascade-bridge-rs");
+  await mkdir(bridge, { recursive: true });
+  await writeFile(join(bridge, "cascade_bridge_bg.wasm"), "");
+  await writeFile(
+    join(bridge, "package.json"),
+    JSON.stringify({
+      cascadeBridge: { commit: "1", dirty: false, sources: "" },
+    }),
+  );
   await writeFile(
     join(carried, "cascade-runtime.json"),
     JSON.stringify({
@@ -185,4 +194,5 @@ test("a package's components resolve to the trees it carries at the commits it r
     components.resolve({ repository: "https://example.org/cascade-adapter" }),
     /cascade-adapter/,
   );
+  await assert.rejects(components.bridge(), /build-0 at 0\b.*from 1$/);
 });

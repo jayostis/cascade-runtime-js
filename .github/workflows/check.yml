@@ -239,7 +239,7 @@ jobs:
             echo "::notice::$tag is a release already"
             exit 0
           fi
-          gh release create "$tag" package/cascade-runtime-0.0.0-commit-"$GITHUB_SHA".tgz \
+          gh release create "$tag" package/cascade-runtime-*.tgz \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$tag" \

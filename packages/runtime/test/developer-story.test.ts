@@ -105,6 +105,9 @@ test("the developer story prints Alex's active allergies as the replay through J
     }
     assert.deepEqual(multiset(printed), multiset(expected));
   } finally {
-    if (APP === undefined) await rm(folder, { recursive: true, force: true });
+    await rm(APP === undefined ? folder : join(APP, "alex-pod"), {
+      recursive: true,
+      force: true,
+    });
   }
 });

@@ -95,8 +95,17 @@ export async function packed(folder: string): Promise<Components> {
         iri: treeIri(component, commit),
       };
     },
-    bridge: () =>
-      bundledBridge(join(dirname(at), "node_modules"), record.bridge.release),
+    bridge: async () => {
+      const bundled = await bundledBridge(
+        join(dirname(at), "node_modules"),
+        record.bridge.release,
+      );
+      if (bundled.commit !== record.bridge.commit)
+        throw new Error(
+          `the package's ${PACKED} records ${record.bridge.release} at ${record.bridge.commit}, but the bundled Bridge in ${bundled.folder} was built from ${bundled.commit}`,
+        );
+      return bundled;
+    },
   };
 }
 
