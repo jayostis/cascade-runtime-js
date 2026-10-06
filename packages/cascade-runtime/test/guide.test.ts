@@ -157,7 +157,7 @@ async function askPerson(question, shown) {
   return !JSON.stringify(shown).includes(${JSON.stringify(notTheirs)});
 }
 async function showPerson(shown) {
-  process.stderr.write(\`\${JSON.stringify(shown)}\\n\`);
+  process.stderr.write(\`\${JSON.stringify({ example: __example, shown })}\\n\`);
 }
 `;
   return [
@@ -201,6 +201,56 @@ test("every example in the guide runs, in order", () => {
     ran.code,
     0,
     `the guide's examples stopped: ${ran.stderr.split("\n").slice(-30).join("\n")}`,
+  );
+});
+
+test("the reading example shows each allergy as its entry states it, its records beneath", async () => {
+  const reading = ran.stderr
+    .split("\n")
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line) as { example: string; shown: unknown })
+    .filter(({ example }) => example === '"Ask", example 1');
+  assert.equal(reading.length, 1, "the reading example showed no one thing");
+  const allergies = reading[0]?.shown as {
+    allergen?: string;
+    status?: string;
+    criticality?: string;
+    records?: string;
+    from: string[];
+  }[];
+  assert.ok(allergies.length > 0, "the reading example showed no allergy");
+  const stated = new Map<string, Set<string>>();
+  for (const { record, field, value } of await examplesPod().ask(
+    "record/What each version says",
+  ))
+    if (record && value && field?.endsWith("#criticality"))
+      stated.set(record, (stated.get(record) ?? new Set()).add(value));
+  const severity = ["unable-to-assess", "low", "high"];
+  const mostSevere = (records: readonly string[]): string | undefined =>
+    records
+      .flatMap((record) => [...(stated.get(record) ?? [])])
+      .sort((a, b) => severity.indexOf(a) - severity.indexOf(b))
+      .at(-1);
+  for (const { allergen, status, criticality, records, from } of allergies) {
+    assert.equal(status, "active", `${allergen} is shown with no status`);
+    assert.equal(
+      from.length,
+      Number(records),
+      `${allergen}'s records are not beneath it`,
+    );
+    assert.equal(
+      criticality,
+      mostSevere(from),
+      `${allergen} is not shown with its entry's criticality`,
+    );
+  }
+  assert.ok(
+    allergies.some(
+      ({ criticality, from }) =>
+        criticality !== undefined &&
+        !from.every((record) => stated.get(record)?.has(criticality)),
+    ),
+    "no shown allergy's records disagree on its criticality",
   );
 });
 

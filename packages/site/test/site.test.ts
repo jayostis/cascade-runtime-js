@@ -357,9 +357,9 @@ test("the Pages front page gives the example's pod, the kinds a pod holds, the c
   const front = readPage(text);
   assert.deepEqual(front.code, [
     startLine(address, "my-app"),
-    agentPrompt("my-app", address),
+    agentPrompt("my-app"),
   ]);
-  assert.equal(front.said.split(address).length - 1, 2);
+  assert.equal(front.said.split(address).length - 1, 1);
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
   assert.ok(titles.length > 0);
   assert.ok(front.said.includes(titles.join(" ")));

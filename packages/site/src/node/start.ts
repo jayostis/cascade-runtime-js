@@ -35,7 +35,8 @@ export async function startOf(
   const address = tarballAddress(commit);
   return {
     command: startLine(address, APP),
-    prompt: agentPrompt(APP, address),
+    app: APP,
+    prompt: agentPrompt(APP),
     kinds: viewTitles(layout),
     example,
   };

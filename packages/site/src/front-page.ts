@@ -73,6 +73,8 @@ ${ingredients(built.configured)}</footer>
 export interface Start {
   /** The line that makes an app. */
   readonly command: string;
+  /** The folder it makes the app in. */
+  readonly app: string;
   /** What a person hands a coding agent. */
   readonly prompt: string;
   /** The title of each kind of record a pod holds. */
@@ -91,7 +93,7 @@ export function viewTitles(layout: Layout): string[] {
 }
 
 function frontPage(
-  { command, prompt, kinds, example }: Start,
+  { command, app, prompt, kinds, example }: Start,
   { title }: Example,
   tried: boolean,
 ): string {
@@ -115,16 +117,16 @@ ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
 <p class="prose">Records come in only from the clinical records of an Apple Health export; observations, medications, lab
 results and daily measurements are not yet held. The reference tables the matcher uses to join records of the same thing are
 alpha test data, so a real export shows fewer automatic joins than ${title}'s pod.</p>
-<h2 class="part">Start an app</h2>
-<p class="prose">With Node 22 or later, run:</p>
+<h2 class="part">1. Make the app</h2>
+<p class="prose">With Node 22 or later, run this in a folder of your choice:</p>
 <pre class="command"><code>${command}</code></pre>
-<p class="prose">It makes an app with no pod. Inside it, <code>npm run pod:load ${example}</code> fills one with
-${title}'s, and <code>npm start</code> runs the app.</p>
-<h2 class="part">Hand your idea to an agent</h2>
-<p class="prose">Give a coding agent this prompt, with its last line, <code>My idea: …</code>, replaced by your idea:</p>
+<p class="prose">It makes the app, <code>${app}</code>, in that folder, with no pod yet.</p>
+<h2 class="part">2. Hand your idea to an agent</h2>
+<p class="prose">Start a coding agent in the same folder, the one holding <code>${app}</code>, and give it this prompt, with
+its last line, <code>My idea: …</code>, replaced by your idea:</p>
 <pre class="command"><code>${prompt}</code></pre>
 <p class="prose">The agent learns how from the <code>AGENTS.md</code> at the app's root and the full guide that comes with the
-installed package.</p>
+installed package, and loads a pod, such as ${title}'s, when your idea needs one.</p>
 ${
   tried &&
   markup`<h2 class="part">Try it in your browser</h2>

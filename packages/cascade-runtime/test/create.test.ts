@@ -66,9 +66,13 @@ test("given a folder, it makes the project and names it", async () => {
   for (const line of [
     "npm run pod:load alex-rivera",
     "npm start",
-    agentPrompt(folder, ADDRESS),
+    agentPrompt("my-app"),
   ])
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
+  assert.ok(
+    !terminal.text().includes("npx "),
+    "it printed the command that makes the app, which it has made",
+  );
 });
 
 test("it refuses a folder it cannot use and writes nothing", async () => {

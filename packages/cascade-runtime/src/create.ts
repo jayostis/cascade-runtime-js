@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { cp, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, join, resolve as absolute } from "node:path";
+import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -33,12 +33,10 @@ export function startLine(address: string, folder: string): string {
   return `npx --yes --package=${shellWord(address)} ${COMMAND} ${shellWord(folder)}`;
 }
 
-/** What a person gives a coding agent to build their app in the folder from the package at the address. */
-export function agentPrompt(folder: string, address: string): string {
+/** What a person gives a coding agent, started in the folder holding the made app, to build their app in it. */
+export function agentPrompt(folder: string): string {
   return [
-    `Build me an app on a Cascade pod. If the folder ${folder} does not exist, create it by running:`,
-    startLine(address, folder),
-    `Then work inside ${folder}: read its AGENTS.md first and follow it, and use only what its guide teaches.`,
+    `Build me an app on a Cascade pod. Work inside ${folder}: read its AGENTS.md first and follow it, and use only what its guide teaches.`,
     "My idea: <describe your idea in a sentence>",
   ].join("\n");
 }
@@ -156,17 +154,17 @@ export async function create(
   terminal.out(
     [
       "",
-      `Made ${target}. To start it:`,
+      `Made ${target}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
+      "",
+      agentPrompt(name),
+      "",
+      "To run the app yourself instead:",
       "",
       `  cd ${shellWord(folder)}`,
       "  npm run pod:load alex-rivera",
       "  npm start",
       "",
       "then open http://127.0.0.1:3000/",
-      "",
-      "To have a coding agent build your app, give it this, with your idea in its last line:",
-      "",
-      agentPrompt(folder, address),
       "",
     ].join("\n"),
   );
