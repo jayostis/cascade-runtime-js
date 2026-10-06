@@ -1,4 +1,4 @@
-import { CorePod, type Performed } from "./core-pod.js";
+import { BuildFailure, CorePod, type Performed } from "./core-pod.js";
 import type { Derive } from "./build.js";
 import { StoryTime } from "./ids.js";
 import type { Files } from "./files.js";
@@ -245,13 +245,20 @@ export class Replay {
         time: this.#time,
       });
     } catch (error) {
+      if (error instanceof BuildFailure) {
+        this.#record(step, error.performed);
+        throw error;
+      }
       this.#stopped = {
         step,
         why: error instanceof Error ? error.message : String(error),
       };
       return;
     }
-    const { wrote, refused, activity } = performed;
+    this.#record(step, performed);
+  }
+
+  #record(step: Step, { wrote, refused, activity }: Performed): void {
     if (activity !== undefined) this.#activities.set(step.name, activity);
     this.#steps.push({
       step,

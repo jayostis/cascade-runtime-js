@@ -44,6 +44,21 @@ export interface Performed {
   readonly activity?: string;
 }
 
+/** The build after a step failed: the step itself is in the pod, as `performed` says. */
+export class BuildFailure extends Error {
+  override readonly name = "BuildFailure";
+
+  constructor(
+    readonly performed: Performed,
+    cause: unknown,
+  ) {
+    super(
+      `the build after the step failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+}
+
 /** A copy of the pod's files, in memory. */
 async function copied(pod: Files): Promise<Files> {
   const copy = new MemoryFiles(pod.iri);
@@ -175,7 +190,13 @@ export class CorePod {
       if (!(error instanceof Refusal)) throw error;
       performed = { wrote: [], refused: error.message };
     }
-    if (options.build !== undefined) await this.#rebuild(options.build, at);
+    if (options.build !== undefined) {
+      try {
+        await this.#rebuild(options.build, at);
+      } catch (error) {
+        throw new BuildFailure(performed, error);
+      }
+    }
     return performed;
   }
 
