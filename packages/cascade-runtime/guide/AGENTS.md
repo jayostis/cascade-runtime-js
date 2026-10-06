@@ -22,14 +22,14 @@ only from an Apple Health export, unzipped, whose clinical records are FHIR R4.
 
 It never writes a pod's files, and reads them only through `ask`. It never
 parses Turtle: it asks a question. It never names a thing: it uses the
-templates' placeholders and IRIs that `ask` or a call returned. It never claims
-an export without asking the person. It opens a folder once, awaits each call,
-and passes no address. A result with `refused` is the rules turning the
-person's data down: nothing was written; show them the reason. A rejected
-promise is the app's mistake: an unknown question or lens, a query that is no
-`SELECT`, Turtle that is not one judgment, a member that names no record, a
-folder holding files but no pod, a call after `close`. Only `look` of a folder
-that is no export is the person's doing, and the flow below catches it.
+templates' placeholders and IRIs that `ask` or a call returned. It never
+imports an export the person has not said is theirs. It opens a folder once,
+awaits each call, and passes no address. A result with `refused` is the rules
+turning the person's data down: nothing was written; show them the reason. A
+rejected promise is the app's mistake: an unknown question or lens, a query
+that is no `SELECT`, Turtle that is not one judgment, a member that names no
+record, a folder holding files but no pod, a call after `close`. Only `look`
+of a folder that is no export is the person's doing, as the flow below shows.
 
 ## The starter
 
@@ -58,23 +58,22 @@ which an app writes itself: `pickExport()` returns the folder they chose,
 ```js
 import { openPod } from "cascade-runtime";
 let pod = await openPod("pods/mine", { title: "My records" });
-const { address, subject, owner } = pod;
 await pod.close();
 pod = await openPod("pods/mine");
 ```
 
 A missing or empty folder is a new pod, the only time `title` is read;
 `openPod()` is one in memory. `subject` is whom the records are about, `owner`
-who keeps the pod. `address` is a random base the pod's names are made from,
-and nothing else: no identity is registered under it or under `subject` (that
-comes later, jayostis/cascade-vocabulary#62).
+who keeps the pod, `address` a random base its names are made from: no identity
+is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 
 ## Bring in an export
 
 The default flow, on each export the person picks. `look` reads the export's
 index and writes nothing: one source per hospital server, with its `name`,
-`server`, `records` by kind, the times `received`, and `claimed`. The person
-says whether the export is theirs, and `import` takes the answer.
+`server`, `records` by kind, the times `received`, and `claimed`. Ask the person
+whether the export is theirs; `import` it only after a yes. On a no, call
+nothing: the pod keeps nothing of it.
 
 ```js
 async function recordsBy(question, by) {
@@ -83,14 +82,14 @@ async function recordsBy(question, by) {
     rows.filter((row) => row[by] === key).map((row) => row.record);
 }
 
-async function bringIn(exportFolder) {
+async function bringIn(exportFolder, options = { aboutSubject: true }) {
   const sources = await pod.look(exportFolder).catch(async (error) => {
     if (!/^no importer .* reads /.test(error.message)) throw error;
     await showPerson("That folder is not an unzipped Apple Health export.");
   });
   if (sources === undefined) return undefined;
-  const aboutSubject = await askPerson("Are these records about you?", sources);
-  const imported = await pod.import(exportFolder, { aboutSubject });
+  if (!(await askPerson("Are these records yours?", sources))) return undefined;
+  const imported = await pod.import(exportFolder, options);
   if (imported.refused) await showPerson(`Not brought in: ${imported.refused}`);
   const naming = await recordsBy("profile/Which records name it", "profile");
   const claimed = imported.claimed.map(({ profile: p }) => [p, naming(p)]);
@@ -103,10 +102,9 @@ await bringIn(pickExport());
 ```
 
 The look names no patient: `claimed` means the pod holds the subject's records
-from that server, not that this export's are theirs; a second server is a
-source of its own. With `aboutSubject: true`, `import` claims every profile not
-yet claimed; without it, records stay in no view, their profiles `unclaimed`.
-Importing again writes nothing. `import` runs the matcher: call no `match`.
+from that server, not that this export's are theirs; a second server is a source
+of its own. `import` with the yes claims every profile not yet claimed, runs the
+matcher (call no `match`), and writes nothing when the export is already in.
 
 ## Ask
 
@@ -116,12 +114,19 @@ variable name, an unbound variable absent; `entry`, `record`, `profile` and
 `judgment` hold IRIs, which the calls take as they are.
 
 An entry is what an app shows: one allergy, joining its records from every
-source. Search the entries in the views, never the records: a pod holds records
-no view shows, another person's or ones entered in error.
+source. Show first what the entry states, from a view's question:
+`pod/My active allergies` gives each one's allergen and criticality (the most
+severe its records give), `entry/What it shows` any entry's fields. Its records
+go beneath, as detail where hospitals may disagree (`entry/Where it came from`,
+`record/What each version says`). Search the entries in the views, never the
+records: a pod holds records no view shows, another person's or ones entered
+in error.
 
 ```js
 const allergies = await pod.ask("pod/My active allergies");
-await showPerson(await pod.ask("pod/My active allergies", { lens: "export" }));
+const inView = await recordsBy("record/Which entry shows it", "entry");
+const shown = (one) => ({ ...one, status: "active", from: inView(one.entry) });
+await showPerson(allergies.map(shown));
 
 async function search(word) {
   const found = await pod.ask({
@@ -342,9 +347,8 @@ async function confirmClaims(imported) {
   const naming = await recordsBy("profile/Which records name it", "profile");
   for (const { profile, judgment: claim } of imported?.claimed ?? []) {
     const records = naming(profile);
-    if (!(await askPerson("Are these your records?", { profile, records }))) {
+    if (!(await askPerson("Are these your records?", { profile, records })))
       await judged(retraction(pod, claim, "these are someone else's records"));
-    }
   }
 }
 
@@ -353,33 +357,31 @@ await confirmClaims(await bringIn(pickExport()));
 
 ## The steps run separately
 
-`import` with `{ match: false }` only files, and without `aboutSubject` claims
-nothing: for a large import that defers matching, or one filed without the
-claim. Claim each `unclaimed` profile with an About, then `match` the import's
-`activity`; `match()` rechecks the pod. Then show `entry/What needs review`:
-here a new server's record joined two the person had kept apart. `replayKit`
-(`cascade-runtime/fixtures`, behind `npm run pod:load`) fills an empty folder
-with a kit's story: one `{ step, kind, wrote, refused }` per step, `kind` one
-of `creation`, `import`, `entry`, `judgment`, `reference` or `matcher`.
+After the yes, `import` with `{ match: false }` only files, and without
+`aboutSubject` claims nothing, so each profile is asked about alone: claim each
+`unclaimed` one with an About, then `match` the import's `activity`; `match()`
+rechecks the pod. Then show `entry/What needs review`: here a new server's
+record joined two the person had kept apart. `replayKit`, behind
+`npm run pod:load`, is for tests, never code the app runs: it fills an empty
+folder with a kit's story, one `{ step, kind, wrote, refused }` per step, `kind`
+one of `creation`, `import`, `entry`, `judgment`, `reference` or `matcher`.
 
 ```js
-const filed = await pod.import(pickExport(), { match: false });
+const filed = await bringIn(pickExport(), { match: false });
 const naming = await recordsBy("profile/Which records name it", "profile");
-for (const profile of filed.unclaimed) {
+for (const profile of filed?.unclaimed ?? []) {
   const records = naming(profile);
-  if (await askPerson("Are these your records?", { profile, records })) {
+  if (await askPerson("Are these your records?", { profile, records }))
     await judged(about(pod, profile));
-  }
 }
-await pod.match(filed.activity);
+if (filed) await pod.match(filed.activity);
 await pod.match();
 const showing = await recordsBy("record/Which entry shows it", "entry");
 for (const { entry, needs } of await pod.ask("entry/What needs review")) {
   if (needs !== "judged different, still joined") continue;
   const records = showing(entry);
-  if (await askPerson("Are all of these different?", records)) {
+  if (await askPerson("Are all of these different?", records))
     await judged(different(pod, records, "each of these is its own"));
-  }
 }
 await pod.close();
 
