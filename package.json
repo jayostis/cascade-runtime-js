@@ -11,7 +11,8 @@
     "packages/runtime",
     "packages/apple-health",
     "packages/site",
-    "packages/graphdb"
+    "packages/graphdb",
+    "packages/cascade-runtime"
   ],
   "scripts": {
     "build": "tsc -b",

@@ -11,9 +11,11 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 - **The core knows four interfaces, `Files`, `Bridge`, `Store` and
   `IdsAndTime`, and nothing behind them.** What needs Node is under
   `packages/runtime/src/node/`; nothing else imports from there.
-- **Only an import and an entry session get a random ID**, from
-  `IdsAndTime.newId`, random on every run, in use and in replay. Everything else
-  is named by its rule from its inputs.
+- **In the core, only an import and an entry session get a random ID**, from
+  `IdsAndTime.newId`, random on every run, in use and in replay. Outside it, the
+  package `cascade-runtime` mints a new pod's naming base and subject's ID, and
+  each person's judgment's IRI, on an app's behalf; nothing else ever does.
+  Everything else is named by its rule from its inputs.
 - **Tests assert meaning, never bytes.** Nothing compares bytes or whole files,
   and a test never names a run-dependent thing (an import, an entry session, a
   revision) by IRI: it reaches an import through its step, a revision through
