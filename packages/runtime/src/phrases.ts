@@ -3,11 +3,12 @@ import {
   ParameterType,
   ParameterTypeRegistry,
 } from "@cucumber/cucumber-expressions";
-import { differences } from "./compare.js";
+import { compared, differences } from "./compare.js";
 import type { StatedStep } from "./features.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
+import { MATCHER } from "./matcher.js";
 import { documentName, inUtc } from "./names.js";
 import {
   iri,
@@ -18,8 +19,9 @@ import {
   written,
   XSD,
 } from "./rdf.js";
+import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
-import type { Row, Store } from "./store.js";
+import { type Row, selected, type Store } from "./store.js";
 import { REC } from "./step.js";
 import type { Happened, Step } from "./story.js";
 import {
@@ -32,7 +34,6 @@ import {
   PAV,
   type Person,
   PROV,
-  THE_MATCHER,
   type Words,
 } from "./words.js";
 
@@ -92,13 +93,29 @@ export interface Compiling {
   readonly references: (person: Person) => Promise<Graph>;
 }
 
+/** What a step does to the example as it compiles; a `Then` step gives what must hold. */
 type Act = (
   compiled: Compiled,
   args: readonly unknown[],
   stated: StatedStep,
   compiling: Compiling,
   label: string | undefined,
-) => Promise<void> | void;
+) => Promise<Check | void> | Check | void;
+
+type Definition = readonly [string, Act];
+
+/** A `Then` phrase: what must hold, made from the step as it compiles. */
+const then = (
+  expression: string,
+  check: (
+    args: readonly unknown[],
+    stated: StatedStep,
+    compiled: Compiled,
+  ) => Check,
+): Definition => [
+  expression,
+  (compiled, args, stated) => check(args, stated, compiled),
+];
 
 const registry = new ParameterTypeRegistry();
 const parameter = (
@@ -113,7 +130,7 @@ const parameter = (
 const unquoted = (text: string): string => text.slice(1, -1);
 
 /** A time as the steps write it, `2026-01-02 at 10:00`, as an xsd:dateTime in UTC. */
-export function timeOf(text: string): string {
+function timeOf(text: string): string {
   const found =
     /^(\d{4}-\d{2}-\d{2})(?: at | )(\d{2}:\d{2})(:\d{2}(?:\.\d+)?)?$/.exec(
       text.trim(),
@@ -146,19 +163,40 @@ parameter("record", /[^:]+/);
 parameter("records", /[^:]+/);
 parameter("judgment", /[^:]+/);
 
-/** The step a `{step}` names, among the steps an example has taken so far. */
-function named(steps: readonly Step[], said: string): Step {
-  const wanted =
-    said === "that step"
-      ? steps.at(-1)
-      : said === "that import" || said === "that entry"
-        ? steps.findLast(
-            ({ happened }) => happened.kind === said.slice("that ".length),
-          )
-        : steps.findLast(({ name }) => name === unquoted(said));
-  if (wanted === undefined) throw new Error(`no step before this is ${said}`);
-  return wanted;
+/**
+ * The steps a `{step}` or `{steps}` names among those taken: `that step` the last of them, `that import` or
+ * `that entry` the last of its kind, and each quoted name the one step so named.
+ */
+function stepsNamed<T>(
+  taken: readonly T[],
+  said: string,
+  stepOf: (taken: T) => Step,
+): T[] {
+  const kind = /^that (step|import|entry)$/.exec(said)?.[1];
+  if (kind !== undefined) {
+    const last = taken.findLast(
+      (one) => kind === "step" || stepOf(one).happened.kind === kind,
+    );
+    if (last === undefined) throw new Error(`no step before this is ${said}`);
+    return [last];
+  }
+  return [...said.matchAll(/"([^"]*)"/g)].map(([, name = ""]) => {
+    const found = taken.filter((one) => stepOf(one).name === name);
+    if (found.length !== 1)
+      throw new Error(
+        `the example has ${found.length === 0 ? "no" : String(found.length)} step${found.length === 1 ? "" : "s"} named "${name}"`,
+      );
+    return found[0] as T;
+  });
 }
+
+/** The step a `{step}` names, among the steps an example has taken so far. */
+const named = (steps: readonly Step[], said: string): Step =>
+  stepsNamed(steps, said, (step) => step)[0] as Step;
+
+/** The steps a `{step}` or `{steps}` names, among those the pod is read after. */
+const stepsOf = (reading: Reading, said: string): ReplayedStep[] =>
+  stepsNamed(reading.replayed.steps, said, ({ step }) => step);
 
 function happen(
   compiled: Compiled,
@@ -182,21 +220,6 @@ function happen(
   });
 }
 
-function stepsOf(reading: Reading, said: string): ReplayedStep[] {
-  if (said === "that step" || said === "that import" || said === "that entry") {
-    const kind = said.slice("that ".length);
-    const last = reading.replayed.steps.findLast(
-      ({ step }) => kind === "step" || step.happened.kind === kind,
-    );
-    if (last === undefined)
-      throw new Error(`the example took no step that is ${said}`);
-    return [last];
-  }
-  return [...said.matchAll(/"([^"]*)"/g)].map(([, name]) =>
-    reading.words.step(name ?? ""),
-  );
-}
-
 function table(
   stated: StatedStep,
   columns: readonly string[],
@@ -215,26 +238,6 @@ function table(
   );
 }
 
-/** How two multisets of rows differ, each row as its words, or undefined when they do not. */
-function compared(
-  expected: readonly string[],
-  found: readonly string[],
-): string | undefined {
-  const counts = new Map<string, number>();
-  for (const row of expected) counts.set(row, (counts.get(row) ?? 0) + 1);
-  for (const row of found) counts.set(row, (counts.get(row) ?? 0) - 1);
-  const lines: string[] = [];
-  for (const [row, count] of counts)
-    for (let i = 0; i < Math.abs(count); i++)
-      lines.push(`${count > 0 ? "missing" : "unexpected"}: ${row}`);
-  return lines.length === 0 ? undefined : lines.sort().join("\n");
-}
-
-async function select(store: Store, query: string): Promise<string[][]> {
-  const { rows, variables } = await store.select(query);
-  return rows.map((row) => variables.map((v) => row.get(v)?.value ?? ""));
-}
-
 const shownTime = (value: string): string =>
   value === ""
     ? ""
@@ -249,19 +252,138 @@ async function records(reading: Reading, words: string): Promise<string[]> {
   );
 }
 
-function rdfFiles(reading: Reading, steps: readonly ReplayedStep[]): string[] {
+/** The rows of a query over the RDF files the steps wrote, `?file` bound to each: none when they wrote none. */
+async function inWritten(
+  reading: Reading,
+  steps: readonly ReplayedStep[],
+  projection: string,
+  where: string,
+): Promise<readonly Row[]> {
   const address = reading.replayed.story.address;
-  return steps.flatMap(({ wrote }) =>
+  const files = steps.flatMap(({ wrote }) =>
     wrote
       .filter((path) => reading.layout.isRdf(path))
-      .map((path) => address + path),
+      .map((path) => `<${address}${path}>`),
+  );
+  if (files.length === 0) return [];
+  return (
+    await reading.store.select(
+      `SELECT ${projection} WHERE { VALUES ?file { ${files.join(" ")} } ${where} }`,
+    )
+  ).rows;
+}
+
+/** The triples of the RDF files the steps wrote. */
+async function wroteGraph(
+  reading: Reading,
+  steps: readonly ReplayedStep[],
+): Promise<Graph> {
+  return new Graph(
+    (
+      await inWritten(reading, steps, "?s ?p ?o", "GRAPH ?file { ?s ?p ?o }")
+    ).map(
+      (row) => [row.get("s"), row.get("p"), row.get("o")] as unknown as Triple,
+    ),
   );
 }
 
-const graphs = (files: readonly string[]): string =>
-  `VALUES ?file { ${files.map((file) => `<${file}>`).join(" ")} }`;
+const valuesOf = (rows: readonly Row[], variable: string): string[] =>
+  rows.map((row) => row.get(variable)?.value ?? "");
 
-/** Each revision of the record: when it arrived, the number of the version it sets, and when the one it follows arrived. */
+const localName = (name: string): string =>
+  name.slice(Math.max(name.lastIndexOf("#"), name.lastIndexOf("/")) + 1);
+
+/**
+ * A field a table names in words, and the predicates that give it. An entry's field (`entry`) is read from the entry
+ * in its view; a record's (`of`) from the record itself or from its current version.
+ */
+interface Field {
+  readonly predicates: readonly string[];
+  readonly entry?: true;
+  readonly of?: "record" | "version";
+  /** Its values are things, which a cell names in words. */
+  readonly thing?: true;
+  /** A value as a cell shows it, when not as itself; undefined leaves it out. */
+  readonly shows?: (
+    term: Term,
+    reading: Reading,
+    record: string,
+  ) => Promise<string | undefined> | string | undefined;
+}
+
+const KIND_OF: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(KINDS).map(([kind, type]) => [type, kind]),
+);
+
+const FIELDS: Readonly<Record<string, Field>> = {
+  type: {
+    predicates: [`${RDF}type`],
+    entry: true,
+    shows: ({ value }) => localName(value),
+  },
+  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`], entry: true },
+  criticality: {
+    predicates: [`${CLINICAL}criticality`],
+    entry: true,
+    of: "version",
+  },
+  "abatement date": { predicates: [`${CLINICAL}abatementDate`], entry: true },
+  "status from": { predicates: [`${REC}statusFrom`], entry: true, thing: true },
+  "latest member": {
+    predicates: [`${REC}latestMember`],
+    entry: true,
+    thing: true,
+  },
+  kind: {
+    predicates: [`${RDF}type`],
+    of: "record",
+    shows: ({ value }) => KIND_OF[value],
+  },
+  version: {
+    predicates: [`${PAV}hasCurrentVersion`],
+    of: "record",
+    shows: async ({ value }, reading, record) =>
+      String((await reading.words.versions(record)).indexOf(value) + 1),
+  },
+  subject: { predicates: [`${REC}subject`], of: "record", thing: true },
+  patient: { predicates: [`${REC}patient`], of: "version", thing: true },
+  "influenced by": {
+    predicates: [`${PROV}wasInfluencedBy`],
+    of: "version",
+    thing: true,
+  },
+};
+
+const ENTRY_FIELDS = Object.entries(FIELDS).filter(([, { entry }]) => entry);
+
+const recordField = (words: string): Field | undefined =>
+  FIELDS[words]?.of === undefined ? undefined : FIELDS[words];
+
+/** A value as a table's cell shows it: a thing in the words that named it, an IRI or a typed literal written. */
+async function shown(
+  reading: Reading,
+  term: Term,
+  field?: Field,
+  record = "",
+): Promise<string | undefined> {
+  if (field?.shows !== undefined) return field.shows(term, reading, record);
+  if (term.termType !== "Literal")
+    return field?.thing ? reading.words.shown(term.value) : `<${term.value}>`;
+  return term.datatype.value === `${XSD}date` ||
+    term.datatype.value === `${XSD}string` ||
+    term.datatype.value === `${RDF}langString`
+    ? term.value
+    : `${term.value}^^<${term.datatype.value}>`;
+}
+
+/** A cell of a field, as `shown` would show the value it names. */
+const cellShown = async (
+  reading: Reading,
+  cell: string,
+  field: Field | undefined,
+): Promise<string> =>
+  field?.thing ? reading.words.shown(await reading.words.thing(cell)) : cell;
+
 /** A property of a version named in words: `verification status` names any property whose local name is `verificationStatus`. */
 const propertyOf = (words: string): string =>
   words.replace(/ ([a-z])/g, (_, letter: string) => letter.toUpperCase());
@@ -274,7 +396,7 @@ async function fieldOf(
 ): Promise<string> {
   const wanted = propertyOf(field);
   return (
-    await select(
+    await selected(
       reading.store,
       `SELECT DISTINCT ?p ?o WHERE { GRAPH ?file { <${version}> ?p ?o }
         FILTER (STRSTARTS(STR(?file), "${reading.replayed.story.address}")) }`,
@@ -312,11 +434,11 @@ const expectedFields = (
 async function revisionsOf(
   reading: Reading,
   record: string,
-  fields: readonly string[] = [],
+  fields: readonly string[],
 ): Promise<string[]> {
   const versions = await reading.words.versions(record);
   const rows: string[] = [];
-  for (const [, version, at, after] of await select(
+  for (const [, version, at, after] of await selected(
     reading.store,
     `SELECT ?revision ?version ?at ?after WHERE {
         ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at .
@@ -333,8 +455,44 @@ async function revisionsOf(
   return rows;
 }
 
+/** The revisions of the record named, or of each record the table's `record` column names, are the table's. */
+function revisionsAre(stated: StatedStep, named?: string): Check {
+  const fixed = [
+    ...(named === undefined ? ["record"] : []),
+    "arrived",
+    "version",
+    "after",
+  ];
+  const fields = fieldsOf(stated, fixed);
+  const rows = table(stated, [...fixed, ...fields]);
+  const of = (words: string, row: string): string =>
+    named === undefined ? `${words} | ${row}` : row;
+  return async (reading) => {
+    const found: string[] = [];
+    for (const words of named === undefined
+      ? new Set(rows.map((row) => row.record ?? ""))
+      : [named]) {
+      const record = await reading.words.record(words);
+      found.push(
+        ...(await revisionsOf(reading, record, fields)).map((row) =>
+          of(words, row),
+        ),
+      );
+    }
+    return compared(
+      rows.map((row) =>
+        of(
+          row.record ?? "",
+          `${cellTime(row.arrived ?? "")} | ${row.version ?? ""}${expectedFields(row, fields)} | ${cellTime(row.after ?? "")}`,
+        ),
+      ),
+      found,
+    );
+  };
+}
+
 const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
-  ?judgment <${PROV}wasAttributedTo> <${THE_MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
+  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
     <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
   OPTIONAL { ?judgment <${PROV}used> ?used }
@@ -350,7 +508,7 @@ interface Judged {
 
 async function matcherJudgments(store: Store): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used] of await select(
+  for (const [name, justification, member, at, used] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -399,7 +557,7 @@ function judgmentRow(
           return sorted(judged.used);
         case "inputs":
           return [
-            THE_MATCHER,
+            MATCHER,
             judged.justification,
             ...[...judged.members].sort(),
             ...[...judged.used].sort(),
@@ -485,51 +643,20 @@ async function comparedJudgments(
 ${names}`;
 }
 
-function literalShown(term: Term): string {
-  if (term.termType !== "Literal") return `<${term.value}>`;
-  return term.datatype.value === `${XSD}date` ||
-    term.datatype.value === `${XSD}string` ||
-    term.datatype.value === `${RDF}langString`
-    ? term.value
-    : `${term.value}^^<${term.datatype.value}>`;
-}
-
-const ENTRY_FIELDS: Readonly<
-  Record<string, { predicates: string[]; thing?: boolean }>
-> = {
-  type: { predicates: [`${RDF}type`] },
-  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`] },
-  criticality: { predicates: [`${CLINICAL}criticality`] },
-  "abatement date": { predicates: [`${CLINICAL}abatementDate`] },
-  "status from": { predicates: [`${REC}statusFrom`], thing: true },
-  "latest member": { predicates: [`${REC}latestMember`], thing: true },
-};
-
-const localName = (name: string): string =>
-  name.slice(Math.max(name.lastIndexOf("#"), name.lastIndexOf("/")) + 1);
-
-async function shownValue(
-  reading: Reading,
-  term: Term,
-  field: string,
-  thing: boolean,
-): Promise<string> {
-  if (field === "type") return localName(term.value);
-  if (thing && term.termType === "NamedNode")
-    return reading.words.shown(term.value);
-  return literalShown(term);
-}
-
-async function expectedValue(
-  reading: Reading,
-  cell: string,
-  field: string,
-  thing: boolean,
-): Promise<string> {
-  return field === "type" || !thing
-    ? cell
-    : reading.words.shown(await reading.words.thing(cell));
-}
+/** The matcher's judgments holding any of the records named are the table's rows, in its columns. */
+const judgmentsHolding =
+  (
+    words: string,
+    rows: readonly Record<string, string>[],
+    columns: readonly string[],
+  ): Check =>
+  async (reading) => {
+    const held = new Set(await records(reading, words));
+    const found = (await matcherJudgments(reading.store)).filter((judged) =>
+      [...judged.members].some((member) => held.has(member)),
+    );
+    return comparedJudgments(reading, rows, found, columns);
+  };
 
 const reasonWords = (reason: string): string =>
   localName(reason)
@@ -576,14 +703,12 @@ async function queryAnswers(
   stated: StatedStep,
   none: boolean,
 ): Promise<string | undefined> {
-  const prefixes: Record<string, string> = { ...PREFIXES };
-  for (const [, prefix, base] of query.matchAll(
-    /PREFIX\s+([\w-]*):\s*<([^>]*)>/gi,
-  ))
-    prefixes[prefix ?? ""] = base ?? "";
-  const declared = new Set(
-    [...query.matchAll(/PREFIX\s+([\w-]*):/gi)].map(([, prefix]) => prefix),
+  const declared = new Map(
+    [...query.matchAll(/PREFIX\s+([\w-]*):\s*<([^>]*)>/gi)].map(
+      ([, prefix = "", base = ""]) => [prefix, base],
+    ),
   );
+  const prefixes = { ...PREFIXES, ...Object.fromEntries(declared) };
   const found = await reading.store.select(
     Object.entries(PREFIXES)
       .filter(([prefix]) => !declared.has(prefix))
@@ -617,7 +742,112 @@ async function queryAnswers(
   });
 }
 
-const DEFINITIONS: [string, Act][] = [
+/**
+ * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
+ * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ */
+async function entryInputs(
+  reading: Reading,
+  words: string,
+  inputs: string,
+): Promise<string | undefined> {
+  const [subject, start, position] = inputs.split(", ");
+  if (position === undefined || !/^\d+$/.test(position))
+    return `"${inputs}" is no subject, start and position`;
+  const record = await reading.words.record(words);
+  const [first] = await selected(
+    reading.store,
+    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
+      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+  );
+  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
+  const wrong = [
+    ...(held[0] === subject
+      ? []
+      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
+    ...(held[1] === start
+      ? []
+      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
+  ];
+  return wrong.length === 0 ? undefined : wrong.join("; ");
+}
+
+/** The entry holding the record shows the table's fields; with `only`, nothing else but its members. */
+const entryShows =
+  (only: boolean) =>
+  ([words]: readonly unknown[], stated: StatedStep): Check => {
+    const rows = table(stated, ["field", "value"]);
+    for (const row of rows)
+      if (FIELDS[row.field ?? ""]?.entry === undefined)
+        throw new Error(`"${row.field ?? ""}" is no field of an entry`);
+    return async (reading) => {
+      const record = await reading.words.record(words as string);
+      const views = `${reading.replayed.story.address}${reading.layout.viewsFolder}`;
+      const entries = await selected(
+        reading.store,
+        `SELECT DISTINCT ?view ?entry WHERE { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } FILTER (STRSTARTS(STR(?view), "${views}")) }`,
+      );
+      if (entries.length !== 1)
+        return `${entries.length} entries hold ${String(words)}`;
+      const [[view, entry]] = entries as [[string, string]];
+      const said = (
+        await reading.store.select(
+          `SELECT ?p ?o WHERE { GRAPH <${view}> { <${entry}> ?p ?o } }`,
+        )
+      ).rows.map(
+        (row) => [row.get("p")?.value ?? "", row.get("o") as Term] as const,
+      );
+      const fields = new Set(rows.map((row) => row.field ?? ""));
+      const expected: string[] = [];
+      const found: string[] = [];
+      for (const row of rows)
+        if ((row.value ?? "") !== "")
+          expected.push(
+            `${row.field ?? ""} | ${await cellShown(reading, row.value ?? "", FIELDS[row.field ?? ""])}`,
+          );
+      for (const [predicate, value] of said) {
+        if (predicate === MERGED_FROM) continue;
+        const field = ENTRY_FIELDS.find(([, { predicates }]) =>
+          predicates.includes(predicate),
+        );
+        if (field === undefined || !fields.has(field[0])) {
+          if (only) found.push(`${predicate} | ${await shown(reading, value)}`);
+          continue;
+        }
+        found.push(`${field[0]} | ${await shown(reading, value, field[1])}`);
+      }
+      return compared(expected, found);
+    };
+  };
+
+/** A random import's or entry session's name: the one activity that step wrote matching the pattern is a v4 UUID. */
+const newRandomUuid = (pattern: string) => (): Check => async (reading) => {
+  const activities = valuesOf(
+    await inWritten(
+      reading,
+      stepsOf(reading, "that step"),
+      "DISTINCT ?activity",
+      `GRAPH ?file { ${pattern} }`,
+    ),
+    "activity",
+  );
+  if (activities.length !== 1)
+    return `the step wrote ${activities.length} of them`;
+  const [name] = activities as [string];
+  return UUID_V4.test(name) ? undefined : `${name} is no version 4 urn:uuid:`;
+};
+
+const viewGraph = (reading: Reading, view: unknown): string =>
+  `${reading.replayed.story.address}${reading.layout.viewsFolder}${String(view)}.ttl`;
+
+const readAfter: Act = (compiled, [said, lens]) => {
+  compiled.at = {
+    index: compiled.steps.lastIndexOf(named(compiled.steps, said as string)),
+    lens: (lens as string | undefined) ?? "everyday",
+  };
+};
+
+const DEFINITIONS: Definition[] = [
   // Given and When: what happened.
   [
     "a new pod for {person} on {time}",
@@ -671,19 +901,18 @@ const DEFINITIONS: [string, Act][] = [
     ) => {
       if (compiled.person === undefined)
         throw new Error("the example has no pod");
-      const index = await references(compiled.person);
-      const found = index
-        .subjects(`${RDFS}label`)
-        .filter((s) => index.objects(s, `${RDFS}label`)[0]?.value === series)
-        .flatMap((s) => index.subjects(`${PROV}specializationOf`, s))
-        .filter((v) => index.objects(v, `${PAV}version`)[0]?.value === version);
+      const found = versionsNumbered(
+        await references(compiled.person),
+        series as string,
+        version as string,
+      );
       if (found.length !== 1)
         throw new Error(
           `references.ttl lists no version "${String(version)}" of "${String(series)}"`,
         );
       happen(compiled, label, undefined, when as string, {
         kind: "reference",
-        name: found[0]?.value ?? "",
+        name: found[0] ?? "",
       });
     },
   ],
@@ -704,646 +933,10 @@ const DEFINITIONS: [string, Act][] = [
       });
     },
   ],
-  [
-    "the pod is read as it stood after {step}",
-    (compiled, [said]) => {
-      compiled.at = {
-        index: compiled.steps.lastIndexOf(
-          named(compiled.steps, said as string),
-        ),
-        lens: "everyday",
-      };
-    },
-  ],
+  ["the pod is read as it stood after {step}", readAfter],
   [
     "the pod is read as it stood after {step}, under the {lens} lens",
-    (compiled, [said, lens]) => {
-      compiled.at = {
-        index: compiled.steps.lastIndexOf(
-          named(compiled.steps, said as string),
-        ),
-        lens: lens as string,
-      };
-    },
-  ],
-
-  // Then: what the pod holds.
-  [
-    "{steps} wrote {count}",
-    (compiled, [said, count], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const wrong = stepsOf(reading, said as string)
-            .filter(({ wrote }) => wrote.length !== count)
-            .map(
-              ({ step, wrote }) =>
-                `${step.name} wrote ${wrote.length} files: ${wrote.join(", ")}`,
-            );
-          return wrong.length === 0 ? undefined : wrong.join("\n");
-        },
-      });
-    },
-  ],
-  [
-    "that step is refused",
-    (compiled, _args, stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const [last] = stepsOf(reading, "that step");
-          return last?.refused === undefined
-            ? `${last?.step.name ?? "the step"} was not refused`
-            : undefined;
-        },
-      });
-    },
-  ],
-  [
-    "the pod holds no revision",
-    (compiled, _args, stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async ({ store }) =>
-          (await store.ask(`ASK { ?revision a <${REC}Revision> }`))
-            ? "the pod holds a revision"
-            : undefined,
-      });
-    },
-  ],
-  [
-    "no file that {steps} wrote names {record}",
-    (compiled, [said, words], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const record = await reading.words.record(words as string);
-          const files = rdfFiles(reading, stepsOf(reading, said as string));
-          if (files.length === 0) return undefined;
-          const naming = await select(
-            reading.store,
-            `SELECT DISTINCT ?file WHERE { ${graphs(files)} GRAPH ?file { { <${record}> ?p ?o } UNION { ?s ?p <${record}> } } }`,
-          );
-          return naming.length === 0
-            ? undefined
-            : `named in ${naming.map(([file]) => file).join(", ")}`;
-        },
-      });
-    },
-  ],
-  [
-    "the pod neither names nor stores the document {name}",
-    (compiled, [path], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const file = `${reading.person.folder}/downloads/${String(path)}`;
-          const bytes = await reading.vocabulary.read(file);
-          if (bytes === undefined) return `${file} does not exist`;
-          const name = await documentName(bytes);
-          const failures: string[] = [];
-          if (
-            await reading.store.ask(
-              `ASK { { GRAPH ?g { { <${name}> ?p ?o } UNION { ?s ?p <${name}> } } } UNION { { <${name}> ?p ?o } UNION { ?s ?p <${name}> } } }`,
-            )
-          )
-            failures.push(`the pod names ${name}`);
-          const stored = new Set(
-            reading.layout.placements
-              .filter(({ storesBytes }) => storesBytes)
-              .map((placement) => placement.path(name)),
-          );
-          for (const { step, wrote } of reading.replayed.steps)
-            for (const written of wrote)
-              if (stored.has(written))
-                failures.push(`${step.name} stored it at ${written}`);
-          return failures.length === 0 ? undefined : failures.join("\n");
-        },
-      });
-    },
-  ],
-  [
-    "{record} has these revisions:",
-    (compiled, [words], stated) => {
-      const fixed = ["arrived", "version", "after"];
-      const fields = fieldsOf(stated, fixed);
-      const rows = table(stated, [...fixed, ...fields]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const record = await reading.words.record(words as string);
-          return compared(
-            rows.map(
-              (row) =>
-                `${cellTime(row.arrived ?? "")} | ${row.version ?? ""}${expectedFields(row, fields)} | ${cellTime(row.after ?? "")}`,
-            ),
-            await revisionsOf(reading, record, fields),
-          );
-        },
-      });
-    },
-  ],
-  [
-    "the records have these revisions:",
-    (compiled, _args, stated) => {
-      const fixed = ["record", "arrived", "version", "after"];
-      const fields = fieldsOf(stated, fixed);
-      const rows = table(stated, [...fixed, ...fields]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const expected: string[] = [];
-          const found: string[] = [];
-          for (const words of new Set(rows.map((row) => row.record ?? ""))) {
-            const record = await reading.words.record(words);
-            found.push(
-              ...(await revisionsOf(reading, record, fields)).map(
-                (row) => `${words} | ${row}`,
-              ),
-            );
-          }
-          for (const row of rows)
-            expected.push(
-              `${row.record ?? ""} | ${cellTime(row.arrived ?? "")} | ${row.version ?? ""}${expectedFields(row, fields)} | ${cellTime(row.after ?? "")}`,
-            );
-          return compared(expected, found);
-        },
-      });
-    },
-  ],
-  [
-    "these records have:",
-    (compiled, _args, stated) => {
-      const rows = table(stated, ["record", "field", "value"]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const expected: string[] = [];
-          const found: string[] = [];
-          for (const row of rows) {
-            const cell = row.value ?? "";
-            if (cell === "") continue;
-            const thing = ["subject", "patient", "influenced by"].includes(
-              row.field ?? "",
-            );
-            expected.push(
-              `${row.record ?? ""} | ${row.field ?? ""} | ${thing ? reading.words.shown(await reading.words.thing(cell)) : cell}`,
-            );
-          }
-          const asked = new Set(
-            rows.map((row) => JSON.stringify([row.record, row.field])),
-          );
-          for (const key of asked) {
-            const [words = "", field = ""] = JSON.parse(key) as string[];
-            const record = await reading.words.record(words);
-            const current = `<${record}> <${PAV}hasCurrentVersion> ?version .`;
-            let values: string[];
-            if (field === "kind") {
-              const types = (
-                await select(
-                  reading.store,
-                  `SELECT ?type WHERE { <${record}> a ?type }`,
-                )
-              ).map(([type]) => type);
-              values = Object.entries(KINDS)
-                .filter(([, type]) => types.includes(type))
-                .map(([kind]) => kind);
-            } else if (field === "version") {
-              const versions = await reading.words.versions(record);
-              values = (
-                await select(
-                  reading.store,
-                  `SELECT ?version WHERE { ${current} }`,
-                )
-              ).map(([version]) => String(versions.indexOf(version ?? "") + 1));
-            } else if (field === "subject") {
-              values = (
-                await select(
-                  reading.store,
-                  `SELECT ?subject WHERE { <${record}> <${REC}subject> ?subject }`,
-                )
-              ).map(([subject]) => reading.words.shown(subject ?? ""));
-            } else {
-              const predicate = {
-                criticality: `${CLINICAL}criticality`,
-                patient: `${REC}patient`,
-                "influenced by": `${PROV}wasInfluencedBy`,
-              }[field];
-              if (predicate === undefined)
-                throw new Error(`"${field}" is no field of a record`);
-              const terms = (
-                await reading.store.select(
-                  `SELECT ?value WHERE { ${current} ?version <${predicate}> ?value }`,
-                )
-              ).rows.map((row) => row.get("value") as Term);
-              values = terms.map((term) =>
-                term.termType === "NamedNode"
-                  ? reading.words.shown(term.value)
-                  : literalShown(term),
-              );
-            }
-            found.push(
-              ...values.map((value) => `${words} | ${field} | ${value}`),
-            );
-          }
-          return compared(expected, found);
-        },
-      });
-    },
-  ],
-  [
-    "the matcher's judgments holding {records} are:",
-    (compiled, [words], stated) => {
-      const rows = table(stated, JUDGMENT_COLUMNS);
-      const columns = JUDGMENT_COLUMNS.filter((column) =>
-        stated.table?.[0]?.includes(column),
-      );
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const held = new Set(await records(reading, words as string));
-          const found = (await matcherJudgments(reading.store)).filter(
-            (judged) => [...judged.members].some((member) => held.has(member)),
-          );
-          return comparedJudgments(reading, rows, found, columns);
-        },
-      });
-    },
-  ],
-  [
-    "the matcher has no judgment holding {records}",
-    (compiled, [words], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const held = new Set(await records(reading, words as string));
-          const found = (await matcherJudgments(reading.store)).filter(
-            (judged) => [...judged.members].some((member) => held.has(member)),
-          );
-          return compared(
-            [],
-            found.map((judged) =>
-              judgmentRow(reading, judged, ["justification", "members"]),
-            ),
-          );
-        },
-      });
-    },
-  ],
-  [
-    "{step} wrote these matcher judgments:",
-    (compiled, [said], stated) => {
-      const rows = table(
-        stated,
-        JUDGMENT_COLUMNS.filter((column) => column !== "at"),
-      );
-      const columns = JUDGMENT_COLUMNS.filter((column) =>
-        stated.table?.[0]?.includes(column),
-      );
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const [step] = stepsOf(reading, said as string);
-          if (step === undefined) return "no such step";
-          const files = rdfFiles(reading, [step]);
-          const failures: string[] = [];
-          const { rows: triples } =
-            files.length === 0
-              ? { rows: [] }
-              : await reading.store.select(
-                  `SELECT ?s ?p ?o WHERE { ${graphs(files)} GRAPH ?file { ?s ?p ?o } }`,
-                );
-          const heldGraph = new Graph(
-            triples.map(
-              (row) =>
-                [row.get("s"), row.get("p"), row.get("o")] as unknown as Triple,
-            ),
-          );
-          const judgments = new Set(
-            heldGraph
-              .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
-              .map(({ value }) => value),
-          );
-          const found = (await matcherJudgments(reading.store)).filter(
-            ({ name }) => judgments.has(name),
-          );
-          const allowed = new Set([
-            `${RDF}type`,
-            `${JDG}verdict`,
-            `${JDG}justification`,
-            `${PROV}wasAttributedTo`,
-            `${PROV}generatedAtTime`,
-            `${PROV}hadMember`,
-            `${PROV}used`,
-          ]);
-          for (const name of judgments) {
-            for (const [, p, o] of heldGraph.match(iri(name)))
-              if (
-                !allowed.has(p.value) ||
-                (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
-              )
-                failures.push(`${name} also states ${p.value} ${written(o)}`);
-            const at = heldGraph
-              .objects(iri(name), `${PROV}generatedAtTime`)
-              .map(({ value }) => shownTime(value));
-            if (at.length !== 1 || at[0] !== shownTime(step.step.when))
-              failures.push(
-                `${name} is made at ${at.join(", ") || "no time"}, not the step's ${step.step.when}`,
-              );
-            if (!found.some((judged) => judged.name === name))
-              failures.push(`${name} is no Same the matcher made`);
-          }
-          for (const subject of heldGraph
-            .subjects(`${RDF}type`)
-            .concat(heldGraph.triples.map(([s]) => s))) {
-            const value = subject.value;
-            if (judgments.has(value)) continue;
-            if (value === THE_MATCHER) {
-              const described = heldGraph
-                .match(iri(THE_MATCHER))
-                .map(([, p, o]) => `${p.value} ${written(o)}`)
-                .sort();
-              const wanted = [
-                `${RDF}type <${PROV}SoftwareAgent>`,
-                `${RDFS}label "Cascade matcher"`,
-              ].sort();
-              if (described.join("\n") !== wanted.join("\n"))
-                failures.push(
-                  `the matcher is described as ${described.join("; ")}`,
-                );
-              continue;
-            }
-            const isReference =
-              heldGraph.match(
-                iri(value),
-                `${RDF}type`,
-                iri(`${REC}ReferenceSeries`),
-              ).length > 0 ||
-              heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
-            if (!isReference) failures.push(`the step also wrote of ${value}`);
-          }
-          const problem = await comparedJudgments(
-            reading,
-            rows,
-            found,
-            columns,
-          );
-          if (problem !== undefined) failures.push(problem);
-          return failures.length === 0
-            ? undefined
-            : [...new Set(failures)].join("\n");
-        },
-      });
-    },
-  ],
-  [
-    "{step} wrote these reference descriptions:",
-    (compiled, [said], stated) => {
-      const rows = table(stated, ["reference"]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const [step] = stepsOf(reading, said as string);
-          if (step === undefined) return "no such step";
-          const files = rdfFiles(reading, [step]);
-          const described =
-            files.length === 0
-              ? []
-              : await select(
-                  reading.store,
-                  `SELECT DISTINCT ?thing WHERE { ${graphs(files)} GRAPH ?file {
-              { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:")) }`,
-                );
-          const expected: string[] = [];
-          for (const row of rows) {
-            const name = await reading.words.reference(row.reference ?? "");
-            if (name === undefined)
-              return `references.ttl names no "${row.reference ?? ""}"`;
-            expected.push(reading.words.shown(name));
-          }
-          const problem = compared(
-            expected,
-            described.map(([thing]) => reading.words.shown(thing ?? "")),
-          );
-          if (problem !== undefined) return problem;
-          const { rows: held } = await reading.store.select(
-            `SELECT ?s ?p ?o WHERE { ${graphs(files)} GRAPH ?file { ?s ?p ?o } }`,
-          );
-          const heldTriples = held.map((row) =>
-            [row.get("s"), row.get("p"), row.get("o")]
-              .map((term) => written(term as Term))
-              .join(" "),
-          );
-          const wrong: string[] = [];
-          for (const [thing] of described) {
-            const wanted = await reading.words.described(thing ?? "");
-            const stated = [
-              ...new Set(
-                heldTriples.filter((triple) =>
-                  triple.startsWith(`<${thing ?? ""}> `),
-                ),
-              ),
-            ];
-            const why = compared(wanted, stated);
-            if (why !== undefined)
-              wrong.push(
-                `${reading.words.shown(thing ?? "")} is not described as references.ttl does:\n${why}`,
-              );
-          }
-          return wrong.length === 0 ? undefined : wrong.join("\n");
-        },
-      });
-    },
-  ],
-  [
-    "{judgment} counts",
-    (compiled, [words], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const judgment = await reading.words.judgment(words as string);
-          return (await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
-          ))
-            ? undefined
-            : "it does not count";
-        },
-      });
-    },
-  ],
-  [
-    "{judgment} does not count",
-    (compiled, [words], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const judgment = await reading.words.judgment(words as string);
-          return (await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
-          ))
-            ? "it counts"
-            : undefined;
-        },
-      });
-    },
-  ],
-  [
-    "the {view} view holds these entries:",
-    (compiled, [view], stated) => {
-      const rows = table(stated, ["members"]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const graph = `${reading.replayed.story.address}${reading.layout.viewsFolder}${String(view)}.ttl`;
-          const expected: string[] = [];
-          const held = new Set<string>();
-          for (const row of rows) {
-            const members = await records(reading, row.members ?? "");
-            members.forEach((member) => held.add(member));
-            expected.push(
-              members
-                .map((member) => reading.words.shown(member))
-                .sort()
-                .join(", "),
-            );
-          }
-          const entries = new Map<string, string[]>();
-          for (const [entry, member] of await select(
-            reading.store,
-            `SELECT ?entry ?member WHERE { GRAPH <${graph}> { ?entry <${MERGED_FROM}> ?member } }`,
-          ))
-            entries.set(entry ?? "", [
-              ...(entries.get(entry ?? "") ?? []),
-              member ?? "",
-            ]);
-          return compared(
-            expected,
-            [...entries.values()]
-              .filter((members) => members.some((member) => held.has(member)))
-              .map((members) =>
-                members
-                  .map((member) => reading.words.shown(member))
-                  .sort()
-                  .join(", "),
-              ),
-          );
-        },
-      });
-    },
-  ],
-  [
-    "the {view} view has no entry",
-    (compiled, [view], stated) => {
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const graph = `${reading.replayed.story.address}${reading.layout.viewsFolder}${String(view)}.ttl`;
-          return (await reading.store.ask(
-            `ASK { GRAPH <${graph}> { ?entry <${MERGED_FROM}> ?member } }`,
-          ))
-            ? "it has an entry"
-            : undefined;
-        },
-      });
-    },
-  ],
-  [
-    "the entry of {record} shows:",
-    (compiled, [words], stated) =>
-      entryShows(compiled, words as string, stated, false),
-  ],
-  [
-    "the entry of {record} shows only:",
-    (compiled, [words], stated) =>
-      entryShows(compiled, words as string, stated, true),
-  ],
-  [
-    "{records} is/are in no view",
-    (compiled, [words], stated) => inNoView(compiled, words as string, stated),
-  ],
-  [
-    "these records are in no view, for these reasons:",
-    (compiled, _args, stated) => {
-      const rows = table(stated, ["record", "reason", "because"]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const expected: string[] = [];
-          const found: string[] = [];
-          for (const row of rows)
-            expected.push(
-              `${row.record ?? ""} | ${row.reason ?? ""} | ${row.because ? reading.words.shown(await reading.words.thing(row.because)) : ""}`,
-            );
-          for (const words of new Set(rows.map((row) => row.record ?? ""))) {
-            const record = await reading.words.record(words);
-            if (
-              await reading.store.ask(
-                `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } }`,
-              )
-            )
-              found.push(`${words} is in a view`);
-            for (const [why, because] of await select(
-              reading.store,
-              `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
-            ))
-              found.push(
-                `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
-              );
-          }
-          return compared(expected, found);
-        },
-      });
-    },
-  ],
-  [
-    "these are named:",
-    (compiled, _args, stated) => {
-      const rows = table(stated, ["thing", "inputs", "name"]);
-      compiled.checks.push({
-        text: stated.text,
-        check: async (reading) => {
-          const failures: string[] = [];
-          for (const row of rows) {
-            if (row.inputs !== undefined && row.inputs !== "") {
-              const why = await entryInputs(
-                reading,
-                row.thing ?? "",
-                row.inputs,
-              );
-              if (why !== undefined) {
-                failures.push(`${row.thing ?? ""}: ${why}`);
-                continue;
-              }
-            }
-            const name = await reading.words.thing(row.thing ?? "");
-            if (name !== row.name)
-              failures.push(
-                `${row.thing ?? ""} is named ${name}, not ${row.name ?? ""}`,
-              );
-          }
-          return failures.length === 0 ? undefined : failures.join("\n");
-        },
-      });
-    },
-  ],
-  [
-    "that step's import is named by a new random UUID",
-    (compiled, _args, stated) =>
-      newRandomUuid(
-        compiled,
-        stated,
-        `?activity a <${PROV}Activity> ; <${PROV}used> ?document`,
-      ),
-  ],
-  [
-    "that step's entry session is named by a new random UUID",
-    (compiled, _args, stated) =>
-      newRandomUuid(
-        compiled,
-        stated,
-        `?activity a <${PROV}Activity> FILTER NOT EXISTS { ?activity <${PROV}used> ?document }`,
-      ),
+    readAfter,
   ],
   [
     "the query is:",
@@ -1353,178 +946,418 @@ const DEFINITIONS: [string, Act][] = [
       compiled.query = stated.docString;
     },
   ],
-  [
-    "it answers:",
-    (compiled, _args, stated) => {
-      const { query } = compiled;
-      if (query === undefined)
-        throw new Error("no query comes before this step");
-      compiled.checks.push({
-        text: stated.text,
-        check: (reading) => queryAnswers(reading, query, stated, false),
-      });
-    },
-  ],
-  [
-    "it answers nothing",
-    (compiled, _args, stated) => {
-      const { query } = compiled;
-      if (query === undefined)
-        throw new Error("no query comes before this step");
-      compiled.checks.push({
-        text: stated.text,
-        check: (reading) => queryAnswers(reading, query, stated, true),
-      });
-    },
-  ],
-];
 
-/**
- * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
- * writes it. The draft's position reaches the pod only through the name, so the name checks it.
- */
-async function entryInputs(
-  reading: Reading,
-  words: string,
-  inputs: string,
-): Promise<string | undefined> {
-  const [subject, start, position] = inputs.split(", ");
-  if (position === undefined || !/^\d+$/.test(position))
-    return `"${inputs}" is no subject, start and position`;
-  const record = await reading.words.record(words);
-  const [first] = await select(
-    reading.store,
-    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
-      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
-  );
-  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
-  const wrong = [
-    ...(held[0] === subject
-      ? []
-      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
-    ...(held[1] === start
-      ? []
-      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
-  ];
-  return wrong.length === 0 ? undefined : wrong.join("; ");
-}
-
-function entryShows(
-  compiled: Compiled,
-  words: string,
-  stated: StatedStep,
-  only: boolean,
-): void {
-  const rows = table(stated, ["field", "value"]);
-  for (const row of rows)
-    if (ENTRY_FIELDS[row.field ?? ""] === undefined)
-      throw new Error(`"${row.field ?? ""}" is no field of an entry`);
-  compiled.checks.push({
-    text: stated.text,
-    check: async (reading) => {
-      const record = await reading.words.record(words);
-      const views = `${reading.replayed.story.address}${reading.layout.viewsFolder}`;
-      const entries = await select(
-        reading.store,
-        `SELECT DISTINCT ?view ?entry WHERE { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } FILTER (STRSTARTS(STR(?view), "${views}")) }`,
+  // Then: what the pod holds.
+  then("{steps} wrote {count}", ([said, count]) => async (reading) => {
+    const wrong = stepsOf(reading, said as string)
+      .filter(({ wrote }) => wrote.length !== count)
+      .map(
+        ({ step, wrote }) =>
+          `${step.name} wrote ${wrote.length} files: ${wrote.join(", ")}`,
       );
-      if (entries.length !== 1)
-        return `${entries.length} entries hold ${words}`;
-      const [[view, entry]] = entries as [[string, string]];
-      const said = (
-        await reading.store.select(
-          `SELECT ?p ?o WHERE { GRAPH <${view}> { <${entry}> ?p ?o } }`,
+    return wrong.length === 0 ? undefined : wrong.join("\n");
+  }),
+  then("that step is refused", () => async (reading) => {
+    const [last] = stepsOf(reading, "that step");
+    return last?.refused === undefined
+      ? `${last?.step.name ?? "the step"} was not refused`
+      : undefined;
+  }),
+  then(
+    "the pod holds no revision",
+    () =>
+      async ({ store }) =>
+        (await store.ask(`ASK { ?revision a <${REC}Revision> }`))
+          ? "the pod holds a revision"
+          : undefined,
+  ),
+  then(
+    "no file that {steps} wrote names {record}",
+    ([said, words]) =>
+      async (reading) => {
+        const record = await reading.words.record(words as string);
+        const naming = valuesOf(
+          await inWritten(
+            reading,
+            stepsOf(reading, said as string),
+            "DISTINCT ?file",
+            `GRAPH ?file { { <${record}> ?p ?o } UNION { ?s ?p <${record}> } }`,
+          ),
+          "file",
+        );
+        return naming.length === 0
+          ? undefined
+          : `named in ${naming.join(", ")}`;
+      },
+  ),
+  then(
+    "the pod neither names nor stores the document {name}",
+    ([path]) =>
+      async (reading) => {
+        const file = `${reading.person.folder}/downloads/${String(path)}`;
+        const bytes = await reading.vocabulary.read(file);
+        if (bytes === undefined) return `${file} does not exist`;
+        const name = await documentName(bytes);
+        const failures: string[] = [];
+        if (
+          await reading.store.ask(
+            `ASK { { GRAPH ?g { { <${name}> ?p ?o } UNION { ?s ?p <${name}> } } } UNION { { <${name}> ?p ?o } UNION { ?s ?p <${name}> } } }`,
+          )
         )
-      ).rows.map(
-        (row) => [row.get("p")?.value ?? "", row.get("o") as Term] as const,
+          failures.push(`the pod names ${name}`);
+        const stored = new Set(
+          reading.layout.placements
+            .filter(({ storesBytes }) => storesBytes)
+            .map((placement) => placement.path(name)),
+        );
+        for (const { step, wrote } of reading.replayed.steps)
+          for (const written of wrote)
+            if (stored.has(written))
+              failures.push(`${step.name} stored it at ${written}`);
+        return failures.length === 0 ? undefined : failures.join("\n");
+      },
+  ),
+  then("{record} has these revisions:", ([words], stated) =>
+    revisionsAre(stated, words as string),
+  ),
+  then("the records have these revisions:", (_args, stated) =>
+    revisionsAre(stated),
+  ),
+  then("these records have:", (_args, stated) => {
+    const rows = table(stated, ["record", "field", "value"]);
+    return async (reading) => {
+      const expected: string[] = [];
+      const found: string[] = [];
+      for (const row of rows) {
+        const cell = row.value ?? "";
+        if (cell === "") continue;
+        expected.push(
+          `${row.record ?? ""} | ${row.field ?? ""} | ${await cellShown(reading, cell, recordField(row.field ?? ""))}`,
+        );
+      }
+      const asked = new Set(
+        rows.map((row) => JSON.stringify([row.record, row.field])),
       );
-      const fields = new Set(rows.map((row) => row.field ?? ""));
+      for (const key of asked) {
+        const [words = "", name = ""] = JSON.parse(key) as string[];
+        const record = await reading.words.record(words);
+        const field = recordField(name);
+        if (field === undefined)
+          throw new Error(`"${name}" is no field of a record`);
+        const subject =
+          field.of === "record"
+            ? `<${record}>`
+            : `<${record}> <${PAV}hasCurrentVersion> ?version . ?version`;
+        const { rows: values } = await reading.store.select(
+          `SELECT ?value WHERE { ${subject} ?p ?value VALUES ?p { ${field.predicates.map((p) => `<${p}>`).join(" ")} } }`,
+        );
+        for (const row of values) {
+          const value = await shown(
+            reading,
+            row.get("value") as Term,
+            field,
+            record,
+          );
+          if (value !== undefined) found.push(`${words} | ${name} | ${value}`);
+        }
+      }
+      return compared(expected, found);
+    };
+  }),
+  then("the matcher's judgments holding {records} are:", ([words], stated) =>
+    judgmentsHolding(
+      words as string,
+      table(stated, JUDGMENT_COLUMNS),
+      JUDGMENT_COLUMNS.filter((column) => stated.table?.[0]?.includes(column)),
+    ),
+  ),
+  then("the matcher has no judgment holding {records}", ([words]) =>
+    judgmentsHolding(words as string, [], ["justification", "members"]),
+  ),
+  then("{step} wrote these matcher judgments:", ([said], stated) => {
+    const rows = table(
+      stated,
+      JUDGMENT_COLUMNS.filter((column) => column !== "at"),
+    );
+    const columns = JUDGMENT_COLUMNS.filter((column) =>
+      stated.table?.[0]?.includes(column),
+    );
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const failures: string[] = [];
+      const heldGraph = await wroteGraph(reading, [step]);
+      const judgments = new Set(
+        heldGraph
+          .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
+          .map(({ value }) => value),
+      );
+      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
+        judgments.has(name),
+      );
+      const allowed = new Set([
+        `${RDF}type`,
+        `${JDG}verdict`,
+        `${JDG}justification`,
+        `${PROV}wasAttributedTo`,
+        `${PROV}generatedAtTime`,
+        `${PROV}hadMember`,
+        `${PROV}used`,
+      ]);
+      for (const name of judgments) {
+        for (const [, p, o] of heldGraph.match(iri(name)))
+          if (
+            !allowed.has(p.value) ||
+            (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
+          )
+            failures.push(`${name} also states ${p.value} ${written(o)}`);
+        const at = heldGraph
+          .objects(iri(name), `${PROV}generatedAtTime`)
+          .map(({ value }) => shownTime(value));
+        if (at.length !== 1 || at[0] !== shownTime(step.step.when))
+          failures.push(
+            `${name} is made at ${at.join(", ") || "no time"}, not the step's ${step.step.when}`,
+          );
+        if (!found.some((judged) => judged.name === name))
+          failures.push(`${name} is no Same the matcher made`);
+      }
+      for (const subject of heldGraph
+        .subjects(`${RDF}type`)
+        .concat(heldGraph.triples.map(([s]) => s))) {
+        const value = subject.value;
+        if (judgments.has(value)) continue;
+        if (value === MATCHER) {
+          const described = heldGraph
+            .match(iri(MATCHER))
+            .map(([, p, o]) => `${p.value} ${written(o)}`)
+            .sort();
+          const wanted = [
+            `${RDF}type <${PROV}SoftwareAgent>`,
+            `${RDFS}label "Cascade matcher"`,
+          ].sort();
+          if (described.join("\n") !== wanted.join("\n"))
+            failures.push(
+              `the matcher is described as ${described.join("; ")}`,
+            );
+          continue;
+        }
+        const isReference =
+          heldGraph.match(
+            iri(value),
+            `${RDF}type`,
+            iri(`${REC}ReferenceSeries`),
+          ).length > 0 ||
+          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
+        if (!isReference) failures.push(`the step also wrote of ${value}`);
+      }
+      const problem = await comparedJudgments(reading, rows, found, columns);
+      if (problem !== undefined) failures.push(problem);
+      return failures.length === 0
+        ? undefined
+        : [...new Set(failures)].join("\n");
+    };
+  }),
+  then("{step} wrote these reference descriptions:", ([said], stated) => {
+    const rows = table(stated, ["reference"]);
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const described = valuesOf(
+        await inWritten(
+          reading,
+          [step],
+          "DISTINCT ?thing",
+          `GRAPH ?file {
+              { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
+            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:"))`,
+        ),
+        "thing",
+      );
+      const expected: string[] = [];
+      for (const row of rows) {
+        const name = await reading.words.reference(row.reference ?? "");
+        if (name === undefined)
+          return `references.ttl names no "${row.reference ?? ""}"`;
+        expected.push(reading.words.shown(name));
+      }
+      const problem = compared(
+        expected,
+        described.map((thing) => reading.words.shown(thing)),
+      );
+      if (problem !== undefined) return problem;
+      const heldTriples = (await wroteGraph(reading, [step])).triples.map(
+        (triple) => triple.map(written).join(" "),
+      );
+      const wrong: string[] = [];
+      for (const thing of described) {
+        const why = compared(
+          await reading.words.described(thing),
+          heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
+        );
+        if (why !== undefined)
+          wrong.push(
+            `${reading.words.shown(thing)} is not described as references.ttl does:\n${why}`,
+          );
+      }
+      return wrong.length === 0 ? undefined : wrong.join("\n");
+    };
+  }),
+  ...[true, false].map((counts) =>
+    then(
+      `{judgment} ${counts ? "counts" : "does not count"}`,
+      ([words]) =>
+        async (reading) => {
+          const judgment = await reading.words.judgment(words as string);
+          const does = await reading.store.ask(
+            `ASK { <${judgment}> <${REC}counts> true }`,
+          );
+          if (does === counts) return undefined;
+          return does ? "it counts" : "it does not count";
+        },
+    ),
+  ),
+  then("the {view} view holds these entries:", ([view], stated) => {
+    const rows = table(stated, ["members"]);
+    return async (reading) => {
+      const expected: string[] = [];
+      const held = new Set<string>();
+      for (const row of rows) {
+        const members = await records(reading, row.members ?? "");
+        members.forEach((member) => held.add(member));
+        expected.push(
+          members
+            .map((member) => reading.words.shown(member))
+            .sort()
+            .join(", "),
+        );
+      }
+      const entries = new Map<string, string[]>();
+      for (const [entry, member] of await selected(
+        reading.store,
+        `SELECT ?entry ?member WHERE { GRAPH <${viewGraph(reading, view)}> { ?entry <${MERGED_FROM}> ?member } }`,
+      ))
+        entries.set(entry ?? "", [
+          ...(entries.get(entry ?? "") ?? []),
+          member ?? "",
+        ]);
+      return compared(
+        expected,
+        [...entries.values()]
+          .filter((members) => members.some((member) => held.has(member)))
+          .map((members) =>
+            members
+              .map((member) => reading.words.shown(member))
+              .sort()
+              .join(", "),
+          ),
+      );
+    };
+  }),
+  then(
+    "the {view} view has no entry",
+    ([view]) =>
+      async (reading) =>
+        (await reading.store.ask(
+          `ASK { GRAPH <${viewGraph(reading, view)}> { ?entry <${MERGED_FROM}> ?member } }`,
+        ))
+          ? "it has an entry"
+          : undefined,
+  ),
+  then("the entry of {record} shows:", entryShows(false)),
+  then("the entry of {record} shows only:", entryShows(true)),
+  then("{records} is/are in no view", ([words]) => async (reading) => {
+    const shown: string[] = [];
+    for (const thing of listed(words as string)) {
+      const name = await reading.words.thing(thing);
+      if (
+        await reading.store.ask(
+          `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${name}> } }`,
+        )
+      )
+        shown.push(thing);
+    }
+    return shown.length === 0 ? undefined : `in a view: ${shown.join(", ")}`;
+  }),
+  then("these records are in no view, for these reasons:", (_args, stated) => {
+    const rows = table(stated, ["record", "reason", "because"]);
+    return async (reading) => {
       const expected: string[] = [];
       const found: string[] = [];
       for (const row of rows)
-        if ((row.value ?? "") !== "") {
-          const { thing = false } = ENTRY_FIELDS[row.field ?? ""] ?? {};
-          expected.push(
-            `${row.field ?? ""} | ${await expectedValue(reading, row.value ?? "", row.field ?? "", thing)}`,
-          );
-        }
-      for (const [predicate, value] of said) {
-        if (predicate === MERGED_FROM) continue;
-        const field = Object.entries(ENTRY_FIELDS).find(([, { predicates }]) =>
-          predicates.includes(predicate),
+        expected.push(
+          `${row.record ?? ""} | ${row.reason ?? ""} | ${row.because ? reading.words.shown(await reading.words.thing(row.because)) : ""}`,
         );
-        if (field === undefined || !fields.has(field[0])) {
-          if (only) found.push(`${predicate} | ${literalShown(value)}`);
-          continue;
-        }
-        found.push(
-          `${field[0]} | ${await shownValue(reading, value, field[0], field[1].thing ?? false)}`,
-        );
-      }
-      return compared(expected, found);
-    },
-  });
-}
-
-function inNoView(compiled: Compiled, words: string, stated: StatedStep): void {
-  compiled.checks.push({
-    text: stated.text,
-    check: async (reading) => {
-      const shown: string[] = [];
-      for (const thing of listed(words)) {
-        const name = await reading.words.thing(thing);
+      for (const words of new Set(rows.map((row) => row.record ?? ""))) {
+        const record = await reading.words.record(words);
         if (
           await reading.store.ask(
-            `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${name}> } }`,
+            `ASK { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } }`,
           )
         )
-          shown.push(thing);
+          found.push(`${words} is in a view`);
+        for (const [why, because] of await selected(
+          reading.store,
+          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
+        ))
+          found.push(
+            `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
+          );
       }
-      return shown.length === 0 ? undefined : `in a view: ${shown.join(", ")}`;
-    },
-  });
-}
-
-function newRandomUuid(
-  compiled: Compiled,
-  stated: StatedStep,
-  pattern: string,
-): void {
-  compiled.checks.push({
-    text: stated.text,
-    check: async (reading) => {
-      const files = rdfFiles(reading, stepsOf(reading, "that step"));
-      const activities =
-        files.length === 0
-          ? []
-          : await select(
-              reading.store,
-              `SELECT DISTINCT ?activity WHERE { ${graphs(files)} GRAPH ?file { ${pattern} } }`,
-            );
-      if (activities.length !== 1)
-        return `the step wrote ${activities.length} of them`;
-      const [[name]] = activities as [[string]];
-      return UUID_V4.test(name)
-        ? undefined
-        : `${name} is no version 4 urn:uuid:`;
-    },
-  });
-}
+      return compared(expected, found);
+    };
+  }),
+  then("these are named:", (_args, stated) => {
+    const rows = table(stated, ["thing", "inputs", "name"]);
+    return async (reading) => {
+      const failures: string[] = [];
+      for (const row of rows) {
+        if (row.inputs !== undefined && row.inputs !== "") {
+          const why = await entryInputs(reading, row.thing ?? "", row.inputs);
+          if (why !== undefined) {
+            failures.push(`${row.thing ?? ""}: ${why}`);
+            continue;
+          }
+        }
+        const name = await reading.words.thing(row.thing ?? "");
+        if (name !== row.name)
+          failures.push(
+            `${row.thing ?? ""} is named ${name}, not ${row.name ?? ""}`,
+          );
+      }
+      return failures.length === 0 ? undefined : failures.join("\n");
+    };
+  }),
+  then(
+    "that step's import is named by a new random UUID",
+    newRandomUuid(`?activity a <${PROV}Activity> ; <${PROV}used> ?document`),
+  ),
+  then(
+    "that step's entry session is named by a new random UUID",
+    newRandomUuid(
+      `?activity a <${PROV}Activity> FILTER NOT EXISTS { ?activity <${PROV}used> ?document }`,
+    ),
+  ),
+  ...[false, true].map((none) =>
+    then(
+      none ? "it answers nothing" : "it answers:",
+      (_args, stated, { query }) => {
+        if (query === undefined)
+          throw new Error("no query comes before this step");
+        return (reading) => queryAnswers(reading, query, stated, none);
+      },
+    ),
+  ),
+];
 
 const EXPRESSIONS = DEFINITIONS.map(
   ([expression, act]) =>
     [new CucumberExpression(expression, registry), act, expression] as const,
 );
 
-/** Every phrase a feature file may use, as runtime/steps.md lists them. */
-export const PHRASES: readonly string[] = DEFINITIONS.map(
-  ([expression]) => expression,
-);
-
 const LABEL = / \(([A-Za-z0-9][\w-]*)\)$/;
 
 /** Compiles one stated step into the example: what it says happened, where the pod is read, or what must hold. */
-export async function compileStep(
+async function compileStep(
   compiled: Compiled,
   stated: StatedStep,
   compiling: Compiling,
@@ -1543,11 +1376,25 @@ export async function compileStep(
         : `"${stated.text}" reads as ${matches.map(({ source }) => source).join(" and as ")}`,
     );
   const [{ act, args }] = matches as [(typeof matches)[number]];
-  await act(
+  const check = await act(
     compiled,
     await Promise.all(args.map((arg) => arg.getValue(null))),
     { ...stated, text },
     compiling,
     label,
   );
+  if (check) compiled.checks.push({ text, check });
+}
+
+/** Compiles an example's steps, or a background's: whose pod it is, what happens to it, where it is read and what must hold. */
+export async function compile(
+  steps: readonly StatedStep[],
+  compiling: Compiling,
+): Promise<Compiled & { readonly person: Person }> {
+  const compiled: Compiled = { steps: [], checks: [] };
+  for (const step of steps) await compileStep(compiled, step, compiling);
+  const { person } = compiled;
+  if (person === undefined)
+    throw new Error("no step creates the example's pod");
+  return Object.assign(compiled, { person });
 }

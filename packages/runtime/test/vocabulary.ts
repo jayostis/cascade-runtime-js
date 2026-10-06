@@ -1,7 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { storyOf } from "../src/conformance.js";
-import { readFeature } from "../src/features.js";
+import { featureStory } from "../src/conformance.js";
 import { Layout } from "../src/layout.js";
 import type { Story } from "../src/story.js";
 import { FolderFiles } from "../src/node/folder-files.js";
@@ -45,31 +44,14 @@ export async function storyFrom(
   example?: string,
   through?: string,
 ): Promise<{ readonly story: Story; readonly folder: string }> {
-  const files = await vocabulary();
-  const read = await readFeature(files, feature);
-  const stated =
-    example === undefined
-      ? read.background
-      : read.examples.find(({ name }) => name === example)?.steps;
-  if (stated === undefined)
-    throw new Error(`${feature} has no example ${example ?? ""}`);
-  const { person, steps } = await storyOf(
-    files,
-    read,
-    stated,
+  const { person, steps } = await featureStory(
+    await vocabulary(),
+    feature,
     () => new OxigraphStore(),
-    await layout(),
+    { example, through },
   );
-  const end =
-    through === undefined
-      ? steps.length
-      : steps.findIndex(({ name }) => name === through) + 1;
   return {
-    story: {
-      address: person.address,
-      subject: person.subject,
-      steps: steps.slice(0, end),
-    },
+    story: { address: person.address, subject: person.subject, steps },
     folder: person.folder,
   };
 }

@@ -6,18 +6,19 @@ import {
   featuresOf,
   readFeature,
 } from "./features.js";
-import { type Files, folderOf, MemoryFiles } from "./files.js";
+import { type Files, folderOf } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
 import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
 import {
+  compile,
   type Compiled,
   type Compiling,
-  compileStep,
   type Reading,
 } from "./phrases.js";
 import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
+import { referenceIndex } from "./references.js";
 import { Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
 import type { Performers } from "./step.js";
@@ -59,6 +60,46 @@ export interface ConformanceOptions {
 const failure = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const ruleOf = (example: Pick<Example, "rule">): string =>
+  example.rule === undefined ? "" : `${example.rule}: `;
+
+/** An example, or a feature file read as one, failed: under its rule, why. */
+const failed = (
+  example: Pick<Example, "iri" | "name" | "rule">,
+  error: unknown,
+): Assertion => ({
+  test: example.iri,
+  name: example.name,
+  outcome: "failed",
+  why: `${ruleOf(example)}${failure(error)}`,
+});
+
+const stopped = ({ step, why }: NonNullable<Replayed["stopped"]>): Error =>
+  new Error(`the replay stopped at step ${step.name}: ${why}`);
+
+/** What the steps of a feature file's examples compile with: its people, and each one's reference index, read once. */
+function compilingOf(
+  vocabulary: Files,
+  people: ReadonlyMap<string, Person>,
+  newStore: StoreFactory,
+  indexes = new Map<string, Promise<Graph>>(),
+): Compiling {
+  return {
+    vocabulary,
+    people,
+    references: (person) => {
+      let found = indexes.get(person.folder);
+      if (found === undefined) {
+        found = referenceIndex(vocabulary, person.folder, (bytes, base) =>
+          newStore().parse(bytes, base),
+        );
+        indexes.set(person.folder, found);
+      }
+      return found;
+    },
+  };
+}
+
 /** One step of a replay, shared by every example that begins with the steps leading to it. */
 interface Node {
   readonly step?: Step;
@@ -83,7 +124,7 @@ interface Root {
 interface Planned {
   readonly example: Example;
   readonly feature: Feature;
-  readonly compiled: Compiled;
+  readonly compiled: Compiled & { readonly person: Person };
   /** The node of each of the example's steps, in order. */
   readonly path: readonly Node[];
 }
@@ -203,9 +244,6 @@ class LazyStore implements Store {
   }
 }
 
-const ruleOf = (example: Example): string =>
-  example.rule === undefined ? "" : `${example.rule}: `;
-
 class Run {
   readonly #options: ConformanceOptions;
   readonly layout: Layout;
@@ -219,37 +257,7 @@ class Run {
 
   compiling(people: ReadonlyMap<string, Person>): Compiling {
     const { vocabulary, newStore } = this.#options;
-    return {
-      vocabulary,
-      people,
-      references: (person) => {
-        let found = this.#references.get(person.folder);
-        if (found === undefined) {
-          const path = `${person.folder}/references/references.ttl`;
-          found = (async () => {
-            const bytes = await vocabulary.read(path);
-            return new Graph(
-              bytes === undefined
-                ? []
-                : await newStore().parse(bytes, vocabulary.iri + path),
-            );
-          })();
-          this.#references.set(person.folder, found);
-        }
-        return found;
-      },
-    };
-  }
-
-  async compile(
-    steps: readonly Example["steps"][number][],
-    compiling: Compiling,
-  ): Promise<Compiled> {
-    const compiled: Compiled = { steps: [], checks: [] };
-    for (const step of steps) await compileStep(compiled, step, compiling);
-    if (compiled.person === undefined)
-      throw new Error("no step creates the example's pod");
-    return compiled;
+    return compilingOf(vocabulary, people, newStore, this.#references);
   }
 
   /** The pod as it stood at the node, under the lens, its steps named as the example names them. */
@@ -262,11 +270,7 @@ class Run {
         replayed === undefined
           ? Promise.reject(new Error("the step was not replayed"))
           : replayed.stopped !== undefined
-            ? Promise.reject(
-                new Error(
-                  `the replay stopped at step ${replayed.stopped.step.name}: ${replayed.stopped.why}`,
-                ),
-              )
+            ? Promise.reject(stopped(replayed.stopped))
             : dataset(
                 replayed,
                 replayed.steps.at(-1)?.step.name ?? "",
@@ -315,10 +319,7 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
-    if (replayed.stopped !== undefined)
-      throw new Error(
-        `the replay stopped at step ${replayed.stopped.step.name}: ${replayed.stopped.why}`,
-      );
+    if (replayed.stopped !== undefined) throw stopped(replayed.stopped);
     const store = new LazyStore(
       () =>
         this.dataset(
@@ -328,7 +329,7 @@ class Run {
         ),
       this.#options.newStore(),
     );
-    const person = compiled.person as Person;
+    const { person } = compiled;
     let handles = this.#handles.get(feature.folder);
     if (handles === undefined) {
       handles = Words.handlesOf(vocabulary, feature.folder);
@@ -356,7 +357,6 @@ class Run {
 
   async outcome(planned: Planned): Promise<Assertion> {
     const { example, compiled, path } = planned;
-    const named = { test: example.iri, name: example.name };
     const at = compiled.at ?? {
       index: compiled.steps.length - 1,
       lens: "everyday",
@@ -368,11 +368,7 @@ class Run {
         throw new Error("the example takes no step to read the pod after");
       reading = await this.#reading(planned, node, at.lens);
     } catch (error) {
-      return {
-        ...named,
-        outcome: "failed",
-        why: `${ruleOf(example)}${failure(error)}`,
-      };
+      return failed(example, error);
     }
     for (const { text, check } of compiled.checks) {
       let why: string | undefined;
@@ -381,14 +377,9 @@ class Run {
       } catch (error) {
         why = failure(error);
       }
-      if (why !== undefined)
-        return {
-          ...named,
-          outcome: "failed",
-          why: `${ruleOf(example)}Then ${text}\n${why}`,
-        };
+      if (why !== undefined) return failed(example, `Then ${text}\n${why}`);
     }
-    return { ...named, outcome: "passed" };
+    return { test: example.iri, name: example.name, outcome: "passed" };
   }
 }
 
@@ -433,12 +424,7 @@ export async function runConformance(
       feature = await readFeature(vocabulary, path);
     } catch (error) {
       const test = vocabulary.iri + path;
-      results.set(test, {
-        test,
-        name: path,
-        outcome: "failed",
-        why: failure(error),
-      });
+      results.set(test, failed({ iri: test, name: path }, error));
       if (isKitStory(path) && options.shapes !== undefined)
         kitFailed(folderOf(path), failure(error));
       continue;
@@ -453,12 +439,7 @@ export async function runConformance(
       );
     } catch (error) {
       for (const example of feature.examples)
-        results.set(example.iri, {
-          test: example.iri,
-          name: example.name,
-          outcome: "failed",
-          why: `${ruleOf(example)}${failure(error)}`,
-        });
+        results.set(example.iri, failed(example, error));
       if (isKitStory(feature.path) && options.shapes !== undefined)
         kitFailed(feature.folder, failure(error));
       continue;
@@ -466,13 +447,12 @@ export async function runConformance(
     const compiling = run.compiling(people);
     for (const example of feature.examples) {
       try {
-        const compiled = await run.compile(example.steps, compiling);
-        const person = compiled.person as Person;
+        const compiled = await compile(example.steps, compiling);
         plans.push({
           example,
           feature,
           compiled,
-          path: grow(rootOf(person, feature), compiled.steps),
+          path: grow(rootOf(compiled.person, feature), compiled.steps),
         });
         results.set(example.iri, {
           test: example.iri,
@@ -480,23 +460,17 @@ export async function runConformance(
           outcome: "inapplicable",
         });
       } catch (error) {
-        results.set(example.iri, {
-          test: example.iri,
-          name: example.name,
-          outcome: "failed",
-          why: `${ruleOf(example)}${failure(error)}`,
-        });
+        results.set(example.iri, failed(example, error));
       }
     }
     if (isKitStory(feature.path) && options.shapes !== undefined) {
       try {
-        const story = await run.compile(feature.background, compiling);
-        const person = story.person as Person;
+        const story = await compile(feature.background, compiling);
         kits.push({
           feature,
-          person,
+          person: story.person,
           names: story.steps.map(({ name }) => name),
-          path: grow(rootOf(person, feature), story.steps),
+          path: grow(rootOf(story.person, feature), story.steps),
         });
       } catch (error) {
         kitFailed(feature.folder, failure(error));
@@ -559,23 +533,41 @@ export function earl(
   return ntriples(triples);
 }
 
-/** The pod an example's steps, or a feature's background, make: whose it is and what happens to it. */
-export async function storyOf(
+/**
+ * The story a feature file tells: its background's steps, or those of the example named, through the step named or
+ * all of them; whose pod it is, and the feature file read.
+ */
+export async function featureStory(
   vocabulary: Files,
-  feature: Feature,
-  steps: readonly Example["steps"][number][],
+  path: string,
   newStore: StoreFactory,
-  layout: Layout,
-): Promise<{ readonly person: Person; readonly steps: readonly Step[] }> {
-  const run = new Run(
-    { vocabulary, newStore, newPod: (address) => new MemoryFiles(address) },
-    layout,
-  );
+  options: { readonly example?: string; readonly through?: string } = {},
+): Promise<{
+  readonly feature: Feature;
+  readonly person: Person;
+  readonly steps: readonly Step[];
+}> {
+  const feature = await readFeature(vocabulary, path);
+  const stated =
+    options.example === undefined
+      ? feature.background
+      : feature.examples.find(({ name }) => name === options.example)?.steps;
+  if (stated === undefined)
+    throw new Error(`${path} has no example "${options.example ?? ""}"`);
   const people = await peopleOf(
     vocabulary,
     feature.folder,
     async (turtle, base) => new Graph(await newStore().parse(turtle, base)),
   );
-  const compiled = await run.compile(steps, run.compiling(people));
-  return { person: compiled.person as Person, steps: compiled.steps };
+  const { person, steps } = await compile(
+    stated,
+    compilingOf(vocabulary, people, newStore),
+  );
+  const end =
+    options.through === undefined
+      ? steps.length
+      : steps.findIndex(({ name }) => name === options.through) + 1;
+  if (end === 0)
+    throw new Error(`${path} has no step ${options.through ?? ""}`);
+  return { feature, person, steps: steps.slice(0, end) };
 }

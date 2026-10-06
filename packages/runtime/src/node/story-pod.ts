@@ -1,5 +1,4 @@
-import { storyOf } from "../conformance.js";
-import { readFeature } from "../features.js";
+import { featureStory } from "../conformance.js";
 import type { Files } from "../files.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { type Replayed, replay, titleOf } from "../replay.js";
@@ -19,31 +18,17 @@ export async function featurePod(
   options: { readonly example?: string; readonly through?: string } = {},
 ): Promise<Replayed> {
   const newStore = () => new OxigraphStore();
-  const feature = await readFeature(vocabulary.files, path);
-  const example =
-    options.example === undefined
-      ? undefined
-      : feature.examples.find(({ name }) => name === options.example);
-  if (options.example !== undefined && example === undefined)
-    throw new Error(`${path} has no example "${options.example}"`);
-  const { person, steps } = await storyOf(
+  const { feature, person, steps } = await featureStory(
     vocabulary.files,
-    feature,
-    example?.steps ?? feature.background,
+    path,
     newStore,
-    vocabulary.layout,
+    options,
   );
-  const end =
-    options.through === undefined
-      ? steps.length
-      : steps.findIndex(({ name }) => name === options.through) + 1;
-  if (end === 0)
-    throw new Error(`${path} has no step ${options.through ?? ""}`);
   const replayed = await replay({
     story: {
       address: person.address,
       subject: person.subject,
-      steps: steps.slice(0, end),
+      steps,
     },
     source: vocabulary.files,
     vocabulary: vocabulary.files,

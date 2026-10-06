@@ -1,10 +1,12 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import { documentName, inUtc, recordName } from "./names.js";
+import { MATCHER } from "./matcher.js";
 import { iri, RDF, written } from "./rdf.js";
+import { referenceIndex, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { REC } from "./step.js";
-import type { Store } from "./store.js";
+import { selected, type Store } from "./store.js";
 
 export const PROV = "http://www.w3.org/ns/prov#";
 export const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
@@ -14,9 +16,6 @@ export const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
-
-/** The matcher, as runtime/steps.md names it. */
-export const THE_MATCHER = "urn:uuid:80bcb9f7-34ae-432b-bd78-ba2616a81f76";
 
 export const KINDS: Readonly<Record<string, string>> = {
   allergy: `${HEALTH}AllergyRecord`,
@@ -168,11 +167,8 @@ export class Words {
     return name;
   }
 
-  async #select(query: string): Promise<string[][]> {
-    const { rows, variables } = await this.#store.select(query);
-    return rows.map((row) =>
-      variables.map((variable) => row.get(variable)?.value ?? ""),
-    );
+  #select(query: string): Promise<string[][]> {
+    return selected(this.#store, query);
   }
 
   async #one(words: string, query: string, what = "thing"): Promise<string> {
@@ -186,16 +182,12 @@ export class Words {
     return this.#remember(words, found[0] ?? "");
   }
 
-  async #references_(): Promise<Graph> {
-    this.#references ??= (async () => {
-      const path = `${this.#person.folder}/references/references.ttl`;
-      const bytes = await this.#vocabulary.read(path);
-      return new Graph(
-        bytes === undefined
-          ? []
-          : await this.#store.parse(bytes, this.#vocabulary.iri + path),
-      );
-    })();
+  #references_(): Promise<Graph> {
+    this.#references ??= referenceIndex(
+      this.#vocabulary,
+      this.#person.folder,
+      (bytes, base) => this.#store.parse(bytes, base),
+    );
     return this.#references;
   }
 
@@ -210,28 +202,18 @@ export class Words {
   /** A reference series by its label, or a version as `<label> version <version>`, as references.ttl names it. */
   async reference(words: string): Promise<string | undefined> {
     const index = await this.#references_();
-    const versioned = /^(.+) version (\S+)$/.exec(words);
-    for (const series of index.subjects(`${RDFS}label`)) {
-      const [label] = index.objects(series, `${RDFS}label`);
-      if (label?.value === words) return this.#remember(words, series.value);
-      if (label?.value !== versioned?.[1]) continue;
-      for (const version of index.subjects(`${PROV}specializationOf`, series)) {
-        const [number] = index.objects(version, `${PAV}version`);
-        if (number?.value === versioned?.[2])
-          return this.#remember(words, version.value);
-      }
-    }
-    return undefined;
-  }
-
-  /** The step of the example by its name. */
-  step(name: string): Replayed["steps"][number] {
-    const found = this.#replayed.steps.filter(({ step }) => step.name === name);
-    if (found.length !== 1)
-      throw new Error(
-        `the example has ${found.length === 0 ? "no" : String(found.length)} step${found.length === 1 ? "" : "s"} named "${name}"`,
+    const series = index
+      .subjects(`${RDFS}label`)
+      .find(
+        (subject) => index.objects(subject, `${RDFS}label`)[0]?.value === words,
       );
-    return found[0] as Replayed["steps"][number];
+    if (series !== undefined) return this.#remember(words, series.value);
+    const versioned = /^(.+) version (\S+)$/.exec(words);
+    const [version] =
+      versioned === null
+        ? []
+        : versionsNumbered(index, versioned[1] ?? "", versioned[2] ?? "");
+    return version === undefined ? undefined : this.#remember(words, version);
   }
 
   async #handle(handle: string): Promise<string | undefined> {
@@ -339,7 +321,7 @@ export class Words {
     const found = (
       await this
         .#select(`SELECT ?judgment (GROUP_CONCAT(STR(?member); separator=" ") AS ?members) WHERE {
-        ?judgment <${PROV}wasAttributedTo> <${THE_MATCHER}> ; <${JDG}justification> <${justification}> ; <${PROV}hadMember> ?member
+        ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${justification}> ; <${PROV}hadMember> ?member
       } GROUP BY ?judgment`)
     ).filter(
       ([, held]) =>
