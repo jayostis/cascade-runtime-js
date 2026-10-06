@@ -3,8 +3,8 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
-import { References } from "./references.js";
-import { type Perform, REC, Refusal, type StepContext } from "./step.js";
+import type { References } from "./references.js";
+import { REC, Refusal, type StepContext } from "./step.js";
 import type { Store } from "./store.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
@@ -234,7 +234,7 @@ const derivations = new WeakMap<Files, Promise<Derivations>>();
  * the default graph of a new store.
  */
 async function view(context: StepContext): Promise<Store> {
-  const { layout, pod, story } = context;
+  const { layout, pod, address } = context;
   let read = derivations.get(context.vocabulary);
   if (read === undefined) {
     read = Derivations.of(context.vocabulary);
@@ -246,7 +246,7 @@ async function view(context: StepContext): Promise<Store> {
     if (!layout.isRdf(path) || rebuilt.has(path)) continue;
     const bytes = await pod.read(path);
     if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
-    await store.loadTurtle(bytes, { graph: story.address + path });
+    await store.loadTurtle(bytes, { graph: address + path });
   }
   await (await read).derive(store, LENS);
   return store;
@@ -272,8 +272,10 @@ class Matcher {
     readonly matched: ReadonlyMap<string, ReadonlySet<string>>,
   ) {}
 
-  static async of(context: StepContext): Promise<Matcher> {
-    const references = await References.of(context);
+  static async of(
+    context: StepContext,
+    references: References,
+  ): Promise<Matcher> {
     const store = await view(context);
     const named = grouped(
       await column(
@@ -396,12 +398,10 @@ class Matcher {
   }
 
   /** Files a Same for each of the subject's records that the activity's first revisions began, in arrival order (M1-M5). */
-  async take(activity: string | undefined): Promise<void> {
+  async take(activity: string): Promise<void> {
     const records = [...this.pod.theirs.values()];
     const taken = records
-      .filter(
-        (record) => activity !== undefined && record.activity === activity,
-      )
+      .filter((record) => record.activity === activity)
       .sort(byArrival);
     const compared = records.filter((record) => !taken.includes(record));
     for (const record of taken) {
@@ -507,12 +507,13 @@ async function read(store: Store, references: References): Promise<Pod> {
   };
 }
 
-/** A matcher run: the records the step it takes made, or, taking none, a recheck. */
-export const runMatcher: Perform = async (context) => {
-  const { happened } = context.step;
-  if (happened.kind !== "matcher")
-    throw new Error("the step is no matcher run");
-  const matcher = await Matcher.of(context);
-  if (happened.takes === undefined) await matcher.recheck();
-  else await matcher.take(context.activities.get(happened.takes));
-};
+/** A matcher run: the records the import or entry session it takes made, or, taking none, a recheck. */
+export async function runMatcher(
+  context: StepContext,
+  references: References,
+  activity?: string,
+): Promise<void> {
+  const matcher = await Matcher.of(context, references);
+  if (activity === undefined) await matcher.recheck();
+  else await matcher.take(activity);
+}

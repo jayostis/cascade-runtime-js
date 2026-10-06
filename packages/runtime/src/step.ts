@@ -1,10 +1,8 @@
 import type { Files } from "./files.js";
 import type { IdsAndTime } from "./ids.js";
-import type { Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
 import type { StoreFactory } from "./store.js";
-import type { Step, StepKind, Story } from "./story.js";
 
 export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 
@@ -15,11 +13,9 @@ export class Refusal extends Error {
 
 /** What a step is performed with. */
 export interface StepContext {
-  readonly story: Story;
-  readonly step: Step;
-  /** The story's own files, which its steps name relative to `folder`. */
-  readonly source: Files;
-  readonly folder: string;
+  /** The pod's address, which every file of it is named from. */
+  readonly address: string;
+  readonly subject: string;
   /** The pod as the steps before this one left it. */
   readonly pod: Files;
   readonly time: IdsAndTime;
@@ -27,20 +23,6 @@ export interface StepContext {
   readonly newStore: StoreFactory;
   /** Where the pod files what a step writes. */
   readonly layout: Layout;
-  /** The importers `cascade-runtime.json` names, in its order. */
-  readonly importers: readonly Importer[];
   /** The vocabulary, whose queries the matcher runs. */
   readonly vocabulary: Files;
-  /** The import or entry session each step before this one made, by the step's name. */
-  readonly activities: ReadonlyMap<string, string>;
-}
-
-/** Performs a step; resolves to the import or entry session it made, if it made one. */
-export type Perform = (context: StepContext) => Promise<string | void>;
-
-export type Performers = Partial<Record<StepKind, Perform>>;
-
-/** The path of a file a step names, within the story's own files. */
-export function inStory(context: StepContext, path: string): string {
-  return context.folder === "" ? path : `${context.folder}/${path}`;
 }

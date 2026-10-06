@@ -1,63 +1,136 @@
-import { fileEntry, fileImport } from "./arrivals.js";
-import { fileJudgment, fileReference } from "./filings.js";
+import { fileEntry, fileExport } from "./arrivals.js";
+import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import { runMatcher } from "./matcher.js";
 import type { Derive } from "./build.js";
 import { built } from "./dataset.js";
 import { StoryTime } from "./ids.js";
 import { type Files, MemoryFiles } from "./files.js";
-import type { Importer } from "./importer.js";
+import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { StepWrites } from "./pod.js";
-import { iri, ntriples, RDF } from "./rdf.js";
-import { type Perform, type Performers, REC, Refusal } from "./step.js";
+import { ntriples } from "./rdf.js";
+import { References } from "./references.js";
+import { SavedOutputBridge } from "./saved-output-bridge.js";
+import { Refusal, type StepContext } from "./step.js";
 import type { StoreFactory } from "./store.js";
-import type { Step, Story } from "./story.js";
+import type { Step, StepKind, Story } from "./story.js";
 
-/**
- * Rule A13: the pod's creation writes the subject as a rec:Subject, the owner's profile, saying who the owner is and
- * where the pod's root and the preferences file are, and the preferences file, saying where the type index is.
- */
-export const fileCreation: Perform = (context) => {
-  const { layout, story, writes } = context;
-  const { subject, address } = story;
-  const type = iri(`${RDF}type`);
-  writes.add(
-    layout.place(`${REC}Subject`).path(subject),
-    ntriples([[iri(subject), type, iri(`${REC}Subject`)]]),
+/** What the replay holds of the story when it performs one of its steps. */
+interface StorySide {
+  /** The story's own files, which its steps name relative to `folder`. */
+  readonly source: Files;
+  readonly folder: string;
+  /** The importers `cascade-runtime.json` names, in its order. */
+  readonly importers: readonly Importer[];
+  /** The import or entry session each step before this one made, by the step's name. */
+  readonly activities: ReadonlyMap<string, string>;
+}
+
+/** Performs a story's step by calling a step with its inputs; resolves to the import or entry session it made, if it made one. */
+export type Perform = (
+  context: StepContext,
+  step: Step,
+  story: StorySide,
+) => Promise<string | void>;
+
+export type Performers = Partial<Record<StepKind, Perform>>;
+
+/** The path of a file a step names, within the story's own files. */
+function inStory(story: StorySide, path: string): string {
+  return story.folder === "" ? path : `${story.folder}/${path}`;
+}
+
+/** A file a step names, named in messages by its path in the story. */
+async function storyFile(
+  story: StorySide,
+  path: string,
+): Promise<{ bytes: Uint8Array; base: string; name: string }> {
+  const at = inStory(story, path);
+  const bytes = await story.source.read(at);
+  if (bytes === undefined)
+    throw new Error(`${story.source.iri}${at} does not exist`);
+  return { bytes, base: story.source.iri + at, name: path };
+}
+
+/** The tables in the person's folder's `references/`. */
+function storyReferences(
+  context: StepContext,
+  story: StorySide,
+): Promise<References> {
+  return References.of(
+    story.source,
+    inStory(story, "references/"),
+    context.newStore,
   );
-  const owner = iri(`${address}${layout.card}#me`);
-  const preferences = iri(address + layout.preferences);
-  writes.add(
-    layout.card,
-    ntriples([
-      [owner, type, iri(`${FOAF}Person`)],
-      [owner, type, iri(`${PROV}Person`)],
-      [owner, iri(`${PIM}storage`), iri(address)],
-      [owner, iri(`${PIM}preferencesFile`), preferences],
-    ]),
-  );
-  writes.add(
-    layout.preferences,
-    ntriples([
-      [preferences, type, iri(`${PIM}ConfigurationFile`)],
-      [owner, iri(`${SOLID}privateTypeIndex`), iri(address + layout.typeIndex)],
-    ]),
-  );
-  return Promise.resolve();
+}
+
+/** An import: its export's documents, converted by the Bridge output the story saved for them. */
+const importSaved: Perform = async (context, { happened }, story) => {
+  if (happened.kind !== "import") throw new Error("the step is no import");
+  const folder = inStory(story, happened.export);
+  const converted = inStory(story, happened.converted);
+  let documents: readonly ExportDocument[] | undefined;
+  for (const importer of story.importers) {
+    try {
+      documents = await importer.documents(story.source, folder);
+    } catch (error) {
+      throw new Refusal(
+        `${folder}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (documents !== undefined) break;
+  }
+  if (documents === undefined)
+    throw new Error(
+      `no importer of ${story.importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
+    );
+  const bridge = await SavedOutputBridge.of(story.source, {
+    export: folder,
+    converted,
+  });
+  const adapter = await bridge.load({
+    iri: `${story.source.iri}${converted}/`,
+    files: new Map(),
+  });
+  try {
+    return await fileExport(context, documents, [adapter]);
+  } finally {
+    await adapter.free();
+  }
 };
 
 export const PERFORMERS: Performers = {
   creation: fileCreation,
-  import: fileImport,
-  entry: fileEntry,
-  judgment: fileJudgment,
-  reference: fileReference,
-  matcher: runMatcher,
+  import: importSaved,
+  entry: async (context, { happened }, story) => {
+    if (happened.kind !== "entry") throw new Error("the step is no entry");
+    return fileEntry(context, await storyFile(story, happened.file));
+  },
+  judgment: async (context, { happened }, story) => {
+    if (happened.kind !== "judgment")
+      throw new Error("the step is no judgment");
+    await fileJudgment(context, await storyFile(story, happened.file));
+  },
+  reference: async (context, { happened }, story) => {
+    if (happened.kind !== "reference")
+      throw new Error("the step is no reference");
+    await fileReference(
+      context,
+      await storyReferences(context, story),
+      happened.name,
+    );
+  },
+  matcher: async (context, { happened }, story) => {
+    if (happened.kind !== "matcher")
+      throw new Error("the step is no matcher run");
+    const references = await storyReferences(context, story);
+    if (happened.takes === undefined) return runMatcher(context, references);
+    const activity = story.activities.get(happened.takes);
+    // A step that made no import or entry session began no records, so there are none to take.
+    if (activity !== undefined)
+      return runMatcher(context, references, activity);
+  },
 };
-const FOAF = "http://xmlns.com/foaf/0.1/";
-const PROV = "http://www.w3.org/ns/prov#";
-const PIM = "http://www.w3.org/ns/pim/space#";
-const SOLID = "http://www.w3.org/ns/solid/terms#";
 
 export interface ReplayedStep {
   readonly step: Step;
@@ -171,19 +244,25 @@ export class Replay {
     time.begin(step.when);
     const writes = new StepWrites();
     try {
-      const activity = await perform({
-        ...options,
-        story: {
-          ...options.story,
-          steps: [...this.#steps.map(({ step: done }) => done), step],
+      const activity = await perform(
+        {
+          address: options.story.address,
+          subject: options.story.subject,
+          pod: this.#pod,
+          time,
+          writes,
+          newStore: options.newStore,
+          layout: options.layout,
+          vocabulary: options.vocabulary,
         },
-        pod: this.#pod,
-        importers: options.importers ?? [],
         step,
-        time,
-        writes,
-        activities: this.#activities,
-      });
+        {
+          source: options.source,
+          folder: options.folder,
+          importers: options.importers ?? [],
+          activities: this.#activities,
+        },
+      );
       const wrote = await writes.commit(this.#pod);
       if (typeof activity === "string") {
         this.#activities.set(step.name, activity);

@@ -19,9 +19,8 @@ import {
 } from "./phrases.js";
 import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { referenceIndex } from "./references.js";
-import { Replay, type Replayed, titleOf } from "./replay.js";
+import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Performers } from "./step.js";
 import type { Store, StoreFactory } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";

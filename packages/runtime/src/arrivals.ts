@@ -25,14 +25,7 @@ import {
   written,
   XSD,
 } from "./rdf.js";
-import { SavedOutputBridge } from "./saved-output-bridge.js";
-import {
-  inStory,
-  type Perform,
-  REC,
-  Refusal,
-  type StepContext,
-} from "./step.js";
+import { REC, Refusal, type StepContext } from "./step.js";
 import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -440,59 +433,22 @@ export async function fileExport(
   return name;
 }
 
-/** The import step of a story: its export's documents, converted by the Bridge output the story saved for them. */
-export const fileImport: Perform = async (context) => {
-  const { happened } = context.step;
-  if (happened.kind !== "import") throw new Error("the step is no import");
-  const folder = inStory(context, happened.export);
-  const converted = inStory(context, happened.converted);
-  let documents: readonly ExportDocument[] | undefined;
-  for (const importer of context.importers) {
-    try {
-      documents = await importer.documents(context.source, folder);
-    } catch (error) {
-      throw new Refusal(
-        `${folder}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (documents !== undefined) break;
-  }
-  if (documents === undefined)
-    throw new Error(
-      `no importer of ${context.importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
-    );
-  const bridge = await SavedOutputBridge.of(context.source, {
-    export: folder,
-    converted,
-  });
-  const adapter = await bridge.load({
-    iri: `${context.source.iri}${converted}/`,
-    files: new Map(),
-  });
-  try {
-    return await fileExport(context, documents, [adapter]);
-  } finally {
-    await adapter.free();
-  }
-};
-
 /** An entry: its session's description, and each draft as a record (N2) with its version and first revision (A12). */
-export const fileEntry: Perform = async (context) => {
-  const { happened } = context.step;
-  if (happened.kind !== "entry") throw new Error("the step is no entry");
-  const path = inStory(context, happened.file);
-  const bytes = await context.source.read(path);
-  if (bytes === undefined)
-    throw new Error(`${context.source.iri}${path} does not exist`);
-  let graph = await parseGraph(
-    bytes,
-    context.source.iri + path,
-    context.newStore,
-  );
+export async function fileEntry(
+  context: StepContext,
+  entry: {
+    readonly bytes: Uint8Array;
+    /** The IRI its Turtle is parsed against. */
+    readonly base: string;
+    /** What its refusals and errors call it. */
+    readonly name: string;
+  },
+): Promise<string> {
+  let graph = await parseGraph(entry.bytes, entry.base, context.newStore);
   const activities = graph.subjects(TYPE, iri(`${PROV}Activity`));
   if (activities.length !== 1)
     throw new Refusal(
-      `${happened.file} holds ${activities.length} activities, not one`,
+      `${entry.name} holds ${activities.length} activities, not one`,
     );
   let [session] = activities as [Triple[0]];
   if (session.value === THIS_ENTRY) {
@@ -510,16 +466,16 @@ export const fileEntry: Perform = async (context) => {
     session = id;
   }
   if (session.termType !== "NamedNode")
-    throw new Refusal(`${happened.file}'s session has no name`);
+    throw new Refusal(`${entry.name}'s session has no name`);
   const [at] = graph.objects(session, STARTED);
   if (at === undefined)
-    throw new Refusal(`${happened.file}'s session has no start`);
+    throw new Refusal(`${entry.name}'s session has no start`);
   let started: string;
   try {
     started = inUtc(at.value);
   } catch (error) {
     throw new Refusal(
-      `${happened.file}'s session's start: ${error instanceof Error ? error.message : String(error)}`,
+      `${entry.name}'s session's start: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const records = new Map<string, NamedNode>();
@@ -528,7 +484,7 @@ export const fileEntry: Perform = async (context) => {
     if (draft.termType === "NamedNode" && position !== undefined)
       records.set(
         draft.value,
-        iri(await recordName([context.story.subject, started, position])),
+        iri(await recordName([context.subject, started, position])),
       );
   }
   const { layout } = context;
@@ -539,7 +495,7 @@ export const fileEntry: Perform = async (context) => {
   );
   if (stated !== sessions)
     throw new Refusal(
-      `${happened.file}: its session states what the layout files in ${stated.folder}, not ${sessions.folder}`,
+      `${entry.name}: its session states what the layout files in ${stated.folder}, not ${sessions.folder}`,
     );
   const revisions = await Revisions.of(context.pod, context.newStore, layout);
   const placeholder = iri(THIS_VERSION);
@@ -551,9 +507,9 @@ export const fileEntry: Perform = async (context) => {
     const record = draft === undefined ? undefined : records.get(draft.value);
     if (draft === undefined || record === undefined)
       throw new Refusal(
-        `${happened.file}: ${draftVersion.value} is the version of no draft`,
+        `${entry.name}: ${draftVersion.value} is the version of no draft`,
       );
-    const { place, kind } = recordPlace(layout, graph, draft, happened.file);
+    const { place, kind } = recordPlace(layout, graph, draft, entry.name);
     const content = graph
       .match(draftVersion)
       .map(([, p, o]): Triple => [
@@ -563,7 +519,7 @@ export const fileEntry: Perform = async (context) => {
       ]);
     const version = await named(
       content,
-      `${happened.file}: ${draftVersion.value}`,
+      `${entry.name}: ${draftVersion.value}`,
     );
     await revisions.revise(
       {
@@ -585,4 +541,4 @@ export const fileEntry: Perform = async (context) => {
     ntriples(graph.closure(session)),
   );
   return session.value;
-};
+}
