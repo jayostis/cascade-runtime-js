@@ -38,9 +38,9 @@ keeping the package and the pods, under `pods/<name>/` (it ships none).
 
 - `npm start` serves the app. An option to an npm script goes after `--`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
-  story into `pods/<name>/`: `alex-rivera`, test data, no real person's.
+  story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from the kit.
   `--through J1` stops after her first export, leaving the rest to `import`.
-- `npm run pod:new <name>` makes an empty pod, for real downloads.
+- `npm run pod:new <name>` makes an empty pod.
 - `npm run pod:reset <name>` removes a pod.
 - `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
 - `npm run console -- [--pod <name>]` opens a REPL with the pod as `pod`.
@@ -57,9 +57,7 @@ which an app writes itself: `pickExport()` returns the folder they chose,
 
 ```js
 import { openPod } from "cascade-runtime";
-let pod = await openPod("pods/mine", { title: "My records" });
-await pod.close();
-pod = await openPod("pods/mine");
+const pod = await openPod("pods/mine", { title: "My records" });
 ```
 
 A missing or empty folder is a new pod, the only time `title` is read;
@@ -67,21 +65,19 @@ A missing or empty folder is a new pod, the only time `title` is read;
 who keeps the pod, `address` a random base its names are made from: no identity
 is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 
-In a browser the same `openPod`, `enter`, `judge`, `match` and `ask` run
-through the same specifier, served with the package's `components/` beside its
-`dist/`; `look` and `import` do not yet, and reject. There a pod's name names
-its IndexedDB database, `cascade-pod:<name>`, and `openPod(name, { from })`
-starts an empty one as a copy of the pod published at the URL `from`, as its
-`files.json` lists it. The address is a name, never the page's. A browser may
+In a browser, the same import, served with the package's `components/` beside
+its `dist/`, runs all but `look` and `import`, which reject. A pod's name names
+its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
+an empty one as a copy of the pod published at the URL `from`, as its
+`files.json` lists it. Its address is a name, never the page's. A browser may
 clear its storage, and the pod with it. The site's `try/` page shows this.
 
 ## Bring in an export
 
-The default flow, on each export the person picks. `look` reads the export's
-index and writes nothing: one source per hospital server, with its `name`,
-`server`, `records` by kind, the times `received`, and `claimed`. Ask the person
-whether the export is theirs; `import` it only after a yes. On a no, call
-nothing: the pod keeps nothing of it.
+On each export the person picks, `look` reads its index and writes nothing: one
+source per hospital server, with its `name`, `server`, `records` by kind, the
+times `received`, and `claimed`. Ask the person whether the export is theirs;
+`import` it only after a yes. On a no, call nothing: the pod keeps none of it.
 
 ```js
 async function recordsBy(question, by) {
@@ -122,13 +118,12 @@ variable name, an unbound variable absent; `entry`, `record`, `profile` and
 `judgment` hold IRIs, which the calls take as they are.
 
 An entry is what an app shows: one allergy, joining its records from every
-source. Show first what the entry states, from a view's question:
-`pod/My active allergies` gives each one's allergen and criticality (the most
-severe its records give), `entry/What it shows` any entry's fields. Its records
-go beneath, as detail where hospitals may disagree (`entry/Where it came from`,
+source. Show it first: read an allergy's criticality and status from
+`pod/My active allergies` (each active, its criticality the most severe its
+records give), never from `entry/What it shows`, whose fields are the latest
+record's. Its records go beneath (`entry/Where it came from`,
 `record/What each version says`). Search the entries in the views, never the
-records: a pod holds records no view shows, another person's or ones entered
-in error.
+records: no view shows another person's records, or ones entered in error.
 
 ```js
 const allergies = await pod.ask("pod/My active allergies");
@@ -247,10 +242,12 @@ const procedure = (pod, name, snomed, performed) =>
     `clinical:procedureDate ${day(performed)}`,
   ]);
 
-async function entered(turtle) {
-  const done = await pod.enter(turtle);
+async function saved(step) {
+  const done = await step;
   if (done.refused) await showPerson(`Not saved: ${done.refused}`);
+  return done.judgment;
 }
+const entered = (turtle) => saved(pod.enter(turtle));
 
 const reaction = 'Hives, then "my throat closed"\nwithin minutes';
 await entered(allergy(pod, { allergen: "Peanuts", reaction }));
@@ -261,9 +258,10 @@ await entered(procedure(pod, "Appendectomy", "80146002", "2012-07-15"));
 
 `criticality` is `low`, `high` or `unable-to-assess`; a condition's `status` is
 `active`, `recurrence`, `relapse`, `inactive`, `remission` or `resolved`; an
-allergen code is an absolute IRI, else `iri()` throws: ask again. `enter` runs
-the matcher. Only a hospital's record gives an entry a status: an entered
-allergy joined to none is in `search`, never in `pod/My active allergies`.
+allergen or condition name is never blank, else `enter` refuses it; an allergen
+code is an absolute IRI, else `iri()` throws. `enter` runs the matcher. Only a
+hospital's record gives an entry a status: an entered allergy joined to none is
+in `search`, never in `pod/My active allergies`.
 
 ## Judge
 
@@ -305,44 +303,44 @@ const erroneous = (pod, record, reason) =>
 const retraction = (pod, earlier, reason) =>
   judgment(pod, reason, [`npx:retracts <${earlier}>`]);
 
-async function judged(turtle) {
-  const done = await pod.judge(turtle);
-  if (done.refused) await showPerson(`Not saved: ${done.refused}`);
-  return done.judgment;
-}
+const judged = (turtle) => saved(pod.judge(turtle));
 const inEntry = await recordsBy("record/Which entry shows it", "entry");
-const joinedIn = (rows) => inEntry(rows.find((row) => row.records > 1)?.entry);
-const oneAllergy = joinedIn(allergies);
-const counting = await pod.ask("judgment/Whether it counts");
-const machineSame = (await pod.ask("judgment/Who judged what")).find(
-  (row) =>
-    row.author !== pod.owner &&
-    row.verdict?.endsWith("#Same") &&
-    oneAllergy.includes(row.member) &&
-    counting.some((c) => c.judgment === row.judgment && c.counts === "true"),
-);
-if (machineSame)
-  await judged(sameInstead(pod, oneAllergy, machineSame.judgment, "confirmed"));
-
-const shot = joinedIn(await pod.ask("pod/My immunizations"));
-if (shot.length > 0) await judged(different(pod, shot, "two shots"));
-
-const [mine] = await search("high blood pressure");
-const [theirs] = await search("hypertension");
-if (mine && theirs) {
-  const pair = [...inEntry(mine.entry), ...inEntry(theirs.entry)];
-  const joined = await judged(same(pod, pair, "the same blood pressure"));
-  if (joined) await judged(retraction(pod, joined, "my doctor disagrees"));
+const oneAllergy = inEntry(allergies.find((row) => row.records > 1)?.entry);
+async function machineJoins() {
+  const counts = await pod.ask("judgment/Whether it counts");
+  const said = await pod.ask("judgment/Who judged what");
+  const joins = new Map();
+  for (const { judgment: j, author, verdict, member } of said)
+    if (author !== pod.owner && verdict?.endsWith("#Same"))
+      if (counts.some((c) => c.judgment === j && c.counts === "true"))
+        joins.set(j, [...(joins.get(j) ?? []), member]);
+  return joins;
 }
+for (const [machineSame, records] of await machineJoins())
+  if (records.some((one) => oneAllergy.includes(one)))
+    await judged(sameInstead(pod, oneAllergy, machineSame, "confirmed"));
+
+async function sameAs(word, other, reason) {
+  const [[mine], [theirs]] = [await search(word), await search(other)];
+  if (!mine || !theirs) return undefined;
+  const pair = [...inEntry(mine.entry), ...inEntry(theirs.entry)];
+  return judged(same(pod, pair, reason));
+}
+const joined = await sameAs("high blood pressure", "hypertension", "same");
+if (joined) await judged(retraction(pod, joined, "my doctor disagrees"));
+await sameAs("bronchitis", "asthma", "the chest problem was my asthma");
 
 const neverHad = inEntry((await search("back pain"))[0]?.entry);
 for (const one of neverHad) await judged(erroneous(pod, one, "never had it"));
 ```
 
-`sameInstead` confirms the matcher's join, so it rests on the person. A
-Different wins over a Same, though a later record can join its members again.
-An Erroneous record leaves every view. A judgment is never edited: a retraction
-takes one back. `jdg:OwnerStatement` is the one basis a person states.
+A Same or Different names the records the person means, typically two: "the new
+asthma record is not the same as the old one". Offer it per record or pair
+inside an entry, never one Different over a whole group, which overrides the
+person's own Sames. A Different wins over a Same, though a later record can
+rejoin them. `sameInstead` rests the matcher's join on the person. An Erroneous
+record leaves every view. A retraction takes a judgment back; none is edited.
+`jdg:OwnerStatement` is the one basis a person states.
 
 ## When an export holds someone else's records
 
@@ -351,13 +349,13 @@ look shows claimed, and `import` claims that profile too. Only `claimed`, shown
 to the person, catches it: retract the About of any profile not theirs.
 
 ```js
+const isMine = (profile, naming) =>
+  askPerson("Are these your records?", { profile, records: naming(profile) });
 async function confirmClaims(imported) {
   const naming = await recordsBy("profile/Which records name it", "profile");
-  for (const { profile, judgment: claim } of imported?.claimed ?? []) {
-    const records = naming(profile);
-    if (!(await askPerson("Are these your records?", { profile, records })))
+  for (const { profile, judgment: claim } of imported?.claimed ?? [])
+    if (!(await isMine(profile, naming)))
       await judged(retraction(pod, claim, "these are someone else's records"));
-  }
 }
 
 await confirmClaims(await bringIn(pickExport()));
@@ -368,29 +366,23 @@ await confirmClaims(await bringIn(pickExport()));
 After the yes, `import` with `{ match: false }` only files, and without
 `aboutSubject` claims nothing, so each profile is asked about alone: claim each
 `unclaimed` one with an About, then `match` the import's `activity`; `match()`
-rechecks the pod. Then show `entry/What needs review`. `replayKit`, behind
-`npm run pod:load`, is for tests, never code the app runs: it fills an empty
-folder with a kit's story, one `{ step, kind, wrote, refused }` per step, `kind`
-one of `creation`, `import`, `entry`, `judgment`, `reference` or `matcher`.
+rechecks the pod. Then offer each counting join of the matcher's, a pair at a
+time, filing a Different over a pair the person says no to. `replayKit`, behind
+`npm run pod:load`, fills an empty folder with a kit's story, for tests only.
 
 ```js
 const fileOnly = { aboutSubject: false, match: false };
 const filed = await bringIn(pickExport(), fileOnly);
 const naming = await recordsBy("profile/Which records name it", "profile");
-for (const profile of filed?.unclaimed ?? []) {
-  const records = naming(profile);
-  if (await askPerson("Are these your records?", { profile, records }))
-    await judged(about(pod, profile));
-}
+for (const profile of filed?.unclaimed ?? [])
+  if (await isMine(profile, naming)) await judged(about(pod, profile));
 if (filed?.activity) await pod.match(filed.activity);
 await pod.match();
-const showing = await recordsBy("record/Which entry shows it", "entry");
-for (const { entry, needs } of await pod.ask("entry/What needs review")) {
-  if (needs !== "judged different, still joined") continue;
-  const records = showing(entry);
-  if (await askPerson("Are all of these different?", records))
-    await judged(different(pod, records, "each of these is its own"));
-}
+for (const records of (await machineJoins()).values())
+  for (const [i, one] of records.entries())
+    for (const other of records.slice(i + 1))
+      if (!(await askPerson("Are these the same?", [one, other])))
+        await judged(different(pod, [one, other], "not the same"));
 await pod.close();
 
 import { replayKit } from "cascade-runtime/fixtures"; // in a test only
@@ -405,4 +397,4 @@ await her.close();
 - The matcher's tables are alpha test tables: a real export gets few joins.
 - Alex's story runs into 2027: a record entered today orders before hers.
 - Node 22 or later, the pod in a folder or in memory; each call rebuilds its views.
-- No server, sign-in or sharing, and not for a real person's records.
+- No server, sign-in or sharing.

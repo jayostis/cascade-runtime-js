@@ -5,8 +5,8 @@ commands to load, make, remove and ask pods. It depends only on
 `cascade-runtime`, which keeps the pods; this app never writes a pod's files
 itself.
 
-Alex Rivera, and every person in the kits the package carries, is made up. No
-real person's records belong here.
+Alex Rivera, whose pod `pod:load alex-rivera` loads, is the person of the kit
+the package carries, made up for it.
 
 ## Start
 
