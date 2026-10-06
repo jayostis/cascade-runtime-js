@@ -1,17 +1,17 @@
 # For an agent building on this app
 
-This is an app on a Cascade pod: `server.mjs` serves a page per pod, and the
-commands in `package.json` load, make, remove and ask pods under `pods/`. It
-depends only on `cascade-runtime`, which opens a pod and is the only thing that
-reads or writes one.
+This app was made from the Cascade starter. It is a demonstration, not a
+foundation: rebuild it in any framework. What carries over is
+`cascade-runtime`, which keeps the pods, and the pods under `pods/<name>/`. It
+starts with none: `npm run pod:load alex-rivera` loads Alex Rivera's, made-up
+test data and no real person's.
 
-- With no pod in `pods/`, run `npm run pod:load alex-rivera` first: it loads
-  Alex Rivera's pod, made-up records from two hospitals that disagree.
-- `npm start` serves the app at <http://127.0.0.1:3000/>.
-- `npm run ask -- [--pod <name>] "<question>"` prints a question's rows;
-  `npm run console -- [--pod <name>]` gives a REPL with the pod as `pod`.
-- An option to an npm script goes after `--`.
+Before changing the app, read the full guide, the version matching the package
+installed: `node_modules/cascade-runtime/guide/AGENTS.md`.
 
-Never write a pod's files, parse its Turtle or name a thing yourself: call
-`cascade-runtime`. The full guide, matching the version installed, is
-`node_modules/cascade-runtime/guide/AGENTS.md`. Read it before changing the app.
+An app never:
+
+- writes a pod's files, or reads them but through `ask`;
+- parses Turtle: it asks a question instead;
+- names a thing: it uses the guide's placeholders and the IRIs calls return;
+- claims an export without asking the person.
