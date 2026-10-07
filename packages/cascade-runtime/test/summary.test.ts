@@ -134,7 +134,8 @@ test("every box's first link, outside the box, closes it", () => {
   for (const box of boxes) {
     const first = /<a [^>]*>/.exec(box)?.[0] ?? "";
     assert.match(first, / href="#"/, box.slice(0, 80));
-    assert.match(first, / aria-label="Close"/, box.slice(0, 80));
+    assert.match(first, / class="backdrop"/, box.slice(0, 80));
+    assert.match(first, / aria-label="Close the box"/, box.slice(0, 80));
     assert.ok(
       box.indexOf(first) < box.indexOf('<div class="box'),
       box.slice(0, 80),

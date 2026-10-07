@@ -339,7 +339,7 @@ export function opening(section, rows) {
 }
 
 /** A dialog's first link: it covers the page behind the box, so a click outside the box closes it. */
-const BACKDROP = `<a class="backdrop" href="#" aria-label="Close" tabindex="-1"></a>`;
+const BACKDROP = `<a class="backdrop" href="#" aria-label="Close the box" tabindex="-1"></a>`;
 
 /**
  * The section's tile, a link that opens its dialog, and the dialog: a filter box and a table, a heading button per
@@ -811,16 +811,18 @@ form.inline { display: inline; }
 /**
  * In a page, under `root`: a heading sorts its table by its column, one way then the other, and a filter box hides the
  * rows without its text. It listens on `root`, so tables written into it later sort and filter too. Escape closes the
- * open box, as its close link does; that listener is the document's, and leaves once `root` is no longer in the page.
+ * open box, as its close link does; that listener is the document's, added once however often this runs on it.
  */
 export function sortAndFilter(root, by = compare) {
   const page = root.ownerDocument ?? root;
-  const escape = (event) => {
-    if (!root.isConnected) return page.removeEventListener("keydown", escape);
-    const { location } = page.defaultView;
-    if (event.key === "Escape" && location.hash !== "") location.hash = "";
-  };
-  page.addEventListener("keydown", escape);
+  if (!page.closesOnEscape) {
+    page.closesOnEscape = true;
+    page.addEventListener("keydown", (event) => {
+      const { location } = page.defaultView;
+      if (event.isComposing || event.defaultPrevented) return;
+      if (event.key === "Escape" && location.hash !== "") location.hash = "";
+    });
+  }
   root.addEventListener("click", (event) => {
     const button = event.target.closest?.("th button");
     if (!button) return;
