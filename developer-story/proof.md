@@ -54,15 +54,13 @@ Then, per idea:
   Pod line is then untested.
 - **Writing:** in `my-app/`, run `npm run pod:load -- alex-rivera --through M3`
   (her pod after her son's download, E10, and before its mistaken claim, J22),
-  then copy x-e12, as a person puts their phone's download there:
+  then copy x-e12 into it, as a person puts their phone's download there:
 
   ```sh
-  cp -r node_modules/cascade-runtime/components/cascade-vocabulary/<commit>/conformance/alex-rivera/scripted-input/alex/downloads/x-e12/apple_health_export .
+  npm run kit:export -- alex-rivera x-e12
   ```
 
-  `<commit>` is the vocabulary commit this app's `packed.json` records (the
-  only folder under `cascade-vocabulary/`). x-e12 is the one thing left to bring
-  in.
+  x-e12 is the one thing left to bring in.
 
 Start a new session of the agent **in the folder that holds `my-app/`**, not
 inside it, as the page and the command say. Turn its web search and web fetch

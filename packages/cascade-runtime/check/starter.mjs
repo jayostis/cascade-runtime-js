@@ -4,9 +4,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { get } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
 import { URL } from "node:url";
 import { parseArgs } from "node:util";
@@ -75,6 +75,8 @@ function run(command, args, options = {}) {
 }
 
 const npm = (...args) => run(execPath, [NPM, ...args]);
+const components = () =>
+  join(app, "node_modules", "cascade-runtime", "components");
 
 /** The question's rows as `npm run ask` prints them. */
 async function asked(question, pod) {
@@ -222,8 +224,7 @@ await behaviour("the command makes the app", async () => {
     );
     assert.equal(manifest.dependencies["cascade-runtime"], address);
   }
-  const components = join(app, "node_modules", "cascade-runtime", "components");
-  const vocabulary = await vocabularyOf(await packed(components));
+  const vocabulary = await vocabularyOf(await packed(components()));
   const kit = (through) =>
     featureStory(
       vocabulary.files,
@@ -352,6 +353,37 @@ if (release === undefined) {
       `alex-rivera-${story.through.toLowerCase()}`,
     ])
       assert.ok(err.includes(name), `ask does not name ${name}`);
+  });
+
+  await behaviour("a kit's download is copied whole", async () => {
+    const commit = (await readdir(join(components(), "cascade-vocabulary")))[0];
+    const source = join(
+      components(),
+      "cascade-vocabulary",
+      commit,
+      `${KIT}/scripted-input/alex/downloads/x-e12/apple_health_export`,
+    );
+    const filesIn = async (folder) =>
+      (await readdir(folder, { recursive: true, withFileTypes: true }))
+        .filter((entry) => entry.isFile())
+        .map((entry) => relative(folder, join(entry.parentPath, entry.name)))
+        .sort();
+    assert.equal(
+      (await npm("run", "kit:export", "--", "alex-rivera", "x-e12")).code,
+      0,
+    );
+    const copied = await filesIn(join(app, "apple_health_export"));
+    assert.ok(copied.length > 0, "x-e12 holds no files");
+    assert.deepEqual(copied, await filesIn(source));
+    const { code, err } = await npm(
+      "run",
+      "kit:export",
+      "--",
+      "alex-rivera",
+      "x-e12",
+    );
+    assert.equal(code, 2);
+    assert.ok(err.includes("apple_health_export exists already"));
   });
 
   await behaviour("the console evaluates await", async () => {
