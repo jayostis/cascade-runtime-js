@@ -71,7 +71,8 @@ async function busy(saying, step) {
     document.body.dataset.state = "error";
   } finally {
     for (const button of document.querySelectorAll("button"))
-      button.disabled = false;
+      button.disabled =
+        pod === undefined && button.classList.contains("sign-in");
   }
 }
 
@@ -120,6 +121,10 @@ startOver.addEventListener("click", () =>
       const deleting = indexedDB.deleteDatabase(`cascade-pod:${POD}`);
       deleting.onsuccess = () => resolve();
       deleting.onerror = () => reject(deleting.error);
+      deleting.onblocked = () => {
+        status.textContent =
+          "Close this page in your other tabs to start over.";
+      };
     });
     pod = await openPod(POD);
     pulled.replaceChildren();

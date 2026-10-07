@@ -38,8 +38,9 @@ export function popupSignIn(options: PopupOptions = {}): SignIn {
   return (authorize, signal) =>
     new Promise<URL>((resolve, reject) => {
       const popup =
-        options.popup ??
-        window.open("", "cascade-sign-in", "popup,width=520,height=720");
+        options.popup === undefined
+          ? window.open("", "cascade-sign-in", "popup,width=520,height=720")
+          : options.popup;
       if (popup === null) {
         reject(
           new ConnectionFailure(
@@ -66,16 +67,20 @@ export function popupSignIn(options: PopupOptions = {}): SignIn {
           reject(new ConnectionFailure("cancelled", "the sign-in was stopped")),
         );
       window.addEventListener("message", onMessage);
+      // The return page posts and then closes itself, and its message is a task of its own: a popup seen closed is a
+      // cancellation only once it is still closed, with no message, on the next look.
+      let seenClosed = false;
       const watching = setInterval(() => {
-        if (popup.closed)
-          finish(() =>
-            reject(
-              new ConnectionFailure(
-                "cancelled",
-                "the person closed the sign-in",
-              ),
-            ),
-          );
+        if (!popup.closed) return;
+        if (!seenClosed) {
+          seenClosed = true;
+          return;
+        }
+        finish(() =>
+          reject(
+            new ConnectionFailure("cancelled", "the person closed the sign-in"),
+          ),
+        );
       }, CLOSED_POLL_MS);
       if (signal?.aborted) {
         onAbort();

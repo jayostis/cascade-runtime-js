@@ -44,7 +44,12 @@ async function bundled(
  */
 export async function connectFiles(): Promise<Map<string, Uint8Array>> {
   const encoder = new TextEncoder();
-  const hospitals = await loadHospitals();
+  const [hospitals, app, worker, workerPage] = await Promise.all([
+    loadHospitals(),
+    readFile(APP),
+    bundled("worker.js", "iife"),
+    bundled("page.js", "esm"),
+  ]);
   const files = new Map<string, Uint8Array>([
     [
       "index.html",
@@ -58,10 +63,10 @@ export async function connectFiles(): Promise<Map<string, Uint8Array>> {
         ),
       ),
     ],
-    ["app.js", await readFile(APP)],
+    ["app.js", app],
     [SIGNED_IN, encoder.encode(signedInPage())],
-    [WORKER, await bundled("worker.js", "iife")],
-    [WORKER_PAGE, await bundled("page.js", "esm")],
+    [WORKER, worker],
+    [WORKER_PAGE, workerPage],
   ]);
   for (const loaded of hospitals.values())
     files.set(

@@ -13,7 +13,7 @@ import {
   pullFiles,
   type Row,
 } from "cascade-runtime";
-import { demoFetch } from "@cascade-runtime/demo-hospital";
+import { demoFetch, hospitalId } from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { type Served, servePages } from "../src/node/serve.js";
@@ -63,8 +63,9 @@ async function expected(): Promise<{
   allergies: string[][];
   medications: string[][];
 }> {
-  const hospitals = await loadHospitals();
-  const north = hospitals.get(NORTH);
+  const north = [...(await loadHospitals()).values()].find(
+    (loaded) => hospitalId(loaded) === NORTH,
+  );
   assert.ok(north);
   const fetch = demoFetch([{ ...north, autoApprove: A_NORTH }]);
   const connection = await connect(
@@ -170,9 +171,10 @@ test("connect/ signs in to North in a popup through the page's own service worke
   );
 
   const cancelled = await signIn();
+  const cancelledCloses = cancelled.waitForEvent("close");
   await cancelled.click('button[value="cancel"]');
   assert.match((await settled(page)).status, /\(cancelled\)/);
-  assert.ok(cancelled.isClosed());
+  await cancelledCloses;
 
   const closed = await signIn();
   await closed.close();
