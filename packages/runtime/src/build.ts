@@ -20,8 +20,8 @@ export interface PodState {
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
   readonly title: string;
-  /** The views the pod already holds, each written again though it holds no entry now. */
-  readonly views?: readonly string[];
+  /** The files the pod holds: each view among them is written again though it holds no entry now. */
+  readonly files: readonly string[];
 }
 
 /** Adds the lens's derived state, and the files built from it, to a store holding a pod; returns those files. */
@@ -52,13 +52,16 @@ function marked(
 }
 
 /**
- * The type index of a pod at `address`: a registration for each view written, and one for the views' folder, each
- * named for the file or folder it registers, with its class, its file or folder, and its title.
+ * The type index of a pod at `address`: a registration for each view written, by default each the layout lists, and
+ * one for the views' folder, each named for the file or folder it registers, with its class, its file or folder, and
+ * its title.
  */
 export function typeIndex(
   address: string,
   layout: Layout,
-  written: ReadonlySet<string>,
+  written: ReadonlySet<string> = new Set(
+    layout.views.flatMap(({ file }) => file ?? []),
+  ),
 ): Triple[] {
   const index = address + layout.typeIndex;
   const folder = layout.viewsPlacement;
@@ -155,10 +158,16 @@ export async function vocabularyBuild(
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
     const used = rows.flatMap((row) => row.get("version")?.value ?? []);
-    const held = new Set<string>(pod.views);
-    for (const { file, kind } of layout.views)
-      if (await store.ask(`ASK { ?record a <${kind ?? ""}> }`))
-        held.add(file ?? "");
+    const held = new Set(pod.files.filter((path) => views.includes(path)));
+    const unheld = layout.views.filter(({ file }) => !held.has(file ?? ""));
+    if (unheld.length > 0) {
+      const { rows: kinds } = await store.select(
+        `SELECT DISTINCT ?kind WHERE { VALUES ?kind { ${unheld.map(({ kind }) => `<${kind}>`).join(" ")} } ?record a ?kind }`,
+      );
+      const found = new Set(kinds.map((row) => row.get("kind")?.value));
+      for (const { file, kind } of unheld)
+        if (found.has(kind)) held.add(file ?? "");
+    }
     const files = new Map<string, readonly Triple[]>();
     const add = async (path: string, triples: readonly Triple[]) => {
       files.set(path, triples);

@@ -44,6 +44,13 @@ const CODES: Readonly<Record<string, (code: string) => string>> = {
   CVX: (code) => `?version <${HEALTH}vaccineCode> ${JSON.stringify(code)}`,
 };
 
+const either = (words: readonly string[]): string =>
+  words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+
+const SAID = new RegExp(
+  `^(${either(Object.keys(KINDS))})(?: (${either(Object.keys(CODES))}) (\\S+))?(?: "([^"]*)")?(?: from (\\S+))?$`,
+);
+
 const NAMES = [
   `${HEALTH}allergen`,
   `${HEALTH}conditionName`,
@@ -293,10 +300,7 @@ export class Words {
   async record(words: string): Promise<string> {
     const handled = await this.#handle(words);
     if (handled !== undefined) return this.#remember(words, handled);
-    const said =
-      /^(allergy|condition|immunization|procedure|medication|lab result)(?: (SNOMED|RxNorm|LOINC|CVX) (\S+))?(?: "([^"]*)")?(?: from (\S+))?$/.exec(
-        words,
-      );
+    const said = SAID.exec(words);
     if (said === null || (said[2] === undefined && said[4] === undefined))
       throw new Error(`"${words}" names no record`);
     const [, kind, system, code, name, source] = said;
