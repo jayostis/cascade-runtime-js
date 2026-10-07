@@ -4,6 +4,8 @@ export interface DirectoryRow {
   readonly vendor: string;
   /** The FHIR base, over `https:`: what names every record pulled from it. */
   readonly fhirBase: string;
+  /** The towns or regions a person would search for it by, as `"Bellingham, WA"`. */
+  readonly places?: readonly string[];
 }
 
 /** Who the app is at one vendor, in one environment. */
