@@ -12,19 +12,15 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         document: "readonly",
+        DOMParser: "readonly",
+        fetch: "readonly",
         FormData: "readonly",
-        indexedDB: "readonly",
-      },
-    },
-  },
-  {
-    files: ["packages/site/connect/**/*.js"],
-    languageOptions: {
-      globals: {
-        document: "readonly",
+        history: "readonly",
         indexedDB: "readonly",
         location: "readonly",
+        requestAnimationFrame: "readonly",
         URL: "readonly",
+        URLSearchParams: "readonly",
         window: "readonly",
       },
     },

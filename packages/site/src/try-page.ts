@@ -1,46 +1,56 @@
 import { Html, markup } from "./html.js";
-import { STYLESHEET_FILE } from "./site.js";
 
 /** Where the page finds the package's browser build, beside it. */
 export const TRY_PACKAGE = "cascade-runtime/";
+/** The view the page renders, the starter's `summary.mjs`, beside the page as `.js`, a name every server types. */
+export const SUMMARY = "summary.js";
+/** The demo hospitals' worker, its page side and its data, beside the page, so the worker's scope is the page's folder. */
+export const WORKER = "demo-hospital-worker.js";
+export const WORKER_PAGE = "demo-hospitals.js";
+export const WORKER_DATA = "demo-hospitals/";
+export const SIGNED_IN = "signed-in.html";
+/** Every person the demo hospitals hold, with the hospitals that hold them, as the view's `demoPeople` gives them. */
+export const PEOPLE = "demo-people.json";
 
-/** The page that opens a copy of the example's published pod in the browser, named by the kit's title. */
-export function tryPage(title: string): string {
+function head(title: string): Html {
   const imports = JSON.stringify({
     imports: { "cascade-runtime": `./${TRY_PACKAGE}dist/browser/index.js` },
   });
+  return markup`<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>${title}</title>
+<script type="importmap">${new Html(imports)}</script>`;
+}
+
+/**
+ * The page that keeps pods in the browser and shows each as a person reads it; its app writes everything it shows,
+ * and offers to load a copy of each published pod in `samples`, by its folder.
+ */
+export function tryPage(samples: readonly string[]): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}'s pod in your browser</title>
-<link rel="stylesheet" href="../${STYLESHEET_FILE}">
-<script type="importmap">${new Html(imports)}</script>
+${head("Cascade in your browser")}
 <script type="module" src="app.js"></script>
 </head>
-<body data-state="opening">
-<main>
-<h1>${title}'s pod in your browser</h1>
-<p class="prose">This is a copy of ${title}'s published pod, kept in this browser's own storage. Nothing you add here
-leaves the browser.</p>
-<p class="prose" id="status" role="status">Opening the pod…</p>
-<h2 class="part">Active allergies</h2>
-<table id="active">
-<thead><tr><th>Allergen</th><th>Criticality</th></tr></thead>
-<tbody></tbody>
-</table>
-<h2 class="part">Add an allergy</h2>
-<form id="add">
-<label>Allergen <input name="allergen" required autocomplete="off"></label>
-<button type="submit">Add an allergy</button>
-</form>
-<p class="prose">Only a hospital's record gives an allergy a status, so an allergy you add is never among the active
-ones above.</p>
-<h2 class="part">Allergies you added</h2>
-<ul id="added"></ul>
-<p class="prose"><button type="button" id="start-over">Start over</button></p>
-</main>
+<body data-state="opening" data-samples="${samples.join(" ")}">
+<main><p role="status">Opening…</p></main>
+</body>
+</html>
+`.text;
+}
+
+/** The redirect URI's page: it hands the URL it was sent to back to the window that opened the sign-in. */
+export function signedInPage(): string {
+  return markup`<!DOCTYPE html>
+<html lang="en">
+<head>
+${head("Signing in")}
+<script type="module">import { finishSignIn } from "cascade-runtime"; finishSignIn();</script>
+</head>
+<body>
+<main><p>Signing you in…</p></main>
 </body>
 </html>
 `.text;

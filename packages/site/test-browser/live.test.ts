@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { chromium } from "playwright";
 import { findRoot } from "@cascade-runtime/runtime/node";
-import { shown, watched } from "./shown.js";
+import { newPod, settled, tiles, watched } from "./shown.js";
 
 type Address = typeof import("../../cascade-runtime/pack/address.js");
 
@@ -110,8 +110,12 @@ test("the deployed site serves the quick start of the commit, its release, the f
     const page = watched(await browser.newPage());
     const opened = await page.goto(`${site}try/index.html?at=${Date.now()}`);
     assert.equal(opened?.status(), 200, `${site}try/index.html`);
-    const { active } = await shown(page);
-    assert.ok(active.length > 0, `${site}try/ shows no active allergy`);
+    await settled(page);
+    await newPod(page, "Load Alex Rivera");
+    assert.ok(
+      ((await tiles(page)).get("Allergies") ?? 0) > 0,
+      `${site}try/ shows Alex with no allergy`,
+    );
   } finally {
     await browser.close();
   }

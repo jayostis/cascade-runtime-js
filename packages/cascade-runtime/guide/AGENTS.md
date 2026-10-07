@@ -82,7 +82,7 @@ its `dist/`, runs every call. A pod's name names
 its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
 an empty one as a copy of the pod published at the URL `from`, as its
 `files.json` lists it. Its address is a name, never the page's. A browser may
-clear its storage, and the pod with it. The site's `try/` page shows this.
+clear its storage, and the pod with it.
 A browser has no path, so `look` and `import` take the files the person picked,
 each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
 from an `<input type="file">`, with `webkitdirectory` for an export's folder.
@@ -167,7 +167,7 @@ person said no or closed the sign-in.
   connecting.
 - Their addresses are `https:`, so a CSP's `connect-src` must allow
   `https://*.demo.invalid`.
-- A hard reload bypasses the worker. The site's `connect/` page shows all of
+- A hard reload bypasses the worker. The site's `try/` page shows all of
   this.
 - A real browser cannot open a `.demo.invalid` address, so the app serves a
   demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
