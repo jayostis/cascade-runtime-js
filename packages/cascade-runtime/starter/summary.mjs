@@ -116,9 +116,12 @@ export const SECTIONS = [
 const SOURCES = "entry/Where it came from";
 const REVIEW = "entry/What needs review";
 
-/** Every question `podSummary` reads: ask each, and hand it the rows by question. */
+const SEEN = "pod/What was seen more than once";
+
+/** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
   SOURCES,
+  SEEN,
   REVIEW,
   ...SECTIONS.map(({ question }) => question),
 ];
@@ -160,7 +163,10 @@ export function day(text) {
  * sort by, or what is no number or date, comes after every other. The page's script runs this same function.
  */
 export function compare(type, a, b) {
-  if (type === "text") return a.localeCompare(b);
+  if (type === "text")
+    return a === "" || b === ""
+      ? Number(a === "") - Number(b === "")
+      : a.localeCompare(b);
   const value = (key) => {
     const n =
       key === "" ? NaN : type === "date" ? Date.parse(key) : Number(key);
@@ -205,18 +211,24 @@ export function hospitalName(name) {
   return name.replace(/ Demo Hospital$/, "");
 }
 
-/**
- * Where a row of "Where it came from" came from, as a person would say it: the hospital, the person's own entries
- * (`entered by Alex …` is "Alex's own entries", `entered by the person` is "Own entries"), or how it arrived.
- */
+/** Where a row of "Where it came from" came from, as a person would say it: see `placeName`. */
 export function placeOf(row) {
-  if (row.hospital !== undefined) return hospitalName(row.hospital);
-  const label = row.importLabel ?? "";
-  if (label.startsWith("entered by ")) {
-    const name = /^entered by (\p{Lu}\S*)/u.exec(label)?.[1];
+  return placeName(row.hospital ?? row.importLabel);
+}
+
+/**
+ * A place records came from, a hospital's name or an import's label, as a person would say it: the hospital without
+ * " Demo Hospital", the person's own entries (`entered by Alex …` is "Alex's own entries", `entered by the person` is
+ * "Own entries"), or how it arrived, without " export".
+ */
+export function placeName(place = "") {
+  if (place.startsWith("entered by ")) {
+    const name = /^entered by (\p{Lu}\S*)/u.exec(place)?.[1];
     return name === undefined ? "Own entries" : `${name}'s own entries`;
   }
-  return label === "" ? "Somewhere unnamed" : label.replace(/ export$/, "");
+  return place === ""
+    ? "Somewhere unnamed"
+    : hospitalName(place).replace(/ export$/, "");
 }
 
 /** How many of each kind, in words, from `look`'s counts: `1 allergy, 2 conditions, 3 lab results`. */
@@ -259,7 +271,10 @@ function where(places) {
 /** An entry the sections do not show, named from its label: `Allergy entry · Latex` is a latex allergy. */
 function fromLabel(label = "") {
   const [kind = "", name = label] = label.split(" · ");
-  return { name, one: kind.replace(/ entry$/, "").toLowerCase() || "entry" };
+  return {
+    name: name || "An entry",
+    one: kind.replace(/ entry$/, "").toLowerCase() || "entry",
+  };
 }
 
 /**
@@ -275,23 +290,20 @@ export function noticed(answers) {
         name: section.name(row) ?? fromLabel(row.entryLabel).name,
         one: section.one,
       });
-  const origins = new Map();
-  for (const row of answers[SOURCES] ?? []) {
+  const seen = new Map();
+  for (const row of answers[SEEN] ?? []) {
     if (!named.has(row.entry)) continue;
-    if (!origins.has(row.entry))
-      origins.set(row.entry, { places: new Set(), records: new Set() });
-    origins.get(row.entry).places.add(placeOf(row));
-    origins.get(row.entry).records.add(row.record);
+    if (!seen.has(row.entry))
+      seen.set(row.entry, { places: new Set(), across: Number(row.places) });
+    if (row.place !== undefined)
+      seen.get(row.entry).places.add(placeName(row.place));
   }
-  const joined = [...origins]
-    .filter(([, { records }]) => records.size > 1)
-    .sort(([, a], [, b]) => b.places.size - a.places.size)
-    .map(([entry, { places }]) => {
-      const { name, one } = named.get(entry);
-      return places.size > 1
-        ? `${name} was recorded ${where([...places])}. Cascade keeps it as one ${one}.`
-        : `${name} arrived more than once from ${[...places][0]}. Cascade keeps it as one ${one}.`;
-    });
+  const joined = [...seen].map(([entry, { places, across }]) => {
+    const { name, one } = named.get(entry);
+    return across > 1
+      ? `${name} was recorded ${where([...places])}. Cascade keeps it as one ${one}.`
+      : `${name} arrived more than once${places.size === 0 ? "" : ` from ${[...places][0]}`}. Cascade keeps it as one ${one}.`;
+  });
   const more = joined.length - 3;
   const review = new Map();
   for (const row of answers[REVIEW] ?? []) {

@@ -8,14 +8,15 @@ const view = await import(
 const ALLERGIES = "pod/My active allergies";
 const CONDITIONS = "pod/My active conditions";
 const LABS = "pod/My lab results";
-const SOURCES = "entry/Where it came from";
+const SEEN = "pod/What was seen more than once";
 const REVIEW = "entry/What needs review";
 
 test("what Cascade noticed: things seen at two places first, three at most, then what needs review", () => {
-  const at = (entry: string, record: string, hospital: string) => ({
+  const at = (entry: string, place: string, places: number) => ({
     entry,
-    record,
-    hospital,
+    place,
+    records: "1",
+    places: String(places),
   });
   const answers = {
     [ALLERGIES]: [
@@ -27,16 +28,13 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       { entry: "e3", condition: "Eczema" },
       { entry: "e4", condition: "Migraine" },
     ],
-    [SOURCES]: [
-      at("e2", "r3", "Larkspur Valley Health"),
-      at("e2", "r4", "Larkspur Valley Health"),
-      at("e1", "r1", "Meridian Health System"),
-      at("e1", "r2", "Larkspur Valley Health"),
-      at("e3", "r5", "Larkspur Valley Health"),
-      at("e3", "r6", "Larkspur Valley Health"),
-      at("e4", "r7", "Larkspur Valley Health"),
-      at("e4", "r8", "Larkspur Valley Health"),
-      at("e5", "r9", "Larkspur Valley Health"),
+    [SEEN]: [
+      at("e1", "Meridian Health System", 3),
+      at("e1", "Larkspur Valley Health", 3),
+      at("e1", "entered by Alex in the Cascade app", 3),
+      at("e2", "Cascade North Demo Hospital", 1),
+      at("e3", "Larkspur Valley Health", 1),
+      at("e4", "Larkspur Valley Health", 1),
     ],
     [REVIEW]: [
       { entry: "e5", needs: "members disagree on criticality" },
@@ -51,8 +49,8 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     ],
   };
   assert.deepEqual(view.noticed(answers), [
-    "Penicillin was recorded at Meridian Health System and Larkspur Valley Health. Cascade keeps it as one allergy.",
-    "Asthma arrived more than once from Larkspur Valley Health. Cascade keeps it as one condition.",
+    "Penicillin was recorded at Meridian Health System, Larkspur Valley Health and in Alex's own entries. Cascade keeps it as one allergy.",
+    "Asthma arrived more than once from Cascade North. Cascade keeps it as one condition.",
     "Eczema arrived more than once from Larkspur Valley Health. Cascade keeps it as one condition.",
     "1 more thing was seen more than once and kept as one.",
     "Sources disagree on how severe the Sulfamethoxazole allergy is.",
