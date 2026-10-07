@@ -243,9 +243,11 @@ export function counted(records) {
     .join(", ");
 }
 
+const UNNAMED = "An entry";
+
 const SAID = {
   "members disagree on criticality": ({ name, one }) =>
-    `Sources disagree on how severe the ${name} ${one} is.`,
+    `Sources disagree on how severe ${name === UNNAMED ? `an unnamed ${one}` : `the ${name} ${one}`} is.`,
   "joined through two kinds of machine sameness": ({ name }) =>
     `${name} was matched in two different ways. Worth a look.`,
   "judged different, still joined": ({ name, one }) =>
@@ -272,7 +274,7 @@ function where(places) {
 function fromLabel(label = "") {
   const [kind = "", name = label] = label.split(" · ");
   return {
-    name: name || "An entry",
+    name: name || UNNAMED,
     one: kind.replace(/ entry$/, "").toLowerCase() || "entry",
   };
 }
@@ -287,7 +289,7 @@ export function noticed(answers) {
   for (const section of SECTIONS)
     for (const row of answers[section.question] ?? [])
       named.set(row.entry, {
-        name: section.name(row) ?? fromLabel(row.entryLabel).name,
+        name: section.name(row) || fromLabel(row.entryLabel).name,
         one: section.one,
       });
   const seen = new Map();
@@ -325,7 +327,7 @@ export function noticed(answers) {
 }
 
 /** The section's rows in the order its table opens in. */
-function opening(section, rows) {
+export function opening(section, rows) {
   const column = section.columns[section.sortBy];
   const key = (row) => String(column.key(row) ?? "");
   const order = section.newestFirst ? -1 : 1;

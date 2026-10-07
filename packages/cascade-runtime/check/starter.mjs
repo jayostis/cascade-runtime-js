@@ -112,15 +112,6 @@ function multiset(rows) {
   return rows.map((row) => JSON.stringify(Object.entries(row).sort())).sort();
 }
 
-function escaped(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 /** HTML as the text a person reads: tags dropped, entities read, spaces trimmed. */
 function textOf(html) {
   return html
@@ -217,13 +208,31 @@ function items(html) {
   );
 }
 
+/** The page's heading, as its text. */
+function heading(html) {
+  return textOf(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? "");
+}
+
+/** The hospital the pod's page says a record was just brought in from, as the page names it, or undefined. */
+function noteOf(html) {
+  return /Brought in the record from (.+?)\./.exec(readable(html))?.[1];
+}
+
+/** Whether `text` names the hospital: by its whole name, or by its first words, two at least. */
+function names(text, hospital) {
+  const words = hospital.split(" ");
+  return words.some(
+    (_, at) => at > 0 && text.includes(words.slice(0, at + 1).join(" ")),
+  );
+}
+
 /**
  * The pod's page reads as a record: the person's name as a heading, a tile per kind with rows counting that question's
  * rows, each allergen, and no IRI or address in what a person reads. Resolves the page and the rows by question.
  */
 async function pageShows(server, pod, person) {
   const html = await served(server, `/pods/${pod}/`);
-  assert.ok(html.includes(`<h1>${escaped(person)}</h1>`), `no ${person}`);
+  assert.equal(heading(html), person, `the heading of ${pod}`);
   const text = readable(html);
   for (const scheme of ["urn:", "ni:", "http://", "https://"])
     assert.ok(!text.includes(scheme), `the page of ${pod} shows ${scheme}`);
@@ -244,7 +253,7 @@ async function pageShows(server, pod, person) {
     );
   }
   for (const { allergen } of rows[ALLERGIES])
-    assert.ok(html.includes(escaped(allergen)), `no ${allergen} on ${pod}`);
+    assert.ok(text.includes(allergen), `no ${allergen} on ${pod}`);
   return { html, rows };
 }
 
@@ -586,7 +595,6 @@ if (release === undefined) {
         },
         body: new URLSearchParams(form),
       });
-    const short = (hospital) => hospital.replace(/ Demo Hospital$/, "");
 
     /** Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the connection's page. */
     const signIn = async (pod, fhirBase, patient, decision) => {
@@ -636,12 +644,20 @@ if (release === undefined) {
             [north],
           );
 
-          const cancelled = await settled(
-            server,
-            await signIn(pod, north, expected.patient, "cancel"),
-          );
+          const failed = await signIn(pod, north, expected.patient, "cancel");
+          const cancelled = await settled(server, failed);
           assert.ok(cancelled.includes("cancelled"), "Cancel is not cancelled");
           assert.deepEqual(await asked(ALLERGIES, pod), []);
+          assert.equal(
+            noteOf(
+              await served(
+                server,
+                `/pods/${pod}/?from=${failed.split("/").at(-1)}`,
+              ),
+            ),
+            undefined,
+            "a note that a cancelled sign-in brought a record in",
+          );
 
           const elsewhere = await send(
             `/pods/${pod}/hospitals`,
@@ -668,8 +684,9 @@ if (release === undefined) {
           );
           const looked = readable(await settled(server, connection));
           const [source] = expected.look;
+          const what = /What (.+?) has:/.exec(looked)?.[1];
           assert.ok(
-            looked.includes(`What ${short(expected.row.name)} has:`),
+            what !== undefined && names(what, expected.row.name),
             "no What it has",
           );
           for (const [kind, count] of Object.entries(source.records))
@@ -682,9 +699,7 @@ if (release === undefined) {
           assert.ok(looked.includes("has nothing from here yet"));
           const back = await bringIn(connection);
           assert.ok(
-            back.includes(
-              `Brought in the record from ${short(expected.row.name)}.`,
-            ),
+            names(noteOf(back) ?? "", expected.row.name),
             "no note after the import",
           );
           assert.ok(expected.allergens.length > 0, "A has no active allergy");
@@ -704,7 +719,7 @@ if (release === undefined) {
           assert.equal(made.headers.get("location"), "/pods/ada-lovelace/");
         }
         const page = await served(server, "/pods/ada-lovelace/");
-        assert.ok(page.includes("<h1>Ada Lovelace</h1>"), "no Ada Lovelace");
+        assert.equal(heading(page), "Ada Lovelace");
         assert.ok(page.includes("Nothing here yet"), "Ada's pod is not empty");
       });
 
@@ -731,7 +746,7 @@ if (release === undefined) {
             await settled(server, connection);
             shown = await bringIn(connection);
             assert.ok(
-              shown.includes(`Brought in the record from ${short(hospital)}.`),
+              names(noteOf(shown) ?? "", hospital),
               `no note naming ${hospital}`,
             );
           }
@@ -740,7 +755,7 @@ if (release === undefined) {
               (sentence) =>
                 /hypertension was recorded at/i.test(sentence) &&
                 expected.rowan.every(({ hospital }) =>
-                  sentence.includes(short(hospital)),
+                  names(sentence, hospital),
                 ),
             ),
             "no sentence that hypertension was recorded at both hospitals",

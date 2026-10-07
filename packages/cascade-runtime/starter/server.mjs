@@ -69,17 +69,24 @@ async function home(response) {
   send(response, 200, await page("No pods yet", noPods(), { names }));
 }
 
-/** The pod as a person reads it; `from` is the number of the connection a record was just brought in through. */
-async function showPod(response, name, from) {
+/**
+ * The pod as a person reads it; `from` is the number of a connection, and the page notes the record it brought in when
+ * its import did.
+ */
+async function showPod(response, name, from, names) {
   const pod = await podNamed(name);
   const answers = {};
   for (const question of QUESTIONS) answers[question] = await pod.ask(question);
   const connection =
     from === null ? undefined : hospitals.connection(name, from);
+  const imported = await connection?.imported?.catch(() => undefined);
   const body = podPage(answers, {
     pod: name,
     person: people.find((each) => slug(each.name) === name),
-    from: connection?.row.name,
+    from:
+      imported === undefined || imported.refused !== undefined
+        ? undefined
+        : connection.row.name,
     signIn: (hospital) =>
       signIn(
         name,
@@ -88,7 +95,11 @@ async function showPod(response, name, from) {
       ),
     findHospital: `${podPath(name)}hospitals`,
   });
-  send(response, 200, await page(personName(name), body, { current: name }));
+  send(
+    response,
+    200,
+    await page(personName(name), body, { current: name, names }),
+  );
 }
 
 /** Makes an empty pod named after the person given, unless it exists, and goes to it. */
@@ -132,7 +143,7 @@ async function formOf(request) {
   return new URLSearchParams((await bodyOf(request)).toString("utf8"));
 }
 
-async function findHospital(response, name, text) {
+async function findHospital(response, name, text, names) {
   const body = hospitalsPage({
     pod: name,
     rows: hospitals.directory(text),
@@ -142,14 +153,18 @@ async function findHospital(response, name, text) {
     people,
     back: podPath(name),
   });
-  send(response, 200, await page("Find a hospital", body, { current: name }));
+  send(
+    response,
+    200,
+    await page("Find a hospital", body, { current: name, names }),
+  );
 }
 
 /**
  * A connection: its steps while it signs in and fetches, the page refreshing itself; then why it failed, or what the
  * hospital has and a button to bring it in; after the import, back to the pod.
  */
-async function showConnection(response, name, connection, importing) {
+async function showConnection(response, name, connection, importing, names) {
   const shown = async (status, view) =>
     send(
       response,
@@ -164,7 +179,7 @@ async function showConnection(response, name, connection, importing) {
           bring: `${podPath(name)}connections/${connection.n}`,
           ...view,
         }),
-        { current: name, refresh: view.refresh },
+        { current: name, refresh: view.refresh, names },
       ),
     );
   if (connection.step === "signing in" || connection.step === "pulling")
@@ -267,13 +282,15 @@ const server = createServer(async (request, response) => {
       pathname,
     );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
-    if (name !== undefined && (await podNames()).includes(name)) {
+    const names = name === undefined ? undefined : await podNames();
+    if (name !== undefined && names.includes(name)) {
       const [, , isHospitals, n] = at;
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,
           name,
           url.searchParams.get("q") ?? "",
+          names,
         );
       if (isHospitals !== undefined) {
         const to = await hospitals.start(
@@ -287,18 +304,28 @@ const server = createServer(async (request, response) => {
           await page(
             "Unknown",
             "<h1>That hospital is not in the directory</h1>",
+            { names },
           ),
         );
       }
       if (n !== undefined) {
         const connection = hospitals.connection(name, n);
         if (connection !== undefined)
-          return await showConnection(response, name, connection, post);
+          return await showConnection(response, name, connection, post, names);
       }
       if (!post && n === undefined)
-        return await showPod(response, name, url.searchParams.get("from"));
+        return await showPod(
+          response,
+          name,
+          url.searchParams.get("from"),
+          names,
+        );
     }
-    send(response, 404, await page("Not found", "<h1>Not found</h1>"));
+    send(
+      response,
+      404,
+      await page("Not found", "<h1>Not found</h1>", { names }),
+    );
   } catch (error) {
     send(
       response,
