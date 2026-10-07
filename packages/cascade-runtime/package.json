@@ -42,6 +42,7 @@
     "oxigraph": "0.5.11"
   },
   "devDependencies": {
+    "@cascade-runtime/demo-hospital": "0.0.0",
     "esbuild": "0.28.2"
   }
 }

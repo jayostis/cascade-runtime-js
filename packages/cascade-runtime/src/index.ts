@@ -2,6 +2,8 @@ import { resolved } from "./node/resolved.js";
 import { openPodWith, type Pod } from "./pod.js";
 
 export type { Done, ExportSource, Imported, Pod, Row } from "./pod.js";
+export * from "./connect/index.js";
+export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
 
 /** The pod in a folder on disk, or, with none, in memory; `options.title` is used only when the pod is new. */
 export async function openPod(

@@ -21,6 +21,7 @@ import {
 } from "../pod.js";
 
 export type { Done, ExportSource, Imported, Pod, Row } from "../pod.js";
+export * from "../connect/index.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";

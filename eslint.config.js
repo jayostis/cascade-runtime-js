@@ -60,6 +60,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/cascade-runtime/test/**"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
