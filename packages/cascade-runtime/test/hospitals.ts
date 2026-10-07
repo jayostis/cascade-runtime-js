@@ -1,6 +1,5 @@
 import {
-  demoHospital,
-  type DemoHospital,
+  demoFetch,
   type DemoHospitalOptions,
 } from "@cascade-runtime/demo-hospital";
 import {
@@ -41,19 +40,23 @@ export function rowOf({ hospital }: Loaded): DirectoryRow {
   return { name: hospital.name, vendor: "demo", fhirBase: hospital.fhirBase };
 }
 
-/** A `fetch` that sends each demo hospital's origin to its function and refuses every other address. */
+/** The demo hospitals' `fetch`, through which every request is seen and may be altered; any other address is refused. */
 export function routed(
-  hospitals: readonly DemoHospital[],
-  origins: readonly string[],
+  hospitals: readonly DemoHospitalOptions[],
   seen: Seen,
   alter: Alter = (request, hospital) => hospital(request),
 ): Fetch {
+  const demo = demoFetch(hospitals, {
+    fallback: async (input) => {
+      throw new TypeError(
+        `no route to ${input instanceof Request ? input.url : String(input)}`,
+      );
+    },
+  });
   return async (input, init) => {
     const request = new Request(input, init);
     seen.requests.push(request.clone());
-    const at = origins.indexOf(new URL(request.url).origin);
-    if (at < 0) throw new TypeError(`no route to ${request.url}`);
-    const response = await alter(request, hospitals[at]!);
+    const response = await alter(request, (altered) => demo(altered));
     const location = response.headers.get("Location");
     const code = location && new URL(location).searchParams.get("code");
     if (code) seen.secrets.add(code);
@@ -98,14 +101,14 @@ export async function pulled(
   setup: Setup = {},
 ): Promise<{ pull: Pull; seen: Seen }> {
   const seen: Seen = { requests: [], secrets: new Set() };
-  const hospital = demoHospital({
-    ...at,
-    autoApprove: "autoApprove" in setup ? setup.autoApprove : patient,
-    ...(setup.now ? { now: setup.now } : {}),
-  });
   const fetch = routed(
-    [hospital],
-    [new URL(at.hospital.fhirBase).origin],
+    [
+      {
+        ...at,
+        autoApprove: "autoApprove" in setup ? setup.autoApprove : patient,
+        ...(setup.now ? { now: setup.now } : {}),
+      },
+    ],
     seen,
     setup.alter,
   );

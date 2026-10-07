@@ -63,7 +63,7 @@ async function expected(): Promise<{
   allergies: string[][];
   medications: string[][];
 }> {
-  const north = [...(await loadHospitals()).values()].find(
+  const north = (await loadHospitals()).find(
     (loaded) => hospitalId(loaded) === NORTH,
   );
   assert.ok(north);

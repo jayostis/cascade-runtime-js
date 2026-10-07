@@ -57,7 +57,7 @@ export async function connectFiles(): Promise<Map<string, Uint8Array>> {
     [WORKER, worker],
     [WORKER_PAGE, workerPage],
   ]);
-  for (const loaded of hospitals.values())
+  for (const loaded of hospitals)
     files.set(
       `${WORKER_DATA}${hospitalId(loaded)}.json`,
       encoder.encode(JSON.stringify(loaded)),
