@@ -1,6 +1,6 @@
 // connect and pull against the SMART Health IT launcher, a server this project did not write, over the network:
 // `npm run test:launcher`. Its data is shared and edited by anyone, so this asserts the protocol and the shape of what
-// came back, never which records.
+// came back, never which records beyond what PATIENT's comment says it holds.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -11,7 +11,12 @@ import {
   pull,
   type Registration,
   type SignIn,
+  TEST_DIRECTORY,
 } from "cascade-runtime";
+import {
+  launcherSettings,
+  withLauncherSettings,
+} from "../test/launcher-settings.js";
 
 const LAUNCHER = "https://launch.smarthealthit.org";
 /** A Synthea patient of r4.smarthealthit.org with records of every type `DEMO_PLAN` searches, its vital signs paged. */
@@ -22,48 +27,31 @@ const REGISTRATION: Registration = {
   scopes: ["launch/patient", "patient/*.read", "patient/*.rs"],
 };
 
-/**
- * The launcher's R4 base whose settings, as its `src/isomorphic/codec.ts` encodes them, launch the patient standalone
- * and approve at once, as a public client that must use PKCE.
- */
+/** The test directory's launcher row, its settings naming PATIENT and approving at once. */
 function launcherRow(): DirectoryRow {
-  const settings = [
-    3,
-    PATIENT,
-    "",
-    "AUTO",
-    1,
-    1,
-    0,
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    0,
-    2,
-    "",
-  ];
-  const sim = Buffer.from(JSON.stringify(settings), "utf8").toString(
-    "base64url",
-  );
+  const row = TEST_DIRECTORY.find(({ vendor }) => vendor === "smart-launcher");
+  assert.ok(row);
+  const settings = launcherSettings(row.fhirBase);
   return {
-    name: "SMART Health IT Sandbox",
-    vendor: "smart-launcher",
-    fhirBase: `${LAUNCHER}/v/r4/sim/${sim}/fhir`,
+    ...row,
+    fhirBase: withLauncherSettings(row.fhirBase, {
+      ...settings,
+      patient: PATIENT,
+      skipLogin: 1,
+      skipAuth: 1,
+    }),
   };
 }
 
 interface Seen {
   readonly sent: { readonly url: URL; readonly authorized: boolean }[];
   readonly tokens: string[];
+  readonly nexts: string[];
 }
 
 /**
- * The real `fetch`, noting each request's address and whether it carried a token, and each access token given;
- * `change` may alter a request before it is sent.
+ * The real `fetch`, noting each request's address and whether it carried a token, each access token given and each
+ * `next` link; `change` may alter a request before it is sent.
  */
 function recorded(
   seen: Seen,
@@ -74,13 +62,17 @@ function recorded(
     const url = new URL(request.url);
     seen.sent.push({ url, authorized: request.headers.has("Authorization") });
     const response = await fetch(request);
-    if (url.pathname.endsWith("/auth/token")) {
-      const body = (await response
-        .clone()
-        .json()
-        .catch(() => ({}))) as { access_token?: string };
-      if (body.access_token) seen.tokens.push(body.access_token);
-    }
+    const body = (await response
+      .clone()
+      .json()
+      .catch(() => ({}))) as {
+      access_token?: string;
+      link?: { relation?: string; url?: string }[];
+    };
+    if (url.pathname.endsWith("/auth/token") && body.access_token)
+      seen.tokens.push(body.access_token);
+    for (const { relation, url: next } of body.link ?? [])
+      if (relation === "next" && next) seen.nexts.push(new URL(next, url).href);
     return response;
   };
 }
@@ -94,7 +86,7 @@ function direct(fetcher: typeof fetch): SignIn {
       location,
       `the launcher answered the authorize URL ${response.status}, not a redirect`,
     );
-    return new URL(location);
+    return new URL(location, authorize);
   };
 }
 
@@ -106,7 +98,7 @@ function referencedPatients(resource: Record<string, unknown>): string[] {
 
 test("connect and pull sign in to the launcher's patient and pull every searched type, following its next links", async () => {
   const started = Date.now();
-  const seen: Seen = { sent: [], tokens: [] };
+  const seen: Seen = { sent: [], tokens: [], nexts: [] };
   const fetcher = recorded(seen);
   const row = launcherRow();
   const connection = await connect(row, REGISTRATION, {
@@ -154,9 +146,9 @@ test("connect and pull sign in to the launcher's patient and pull every searched
     assert.equal(fullUrl, `${row.fhirBase}/${resourceType}/${id}`);
   }
 
-  const { sent } = seen;
+  const { sent, nexts } = seen;
   assert.ok(
-    sent.some(({ url }) => url.searchParams.has("_getpages")),
+    sent.some(({ url }) => nexts.includes(url.href)),
     "no search took more than one page",
   );
   assert.ok(sent.every(({ url }) => url.origin === LAUNCHER));
@@ -173,7 +165,7 @@ test("connect and pull sign in to the launcher's patient and pull every searched
 });
 
 test("a token the launcher did not sign ends the pull as unauthorized, carrying no token", async () => {
-  const seen: Seen = { sent: [], tokens: [] };
+  const seen: Seen = { sent: [], tokens: [], nexts: [] };
   const fetcher = recorded(seen, (request) => {
     if (!request.headers.has("Authorization")) return request;
     const headers = new Headers(request.headers);

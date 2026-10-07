@@ -1,8 +1,9 @@
 import type { DirectoryRow } from "./plan.js";
 
 /**
- * Hospitals to develop and test against, none of them real: the demo hospitals, which need no network, and the SMART
- * Health IT launcher, whose settings in its base ask for a patient's own login and approval.
+ * Hospitals to develop and test against, none of them real: the demo hospitals, whose `.invalid` hosts answer only
+ * through `@cascade-runtime/demo-hospital`'s fetch, never the real one, and the SMART Health IT launcher, whose
+ * settings in its base ask for a patient's own login and approval.
  */
 export const TEST_DIRECTORY: readonly DirectoryRow[] = [
   {
@@ -36,7 +37,7 @@ function words(text: string): string[] {
 
 /**
  * The rows in which every word of `text` begins a word of the row's name or of one of its places, ignoring case and
- * accents, in the directory's order. Blank text gives every row.
+ * accents, in the directory's order. One word of a row may begin several words of `text`. Blank text gives every row.
  */
 export function searchDirectory(
   directory: readonly DirectoryRow[],

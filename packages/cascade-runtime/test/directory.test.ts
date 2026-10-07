@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { loadHospital } from "@cascade-runtime/demo-hospital/node";
 import { searchDirectory, TEST_DIRECTORY } from "cascade-runtime";
+import { launcherSettings } from "./launcher-settings.js";
 
 const DATA = fileURLToPath(
   new URL(
@@ -33,20 +34,10 @@ test("the test directory's demo rows are the demo hospitals, every one of them",
 test("the launcher's row asks for a patient's own login and approval, with PKCE, as a public client", () => {
   const row = TEST_DIRECTORY.find(({ vendor }) => vendor === "smart-launcher");
   assert.ok(row);
-  const sim = /\/sim\/([^/]+)\/fhir$/.exec(new URL(row.fhirBase).pathname)?.[1];
-  assert.ok(sim, row.fhirBase);
-  const s = JSON.parse(
-    Buffer.from(sim, "base64url").toString("utf8"),
-  ) as unknown[];
+  const { launchType, patient, skipLogin, skipAuth, clientType, pkce } =
+    launcherSettings(row.fhirBase);
   assert.deepEqual(
-    {
-      launchType: s[0],
-      patient: s[1],
-      skipLogin: s[4],
-      skipAuth: s[5],
-      clientType: s[14],
-      pkce: s[15],
-    },
+    { launchType, patient, skipLogin, skipAuth, clientType, pkce },
     {
       launchType: 3,
       patient: "",
@@ -82,6 +73,7 @@ test("a search of the directory gives the rows whose name or places hold a word 
     ["bellingham", ["Cascade North Demo Hospital"]],
     ["olym", ["Cascade South Demo Hospital"]],
     ["mount vern", ["Cascade North Demo Hospital"]],
+    ["mount m", ["Cascade North Demo Hospital"]],
     ["Olýmpia", ["Cascade South Demo Hospital"]],
     ["smart", ["SMART Health IT Sandbox"]],
     ["orth", []],
