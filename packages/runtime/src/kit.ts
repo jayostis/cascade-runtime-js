@@ -514,6 +514,11 @@ async function namesFollowTheirRules(
           .filter(
             (r) => whole.match(r, `${PROV}wasDerivedFrom`, document).length > 0,
           );
+        if (
+          revisions.length === 0 &&
+          whole.subjects(`${REC}version`, version).length > 0
+        )
+          continue;
         const held = new Set(
           revisions.flatMap((r) =>
             whole.match(r).map(([, p, o]) => `${written(p)} ${written(o)}`),
