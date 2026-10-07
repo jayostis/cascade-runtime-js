@@ -29,8 +29,32 @@ const BUNDLE = {
       },
     },
     {
+      fullUrl: `${BASE}/Observation/o2`,
+      resource: {
+        resourceType: "Observation",
+        id: "o2",
+        category: [{ coding: [{ code: "vital-signs" }] }],
+      },
+    },
+    {
+      fullUrl: `${BASE}/Observation/o3`,
+      resource: {
+        resourceType: "Observation",
+        id: "o3",
+        category: [
+          null,
+          { coding: { code: "laboratory" } },
+          { coding: [null] },
+        ],
+      },
+    },
+    {
       fullUrl: `${BASE}/Encounter/e1`,
       resource: { resourceType: "Encounter", id: "e1" },
+    },
+    {
+      fullUrl: `${BASE}/Medication/d1`,
+      resource: { resourceType: "Medication", id: "d1" },
     },
   ],
 };
@@ -49,7 +73,14 @@ function filesOf(map: ReadonlyMap<string, Uint8Array>): PullFiles {
 }
 
 function withPull(changed: Record<string, unknown>): PullFiles {
-  return filesOf(pullFiles({ ...PULL, ...changed } as typeof PULL, "north"));
+  const { bundle, ...rest } = { ...PULL, ...changed };
+  const encoder = new TextEncoder();
+  return filesOf(
+    new Map([
+      ["north/pull.json", encoder.encode(JSON.stringify(rest))],
+      ["north/bundle.json", encoder.encode(JSON.stringify(bundle))],
+    ]),
+  );
 }
 
 test("a saved pull is its Bundle as one document, stated with the hospital's base, the retrieval time, the patient and the hospital as author", async () => {
@@ -88,18 +119,16 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
   );
   assert.deepEqual(
     await fhirPull.index(files, "north"),
-    [["Allergy"], ["Medication"], ["Lab result"], ["Encounter"]].map(
-      ([kind]) => ({
-        source: "Cascade North Demo Hospital",
-        server: BASE,
-        kind,
-        received: "2026-10-07T07:00:00.000Z",
-      }),
-    ),
+    [["Allergy"], ["Medication"], ["Lab result"]].map(([kind]) => ({
+      source: "Cascade North Demo Hospital",
+      server: BASE,
+      kind,
+      received: "2026-10-07T07:00:00.000Z",
+    })),
   );
 });
 
-test("a folder with no pull.json is no pull, and a pull the import cannot state is refused with why", async () => {
+test("a folder with no pull.json is no pull, and a pull the import cannot state is refused with why, and never saved", async () => {
   assert.equal(
     await fhirPull.documents(filesOf(new Map()), "north"),
     undefined,
@@ -121,6 +150,8 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           "fhirBase",
         ],
         ["a base with a query", { fhirBase: `${BASE}?tenant=a` }, "fhirBase"],
+        ["a base with a trailing slash", { fhirBase: `${BASE}/` }, "fhirBase"],
+        ["a base with a space around it", { fhirBase: ` ${BASE}` }, "fhirBase"],
         ["a patient that is no FHID id", { patient: "pt 1" }, "patient"],
         ["no source", { source: " " }, "source"],
         [
@@ -128,18 +159,32 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           { retrievedAt: "2026-10-07T07:00:00+01:00" },
           "retrievedAt",
         ],
+        [
+          "a day that does not exist",
+          { retrievedAt: "2026-02-31T07:00:00Z" },
+          "retrievedAt",
+        ],
+        [
+          "an hour past the day",
+          { retrievedAt: "2026-10-07T24:00:00Z" },
+          "retrievedAt",
+        ],
       ] as const
-    ).map(([name, changed, field]): [string, PullFiles, string] => [
-      name,
-      withPull(changed),
-      {
+    ).map(([name, changed, field]): [string, PullFiles, string] => {
+      const why = {
         fhirBase:
-          "pull.json's fhirBase is not an https: URL with no query or fragment",
+          "pull.json's fhirBase is not an https: URL with no query, fragment or trailing slash",
         patient: "pull.json's patient is not a FHIR id",
         source: "pull.json's source is not a name",
         retrievedAt: "pull.json's retrievedAt is not a time in UTC",
-      }[field],
-    ]),
+      }[field];
+      assert.throws(
+        () => pullFiles({ ...PULL, ...changed } as typeof PULL, "north"),
+        { message: why },
+        `${name}, saved`,
+      );
+      return [name, withPull(changed), why];
+    }),
     ["no bundle.json", filesOf(noBundle), "the pull holds no bundle.json"],
   ];
   for (const [name, files, why] of rows)
