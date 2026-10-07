@@ -5,8 +5,10 @@ commands to load, make, remove and ask pods. It depends only on
 `cascade-runtime`, which keeps the pods; this app never writes a pod's files
 itself.
 
-Alex Rivera, whose pod `pod:load alex-rivera` loads, is the person of the kit
-the package carries, made up for it.
+Alex Rivera, whose pod `pod:load alex-rivera` loads, and Priya Natarajan, whose
+pod `pod:load priya-natarajan` loads, are the people of the kits the package
+carries, made up for them. Alex's records come from Apple Health exports;
+Priya's from exports and C-CDA files together.
 
 ## Start
 
@@ -28,15 +30,15 @@ Stop it with Ctrl+C in its terminal.
 
 An option to an npm script goes after `--`, or npm keeps it for itself.
 
-| Command                                                      | Does                                                                                                                                      |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm start`                                                  | serves the app                                                                                                                            |
-| `npm run pod:load -- <kit> [--through <step>] [--as <name>]` | replays a kit's story into `pods/<name>/`, the name being the kit's unless `--as` gives one; with `--through`, it stops after that step   |
-| `npm run pod:new <name>`                                     | makes an empty pod in `pods/<name>/`, to bring your own downloads into                                                                    |
-| `npm run pod:reset <name>`                                   | removes `pods/<name>/`, asking nothing                                                                                                    |
-| `npm run kit:export -- <kit> <download>`                     | copies a kit's download, as `alex-rivera x-e12`, into this folder as `apple_health_export`, as a person puts their phone's download there |
-| `npm run ask -- [--pod <name>] "<question>"`                 | prints a question's rows, one JSON object a line                                                                                          |
-| `npm run console -- [--pod <name>]`                          | opens Node's REPL with the pod as `pod`: `await pod.ask("pod/My active allergies")`                                                       |
+| Command                                                      | Does                                                                                                                                                                               |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm start`                                                  | serves the app                                                                                                                                                                     |
+| `npm run pod:load -- <kit> [--through <step>] [--as <name>]` | replays a kit's story into `pods/<name>/`, the name being the kit's unless `--as` gives one; with `--through`, it stops after that step                                            |
+| `npm run pod:new <name>`                                     | makes an empty pod in `pods/<name>/`, to bring your own downloads into                                                                                                             |
+| `npm run pod:reset <name>`                                   | removes `pods/<name>/`, asking nothing                                                                                                                                             |
+| `npm run kit:export -- <kit> <download>`                     | copies a kit's download into this folder as a person puts it there: `alex-rivera x-e12` as `apple_health_export`, `priya-natarajan kestrel-harbor-health-summary.xml` as that file |
+| `npm run ask -- [--pod <name>] "<question>"`                 | prints a question's rows, one JSON object a line                                                                                                                                   |
+| `npm run console -- [--pod <name>]`                          | opens Node's REPL with the pod as `pod`: `await pod.ask("pod/My active allergies")`                                                                                                |
 
 `--pod` may be left out when there is exactly one pod. One app can hold a kit at
 two points: `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24`

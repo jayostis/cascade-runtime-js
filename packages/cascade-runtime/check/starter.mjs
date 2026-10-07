@@ -16,6 +16,9 @@ import { tarballAddress } from "../dist/pack/address.js";
 import { agentPrompt, startLine } from "../dist/src/create.js";
 
 const KIT = "conformance/alex-rivera";
+const PRIYA = "conformance/priya-natarajan";
+const MEDICATIONS = "pod/My active medications";
+const DRUG_NAME = "https://ns.cascadeprotocol.org/clinical/v1#drugName";
 const ALLERGIES = "pod/My active allergies";
 const REVIEW = "entry/What needs review";
 const QUESTIONS = [ALLERGIES, REVIEW, "pod/How many judgments count"];
@@ -382,6 +385,47 @@ if (release === undefined) {
     assert.equal(code, 2);
     assert.ok(err.includes("apple_health_export exists already"));
   });
+
+  await behaviour(
+    "Priya's pod loads, and her C-CDA download is copied as its file",
+    async () => {
+      assert.equal((await npm("run", "pod:load", "priya-natarajan")).code, 0);
+      const view = `${PRIYA}/expected/medications.ttl`;
+      const triples = await new OxigraphStore().parse(
+        await readFile(join(story.vocabulary, view)),
+        `file:///${view}`,
+      );
+      const active = new Set(
+        triples
+          .filter(([, p, o]) => p.value === STATUS && o.value === "active")
+          .map(([s]) => s.value),
+      );
+      assert.deepEqual(
+        (await asked(MEDICATIONS, "priya-natarajan"))
+          .map(({ medication }) => medication)
+          .sort(),
+        triples
+          .filter(([s, p]) => active.has(s.value) && p.value === DRUG_NAME)
+          .map(([, , o]) => o.value)
+          .sort(),
+      );
+      const download = "kestrel-harbor-health-summary.xml";
+      assert.equal(
+        (await npm("run", "kit:export", "--", "priya-natarajan", download))
+          .code,
+        0,
+      );
+      assert.deepEqual(
+        await readFile(join(app, download)),
+        await readFile(
+          join(
+            story.vocabulary,
+            `${PRIYA}/scripted-input/priya/downloads/${download}`,
+          ),
+        ),
+      );
+    },
+  );
 
   await behaviour("the console evaluates await", async () => {
     const prompt = "alex-rivera> ";

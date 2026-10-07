@@ -95,9 +95,11 @@ with the examples that show it, and a runtime reports each example in EARL.
 ## Working on this repository
 
 The runtime loads the Bridge and the adapters in-process. The vocabulary's
-conformance kit is Alex Rivera's story.
+conformance kits are two people's stories: Alex Rivera's, from Apple Health
+exports, and Priya Natarajan's, from exports and C-CDA files together.
 
-Node 22 or later. To build Alex's pod and the site that documents it:
+Node 22 or later. To build Alex's pod and the site that documents it, with
+`priya-natarajan` in place of `alex-rivera` for Priya's:
 
 ```sh
 npm install
@@ -154,8 +156,8 @@ acceptance test. Priya Natarajan's first Apple Health export and first C-CDA
 download from Kestrel Harbor Hospital, synthetic, are under
 `developer-story/priya-natarajan/`. The script looks at each and imports it as
 hers, then prints her active medications: lisinopril, which both formats carry,
-as one entry, and amlodipine, which only the C-CDA has. It does not run yet: the
-same test file reports it as a todo, with where it stopped.
+as one entry, and amlodipine, which only the C-CDA has. The same test file runs
+it and checks those rows.
 
 ### The package
 
@@ -208,6 +210,6 @@ CI runs the compatibility check on every pull request and nightly, never on a
 push to `main`. `compatibility.json` declares this repository to it as a
 runtime: it checks the vocabulary and the adapters out beside this repository,
 picked as any counterpart is, and runs `npm run conformance` on them. The tests
-and the pod build then read those checkouts. CI publishes Alex's pod and site as
-an artifact, and on a push to `main` builds the pages from the head of every
+and the pod build then read those checkouts. CI publishes each kit's pod and site,
+Alex's and Priya's, as an artifact, and on a push to `main` builds the pages from the head of every
 default branch and deploys them.

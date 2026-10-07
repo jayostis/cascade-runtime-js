@@ -1,14 +1,13 @@
 // `npm run kit:export -- <kit> <download>`: a download of a kit the package carries, copied into this app as a person
-// puts their phone's download there.
-import { cpSync, existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+// puts it there: a phone's export as `apple_health_export`, a portal's C-CDA file under its own name.
+import { cpSync, existsSync, rmSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { argv, stdout } from "node:process";
 import { fileURLToPath, URL } from "node:url";
 import { kitDownload } from "cascade-runtime/fixtures";
 import { argumentsOf, refuse } from "./pods.mjs";
 
 const EXPORT = "apple_health_export";
-const TARGET = fileURLToPath(new URL(EXPORT, import.meta.url));
 
 const { positionals } = argumentsOf(
   argv.slice(2),
@@ -17,20 +16,24 @@ const { positionals } = argumentsOf(
   2,
 );
 const [kit, download] = positionals;
-let source;
+let found;
 try {
-  source = join(await kitDownload(kit, download), EXPORT);
+  found = await kitDownload(kit, download);
 } catch (error) {
   refuse(error.message);
 }
+const file = statSync(found).isFile();
+const source = file ? found : join(found, EXPORT);
+const name = file ? basename(found) : EXPORT;
+const target = fileURLToPath(new URL(name, import.meta.url));
 if (!existsSync(source))
   refuse(`the kit ${kit}'s download ${download} holds no ${EXPORT}`);
-if (existsSync(TARGET))
-  refuse(`${EXPORT} exists already: move or remove it first`);
+if (existsSync(target))
+  refuse(`${name} exists already: move or remove it first`);
 try {
-  cpSync(source, TARGET, { recursive: true });
+  cpSync(source, target, { recursive: true });
 } catch (error) {
-  rmSync(TARGET, { recursive: true, force: true });
-  refuse(`${EXPORT} could not be copied: ${error.message}`);
+  rmSync(target, { recursive: true, force: true });
+  refuse(`${name} could not be copied: ${error.message}`);
 }
-stdout.write(`Copied ${kit}'s ${download} into ${EXPORT}/.\n`);
+stdout.write(`Copied ${kit}'s ${download} into ${name}${file ? "" : "/"}.\n`);

@@ -416,9 +416,14 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
   }
 });
 
-test("a kit's download is found by name, or refused naming the choices", async () => {
+test("a kit's download, a folder or a file, is found by name, or refused naming the choices", async () => {
   const x12 = await kitDownload("alex-rivera", "x-e12");
   assert.ok((await readdir(x12)).includes("apple_health_export"));
+  const summary = "kestrel-harbor-health-summary.xml";
+  assert.match(
+    await readFile(await kitDownload("priya-natarajan", summary), "utf8"),
+    /<ClinicalDocument/,
+  );
   for (const [kit, download, reason] of [
     ["no-such-kit", "x-e12", /there are .*alex-rivera/],
     ["alex-rivera", "x-e99", /it has .*x-e12/],

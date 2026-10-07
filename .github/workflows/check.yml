@@ -75,6 +75,14 @@ jobs:
             cascade-runtime-js/build/alex-rivera/pod
             cascade-runtime-js/build/alex-rivera/site
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: priya-natarajan
+          path: |
+            cascade-runtime-js/build/priya-natarajan/pod
+            cascade-runtime-js/build/priya-natarajan/site
+          if-no-files-found: error
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
   build-pages:
