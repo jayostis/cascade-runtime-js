@@ -54,7 +54,7 @@ function begun(story: StorySide, step: Step): void {
   story.time.begin(step.when);
 }
 
-/** An import: its export's documents, converted by the Bridge output the story saved for them. */
+/** An import: its export's or its download's documents, of any media type, converted by the Bridge output the story saved for them. */
 const importSaved: Perform = async (pod, step, story) => {
   const { happened } = step;
   if (happened.kind !== "import") throw new Error("the step is no import");
@@ -70,7 +70,7 @@ const importSaved: Perform = async (pod, step, story) => {
   });
   try {
     begun(story, step);
-    return await pod.import(story.source, folder, [adapter]);
+    return await pod.import(story.source, folder, () => [adapter]);
   } finally {
     await adapter.free();
   }

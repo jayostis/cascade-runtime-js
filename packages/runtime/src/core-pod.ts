@@ -1,5 +1,5 @@
 import { fileEntry, fileExport } from "./arrivals.js";
-import type { LoadedAdapter } from "./bridge.js";
+import type { AdaptersOf } from "./bridge.js";
 import type { Derive } from "./build.js";
 import { built } from "./dataset.js";
 import { type Files, MemoryFiles, relative, under } from "./files.js";
@@ -155,13 +155,13 @@ export class CorePod {
   }
 
   /**
-   * An export's arrival: its documents, as the first importer that reads the folder finds them, each converted by the
-   * first adapter that accepts it (A1 to A11, A14).
+   * An export's or a download's arrival: its documents, as the first importer that reads the path finds them, each
+   * converted by the first adapter of its media type that accepts it (A1 to A11, A14).
    */
   import(
     exported: Pick<Files, "read" | "list">,
     folder: string,
-    adapters: readonly LoadedAdapter[],
+    adapters: AdaptersOf,
   ): Promise<Performed> {
     const { importers } = this.#options;
     return this.#step(async (context) => {

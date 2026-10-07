@@ -48,7 +48,7 @@ const METADATA = "ro-crate-metadata.json";
 const BROWSER = join(WORKSPACE, "dist", "browser");
 const WASM = "web_bg.wasm";
 /** The workspaces bundled into the package, which are on no registry. */
-const BUNDLED = ["runtime", "apple-health"];
+const BUNDLED = ["runtime", "apple-health", "ccda-download"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */
 const VOCABULARY = [
   "LICENSE",

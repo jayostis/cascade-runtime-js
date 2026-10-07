@@ -8,7 +8,7 @@ import { SavedOutputBridge } from "../src/saved-output-bridge.js";
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-test("the saved-output Bridge answers a conversion from what the step saved, and refuses one it saved nothing for", async () => {
+test("the saved-output Bridge accepts and answers a document from what the step saved, and refuses one it saved nothing for", async () => {
   const story = new MemoryFiles("https://vocabulary.example/");
   const peanut = bytes(
     '{"resourceType": "AllergyIntolerance", "id": "peanut"}',
@@ -59,8 +59,20 @@ test("the saved-output Bridge answers a conversion from what the step saved, and
     true,
   );
 
+  const downloaded = await (
+    await (
+      await SavedOutputBridge.of(story, {
+        export: "s/export/clinical-records/AllergyIntolerance-peanut.json",
+        converted: "s/bridge",
+      })
+    ).load({ iri: "https://adapter.example/tree/c/", files: new Map() })
+  ).accepts(document);
+  assert.equal(downloaded, true);
+
+  const unsaved = { iri: await documentName(mango), bytes: mango };
+  assert.equal(await adapter.accepts(unsaved), false);
   await assert.rejects(
-    adapter.convert({ iri: await documentName(mango), bytes: mango }),
+    adapter.convert(unsaved),
     (error) => isBridgeError(error) && error.kind === "document",
   );
 });

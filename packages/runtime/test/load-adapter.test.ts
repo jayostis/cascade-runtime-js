@@ -7,7 +7,7 @@ import {
   type Named,
 } from "../src/bridge.js";
 import { MemoryFiles } from "../src/files.js";
-import { loadAdapter } from "../src/load-adapter.js";
+import { type Loaded, loadAdapter, ofMediaType } from "../src/load-adapter.js";
 
 const REPOSITORY = "https://vocabulary.example/repository";
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -127,4 +127,33 @@ test("an adapter whose every file is at hand is given them all, without git's", 
       ],
     ],
   );
+});
+
+test("a media type's adapters are those whose description declares it, by its essence, in their order", () => {
+  const adapter = (sourceMediaType: string): Loaded => ({
+    description: {
+      graph: new Uint8Array(),
+      iri: `https://adapter.example/${sourceMediaType}/`,
+      sourceMediaType,
+      envelopes: [],
+      loadFiles: [],
+      crateFiles: [],
+    },
+    adapter: {
+      accepts: () => Promise.resolve(true),
+      convert: () => Promise.reject(new Error("unreached")),
+      free: () => Promise.resolve(),
+    },
+  });
+  const loaded = [
+    "application/fhir+json",
+    "application/cda+xml",
+    "application/xml",
+    "Application/CDA+XML",
+  ].map(adapter);
+  const of = ofMediaType(loaded);
+  const [fhir, cda, , otherCda] = loaded.map(({ adapter }) => adapter);
+  assert.deepEqual(of("application/cda+xml; charset=utf-8"), [cda, otherCda]);
+  assert.deepEqual(of("application/fhir+json"), [fhir]);
+  assert.deepEqual(of("text/plain"), []);
 });

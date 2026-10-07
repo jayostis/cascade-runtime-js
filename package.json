@@ -10,6 +10,7 @@
   "workspaces": [
     "packages/runtime",
     "packages/apple-health",
+    "packages/ccda-download",
     "packages/site",
     "packages/graphdb",
     "packages/cascade-runtime"

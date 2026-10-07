@@ -877,6 +877,17 @@ const DEFINITIONS: Definition[] = [
     },
   ],
   [
+    "the download {name} is imported on {time}",
+    (compiled, [name, when], _stated, _compiling, label) => {
+      const step = label ?? (name as string);
+      happen(compiled, label, name as string, when as string, {
+        kind: "import",
+        export: `downloads/${String(name)}`,
+        converted: `bridge/${step}`,
+      });
+    },
+  ],
+  [
     "{person} enters {name} on {time}",
     (compiled, [, name, when], _stated, _compiling, label) => {
       happen(compiled, label, name as string, when as string, {

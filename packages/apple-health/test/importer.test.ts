@@ -37,10 +37,13 @@ test("an export's documents are its clinical record files, each with what export
   );
   const documents = (await appleHealthExport.documents(files, "e")) ?? [];
   assert.deepEqual(
-    documents.map(({ path }) => path),
+    documents.map(({ path, mediaType }) => [path, mediaType]),
     [
-      "e/clinical-records/AllergyIntolerance-peanut.json",
-      "e/clinical-records/Condition-unlisted.json",
+      [
+        "e/clinical-records/AllergyIntolerance-peanut.json",
+        "application/fhir+json",
+      ],
+      ["e/clinical-records/Condition-unlisted.json", "application/fhir+json"],
     ],
   );
 
