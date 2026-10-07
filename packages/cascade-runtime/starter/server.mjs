@@ -1,5 +1,6 @@
-// The app: a page for each pod, showing three of the vocabulary's questions, and pages that bring a record in from a
-// hospital. `npm start`, then open the address it prints.
+// The app: each pod as a person reads it, a way to make a new one, and pages that bring a record in from a hospital.
+// `npm start`, then open the address it prints. What the pages show is in `summary.mjs`; this file answers requests,
+// reads the pods, and hands the module what it shows, with the addresses of this app.
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 import process, { env, exit, stdout } from "node:process";
@@ -7,22 +8,26 @@ import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
 import { hospitalsAt } from "./hospitals.mjs";
-import { NO_POD, podFolder, podNames } from "./pods.mjs";
+import { podFolder, podNames, POD_NAME } from "./pods.mjs";
+import {
+  connectionPage,
+  demoPeople,
+  escaped,
+  frame,
+  hospitalName,
+  hospitalsPage,
+  newPodDialog,
+  noPods,
+  patientName,
+  personName,
+  podPage,
+  postButton,
+  QUESTIONS,
+  slug,
+} from "./summary.mjs";
 
-const QUESTIONS = [
-  "pod/My active allergies",
-  "entry/What needs review",
-  "pod/How many judgments count",
-];
-
-function escaped(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+/** Names Windows keeps for devices, which no folder may have. */
+const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
@@ -36,67 +41,75 @@ function podNamed(name) {
   return open.get(name);
 }
 
-function page(title, body) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escaped(title)}</title>
-<style>
-body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
-table { border-collapse: collapse; margin-bottom: 2rem; }
-th, td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
-</style>
-</head>
-<body>
-${body}
-</body>
-</html>
-`;
+const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
+
+/** `body` in the frame, with the pods there are; `names` given, it reads none. */
+async function page(title, body, { current, refresh, names } = {}) {
+  const pods = names ?? (await podNames());
+  return frame({
+    title,
+    body,
+    pods,
+    current,
+    href: podPath,
+    home: "/",
+    dialog: newPodDialog({ people, pods, action: "/pods" }),
+    refresh,
+  });
 }
 
-/** A table with a column for every variable any row binds. */
-function table(rows) {
-  if (rows.length === 0) return "<p>No rows.</p>";
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-  const head = columns.map((column) => `<th>${escaped(column)}</th>`).join("");
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${columns.map((column) => `<td>${escaped(row[column] ?? "")}</td>`).join("")}</tr>`,
-    )
-    .join("\n");
-  return `<table>\n<tr>${head}</tr>\n${body}\n</table>`;
+/** A button that starts signing the pod's person in to the hospital at `fhirBase`. */
+function signIn(name, fhirBase, label) {
+  return postButton(`${podPath(name)}hospitals`, { fhirBase }, escaped(label));
 }
 
 async function home(response) {
   const names = await podNames();
-  if (names.length === 1) {
-    response.writeHead(302, { location: `/pods/${names[0]}/` });
-    response.end();
-    return;
-  }
-  const body =
-    names.length === 0
-      ? `<h1>No pod yet</h1>\n<p>${escaped(NO_POD).replace(/`([^`]*)`/, "<code>$1</code>")}</p>`
-      : `<h1>Pods</h1>\n<ul>\n${names.map((name) => `<li><a href="/pods/${escaped(name)}/">${escaped(name)}</a></li>`).join("\n")}\n</ul>`;
-  send(response, 200, page("Pods", body));
+  if (names.length > 0) return redirect(response, podPath(names[0]), 302);
+  send(response, 200, await page("No pods yet", noPods(), { names }));
 }
 
-async function podPage(response, name) {
+/** The pod as a person reads it; `from` is the number of the connection a record was just brought in through. */
+async function showPod(response, name, from) {
   const pod = await podNamed(name);
-  const sections = [];
-  for (const question of QUESTIONS)
-    sections.push(
-      `<h2>${escaped(question)}</h2>\n${table(await pod.ask(question))}`,
+  const answers = {};
+  for (const question of QUESTIONS) answers[question] = await pod.ask(question);
+  const connection =
+    from === null ? undefined : hospitals.connection(name, from);
+  const body = podPage(answers, {
+    pod: name,
+    person: people.find((each) => slug(each.name) === name),
+    from: connection?.row.name,
+    signIn: (hospital) =>
+      signIn(
+        name,
+        hospital.fhirBase,
+        `Sign in at ${hospitalName(hospital.name)}`,
+      ),
+    findHospital: `${podPath(name)}hospitals`,
+  });
+  send(response, 200, await page(personName(name), body, { current: name }));
+}
+
+/** Makes an empty pod named after the person given, unless it exists, and goes to it. */
+async function newPod(request, response) {
+  const name = slug((await formOf(request)).get("person") ?? "");
+  const refused = !POD_NAME.test(name)
+    ? "Give a name with at least one letter from a to z, or a digit."
+    : DEVICES.test(name)
+      ? "That name is one Windows keeps for itself: add another word."
+      : undefined;
+  if (refused !== undefined)
+    return send(
+      response,
+      400,
+      await page(
+        "No pod made",
+        `<h1>No pod made</h1>\n<p>${escaped(refused)}</p>`,
+      ),
     );
-  const link = `<p><a href="/pods/${escaped(encodeURIComponent(name))}/hospitals">Bring in a record from a hospital</a></p>`;
-  send(
-    response,
-    200,
-    page(name, `<h1>${escaped(name)}</h1>\n${link}\n${sections.join("\n")}`),
-  );
+  await podNamed(name);
+  redirect(response, podPath(name));
 }
 
 function send(response, status, html) {
@@ -104,8 +117,8 @@ function send(response, status, html) {
   response.end(html);
 }
 
-function redirect(response, location) {
-  response.writeHead(303, { location });
+function redirect(response, location, status = 303) {
+  response.writeHead(status, { location });
   response.end();
 }
 
@@ -119,62 +132,56 @@ async function formOf(request) {
   return new URLSearchParams((await bodyOf(request)).toString("utf8"));
 }
 
-/** The directory, searched, each hospital with a button that starts signing in to it. */
-function hospitalsPage(response, name, text) {
-  const rows = hospitals.directory(text);
-  const action = `/pods/${escaped(encodeURIComponent(name))}/hospitals`;
-  const list = rows
-    .map(
-      (row) => `<li>
-<form method="post" action="${action}">
-<input type="hidden" name="fhirBase" value="${escaped(row.fhirBase)}">
-<strong>${escaped(row.name)}</strong>${row.places === undefined ? "" : ` (${escaped(row.places.join("; "))})`}
-<button>Sign in</button>
-</form>
-</li>`,
-    )
-    .join("\n");
-  send(
-    response,
-    200,
-    page(
-      "Hospitals",
-      `<h1>Bring a record into ${escaped(name)}</h1>
-<form method="get" action="${action}"><input name="q" value="${escaped(text)}" aria-label="Search by name or place"> <button>Search</button></form>
-${rows.length === 0 ? "<p>No hospital matches.</p>" : `<ul>\n${list}\n</ul>`}
-<p><a href="/pods/${escaped(encodeURIComponent(name))}/">Back to ${escaped(name)}</a></p>`,
-    ),
-  );
+async function findHospital(response, name, text) {
+  const body = hospitalsPage({
+    pod: name,
+    rows: hospitals.directory(text),
+    text,
+    search: `${podPath(name)}hospitals`,
+    signIn: (row) => signIn(name, row.fhirBase, "Sign in"),
+    people,
+    back: podPath(name),
+  });
+  send(response, 200, await page("Find a hospital", body, { current: name }));
 }
 
-/** A connection: why it failed, or what its pull holds and a button to bring it in, or what bringing it in did. */
-async function connectionPage(response, name, connection, importing) {
-  const back = `<p><a href="/pods/${escaped(encodeURIComponent(name))}/">Back to ${escaped(name)}</a></p>`;
-  const said = (status, text) =>
+/**
+ * A connection: its steps while it signs in and fetches, the page refreshing itself; then why it failed, or what the
+ * hospital has and a button to bring it in; after the import, back to the pod.
+ */
+async function showConnection(response, name, connection, importing) {
+  const shown = async (status, view) =>
     send(
       response,
       status,
-      page(
-        connection.row.name,
-        `<h1>${escaped(connection.row.name)}</h1>\n${text}\n${back}`,
+      await page(
+        hospitalName(connection.row.name),
+        connectionPage({
+          pod: name,
+          hospital: connection.row.name,
+          back: podPath(name),
+          connection,
+          bring: `${podPath(name)}connections/${connection.n}`,
+          ...view,
+        }),
+        { current: name, refresh: view.refresh },
       ),
     );
+  if (connection.step === "signing in" || connection.step === "pulling")
+    return shown(200, { refresh: true });
   let pulled;
   try {
     pulled = await connection.pulled;
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    return said(
-      200,
-      `<p>Not connected: <code>${escaped(error.kind)}</code>. ${escaped(error.message)}</p>`,
-    );
+    return shown(200, { failed: `Not connected: ${error.message}.` });
   }
   const pod = await podNamed(name);
   let files;
   try {
     files = pullFiles(pulled, connection.name);
   } catch (error) {
-    return said(200, `<p>Refused: ${escaped(error.message)}</p>`);
+    return shown(200, { failed: `Refused: ${error.message}` });
   }
   if (importing && connection.imported === undefined) {
     connection.imported = pod.import(files, { aboutSubject: true });
@@ -185,45 +192,20 @@ async function connectionPage(response, name, connection, importing) {
     try {
       done = await connection.imported;
     } catch (error) {
-      return said(
-        500,
-        `<p>Not brought in: ${escaped(error.message)}</p>\n<form method="post"><button>Try again</button></form>`,
-      );
+      return shown(500, {
+        failed: `Not brought in: ${error.message}`,
+        retry: true,
+      });
     }
-    return said(
-      200,
-      done.refused === undefined
-        ? `<p>Brought in: ${done.wrote.length} files written.</p>`
-        : `<p>Refused: ${escaped(done.refused)}</p>`,
-    );
+    if (done.refused !== undefined)
+      return shown(200, { failed: `Refused: ${done.refused}` });
+    return redirect(response, `${podPath(name)}?from=${connection.n}`);
   }
-  const sources = (await pod.look(files))
-    .map(
-      (source) => `<h2>${escaped(source.name ?? connection.row.name)}</h2>
-<p>${source.claimed ? `${escaped(name)} already holds records from here.` : `${escaped(name)} holds no records from here yet.`}</p>
-${table(Object.entries(source.records).map(([kind, count]) => ({ kind, count })))}`,
-    )
-    .join("\n");
-  const notes = [
-    pulled.missing.length === 0
-      ? ""
-      : `<p>Referred to, but not served: ${escaped(pulled.missing.join(", "))}</p>`,
-    pulled.denied.length === 0
-      ? ""
-      : `<p>Not allowed to read: ${escaped(pulled.denied.map(({ type, category }) => (category === undefined ? type : `${type} (${category})`)).join(", "))}</p>`,
-  ].join("");
-  send(
-    response,
-    200,
-    page(
-      connection.row.name,
-      `<h1>${escaped(connection.row.name)}</h1>
-${sources}
-${notes}
-<form method="post"><button>Bring this record in as ${escaped(name)}'s</button></form>
-${back}`,
-    ),
-  );
+  return shown(200, {
+    sources: await pod.look(files),
+    pulled,
+    about: patientName(pulled.bundle),
+  });
 }
 
 /** A demo hospital's sign-in page, the form posted back to it included. */
@@ -245,6 +227,7 @@ async function demoHospitalPage(request, response, url) {
 }
 
 const demo = await loadHospitals();
+const people = demoPeople(demo);
 let origin;
 /** The origins a browser gives this server's own forms: it answers as `localhost` too. */
 let ownOrigins;
@@ -256,23 +239,28 @@ const server = createServer(async (request, response) => {
     const { pathname } = url;
     const post = request.method === "POST";
     if (!post && request.method !== "GET")
-      return send(response, 405, page("Not allowed", "<h1>Not allowed</h1>"));
+      return send(
+        response,
+        405,
+        await page("Not allowed", "<h1>Not allowed</h1>"),
+      );
     if (post && !ownOrigins.has(request.headers.origin))
       return send(
         response,
         403,
-        page("Refused", "<h1>Refused: a form from another site</h1>"),
+        await page("Refused", "<h1>Refused: a form from another site</h1>"),
       );
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
     if (!post && pathname === "/") return await home(response);
+    if (post && pathname === "/pods") return await newPod(request, response);
     if (!post && pathname === "/callback") {
       const back = hospitals.back(url);
       if (back !== undefined) return redirect(response, back);
       return send(
         response,
         400,
-        page("Not waiting", "<h1>No sign-in is waiting for this</h1>"),
+        await page("Not waiting", "<h1>No sign-in is waiting for this</h1>"),
       );
     }
     const at = /^\/pods\/([^/]+)\/(?:(hospitals)|connections\/(\d+))?$/.exec(
@@ -280,9 +268,14 @@ const server = createServer(async (request, response) => {
     );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
     if (name !== undefined && (await podNames()).includes(name)) {
-      if (at[2] !== undefined && !post)
-        return hospitalsPage(response, name, url.searchParams.get("q") ?? "");
-      if (at[2] !== undefined) {
+      const [, , isHospitals, n] = at;
+      if (isHospitals !== undefined && !post)
+        return await findHospital(
+          response,
+          name,
+          url.searchParams.get("q") ?? "",
+        );
+      if (isHospitals !== undefined) {
         const to = await hospitals.start(
           name,
           (await formOf(request)).get("fhirBase"),
@@ -291,20 +284,29 @@ const server = createServer(async (request, response) => {
         return send(
           response,
           400,
-          page("Unknown", "<h1>That hospital is not in the directory</h1>"),
+          await page(
+            "Unknown",
+            "<h1>That hospital is not in the directory</h1>",
+          ),
         );
       }
-      if (at[3] !== undefined) {
-        const connection = hospitals.connection(name, at[3]);
+      if (n !== undefined) {
+        const connection = hospitals.connection(name, n);
         if (connection !== undefined)
-          return await connectionPage(response, name, connection, post);
+          return await showConnection(response, name, connection, post);
       }
-      if (!post && at[2] === undefined && at[3] === undefined)
-        return await podPage(response, name);
+      if (!post && n === undefined)
+        return await showPod(response, name, url.searchParams.get("from"));
     }
-    send(response, 404, page("Not found", "<h1>Not found</h1>"));
+    send(response, 404, await page("Not found", "<h1>Not found</h1>"));
   } catch (error) {
-    send(response, 500, page("Error", `<pre>${escaped(error.message)}</pre>`));
+    send(
+      response,
+      500,
+      await page("Error", `<pre>${escaped(error.message)}</pre>`, {
+        names: [],
+      }),
+    );
   }
 });
 

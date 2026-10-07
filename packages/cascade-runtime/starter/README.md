@@ -17,10 +17,13 @@ npm run pod:load alex-rivera
 npm start
 ```
 
-then open <http://127.0.0.1:3000/>. With no pod, the page says which command
-loads one. With one pod, it shows that pod: its active allergies, the entries
-that need review, such as where Alex's two hospitals disagree, and how many
-judgments count. With several, it lists them.
+then open <http://127.0.0.1:3000/>. The pods are on the left, named as their
+people. A pod's page reads as that person's health record: how many records,
+from which places; what Cascade noticed, such as the same allergy recorded at
+two hospitals, or two hospitals disagreeing on how severe it is; and a tile for
+each kind of record, which opens a table you can sort by a heading and filter.
+"+ New pod" makes a pod for anyone by name, or for one of the demo hospitals'
+made-up patients in one click.
 
 The server answers on `127.0.0.1` only, at the port in `PORT`, or 3000. It sees
 a pod loaded while it runs; after `pod:reset` of a pod it has shown, restart it.
@@ -28,15 +31,17 @@ Stop it with Ctrl+C in its terminal.
 
 ## Bring in a record from a hospital
 
-A pod's page links to "Bring in a record from a hospital". Search the test
-directory by name or place, and press Sign in:
+A demo patient's pod has a Sign in button for each hospital holding them; any
+pod has "Find a hospital", which searches the test directory by name or place
+and lists each demo hospital's sample patients. Press Sign in:
 
 1. Your browser goes to the hospital's own sign-in page. A demo hospital's
    asks whom to sign in as and offers Allow and Cancel.
 2. The hospital sends you back to this app, at `/callback`.
-3. The connection's page waits while the record is pulled, then shows what it
-   holds and whether the pod already has records from that hospital.
-4. "Bring this record in" imports it into the pod as its person's.
+3. The connection's page shows its steps while the record is fetched, then
+   what the hospital has, and whether the pod already has records from there.
+4. "Bring it into … pod" imports it as the pod's person's, and goes back to the
+   pod's page.
 
 Cascade North and Cascade South are pretend hospitals, in `demo-hospital/`,
 with made-up patients. They need no account and no network: this app serves
@@ -63,7 +68,10 @@ beside `alex-rivera`.
 
 ## The files
 
-- `server.mjs`: the app, on `node:http`, with no framework and no build step.
+- `server.mjs`: the app, on `node:http`, with no framework and no build step:
+  it answers requests and reads the pods.
+- `summary.mjs`: what the pages show, as functions from a pod's answers to
+  HTML, with no import, so a browser can run it too. Rewrite it freely.
 - `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
 - `pods.mjs`: what the commands share: where pods live and which one a command

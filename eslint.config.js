@@ -81,6 +81,18 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/cascade-runtime/starter/summary.mjs"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportDeclaration, ImportExpression",
+          message: "The view runs in a browser too: it imports nothing.",
+        },
+      ],
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
