@@ -8,6 +8,9 @@
   "references": [
     {
       "path": "../runtime"
+    },
+    {
+      "path": "../demo-hospital"
     }
   ]
 }

@@ -70,7 +70,7 @@ const importSaved: Perform = async (pod, step, story) => {
   });
   try {
     begun(story, step);
-    return await pod.import(story.source, folder, () => [adapter]);
+    return await pod.import(story.source, folder, async () => () => [adapter]);
   } finally {
     await adapter.free();
   }

@@ -249,7 +249,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
       }),
     (pod: CorePod, time: StoryTime) => {
       time.begin(step.when);
-      return pod.import(files, exported, () => [inWorkerAdapter]);
+      return pod.import(files, exported, async () => () => [inWorkerAdapter]);
     },
   ]) {
     const pod = new MemoryFiles(story.address);

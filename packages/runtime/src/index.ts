@@ -14,6 +14,7 @@ export * from "./graph.js";
 export * from "./kit.js";
 export * from "./ids.js";
 export * from "./importer.js";
+export * from "./importers.js";
 export * from "./layout.js";
 export * from "./load-adapter.js";
 export * from "./matcher.js";

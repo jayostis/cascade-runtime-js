@@ -325,11 +325,13 @@ test("a document the Bridge fails on is refused with the Bridge's reason, and an
   for (const on of ["accepts", "convert"] as const) {
     const performed = await (
       await pod()
-    ).import(download, "summary.xml", () => [failing(on, "document")]);
+    ).import(download, "summary.xml", async () => () => [
+      failing(on, "document"),
+    ]);
     assert.equal(performed.refused, "summary.xml: it fails", on);
     assert.deepEqual(performed.wrote, [], on);
     await assert.rejects(
-      (await pod()).import(download, "summary.xml", () => [
+      (await pod()).import(download, "summary.xml", async () => () => [
         failing(on, "bridge"),
       ]),
       /it fails/,

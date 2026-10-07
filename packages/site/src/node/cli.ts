@@ -169,7 +169,7 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
       };
 }
 
-/** What the page under try/ serves of the package `npm run build:package` staged: its browser build, and the vocabulary it carries. */
+/** What the page under try/ serves of the package `npm run build:package` staged: its browser build, and every component it carries. */
 async function stagedPackage(): Promise<{
   readonly files: Map<string, Uint8Array>;
   readonly vocabulary: string;
@@ -198,8 +198,13 @@ async function stagedPackage(): Promise<{
     ...(await staged.list("dist/browser")),
     `components/${CONFIG_FILE}`,
     `components/${PACKED}`,
-    ...(await staged.list(`components/${repositoryName(followed)}/${commit}`)),
   ];
+  for (const component of packed.components)
+    paths.push(
+      ...(await staged.list(
+        `components/${repositoryName(component)}/${component.commit}`,
+      )),
+    );
   const files = new Map<string, Uint8Array>();
   for (const path of paths) {
     const bytes = await staged.read(path);
