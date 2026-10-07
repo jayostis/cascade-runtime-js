@@ -11,7 +11,6 @@ const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const TYPE = `${RDF}type`;
-const MERGED_FROM = `${CASCADE}mergedFrom`;
 const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference versions are current.rq`;
 
 /** The pod a build is made for, as it stood after a step. */
@@ -20,8 +19,6 @@ export interface PodState {
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
   readonly title: string;
-  /** The files the pod holds: each view among them is written again though it holds no entry now. */
-  readonly files: readonly string[];
 }
 
 /** Adds the lens's derived state, and the files built from it, to a store holding a pod; returns those files. */
@@ -158,7 +155,11 @@ export async function vocabularyBuild(
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
     const used = rows.flatMap((row) => row.get("version")?.value ?? []);
-    const held = new Set(pod.files.filter((path) => views.includes(path)));
+    const held = new Set(
+      layout.views
+        .filter(({ writtenAlways }) => writtenAlways)
+        .flatMap(({ file }) => file ?? []),
+    );
     const unheld = layout.views.filter(({ file }) => !held.has(file ?? ""));
     if (unheld.length > 0) {
       const { rows: kinds } = await store.select(
@@ -175,18 +176,18 @@ export async function vocabularyBuild(
     };
     for (const group of groups) {
       const made = await Promise.all(
-        group.map(async ({ file, query: path }) => ({
-          file,
-          triples: await store.construct(query(path)),
-        })),
+        group
+          .filter(({ file }) => !views.includes(file) || held.has(file))
+          .map(async ({ file, query: path }) => ({
+            file,
+            triples: marked(
+              pod.address + file,
+              await store.construct(query(path)),
+              used,
+            ),
+          })),
       );
-      for (const { file, triples } of made) {
-        const view = views.includes(file);
-        if (view && triples.some(([, p]) => p.value === MERGED_FROM))
-          held.add(file);
-        if (!view || held.has(file))
-          await add(file, marked(pod.address + file, triples, used));
-      }
+      for (const { file, triples } of made) await add(file, triples);
     }
     await add(layout.typeIndex, typeIndex(pod.address, layout, held));
     await add(

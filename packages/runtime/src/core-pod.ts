@@ -296,8 +296,7 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
     const rebuilt = new Set(layout.rebuilt);
-    const held = await pod.list("");
-    const files = held.filter((path) => !rebuilt.has(path));
+    const files = (await pod.list("")).filter((path) => !rebuilt.has(path));
     const made = await built(
       pod,
       layout,
@@ -307,7 +306,6 @@ export class CorePod {
       title,
       build.lens,
       newStore(),
-      held,
       build.derive,
     );
     for (const [path, triples] of made)

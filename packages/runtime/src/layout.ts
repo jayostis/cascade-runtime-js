@@ -25,6 +25,8 @@ export class Placement {
     readonly writtenBy: string | undefined,
     readonly title: string | undefined,
     readonly storesBytes: boolean,
+    /** Whether the build writes this view at every build, not only once the pod holds a record of its kind. */
+    readonly writtenAlways: boolean = false,
   ) {}
 
   /** The path of the file holding the thing named `name`: this placement's file, or one in `folder` or its own. */
@@ -67,13 +69,13 @@ export class Layout {
       PREFIX rec: <${REC}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
-      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes WHERE {
+      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
         ?placement a rec:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
         OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement rec:filedWith ?filedWith }
         OPTIONAL { ?placement rec:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement rec:fanOut ?fanOut }
         OPTIONAL { ?placement rec:writtenBy ?writtenBy } OPTIONAL { ?placement dct:title ?title }
-        OPTIONAL { ?placement rec:storesBytes ?storesBytes }
+        OPTIONAL { ?placement rec:storesBytes ?storesBytes } OPTIONAL { ?placement rec:writtenAlways ?writtenAlways }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -102,6 +104,7 @@ export class Layout {
         value("writtenBy"),
         value("title"),
         value("storesBytes") === "true",
+        value("writtenAlways") === "true",
       );
     });
     return new Layout(turtle, placements);

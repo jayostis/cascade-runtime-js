@@ -33,10 +33,7 @@ async function addLayout(
   await store.loadTurtle(await triples, { graph: LAYOUT_GRAPH });
 }
 
-/**
- * The pod's files, in the store, each RDF file a named graph; and what `derive` builds from them at the time given,
- * writing again each view among the files `held` though it holds no entry now.
- */
+/** The pod's files, in the store, each RDF file a named graph; and what `derive` builds from them at the time given. */
 export async function built(
   pod: Files,
   layout: Layout,
@@ -46,7 +43,6 @@ export async function built(
   title: string,
   lens: string,
   store: Store,
-  held: readonly string[],
   derive?: Derive,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   for (const path of files.filter((path) => layout.isRdf(path))) {
@@ -56,7 +52,7 @@ export async function built(
     await store.loadTurtle(bytes, { graph: address + path });
   }
   if (derive === undefined || at === undefined) return new Map();
-  return derive(store, lens, { address, at, title, files: held });
+  return derive(store, lens, { address, at, title });
 }
 
 /**
@@ -84,17 +80,15 @@ export async function dataset(
   }
   const steps = replayed.steps.slice(0, index + 1);
   const address = replayed.story.address;
-  const files = steps.flatMap(({ wrote }) => wrote);
   await built(
     replayed.pod,
     replayed.layout,
     address,
-    files,
+    steps.flatMap(({ wrote }) => wrote),
     steps.at(-1)?.step.when,
     replayed.title,
     lens,
     store,
-    files,
     derive,
   );
   await addLayout(store, replayed.layout, address);
@@ -174,7 +168,7 @@ export async function podDataset(
     }
   }
   const derived = await build.derivations.derive(store, lens);
-  const built = await build.files(store, { address, at, title, files: held });
+  const built = await build.files(store, { address, at, title });
   await addLayout(store, layout, address);
   return {
     address,

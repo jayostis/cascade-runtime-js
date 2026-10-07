@@ -117,25 +117,21 @@ async function placed(where: string): Promise<string> {
   return found;
 }
 
-test("the build writes the labels, a view of a kind the pod holds a record of or that holds an entry and no other, and a type index registering each view written and the views' folder by its class, file or folder, and title", async () => {
+test("the build writes the labels, each view the layout marks written always, a view of a kind the pod holds a record of and no other, and a type index registering each view written and the views' folder by its class, file or folder, and title", async () => {
   const held = (
     await values(
       store,
       `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a rec:View } } }`,
     )
   ).map((kind) => `<${kind}>`);
-  const holding = await values(
-    store,
-    `SELECT DISTINCT ?view WHERE { GRAPH ?view { ?view a rec:View . [] cascade:mergedFrom [] } }`,
-  );
   const written = await values(store, `GRAPH ?view { ?view a rec:View }`);
   assert.deepEqual(
     written,
     await values(
       laidOut,
       `SELECT ?file WHERE { GRAPH <${address}> { ?placement a rec:Placement ; rec:writtenBy [] ; solid:instance ?file
-        OPTIONAL { ?placement solid:forClass ?class }
-        FILTER (!BOUND(?class) || ?class IN (${held.join(", ")}) || ?file IN (${holding.map((view) => `<${view}>`).join(", ")})) } }`,
+        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement rec:writtenAlways ?always }
+        FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
   assert.ok(written.some((file) => file.endsWith("clinical/allergies.ttl")));
@@ -179,7 +175,7 @@ test("a build after each step reads no file back, or one the pod held at its ope
   const appeared = layout.views.flatMap(({ file }) =>
     pod.log.includes(file ?? "") ? [builtAt(file ?? "")] : [],
   );
-  assert.ok(appeared.length > 1);
+  assert.ok(appeared.length > 0);
   assert.equal(
     pod.writes.get(layout.typeIndex),
     new Set([builtAt(layout.typeIndex), ...appeared]).size,
