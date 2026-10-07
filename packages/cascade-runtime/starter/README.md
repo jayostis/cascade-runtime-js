@@ -5,15 +5,14 @@ commands to load, make, remove and ask pods. It depends only on
 `cascade-runtime`, which keeps the pods; this app never writes a pod's files
 itself.
 
-Alex Rivera, whose pod `pod:load alex-rivera` loads, and Priya Natarajan, whose
-pod `pod:load priya-natarajan` loads, are the people of the kits the package
-carries, made up for them. Alex's records come from Apple Health exports;
-Priya's from exports and C-CDA files together.
+The app is made with two pods, `alex-rivera` and `priya-natarajan`, loaded from
+the kits the package carries. Alex Rivera and Priya Natarajan are made up.
+Alex's records come from Apple Health exports; Priya's from exports and C-CDA
+files together. `npm run reset` puts the app back as it was made.
 
 ## Start
 
 ```sh
-npm run pod:load alex-rivera
 npm start
 ```
 
@@ -50,21 +49,22 @@ real test server and needs the network.
 
 ## The commands
 
-An option to an npm script goes after `--`, or npm keeps it for itself.
+`npm run help` lists every command with what it does. An option to an npm
+script goes after `--`, or npm keeps it for itself.
 
-| Command                                                      | Does                                                                                                                                                                               |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm start`                                                  | serves the app                                                                                                                                                                     |
-| `npm run pod:load -- <kit> [--through <step>] [--as <name>]` | replays a kit's story into `pods/<name>/`, the name being the kit's unless `--as` gives one; with `--through`, it stops after that step                                            |
-| `npm run pod:new <name>`                                     | makes an empty pod in `pods/<name>/`, to bring your own downloads into                                                                                                             |
-| `npm run pod:reset <name>`                                   | removes `pods/<name>/`, asking nothing                                                                                                                                             |
-| `npm run kit:export -- <kit> <download>`                     | copies a kit's download into this folder as a person puts it there: `alex-rivera x-e12` as `apple_health_export`, `priya-natarajan kestrel-harbor-health-summary.xml` as that file |
-| `npm run ask -- [--pod <name>] "<question>"`                 | prints a question's rows, one JSON object a line                                                                                                                                   |
-| `npm run console -- [--pod <name>]`                          | opens Node's REPL with the pod as `pod`: `await pod.ask("pod/My active allergies")`                                                                                                |
-
-`--pod` may be left out when there is exactly one pod. One app can hold a kit at
-two points: `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24`
-beside `alex-rivera`.
+- `npm run dev` serves the app as `npm start` does, restarting it whenever a
+  file is saved.
+- `npm run reset` removes every pod and loads Alex's and Priya's again.
+- `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
+  story into `pods/<name>/`. One app can hold a kit at two points:
+  `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24` beside
+  `alex-rivera`.
+- `npm run kit:export -- <kit> <download>` copies a kit's download into this
+  folder as a person puts it there: `alex-rivera x-e12` as
+  `apple_health_export`, `priya-natarajan kestrel-harbor-health-summary.xml` as
+  that file.
+- `ask` and `console` need `--pod <name>` whenever the app has more than one
+  pod, as a made app does; it may be left out only when there is exactly one.
 
 ## The files
 
@@ -76,7 +76,8 @@ beside `alex-rivera`.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
 - `pods.mjs`: what the commands share: where pods live and which one a command
   works on.
-- `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands.
+- `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands, and
+  `help.mjs`, which lists them.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in

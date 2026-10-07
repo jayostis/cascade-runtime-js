@@ -7,7 +7,10 @@
     "node": ">=22"
   },
   "scripts": {
+    "help": "node help.mjs",
     "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "reset": "node pod.mjs everything",
     "pod:load": "node pod.mjs load",
     "pod:new": "node pod.mjs new",
     "pod:reset": "node pod.mjs reset",

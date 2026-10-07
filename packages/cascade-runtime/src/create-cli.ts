@@ -17,4 +17,8 @@ process.exitCode = await create(process.argv.slice(2), {
   err: (text) => process.stderr.write(text),
   ...(stdin.isTTY ? { ask: askFolder } : {}),
   install: npmInstall,
+  load: async (kit, folder) => {
+    const { replayKit } = await import("./node/kits.js");
+    await replayKit(kit, folder);
+  },
 });

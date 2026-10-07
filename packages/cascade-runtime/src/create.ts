@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { cp, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { cp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -11,6 +11,8 @@ const STARTER = join(PACKAGE, "starter");
 const COMMAND = "create-cascade-app";
 const PROJECT_NAME = /^[a-z0-9][a-z0-9._-]*$/;
 const USAGE = `usage: ${COMMAND} <folder> [--tarball <address>]`;
+/** The kits whose pods a made app starts with, in the order they are loaded; the starter's `npm run reset` loads the same. */
+export const KITS = ["alex-rivera", "priya-natarajan"] as const;
 
 export interface Terminal {
   readonly out: (text: string) => void;
@@ -19,6 +21,8 @@ export interface Terminal {
   readonly ask?: () => Promise<string>;
   /** Installs the project's dependencies in the folder, resolving whether it succeeded. */
   readonly install: (folder: string) => Promise<boolean>;
+  /** Replays the kit's story into the folder, rejecting with why it could not. */
+  readonly load: (kit: string, folder: string) => Promise<void>;
 }
 
 /** The word as a shell reads it: quoted when it holds a space or a character a shell would act on. */
@@ -151,20 +155,38 @@ export async function create(
     );
     return 1;
   }
+  const loaded = [];
+  for (const kit of KITS) {
+    terminal.out(`\nLoading the pod ${kit}, from the kit the package carries…`);
+    const started = performance.now();
+    const pod = join(target, "pods", kit);
+    try {
+      await terminal.load(kit, pod);
+      loaded.push(kit);
+      terminal.out(
+        ` loaded in ${((performance.now() - started) / 1000).toFixed(1)} s\n`,
+      );
+    } catch (error) {
+      await rm(pod, { recursive: true, force: true });
+      terminal.out("\n");
+      terminal.err(
+        `the pod ${kit} did not load: ${(error as Error).message}\nThe app is made; \`npm run reset\` in it loads its pods again.\n`,
+      );
+    }
+  }
   terminal.out(
     [
       "",
-      `Made ${target}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
+      `Made ${target}${loaded.length === 0 ? "" : `, with ${loaded.length === 1 ? "the pod" : "the pods"} ${loaded.join(" and ")}`}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
       "",
       agentPrompt(name),
       "",
       "To run the app yourself instead:",
       "",
       `  cd ${shellWord(folder)}`,
-      "  npm run pod:load alex-rivera",
       "  npm start",
       "",
-      "then open http://127.0.0.1:3000/",
+      "then open http://127.0.0.1:3000/. `npm run help` lists the app's commands.",
       "",
     ].join("\n"),
   );
