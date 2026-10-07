@@ -24,11 +24,17 @@ async function holdsAnything(folder: string): Promise<boolean> {
   }
 }
 
-/** The names of the folders in a folder, and of its files too where `files` is set. */
-async function folders(path: string, files = false): Promise<string[]> {
+/** The names of the folders in a folder, and of its XML files too where `files` is set: a C-CDA a portal handed out. */
+async function entries(path: string, files = false): Promise<string[]> {
   try {
     return (await readdir(path, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() || (files && entry.isFile()))
+      .filter(
+        (entry) =>
+          entry.isDirectory() ||
+          (files &&
+            entry.isFile() &&
+            entry.name.toLowerCase().endsWith(".xml")),
+      )
       .map(({ name }) => name)
       .sort();
   } catch (error) {
@@ -61,8 +67,8 @@ export async function kitDownload(
     "scripted-input",
   );
   const downloads = [];
-  for (const person of await folders(input))
-    for (const name of await folders(join(input, person, "downloads"), true))
+  for (const person of await entries(input))
+    for (const name of await entries(join(input, person, "downloads"), true))
       downloads.push({ name, folder: join(input, person, "downloads", name) });
   const found = downloads.filter(({ name }) => name === download);
   if (found.length !== 1)

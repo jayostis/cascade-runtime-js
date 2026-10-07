@@ -260,6 +260,12 @@ test("the look reads an export's or a download's index and writes nothing: a FHI
     assert.deepEqual(source.records, {});
     assert.deepEqual(source.received, ["2025-04-03T09:15:22Z"]);
     assert.equal(source.claimed, false);
+    const broken = join(at, "broken.xml");
+    await writeFile(broken, '<ClinicalDocument xmlns="urn:hl7-org:v3"><id>');
+    await assert.rejects(
+      priya.look(broken),
+      /^Error: ccda-download cannot read /,
+    );
 
     const imported = await priya.import(download, { aboutSubject: true });
     assert.equal(imported.refused, undefined);

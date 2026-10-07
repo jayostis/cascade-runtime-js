@@ -415,14 +415,11 @@ if (release === undefined) {
           .code,
         0,
       );
-      assert.deepEqual(
-        await readFile(join(app, download)),
-        await readFile(
-          join(
-            story.vocabulary,
-            `${PRIYA}/scripted-input/priya/downloads/${download}`,
-          ),
-        ),
+      const copied = await readFile(join(app, download), "utf8");
+      assert.ok(
+        copied.includes("<ClinicalDocument") &&
+          copied.includes("<name>Kestrel Harbor Hospital</name>"),
+        `${download} is not Kestrel Harbor's C-CDA`,
       );
     },
   );

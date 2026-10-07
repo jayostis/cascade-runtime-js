@@ -94,7 +94,8 @@ async function recordsBy(question, by) {
 
 async function bringIn(folder, options = {}) {
   const sources = await pod.look(folder).catch(async (error) => {
-    if (!/^no importer .* reads /.test(error.message)) throw error;
+    if (!/^no importer .* reads |^\S+ cannot read /.test(error.message))
+      throw error;
     await showPerson(
       "That is neither an Apple Health export nor a C-CDA file.",
     );
