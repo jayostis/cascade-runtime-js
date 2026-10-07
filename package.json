@@ -24,6 +24,7 @@
     "test": "tsc -b && node --test \"packages/*/dist/test/**/*.test.js\"",
     "test:browser": "tsc -b && node --test packages/site/dist/test-browser/try.test.js",
     "test:live": "tsc -b && node --test packages/site/dist/test-browser/live.test.js",
+    "test:launcher": "tsc -b && node --test packages/cascade-runtime/dist/test-launcher/launcher.test.js",
     "conformance": "tsc -b && node packages/runtime/dist/src/node/cli.js conformance",
     "build:example-pod": "tsc -b && node packages/runtime/dist/src/node/cli.js build-example-pod",
     "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
