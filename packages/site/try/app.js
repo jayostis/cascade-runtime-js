@@ -12,7 +12,7 @@ import {
   searchDirectory,
   TEST_DIRECTORY,
 } from "cascade-runtime";
-import { useDemoHospitals } from "./demo-hospitals.js";
+import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionPage,
   escaped,
@@ -41,8 +41,6 @@ const SAMPLES = (document.body.dataset.samples ?? "")
   .split(" ")
   .filter(Boolean);
 
-/** A demo hospital's short name, its host's first label: `cascade-north`. */
-const idOf = (row) => new URL(row.fhirBase).hostname.split(".")[0];
 const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
 
 const hospitalsReady = useDemoHospitals(
@@ -65,11 +63,21 @@ async function podsHere() {
     .sort();
 }
 
-/** The demo people, as the view's `demoPeople` gave them when the site was built. */
+/** The demo people, as the view's `demoPeople` gave them when the site was built; none, when they cannot be read. */
 async function demoPeople() {
-  const answer = await fetch("demo-people.json");
-  if (!answer.ok) throw new Error("The demo people are not served here.");
-  return answer.json();
+  try {
+    const answer = await fetch("demo-people.json");
+    return answer.ok ? await answer.json() : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Closes the new-pod box, as its close link does, so that what an action in it shows is not hidden behind it. */
+function closeDialog() {
+  if (location.hash === "") return;
+  location.replace("#");
+  history.replaceState(null, "", location.pathname + location.search);
 }
 
 /**
@@ -121,8 +129,11 @@ const signInButton = (fhirBase, label) =>
   postButton("sign-in", { fhirBase }, escaped(label));
 
 async function showPod(from) {
-  const answers = {};
-  for (const question of QUESTIONS) answers[question] = await pod.ask(question);
+  const answers = Object.fromEntries(
+    await Promise.all(
+      QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
+    ),
+  );
   render(
     personName(current),
     podPage(answers, {
@@ -182,6 +193,18 @@ async function signIn(fhirBase, popup) {
     if (connection === shown) showConnection(view, state);
   };
   now();
+  let counting = false;
+  /** Shows the requests answered once a frame, and only while the step they were counted in is still the one shown. */
+  const counted = () => {
+    shown.requests += 1;
+    if (counting) return;
+    counting = true;
+    const step = shown.step;
+    requestAnimationFrame(() => {
+      counting = false;
+      if (shown.step === step) now();
+    });
+  };
   const failed = (said) => {
     shown.step = "failed";
     now({ failed: said }, "ready");
@@ -197,15 +220,17 @@ async function signIn(fhirBase, popup) {
       signIn: popupSignIn({ popup }),
       fetch: async (url, init) => {
         const answer = await globalThis.fetch(url, init);
-        shown.requests += 1;
-        now();
+        counted();
         return answer;
       },
     });
     shown.step = "pulling";
     now();
     const pulled = await pull(signedIn, DEMO_PLAN);
-    shown.files = pullFiles(pulled, `${idOf(row)}-${Date.now()}`);
+    shown.files = pullFiles(
+      pulled,
+      `${hospitalId({ hospital: row })}-${Date.now()}`,
+    );
     shown.step = "pulled";
     now(
       {
@@ -226,7 +251,7 @@ async function signIn(fhirBase, popup) {
 /** Brings the pulled record into the pod, and goes back to it, noting where the record came from. */
 async function bring() {
   const shown = connection;
-  if (shown?.files === undefined) return;
+  if (shown?.files === undefined) return showPod();
   let done;
   try {
     done = await pod.import(shown.files, { aboutSubject: true });
@@ -246,14 +271,17 @@ async function bring() {
   await showPod(shown.row.name);
 }
 
-/** Makes an empty pod named after the person, unless it exists, and goes to it. */
+/** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it. */
 async function make(person) {
   const name = slug(person);
-  if (name === "")
+  if (SAMPLES.includes(name)) return load(name);
+  if (name === "") {
+    closeDialog();
     return render(
       "No pod made",
       "<h1>No pod made</h1>\n<p>Give a name with at least one letter from a to z, or a digit.</p>",
     );
+  }
   if (!pods.includes(name))
     await (await openPod(name, { title: person.trim() })).close();
   location.assign(podHref(name));
@@ -264,6 +292,12 @@ function deleted(name) {
     const deleting = indexedDB.deleteDatabase(DATABASE + name);
     deleting.onsuccess = () => resolve();
     deleting.onerror = () => reject(deleting.error);
+    deleting.onblocked = () =>
+      reject(
+        new Error(
+          "What was copied is removed once this page is closed in your other tabs.",
+        ),
+      );
   });
 }
 
@@ -274,8 +308,14 @@ async function load(name) {
     try {
       await (await openPod(name, { from: `../${name}/pod/` })).close();
     } catch (error) {
-      await deleted(name);
-      throw error;
+      const left = await deleted(name).then(
+        () => undefined,
+        (failure) => failure,
+      );
+      if (left === undefined) throw error;
+      throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
+        cause: error,
+      });
     }
   location.assign(podHref(name));
 }
@@ -288,6 +328,7 @@ async function busy(step) {
   try {
     await step();
   } catch (error) {
+    closeDialog();
     render(
       "Something went wrong",
       `<h1>Something went wrong</h1>\n<p>${escaped(error?.message ?? error)}</p>`,

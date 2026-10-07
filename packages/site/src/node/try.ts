@@ -19,17 +19,23 @@ const APP = fileURLToPath(new URL("../../../try/app.js", import.meta.url));
 const VIEW = fileURLToPath(
   new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
 );
-const WEB = fileURLToPath(
-  new URL("../../../../demo-hospital/dist/src/web/", import.meta.url),
+const SOURCE = fileURLToPath(
+  new URL("../../../../demo-hospital/dist/src/", import.meta.url),
 );
+/** The page side of the demo hospitals: their worker's registration, and the rule that names a pull after its hospital. */
+const PAGE_SIDE = `export { useDemoHospitals } from "./web/page.js";
+export { hospitalId } from "./route.js";
+`;
 
-/** One module of the demo hospital's web code, bundled, as a classic script or a module. */
+/** The demo hospital's web code, `entry` or a module of the given contents, bundled, as a classic script or a module. */
 async function bundled(
-  entry: string,
+  entry: string | { contents: string },
   format: "iife" | "esm",
 ): Promise<Uint8Array> {
   const { outputFiles } = await build({
-    entryPoints: [join(WEB, entry)],
+    ...(typeof entry === "string"
+      ? { entryPoints: [join(SOURCE, "web", entry)] }
+      : { stdin: { contents: entry.contents, resolveDir: SOURCE } }),
     bundle: true,
     format,
     platform: "browser",
@@ -39,7 +45,9 @@ async function bundled(
   });
   const [output] = outputFiles;
   if (output === undefined)
-    throw new Error(`esbuild built nothing of ${entry}`);
+    throw new Error(
+      `esbuild built nothing of ${typeof entry === "string" ? entry : "the page side"}`,
+    );
   return output.contents;
 }
 
@@ -59,7 +67,7 @@ export async function tryFiles(
       readFile(APP),
       readFile(VIEW),
       bundled("worker.js", "iife"),
-      bundled("page.js", "esm"),
+      bundled({ contents: PAGE_SIDE }, "esm"),
       import(pathToFileURL(VIEW).href) as Promise<{
         demoPeople(demo: unknown): unknown;
       }>,
