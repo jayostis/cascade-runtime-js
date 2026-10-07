@@ -40,9 +40,26 @@ function coded(pulled: Pull, type: string, code: string): string {
   return found[0]!.fullUrl;
 }
 
+/** A clock stopped at the time, whose milliseconds end in zeros, as a stored `xsd:dateTime` drops them. */
+function stopped(time: string): { now: () => Date } {
+  return { now: () => new Date(time) };
+}
+
 before(async () => {
-  north = (await pulled(await loadHospital("cascade-north"), "pt-1001")).pull;
-  south = (await pulled(await loadHospital("cascade-south"), "s-48213")).pull;
+  north = (
+    await pulled(
+      await loadHospital("cascade-north"),
+      "pt-1001",
+      stopped("2026-10-07T08:04:46.170Z"),
+    )
+  ).pull;
+  south = (
+    await pulled(
+      await loadHospital("cascade-south"),
+      "s-48213",
+      stopped("2026-10-07T08:05:00.000Z"),
+    )
+  ).pull;
   pod = await openPod();
   folder = await mkdtemp(join(tmpdir(), "cascade-pull-"));
 });
@@ -53,6 +70,10 @@ after(async () => {
 });
 
 test("patient A pulled from two hospitals is one subject in one pod, each record named under its hospital's base, joined where the codes agree", async () => {
+  assert.deepEqual(
+    [north.retrievedAt, south.retrievedAt],
+    ["2026-10-07T08:04:46.17Z", "2026-10-07T08:05:00Z"],
+  );
   const [looked] = await pod.look(pullFiles(north, "north"));
   assert.deepEqual(
     [looked?.name, looked?.server, looked?.received, looked?.claimed],
@@ -77,12 +98,17 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   });
   assert.deepEqual(
     documents
-      .map(({ server, on, patient, author }) => [server, on, patient, author])
+      .map(({ server, on, patient, author }) => [
+        server,
+        Date.parse(on ?? ""),
+        patient,
+        author,
+      ])
       .sort(),
     [north, south]
       .map((pull) => [
         pull.fhirBase,
-        pull.retrievedAt,
+        Date.parse(pull.retrievedAt),
         `Patient/${pull.patient}`,
         pull.source,
       ])

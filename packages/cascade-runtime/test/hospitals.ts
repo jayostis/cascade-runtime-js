@@ -125,6 +125,7 @@ export async function pulled(
     setup.between?.();
     const result = await pull(connection, setup.plan ?? DEMO_PLAN, {
       limits: { ...FAST, ...setup.limits },
+      ...(setup.now ? { now: setup.now } : {}),
     });
     return { pull: result, seen };
   } catch (error) {
