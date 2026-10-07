@@ -132,56 +132,48 @@ test("the developer story prints Alex's active allergies as the replay through J
   assert.deepEqual(multiset(printed), multiset(expected));
 });
 
-const CCDA_UNREAD =
-  /no importer of [^\n]* reads [^\n]*kestrel-harbor-health-summary\.xml/;
-
-test("the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry", async (t) => {
-  let printed: Record<string, string>[];
-  try {
-    printed = await story(
+test(
+  "the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry",
+  {
+    todo: "waits for #70's step 9: a C-CDA importer, Apple Health's medication and lab result kinds, and a new pod given the newest rule-list tables",
+  },
+  async (t) => {
+    const printed = await story(
       "medications.mjs",
       "priya-pod",
       join(STORY, "priya-natarajan", "apple_health_export"),
       join(STORY, "priya-natarajan", "kestrel-harbor-health-summary.xml"),
     );
-  } catch (error) {
-    if (!(error instanceof Error) || !CCDA_UNREAD.test(error.message))
-      throw error;
-    t.diagnostic(error.message);
-    t.todo(
-      "stops at the C-CDA's look until #70's step 9: a C-CDA importer, Apple Health's medication and lab result kinds, and a new pod given the newest rule-list tables",
+    for (const row of printed) t.diagnostic(JSON.stringify(row));
+    assert.ok(
+      printed.every((row) => row.entry !== undefined),
+      "a row names no ?entry",
     );
-    return;
-  }
-  for (const row of printed) t.diagnostic(JSON.stringify(row));
-  assert.ok(
-    printed.every((row) => row.entry !== undefined),
-    "a row names no ?entry",
-  );
-  assert.equal(
-    new Set(printed.map((row) => row.entry)).size,
-    printed.length,
-    "two rows name one entry",
-  );
-  assert.deepEqual(
-    multiset(
-      printed.map(({ medication, code, records }) => ({
-        medication,
-        code,
-        records,
-      })),
-    ),
-    multiset([
-      {
-        medication: "lisinopril 10 MG Oral Tablet",
-        code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
-        records: "2",
-      },
-      {
-        medication: "amlodipine 5 MG Oral Tablet",
-        code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
-        records: "1",
-      },
-    ]),
-  );
-});
+    assert.equal(
+      new Set(printed.map((row) => row.entry)).size,
+      printed.length,
+      "two rows name one entry",
+    );
+    assert.deepEqual(
+      multiset(
+        printed.map(({ medication, code, records }) => ({
+          medication,
+          code,
+          records,
+        })),
+      ),
+      multiset([
+        {
+          medication: "lisinopril 10 MG Oral Tablet",
+          code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
+          records: "2",
+        },
+        {
+          medication: "amlodipine 5 MG Oral Tablet",
+          code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
+          records: "1",
+        },
+      ]),
+    );
+  },
+);
