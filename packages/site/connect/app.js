@@ -6,6 +6,7 @@ import {
   popupSignIn,
   pull,
   pullFiles,
+  TEST_DIRECTORY,
 } from "cascade-runtime";
 import { useDemoHospitals } from "./demo-hospitals.js";
 
@@ -76,9 +77,21 @@ async function busy(saying, step) {
   }
 }
 
-for (const button of document.querySelectorAll("button.sign-in"))
+/** The test directory's demo hospitals, each with the name its pull is imported under: its host's first label. */
+const HOSPITALS = TEST_DIRECTORY.filter(({ vendor }) => vendor === "demo").map(
+  (row) => ({ row, id: new URL(row.fhirBase).hostname.split(".")[0] }),
+);
+
+for (const { row, id } of HOSPITALS) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "sign-in";
+  button.dataset.id = id;
+  button.disabled = true;
+  button.textContent = `Sign in to ${row.name}`;
+  document.querySelector("#hospitals").append(button, " ");
   button.addEventListener("click", () => {
-    const { name, fhirBase, id } = button.dataset;
+    const { name } = row;
     const popup = window.open(
       "",
       "cascade-sign-in",
@@ -86,11 +99,9 @@ for (const button of document.querySelectorAll("button.sign-in"))
     );
     busy(`Signing in to ${name}…`, async () => {
       try {
-        const connection = await connect(
-          { name, vendor: "demo", fhirBase },
-          REGISTRATION,
-          { signIn: popupSignIn({ popup }) },
-        );
+        const connection = await connect(row, REGISTRATION, {
+          signIn: popupSignIn({ popup }),
+        });
         status.textContent = `Pulling your record from ${name}…`;
         const record = await pull(connection, DEMO_PLAN);
         pulled.replaceChildren(
@@ -112,6 +123,7 @@ for (const button of document.querySelectorAll("button.sign-in"))
       }
     });
   });
+}
 
 startOver.addEventListener("click", () =>
   busy("Starting over…", async () => {

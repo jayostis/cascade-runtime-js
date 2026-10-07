@@ -51,18 +51,7 @@ export async function connectFiles(): Promise<Map<string, Uint8Array>> {
     bundled("page.js", "esm"),
   ]);
   const files = new Map<string, Uint8Array>([
-    [
-      "index.html",
-      encoder.encode(
-        connectPage(
-          [...hospitals.values()].map((loaded) => ({
-            name: loaded.hospital.name,
-            fhirBase: loaded.hospital.fhirBase,
-            id: hospitalId(loaded),
-          })),
-        ),
-      ),
-    ],
+    ["index.html", encoder.encode(connectPage())],
     ["app.js", app],
     [SIGNED_IN, encoder.encode(signedInPage())],
     [WORKER, worker],

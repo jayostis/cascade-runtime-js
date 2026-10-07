@@ -9,14 +9,6 @@ export const WORKER_PAGE = "demo-hospitals.js";
 export const WORKER_DATA = "demo-hospitals/";
 export const SIGNED_IN = "signed-in.html";
 
-/** A hospital the page offers, as the app's directory gives it. */
-export interface Offered {
-  readonly name: string;
-  readonly fhirBase: string;
-  /** The name its pull is imported under. */
-  readonly id: string;
-}
-
 function head(title: string): Html {
   const imports = JSON.stringify({
     imports: {
@@ -31,7 +23,7 @@ function head(title: string): Html {
 }
 
 /** The page that signs in to a demo hospital, pulls the record and imports it into a pod in the browser. */
-export function connectPage(hospitals: readonly Offered[]): string {
+export function connectPage(): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,10 +37,7 @@ ${head("Connect to a demo hospital")}
 FHIR and imports it into a pod kept in this browser's own storage. The hospital is served by this page's own service
 worker: nothing leaves the browser.</p>
 <p class="prose" id="status" role="status">Starting the demo hospitals…</p>
-<p class="prose">${hospitals.map(
-    ({ name, fhirBase, id }) =>
-      markup`<button type="button" class="sign-in" data-name="${name}" data-fhir-base="${fhirBase}" data-id="${id}">Sign in to ${name}</button> `,
-  )}</p>
+<p class="prose" id="hospitals"></p>
 <h2 class="part">Pulled</h2>
 <ul id="pulled"></ul>
 <h2 class="part">Active allergies</h2>
