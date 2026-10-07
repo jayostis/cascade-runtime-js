@@ -55,7 +55,7 @@ let pods = [];
 let people = [];
 let current;
 let pod;
-/** The sign-in under way or done, with its row, step, requests answered, and once pulled its files and what it has. */
+/** The sign-in under way or done, with its row, step, requests answered, and once pulled the files to import. */
 let connection;
 
 async function podsHere() {
@@ -212,12 +212,14 @@ async function signIn(fhirBase, popup) {
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(pulled, `${idOf(row)}-${Date.now()}`);
     shown.step = "pulled";
-    shown.view = {
-      sources: await pod.look(shown.files),
-      pulled,
-      about: patientName(pulled.bundle),
-    };
-    now(shown.view, "ready");
+    now(
+      {
+        sources: await pod.look(shown.files),
+        pulled,
+        about: patientName(pulled.bundle),
+      },
+      "ready",
+    );
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
     failed(`Not connected: ${error.message}.`);
