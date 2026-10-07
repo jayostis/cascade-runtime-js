@@ -68,7 +68,11 @@ async function expected(): Promise<{
   assert.ok(north);
   const fetch = demoFetch([{ ...north, autoApprove: A_NORTH }]);
   const connection = await connect(
-    { name: north.hospital.name, vendor: "demo", fhirBase: north.hospital.fhirBase },
+    {
+      name: north.hospital.name,
+      vendor: "demo",
+      fhirBase: north.hospital.fhirBase,
+    },
     {
       clientId: "cascade-runtime-demo",
       redirectUri: "http://127.0.0.1/connect/signed-in.html",
@@ -101,7 +105,9 @@ async function expected(): Promise<{
           return `${resourceType}/${id}`;
         })
         .sort(),
-      allergies: sorted(shownRows(pod, await pod.ask("pod/My active allergies"))),
+      allergies: sorted(
+        shownRows(pod, await pod.ask("pod/My active allergies")),
+      ),
       medications: sorted(
         shownRows(pod, await pod.ask("pod/My active medications")),
       ),
@@ -184,9 +190,11 @@ test("connect/ signs in to North in a popup through the page's own service worke
   assert.equal(done.state, "ready", done.status);
 
   assert.deepEqual(
-    (await page.$$eval("#pulled li", (items) =>
-      items.map((item) => item.textContent ?? ""),
-    )).sort(),
+    (
+      await page.$$eval("#pulled li", (items) =>
+        items.map((item) => item.textContent ?? ""),
+      )
+    ).sort(),
     want.pulled,
   );
   assert.deepEqual(sorted(await cells(page, "#allergies")), want.allergies);
