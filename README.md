@@ -147,6 +147,15 @@ and print her active allergies. It is the developer story of
 acceptance test. `packages/runtime/test/developer-story.test.ts` runs it and
 compares its rows with the replay of her story through `J1`.
 
+`developer-story/medications.mjs` is the developer story of
+[#70](https://github.com/jayostis/cascade-runtime-js/issues/70) and its
+acceptance test. Priya Natarajan's first Apple Health export and first C-CDA
+download from Kestrel Harbor Hospital, synthetic, are under
+`developer-story/priya-natarajan/`. The script looks at each and imports it as
+hers, then prints her active medications: lisinopril, which both formats carry,
+as one entry, and amlodipine, which only the C-CDA has. It does not run yet: the
+same test file reports it as a todo, with where it stopped.
+
 ### The package
 
 `packages/cascade-runtime` is the package an app installs. It is not on npm:

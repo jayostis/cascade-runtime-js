@@ -24,6 +24,55 @@ const APP =
     ? undefined
     : resolve(process.env.CASCADE_RUNTIME_APP);
 
+/** The folder the developer story's scripts and downloads are in: the repository's, or the app's copy of it. */
+const STORY = APP ?? join(ROOT, "developer-story");
+
+/** Each row the script printed, run from a fresh folder, or the app's, on the arguments; its pod is removed after. */
+async function story(
+  script: string,
+  pod: string,
+  ...downloads: string[]
+): Promise<Record<string, string>[]> {
+  const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
+  const permissions =
+    APP === undefined
+      ? []
+      : [
+          "--permission",
+          `--allow-fs-read=${APP}`,
+          `--allow-fs-write=${APP}`,
+          "--allow-worker",
+        ];
+  try {
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [...permissions, join(STORY, script), ...downloads],
+      { cwd: folder, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+    ).catch((error: { stderr?: string; code?: unknown; signal?: unknown }) => {
+      throw new Error(
+        `the script stopped (code ${String(error.code)}, signal ${String(error.signal)}): ${error.stderr || String(error)}`,
+      );
+    });
+    const printed = stdout
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    return printed.map((row) =>
+      Object.fromEntries(
+        Object.entries(row).map(([column, value]) => {
+          assert.equal(typeof value, "string", `?${column} is no string`);
+          return [column, value as string];
+        }),
+      ),
+    );
+  } finally {
+    await rm(APP === undefined ? folder : join(APP, pod), {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
 /** Each row as one string, its columns in name order, so two answers compare as multisets. */
 function multiset(rows: readonly Record<string, unknown>[]): string[] {
   return rows
@@ -74,41 +123,53 @@ test("the developer story prints Alex's active allergies as the replay through J
     Object.fromEntries([...row].map(([column, term]) => [column, term.value])),
   );
 
-  const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
-  const script =
-    APP === undefined
-      ? [join(ROOT, "developer-story", "allergies.mjs")]
-      : [
-          "--permission",
-          `--allow-fs-read=${APP}`,
-          `--allow-fs-write=${APP}`,
-          "--allow-worker",
-          join(APP, "allergies.mjs"),
-        ];
-  try {
-    const { stdout } = await promisify(execFile)(
-      process.execPath,
-      [...script, join(vocabulary.files.folder, FIRST_EXPORT)],
-      { cwd: folder, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
-    ).catch((error: { stderr?: string; code?: unknown; signal?: unknown }) => {
-      throw new Error(
-        `the script stopped (code ${String(error.code)}, signal ${String(error.signal)}): ${error.stderr || String(error)}`,
-      );
-    });
-    const printed = stdout
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    for (const row of printed) {
-      for (const [column, value] of Object.entries(row))
-        assert.equal(typeof value, "string", `?${column} is no string`);
-    }
-    for (const row of printed) t.diagnostic(JSON.stringify(row));
-    assert.deepEqual(multiset(printed), multiset(expected));
-  } finally {
-    await rm(APP === undefined ? folder : join(APP, "alex-pod"), {
-      recursive: true,
-      force: true,
-    });
-  }
+  const printed = await story(
+    "allergies.mjs",
+    "alex-pod",
+    join(vocabulary.files.folder, FIRST_EXPORT),
+  );
+  for (const row of printed) t.diagnostic(JSON.stringify(row));
+  assert.deepEqual(multiset(printed), multiset(expected));
 });
+
+test(
+  "the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry",
+  {
+    todo: "waits for #70's step 9: a C-CDA importer, and a new pod given the newest rule-list tables",
+  },
+  async (t) => {
+    const printed = await story(
+      "medications.mjs",
+      "priya-pod",
+      join(STORY, "priya-natarajan", "apple_health_export"),
+      join(STORY, "priya-natarajan", "kestrel-harbor-health-summary.xml"),
+    );
+    for (const row of printed) t.diagnostic(JSON.stringify(row));
+    assert.equal(
+      new Set(printed.map((row) => row.entry)).size,
+      printed.length,
+      "two rows name one entry",
+    );
+    assert.deepEqual(
+      multiset(
+        printed.map(({ medication, code, records }) => ({
+          medication,
+          code,
+          records,
+        })),
+      ),
+      multiset([
+        {
+          medication: "lisinopril 10 MG Oral Tablet",
+          code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
+          records: "2",
+        },
+        {
+          medication: "amlodipine 5 MG Oral Tablet",
+          code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
+          records: "1",
+        },
+      ]),
+    );
+  },
+);
