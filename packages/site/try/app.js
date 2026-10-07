@@ -14,7 +14,7 @@ import {
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
-  connectionPage,
+  connectionDialog,
   escaped,
   frame,
   hospitalName,
@@ -31,6 +31,7 @@ import {
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
+const BOX = "connection";
 const REGISTRATION = {
   clientId: "cascade-runtime-demo",
   redirectUri: new URL("signed-in.html", location.href).href,
@@ -128,7 +129,8 @@ const personOf = (name) => people.find((each) => slug(each.name) === name);
 const signInButton = (fhirBase, label) =>
   postButton("sign-in", { fhirBase }, escaped(label));
 
-async function showPod(from) {
+/** The pod's page; `from` names the hospital a record was just brought in from, `box` is a connection's box over it. */
+async function showPod(from, box) {
   const answers = Object.fromEntries(
     await Promise.all(
       QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
@@ -140,6 +142,7 @@ async function showPod(from) {
       pod: current,
       person: personOf(current),
       from,
+      connection: box,
       signIn: (hospital) =>
         signInButton(
           hospital.fhirBase,
@@ -165,19 +168,30 @@ function showHospitals(text) {
   );
 }
 
-function showConnection(view, state) {
-  render(
-    hospitalName(connection.row.name),
-    connectionPage({
-      pod: current,
-      hospital: connection.row.name,
-      back: podHref(current),
-      connection,
-      bring: "bring",
-      ...view,
-    }),
-    state,
-  );
+/**
+ * Shows the connection in its box over the pod's page: the first time, the page with the box open by its hash; after
+ * that, the box's contents replaced in place, the box itself kept so that it stays the page's target.
+ */
+async function showConnection(view, state) {
+  const html = connectionDialog({
+    id: BOX,
+    pod: current,
+    hospital: connection.row.name,
+    back: podHref(current),
+    connection,
+    bring: "bring",
+    ...view,
+  });
+  const box = document.getElementById(BOX);
+  if (box === null) {
+    await showPod(undefined, html);
+    history.replaceState(null, "", podHref(current));
+    location.replace(`#${BOX}`);
+  } else {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    box.replaceChildren(...parsed.getElementById(BOX).childNodes);
+  }
+  document.body.dataset.state = state;
 }
 
 /** Signs in at the hospital in `popup`, opened in the click, fetches the record, and shows what it has. */
@@ -189,10 +203,11 @@ async function signIn(fhirBase, popup) {
   }
   const shown = { row, step: "signing in", requests: 0 };
   connection = shown;
-  const now = (view = {}, state = "busy") => {
-    if (connection === shown) showConnection(view, state);
+  const now = async (view = {}, state = "busy") => {
+    if (connection === shown) await showConnection(view, state);
   };
-  now();
+  document.getElementById(BOX)?.remove();
+  await now();
   let counting = false;
   /** Shows the requests answered once a frame, and only while the step they were counted in is still the one shown. */
   const counted = () => {
@@ -207,7 +222,7 @@ async function signIn(fhirBase, popup) {
   };
   const failed = (said) => {
     shown.step = "failed";
-    now({ failed: said }, "ready");
+    return now({ failed: said }, "ready");
   };
   try {
     await hospitalsReady;
@@ -225,14 +240,14 @@ async function signIn(fhirBase, popup) {
       },
     });
     shown.step = "pulling";
-    now();
+    await now();
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(
       pulled,
       `${hospitalId({ hospital: row })}-${Date.now()}`,
     );
     shown.step = "pulled";
-    now(
+    await now(
       {
         sources: await pod.look(shown.files),
         pulled,
@@ -242,7 +257,7 @@ async function signIn(fhirBase, popup) {
     );
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    failed(`Not connected: ${error.message}.`);
+    await failed(`Not connected: ${error.message}.`);
   } finally {
     popup?.close();
   }

@@ -88,14 +88,14 @@ export function hospitalsAt(origin, demo) {
 
     /**
      * Starts signing the pod's person in to the hospital whose FHIR base is given, and its pull after. Resolves where
-     * to send the person: the hospital's page, or the connection's when it failed before that; undefined for a
-     * hospital not in the directory.
+     * to send the person: the hospital's page, or the pod's with the connection's box open when it failed before that;
+     * undefined for a hospital not in the directory.
      */
     async start(pod, fhirBase) {
       const row = TEST_DIRECTORY.find((each) => each.fhirBase === fhirBase);
       if (row === undefined) return undefined;
       const n = ++count;
-      const page = `/pods/${encodeURIComponent(pod)}/connections/${n}`;
+      const page = `/pods/${encodeURIComponent(pod)}/?connection=${n}#connection`;
       let sendTo;
       const authorize = new Promise((resolve) => (sendTo = resolve));
       const connection = {

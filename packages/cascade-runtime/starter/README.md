@@ -36,11 +36,12 @@ and lists each demo hospital's sample patients. Press Sign in:
 
 1. Your browser goes to the hospital's own sign-in page. A demo hospital's
    asks whom to sign in as and offers Allow and Cancel.
-2. The hospital sends you back to this app, at `/callback`.
-3. The connection's page shows its steps while the record is fetched, then
-   what the hospital has, and whether the pod already has records from there.
-4. "Bring it into … pod" imports it as the pod's person's, and goes back to the
-   pod's page.
+2. The hospital sends you back to this app, at `/callback`, which opens a box
+   over the pod's page.
+3. The box shows the connection's steps while the record is fetched, then what
+   the hospital has, and whether the pod already has records from there.
+4. "Bring it into … pod" imports it as the pod's person's; the box closes and
+   the pod's page says what was brought in.
 
 Cascade North and Cascade South are pretend hospitals, in `demo-hospital/`,
 with made-up patients. They need no account and no network: this app serves

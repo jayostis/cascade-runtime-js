@@ -338,8 +338,9 @@ export function opening(section, rows) {
   );
 }
 
-/** A dialog's first link: it covers the page behind the box, so a click outside the box closes it. */
-const BACKDROP = `<a class="backdrop" href="#" aria-label="Close the box" tabindex="-1"></a>`;
+/** A dialog's first link, to `href`: it covers the page behind the box, so a click outside the box closes it. */
+const backdrop = (href = "#") =>
+  `<a class="backdrop" href="${escaped(href)}" aria-label="Close the box" tabindex="-1"></a>`;
 
 /**
  * The section's tile, a link that opens its dialog, and the dialog: a filter box and a table, a heading button per
@@ -376,7 +377,7 @@ export function tile(section, rows) {
   return {
     tile: `<a class="tile" href="#${id}"><span class="kind">${escaped(section.title)}</span><span class="count">${rows.length}</span><span class="peek">${escaped(names)}</span></a>`,
     dialog: `<div class="dialog" id="${id}" role="dialog" aria-labelledby="${id}-title">
-${BACKDROP}
+${backdrop()}
 <div class="box wide">
 <a class="close" href="#" aria-label="Close">×</a>
 <h2 id="${id}-title">${escaped(section.title)} <span class="muted">${rows.length}</span></h2>
@@ -401,9 +402,13 @@ ${body}
  * - `person`: the demo person the pod is for, as `demoPeople` gives them, or undefined;
  * - `from`: the hospital a record was just brought in from, by its name, or undefined;
  * - `signIn(hospital)`: the HTML of a button that signs the pod's person in at one of `person`'s hospitals;
- * - `findHospital`: the address of the page that finds a hospital.
+ * - `findHospital`: the address of the page that finds a hospital;
+ * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined.
  */
-export function podPage(answers, { pod, person, from, signIn, findHospital }) {
+export function podPage(
+  answers,
+  { pod, person, from, signIn, findHospital, connection = "" },
+) {
   const who = personName(pod);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
@@ -432,6 +437,7 @@ export function podPage(answers, { pod, person, from, signIn, findHospital }) {
       ? ""
       : `<div class="tiles">${tiles.map(({ tile }) => tile).join("\n")}</div>`,
     ...tiles.map(({ dialog }) => dialog),
+    connection,
     bringIn({ empty: records === 0, person, signIn, findHospital }),
   ]
     .filter((part) => part !== "")
@@ -541,7 +547,7 @@ export function newPodDialog({ people, pods, action, more }) {
       ? ""
       : `<p><strong>${escaped(said)}</strong></p>\n<ul class="people">\n${items.join("\n")}\n</ul>`;
   return `<div class="dialog" id="new-pod" role="dialog" aria-labelledby="new-pod-title">
-${BACKDROP}
+${backdrop()}
 <div class="box">
 <a class="close" href="#" aria-label="Close">×</a>
 <h2 id="new-pod-title">Make a new pod</h2>
@@ -657,12 +663,13 @@ ${cards.length === 0 ? `<p class="muted">No hospital matches.</p>` : cards.join(
 }
 
 /**
- * A connection to the hospital named `hospital`, for the pod `pod`, whose address is `back`. While `connection.step` is
- * `signing in` or `pulling`, its steps; else `failed` when given, a sentence of why, with a Try again button when
- * `retry`; else its steps, whose record `about` is when not the pod's person, what each of `sources` (from `look`)
- * holds, what `pulled` left out, and a button that posts to `bring`.
+ * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
+ * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, a
+ * sentence of why, with a Try again button when `retry`; else its steps, whose record `about` is when not the pod's
+ * person, what each of `sources` (from `look`) holds, what `pulled` left out, and a button that posts to `bring`.
  */
-export function connectionPage({
+export function connectionDialog({
+  id,
   pod,
   hospital,
   back,
@@ -676,12 +683,19 @@ export function connectionPage({
 }) {
   const who = personName(pod);
   const name = hospitalName(hospital);
-  const said = (body) => `<h1>${escaped(name)}</h1>
+  const said = (
+    body,
+  ) => `<div class="dialog" id="${escaped(id)}" role="dialog" aria-labelledby="${escaped(id)}-title">
+${backdrop(back)}
+<div class="box">
+<a class="close" href="${escaped(back)}" aria-label="Close">×</a>
+<h2 id="${escaped(id)}-title">${escaped(name)}</h2>
 ${body}
-<p><a href="${escaped(back)}">Back to ${escaped(who)}</a></p>`;
+</div>
+</div>`;
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
-      `<div class="card">${steps(connection)}\n<p class="muted">This page refreshes itself until the record is here.</p></div>`,
+      `<div class="card">${steps(connection)}\n<p class="muted">This refreshes itself until the record is here.</p></div>`,
     );
   if (failed !== undefined)
     return said(

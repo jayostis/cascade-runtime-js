@@ -118,22 +118,39 @@ test("a cell with nothing to sort by sorts after the rest", () => {
     assert.ok(view.compare(type, "", key) > 0, type);
 });
 
-test("every box's first link, outside the box, closes it", () => {
+test("a pod's page with a connection holds its tiles and the connection's box; every box's first link, outside the box, closes it", () => {
+  const back = "/pods/alex-rivera/";
   const page = [
     view.podPage(
       {
         [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
         [LABS]: [{ entry: "e2", test: "Glucose" }],
       },
-      { pod: "alex-rivera", signIn: () => "", findHospital: "?hospitals" },
+      {
+        pod: "alex-rivera",
+        signIn: () => "",
+        findHospital: "?hospitals",
+        connection: view.connectionDialog({
+          id: "connection",
+          pod: "alex-rivera",
+          hospital: "Cascade North Demo Hospital",
+          back,
+          connection: { step: "pulling", requests: 3 },
+          bring: "bring",
+        }),
+      },
     ),
     view.newPodDialog({ people: [], pods: [], action: "make" }),
   ].join("\n");
+  assert.equal((page.match(/<a class="tile"/g) ?? []).length, 2);
   const boxes = page.split('<div class="dialog"').slice(1);
-  assert.equal(boxes.length, 3);
+  assert.equal(boxes.length, 4);
+  const connection = boxes.find((box) => box.startsWith(' id="connection"'));
+  assert.ok(connection?.includes("3 requests answered so far"));
   for (const box of boxes) {
     const first = /<a [^>]*>/.exec(box)?.[0] ?? "";
-    assert.match(first, / href="#"/, box.slice(0, 80));
+    const closes = box === connection ? back : "#";
+    assert.ok(first.includes(` href="${closes}"`), box.slice(0, 80));
     assert.match(first, / class="backdrop"/, box.slice(0, 80));
     assert.match(first, / aria-label="Close the box"/, box.slice(0, 80));
     assert.ok(

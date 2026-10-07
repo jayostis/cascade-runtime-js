@@ -86,7 +86,7 @@ async function answersOf(pod: Pod): Promise<Answers> {
   return answers;
 }
 
-/** The sentences the connection page says of what each source of a pull holds. */
+/** The sentences the connection's box says of what each source of a pull holds. */
 const hasLines = (
   hospital: string,
   sources: readonly { records: Readonly<Record<string, number>> }[],
@@ -252,10 +252,16 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     await popup.waitForSelector('button[value="allow"]');
     return popup;
   };
-  const failed = async (): Promise<string> => {
+  /** Waits for the connection's box over the pod's page, open, with the pod's page behind it. */
+  const boxed = async (): Promise<void> => {
     await settled(page);
-    const text = (await page.textContent("main .card p")) ?? "";
-    await page.goto(page.url());
+    assert.ok(await page.isVisible("#connection"), "the box is not open");
+    assert.equal(await page.textContent("main h1"), person.name);
+  };
+  const failed = async (): Promise<string> => {
+    await boxed();
+    const text = (await page.textContent("#connection .card p")) ?? "";
+    await page.goto(page.url().split("#")[0] ?? "");
     await settled(page);
     return text;
   };
@@ -294,19 +300,20 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       `input[name="patient"][value="${patients.get(hospital)}"]`,
     );
     await allowed.click('button[value="allow"]');
-    await settled(page);
+    await boxed();
     assert.deepEqual(
-      (await texts(page, "main .card p")).filter((line) =>
+      (await texts(page, "#connection .card p")).filter((line) =>
         line.startsWith("What "),
       ),
       has.get(hospital),
     );
-    await page.click("main button:has-text('Bring it into')");
+    await page.click("#connection button:has-text('Bring it into')");
     await settled(page);
     assert.equal(
       await page.textContent("main .note"),
       `Brought in the record from ${view.hospitalName(hospital)}.`,
     );
+    assert.equal(await page.$("#connection"), null, "the box is still there");
   }
 
   const noticed = await texts(page, ".noticed li");
