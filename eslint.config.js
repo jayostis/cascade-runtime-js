@@ -18,6 +18,48 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/demo-hospital/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@cascade-runtime/*",
+                "cascade-runtime",
+                "cascade-runtime/*",
+                "**/runtime/**",
+                "**/cascade-runtime/**",
+              ],
+              message: "The demo hospital is reached only through a fetch.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/runtime/**", "packages/cascade-runtime/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@cascade-runtime/demo-hospital",
+                "@cascade-runtime/demo-hospital/*",
+                "**/demo-hospital/**",
+              ],
+              message: "The runtime reaches a hospital only through a fetch.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",

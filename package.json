@@ -11,6 +11,7 @@
     "packages/runtime",
     "packages/apple-health",
     "packages/ccda-download",
+    "packages/demo-hospital",
     "packages/site",
     "packages/graphdb",
     "packages/cascade-runtime"
