@@ -26,7 +26,13 @@ import {
   type LocalVocabulary,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { openPod, type Pod, type Row } from "cascade-runtime";
+import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import {
+  type ExportSource,
+  openPod,
+  type Pod,
+  type Row,
+} from "cascade-runtime";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE = join(ROOT, "packages", "cascade-runtime");
@@ -35,6 +41,8 @@ const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
 /** The exports `pickExport()` gives, in turn. */
 const PICKED = ["x-e2", "x-e4", "x-e10", "x-e12"];
+/** Patient A at Cascade North, as whom `openBrowser()` signs in. */
+const A_NORTH = "pt-1001";
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
@@ -176,7 +184,26 @@ function pickExport() {
   if (picked === undefined) throw new Error("pickExport() was called more often than the test has exports");
   return picked;
 }
+const __demo = await import("@cascade-runtime/demo-hospital");
+const __demoNode = await import("@cascade-runtime/demo-hospital/node");
+/** The person, in their browser, signs in at North as patient A and presses Allow. */
+async function openBrowser(authorize) {
+  const hospitals = __demo.demoFetch(await __demoNode.loadHospitals(), {
+    authorizeBase: \`\${authorize.origin}/demo-hospitals/\`,
+  });
+  const form = new URLSearchParams(authorize.searchParams);
+  form.set("patient", ${JSON.stringify(A_NORTH)});
+  form.set("decision", "allow");
+  const answer = await hospitals(\`\${authorize.origin}\${authorize.pathname}\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form,
+    redirect: "manual",
+  });
+  return new URL(answer.headers.get("Location"));
+}
 async function askPerson(question, shown) {
+  process.stderr.write(\`\${JSON.stringify({ example: __example, asked: shown })}\\n\`);
   const said = JSON.stringify(shown);
   if (said.includes(${JSON.stringify(notTheirs)})) return false;
   return !${JSON.stringify(notTheSame)}.every((record) => said.includes(record));
@@ -232,6 +259,39 @@ test("every example in the guide runs, in order", () => {
     0,
     `the guide's examples stopped: ${ran.stderr.split("\n").slice(-30).join("\n")}`,
   );
+});
+
+test("the hospital example brings patient A's North record into a pod of its own, after a look at it", async () => {
+  const { hospital, patients } = await loadHospital("cascade-north");
+  const looked = ran.stderr
+    .split("\n")
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line) as { example: string; asked?: unknown })
+    .filter(
+      ({ example, asked }) =>
+        example === '"Connect to a hospital", example 1' && asked !== undefined,
+    );
+  assert.equal(looked.length, 1, "the hospital example asked nothing");
+  const sources = looked[0]!.asked as ExportSource[];
+  assert.deepEqual(
+    sources.map(({ server, claimed }) => ({ server, claimed })),
+    [{ server: hospital.fhirBase, claimed: false }],
+  );
+  const active = (patients[A_NORTH]!.entry ?? []).filter(
+    ({ resource }) =>
+      resource.resourceType === "AllergyIntolerance" &&
+      JSON.stringify(resource.clinicalStatus).includes('"active"'),
+  );
+  assert.ok(active.length > 0);
+  const pod = await openPod(join(folder, "pods", "hospital"));
+  try {
+    assert.equal(
+      (await pod.ask("pod/My active allergies")).length,
+      active.length,
+    );
+  } finally {
+    await pod.close();
+  }
 });
 
 test("the reading example shows each allergy as its entry states it, its records beneath", async () => {

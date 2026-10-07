@@ -8,7 +8,7 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { get } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
-import { URL } from "node:url";
+import { URL, URLSearchParams } from "node:url";
 import { parseArgs } from "node:util";
 import { featureStory, OxigraphStore } from "@cascade-runtime/runtime";
 import { packed, vocabularyOf } from "@cascade-runtime/runtime/node";
@@ -26,6 +26,7 @@ const IMPORTS = "pod/What each import brought in";
 const STATUS = "https://ns.cascadeprotocol.org/clinical/v1#status";
 const ALLERGEN = "https://ns.cascadeprotocol.org/health/v1#allergen";
 const MINUTES = 60 * 1000;
+const { fetch } = globalThis;
 
 const { values, positionals } = parseArgs({
   args: argv.slice(2),
@@ -187,6 +188,44 @@ function loadedSteps(out) {
     .split(/\r?\n/)
     .map((line) => /^(\S+) \(\w+\) wrote /.exec(line)?.[1])
     .filter((step) => step !== undefined);
+}
+
+/**
+ * What the app should show of patient A at Cascade North, worked out in the app with the packages it installed:
+ * North's row, its patients, `look` over A's pull made with no person, and A's active allergies by the Bundle.
+ */
+async function expectedPull() {
+  const script = `
+import { demoHospital } from "@cascade-runtime/demo-hospital";
+import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import { connect, DEMO_PLAN, openPod, pull, pullFiles, TEST_DIRECTORY } from "cascade-runtime";
+const patient = "pt-1001";
+const north = await loadHospital("cascade-north");
+const hospital = demoHospital({ ...north, autoApprove: patient });
+const fetch = (input, init) => hospital(new Request(input, init));
+const row = TEST_DIRECTORY.find(({ fhirBase }) => fhirBase === north.hospital.fhirBase);
+const connection = await connect(
+  row,
+  { clientId: "check", redirectUri: "http://127.0.0.1:1/callback", scopes: ["launch/patient", "patient/*.read"] },
+  { fetch, signIn: async (authorize) => new URL((await fetch(authorize)).headers.get("Location")) },
+);
+const pod = await openPod();
+const look = await pod.look(pullFiles(await pull(connection, DEMO_PLAN), "expected"));
+await pod.close();
+const activeAllergies = north.patients[patient].entry.filter(
+  ({ resource }) =>
+    resource.resourceType === "AllergyIntolerance" &&
+    JSON.stringify(resource.clinicalStatus).includes('"active"'),
+).length;
+console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, activeAllergies }));
+`;
+  const { code, out } = await run(execPath, [
+    "--input-type=module",
+    "--eval",
+    script,
+  ]);
+  assert.equal(code, 0, "the expected pull failed");
+  return JSON.parse(out.trim().split(/\r?\n/).at(-1));
 }
 
 async function behaviour(name, check) {
@@ -421,6 +460,94 @@ if (release === undefined) {
           copied.includes("<name>Kestrel Harbor Hospital</name>"),
         `${download} is not Kestrel Harbor's C-CDA`,
       );
+    },
+  );
+
+  await behaviour(
+    "a person signs in to a demo hospital and brings the record in",
+    async () => {
+      const pod = "hospital";
+      assert.equal((await npm("run", "pod:new", pod)).code, 0);
+      const expected = await expectedPull();
+      const server = await started();
+      const origin = new URL(server.address).origin;
+      const at = (path) => new URL(path, origin).href;
+      const send = (path, form, from = origin) =>
+        fetch(at(path), {
+          method: "POST",
+          redirect: "manual",
+          headers: {
+            origin: from,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams(form),
+        });
+      try {
+        const podPage = await served(server, `/pods/${pod}/`);
+        assert.ok(
+          podPage.includes(`/pods/${pod}/hospitals`),
+          "no hospitals link",
+        );
+        const found = await served(server, `/pods/${pod}/hospitals?q=north`);
+        assert.ok(found.includes(escaped(expected.row.fhirBase)));
+        assert.equal(found.split("<button>Sign in</button>").length, 2);
+
+        /** Sign in, and answer the hospital's page with `decision` as patient A; gives the connection's page. */
+        const signIn = async (decision) => {
+          const begun = await send(`/pods/${pod}/hospitals`, {
+            fhirBase: expected.row.fhirBase,
+          });
+          assert.equal(begun.status, 303);
+          const authorize = new URL(begun.headers.get("location"));
+          assert.equal(authorize.origin, origin);
+          const picker = await (await fetch(authorize)).text();
+          for (const patient of expected.patients)
+            assert.ok(picker.includes(`value="${patient}"`), patient);
+          const answered = await send(authorize.pathname, {
+            ...Object.fromEntries(authorize.searchParams),
+            patient: expected.patient,
+            decision,
+          });
+          const back = new URL(answered.headers.get("location"));
+          assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
+          const callback = await fetch(back, { redirect: "manual" });
+          assert.equal(callback.status, 303);
+          return callback.headers.get("location");
+        };
+
+        const cancelled = await served(server, await signIn("cancel"));
+        assert.ok(cancelled.includes("cancelled"), "Cancel is not cancelled");
+        assert.deepEqual(await asked(ALLERGIES, pod), []);
+
+        const elsewhere = await send(
+          `/pods/${pod}/hospitals`,
+          { fhirBase: expected.row.fhirBase },
+          "http://elsewhere.invalid",
+        );
+        assert.equal(elsewhere.status, 403);
+
+        const connection = await signIn("allow");
+        const looked = await served(server, connection);
+        const [source] = expected.look;
+        assert.ok(looked.includes(escaped(source.name)));
+        assert.ok(looked.includes("holds no records from here yet"));
+        for (const [kind, count] of Object.entries(source.records))
+          assert.ok(
+            looked.includes(
+              `<td>${escaped(kind)}</td><td>${escaped(count)}</td>`,
+            ),
+            `the connection's page does not count ${count} ${kind}`,
+          );
+        const imported = await send(connection, {});
+        assert.equal(imported.status, 200);
+        assert.ok((await imported.text()).includes("Brought in"));
+        assert.equal(
+          (await asked(ALLERGIES, pod)).length,
+          expected.activeAllergies,
+        );
+      } finally {
+        await server.stop();
+      }
     },
   );
 

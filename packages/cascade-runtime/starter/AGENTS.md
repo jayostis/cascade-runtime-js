@@ -8,7 +8,10 @@ starts with none: `npm run pod:load alex-rivera` loads Alex Rivera's, and
 carries. `npm run kit:export -- alex-rivera x-e12` copies one of Alex's
 downloads into the app as `apple_health_export`, and
 `npm run kit:export -- priya-natarajan kestrel-harbor-health-summary.xml` one
-of Priya's C-CDA files under its own name. Stop the app's server
+of Priya's C-CDA files under its own name. A pod's page also brings in a
+record from a hospital of the test directory: the person signs in on the
+hospital's own page, and `hospitals.mjs` receives the redirect on `/callback`;
+the demo hospitals, in `demo-hospital/`, are pretend. Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.
 

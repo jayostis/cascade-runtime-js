@@ -1,5 +1,7 @@
 // Bringing a record in from a hospital: the directory, the sign-in on the hospital's own page, the redirect back to
 // this app, and the pull. The demo hospitals are pretend, answered here with no network.
+import { clearTimeout, setTimeout } from "node:timers";
+import { URL } from "node:url";
 import { demoFetch } from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
