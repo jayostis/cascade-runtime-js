@@ -490,7 +490,7 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
             ? Promise.reject(new TypeError("reset"))
             : hospital(request),
       }),
-      "hospital-error",
+      "retries-exhausted",
     ],
     [
       "the token's patient is not a FHIR id",

@@ -1,4 +1,3 @@
-import { base64url } from "@cascade-runtime/runtime";
 import { ConnectionFailure } from "./outcome.js";
 import {
   type DirectoryRow,
@@ -46,6 +45,15 @@ export function held(connection: Connection): Held {
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 export const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
+
+function base64url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
 
 function random(bytes: number): string {
   return base64url(crypto.getRandomValues(new Uint8Array(bytes)));

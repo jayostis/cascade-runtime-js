@@ -9,7 +9,7 @@ export const THIS_VERSION = "urn:cascade:this-version";
 export const THIS_REVISION = "urn:cascade:this-revision";
 export const THIS_ENTRY = "urn:cascade:this-entry";
 
-export function base64url(bytes: Uint8Array): string {
+function base64url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary)

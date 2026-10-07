@@ -61,7 +61,7 @@ export class Requests {
           continue;
         }
         throw new ConnectionFailure(
-          sending.retry ? "retries-exhausted" : "hospital-error",
+          "retries-exhausted",
           `${url.origin} could not be reached for ${sending.what}`,
           at,
         );
