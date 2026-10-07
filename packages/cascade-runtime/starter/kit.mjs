@@ -1,24 +1,14 @@
 // `npm run kit:export -- <kit> <download>`: a download of a kit the package carries, copied into this app as a person
 // puts their phone's download there.
-import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { argv, stdout } from "node:process";
 import { fileURLToPath, URL } from "node:url";
+import { kitDownload } from "cascade-runtime/fixtures";
 import { argumentsOf, refuse } from "./pods.mjs";
 
 const EXPORT = "apple_health_export";
-const COMPONENTS = fileURLToPath(
-  new URL("node_modules/cascade-runtime/components/", import.meta.url),
-);
 const TARGET = fileURLToPath(new URL(EXPORT, import.meta.url));
-
-function folders(path) {
-  if (!existsSync(path)) return [];
-  return readdirSync(path, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-}
 
 const { positionals } = argumentsOf(
   argv.slice(2),
@@ -27,33 +17,20 @@ const { positionals } = argumentsOf(
   2,
 );
 const [kit, download] = positionals;
+let source;
+try {
+  source = join(await kitDownload(kit, download), EXPORT);
+} catch (error) {
+  refuse(error.message);
+}
+if (!existsSync(source))
+  refuse(`the kit ${kit}'s download ${download} holds no ${EXPORT}`);
 if (existsSync(TARGET))
   refuse(`${EXPORT} exists already: move or remove it first`);
-const { components } = JSON.parse(
-  readFileSync(join(COMPONENTS, "packed.json"), "utf8"),
-);
-const { commit } = components.find(({ repository }) =>
-  /\/cascade-vocabulary(\.git)?$/.test(repository),
-);
-const conformance = join(
-  COMPONENTS,
-  "cascade-vocabulary",
-  commit,
-  "conformance",
-);
-const kits = folders(conformance);
-if (!kits.includes(kit))
-  refuse(`there is no kit ${kit}; there are ${kits.join(", ")}`);
-const input = join(conformance, kit, "scripted-input");
-const downloads = folders(input).flatMap((person) =>
-  folders(join(input, person, "downloads")).map((name) => ({ person, name })),
-);
-const found = downloads.find(({ name }) => name === download);
-if (found === undefined)
-  refuse(
-    `the kit ${kit} has no download ${download}; it has ${downloads.map(({ name }) => name).join(", ")}`,
-  );
-cpSync(join(input, found.person, "downloads", download, EXPORT), TARGET, {
-  recursive: true,
-});
+try {
+  cpSync(source, TARGET, { recursive: true });
+} catch (error) {
+  rmSync(TARGET, { recursive: true, force: true });
+  refuse(`${EXPORT} could not be copied: ${error.message}`);
+}
 stdout.write(`Copied ${kit}'s ${download} into ${EXPORT}/.\n`);

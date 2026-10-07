@@ -75,8 +75,6 @@ function run(command, args, options = {}) {
 }
 
 const npm = (...args) => run(execPath, [NPM, ...args]);
-const components = () =>
-  join(app, "node_modules", "cascade-runtime", "components");
 
 /** The question's rows as `npm run ask` prints them. */
 async function asked(question, pod) {
@@ -224,7 +222,8 @@ await behaviour("the command makes the app", async () => {
     );
     assert.equal(manifest.dependencies["cascade-runtime"], address);
   }
-  const vocabulary = await vocabularyOf(await packed(components()));
+  const components = join(app, "node_modules", "cascade-runtime", "components");
+  const vocabulary = await vocabularyOf(await packed(components));
   const kit = (through) =>
     featureStory(
       vocabulary.files,
@@ -248,6 +247,7 @@ await behaviour("the command makes the app", async () => {
       .map(([s]) => s.value),
   );
   story = {
+    vocabulary: vocabulary.files.folder,
     steps: whole.steps.map(({ name }) => name),
     e15: whole.steps[e15].when,
     through,
@@ -356,11 +356,8 @@ if (release === undefined) {
   });
 
   await behaviour("a kit's download is copied whole", async () => {
-    const commit = (await readdir(join(components(), "cascade-vocabulary")))[0];
     const source = join(
-      components(),
-      "cascade-vocabulary",
-      commit,
+      story.vocabulary,
       `${KIT}/scripted-input/alex/downloads/x-e12/apple_health_export`,
     );
     const filesIn = async (folder) =>
