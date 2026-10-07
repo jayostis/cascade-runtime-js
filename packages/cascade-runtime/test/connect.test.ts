@@ -575,7 +575,9 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
     ],
     [
       "a type North does not serve",
-      () => ({ plan: { searches: [{ type: "Procedure" }], backfill: [] } }),
+      () => ({
+        plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+      }),
       "hospital-error",
     ],
   ];
