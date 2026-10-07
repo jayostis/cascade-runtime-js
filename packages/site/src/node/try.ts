@@ -5,15 +5,19 @@ import { build } from "esbuild";
 import { hospitalId } from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
-  connectPage,
   SIGNED_IN,
   signedInPage,
+  SUMMARY,
+  tryPage,
   WORKER,
   WORKER_DATA,
   WORKER_PAGE,
-} from "../connect-page.js";
+} from "../try-page.js";
 
-const APP = fileURLToPath(new URL("../../../connect/app.js", import.meta.url));
+const APP = fileURLToPath(new URL("../../../try/app.js", import.meta.url));
+const VIEW = fileURLToPath(
+  new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
+);
 const WEB = fileURLToPath(
   new URL("../../../../demo-hospital/dist/src/web/", import.meta.url),
 );
@@ -39,20 +43,25 @@ async function bundled(
 }
 
 /**
- * The files of `connect/`: the page, its app and redirect page, and the demo hospitals' worker, its page side and
- * one data file per hospital beside them.
+ * The files of `try/` but the package: the page, which offers the examples published in `samples` (their folders),
+ * its app, the starter's view, the redirect page, and the demo hospitals' worker, its page side and one data file per
+ * hospital beside them.
  */
-export async function connectFiles(): Promise<Map<string, Uint8Array>> {
+export async function tryFiles(
+  samples: readonly string[],
+): Promise<Map<string, Uint8Array>> {
   const encoder = new TextEncoder();
-  const [hospitals, app, worker, workerPage] = await Promise.all([
+  const [hospitals, app, view, worker, workerPage] = await Promise.all([
     loadHospitals(),
     readFile(APP),
+    readFile(VIEW),
     bundled("worker.js", "iife"),
     bundled("page.js", "esm"),
   ]);
   const files = new Map<string, Uint8Array>([
-    ["index.html", encoder.encode(connectPage())],
+    ["index.html", encoder.encode(tryPage(samples))],
     ["app.js", app],
+    [SUMMARY, view],
     [SIGNED_IN, encoder.encode(signedInPage())],
     [WORKER, worker],
     [WORKER_PAGE, workerPage],

@@ -4,9 +4,25 @@ import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
-import { fileURLToPath } from "node:url";
-import { type Browser, chromium } from "playwright";
-import { type Imported, openPod, type Pod } from "cascade-runtime";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "playwright";
+import {
+  connect,
+  DEMO_PLAN,
+  type Imported,
+  openPod,
+  type Pod,
+  pull,
+  pullFiles,
+  type Row,
+} from "cascade-runtime";
+import { demoFetch, hospitalId } from "@cascade-runtime/demo-hospital";
+import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
   FILES_JSON,
   parseConfig,
@@ -20,18 +36,120 @@ import {
   type Packed,
 } from "@cascade-runtime/runtime/node";
 import { type Served, servePages } from "../src/node/serve.js";
-import { shown, watched } from "./shown.js";
+import { newPod, settled, tiles, watched } from "./shown.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PAGES = join(ROOT, "build", "pages");
-const ALLERGEN = "Cascade test allergen";
+const ALEX = "alex-rivera";
+
+type Answers = Record<string, Row[]>;
+interface Person {
+  readonly name: string;
+  readonly at: readonly { readonly name: string; readonly fhirBase: string }[];
+}
+/** What the test reads of the starter's view, the module try/ renders. */
+interface View {
+  readonly QUESTIONS: readonly string[];
+  readonly SECTIONS: readonly { title: string; question: string }[];
+  noticed(answers: Answers): string[];
+  placeOf(row: Row): string;
+  counted(records: Readonly<Record<string, number>>): string;
+  hospitalName(name: string): string;
+  demoPeople(demo: unknown): Person[];
+  patientName(bundle: unknown): string | undefined;
+}
+
+const view = (await import(
+  pathToFileURL(
+    join(ROOT, "packages", "cascade-runtime", "starter", "summary.mjs"),
+  ).href
+)) as View;
 
 let served: Served;
 let browser: Browser;
-let expected: string[][];
+/** One browser profile for the tests that share its pods. */
+let profile: BrowserContext;
+let alex: Answers;
+/** The demo person at two hospitals, what Node's look says of each hospital's pull, and what both bring in. */
+let joined: {
+  person: Person;
+  patients: Map<string, string>;
+  has: Map<string, string[]>;
+  noticed: string[];
+};
 
-const sorted = (rows: string[][]): string[][] =>
-  [...rows].sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+async function answersOf(pod: Pod): Promise<Answers> {
+  const answers: Answers = {};
+  for (const question of view.QUESTIONS)
+    answers[question] = await pod.ask(question);
+  return answers;
+}
+
+/** The sentences the connection page says of what each source of a pull holds. */
+const hasLines = (
+  hospital: string,
+  sources: readonly { records: Readonly<Record<string, number>> }[],
+): string[] =>
+  sources.map(
+    (source) =>
+      `What ${view.hospitalName(hospital)} has: ${view.counted(source.records) || "nothing"}.`,
+  );
+
+/** What Node pulls of the demo person at each of their hospitals, and the pod both pulls make. */
+async function nodeJoin(): Promise<typeof joined> {
+  const demo = await loadHospitals();
+  const person = view.demoPeople(demo).find(({ at }) => at.length > 1);
+  assert.ok(person, "no demo person is at two hospitals");
+  const patients = new Map<string, string>();
+  const has = new Map<string, string[]>();
+  const pod = await openPod();
+  try {
+    for (const hospital of person.at) {
+      const loaded = demo.find(
+        (each) => each.hospital.fhirBase === hospital.fhirBase,
+      );
+      assert.ok(loaded);
+      const id = Object.entries(loaded.patients).find(
+        ([, bundle]) => view.patientName(bundle) === person.name,
+      )?.[0];
+      assert.ok(id);
+      patients.set(hospital.name, id);
+      const fetch = demoFetch([{ ...loaded, autoApprove: id }]);
+      const connection = await connect(
+        { name: hospital.name, vendor: "demo", fhirBase: hospital.fhirBase },
+        {
+          clientId: "cascade-runtime-demo",
+          redirectUri: "http://127.0.0.1/try/signed-in.html",
+          scopes: ["launch/patient", "patient/*.read"],
+        },
+        {
+          fetch,
+          signIn: async (authorize) =>
+            new URL(
+              (await fetch(authorize, { redirect: "manual" })).headers.get(
+                "Location",
+              ) ?? "",
+            ),
+        },
+      );
+      const files = pullFiles(
+        await pull(connection, DEMO_PLAN),
+        hospitalId(loaded),
+      );
+      has.set(hospital.name, hasLines(hospital.name, await pod.look(files)));
+      const imported = await pod.import(files, { aboutSubject: true });
+      assert.equal(imported.refused, undefined);
+    }
+    return {
+      person,
+      patients,
+      has,
+      noticed: view.noticed(await answersOf(pod)),
+    };
+  } finally {
+    await pod.close();
+  }
+}
 
 before(async () => {
   if (!existsSync(join(PAGES, "try", "index.html")))
@@ -40,21 +158,21 @@ before(async () => {
     );
   const copy = await mkdtemp(join(tmpdir(), "try-"));
   try {
-    await cp(join(PAGES, "alex-rivera", "pod"), copy, { recursive: true });
+    await cp(join(PAGES, ALEX, "pod"), copy, { recursive: true });
     await rm(join(copy, FILES_JSON));
     const pod = await openPod(copy);
-    expected = sorted(
-      (await pod.ask("pod/My active allergies")).map((row) => [
-        row.allergen ?? "",
-        row.criticality ?? "",
-      ]),
-    );
-    await pod.close();
+    try {
+      alex = await answersOf(pod);
+    } finally {
+      await pod.close();
+    }
   } finally {
     await rm(copy, { recursive: true, force: true });
   }
+  joined = await nodeJoin();
   served = await servePages(PAGES);
   browser = await chromium.launch();
+  profile = await browser.newContext();
 });
 
 after(async () => {
@@ -62,34 +180,211 @@ after(async () => {
   await served?.close();
 });
 
-test("try/ opens her published pod, adds an allergy, keeps both after a reload, and starts over", async () => {
-  const page = watched(await browser.newPage());
+const texts = (page: Page, selector: string): Promise<string[]> =>
+  page.$$eval(selector, (found) => found.map((each) => each.textContent ?? ""));
+
+test("a visitor with no pod loads Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows", async () => {
+  const page = watched(await profile.newPage());
   await page.goto(`${served.url}try/index.html`);
-  const first = await shown(page);
-  assert.ok(expected.length > 0);
-  assert.deepEqual(sorted(first.active), expected);
-  assert.equal(await page.evaluate(() => crossOriginIsolated), false);
-  const databases = await page.evaluate(async () =>
-    (await indexedDB.databases()).map(({ name }) => name),
+  await settled(page);
+  assert.equal(await page.textContent("main h1"), "No pods yet");
+  await newPod(page, "Load Alex Rivera");
+
+  assert.equal(await page.textContent("main h1"), "Alex Rivera");
+  assert.equal(
+    await page.textContent('nav a[aria-current="page"]'),
+    "Alex Rivera",
   );
-  assert.ok(databases.includes("cascade-pod:alex-rivera"), String(databases));
-  assert.ok(!first.added.includes(ALLERGEN));
+  assert.deepEqual(
+    (await texts(page, ".chips li")).sort(),
+    [
+      ...new Set((alex["entry/Where it came from"] ?? []).map(view.placeOf)),
+    ].sort(),
+  );
+  const noticed = await texts(page, ".noticed li");
+  assert.deepEqual(noticed, view.noticed(alex));
+  assert.ok(
+    noticed.some((sentence) => /^Penicillin was recorded at /.test(sentence)),
+    noticed.join("\n"),
+  );
+  assert.deepEqual(
+    await tiles(page),
+    new Map(
+      view.SECTIONS.map(({ title, question }): [string, number] => [
+        title,
+        (alex[question] ?? []).length,
+      ]).filter(([, count]) => count > 0),
+    ),
+  );
+});
 
-  await page.fill('#add input[name="allergen"]', ALLERGEN);
-  await page.click('#add button[type="submit"]');
-  const added = await shown(page);
-  assert.deepEqual(added.added, [...first.added, ALLERGEN].sort());
-  assert.deepEqual(sorted(added.active), sorted(first.active));
+/** The `data-key` of each row the lab results' table shows, in the column headed `head`. */
+async function column(page: Page, head: string): Promise<string[]> {
+  return page.$$eval(
+    "#see-lab-results table",
+    ([table], head) => {
+      const heads = [...(table?.querySelectorAll("th") ?? [])].map(
+        (th) => th.textContent ?? "",
+      );
+      const at = heads.findIndex((text) => text.startsWith(head));
+      return [...(table?.querySelectorAll("tbody tr:not([hidden])") ?? [])].map(
+        (row) => (row as HTMLTableRowElement).cells[at]?.dataset.key ?? "",
+      );
+    },
+    head,
+  );
+}
 
-  await page.reload();
-  const reloaded = await shown(page);
-  assert.deepEqual(sorted(reloaded.active), sorted(added.active));
-  assert.deepEqual(reloaded.added, added.added);
+test("in the lab results' box, a heading sorts by its column one way then the other, numbers as numbers, and the filter keeps only the rows holding its text", async () => {
+  const page = watched(await profile.newPage());
+  await page.goto(`${served.url}try/index.html?pod=${ALEX}`);
+  await settled(page);
+  await page.click('a.tile[href="#see-lab-results"]');
+  const sort = (head: string): Promise<void> =>
+    page.click(`#see-lab-results th button:has-text("${head}")`);
 
-  await page.click("#start-over");
-  const fresh = await shown(page);
-  assert.deepEqual(sorted(fresh.active), expected);
-  assert.deepEqual(fresh.added, first.added);
+  const opened = await column(page, "Date");
+  assert.ok(opened.length > 1);
+  await sort("Date");
+  assert.deepEqual(await column(page, "Date"), [...opened].reverse());
+  await sort("Date");
+  assert.deepEqual(await column(page, "Date"), opened);
+
+  await sort("Value");
+  const values = await column(page, "Value");
+  const isNumber = (value: string): boolean =>
+    value.trim() !== "" && Number.isFinite(Number(value));
+  const numbers = values.filter(isNumber).map(Number);
+  assert.ok(numbers.length > 1);
+  assert.deepEqual(
+    numbers,
+    [...numbers].sort((a, b) => a - b),
+  );
+  assert.ok(values.slice(0, numbers.length).every(isNumber));
+
+  const [first = ""] = await column(page, "Test");
+  const rows = await texts(page, "#see-lab-results tbody tr");
+  await page.fill("#see-lab-results .filter", first);
+  const kept = await texts(page, "#see-lab-results tbody tr:not([hidden])");
+  assert.deepEqual(
+    kept,
+    rows.filter((row) => row.toLowerCase().includes(first.toLowerCase())),
+  );
+  assert.ok(kept.length < rows.length, "the filter hid nothing");
+});
+
+test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on", async () => {
+  const { person, patients, has } = joined;
+  const page = watched(await profile.newPage());
+  const said: string[] = [];
+  page.on("console", (message) => said.push(message.text()));
+  const secrets = new Set<string>();
+  page.on("request", (request) => {
+    const bearer = /^Bearer (.+)$/.exec(request.headers().authorization ?? "");
+    if (bearer?.[1]) secrets.add(bearer[1]);
+  });
+  const signIn = async (hospital: string): Promise<Page> => {
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.click(
+        `button:has-text("Sign in at ${view.hospitalName(hospital)}")`,
+      ),
+    ]);
+    popup.on("framenavigated", (frame) => {
+      const code = new URL(frame.url()).searchParams.get("code");
+      if (code) secrets.add(code);
+    });
+    await popup.waitForSelector('button[value="allow"]');
+    return popup;
+  };
+  const failed = async (): Promise<string> => {
+    await settled(page);
+    const text = (await page.textContent("main .card p")) ?? "";
+    await page.goto(page.url());
+    await settled(page);
+    return text;
+  };
+
+  await page.goto(`${served.url}try/index.html`);
+  await settled(page);
+  await newPod(page, person.name);
+  assert.equal(await page.textContent("main h1"), person.name);
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  assert.match(
+    (await page.evaluate(
+      () => navigator.serviceWorker.controller?.scriptURL,
+    )) ?? "",
+    /\/try\/demo-hospital-worker\.js$/,
+  );
+
+  const [north = "", south = ""] = person.at.map(({ name }) => name);
+  const cancelled = await signIn(north);
+  const cancelledCloses = cancelled.waitForEvent("close");
+  await cancelled.click('button[value="cancel"]');
+  assert.match(await failed(), /^Not connected: .*cancel/);
+  await cancelledCloses;
+
+  const closed = await signIn(north);
+  await closed.close();
+  assert.match(await failed(), /^Not connected: .*closed/);
+
+  for (const hospital of [north, south]) {
+    const allowed = await signIn(hospital);
+    await page.evaluate(() => {
+      const frame = document.createElement("iframe");
+      frame.src = `data:text/html,<script>parent.postMessage({ type: "cascade-runtime:signed-in", url: "${location.origin}/try/signed-in.html?code=forged&state=forged" }, "*")</script>`;
+      document.body.append(frame);
+    });
+    await allowed.check(
+      `input[name="patient"][value="${patients.get(hospital)}"]`,
+    );
+    await allowed.click('button[value="allow"]');
+    await settled(page);
+    assert.deepEqual(
+      (await texts(page, "main .card p")).filter((line) =>
+        line.startsWith("What "),
+      ),
+      has.get(hospital),
+    );
+    await page.click("main button:has-text('Bring it into')");
+    await settled(page);
+    assert.equal(
+      await page.textContent("main .note"),
+      `Brought in the record from ${view.hospitalName(hospital)}.`,
+    );
+  }
+
+  const noticed = await texts(page, ".noticed li");
+  assert.deepEqual(noticed, joined.noticed);
+  const both = [north, south].map(view.hospitalName);
+  assert.ok(
+    noticed.some(
+      (sentence) =>
+        sentence.includes(" was recorded at ") &&
+        both.every((name) => sentence.includes(name)),
+    ),
+    noticed.join("\n"),
+  );
+
+  assert.ok(secrets.size >= 2, "the test saw no token or no code");
+  const shown = await page.content();
+  for (const secret of secrets) {
+    assert.ok(!shown.includes(secret), "the page shows a token or a code");
+    assert.ok(
+      !said.some((line) => line.includes(secret)),
+      "the console shows a token or a code",
+    );
+  }
+});
+
+test("after a reload, the pods made in this browser are still on the left", async () => {
+  const page = watched(await profile.newPage());
+  await page.goto(`${served.url}try/index.html`);
+  await settled(page);
+  assert.deepEqual(
+    (await texts(page, "nav a")).sort(),
+    ["Alex Rivera", joined.person.name].sort(),
+  );
 });
 
 /** What a pod shows after an import, its own address left out, so two pods compare. */
@@ -212,7 +507,7 @@ test("in the browser, look and import read the files a person picks as Node read
     workers += 1;
   });
   await page.goto(`${served.url}try/index.html`);
-  await shown(page);
+  await settled(page);
   await page.evaluate(() => {
     for (const [id, folder] of [
       ["pick-folder", true],

@@ -1,12 +1,5 @@
 import type { Page } from "playwright";
 
-/** What try/ shows once it has finished a step. */
-export interface Shown {
-  /** Each active allergy, as its allergen and its criticality. */
-  readonly active: string[][];
-  readonly added: string[];
-}
-
 const pageErrors = new WeakMap<Page, string[]>();
 
 /** The page, with what went wrong in it collected for a failure's message. */
@@ -23,8 +16,8 @@ export function watched(page: Page): Page {
   return page;
 }
 
-/** What try/ shows when its step is done; a page that reports an error, or never finishes, fails with what it said. */
-export async function shown(page: Page): Promise<Shown> {
+/** Waits for try/ to finish its step; a page that reports an error, or never finishes, fails with what it said. */
+export async function settled(page: Page): Promise<void> {
   try {
     await page.waitForSelector(
       'body[data-state="ready"], body[data-state="error"]',
@@ -36,19 +29,33 @@ export async function shown(page: Page): Promise<Shown> {
       { cause: error },
     );
   }
-  const status = await page.textContent("#status");
   if ((await page.getAttribute("body", "data-state")) !== "ready")
     throw new Error(
-      `try/ says: ${status ?? ""} ${(pageErrors.get(page) ?? []).join("; ")}`,
+      `try/ says: ${(await page.textContent("main")) ?? ""} ${(pageErrors.get(page) ?? []).join("; ")}`,
     );
-  return {
-    active: await page.$$eval("#active tbody tr", (rows) =>
-      rows.map((row) =>
-        [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? ""),
+}
+
+/** Opens the new-pod box and clicks the choice that holds `label`, then waits for the pod's page. */
+export async function newPod(page: Page, label: string): Promise<void> {
+  await page.click('a[href="#new-pod"]');
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.click(`#new-pod button:has-text(${JSON.stringify(label)})`),
+  ]);
+  await settled(page);
+}
+
+/** Each tile the pod's page shows, by its kind, with the count it shows. */
+export async function tiles(page: Page): Promise<Map<string, number>> {
+  return new Map(
+    await page.$$eval(".tiles .tile", (shown) =>
+      shown.map(
+        (tile) =>
+          [
+            tile.querySelector(".kind")?.textContent ?? "",
+            Number(tile.querySelector(".count")?.textContent),
+          ] as [string, number],
       ),
     ),
-    added: await page.$$eval("#added li", (items) =>
-      items.map((item) => item.textContent ?? ""),
-    ),
-  };
+  );
 }

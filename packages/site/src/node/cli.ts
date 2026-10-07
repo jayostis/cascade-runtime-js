@@ -34,8 +34,8 @@ import {
 } from "@cascade-runtime/runtime/node";
 import { type Example, type Ingredient, pagesTree } from "../front-page.js";
 import { Site } from "../site.js";
-import { TRY_PACKAGE, tryPage } from "../try-page.js";
-import { connectFiles } from "./connect.js";
+import { TRY_PACKAGE } from "../try-page.js";
+import { tryFiles } from "./try.js";
 import { servePages } from "./serve.js";
 import { startOf } from "./start.js";
 
@@ -55,7 +55,6 @@ const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
 const STAGE = join(ROOT, "build", "package");
 const PAGES = join(ROOT, "build", "pages");
-const APP = join(ROOT, "packages", "site", "try", "app.js");
 const log = (line: string): void => console.error(line);
 
 interface Target {
@@ -273,11 +272,9 @@ async function buildPages(): Promise<number> {
     },
     await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
     new Map([
-      ["index.html", new TextEncoder().encode(tryPage(shownTitle(examples)))],
-      ["app.js", await readFile(APP)],
+      ...(await tryFiles(examples.map(({ folder }) => folder))),
       ...staged.files,
     ]),
-    await connectFiles(),
   );
   const out = PAGES;
   await rm(out, { recursive: true, force: true });
@@ -285,13 +282,6 @@ async function buildPages(): Promise<number> {
   for (const [path, bytes] of tree) await pages.write(path, bytes);
   console.error(`${tree.size} files written to ${out}`);
   return 0;
-}
-
-function shownTitle(examples: readonly Example[]): string {
-  const shown = examples.find(({ folder }) => folder === EXAMPLE);
-  if (shown === undefined)
-    throw new Error(`no example ${EXAMPLE} among the kits`);
-  return shown.title;
 }
 
 /** Serves build/pages until stopped. */

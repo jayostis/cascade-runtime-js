@@ -167,7 +167,7 @@ person said no or closed the sign-in.
   connecting.
 - Their addresses are `https:`, so a CSP's `connect-src` must allow
   `https://*.demo.invalid`.
-- A hard reload bypasses the worker. The site's `connect/` page shows all of
+- A hard reload bypasses the worker. The site's `try/` page shows all of
   this.
 - A real browser cannot open a `.demo.invalid` address, so the app serves a
   demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
