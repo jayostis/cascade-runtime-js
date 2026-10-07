@@ -197,6 +197,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     "s/not-a-ccda.xml",
     new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
   );
+  await source.write("s/bridge/not-a-ccda/unaccepted.txt", new Uint8Array());
   await source.write("s/no-judgment.ttl", new Uint8Array());
   await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
   await source.write("s/references/references.ttl", new Uint8Array());
@@ -221,6 +222,14 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     [
       { kind: "import", export: "nothing", converted: "bridge" },
       /^no importer of .* reads s\/nothing$/,
+    ],
+    [
+      { kind: "import", export: "broken.xml", converted: "bridge" },
+      /^s\/broken\.xml: /,
+    ],
+    [
+      { kind: "import", export: "not-a-ccda.xml", converted: "bridge" },
+      /^s\/not-a-ccda\.xml: no adapter of application\/cda\+xml accepts it$/,
     ],
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
     [

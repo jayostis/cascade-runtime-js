@@ -65,18 +65,22 @@ export interface CcdaInputs {
   readonly identifier?: string;
   /** The key's `field=value` strings, given where the name takes the key's fingerprint. */
   readonly key?: readonly string[];
+  /** The member strings, given for a record with no identifier and no key, whose name takes their fingerprint. */
+  readonly members?: readonly string[];
 }
 
 /** A C-CDA record's name, by cascade-bridge-spec's rows for one. */
 export async function ccdaRecordName(inputs: CcdaInputs): Promise<string> {
-  const { identifier, key } = inputs;
-  return recordName([
-    inputs.class,
-    ...(identifier === undefined && key === undefined
-      ? []
-      : [identifier ?? ""]),
-    ...(key === undefined ? [] : [await fingerprint(key)]),
-  ]);
+  const { identifier = "", key, members } = inputs;
+  const named =
+    key !== undefined
+      ? [identifier, await fingerprint(key)]
+      : identifier !== ""
+        ? [identifier]
+        : members !== undefined
+          ? ["", "", await fingerprint(members)]
+          : [];
+  return recordName([inputs.class, ...named]);
 }
 
 /** The triples' canonical N-Quads by RDFC-1.0: two sets of triples have the same exactly when they are one graph. */

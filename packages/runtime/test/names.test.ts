@@ -63,4 +63,19 @@ test("a C-CDA record is named from its class, its identifier and its key's finge
     }),
     "urn:uuid:146187ec-84af-85ab-b1b4-8f06a954fa2c",
   );
+  assert.equal(
+    await ccdaRecordName({
+      class: "Condition",
+      identifier: "",
+      members: [
+        "urn:hl7-org:v3code@http://sparql.xyz/facade-x/data/nullFlavor=UNK",
+        "urn:hl7-org:v3originalText=left knee pain",
+      ],
+    }),
+    "urn:uuid:6e689e64-69b0-81a5-878f-e5debf9e21f4",
+  );
+  assert.equal(
+    await ccdaRecordName({ class: "Observation", identifier: "" }),
+    "urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982",
+  );
 });

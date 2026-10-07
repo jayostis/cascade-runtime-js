@@ -19,20 +19,32 @@ export interface CcdaDocument {
   facts(importStarted: string): Uint8Array;
 }
 
-/** Whether the file's document element is a CDA `ClinicalDocument`; it throws where the file is not well-formed XML. */
+const OTHER = Symbol("another document element");
+
+/**
+ * Whether the file's document element is a CDA `ClinicalDocument`, read no further than that element where it is not;
+ * it throws where a CDA is not well-formed XML.
+ */
 function clinicalDocument(bytes: Uint8Array): boolean {
-  let root: { local: string; uri: string } | undefined;
+  let root = false;
   const parser = new SaxesParser({ xmlns: true });
   parser.on("opentag", (tag) => {
-    root ??= { local: tag.local, uri: tag.uri };
+    if (root) return;
+    if (tag.local !== "ClinicalDocument" || tag.uri !== HL7) throw OTHER;
+    root = true;
   });
   const decoder = new TextDecoder();
-  for (let at = 0; at < bytes.length; at += SLICE)
-    parser.write(
-      decoder.decode(bytes.subarray(at, at + SLICE), { stream: true }),
-    );
-  parser.write(decoder.decode()).close();
-  return root?.local === "ClinicalDocument" && root.uri === HL7;
+  try {
+    for (let at = 0; at < bytes.length; at += SLICE)
+      parser.write(
+        decoder.decode(bytes.subarray(at, at + SLICE), { stream: true }),
+      );
+    parser.write(decoder.decode()).close();
+  } catch (error) {
+    if (error === OTHER) return false;
+    throw error;
+  }
+  return root;
 }
 
 function facts(importStarted: string): Uint8Array {

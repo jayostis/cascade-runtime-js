@@ -11,6 +11,7 @@ const files: Record<string, string> = {
   "SUMMARY.XML": CDA,
   "no-namespace.xml": "<ClinicalDocument/>",
   "other.xml": '<HealthData locale="en_US"/>',
+  "other-unfinished.xml": "<HealthData><Record>",
   "summary.txt": CDA,
   "broken.xml": '<ClinicalDocument xmlns="urn:hl7-org:v3"><id>',
 };
@@ -33,6 +34,7 @@ test("a downloaded CDA file is one document of its own media type, and nothing e
   for (const path of [
     "no-namespace.xml",
     "other.xml",
+    "other-unfinished.xml",
     "summary.txt",
     "absent.xml",
   ]) {

@@ -3,13 +3,13 @@ import { dirname, join, relative as relativePath, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Files, relative } from "../files.js";
 
-/** Files in a local folder, named by the folder's file IRI unless given another. */
 /** Whether a read failed because no file, or no folder, is at the path: a folder read as a file, a file as a folder. */
 function absent(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException).code;
   return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR";
 }
 
+/** Files in a local folder, named by the folder's file IRI unless given another. */
 export class FolderFiles implements Files {
   readonly iri: string;
 

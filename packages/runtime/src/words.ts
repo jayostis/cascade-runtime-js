@@ -246,19 +246,22 @@ export class Words {
       ]);
     }
     if (typeof inputs.class === "string") {
-      const { identifier, key } = inputs;
+      const { identifier, key, members } = inputs;
+      const strings = (value: unknown): value is string[] =>
+        Array.isArray(value) && value.every((part) => typeof part === "string");
       if (
         (identifier !== undefined && typeof identifier !== "string") ||
-        (key !== undefined &&
-          (!Array.isArray(key) || key.some((part) => typeof part !== "string")))
+        (key !== undefined && !strings(key)) ||
+        (members !== undefined && !strings(members))
       )
         throw new Error(
-          `handles.json gives ${handle} an identifier or a key it cannot read`,
+          `handles.json gives ${handle} an identifier, a key or members it cannot read`,
         );
       return ccdaRecordName({
         class: inputs.class,
         ...(identifier === undefined ? {} : { identifier }),
-        ...(key === undefined ? {} : { key: key as string[] }),
+        ...(key === undefined ? {} : { key }),
+        ...(members === undefined ? {} : { members }),
       });
     }
     if (typeof download === "string") {
