@@ -181,7 +181,7 @@ jobs:
             build/release-notes.md
           if-no-files-found: error
 
-  # Step 1's script, run on the installed package in an empty folder that it can neither read nor write outside.
+  # The developer stories' scripts and downloads, copied into the folder the package is installed in, run there on the installed package and can neither read nor write outside it.
   package-install:
     name: package-install (${{ matrix.os }})
     needs: package
@@ -216,11 +216,11 @@ jobs:
           mkdir "$CASCADE_RUNTIME_APP"
           cd "$CASCADE_RUNTIME_APP"
           npm install "$tarball"
-      - name: Step 1's script on the installed package
+      - name: The developer stories on the installed package
         env:
           CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
         run: |
-          cp developer-story/allergies.mjs "$CASCADE_RUNTIME_APP/"
+          cp -R developer-story/. "$CASCADE_RUNTIME_APP/"
           node --test packages/runtime/dist/test/developer-story.test.js
       - name: Everything installed is the package, bundled in it, or from npm's registry
         working-directory: ${{ runner.temp }}/app

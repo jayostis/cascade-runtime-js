@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+ <ExportDate value="2025-03-29 18:40:12 +0000"/>
+ <ClinicalRecord type="HKClinicalTypeIdentifierAllergyRecord" identifier="alg-aspirin-1" sourceName="Kestrel Harbor Hospital" sourceURL="https://fhir.kestrelharbor.example/api/FHIR/R4/AllergyIntolerance/alg-aspirin-1" fhirVersion="4.0.1" receivedDate="2025-03-29 18:39:51 +0000" resourceFilePath="/clinical-records/AllergyIntolerance-alg-aspirin-1.json"/>
+ <ClinicalRecord type="HKClinicalTypeIdentifierConditionRecord" identifier="cond-htn-1" sourceName="Kestrel Harbor Hospital" sourceURL="https://fhir.kestrelharbor.example/api/FHIR/R4/Condition/cond-htn-1" fhirVersion="4.0.1" receivedDate="2025-03-29 18:39:51 +0000" resourceFilePath="/clinical-records/Condition-cond-htn-1.json"/>
+ <ClinicalRecord type="HKClinicalTypeIdentifierMedicationRecord" identifier="medrx-lisinopril-1" sourceName="Kestrel Harbor Hospital" sourceURL="https://fhir.kestrelharbor.example/api/FHIR/R4/MedicationRequest/medrx-lisinopril-1" fhirVersion="4.0.1" receivedDate="2025-03-29 18:39:51 +0000" resourceFilePath="/clinical-records/MedicationRequest-medrx-lisinopril-1.json"/>
+ <ClinicalRecord type="HKClinicalTypeIdentifierLabResultRecord" identifier="obs-potassium-20250327" sourceName="Kestrel Harbor Hospital" sourceURL="https://fhir.kestrelharbor.example/api/FHIR/R4/Observation/obs-potassium-20250327" fhirVersion="4.0.1" receivedDate="2025-03-29 18:39:51 +0000" resourceFilePath="/clinical-records/Observation-obs-potassium-20250327.json"/>
+</HealthData>
