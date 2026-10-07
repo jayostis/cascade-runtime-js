@@ -57,6 +57,7 @@ interface View {
   hospitalName(name: string): string;
   demoPeople(demo: unknown): Person[];
   patientName(bundle: unknown): string | undefined;
+  slug(person: string): string;
 }
 
 const view = (await import(
@@ -218,61 +219,6 @@ test("a visitor with no pod loads Alex's, which reads as her record: her name, h
   );
 });
 
-/** The `data-key` of each row the lab results' table shows, in the column headed `head`. */
-async function column(page: Page, head: string): Promise<string[]> {
-  return page.$$eval(
-    "#see-lab-results table",
-    ([table], head) => {
-      const heads = [...(table?.querySelectorAll("th") ?? [])].map(
-        (th) => th.textContent ?? "",
-      );
-      const at = heads.findIndex((text) => text.startsWith(head));
-      return [...(table?.querySelectorAll("tbody tr:not([hidden])") ?? [])].map(
-        (row) => (row as HTMLTableRowElement).cells[at]?.dataset.key ?? "",
-      );
-    },
-    head,
-  );
-}
-
-test("in the lab results' box, a heading sorts by its column one way then the other, numbers as numbers, and the filter keeps only the rows holding its text", async () => {
-  const page = watched(await profile.newPage());
-  await page.goto(`${served.url}try/index.html?pod=${ALEX}`);
-  await settled(page);
-  await page.click('a.tile[href="#see-lab-results"]');
-  const sort = (head: string): Promise<void> =>
-    page.click(`#see-lab-results th button:has-text("${head}")`);
-
-  const opened = await column(page, "Date");
-  assert.ok(opened.length > 1);
-  await sort("Date");
-  assert.deepEqual(await column(page, "Date"), [...opened].reverse());
-  await sort("Date");
-  assert.deepEqual(await column(page, "Date"), opened);
-
-  await sort("Value");
-  const values = await column(page, "Value");
-  const isNumber = (value: string): boolean =>
-    value.trim() !== "" && Number.isFinite(Number(value));
-  const numbers = values.filter(isNumber).map(Number);
-  assert.ok(numbers.length > 1);
-  assert.deepEqual(
-    numbers,
-    [...numbers].sort((a, b) => a - b),
-  );
-  assert.ok(values.slice(0, numbers.length).every(isNumber));
-
-  const [first = ""] = await column(page, "Test");
-  const rows = await texts(page, "#see-lab-results tbody tr");
-  await page.fill("#see-lab-results .filter", first);
-  const kept = await texts(page, "#see-lab-results tbody tr:not([hidden])");
-  assert.deepEqual(
-    kept,
-    rows.filter((row) => row.toLowerCase().includes(first.toLowerCase())),
-  );
-  assert.ok(kept.length < rows.length, "the filter hid nothing");
-});
-
 test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on", async () => {
   const { person, patients, has } = joined;
   const page = watched(await profile.newPage());
@@ -375,6 +321,63 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       "the console shows a token or a code",
     );
   }
+});
+
+/** The `data-key` of each row the lab results' table shows, in the column headed `head`. */
+async function column(page: Page, head: string): Promise<string[]> {
+  return page.$$eval(
+    "#see-lab-results table",
+    ([table], head) => {
+      const heads = [...(table?.querySelectorAll("th") ?? [])].map(
+        (th) => th.textContent ?? "",
+      );
+      const at = heads.findIndex((text) => text.startsWith(head));
+      return [...(table?.querySelectorAll("tbody tr:not([hidden])") ?? [])].map(
+        (row) => (row as HTMLTableRowElement).cells[at]?.dataset.key ?? "",
+      );
+    },
+    head,
+  );
+}
+
+test("in the lab results' box of the joined pod, a heading sorts by its column one way then the other, numbers as numbers, and the filter keeps only the rows holding its text", async () => {
+  const page = watched(await profile.newPage());
+  await page.goto(
+    `${served.url}try/index.html?pod=${view.slug(joined.person.name)}`,
+  );
+  await settled(page);
+  await page.click('a.tile[href="#see-lab-results"]');
+  const sort = (head: string): Promise<void> =>
+    page.click(`#see-lab-results th button:has-text("${head}")`);
+
+  const opened = await column(page, "Date");
+  assert.ok(opened.length > 1);
+  await sort("Date");
+  assert.deepEqual(await column(page, "Date"), [...opened].reverse());
+  await sort("Date");
+  assert.deepEqual(await column(page, "Date"), opened);
+
+  await sort("Value");
+  const values = await column(page, "Value");
+  const isNumber = (value: string): boolean =>
+    value.trim() !== "" && Number.isFinite(Number(value));
+  const numbers = values.filter(isNumber).map(Number);
+  assert.ok(numbers.length > 1);
+  assert.deepEqual(
+    numbers,
+    [...numbers].sort((a, b) => a - b),
+  );
+  assert.ok(values.slice(0, numbers.length).every(isNumber));
+
+  const [first = ""] = await column(page, "Test");
+  const rows = await texts(page, "#see-lab-results tbody tr");
+  await page.fill("#see-lab-results .filter", first);
+  const kept = await texts(page, "#see-lab-results tbody tr:not([hidden])");
+  assert.deepEqual(
+    kept,
+    rows.filter((row) => row.toLowerCase().includes(first.toLowerCase())),
+  );
+  assert.ok(kept.length < rows.length, "the filter hid nothing");
 });
 
 test("after a reload, the pods made in this browser are still on the left", async () => {

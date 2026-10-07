@@ -15,7 +15,6 @@ import {
 import { useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionPage,
-  demoPeople,
   escaped,
   frame,
   hospitalName,
@@ -66,15 +65,11 @@ async function podsHere() {
     .sort();
 }
 
-async function demoHospitals() {
-  return Promise.all(
-    DEMO.map(async (row) => {
-      const answer = await fetch(`demo-hospitals/${idOf(row)}.json`);
-      if (!answer.ok)
-        throw new Error(`The demo hospital ${row.name} is not served here.`);
-      return answer.json();
-    }),
-  );
+/** The demo people, as the view's `demoPeople` gave them when the site was built. */
+async function demoPeople() {
+  const answer = await fetch("demo-people.json");
+  if (!answer.ok) throw new Error("The demo people are not served here.");
+  return answer.json();
 }
 
 /**
@@ -324,10 +319,7 @@ document.addEventListener("submit", (event) => {
 });
 
 busy(async () => {
-  [pods, people] = await Promise.all([
-    podsHere(),
-    demoHospitals().then(demoPeople),
-  ]);
+  [pods, people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
   const asked = query.get("pod");
   if (asked === null && pods.length === 0)

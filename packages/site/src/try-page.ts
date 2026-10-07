@@ -9,6 +9,8 @@ export const WORKER = "demo-hospital-worker.js";
 export const WORKER_PAGE = "demo-hospitals.js";
 export const WORKER_DATA = "demo-hospitals/";
 export const SIGNED_IN = "signed-in.html";
+/** Every person the demo hospitals hold, with the hospitals that hold them, as the view's `demoPeople` gives them. */
+export const PEOPLE = "demo-people.json";
 
 function head(title: string): Html {
   const imports = JSON.stringify({

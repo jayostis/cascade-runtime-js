@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { hospitalId } from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
+  PEOPLE,
   SIGNED_IN,
   signedInPage,
   SUMMARY,
@@ -44,24 +45,30 @@ async function bundled(
 
 /**
  * The files of `try/` but the package: the page, which offers the examples published in `samples` (their folders),
- * its app, the starter's view, the redirect page, and the demo hospitals' worker, its page side and one data file per
- * hospital beside them.
+ * its app, the starter's view, the demo people as the view names them, the redirect page, and the demo hospitals'
+ * worker, its page side and one data file per hospital beside them. The page cannot read the data files itself: the
+ * worker answers every address under them as a hospital's sign-in page.
  */
 export async function tryFiles(
   samples: readonly string[],
 ): Promise<Map<string, Uint8Array>> {
   const encoder = new TextEncoder();
-  const [hospitals, app, view, worker, workerPage] = await Promise.all([
-    loadHospitals(),
-    readFile(APP),
-    readFile(VIEW),
-    bundled("worker.js", "iife"),
-    bundled("page.js", "esm"),
-  ]);
+  const [hospitals, app, view, worker, workerPage, { demoPeople }] =
+    await Promise.all([
+      loadHospitals(),
+      readFile(APP),
+      readFile(VIEW),
+      bundled("worker.js", "iife"),
+      bundled("page.js", "esm"),
+      import(pathToFileURL(VIEW).href) as Promise<{
+        demoPeople(demo: unknown): unknown;
+      }>,
+    ]);
   const files = new Map<string, Uint8Array>([
     ["index.html", encoder.encode(tryPage(samples))],
     ["app.js", app],
     [SUMMARY, view],
+    [PEOPLE, encoder.encode(JSON.stringify(demoPeople(hospitals)))],
     [SIGNED_IN, encoder.encode(signedInPage())],
     [WORKER, worker],
     [WORKER_PAGE, workerPage],
