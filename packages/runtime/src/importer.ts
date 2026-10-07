@@ -40,7 +40,10 @@ export interface Importer {
     files: Pick<Files, "read" | "list">,
     folder: string,
   ): Promise<readonly ExportDocument[] | undefined>;
-  /** What the export's index says of each document, reading no document, or undefined when it is no export of this kind. */
+  /**
+   * What the export's index says of each document, reading no document where the export has an index of its own, or
+   * undefined when it is no export of this kind.
+   */
   index(
     files: Pick<Files, "read" | "list">,
     folder: string,

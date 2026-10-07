@@ -1,0 +1,14 @@
+{
+  "name": "@cascade-runtime/fhir-pull",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A pull from a hospital's FHIR API, saved as a folder and imported: its Bundle as one document, with the hospital's base and the retrieval time.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "devDependencies": {
+    "oxigraph": "0.5.11"
+  }
+}

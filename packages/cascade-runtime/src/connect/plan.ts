@@ -33,6 +33,7 @@ export const DEMO_PLAN: QueryPlan = {
     { type: "AllergyIntolerance" },
     { type: "MedicationRequest" },
     { type: "Immunization" },
+    { type: "Procedure" },
     { type: "Encounter" },
     { type: "Observation", category: "laboratory" },
     { type: "Observation", category: "vital-signs" },

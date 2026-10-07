@@ -52,7 +52,7 @@ const WASM = "web_bg.wasm";
 /** The Bridge's glue and module, which a page loads by URL beside the browser entry. */
 const BRIDGE_FILES = [BRIDGE_GLUE, BRIDGE_WASM];
 /** The workspaces bundled into the package, which are on no registry. */
-const BUNDLED = ["runtime", "apple-health", "ccda-download"];
+const BUNDLED = ["runtime", "apple-health", "ccda-download", "fhir-pull"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */
 const VOCABULARY = [
   "LICENSE",

@@ -10,6 +10,9 @@
       "path": "../runtime"
     },
     {
+      "path": "../fhir-pull"
+    },
+    {
       "path": "../demo-hospital"
     }
   ]

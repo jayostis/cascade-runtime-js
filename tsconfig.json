@@ -8,6 +8,9 @@
       "path": "packages/ccda-download"
     },
     {
+      "path": "packages/fhir-pull"
+    },
+    {
       "path": "packages/demo-hospital"
     },
     {
