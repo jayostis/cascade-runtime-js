@@ -11,6 +11,7 @@ const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const TYPE = `${RDF}type`;
+const MERGED_FROM = `${CASCADE}mergedFrom`;
 const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference versions are current.rq`;
 
 /** The pod a build is made for, as it stood after a step. */
@@ -19,6 +20,8 @@ export interface PodState {
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
   readonly title: string;
+  /** The views the pod already holds, each written again though it holds no entry now. */
+  readonly views?: readonly string[];
 }
 
 /** Adds the lens's derived state, and the files built from it, to a store holding a pod; returns those files. */
@@ -49,18 +52,24 @@ function marked(
 }
 
 /**
- * The type index of a pod at `address`: a registration for each view the layout lists, and one for the views' folder,
- * each named for the file or folder it registers, with its class, its file or folder, and its title.
+ * The type index of a pod at `address`: a registration for each view written, and one for the views' folder, each
+ * named for the file or folder it registers, with its class, its file or folder, and its title.
  */
-export function typeIndex(address: string, layout: Layout): Triple[] {
+export function typeIndex(
+  address: string,
+  layout: Layout,
+  written: ReadonlySet<string>,
+): Triple[] {
   const index = address + layout.typeIndex;
   const folder = layout.viewsPlacement;
   const registered = [
-    ...layout.views.map((view) => ({
-      placement: view,
-      listing: `${SOLID}instance`,
-      path: view.file ?? "",
-    })),
+    ...layout.views
+      .filter(({ file }) => written.has(file ?? ""))
+      .map((view) => ({
+        placement: view,
+        listing: `${SOLID}instance`,
+        path: view.file ?? "",
+      })),
     {
       placement: folder,
       listing: `${SOLID}instanceContainer`,
@@ -146,6 +155,10 @@ export async function vocabularyBuild(
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
     const used = rows.flatMap((row) => row.get("version")?.value ?? []);
+    const held = new Set<string>(pod.views);
+    for (const { file, kind } of layout.views)
+      if (await store.ask(`ASK { ?record a <${kind ?? ""}> }`))
+        held.add(file ?? "");
     const files = new Map<string, readonly Triple[]>();
     const add = async (path: string, triples: readonly Triple[]) => {
       files.set(path, triples);
@@ -155,16 +168,18 @@ export async function vocabularyBuild(
       const made = await Promise.all(
         group.map(async ({ file, query: path }) => ({
           file,
-          triples: marked(
-            pod.address + file,
-            await store.construct(query(path)),
-            used,
-          ),
+          triples: await store.construct(query(path)),
         })),
       );
-      for (const { file, triples } of made) await add(file, triples);
+      for (const { file, triples } of made) {
+        const view = views.includes(file);
+        if (view && triples.some(([, p]) => p.value === MERGED_FROM))
+          held.add(file);
+        if (!view || held.has(file))
+          await add(file, marked(pod.address + file, triples, used));
+      }
     }
-    await add(layout.typeIndex, typeIndex(pod.address, layout));
+    await add(layout.typeIndex, typeIndex(pod.address, layout, held));
     await add(
       layout.manifest,
       manifest(pod.address + layout.manifest, pod.title, pod.at),

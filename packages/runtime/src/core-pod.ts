@@ -296,7 +296,9 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
     const rebuilt = new Set(layout.rebuilt);
-    const files = (await pod.list("")).filter((path) => !rebuilt.has(path));
+    const held = await pod.list("");
+    const files = held.filter((path) => !rebuilt.has(path));
+    const views = new Set(layout.views.map(({ file }) => file));
     const made = await built(
       pod,
       layout,
@@ -307,6 +309,7 @@ export class CorePod {
       build.lens,
       newStore(),
       build.derive,
+      held.filter((path) => views.has(path)),
     );
     for (const [path, triples] of made)
       await pod.write(path, ntriples(triples));

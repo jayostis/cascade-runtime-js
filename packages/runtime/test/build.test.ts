@@ -114,14 +114,29 @@ async function placed(where: string): Promise<string> {
   return found;
 }
 
-test("the build writes each file the layout says a query writes, as a view, and a type index registering each view and the views' folder by its class, file or folder, and title", async () => {
+test("the build writes the labels, a view of a kind the pod holds a record of or that holds an entry and no other, and a type index registering each view written and the views' folder by its class, file or folder, and title", async () => {
+  const held = (
+    await values(
+      store,
+      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a rec:View } } }`,
+    )
+  ).map((kind) => `<${kind}>`);
+  const holding = await values(
+    store,
+    `SELECT DISTINCT ?view WHERE { GRAPH ?view { ?view a rec:View . [] cascade:mergedFrom [] } }`,
+  );
+  const written = await values(store, `GRAPH ?view { ?view a rec:View }`);
   assert.deepEqual(
-    await values(store, `GRAPH ?view { ?view a rec:View }`),
+    written,
     await values(
       laidOut,
-      `GRAPH <${address}> { [] a rec:Placement ; rec:writtenBy [] ; solid:instance ?file }`,
+      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a rec:Placement ; rec:writtenBy [] ; solid:instance ?file
+        OPTIONAL { ?placement solid:forClass ?class }
+        FILTER (!BOUND(?class) || ?class IN (${held.join(", ")}) || ?file IN (${holding.map((view) => `<${view}>`).join(", ")})) } }`,
     ),
   );
+  assert.ok(written.some((file) => file.endsWith("clinical/allergies.ttl")));
+  assert.ok(!written.some((file) => file.endsWith("clinical/procedures.ttl")));
   const index = await placed(
     `[] solid:forClass solid:TypeIndex ; solid:instance ?file`,
   );
@@ -143,17 +158,19 @@ test("the build writes each file the layout says a query writes, as a view, and 
       laidOut,
       `SELECT ?class ?listing ?target ?title WHERE { GRAPH <${address}> {
         ?placement a rec:Placement ; solid:forClass ${registration}
-        { ?placement rec:writtenBy [] ; solid:instance [] } UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
+        { ?placement rec:writtenBy [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
+        UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
     ),
   );
 });
 
 test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
   assert.deepEqual([...pod.found.keys()], []);
-  assert.equal(pod.writes.get(layout.typeIndex), 1);
+  const views = layout.views.filter(({ file }) => pod.writes.has(file ?? ""));
+  assert.ok((pod.writes.get(layout.typeIndex) ?? 0) <= views.length + 1);
   assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
   const parser = new OxigraphStore();
-  for (const path of layout.rebuilt) {
+  for (const path of layout.rebuilt.filter((path) => pod.writes.has(path))) {
     const bytes = await pod.read(path);
     assert.ok(bytes, path);
     const full = await store.construct(
