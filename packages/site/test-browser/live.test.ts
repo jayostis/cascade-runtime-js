@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { chromium } from "playwright";
 import { findRoot } from "@cascade-runtime/runtime/node";
-import { newPod, settled, tiles, watched } from "./shown.js";
+import { settled, tiles, watched } from "./shown.js";
 
 type Address = typeof import("../../cascade-runtime/pack/address.js");
 
@@ -111,7 +111,11 @@ test("the deployed site serves the quick start of the commit, its release, the f
     const opened = await page.goto(`${site}try/index.html?at=${Date.now()}`);
     assert.equal(opened?.status(), 200, `${site}try/index.html`);
     await settled(page);
-    await newPod(page, "Load Alex Rivera");
+    assert.equal(
+      await page.textContent("main h1"),
+      "Alex Rivera",
+      `${site}try/ does not open with Alex's pod`,
+    );
     assert.ok(
       ((await tiles(page)).get("Allergies") ?? 0) > 0,
       `${site}try/ shows Alex with no allergy`,

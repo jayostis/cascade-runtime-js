@@ -301,23 +301,33 @@ function deleted(name) {
   });
 }
 
+/** Copies the published example pod into this browser; one that fails to copy leaves nothing behind, if it can. */
+async function copy(name) {
+  try {
+    await (await openPod(name, { from: `../${name}/pod/` })).close();
+  } catch (error) {
+    const left = await deleted(name).then(
+      () => undefined,
+      (failure) => failure,
+    );
+    if (left === undefined) throw error;
+    throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
+      cause: error,
+    });
+  }
+}
+
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
 async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
-  if (!pods.includes(name))
-    try {
-      await (await openPod(name, { from: `../${name}/pod/` })).close();
-    } catch (error) {
-      const left = await deleted(name).then(
-        () => undefined,
-        (failure) => failure,
-      );
-      if (left === undefined) throw error;
-      throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
-        cause: error,
-      });
-    }
+  if (!pods.includes(name)) await copy(name);
   location.assign(podHref(name));
+}
+
+/** A browser with no pod starts with a copy of every sample; one that fails stays a "Load" choice in the new-pod box. */
+async function firstVisit() {
+  await Promise.allSettled(SAMPLES.map(copy));
+  pods = await podsHere();
 }
 
 /** Runs the step with the buttons off; anything it did not expect, it shows. */
@@ -363,6 +373,7 @@ busy(async () => {
   [pods, people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
   const asked = query.get("pod");
+  if (asked === null && pods.length === 0) await firstVisit();
   if (asked === null && pods.length === 0)
     return render("No pods yet", noPods());
   if (asked !== null && !pods.includes(asked))
