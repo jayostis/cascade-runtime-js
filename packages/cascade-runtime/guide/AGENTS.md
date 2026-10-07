@@ -272,6 +272,7 @@ async function search(word) {
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
 - `pod/What everything is called`: every label.
+- `pod/What was seen more than once`: entries with more than one record, by place.
 - `pod/Which file states each thing`: where each thing is stated.
 - `pod/Which files are out of place`: files the layout puts elsewhere.
 - `pod/Which reference versions are current`: the matcher's tables in use.
