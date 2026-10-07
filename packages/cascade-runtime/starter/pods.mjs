@@ -8,7 +8,8 @@ import { parseArgs } from "node:util";
 /** Every pod of this app is a folder here, named as the pod. */
 export const PODS = fileURLToPath(new URL("pods/", import.meta.url));
 export const POD_NAME = /^[a-z0-9][a-z0-9._-]*$/;
-export const NO_POD = "No pod loaded. Run `npm run reset` to load Alex's and Priya's pods.";
+export const NO_POD =
+  "No pod loaded. Run `npm run reset` to load Alex's and Priya's pods.";
 
 export function podFolder(name) {
   return join(PODS, name);
