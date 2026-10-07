@@ -7,17 +7,20 @@ const XSD = "http://www.w3.org/2001/XMLSchema#";
 const HL7 = "urn:hl7-org:v3";
 const SLICE = 1 << 24;
 const US_REALM_HEADER = "2.16.840.1.113883.10.20.22.1.1";
-const SECTIONS = "2.16.840.1.113883.10.20.22.2.";
-
-/** The word `rec:kind` gives the records of each section the adapter maps, by the section's template, `.1` or not. */
-const KINDS: ReadonlyMap<string, string> = new Map([
-  ["6", "Allergy"],
-  ["5", "Condition"],
-  ["2", "Immunization"],
-  ["7", "Procedure"],
-  ["1", "Medication"],
-  ["3", "Lab result"],
-]);
+const HEADER = ["ClinicalDocument"];
+const CUSTODIAN = [
+  "ClinicalDocument",
+  "custodian",
+  "assignedCustodian",
+  "representedCustodianOrganization",
+];
+const SECTION = [
+  "ClinicalDocument",
+  "component",
+  "structuredBody",
+  "component",
+  "section",
+];
 
 /** The files a download is read from, by path. */
 export interface DownloadFiles {
@@ -33,14 +36,12 @@ export interface CcdaDocument {
 
 export interface CcdaIndexEntry {
   readonly source?: string;
-  readonly kind?: string;
   readonly section?: string;
   readonly received?: string;
 }
 
 interface Section {
   title?: string;
-  kind?: string;
   entries: number;
 }
 
@@ -54,16 +55,6 @@ interface Header {
 
 const OTHER = Symbol("another document element");
 
-/** The kind a section's template names, if the adapter maps it. */
-function kindOf(templateRoot: string): string | undefined {
-  const match = /^(\d+)(?:\.1)?$/.exec(
-    templateRoot.startsWith(SECTIONS)
-      ? templateRoot.slice(SECTIONS.length)
-      : "",
-  );
-  return match === null ? undefined : KINDS.get(match[1] ?? "");
-}
-
 /**
  * The header of the file's `ClinicalDocument`, or undefined where its document element is another, read no further
  * than that element; it throws where a CDA is not well-formed XML.
@@ -74,9 +65,11 @@ function headerOf(bytes: Uint8Array): Header | undefined {
   let section: Section | undefined;
   let capture: { depth: number; text: string } | undefined;
   const parser = new SaxesParser({ xmlns: true });
-  const at = (...names: string[]): boolean =>
-    path.length === names.length &&
-    names.every((name, index) => path[index] === name);
+  /** Whether the element just opened is the one `last` names in `parent`, or `parent` itself. */
+  const at = (parent: readonly string[], last?: string): boolean =>
+    path.length === parent.length + (last === undefined ? 0 : 1) &&
+    (last === undefined || path[parent.length] === last) &&
+    parent.every((name, index) => path[index] === name);
   parser.on("opentag", (tag: SaxesTagNS) => {
     if (
       path.length === 0 &&
@@ -84,39 +77,20 @@ function headerOf(bytes: Uint8Array): Header | undefined {
     )
       throw OTHER;
     path.push(tag.uri === HL7 ? tag.local : `{${tag.uri}}${tag.local}`);
-    const attribute = (name: string): string | undefined =>
-      tag.attributes[name]?.value;
-    const body = [
-      "ClinicalDocument",
-      "component",
-      "structuredBody",
-      "component",
-      "section",
-    ];
+    if (path.length > SECTION.length + 1) return;
     if (
-      at("ClinicalDocument", "templateId") &&
-      attribute("root") === US_REALM_HEADER
+      at(HEADER, "templateId") &&
+      tag.attributes.root?.value === US_REALM_HEADER
     )
-      header.version ??= attribute("extension");
-    else if (at("ClinicalDocument", "effectiveTime"))
-      header.effectiveTime = attribute("value");
-    else if (
-      at(
-        "ClinicalDocument",
-        "custodian",
-        "assignedCustodian",
-        "representedCustodianOrganization",
-        "name",
-      ) ||
-      (section !== undefined && at(...body, "title"))
-    )
+      header.version ??= tag.attributes.extension?.value;
+    else if (at(HEADER, "effectiveTime"))
+      header.effectiveTime = tag.attributes.value?.value;
+    else if (at(CUSTODIAN, "name") || at(SECTION, "title"))
       capture = { depth: path.length, text: "" };
-    else if (at(...body)) {
+    else if (at(SECTION)) {
       section = { entries: 0 };
       header.sections.push(section);
-    } else if (section !== undefined && at(...body, "templateId"))
-      section.kind ??= kindOf(attribute("root") ?? "");
-    else if (section !== undefined && at(...body, "entry")) section.entries++;
+    } else if (section !== undefined && at(SECTION, "entry")) section.entries++;
   });
   parser.on("text", (value) => {
     if (capture !== undefined) capture.text += value;
@@ -146,25 +120,36 @@ function headerOf(bytes: Uint8Array): Header | undefined {
 }
 
 /**
- * A CDA time, `YYYYMMDD[hhmm[ss[.f]]][±hhmm]`, as an `xsd:dateTime` in UTC where it states its offset, or else as the
- * `xsd:date` it falls on.
+ * A CDA time, `YYYYMMDD[hh[mm[ss[.f]]]][±hhmm]`, as an `xsd:dateTime` in UTC where it states an hour and its offset, or
+ * else as the `xsd:date` it falls on; undefined where it is no such time or names no such day.
  */
-function received(time: string): string | undefined {
+export function received(time: string): string | undefined {
   const parts =
-    /^(\d{4})(\d\d)(\d\d)(?:(\d\d)(\d\d)(?:(\d\d)(?:\.\d+)?)?)?([+-]\d\d)?(\d\d)?$/.exec(
+    /^(\d{4})(\d\d)(\d\d)(?:(\d\d)(?:(\d\d)(?:(\d\d)(?:\.\d+)?)?)?)?(?:([+-]\d\d)(\d\d))?$/.exec(
       time,
     );
   if (parts === null) return undefined;
-  const [, year, month, day, hour, minute, second, offsetHours, offsetMinutes] =
-    parts;
-  const date = `${year}-${month}-${day}`;
-  if (hour === undefined || offsetHours === undefined) return date;
-  const moment = new Date(
-    `${date}T${hour}:${minute}:${second ?? "00"}${offsetHours}:${offsetMinutes ?? "00"}`,
-  );
-  return Number.isNaN(moment.getTime())
-    ? undefined
-    : `${moment.toISOString().slice(0, 19)}Z`;
+  const field = (index: number): number => Number(parts[index] ?? 0);
+  const [year, month, day, hour, minute, second, offsetMinutes] = [
+    1, 2, 3, 4, 5, 6, 8,
+  ].map(field) as [number, number, number, number, number, number, number];
+  const offsetHours = parts[7];
+  const local = Date.UTC(year, month - 1, day, hour, minute, second);
+  const date = new Date(local);
+  if (
+    date.getUTCDate() !== day ||
+    date.getUTCMonth() !== month - 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  )
+    return undefined;
+  if (parts[4] === undefined || offsetHours === undefined)
+    return date.toISOString().slice(0, 10);
+  const offset =
+    (offsetHours.startsWith("-") ? -1 : 1) *
+    (Math.abs(Number(offsetHours)) * 60 + offsetMinutes);
+  return `${new Date(local - offset * 60000).toISOString().slice(0, 19)}Z`;
 }
 
 function quoted(text: string): string {
@@ -222,7 +207,7 @@ export const ccdaDownload = {
     ];
   },
 
-  /** An entry for each entry of each section of the body. */
+  /** An entry for each entry of each section of the body: the look counts entries per section, not records per kind. */
   async index(
     files: DownloadFiles,
     path: string,
@@ -232,12 +217,11 @@ export const ccdaDownload = {
     const { custodian, effectiveTime, sections } = found.header;
     const when =
       effectiveTime === undefined ? undefined : received(effectiveTime);
-    return sections.flatMap(({ title, kind, entries }) =>
+    return sections.flatMap(({ title, entries }) =>
       Array.from({ length: entries }, () => ({
         ...(custodian === undefined || custodian === ""
           ? {}
           : { source: custodian }),
-        ...(kind === undefined ? {} : { kind }),
         ...(title === undefined || title === "" ? {} : { section: title }),
         ...(when === undefined ? {} : { received: when }),
       })),

@@ -36,6 +36,21 @@ const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
 const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
 const UUID = "urn:uuid:";
+/** The matcher's tables every pod is given: the rules' tables, whose rule list is the newest, alpha test data. */
+export const TABLES = "runtime/scripted-input/gus/references/";
+
+/** A name as a person reads it, its runs of white space one space. */
+function spaced(name: string): string {
+  return name.replace(/\s+/g, " ").trim();
+}
+
+function counted(counts: Map<string, number>, key?: string): void {
+  if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function sorted(counts: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...counts].sort(([a], [b]) => compared(a, b)));
+}
 
 export interface Pod {
   /** The pod's naming base, ending in a slash. */
@@ -297,7 +312,10 @@ class OpenPod implements Pod {
       }),
     );
     const claimedAuthors = new Set(
-      rows.flatMap((row) => row.get("author")?.value ?? []),
+      rows.flatMap((row) => {
+        const author = row.get("author")?.value;
+        return author === undefined ? [] : [spaced(author)];
+      }),
     );
     const sources = new Map<
       string,
@@ -324,15 +342,10 @@ class OpenPod implements Pod {
         };
         sources.set(key, source);
       }
-      const counted = (counts: Map<string, number>, key?: string): void => {
-        if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
-      };
       counted(source.records, entry.kind);
       counted(source.sections, entry.section);
       if (entry.received !== undefined) source.received.add(entry.received);
     }
-    const sorted = (counts: Map<string, number>): Record<string, number> =>
-      Object.fromEntries([...counts].sort(([a], [b]) => compared(a, b)));
     return [...sources.values()]
       .sort((a, b) => compared(a.name, b.name) || compared(a.server, b.server))
       .map(({ records, sections, received, ...source }) => ({
@@ -342,7 +355,8 @@ class OpenPod implements Pod {
         received: [...received].sort(),
         claimed:
           source.server === undefined
-            ? source.name !== undefined && claimedAuthors.has(source.name)
+            ? source.name !== undefined &&
+              claimedAuthors.has(spaced(source.name))
             : claimedServers.has(source.server),
       }));
   }

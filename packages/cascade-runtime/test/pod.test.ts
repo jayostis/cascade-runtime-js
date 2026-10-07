@@ -93,13 +93,15 @@ async function tableUnder(
   );
 }
 
-/** A record of Alex's kit by the handle `expected/handles.json` gives it. */
-async function handled(handle: string): Promise<string> {
+/** Each record of Alex's kit by the handle `expected/handles.json` gives it. */
+async function handled(): Promise<(handle: string) => Promise<string>> {
   const handles = JSON.parse(
     await readFile(inKit(`${KIT}/expected/handles.json`), "utf8"),
   ) as { records: Record<string, Record<string, string>> };
-  const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
-  return recordName([server, type, id]);
+  return (handle) => {
+    const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
+    return recordName([server, type, id]);
+  };
 }
 
 /** Every file the folder holds, by its path in it. */
@@ -176,6 +178,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   );
   const joined = (justification: string, members: string[]): string =>
     `${justification} ${members.sort().join(" ")}`;
+  const named = await handled();
   assert.deepEqual(
     judgments
       .map(({ justification = "", members = "" }) =>
@@ -187,7 +190,7 @@ test("an import with the claim records an About for each unclaimed profile and i
         expected.map(async ({ justification = "", members = "" }) =>
           joined(
             JUSTIFICATIONS[justification] ?? justification,
-            await Promise.all(members.split(", ").map(handled)),
+            await Promise.all(members.split(", ").map(named)),
           ),
         ),
       )
@@ -198,7 +201,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   assert.deepEqual(again.claimed, []);
 });
 
-test("the look reads the export's index and writes nothing", async () => {
+test("the look reads an export's or a download's index and writes nothing: a FHIR source by its server, a C-CDA by its custodian with its sections, claimed once the subject's records from it are filed", async () => {
   const before = await filesIn(folder);
   const sources = await pod.look(exported("x-e12"));
   assert.deepEqual(await filesIn(folder), before);
@@ -231,9 +234,7 @@ test("the look reads the export's index and writes nothing", async () => {
       server,
     );
   }
-});
 
-test("the look names a download's source by its custodian, with its sections, claimed once the subject's records from it are filed", async () => {
   const download = join(
     findRoot(dirname(fileURLToPath(import.meta.url))),
     "developer-story",
@@ -256,12 +257,7 @@ test("the look names a download's source by its custodian, with its sections, cl
       "Social History",
       "Vital Signs",
     ]);
-    assert.deepEqual(Object.keys(source.records).sort(), [
-      "Allergy",
-      "Condition",
-      "Lab result",
-      "Medication",
-    ]);
+    assert.deepEqual(source.records, {});
     assert.deepEqual(source.received, ["2025-04-03T09:15:22Z"]);
     assert.equal(source.claimed, false);
 

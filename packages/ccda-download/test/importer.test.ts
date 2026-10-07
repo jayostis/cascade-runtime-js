@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as oxigraph from "oxigraph";
-import { ccdaDownload, type DownloadFiles } from "../src/index.js";
+import { ccdaDownload, type DownloadFiles, received } from "../src/index.js";
 
 const CDA = `<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3"><templateId root="2.16.840.1.113883.10.20.22.1.1"/></ClinicalDocument>`;
@@ -74,17 +74,16 @@ test("a downloaded CDA file is one document of its own media type, and nothing e
   await assert.rejects(ccdaDownload.documents(download, "broken.xml"));
 });
 
-test("a download's index is each entry of each section, by its custodian, its section's kind and title, and the document's time", async () => {
+test("a download's index is each entry of each section, by its custodian, its section's title and the document's time", async () => {
   const allergy = {
     source: "Kestrel Harbor Hospital",
-    kind: "Allergy",
     section: "Allergies and Intolerances",
     received: "2025-04-03T12:30:00Z",
   };
   assert.deepEqual(await ccdaDownload.index(download, "kestrel.xml"), [
     allergy,
     allergy,
-    { ...allergy, kind: "Medication", section: "Medications" },
+    { ...allergy, section: "Medications" },
     {
       source: "Kestrel Harbor Hospital",
       section: "Social History",
@@ -111,4 +110,20 @@ test("a download's facts are its import's label and start and the header's versi
     true,
   );
   assert.equal(store.size, 3);
+});
+
+test("a CDA time is a UTC time where it gives an hour and its offset, else its date, and no time where it names no day", () => {
+  for (const [time, when] of [
+    ["20250403083000-0400", "2025-04-03T12:30:00Z"],
+    ["2025040308+0530", "2025-04-03T02:30:00Z"],
+    ["20250403235959.123-0001", "2025-04-04T00:00:59Z"],
+    ["202504030830", "2025-04-03"],
+    ["20250403", "2025-04-03"],
+    ["20240229", "2024-02-29"],
+    ["20250229", undefined],
+    ["20251399", undefined],
+    ["20250403250000+0000", undefined],
+    ["2025-04-03", undefined],
+  ])
+    assert.equal(received(time ?? ""), when, time);
 });

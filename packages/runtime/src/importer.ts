@@ -25,7 +25,7 @@ export interface IndexEntry {
   readonly kind?: string;
   /** The title of the section of the document it is an entry of, where the export has sections. */
   readonly section?: string;
-  /** When it was received, an `xsd:dateTime` in UTC. */
+  /** When it was received, an `xsd:dateTime` in UTC, or the `xsd:date` alone where the export gives no offset. */
   readonly received?: string;
 }
 

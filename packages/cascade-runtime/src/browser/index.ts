@@ -17,12 +17,11 @@ import {
   type Parts,
   type Pod,
   type Row,
+  TABLES,
 } from "../pod.js";
 
 export type { Done, ExportSource, Imported, Pod, Row } from "../pod.js";
 
-/** The matcher's tables every pod is given: the rules' tables, whose rule list is the newest, alpha test data. */
-const TABLES = "runtime/scripted-input/gus/references/";
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";
 const COMPONENTS = new URL("../../components/", import.meta.url);
