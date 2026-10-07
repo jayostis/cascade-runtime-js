@@ -75,36 +75,42 @@ export class MemoryFiles implements Files {
  */
 export type Exported = ReadonlyMap<string, Blob | Uint8Array>;
 
-/** The export's one top-level name, or undefined when it holds no file or more than one top-level name. */
-export function exportedName(exported: Exported): string | undefined {
-  const tops = new Set([...exported.keys()].map((path) => path.split("/")[0]));
-  const [name] = tops;
-  return tops.size === 1 && name !== "" ? name : undefined;
+const EXPORTED = "urn:cascade:exported/";
+
+/** Each top-level name the export holds, sorted, once each; one is the export's name. A key that is no path throws. */
+export function exportedNames(exported: Exported): string[] {
+  const names = new Set<string>();
+  for (const path of exported.keys()) {
+    const [top = ""] = path.split("/");
+    let isPath = top !== "";
+    try {
+      relative({ iri: EXPORTED }, path);
+    } catch {
+      isPath = false;
+    }
+    if (!isPath) throw new Error(`the export holds ${path}, which is no path`);
+    names.add(top);
+  }
+  return [...names].sort();
 }
 
 /** The files of an export an app holds, never written; a `Blob` is read only when its file is. */
 export class ExportedFiles implements Files {
-  readonly iri = "urn:cascade:exported/";
+  readonly iri = EXPORTED;
   readonly #files: Exported;
   readonly #name: string;
 
-  /** The export, named `name` in what it says. */
+  /** The export, its keys paths as `exportedNames` takes them, named `name` in what it says. */
   constructor(exported: Exported, name: string) {
     this.#name = name;
-    for (const path of exported.keys())
-      try {
-        relative(this, path);
-      } catch {
-        throw new Error(`${name} holds ${path}, which is no path`);
-      }
     this.#files = exported;
   }
 
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     const file = this.#files.get(relative(this, pathOrIri));
     if (file === undefined) return undefined;
-    return file instanceof Uint8Array
-      ? file.slice()
+    return ArrayBuffer.isView(file)
+      ? new Uint8Array(file)
       : new Uint8Array(await file.arrayBuffer());
   }
 

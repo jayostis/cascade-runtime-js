@@ -38,6 +38,11 @@ export interface BridgeGlue extends BridgePackage {
   initSync(module: { module: WebAssembly.Module }): unknown;
 }
 
+/** The file of the Bridge's package holding its glue module. */
+export const BRIDGE_GLUE = "cascade_bridge.js";
+/** The file of the Bridge's package holding its WebAssembly module. */
+export const BRIDGE_WASM = "cascade_bridge_bg.wasm";
+
 /** Where a Bridge instance is made from: the URL of the package's glue module and its module, compiled once. */
 export interface CompiledBridge {
   readonly glue: string;

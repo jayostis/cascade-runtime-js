@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 import {
+  BRIDGE_GLUE,
+  BRIDGE_WASM,
   FILES_JSON,
   type Followed,
   kitsOf,
@@ -48,7 +50,7 @@ const METADATA = "ro-crate-metadata.json";
 const BROWSER = join(WORKSPACE, "dist", "browser");
 const WASM = "web_bg.wasm";
 /** The Bridge's glue and module, which a page loads by URL beside the browser entry. */
-const BRIDGE_FILES = ["cascade_bridge.js", "cascade_bridge_bg.wasm"];
+const BRIDGE_FILES = [BRIDGE_GLUE, BRIDGE_WASM];
 /** The workspaces bundled into the package, which are on no registry. */
 const BUNDLED = ["runtime", "apple-health", "ccda-download"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */

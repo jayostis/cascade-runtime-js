@@ -1,11 +1,12 @@
 import * as oxigraphWeb from "oxigraph/web.js";
 import {
+  BRIDGE_GLUE,
+  BRIDGE_WASM,
+  type CompiledBridge,
   type Followed,
   importersNamed,
   Layout,
-  type Loaded,
-  loadAdapter,
-  ofMediaType,
+  loadAdapters,
   OxigraphStore,
   parseConfig,
   References,
@@ -22,11 +23,11 @@ import {
   inWebWorker,
 } from "@cascade-runtime/runtime/web";
 import {
+  bridgeLoaded,
   type Done,
   type Exported,
   type ExportSource,
   type Imported,
-  type LoadedBridge,
   openPodWith,
   type Parts,
   type Pod,
@@ -70,8 +71,11 @@ async function resolve(): Promise<Parts> {
     ),
     fetched("packed.json").then((r) => r.json() as Promise<Packed>),
   ]);
-  /** A component the package carries, read by URL and named by its tree, as Node names it. */
+  const sources = new Map<string, Source>();
+  /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
   const carried = (followed: Followed): Source => {
+    const known = sources.get(followed.repository);
+    if (known !== undefined) return known;
     const commit = packed.components.find(
       ({ repository }) => repository === followed.repository,
     )?.commit;
@@ -80,13 +84,15 @@ async function resolve(): Promise<Parts> {
         `the package carries no ${repositoryName(followed)} (${followed.repository})`,
       );
     const iri = treeIri(followed, commit);
-    return {
+    const source = {
       iri,
       files: new FetchedFiles(
         new URL(`${repositoryName(followed)}/${commit}/`, COMPONENTS).href,
         iri,
       ),
     };
+    sources.set(followed.repository, source);
+    return source;
   };
   const vocabulary = carried(config.vocabulary).files;
   const newStore = () => new OxigraphStore();
@@ -104,47 +110,32 @@ async function resolve(): Promise<Parts> {
     },
     exportAt: (path) =>
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
-    loadBridge: () => loadBridge(config.adapters, carried),
+    loadBridge: async () =>
+      bridgeLoaded(
+        new WasmBridge(inWebWorker(await bridgeCompiled())),
+        (bridge) =>
+          loadAdapters(bridge, config.adapters, async (followed) =>
+            carried(followed),
+          ),
+      ),
   };
 }
 
-/** The Bridge in a Web Worker, with each adapter loaded as its calls need its files. */
-async function loadBridge(
-  adapters: readonly Followed[],
-  carried: (followed: Followed) => Source,
-): Promise<LoadedBridge> {
-  const bridge = new WasmBridge(
-    inWebWorker(
-      await compiledBridge(
-        new URL("cascade_bridge.js", import.meta.url).href,
-        new URL("cascade_bridge_bg.wasm", import.meta.url).href,
-      ),
-    ),
-  );
-  const loaded: Loaded[] = [];
-  try {
-    for (const followed of adapters)
-      loaded.push(
-        await loadAdapter(bridge, carried(followed), async (repository) => {
-          if (repository === undefined)
-            throw new Error(
-              `${repositoryName(followed)} names vocabulary files but no vocabulary repository`,
-            );
-          return carried({ repository });
-        }),
-      );
-  } catch (error) {
-    await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
-    bridge.close();
-    throw error;
+let compiled: Promise<CompiledBridge> | undefined;
+
+/** The Bridge's module beside the browser entry, compiled once per page. */
+function bridgeCompiled(): Promise<CompiledBridge> {
+  if (compiled === undefined) {
+    const compiling = compiledBridge(
+      new URL(BRIDGE_GLUE, import.meta.url).href,
+      new URL(BRIDGE_WASM, import.meta.url).href,
+    );
+    compiled = compiling;
+    compiling.catch(() => {
+      if (compiled === compiling) compiled = undefined;
+    });
   }
-  return {
-    adapters: ofMediaType(loaded),
-    close: async () => {
-      await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
-      bridge.close();
-    },
-  };
+  return compiled;
 }
 
 let found: Promise<Parts> | undefined;

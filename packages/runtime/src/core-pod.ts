@@ -156,12 +156,13 @@ export class CorePod {
 
   /**
    * An export's or a download's arrival: its documents, as the first importer that reads the path finds them, each
-   * converted by the first adapter of its media type that accepts it (A1 to A11, A14).
+   * converted by the first adapter of its media type that accepts it (A1 to A11, A14). The adapters are asked for only
+   * once an importer reads the path.
    */
   import(
     exported: Pick<Files, "read" | "list">,
     folder: string,
-    adapters: AdaptersOf,
+    adapters: () => Promise<AdaptersOf>,
   ): Promise<Performed> {
     const { importers } = this.#options;
     return this.#step(async (context) => {
@@ -180,7 +181,7 @@ export class CorePod {
         throw new Refusal(
           `no importer of ${importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
         );
-      return fileExport(context, documents, adapters);
+      return fileExport(context, documents, await adapters());
     });
   }
 

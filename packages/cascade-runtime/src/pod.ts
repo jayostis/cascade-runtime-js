@@ -8,9 +8,12 @@ import {
   type Layout,
   lenses,
   literal,
+  type Loaded,
+  ofMediaType,
+  type WasmBridge,
   type AdaptersOf,
   type Exported,
-  exportedName,
+  exportedNames,
   ExportedFiles,
   MemoryFiles,
   ntriples,
@@ -135,6 +138,27 @@ export interface LoadedBridge {
   /** The adapters `cascade-runtime.json` names, loaded into it, by the media type each reads. */
   readonly adapters: AdaptersOf;
   close(): Promise<void>;
+}
+
+/** The adapters `load` puts into the Bridge, each freed before the Bridge closes; the Bridge closes if `load` fails. */
+export async function bridgeLoaded(
+  bridge: WasmBridge,
+  load: (bridge: WasmBridge) => Promise<readonly Loaded[]>,
+): Promise<LoadedBridge> {
+  let loaded: readonly Loaded[];
+  try {
+    loaded = await load(bridge);
+  } catch (error) {
+    bridge.close();
+    throw error;
+  }
+  return {
+    adapters: ofMediaType(loaded),
+    close: async () => {
+      await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
+      bridge.close();
+    },
+  };
 }
 
 /** What a pod is opened with. */
@@ -307,18 +331,16 @@ class OpenPod implements Pod {
   /** The export at the path or in the files the app holds, or why there is none to read. */
   #exportOf(exported: string | Exported): Export | string {
     if (typeof exported === "string") return this.#parts.exportAt(exported);
-    const name = exportedName(exported);
-    if (name === undefined) {
-      const tops = [
-        ...new Set([...exported.keys()].map((path) => path.split("/")[0])),
-      ].sort();
-      return `no importer of ${this.#importerNames()} reads ${tops.length === 0 ? "no file" : tops.join(" and ")}`;
-    }
+    let names: string[];
     try {
-      return { files: new ExportedFiles(exported, name), name };
+      names = exportedNames(exported);
     } catch (error) {
       return failure(error);
     }
+    const [name] = names;
+    if (names.length !== 1 || name === undefined)
+      return `no importer of ${this.#importerNames()} reads ${names.length === 0 ? "no file" : names.join(" and ")}`;
+    return { files: new ExportedFiles(exported, name), name };
   }
 
   async #look(exported: string | Exported): Promise<ExportSource[]> {
@@ -418,8 +440,11 @@ class OpenPod implements Pod {
         claimed: [],
         unclaimed: [],
       };
-    const { adapters } = await this.#loadedBridge();
-    const filed = await this.#core.import(found.files, found.name, adapters);
+    const filed = await this.#core.import(
+      found.files,
+      found.name,
+      async () => (await this.#loadedBridge()).adapters,
+    );
     const activity = filed.activity;
     if (filed.refused !== undefined || activity === undefined)
       return { ...filed, claimed: [], unclaimed: [] };

@@ -19,6 +19,8 @@ import {
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
 import { type Exported, openPod, type Pod } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
+import { resolved } from "../src/node/resolved.js";
+import { openPodWith } from "../src/pod.js";
 
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
@@ -362,7 +364,18 @@ test("an entry is filed and matched by default; a person's judgment records the 
   );
   assert.ok(twice.refused);
   assert.deepEqual(twice.wrote, []);
+  assert.deepEqual(await filesIn(folder), held);
+});
 
+test("files no importer reads are refused before the Bridge loads, and write nothing", async () => {
+  const unloaded = await openPodWith(
+    {
+      ...(await resolved()),
+      loadBridge: () => Promise.reject(new Error("the Bridge was loaded")),
+    },
+    undefined,
+    {},
+  );
   const nothing = new Uint8Array();
   const refused: [string, Exported, RegExp][] = [
     ["no file", new Map(), /^no importer of .* reads no file$/],
@@ -377,15 +390,33 @@ test("an entry is filed and matched by default; a person's judgment records the 
     [
       "a key that is no path",
       new Map([["a/../b.xml", nothing]]),
-      /^a holds a\/\.\.\/b\.xml, which is no path$/,
+      /^the export holds a\/\.\.\/b\.xml, which is no path$/,
+    ],
+    [
+      "a key with a leading slash",
+      new Map([["/export.xml", nothing]]),
+      /^the export holds \/export\.xml, which is no path$/,
+    ],
+    [
+      "an empty key",
+      new Map([["", nothing]]),
+      /^the export holds , which is no path$/,
+    ],
+    [
+      "a folder no importer reads",
+      new Map([["Downloads/notes.txt", nothing]]),
+      /^no importer of .* reads Downloads$/,
     ],
   ];
-  for (const [input, given, why] of refused) {
-    const done = await pod.import(given);
-    assert.match(done.refused ?? "", why, input);
-    assert.deepEqual(done.wrote, [], input);
+  try {
+    for (const [input, given, why] of refused) {
+      const done = await unloaded.import(given);
+      assert.match(done.refused ?? "", why, input);
+      assert.deepEqual(done.wrote, [], input);
+    }
+  } finally {
+    await unloaded.close();
   }
-  assert.deepEqual(await filesIn(folder), held);
 });
 
 test("ask runs a question by name or the caller's own query, under the lens named", async () => {
