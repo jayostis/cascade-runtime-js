@@ -22,19 +22,21 @@ judgments count. With several, it lists them.
 
 The server answers on `127.0.0.1` only, at the port in `PORT`, or 3000. It sees
 a pod loaded while it runs; after `pod:reset` of a pod it has shown, restart it.
+Stop it with Ctrl+C in its terminal.
 
 ## The commands
 
 An option to an npm script goes after `--`, or npm keeps it for itself.
 
-| Command                                                      | Does                                                                                                                                    |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm start`                                                  | serves the app                                                                                                                          |
-| `npm run pod:load -- <kit> [--through <step>] [--as <name>]` | replays a kit's story into `pods/<name>/`, the name being the kit's unless `--as` gives one; with `--through`, it stops after that step |
-| `npm run pod:new <name>`                                     | makes an empty pod in `pods/<name>/`, to bring your own downloads into                                                                  |
-| `npm run pod:reset <name>`                                   | removes `pods/<name>/`, asking nothing                                                                                                  |
-| `npm run ask -- [--pod <name>] "<question>"`                 | prints a question's rows, one JSON object a line                                                                                        |
-| `npm run console -- [--pod <name>]`                          | opens Node's REPL with the pod as `pod`: `await pod.ask("pod/My active allergies")`                                                     |
+| Command                                                      | Does                                                                                                                                      |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm start`                                                  | serves the app                                                                                                                            |
+| `npm run pod:load -- <kit> [--through <step>] [--as <name>]` | replays a kit's story into `pods/<name>/`, the name being the kit's unless `--as` gives one; with `--through`, it stops after that step   |
+| `npm run pod:new <name>`                                     | makes an empty pod in `pods/<name>/`, to bring your own downloads into                                                                    |
+| `npm run pod:reset <name>`                                   | removes `pods/<name>/`, asking nothing                                                                                                    |
+| `npm run kit:export -- <kit> <download>`                     | copies a kit's download, as `alex-rivera x-e12`, into this folder as `apple_health_export`, as a person puts their phone's download there |
+| `npm run ask -- [--pod <name>] "<question>"`                 | prints a question's rows, one JSON object a line                                                                                          |
+| `npm run console -- [--pod <name>]`                          | opens Node's REPL with the pod as `pod`: `await pod.ask("pod/My active allergies")`                                                       |
 
 `--pod` may be left out when there is exactly one pod. One app can hold a kit at
 two points: `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24`
@@ -45,7 +47,7 @@ beside `alex-rivera`.
 - `server.mjs`: the app, on `node:http`, with no framework and no build step.
 - `pods.mjs`: what the commands share: where pods live and which one a command
   works on.
-- `pod.mjs`, `ask.mjs`, `console.mjs`: the commands.
+- `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in

@@ -36,7 +36,8 @@ names no record, a folder holding files but no pod, a call after `close`. Only
 This app was made from a starter, a demonstration: rebuild it in any framework,
 keeping the package and the pods, under `pods/<name>/` (it ships none).
 
-- `npm start` serves the app. An option to an npm script goes after `--`.
+- `npm start` serves the app; stop it with Ctrl+C or by its process, never by
+  killing every Node process. An option to an npm script goes after `--`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from the kit.
   `--through J1` stops after her first export, leaving the rest to `import`.
@@ -44,10 +45,8 @@ keeping the package and the pods, under `pods/<name>/` (it ships none).
 - `npm run pod:reset <name>` removes a pod.
 - `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
 - `npm run console -- [--pod <name>]` opens a REPL with the pod as `pod`.
-
-Alex's exports, each folder what `look` and `import` take, are at
-`node_modules/cascade-runtime/components/cascade-vocabulary/<commit>/conformance/alex-rivera/scripted-input/alex/downloads/x-e<N>/apple_health_export`,
-`<commit>` being the one `components/packed.json` names.
+- `npm run kit:export -- <kit> <download>` copies a download, as
+  `alex-rivera x-e12`, into the app as `apple_health_export`, for `look`.
 
 ## Open a pod
 

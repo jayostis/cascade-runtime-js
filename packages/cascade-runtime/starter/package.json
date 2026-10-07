@@ -11,6 +11,7 @@
     "pod:load": "node pod.mjs load",
     "pod:new": "node pod.mjs new",
     "pod:reset": "node pod.mjs reset",
+    "kit:export": "node kit.mjs",
     "ask": "node ask.mjs",
     "console": "node console.mjs"
   },

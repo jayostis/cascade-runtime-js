@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { OxigraphStore } from "@cascade-runtime/runtime";
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
 import { openPod, type Pod } from "cascade-runtime";
-import { replayKit } from "cascade-runtime/fixtures";
+import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
@@ -341,4 +341,14 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
   } finally {
     await rm(at, { recursive: true, force: true });
   }
+});
+
+test("a kit's download is found by name, or refused naming the choices", async () => {
+  const x12 = await kitDownload("alex-rivera", "x-e12");
+  assert.ok((await readdir(x12)).includes("apple_health_export"));
+  for (const [kit, download, reason] of [
+    ["no-such-kit", "x-e12", /there are .*alex-rivera/],
+    ["alex-rivera", "x-e99", /it has .*x-e12/],
+  ] as const)
+    await assert.rejects(kitDownload(kit, download), reason);
 });
