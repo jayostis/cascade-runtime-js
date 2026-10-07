@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import { OxigraphStore } from "@cascade-runtime/runtime";
+import {
+  JUSTIFICATIONS,
+  OxigraphStore,
+  recordName,
+} from "@cascade-runtime/runtime";
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
 import { openPod, type Pod } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
@@ -64,8 +68,11 @@ async function profileOf(judgment: string): Promise<string> {
   return member;
 }
 
-/** The `name` column of a table an example of Alex's story gives under the line naming it. */
-async function namesUnder(example: string, line: string): Promise<string[]> {
+/** The rows of a table an example of Alex's story gives under the line naming it, by column. */
+async function tableUnder(
+  example: string,
+  line: string,
+): Promise<Record<string, string>[]> {
   const lines = (await readFile(inKit(`${KIT}/alex-rivera.feature`), "utf8"))
     .split(/\r?\n/)
     .map((text) => text.trim());
@@ -81,7 +88,18 @@ async function namesUnder(example: string, line: string): Promise<string[]> {
     );
   }
   const [header = [], ...rows] = table;
-  return rows.map((row) => row[header.indexOf("name")] ?? "");
+  return rows.map((row) =>
+    Object.fromEntries(header.map((column, i) => [column, row[i] ?? ""])),
+  );
+}
+
+/** A record of Alex's kit by the handle `expected/handles.json` gives it. */
+async function handled(handle: string): Promise<string> {
+  const handles = JSON.parse(
+    await readFile(inKit(`${KIT}/expected/handles.json`), "utf8"),
+  ) as { records: Record<string, Record<string, string>> };
+  const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
+  return recordName([server, type, id]);
 }
 
 /** Every file the folder holds, by its path in it. */
@@ -147,16 +165,31 @@ test("an import with the claim records an About for each unclaimed profile and i
   assert.deepEqual(imported.unclaimed, []);
   const wrote = imported.matched?.wrote ?? [];
   const judgments = await pod.ask({
-    query: `${PREFIXES}SELECT DISTINCT ?judgment WHERE {
+    query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?member)) AS ?members) WHERE {
       VALUES ?file { ${wrote.map((path) => `<${pod.address}${path}>`).join(" ")} }
-      GRAPH ?file { ?judgment a jdg:Judgment } }`,
+      GRAPH ?file { ?judgment a jdg:Judgment ; jdg:justification ?justification ; prov:hadMember ?member } }
+      GROUP BY ?judgment ?justification`,
   });
+  const expected = await tableUnder(
+    "E5 writes J3 to J7 as the scenario gives them, and the reference descriptions it was the first to use",
+    `Then "E5" wrote these matcher judgments:`,
+  );
+  const joined = (justification: string, members: string[]): string =>
+    `${justification} ${members.sort().join(" ")}`;
   assert.deepEqual(
-    judgments.map(({ judgment }) => judgment).sort(),
+    judgments
+      .map(({ justification = "", members = "" }) =>
+        joined(justification, members.split(" ")),
+      )
+      .sort(),
     (
-      await namesUnder(
-        "E5 writes J3 to J7 as the scenario gives them, and the reference descriptions it was the first to use",
-        `Then "E5" wrote these matcher judgments:`,
+      await Promise.all(
+        expected.map(async ({ justification = "", members = "" }) =>
+          joined(
+            JUSTIFICATIONS[justification] ?? justification,
+            await Promise.all(members.split(", ").map(handled)),
+          ),
+        ),
       )
     ).sort(),
   );
@@ -197,6 +230,50 @@ test("the look reads the export's index and writes nothing", async () => {
       fromIt.length,
       server,
     );
+  }
+});
+
+test("the look names a download's source by its custodian, with its sections, claimed once the subject's records from it are filed", async () => {
+  const download = join(
+    findRoot(dirname(fileURLToPath(import.meta.url))),
+    "developer-story",
+    "priya-natarajan",
+    "kestrel-harbor-health-summary.xml",
+  );
+  const at = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  const priya = await openPod(at);
+  try {
+    const [source, ...others] = await priya.look(download);
+    assert.deepEqual(others, []);
+    assert.ok(source);
+    assert.equal(source.name, "Kestrel Harbor Hospital");
+    assert.equal(source.server, undefined);
+    assert.deepEqual(Object.keys(source.sections ?? {}).sort(), [
+      "Allergies",
+      "Medications",
+      "Problems",
+      "Results",
+      "Social History",
+      "Vital Signs",
+    ]);
+    assert.deepEqual(Object.keys(source.records).sort(), [
+      "Allergy",
+      "Condition",
+      "Lab result",
+      "Medication",
+    ]);
+    assert.deepEqual(source.received, ["2025-04-03T09:15:22Z"]);
+    assert.equal(source.claimed, false);
+
+    const imported = await priya.import(download, { aboutSubject: true });
+    assert.equal(imported.refused, undefined);
+    assert.deepEqual(
+      (await priya.look(download)).map(({ claimed }) => claimed),
+      [true],
+    );
+  } finally {
+    await priya.close();
+    await rm(at, { recursive: true, force: true });
   }
 });
 

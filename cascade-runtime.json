@@ -5,6 +5,9 @@
   "adapters": [
     {
       "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
+    },
+    {
+      "repository": "https://github.com/jayostis/cascade-bridge-adapter-ccda"
     }
   ],
   "importers": ["apple-health-export", "ccda-download"],

@@ -18,8 +18,8 @@ import {
 } from "@cascade-runtime/runtime/node";
 import type { Parts } from "../pod.js";
 
-/** The matcher's tables every pod is given: those of Alex's kit, alpha test data. */
-const TABLES = "conformance/alex-rivera/scripted-input/alex/references/";
+/** The matcher's tables every pod is given: the rules' tables, whose rule list is the newest, alpha test data. */
+const TABLES = "runtime/scripted-input/gus/references/";
 
 export interface ResolvedParts extends Parts {
   /** The vocabulary as a folder, which a kit is replayed from. */

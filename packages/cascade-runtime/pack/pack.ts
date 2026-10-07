@@ -57,6 +57,7 @@ const VOCABULARY = [
   "queries",
   "runtime/pod-layout.ttl",
   "runtime/rules.md",
+  "runtime/scripted-input/gus/references",
 ];
 /** What an adapter reads of another vocabulary repository it names. */
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];

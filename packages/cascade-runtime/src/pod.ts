@@ -59,16 +59,22 @@ export interface Pod {
   close(): Promise<void>;
 }
 
+/** A source of an export or a download: a hospital's FHIR server, or a document's custodian. */
 export interface ExportSource {
-  /** Where the export says the records came from. */
+  /** Where the export says the records came from: the hospital, or the document's custodian. */
   readonly name?: string;
-  /** That source's server base URL, normalised as the Bridge does. */
+  /** A FHIR source's server base URL, normalised as the Bridge does. */
   readonly server?: string;
   /** How many of each kind. */
   readonly records: Readonly<Record<string, number>>;
-  /** Each time a record was received, in UTC, once each, in order. */
+  /** How many entries each section holds, by its title, where the source has sections. */
+  readonly sections?: Readonly<Record<string, number>>;
+  /** Each time a record was received, in UTC, once each, in order; a document's own date where it gives no time. */
   readonly received: readonly string[];
-  /** The pod holds the subject's records from that server. */
+  /**
+   * The pod holds the subject's records from that server or, for a source with none, from a document whose author is
+   * the source.
+   */
   readonly claimed: boolean;
 }
 
@@ -274,16 +280,24 @@ class OpenPod implements Pod {
         `no importer of ${this.#parts.importers.map((importer) => importer.name).join(", ") || "none"} reads ${exported}`,
       );
     const { rows } = await this.#core.select(`${PREFIXES}
-      SELECT DISTINCT ?server WHERE {
+      SELECT DISTINCT ?server ?author WHERE {
         ?record rec:subject <${this.subject}> .
         ?revision rec:revisionOf ?record ; prov:wasDerivedFrom ?document .
-        ?document bridge:serverBaseUrl ?server .
+        OPTIONAL { ?document bridge:serverBaseUrl ?server }
+        OPTIONAL {
+          FILTER NOT EXISTS { ?document bridge:serverBaseUrl ?anyServer }
+          ?document prov:qualifiedAttribution ?attribution .
+          ?attribution prov:hadRole rec:author ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
+        }
       }`);
-    const claimed = new Set(
+    const claimedServers = new Set(
       rows.flatMap((row) => {
         const server = row.get("server")?.value;
         return server === undefined ? [] : [normalised(server)];
       }),
+    );
+    const claimedAuthors = new Set(
+      rows.flatMap((row) => row.get("author")?.value ?? []),
     );
     const sources = new Map<
       string,
@@ -291,6 +305,7 @@ class OpenPod implements Pod {
         name?: string;
         server?: string;
         records: Map<string, number>;
+        sections: Map<string, number>;
         received: Set<string>;
       }
     >();
@@ -304,26 +319,31 @@ class OpenPod implements Pod {
           ...(entry.source === undefined ? {} : { name: entry.source }),
           ...(server === undefined ? {} : { server }),
           records: new Map(),
+          sections: new Map(),
           received: new Set(),
         };
         sources.set(key, source);
       }
-      if (entry.kind !== undefined)
-        source.records.set(
-          entry.kind,
-          (source.records.get(entry.kind) ?? 0) + 1,
-        );
+      const counted = (counts: Map<string, number>, key?: string): void => {
+        if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
+      };
+      counted(source.records, entry.kind);
+      counted(source.sections, entry.section);
       if (entry.received !== undefined) source.received.add(entry.received);
     }
+    const sorted = (counts: Map<string, number>): Record<string, number> =>
+      Object.fromEntries([...counts].sort(([a], [b]) => compared(a, b)));
     return [...sources.values()]
       .sort((a, b) => compared(a.name, b.name) || compared(a.server, b.server))
-      .map(({ records, received, ...source }) => ({
+      .map(({ records, sections, received, ...source }) => ({
         ...source,
-        records: Object.fromEntries(
-          [...records].sort(([a], [b]) => compared(a, b)),
-        ),
+        records: sorted(records),
+        ...(sections.size === 0 ? {} : { sections: sorted(sections) }),
         received: [...received].sort(),
-        claimed: source.server !== undefined && claimed.has(source.server),
+        claimed:
+          source.server === undefined
+            ? source.name !== undefined && claimedAuthors.has(source.name)
+            : claimedServers.has(source.server),
       }));
   }
 

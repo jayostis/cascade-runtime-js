@@ -75,9 +75,10 @@ clear its storage, and the pod with it. The site's `try/` page shows this.
 
 ## Bring in an export
 
-On each export the person picks, `look` reads its index and writes nothing: one
-source per hospital server, with its `name`, `server`, `records` by kind, the
-times `received`, and `claimed`. Ask the person whether the export is theirs;
+On each export or downloaded C-CDA file the person picks, `look` reads its index
+and writes nothing: one source per hospital server, or per document's custodian,
+with its `name`, a FHIR source's `server`, `records` by kind, a C-CDA's entries
+per `sections` title, the times `received`, and `claimed`. Ask the person whether the export is theirs;
 `import` it only after a yes. On a no, call nothing: the pod keeps none of it.
 
 ```js
@@ -107,8 +108,9 @@ await bringIn(pickExport());
 ```
 
 The look names no patient: `claimed` means the pod holds the subject's records
-from that server, not that this export's are theirs; a second server is a source
-of its own. `import` with the yes claims every profile not yet claimed, runs the
+from that server, or from a document that custodian wrote, not that this
+export's are theirs; a second server is a source of its own, and so is a
+hospital's custodian beside its server. `import` with the yes claims every profile not yet claimed, runs the
 matcher (call no `match`), and writes nothing when the export is already in.
 
 ## Ask

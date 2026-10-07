@@ -132,48 +132,42 @@ test("the developer story prints Alex's active allergies as the replay through J
   assert.deepEqual(multiset(printed), multiset(expected));
 });
 
-test(
-  "the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry",
-  {
-    todo: "waits for #70's step 9: the C-CDA adapter and its importer's header, Apple Health's medication and lab result kinds, and a new pod given the newest rule-list tables",
-  },
-  async (t) => {
-    const printed = await story(
-      "medications.mjs",
-      "priya-pod",
-      join(STORY, "priya-natarajan", "apple_health_export"),
-      join(STORY, "priya-natarajan", "kestrel-harbor-health-summary.xml"),
-    );
-    for (const row of printed) t.diagnostic(JSON.stringify(row));
-    assert.ok(
-      printed.every((row) => row.entry !== undefined),
-      "a row names no ?entry",
-    );
-    assert.equal(
-      new Set(printed.map((row) => row.entry)).size,
-      printed.length,
-      "two rows name one entry",
-    );
-    assert.deepEqual(
-      multiset(
-        printed.map(({ medication, code, records }) => ({
-          medication,
-          code,
-          records,
-        })),
-      ),
-      multiset([
-        {
-          medication: "lisinopril 10 MG Oral Tablet",
-          code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
-          records: "2",
-        },
-        {
-          medication: "amlodipine 5 MG Oral Tablet",
-          code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
-          records: "1",
-        },
-      ]),
-    );
-  },
-);
+test("the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry", async (t) => {
+  const printed = await story(
+    "medications.mjs",
+    "priya-pod",
+    join(STORY, "priya-natarajan", "apple_health_export"),
+    join(STORY, "priya-natarajan", "kestrel-harbor-health-summary.xml"),
+  );
+  for (const row of printed) t.diagnostic(JSON.stringify(row));
+  assert.ok(
+    printed.every((row) => row.entry !== undefined),
+    "a row names no ?entry",
+  );
+  assert.equal(
+    new Set(printed.map((row) => row.entry)).size,
+    printed.length,
+    "two rows name one entry",
+  );
+  assert.deepEqual(
+    multiset(
+      printed.map(({ medication, code, records }) => ({
+        medication,
+        code,
+        records,
+      })),
+    ),
+    multiset([
+      {
+        medication: "lisinopril 10 MG Oral Tablet",
+        code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
+        records: "2",
+      },
+      {
+        medication: "amlodipine 5 MG Oral Tablet",
+        code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
+        records: "1",
+      },
+    ]),
+  );
+});
