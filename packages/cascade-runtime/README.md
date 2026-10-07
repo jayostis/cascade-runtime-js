@@ -3,7 +3,8 @@
 <!-- INSTALL -->
 
 What an app imports to keep a Cascade pod: it opens a pod in a folder, looks
-into an Apple Health export, imports it, enters and judges records, runs the
+into an Apple Health export or a C-CDA file a patient portal handed out,
+imports it, enters and judges records, runs the
 matcher and asks the vocabulary's questions. `openPod` is the whole interface;
 `cascade-runtime/fixtures` adds `replayKit`, which replays a conformance kit's
 story into a folder.

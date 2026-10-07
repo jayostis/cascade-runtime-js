@@ -24,10 +24,17 @@ async function holdsAnything(folder: string): Promise<boolean> {
   }
 }
 
-async function folders(path: string): Promise<string[]> {
+/** The names of the folders in a folder, and of its XML files too where `files` is set: a C-CDA a portal handed out. */
+async function entries(path: string, files = false): Promise<string[]> {
   try {
     return (await readdir(path, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
+      .filter(
+        (entry) =>
+          entry.isDirectory() ||
+          (files &&
+            entry.isFile() &&
+            entry.name.toLowerCase().endsWith(".xml")),
+      )
       .map(({ name }) => name)
       .sort();
   } catch (error) {
@@ -46,7 +53,10 @@ async function kitVocabulary(kit: string) {
   return local;
 }
 
-/** The folder of a kit's download, as `x-e12`, which holds what a person's phone exported. */
+/**
+ * The path of a kit's download: a folder, as `x-e12`, which holds what a person's phone exported, or a file, as a
+ * C-CDA a portal handed out.
+ */
 export async function kitDownload(
   kit: string,
   download: string,
@@ -57,8 +67,8 @@ export async function kitDownload(
     "scripted-input",
   );
   const downloads = [];
-  for (const person of await folders(input))
-    for (const name of await folders(join(input, person, "downloads")))
+  for (const person of await entries(input))
+    for (const name of await entries(join(input, person, "downloads"), true))
       downloads.push({ name, folder: join(input, person, "downloads", name) });
   const found = downloads.filter(({ name }) => name === download);
   if (found.length !== 1)

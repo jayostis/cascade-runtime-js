@@ -3,9 +3,12 @@
 This app was made from the Cascade starter. It is a demonstration, not a
 foundation: rebuild it in any framework. What carries over is
 `cascade-runtime`, which keeps the pods, and the pods under `pods/<name>/`. It
-starts with none: `npm run pod:load alex-rivera` loads Alex Rivera's, from the
-kit the package carries. `npm run kit:export -- alex-rivera x-e12` copies one
-of her downloads into the app as `apple_health_export`. Stop the app's server
+starts with none: `npm run pod:load alex-rivera` loads Alex Rivera's, and
+`npm run pod:load priya-natarajan` Priya Natarajan's, from the kits the package
+carries. `npm run kit:export -- alex-rivera x-e12` copies one of Alex's
+downloads into the app as `apple_health_export`, and
+`npm run kit:export -- priya-natarajan kestrel-harbor-health-summary.xml` one
+of Priya's C-CDA files under its own name. Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.
 

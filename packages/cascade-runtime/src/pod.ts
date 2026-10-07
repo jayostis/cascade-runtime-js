@@ -36,8 +36,9 @@ const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
 const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
 const UUID = "urn:uuid:";
-/** The matcher's tables every pod is given: the rules' tables, whose rule list is the newest, alpha test data. */
-export const TABLES = "runtime/scripted-input/gus/references/";
+/** The matcher's tables every pod is given: those of Priya's kit, alpha test data. */
+export const TABLES =
+  "conformance/priya-natarajan/scripted-input/priya/references/";
 
 /** A name as a person reads it, its runs of white space one space. */
 function spaced(name: string): string {
@@ -287,7 +288,14 @@ class OpenPod implements Pod {
     const { parent, name } = this.#parts.folder(exported);
     let entries: readonly IndexEntry[] | undefined;
     for (const importer of this.#parts.importers) {
-      entries = await importer.index(parent, name);
+      try {
+        entries = await importer.index(parent, name);
+      } catch (error) {
+        throw new Error(
+          `${importer.name} cannot read ${exported}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
       if (entries !== undefined) break;
     }
     if (entries === undefined)

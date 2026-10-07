@@ -17,8 +17,9 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Patient profile**: how each hospital names the person.
 
 Nothing else: a daily measurement needs new terms in the vocabulary first, so
-tell the person and build none of them. Records come only from an Apple Health
-export, unzipped, whose clinical records are FHIR R4.
+tell the person and build none of them. Records come from two formats: an Apple
+Health export, unzipped, whose clinical records are FHIR R4, and a C-CDA file,
+a summary of care as a patient portal hands it out.
 
 ## What an app never does
 
@@ -31,7 +32,7 @@ rules turning the person's data down: nothing was written; show them the
 reason. A rejected promise is the app's mistake: an unknown question or lens,
 a query that is no `SELECT`, Turtle that is not one judgment, a member that
 names no record, a folder holding files but no pod, a call after `close`. Only
-`look` of a folder that is no export is the person's doing, caught below.
+`look` of a folder or file that is no export is the person's doing, caught below.
 
 ## The starter
 
@@ -41,14 +42,17 @@ keeping the package and the pods, under `pods/<name>/` (it ships none).
 - `npm start` serves the app; stop it with Ctrl+C or by its process, never by
   killing every Node process. An option to an npm script goes after `--`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
-  story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from the kit.
-  `--through J1` stops after her first export, leaving the rest to `import`.
+  story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
+  exports, and `priya-natarajan` Priya Natarajan's, from exports and C-CDA
+  files together. `--through J1` stops Alex's after her first export, leaving
+  the rest to `import`.
 - `npm run pod:new <name>` makes an empty pod.
 - `npm run pod:reset <name>` removes a pod.
 - `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
 - `npm run console -- [--pod <name>]` opens a REPL with the pod as `pod`.
-- `npm run kit:export -- <kit> <download>` copies a download, as
-  `alex-rivera x-e12`, into the app as `apple_health_export`, for `look`.
+- `npm run kit:export -- <kit> <download>` copies a download into the app, for
+  `look`: `alex-rivera x-e12` as `apple_health_export`, and
+  `priya-natarajan kestrel-harbor-health-summary.xml` as that file.
 
 ## Open a pod
 
@@ -78,8 +82,8 @@ clear its storage, and the pod with it. The site's `try/` page shows this.
 On each export or downloaded C-CDA file the person picks, `look` reads its index
 and writes nothing: one source per hospital server, or per document's custodian,
 with its `name`, a FHIR source's `server`, `records` by kind, a C-CDA's entries
-per `sections` title, the times `received`, and `claimed`. Ask the person whether the export is theirs;
-`import` it only after a yes. On a no, call nothing: the pod keeps none of it.
+per `sections` title, the times `received`, and `claimed`. Ask the person
+whether the export is theirs; `import` it only after a yes. On a no, call nothing: the pod keeps none of it.
 
 ```js
 async function recordsBy(question, by) {
@@ -90,8 +94,11 @@ async function recordsBy(question, by) {
 
 async function bringIn(folder, options = {}) {
   const sources = await pod.look(folder).catch(async (error) => {
-    if (!/^no importer .* reads /.test(error.message)) throw error;
-    await showPerson("That folder is not an unzipped Apple Health export.");
+    if (!/^no importer .* reads |^\S+ cannot read /.test(error.message))
+      throw error;
+    await showPerson(
+      "That is neither an Apple Health export nor a C-CDA file.",
+    );
   });
   if (sources === undefined) return undefined;
   if (!(await askPerson("Are these records yours?", sources))) return undefined;

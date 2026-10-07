@@ -81,7 +81,7 @@ export interface Start {
   readonly prompt: string;
   /** The title of each kind of record a pod holds. */
   readonly kinds: readonly string[];
-  /** The folder of the example shown as a pod. */
+  /** The folder of the example the quick start and try/ name. */
   readonly example: string;
 }
 
@@ -95,8 +95,8 @@ export function viewTitles(layout: Layout): string[] {
 }
 
 function frontPage(
-  { kinds, example }: Start,
-  { title }: Example,
+  { kinds }: Start,
+  examples: readonly Example[],
   tried: boolean,
 ): string {
   return markup`<!DOCTYPE html>
@@ -125,15 +125,18 @@ ${
 <p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
 question that reads it is a SPARQL query.</p>
 <ul>
-<li><a href="${example}/index.html">Browse ${title}'s pod</a>: its records, its views, and every question with its SPARQL query. <a class="also" href="${example}/${COPY}${POD_ENTRY}">The pod's files</a></li>
-<li><a href="${EXAMPLES_PAGE}">Every example pod, and what built these pages</a></li>
+${examples.map(
+  ({ folder, title }) =>
+    markup`<li><a href="${folder}/index.html">Browse ${title}'s pod</a>: its records, its views, and every question with its SPARQL query. <a class="also" href="${folder}/${COPY}${POD_ENTRY}">The pod's files</a></li>\n`,
+)}<li><a href="${EXAMPLES_PAGE}">Every example pod, and what built these pages</a></li>
 </ul>
 <h3>What a pod holds today</h3>
 <ul>
 ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
-<p class="prose">Records come in only from the clinical records of an Apple Health export; observations, medications, lab
-results and daily measurements are not yet held. The reference tables the matcher uses to join records of the same thing are
-alpha test data, so a real export shows fewer automatic joins than ${title}'s pod.</p>
+<p class="prose">Records come in from two formats: FHIR R4, from the clinical records of an Apple Health export, and C-CDA, a
+summary of care as a patient portal hands it out. The matcher joins one record across both. Vital signs, notes and daily
+measurements are not yet held. The reference tables the matcher uses to join records of the same thing are alpha test data,
+so a real export shows fewer automatic joins than the example pods.</p>
 </main>
 </body>
 </html>
@@ -210,6 +213,6 @@ export function pagesTree(
   for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
   const hasTry = tree.has(TRY_PAGE);
   tree.set(START_PAGE, encoder.encode(startPage(start, shown, hasTry)));
-  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, shown, hasTry)));
+  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, examples, hasTry)));
   return tree;
 }

@@ -364,7 +364,7 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   }
 });
 
-test("the Pages front page leads to the quick start, try/, the example's pod and the kinds a pod holds; the quick start gives the command, the prompt and try/; neither links what the tree does not hold", async () => {
+test("the Pages front page leads to the quick start, try/, every example's pod, the kinds a pod holds and its two formats; the quick start gives the command, the prompt and try/; neither links what the tree does not hold", async () => {
   const { examples, built, commit, start, tried, tree } = await shared();
   const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
   const address = tarballAddress(commit);
@@ -395,11 +395,14 @@ test("the Pages front page leads to the quick start, try/, the example's pod and
   for (const href of [
     START_PAGE,
     TRY_PAGE,
-    `${start.example}/index.html`,
-    `${start.example}/pod/manifest.ttl`,
+    ...examples.flatMap(({ folder }) => [
+      `${folder}/index.html`,
+      `${folder}/pod/manifest.ttl`,
+    ]),
     EXAMPLES_PAGE,
   ])
     assert.ok(front.hrefs.includes(href), href);
+  assert.ok(front.said.includes("FHIR R4") && front.said.includes("C-CDA"));
   assert.throws(
     () => pagesTree(examples, built, { ...start, example: "nobody" }, tried),
     /nobody/,
