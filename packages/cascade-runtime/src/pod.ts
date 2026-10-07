@@ -9,6 +9,9 @@ import {
   lenses,
   literal,
   type AdaptersOf,
+  type Exported,
+  exportedName,
+  ExportedFiles,
   MemoryFiles,
   ntriples,
   podDataset,
@@ -53,6 +56,8 @@ function sorted(counts: Map<string, number>): Record<string, number> {
   return Object.fromEntries([...counts].sort(([a], [b]) => compared(a, b)));
 }
 
+export type { Exported } from "@cascade-runtime/runtime";
+
 export interface Pod {
   /** The pod's naming base, ending in a slash. */
   readonly address: string;
@@ -60,9 +65,10 @@ export interface Pod {
   readonly subject: string;
   /** The owner's profile's #me. */
   readonly owner: string;
-  look(exported: string): Promise<readonly ExportSource[]>;
+  /** The export or download at the path, or the files the app holds of one. */
+  look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
-    exported: string,
+    exported: string | Exported,
     options?: { aboutSubject?: boolean; match?: boolean },
   ): Promise<Imported>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
@@ -123,8 +129,6 @@ export interface Folder {
   /** Its files, named by the IRI given, or else by their own. */
   readonly files: Files;
   readonly name: string;
-  /** The files of the folder holding it, in which it is `name`. */
-  readonly parent: Files;
 }
 
 export interface LoadedBridge {
@@ -145,7 +149,15 @@ export interface Parts {
   readonly references: References;
   readonly newStore: StoreFactory;
   folder(path: string, iri?: string): Folder;
+  /** The export or download at the path, as the files it is in and its name there, or why no path is read. */
+  exportAt(path: string): Export | string;
   loadBridge(): Promise<LoadedBridge>;
+}
+
+/** An export or a download as the importers are given it: the files it is in, and its name there. */
+export interface Export {
+  readonly files: Pick<Files, "read" | "list">;
+  readonly name: string;
 }
 
 /** A server's base URL as a Bridge normalises it: scheme and host lower-cased, every trailing slash removed. */
@@ -218,12 +230,12 @@ class OpenPod implements Pod {
     return `${this.address}${this.#parts.layout.card}#me`;
   }
 
-  look(exported: string): Promise<readonly ExportSource[]> {
+  look(exported: string | Exported): Promise<readonly ExportSource[]> {
     return this.#next(() => this.#look(exported));
   }
 
   import(
-    exported: string,
+    exported: string | Exported,
     options: { aboutSubject?: boolean; match?: boolean } = {},
   ): Promise<Imported> {
     return this.#next(() => this.#import(exported, options));
@@ -284,24 +296,50 @@ class OpenPod implements Pod {
     return next;
   }
 
-  async #look(exported: string): Promise<ExportSource[]> {
-    const { parent, name } = this.#parts.folder(exported);
+  /** The importers' names, as a refusal lists them. */
+  #importerNames(): string {
+    return (
+      this.#parts.importers.map((importer) => importer.name).join(", ") ||
+      "none"
+    );
+  }
+
+  /** The export at the path or in the files the app holds, or why there is none to read. */
+  #exportOf(exported: string | Exported): Export | string {
+    if (typeof exported === "string") return this.#parts.exportAt(exported);
+    const name = exportedName(exported);
+    if (name === undefined) {
+      const tops = [
+        ...new Set([...exported.keys()].map((path) => path.split("/")[0])),
+      ].sort();
+      return `no importer of ${this.#importerNames()} reads ${tops.length === 0 ? "no file" : tops.join(" and ")}`;
+    }
+    try {
+      return { files: new ExportedFiles(exported, name), name };
+    } catch (error) {
+      return failure(error);
+    }
+  }
+
+  async #look(exported: string | Exported): Promise<ExportSource[]> {
+    const found = this.#exportOf(exported);
+    if (typeof found === "string") throw new Error(found);
+    const { files, name } = found;
+    const shown = typeof exported === "string" ? exported : name;
     let entries: readonly IndexEntry[] | undefined;
     for (const importer of this.#parts.importers) {
       try {
-        entries = await importer.index(parent, name);
+        entries = await importer.index(files, name);
       } catch (error) {
         throw new Error(
-          `${importer.name} cannot read ${exported}: ${error instanceof Error ? error.message : String(error)}`,
+          `${importer.name} cannot read ${shown}: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
         );
       }
       if (entries !== undefined) break;
     }
     if (entries === undefined)
-      throw new Error(
-        `no importer of ${this.#parts.importers.map((importer) => importer.name).join(", ") || "none"} reads ${exported}`,
-      );
+      throw new Error(`no importer of ${this.#importerNames()} reads ${shown}`);
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?server ?author WHERE {
         ?record rec:subject <${this.subject}> .
@@ -370,12 +408,18 @@ class OpenPod implements Pod {
   }
 
   async #import(
-    exported: string,
+    exported: string | Exported,
     options: { aboutSubject?: boolean; match?: boolean },
   ): Promise<Imported> {
-    const { parent, name } = this.#parts.folder(exported);
+    const found = this.#exportOf(exported);
+    if (typeof found === "string")
+      return {
+        ...(await this.#core.refuse(found)),
+        claimed: [],
+        unclaimed: [],
+      };
     const { adapters } = await this.#loadedBridge();
-    const filed = await this.#core.import(parent, name, adapters);
+    const filed = await this.#core.import(found.files, found.name, adapters);
     const activity = filed.activity;
     if (filed.refused !== undefined || activity === undefined)
       return { ...filed, claimed: [], unclaimed: [] };

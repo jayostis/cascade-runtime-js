@@ -69,5 +69,56 @@ export class MemoryFiles implements Files {
   }
 }
 
+/**
+ * An export or a download as the files an app holds, each by its path: a folder or a file a person picked, or bytes
+ * the app fetched. Its one top-level name is the export, as a path names one folder or file.
+ */
+export type Exported = ReadonlyMap<string, Blob | Uint8Array>;
+
+/** The export's one top-level name, or undefined when it holds no file or more than one top-level name. */
+export function exportedName(exported: Exported): string | undefined {
+  const tops = new Set([...exported.keys()].map((path) => path.split("/")[0]));
+  const [name] = tops;
+  return tops.size === 1 && name !== "" ? name : undefined;
+}
+
+/** The files of an export an app holds, never written; a `Blob` is read only when its file is. */
+export class ExportedFiles implements Files {
+  readonly iri = "urn:cascade:exported/";
+  readonly #files: Exported;
+  readonly #name: string;
+
+  /** The export, named `name` in what it says. */
+  constructor(exported: Exported, name: string) {
+    this.#name = name;
+    for (const path of exported.keys())
+      try {
+        relative(this, path);
+      } catch {
+        throw new Error(`${name} holds ${path}, which is no path`);
+      }
+    this.#files = exported;
+  }
+
+  async read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    const file = this.#files.get(relative(this, pathOrIri));
+    if (file === undefined) return undefined;
+    return file instanceof Uint8Array
+      ? file.slice()
+      : new Uint8Array(await file.arrayBuffer());
+  }
+
+  async write(pathOrIri: string): Promise<void> {
+    throw new Error(
+      `${this.#name} is held by the app and never written: ${pathOrIri}`,
+    );
+  }
+
+  async list(folder: string): Promise<string[]> {
+    const prefix = relative(this, folder);
+    return [...this.#files.keys()].filter((path) => under(prefix, path)).sort();
+  }
+}
+
 /** What a folder served over HTTP lists of itself: every path under it but this file, sorted, as a JSON array. */
 export const FILES_JSON = "files.json";

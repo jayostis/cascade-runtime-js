@@ -47,6 +47,8 @@ const NODE_MODULES = join(STAGE, "node_modules");
 const METADATA = "ro-crate-metadata.json";
 const BROWSER = join(WORKSPACE, "dist", "browser");
 const WASM = "web_bg.wasm";
+/** The Bridge's glue and module, which a page loads by URL beside the browser entry. */
+const BRIDGE_FILES = ["cascade_bridge.js", "cascade_bridge_bg.wasm"];
 /** The workspaces bundled into the package, which are on no registry. */
 const BUNDLED = ["runtime", "apple-health", "ccda-download"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */
@@ -210,22 +212,35 @@ async function writeFilesJson(folder: string): Promise<void> {
   await writeJson(join(folder, FILES_JSON), paths);
 }
 
-/** The browser entry as one module, with Oxigraph's web build beside it. */
-async function bundleBrowser(): Promise<void> {
+/** The browser entry and the Bridge's worker as modules, with Oxigraph's web build and the Bridge's beside them. */
+async function bundleBrowser(bridgeFolder: string): Promise<void> {
   await rm(BROWSER, { recursive: true, force: true });
   await build({
-    entryPoints: [join(WORKSPACE, "dist", "src", "browser", "index.js")],
+    entryPoints: {
+      index: join(WORKSPACE, "dist", "src", "browser", "index.js"),
+      "wasm-worker": join(
+        ROOT,
+        "packages",
+        "runtime",
+        "dist",
+        "src",
+        "web",
+        "wasm-worker.js",
+      ),
+    },
     bundle: true,
     format: "esm",
     platform: "browser",
     target: "es2023",
-    outfile: join(BROWSER, "index.js"),
+    outdir: BROWSER,
     logLevel: "warning",
   });
   await copyFile(
     fileURLToPath(new URL(WASM, import.meta.resolve("oxigraph/web.js"))),
     join(BROWSER, WASM),
   );
+  for (const file of BRIDGE_FILES)
+    await copyFile(join(bridgeFolder, file), join(BROWSER, file));
 }
 
 /** The workspaces and the Bridge as real folders under the package's `node_modules/`, and the dependencies they bring. */
@@ -359,7 +374,7 @@ async function main(): Promise<void> {
   await mkdir(STAGE, { recursive: true });
   const { resolved, bridge, bridgeFolder } = await packComponents();
   const { bundled, dependencies } = await packCode(bridgeFolder);
-  await bundleBrowser();
+  await bundleBrowser(bridgeFolder);
   await packOwnFiles(manifest, address);
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),

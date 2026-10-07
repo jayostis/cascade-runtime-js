@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
@@ -10,7 +17,7 @@ import {
   recordName,
 } from "@cascade-runtime/runtime";
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
-import { openPod, type Pod } from "cascade-runtime";
+import { type Exported, openPod, type Pod } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 
 const KIT = "conformance/alex-rivera";
@@ -102,6 +109,26 @@ async function handled(): Promise<(handle: string) => Promise<string>> {
     const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
     return recordName([server, type, id]);
   };
+}
+
+/** The folder or file at the path as an app holds it: each file by its path under the folder's or file's own name. */
+async function heldExport(
+  at: string,
+  as: (bytes: Uint8Array<ArrayBuffer>) => Blob | Uint8Array,
+): Promise<Exported> {
+  const files = (await stat(at)).isDirectory() ? await filesIn(at) : [at];
+  const top = dirname(at);
+  return new Map(
+    await Promise.all(
+      files.map(
+        async (file) =>
+          [
+            relative(top, file).split(sep).join("/"),
+            as(await readFile(file)),
+          ] as const,
+      ),
+    ),
+  );
 }
 
 /** Every file the folder holds, by its path in it. */
@@ -204,6 +231,12 @@ test("an import with the claim records an About for each unclaimed profile and i
 test("the look reads an export's or a download's index and writes nothing: a FHIR source by its server, a C-CDA by its custodian with its sections, claimed once the subject's records from it are filed", async () => {
   const before = await filesIn(folder);
   const sources = await pod.look(exported("x-e12"));
+  assert.deepEqual(
+    await pod.look(
+      await heldExport(exported("x-e12"), (bytes) => new Blob([bytes])),
+    ),
+    sources,
+  );
   assert.deepEqual(await filesIn(folder), before);
   assert.deepEqual(
     sources.map(({ name, server, claimed }) => [name, server, claimed]),
@@ -246,6 +279,10 @@ test("the look reads an export's or a download's index and writes nothing: a FHI
   try {
     const [source, ...others] = await priya.look(download);
     assert.deepEqual(others, []);
+    assert.deepEqual(
+      await priya.look(await heldExport(download, (bytes) => bytes)),
+      [source],
+    );
     assert.ok(source);
     assert.equal(source.name, "Kestrel Harbor Hospital");
     assert.equal(source.server, undefined);
@@ -325,6 +362,30 @@ test("an entry is filed and matched by default; a person's judgment records the 
   );
   assert.ok(twice.refused);
   assert.deepEqual(twice.wrote, []);
+
+  const nothing = new Uint8Array();
+  const refused: [string, Exported, RegExp][] = [
+    ["no file", new Map(), /^no importer of .* reads no file$/],
+    [
+      "two top-level names",
+      new Map([
+        ["a/export.xml", nothing],
+        ["b.xml", nothing],
+      ]),
+      /^no importer of .* reads a and b\.xml$/,
+    ],
+    [
+      "a key that is no path",
+      new Map([["a/../b.xml", nothing]]),
+      /^a holds a\/\.\.\/b\.xml, which is no path$/,
+    ],
+  ];
+  for (const [input, given, why] of refused) {
+    const done = await pod.import(given);
+    assert.match(done.refused ?? "", why, input);
+    assert.deepEqual(done.wrote, [], input);
+  }
+  assert.deepEqual(await filesIn(folder), held);
 });
 
 test("ask runs a question by name or the caller's own query, under the lens named", async () => {

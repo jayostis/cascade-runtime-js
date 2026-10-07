@@ -1,6 +1,7 @@
 import { basename, dirname, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  importersNamed,
   ofMediaType,
   OxigraphStore,
   References,
@@ -10,7 +11,6 @@ import {
   compiledBridge,
   componentsOf,
   FolderFiles,
-  importersNamed,
   inWorker,
   loadConfiguredAdapters,
   type LocalVocabulary,
@@ -44,8 +44,11 @@ async function resolve(): Promise<ResolvedParts> {
       return {
         files: new FolderFiles(folder, iri),
         name: basename(folder),
-        parent: new FolderFiles(dirname(folder)),
       };
+    },
+    exportAt: (path) => {
+      const at = absolute(path);
+      return { files: new FolderFiles(dirname(at)), name: basename(at) };
     },
     loadBridge: async () => {
       const found = await components.bridge();
