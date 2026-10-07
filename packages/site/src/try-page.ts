@@ -2,8 +2,8 @@ import { Html, markup } from "./html.js";
 
 /** Where the page finds the package's browser build, beside it. */
 export const TRY_PACKAGE = "cascade-runtime/";
-/** The view the page renders, the starter's own, beside the page. */
-export const SUMMARY = "summary.mjs";
+/** The view the page renders, the starter's `summary.mjs`, beside the page as `.js`, a name every server types. */
+export const SUMMARY = "summary.js";
 /** The demo hospitals' worker, its page side and its data, beside the page, so the worker's scope is the page's folder. */
 export const WORKER = "demo-hospital-worker.js";
 export const WORKER_PAGE = "demo-hospitals.js";

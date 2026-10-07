@@ -1,6 +1,6 @@
 // The starter's view, in the browser: pods kept in this browser's own storage, each shown as a person reads it, a way
 // to make one or load a published one, and a sign-in at the demo hospitals that brings a record in. The view is the
-// starter's `summary.mjs`; this file routes, reads the pods, and hands the view the addresses of this page.
+// starter's `summary.mjs`, served beside it as `summary.js`; this file routes, reads the pods, and hands the view the addresses of this page.
 import {
   connect,
   ConnectionFailure,
@@ -29,7 +29,7 @@ import {
   QUESTIONS,
   slug,
   sortAndFilter,
-} from "./summary.mjs";
+} from "./summary.js";
 
 const DATABASE = "cascade-pod:";
 const REGISTRATION = {
