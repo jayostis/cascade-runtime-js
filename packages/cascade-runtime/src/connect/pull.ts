@@ -18,7 +18,7 @@ export interface Pull {
   readonly patient: string;
   /** The hospital's name, as the directory row gives it. */
   readonly source: string;
-  /** When the last response arrived, as an `xsd:dateTime`. */
+  /** When the last response arrived, as an `xsd:dateTime` in UTC in its canonical form, as a store gives it back. */
   readonly retrievedAt: string;
   /** Each distinct resource once, by type and id, the first seen kept. */
   readonly bundle: {
@@ -191,7 +191,7 @@ export async function pull(
     fhirBase: base,
     patient: connection.patient,
     source: connection.row.name,
-    retrievedAt: retrievedAt.toISOString(),
+    retrievedAt: retrievedAt.toISOString().replace(/\.?0+Z$/, "Z"),
     bundle: {
       resourceType: "Bundle",
       type: "collection",
