@@ -16,10 +16,7 @@ import {
   type LocalVocabulary,
   vocabularyOf,
 } from "@cascade-runtime/runtime/node";
-import type { Parts } from "../pod.js";
-
-/** The matcher's tables every pod is given: those of Alex's kit, alpha test data. */
-const TABLES = "conformance/alex-rivera/scripted-input/alex/references/";
+import { type Parts, TABLES } from "../pod.js";
 
 export interface ResolvedParts extends Parts {
   /** The vocabulary as a folder, which a kit is replayed from. */

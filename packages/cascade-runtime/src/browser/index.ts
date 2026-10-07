@@ -17,12 +17,11 @@ import {
   type Parts,
   type Pod,
   type Row,
+  TABLES,
 } from "../pod.js";
 
 export type { Done, ExportSource, Imported, Pod, Row } from "../pod.js";
 
-/** The matcher's tables every pod is given: those of Alex's kit, alpha test data. */
-const TABLES = "conformance/alex-rivera/scripted-input/alex/references/";
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";
 const COMPONENTS = new URL("../../components/", import.meta.url);

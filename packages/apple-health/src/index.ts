@@ -41,6 +41,8 @@ const KINDS: ReadonlyMap<string, string> = new Map([
   ["HKClinicalTypeIdentifierConditionRecord", "Condition"],
   ["HKClinicalTypeIdentifierImmunizationRecord", "Immunization"],
   ["HKClinicalTypeIdentifierProcedureRecord", "Procedure"],
+  ["HKClinicalTypeIdentifierMedicationRecord", "Medication"],
+  ["HKClinicalTypeIdentifierLabResultRecord", "Lab result"],
 ]);
 
 function quoted(text: string): string {
