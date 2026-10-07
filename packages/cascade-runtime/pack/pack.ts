@@ -64,6 +64,8 @@ const VOCABULARY = [
 ];
 /** What an adapter reads of another vocabulary repository it names. */
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];
+/** The folder of the starter that holds the demo hospitals. */
+const DEMO_HOSPITAL = "demo-hospital";
 const KEPT_BY_BUNDLED = ["name", "version", "type", "exports", "license"];
 const KEPT_BY_PACKAGE = [
   "name",
@@ -318,6 +320,31 @@ async function packOwnFiles(
   }
 }
 
+/**
+ * The demo hospitals inside the staged starter, as a package of the app's own that its `package.json` names by
+ * `file:`. The runtime reaches them only through a `fetch`, so the package itself names them nowhere.
+ */
+async function packDemoHospital(): Promise<void> {
+  const workspace = join(ROOT, "packages", "demo-hospital");
+  const manifest = await manifestOf(workspace);
+  const starter = join(STAGE, "starter");
+  const to = join(starter, DEMO_HOSPITAL);
+  await cp(join(workspace, "dist", "src"), join(to, "dist", "src"), {
+    recursive: true,
+    filter: compiled,
+  });
+  await cp(join(workspace, "data"), join(to, "data"), { recursive: true });
+  await writeJson(join(to, "package.json"), kept(manifest, KEPT_BY_BUNDLED));
+  const app = await manifestOf(starter);
+  await writeJson(join(starter, "package.json"), {
+    ...app,
+    dependencies: {
+      ...app.dependencies,
+      [manifest.name]: `file:${DEMO_HOSPITAL}`,
+    },
+  });
+}
+
 async function npmPack(): Promise<{ filename: string; integrity: string }> {
   const args = ["pack", "--json", "--pack-destination", BUILD];
   const npm = process.env.npm_execpath;
@@ -378,6 +405,7 @@ async function main(): Promise<void> {
   const { bundled, dependencies } = await packCode(bridgeFolder);
   await bundleBrowser(bridgeFolder);
   await packOwnFiles(manifest, address);
+  await packDemoHospital();
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
     version: packageVersion(commit),
