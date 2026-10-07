@@ -1,6 +1,6 @@
 import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
-import { LIMITS, type Limits, type QueryPlan, type Search } from "./plan.js";
+import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
 import { type Answer, parsed, Requests } from "./requests.js";
 
 export interface PulledEntry {
@@ -62,11 +62,7 @@ export async function pull(
 ): Promise<Pull> {
   const { token, fetch } = held(connection);
   const now = options.now ?? (() => new Date());
-  const requests = new Requests(
-    fetch,
-    { ...LIMITS, ...options.limits },
-    options.signal,
-  );
+  const requests = new Requests(fetch, limited(options.limits), options.signal);
   const base = connection.fhirBase;
   const origin = new URL(base).origin;
   const patient = encodeURIComponent(connection.patient);

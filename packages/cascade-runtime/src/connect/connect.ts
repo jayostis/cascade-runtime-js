@@ -1,7 +1,7 @@
 import { ConnectionFailure } from "./outcome.js";
 import {
   type DirectoryRow,
-  LIMITS,
+  limited,
   type Limits,
   type Registration,
 } from "./plan.js";
@@ -118,11 +118,7 @@ export async function connect(
 ): Promise<Connection> {
   const fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   const now = options.now ?? (() => new Date());
-  const requests = new Requests(
-    fetch,
-    { ...LIMITS, ...options.limits },
-    options.signal,
-  );
+  const requests = new Requests(fetch, limited(options.limits), options.signal);
   const fhirBase = trimmed(row.fhirBase);
   const base = address(fhirBase);
   if (base === undefined || base.search !== "" || base.hash !== "")

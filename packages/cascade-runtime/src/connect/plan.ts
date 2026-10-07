@@ -65,3 +65,11 @@ export const LIMITS: Limits = {
   pullBytes: 256 * MiB,
   requests: 2000,
 };
+
+/** The defaults, with each limit given replacing its own; one given as `undefined` keeps the default. */
+export function limited(given: Partial<Limits> = {}): Limits {
+  const limits: Record<string, number> = { ...LIMITS };
+  for (const [name, value] of Object.entries(given))
+    if (value !== undefined) limits[name] = value;
+  return limits as unknown as Limits;
+}

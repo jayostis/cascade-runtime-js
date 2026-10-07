@@ -276,6 +276,7 @@ test("a pull retries a 503, a 429 and a transport error, and from a base written
   ];
   const { pull: result } = await pulled({
     row: { ...row, fhirBase: `${row.fhirBase}/` },
+    limits: { retries: undefined },
     alter: (request, hospital) =>
       alters.reduce<Answer>(
         (next, alter) => (r) => alter(r, next),
