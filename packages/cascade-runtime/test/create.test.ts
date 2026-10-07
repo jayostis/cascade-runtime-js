@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -28,21 +27,29 @@ after(async () => {
   await rm(parent, { recursive: true, force: true });
 });
 
-/** A terminal that keeps what is written and records each install, which does nothing. */
-function recording(): Terminal & {
+/** A terminal that keeps what is written and records each install and load, which do nothing; a load of `failing` rejects. */
+function recording(failing?: string): Terminal & {
   readonly installs: string[];
+  readonly done: string[];
   text(): string;
 } {
   const written: string[] = [];
   const installs: string[] = [];
+  const done: string[] = [];
   return {
     out: (text) => written.push(text),
     err: (text) => written.push(text),
     install: async (folder) => {
       installs.push(folder);
+      done.push(`install ${folder}`);
       return true;
     },
+    load: async (kit, folder) => {
+      if (kit === failing) throw new Error("the kit is broken");
+      done.push(`load ${kit} into ${folder}`);
+    },
     installs,
+    done,
     text: () => written.join(""),
   };
 }
@@ -61,18 +68,28 @@ test("given a folder, it makes the project and names it", async () => {
     /\r?\n/,
   );
   assert.ok(ignored.includes("pods/"), ".gitignore does not list pods/");
-  assert.equal(existsSync(join(folder, "pods")), false, "the app has a pod");
-  assert.deepEqual(terminal.installs, [folder]);
-  for (const line of [
-    "npm run pod:load alex-rivera",
-    "npm start",
-    agentPrompt("my-app"),
-  ])
+  assert.deepEqual(terminal.done, [
+    `install ${folder}`,
+    `load alex-rivera into ${join(folder, "pods", "alex-rivera")}`,
+    `load priya-natarajan into ${join(folder, "pods", "priya-natarajan")}`,
+  ]);
+  for (const line of ["npm start", "npm run help", agentPrompt("my-app")])
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
-  assert.ok(
-    !terminal.text().includes("npx "),
-    "it printed the command that makes the app, which it has made",
+  for (const line of ["npx ", "pod:load"])
+    assert.ok(!terminal.text().includes(line), `it printed ${line}`);
+});
+
+test("a pod that does not load leaves the app made, and says which", async () => {
+  const terminal = recording("priya-natarajan");
+  assert.equal(
+    await create([join(parent, "half-loaded"), "--tarball", ADDRESS], terminal),
+    0,
   );
+  assert.match(
+    terminal.text(),
+    /the pod priya-natarajan did not load: the kit is broken/,
+  );
+  assert.match(terminal.text(), /with the pods alex-rivera\./);
 });
 
 test("it refuses a folder it cannot use and writes nothing", async () => {

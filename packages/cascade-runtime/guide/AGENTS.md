@@ -37,9 +37,11 @@ names no record, a folder holding files but no pod, a call after `close`. Only
 ## The starter
 
 This app was made from a starter, a demonstration: rebuild it in any framework,
-keeping the package and the pods, under `pods/<name>/` (it ships none).
+keeping the package and the pods, under `pods/<name>/`. It is made with two,
+`alex-rivera` and `priya-natarajan`; `npm run help` lists every command.
 
-- `npm start` serves the app; stop it with Ctrl+C or by its process, never by
+- `npm run reset` removes every pod and loads those two again.
+- `npm start` serves the app, and `npm run dev` restarts it on every save; stop it with Ctrl+C or by its process, never by
   killing every Node process. A pod's page links to bringing in a record from a
   hospital of the test directory: the app's `hospitals.mjs` signs in, receiving
   the redirect on `/callback`, and serves the demo hospitals' sign-in pages

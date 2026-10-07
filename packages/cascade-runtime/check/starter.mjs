@@ -33,7 +33,10 @@ const TILES = {
   Immunizations: "pod/My immunizations",
   Procedures: "pod/My procedures",
 };
+const JUDGMENTS = "pod/How many judgments count";
 const IMPORTS = "pod/What each import brought in";
+const KIT_PODS = ["alex-rivera", "priya-natarajan"];
+const C_CDA = "kestrel-harbor-health-summary.xml";
 const STATUS = "https://ns.cascadeprotocol.org/clinical/v1#status";
 const ALLERGEN = "https://ns.cascadeprotocol.org/health/v1#allergen";
 const MINUTES = 60 * 1000;
@@ -106,6 +109,10 @@ async function asked(question, pod) {
     .split(/\r?\n/)
     .filter((line) => line !== "")
     .map((line) => JSON.parse(line));
+}
+
+async function podsOf() {
+  return (await readdir(join(app, "pods"))).sort();
 }
 
 function multiset(rows) {
@@ -333,6 +340,7 @@ async function behaviour(name, check) {
 const address = release === undefined ? tarball : tarballAddress(release);
 let story;
 let alex;
+let fresh;
 
 await behaviour("the command makes the app", async () => {
   const { code, out } =
@@ -353,7 +361,21 @@ await behaviour("the command makes the app", async () => {
       : await run(startLine(address, "my-app"), [], { cwd: work, shell: true });
   assert.equal(code, 0, "the command failed");
   assert.ok(out.includes(agentPrompt("my-app")), "no agent prompt");
-  assert.equal(existsSync(join(app, "pods")), false, "the app has pods/");
+  assert.deepEqual(await podsOf(), KIT_PODS);
+  const loads = [
+    ...out.matchAll(/Loading the pod (\S+),[^\n]*? loaded in ([\d.]+) s/g),
+  ];
+  assert.deepEqual(
+    loads.map(([, pod]) => pod),
+    KIT_PODS,
+  );
+  stdout.write(
+    `\nthe loads took ${loads.map(([, pod, seconds]) => `${pod} ${seconds} s`).join(", ")}\n`,
+  );
+  fresh = {
+    judgments: await asked(JUDGMENTS, "alex-rivera"),
+    imports: (await asked(IMPORTS, "alex-rivera")).length,
+  };
   if (release !== undefined) {
     const manifest = JSON.parse(
       await readFile(join(app, "package.json"), "utf8"),
@@ -386,7 +408,6 @@ await behaviour("the command makes the app", async () => {
   );
   story = {
     vocabulary: vocabulary.files.folder,
-    steps: whole.steps.map(({ name }) => name),
     e15: whole.steps[e15].when,
     through,
     throughSteps: (await kit(through)).steps.map(({ name }) => name),
@@ -397,29 +418,31 @@ await behaviour("the command makes the app", async () => {
   };
 });
 
-if (release === undefined)
-  await behaviour("with no pod, the page says what to run", async () => {
-    const server = await started();
-    try {
-      const html = await served(server, "/");
-      assert.ok(html.includes("No pods yet"), "the page has no No pods yet");
-      assert.ok(!readable(html).includes("npm "), "the page names a command");
-    } finally {
-      await server.stop();
-    }
-    const { code, err } = await npm("run", "ask", ALLERGIES);
-    assert.equal(code, 2);
-    assert.ok(
-      err.includes("No pod loaded. Run `npm run pod:load alex-rivera`."),
-    );
-  });
+await behaviour("help lists every command", async () => {
+  const { code, out } = await npm("run", "--silent", "help");
+  assert.equal(code, 0, "npm run help failed");
+  const { scripts } = JSON.parse(
+    await readFile(join(app, "package.json"), "utf8"),
+  );
+  const listed = out
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("  npm "))
+    .map((line) => {
+      const [command, what] = line.trim().split(/\s{2,}/);
+      const [, word, script] = command.split(" ");
+      return [word === "run" ? script : word, what];
+    });
+  assert.deepEqual(
+    listed.map(([script]) => script),
+    Object.keys(scripts),
+  );
+  for (const [script, what] of listed)
+    assert.ok(what !== undefined, `help says nothing of ${script}`);
+});
 
 const server = await (async () => {
   let server;
   await behaviour("a loaded pod is shown", async () => {
-    const { code, out } = await npm("run", "pod:load", "alex-rivera");
-    assert.equal(code, 0, "pod:load failed");
-    assert.deepEqual(loadedSteps(out), story.steps);
     server = await started();
     const home = await fetched(new URL("/", server.address));
     assert.equal(home.status, 302);
@@ -542,9 +565,8 @@ if (release === undefined) {
   });
 
   await behaviour(
-    "Priya's pod loads, and her C-CDA download is copied as its file",
+    "Priya's pod is loaded, and her C-CDA download is copied as its file",
     async () => {
-      assert.equal((await npm("run", "pod:load", "priya-natarajan")).code, 0);
       const view = `${PRIYA}/expected/medications.ttl`;
       const triples = await new OxigraphStore().parse(
         await readFile(join(story.vocabulary, view)),
@@ -564,17 +586,15 @@ if (release === undefined) {
           .map(([, , o]) => o.value)
           .sort(),
       );
-      const download = "kestrel-harbor-health-summary.xml";
       assert.equal(
-        (await npm("run", "kit:export", "--", "priya-natarajan", download))
-          .code,
+        (await npm("run", "kit:export", "--", "priya-natarajan", C_CDA)).code,
         0,
       );
-      const copied = await readFile(join(app, download), "utf8");
+      const copied = await readFile(join(app, C_CDA), "utf8");
       assert.ok(
         copied.includes("<ClinicalDocument") &&
           copied.includes("<name>Kestrel Harbor Hospital</name>"),
-        `${download} is not Kestrel Harbor's C-CDA`,
+        `${C_CDA} is not Kestrel Harbor's C-CDA`,
       );
     },
   );
@@ -802,6 +822,29 @@ if (release === undefined) {
     stdout.write(out);
     assert.equal(answer, String(alex[ALLERGIES].length));
     assert.equal(await exited, 0);
+  });
+
+  await behaviour("reset puts the app back", async () => {
+    const script = join(app, "bring-in.mjs");
+    await writeFile(
+      script,
+      `import { openPod } from "cascade-runtime";
+const pod = await openPod("pods/alex-rivera");
+const { refused } = await pod.import(${JSON.stringify(C_CDA)}, { aboutSubject: true });
+await pod.close();
+if (refused !== undefined) throw new Error(refused);
+`,
+    );
+    assert.equal((await run(execPath, [script])).code, 0, "no record in");
+    assert.ok((await asked(IMPORTS, "alex-rivera")).length > fresh.imports);
+    assert.ok((await podsOf()).length > KIT_PODS.length, "no pod was made");
+    assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
+    assert.deepEqual(await podsOf(), KIT_PODS);
+    assert.equal((await asked(IMPORTS, "alex-rivera")).length, fresh.imports);
+    assert.deepEqual(
+      multiset(await asked(JUDGMENTS, "alex-rivera")),
+      multiset(fresh.judgments),
+    );
   });
 }
 
