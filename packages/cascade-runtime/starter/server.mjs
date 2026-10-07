@@ -1,4 +1,5 @@
-// The app: each pod as a person reads it, a way to make a new one, and pages that bring a record in from a hospital.
+// The app: each pod as a person reads it, a way to make a new one, and a box over it that brings a record in from a
+// hospital.
 // `npm start`, then open the address it prints. What the pages show is in `summary.mjs`; this file answers requests,
 // reads the pods, and hands the module what it shows, with the addresses of this app.
 import { Buffer } from "node:buffer";
@@ -10,7 +11,7 @@ import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
 import { hospitalsAt } from "./hospitals.mjs";
 import { podFolder, podNames, POD_NAME } from "./pods.mjs";
 import {
-  connectionPage,
+  connectionDialog,
   demoPeople,
   escaped,
   frame,
@@ -70,23 +71,41 @@ async function home(response) {
 }
 
 /**
- * The pod as a person reads it; `from` is the number of a connection, and the page notes the record it brought in when
- * its import did.
+ * The pod as a person reads it. `query`'s `from` is the number of a connection, and the page notes the record it
+ * brought in when its import did; its `connection` is the number of one whose box the page holds, refreshing itself
+ * while it signs in and fetches.
  */
-async function showPod(response, name, from, names) {
+async function showPod(response, name, query, names) {
   const pod = await podNamed(name);
   const answers = {};
   for (const question of QUESTIONS) answers[question] = await pod.ask(question);
-  const connection =
-    from === null ? undefined : hospitals.connection(name, from);
-  const imported = await connection?.imported?.catch(() => undefined);
+  const from = query.get("from");
+  const noted = from === null ? undefined : hospitals.connection(name, from);
+  const imported = await noted?.imported?.catch(() => undefined);
+  const found = query.has("connection")
+    ? hospitals.connection(name, query.get("connection"))
+    : undefined;
+  // As it is now, so that the box and whether the page refreshes agree on its step.
+  const shown = found === undefined ? undefined : { ...found };
+  const box =
+    shown === undefined
+      ? undefined
+      : connectionDialog({
+          id: "connection",
+          pod: name,
+          hospital: shown.row.name,
+          back: podPath(name),
+          connection: shown,
+          bring: `${podPath(name)}connections/${shown.n}`,
+          ...(await connectionView(name, shown)),
+        });
   const body = podPage(answers, {
     pod: name,
     person: people.find((each) => slug(each.name) === name),
     from:
       imported === undefined || imported.refused !== undefined
         ? undefined
-        : connection.row.name,
+        : noted.row.name,
     signIn: (hospital) =>
       signIn(
         name,
@@ -94,11 +113,16 @@ async function showPod(response, name, from, names) {
         `Sign in at ${hospitalName(hospital.name)}`,
       ),
     findHospital: `${podPath(name)}hospitals`,
+    connection: box,
   });
   send(
     response,
     200,
-    await page(personName(name), body, { current: name, names }),
+    await page(personName(name), body, {
+      current: name,
+      names,
+      refresh: shown?.step === "signing in" || shown?.step === "pulling",
+    }),
   );
 }
 
@@ -160,67 +184,72 @@ async function findHospital(response, name, text, names) {
   );
 }
 
-/**
- * A connection: its steps while it signs in and fetches, the page refreshing itself; then why it failed, or what the
- * hospital has and a button to bring it in; after the import, back to the pod.
- */
-async function showConnection(response, name, connection, importing, names) {
-  const shown = async (status, view) =>
-    send(
-      response,
-      status,
-      await page(
-        hospitalName(connection.row.name),
-        connectionPage({
-          pod: name,
-          hospital: connection.row.name,
-          back: podPath(name),
-          connection,
-          bring: `${podPath(name)}connections/${connection.n}`,
-          ...view,
-        }),
-        { current: name, refresh: view.refresh, names },
-      ),
-    );
-  if (connection.step === "signing in" || connection.step === "pulling")
-    return shown(200, { refresh: true });
+/** The files a connection's pull is saved as, or why there are none: the sign-in or the pull failed, or was refused. */
+async function filesOf(connection) {
   let pulled;
   try {
     pulled = await connection.pulled;
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    return shown(200, { failed: `Not connected: ${error.message}.` });
+    return { failed: `Not connected: ${error.message}.` };
   }
-  const pod = await podNamed(name);
-  let files;
   try {
-    files = pullFiles(pulled, connection.name);
+    return { pulled, files: pullFiles(pulled, connection.name) };
   } catch (error) {
-    return shown(200, { failed: `Refused: ${error.message}` });
+    return { failed: `Refused: ${error.message}` };
   }
-  if (importing && connection.imported === undefined) {
-    connection.imported = pod.import(files, { aboutSubject: true });
-    connection.imported.catch(() => (connection.imported = undefined));
+}
+
+/**
+ * What a connection's box shows besides its steps: nothing while it signs in and fetches; then why it failed, or what
+ * the hospital has, for the button that brings it in.
+ */
+async function connectionView(name, connection) {
+  if (connection.step === "signing in" || connection.step === "pulling")
+    return {};
+  const { failed, pulled, files } = await filesOf(connection);
+  if (failed !== undefined) return { failed };
+  let done;
+  try {
+    done = await connection.imported;
+  } catch (error) {
+    return { failed: notBroughtIn(error), retry: true };
   }
-  if (connection.imported !== undefined) {
-    let done;
-    try {
-      done = await connection.imported;
-    } catch (error) {
-      return shown(500, {
-        failed: `Not brought in: ${error.message}`,
-        retry: true,
-      });
-    }
-    if (done.refused !== undefined)
-      return shown(200, { failed: `Refused: ${done.refused}` });
-    return redirect(response, `${podPath(name)}?from=${connection.n}`);
-  }
-  return shown(200, {
-    sources: await pod.look(files),
+  if (connection.failed !== undefined)
+    return { failed: connection.failed, retry: true };
+  if (done?.refused !== undefined)
+    return { failed: `Refused: ${done.refused}` };
+  return {
+    sources: await (await podNamed(name)).look(files),
     pulled,
     about: patientName(pulled.bundle),
-  });
+  };
+}
+
+const notBroughtIn = (error) => `Not brought in: ${error.message}`;
+
+/** Brings a connection's record into the pod, and goes back to it: noting the record, or with the box saying why not. */
+async function bring(response, name, connection) {
+  const box = `${podPath(name)}?connection=${connection.n}#connection`;
+  if (connection.step !== "pulled") return redirect(response, box);
+  const { files } = await filesOf(connection);
+  if (files === undefined) return redirect(response, box);
+  if (connection.imported === undefined) {
+    connection.failed = undefined;
+    connection.imported = (await podNamed(name)).import(files, {
+      aboutSubject: true,
+    });
+  }
+  let done;
+  try {
+    done = await connection.imported;
+  } catch (error) {
+    connection.imported = undefined;
+    connection.failed = notBroughtIn(error);
+    return redirect(response, box);
+  }
+  if (done.refused !== undefined) return redirect(response, box);
+  redirect(response, `${podPath(name)}?from=${connection.n}`);
 }
 
 /** A demo hospital's sign-in page, the form posted back to it included. */
@@ -308,18 +337,12 @@ const server = createServer(async (request, response) => {
           ),
         );
       }
-      if (n !== undefined) {
-        const connection = hospitals.connection(name, n);
-        if (connection !== undefined)
-          return await showConnection(response, name, connection, post, names);
-      }
+      const connection =
+        n === undefined ? undefined : hospitals.connection(name, n);
+      if (post && connection !== undefined)
+        return await bring(response, name, connection);
       if (!post && n === undefined)
-        return await showPod(
-          response,
-          name,
-          url.searchParams.get("from"),
-          names,
-        );
+        return await showPod(response, name, url.searchParams, names);
     }
     send(
       response,
