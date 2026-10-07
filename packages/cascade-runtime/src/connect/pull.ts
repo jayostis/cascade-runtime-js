@@ -1,4 +1,4 @@
-import { type Connection, held, trimmed } from "./connect.js";
+import { type Connection, FHIR_ID, held, trimmed } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { LIMITS, type Limits, type QueryPlan, type Search } from "./plan.js";
 import { type Answer, parsed, Requests } from "./requests.js";
@@ -36,7 +36,7 @@ export interface PullOptions {
   readonly signal?: AbortSignal;
 }
 
-const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
+const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 const REFERENCE = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/;
 const NOT_SERVED = new Set([403, 404, 410]);
 
@@ -67,7 +67,7 @@ export async function pull(
     { ...LIMITS, ...options.limits },
     options.signal,
   );
-  const base = trimmed(connection.fhirBase);
+  const base = trimmed(connection.row.fhirBase);
   const origin = new URL(base).origin;
   const patient = encodeURIComponent(connection.patient);
   const entries = new Map<string, PulledEntry>();
@@ -109,27 +109,46 @@ export async function pull(
       `${origin} answered ${answer.status} to ${what}`,
       { origin, status: answer.status, resourceType: what },
     );
-  const keep = (resource: unknown): void => {
-    if (typeof resource !== "object" || resource === null) return;
-    const { resourceType, id } = resource as Record<string, unknown>;
-    if (typeof resourceType !== "string" || typeof id !== "string") return;
-    if (!FHIR_ID.test(id)) return;
+  const keep = (resource: unknown, what: string): void => {
+    const { resourceType, id } = (resource ?? {}) as Record<string, unknown>;
+    if (
+      typeof resourceType !== "string" ||
+      typeof id !== "string" ||
+      !RESOURCE_TYPE.test(resourceType) ||
+      !FHIR_ID.test(id)
+    )
+      throw new ConnectionFailure(
+        "hospital-error",
+        `${origin}'s answer for ${what} holds a resource with no FHIR type and id`,
+        { origin, resourceType: what },
+      );
     const key = `${resourceType}/${id}`;
     if (!entries.has(key))
-      entries.set(key, { fullUrl: `${base}/${key}`, resource });
+      entries.set(key, {
+        fullUrl: `${base}/${key}`,
+        resource: resource as object,
+      });
   };
 
   const read = await get(new URL(`${base}/Patient/${patient}`), "Patient");
   if (read.answer.status !== 200) throw failed(read.answer, "Patient");
-  keep(parsed(read.answer, read.url, "Patient"));
+  keep(parsed(read.answer, read.url, "Patient"), "Patient");
 
   for (const search of plan.searches) {
     const first = new URL(`${base}/${search.type}`);
     first.searchParams.set("patient", connection.patient);
     if (search.category !== undefined)
       first.searchParams.set("category", search.category);
+    const pages = new Set<string>();
     let next: URL | undefined = first;
     while (next !== undefined) {
+      if (pages.has(next.href))
+        throw new ConnectionFailure(
+          "hospital-error",
+          `${origin}'s next link for ${search.type} goes back to a page already read`,
+          { origin, resourceType: search.type },
+        );
+      pages.add(next.href);
       const { answer, url } = await get(next, search.type);
       if (answer.status === 403) {
         denied.push(search);
@@ -142,7 +161,7 @@ export async function pull(
         const { resource, search: mode } = entry as Record<string, unknown>;
         if ((mode as { mode?: unknown } | undefined)?.mode === "outcome")
           continue;
-        keep(resource);
+        keep(resource, search.type);
       }
       next = nextOf(page, url, search.type, origin);
     }
@@ -167,11 +186,11 @@ export async function pull(
     );
     if (NOT_SERVED.has(answer.status)) missing.push(reference);
     else if (answer.status !== 200) throw failed(answer, match[1]!);
-    else keep(parsed(answer, url, match[1]!));
+    else keep(parsed(answer, url, match[1]!), match[1]!);
   }
 
   return {
-    fhirBase: connection.fhirBase,
+    fhirBase: connection.row.fhirBase,
     patient: connection.patient,
     retrievedAt: retrievedAt.toISOString(),
     bundle: {

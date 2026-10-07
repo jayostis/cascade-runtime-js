@@ -1,3 +1,4 @@
+import { base64url } from "@cascade-runtime/runtime";
 import { ConnectionFailure } from "./outcome.js";
 import {
   type DirectoryRow,
@@ -21,8 +22,6 @@ export interface ConnectOptions {
 /** One person signed in to one hospital, held in memory only. */
 export interface Connection {
   readonly row: DirectoryRow;
-  /** The row's FHIR base, as given. */
-  readonly fhirBase: string;
   /** The patient the token is for, by the hospital's id. */
   readonly patient: string;
   readonly scope: string;
@@ -46,14 +45,7 @@ export function held(connection: Connection): Held {
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-function base64url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
+export const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 
 function random(bytes: number): string {
   return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
@@ -65,6 +57,14 @@ async function challenge(verifier: string): Promise<string> {
     new TextEncoder().encode(verifier),
   );
   return base64url(new Uint8Array(digest));
+}
+
+function address(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
 }
 
 /** The FHIR base without one trailing slash, which every address under it is built from. */
@@ -113,7 +113,18 @@ export async function connect(
     { ...LIMITS, ...options.limits },
     options.signal,
   );
-  const base = new URL(trimmed(row.fhirBase));
+  const base = address(trimmed(row.fhirBase));
+  if (base === undefined)
+    throw new ConnectionFailure(
+      "host-not-allowed",
+      `${row.name}'s FHIR base is no address`,
+    );
+  const redirectUri = address(registration.redirectUri);
+  if (redirectUri === undefined)
+    throw new ConnectionFailure(
+      "sign-in-unavailable",
+      "the registration's redirect URI is no address",
+    );
   if (base.protocol !== "https:")
     throw new ConnectionFailure(
       "host-not-allowed",
@@ -176,7 +187,7 @@ export async function connect(
   const back = await options.signIn(authorize, options.signal);
   const cancelled = requests.cancelled();
   if (cancelled) throw cancelled;
-  const code = redirected(back, registration, state, authorizeEndpoint.origin);
+  const code = redirected(back, redirectUri, state, authorizeEndpoint.origin);
 
   const exchanged = await requests.send(tokenEndpoint, {
     what: "token",
@@ -195,18 +206,22 @@ export async function connect(
     retry: false,
   });
   const tokenOrigin = tokenEndpoint.origin;
-  const answer = parsed(exchanged, tokenEndpoint, "token");
   if (exchanged.status !== 200) {
-    const error =
-      typeof answer.error === "string" && /^[a-z_]+$/.test(answer.error)
-        ? `: ${answer.error}`
-        : "";
+    let error = "";
+    try {
+      const refused = parsed(exchanged, tokenEndpoint, "token").error;
+      if (typeof refused === "string" && /^[a-z_]+$/.test(refused))
+        error = `: ${refused}`;
+    } catch {
+      // A refusal with no JSON body still says its status.
+    }
     throw new ConnectionFailure(
       "hospital-error",
       `${tokenOrigin} refused the token exchange with ${exchanged.status}${error}`,
       { origin: tokenOrigin, status: exchanged.status, resourceType: "token" },
     );
   }
+  const answer = parsed(exchanged, tokenEndpoint, "token");
   const { access_token: token, token_type: type, patient } = answer;
   const missing = (field: string) =>
     new ConnectionFailure(
@@ -218,10 +233,15 @@ export async function connect(
   if (typeof type !== "string" || type.toLowerCase() !== "bearer")
     throw missing("Bearer token_type");
   if (typeof patient !== "string" || patient === "") throw missing("patient");
+  if (!FHIR_ID.test(patient))
+    throw new ConnectionFailure(
+      "hospital-error",
+      `${tokenOrigin}'s token response names a patient by no FHIR id`,
+      { origin: tokenOrigin, status: exchanged.status, resourceType: "token" },
+    );
   const expiresIn = answer.expires_in;
   const connection: Connection = Object.freeze({
     row,
-    fhirBase: row.fhirBase,
     patient,
     scope:
       typeof answer.scope === "string" && answer.scope !== ""
@@ -239,11 +259,10 @@ export async function connect(
 /** The code the redirect carries, once its address and `state` are the ones sent. */
 function redirected(
   back: URL,
-  registration: Registration,
+  expected: URL,
   state: string,
   origin: string,
 ): string {
-  const expected = new URL(registration.redirectUri);
   if (back.origin !== expected.origin || back.pathname !== expected.pathname)
     throw new ConnectionFailure(
       "state-mismatch",

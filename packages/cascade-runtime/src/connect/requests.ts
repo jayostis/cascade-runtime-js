@@ -19,7 +19,10 @@ export interface Sending {
   readonly body?: string;
   /** Whether a 429, a 5xx, a transport error or a timeout is tried again. */
   readonly retry: boolean;
-  /** The one origin a redirect may be followed to; with none, a redirect is the hospital's error. */
+  /**
+   * The one origin a redirect may be followed to; with none, a redirect is the hospital's error. A browser's `fetch`
+   * hides where a redirect goes, so in a browser none is followed.
+   */
   readonly follow?: string;
 }
 
@@ -58,7 +61,7 @@ export class Requests {
           continue;
         }
         throw new ConnectionFailure(
-          "retries-exhausted",
+          sending.retry ? "retries-exhausted" : "hospital-error",
           `${url.origin} could not be reached for ${sending.what}`,
           at,
         );
@@ -105,6 +108,12 @@ export class Requests {
   ): URL {
     const at = { origin: from.origin, status, resourceType: sending.what };
     const location = headers.get("Location");
+    if (sending.follow !== undefined && status === 0)
+      throw new ConnectionFailure(
+        "hospital-error",
+        `${from.origin} redirected ${sending.what}, and a browser does not say where to`,
+        at,
+      );
     if (sending.follow === undefined || location === null)
       throw new ConnectionFailure(
         "hospital-error",

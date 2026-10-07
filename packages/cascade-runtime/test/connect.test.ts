@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:net";
 import { before, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
 import {
   type Bundle,
@@ -38,7 +39,7 @@ type Loaded = Omit<DemoHospitalOptions, "autoApprove" | "now">;
 let north: Loaded;
 let south: Loaded;
 let row: DirectoryRow;
-let happy: Pull;
+let happy: { pull: Pull; seen: Seen };
 
 /** Every request a test's `fetch` sent, and every token and code it saw come back. */
 interface Seen {
@@ -68,7 +69,10 @@ function routed(
     const code = location && new URL(location).searchParams.get("code");
     if (code) seen.secrets.add(code);
     if (new URL(request.url).pathname.endsWith("/token")) {
-      const body = (await response.clone().json()) as { access_token?: string };
+      const body = (await response
+        .clone()
+        .json()
+        .catch(() => ({}))) as { access_token?: string };
       if (body.access_token) seen.secrets.add(body.access_token);
     }
     return response;
@@ -84,6 +88,7 @@ function direct(fetch: Fetch): SignIn {
 }
 
 interface Setup {
+  readonly row?: DirectoryRow;
   readonly alter?: Alter;
   readonly autoApprove?: string;
   readonly now?: () => Date;
@@ -110,11 +115,15 @@ async function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
     setup.alter,
   );
   try {
-    const connection = await connect(row, setup.registration ?? REGISTRATION, {
-      signIn: (setup.signIn ?? direct)(fetch),
-      fetch,
-      ...setup.connectOptions,
-    });
+    const connection = await connect(
+      setup.row ?? row,
+      setup.registration ?? REGISTRATION,
+      {
+        signIn: (setup.signIn ?? direct)(fetch),
+        fetch,
+        ...setup.connectOptions,
+      },
+    );
     setup.between?.();
     const result = await pull(connection, setup.plan ?? DEMO_PLAN, {
       limits: { ...FAST, ...setup.limits },
@@ -167,6 +176,30 @@ function nextRewritten(to: (next: URL) => URL): Alter {
   };
 }
 
+/** Changes the JSON body of each answer to a request `which` picks. */
+function rewritten(
+  which: (request: Request) => boolean,
+  change: (body: Record<string, unknown>, request: Request) => void,
+): Alter {
+  return async (request, hospital) => {
+    const response = await hospital(request);
+    if (!which(request)) return response;
+    const body = (await response.json()) as Record<string, unknown>;
+    change(body, request);
+    return new Response(JSON.stringify(body), {
+      status: response.status,
+      headers: response.headers,
+    });
+  };
+}
+
+function firstResource(body: Record<string, unknown>): Record<string, unknown> {
+  return (body.entry as { resource: Record<string, unknown> }[])[0]!.resource;
+}
+
+const isToken = (request: Request) =>
+  new URL(request.url).pathname.endsWith("/token");
+
 function isSearch(request: Request, type: string): boolean {
   const url = new URL(request.url);
   return url.pathname.endsWith(`/${type}`) && url.searchParams.has("patient");
@@ -180,11 +213,11 @@ before(async () => {
     vendor: "demo",
     fhirBase: north.hospital.fhirBase,
   };
-  happy = (await pulled()).pull;
+  happy = await pulled();
 });
 
 test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it", async () => {
-  const { pull: result, seen } = await pulled();
+  const { pull: result, seen } = happy;
   assert.equal(result.patient, A_NORTH);
   assert.equal(result.fhirBase, north.hospital.fhirBase);
   const expected = keyed(north.patients[A_NORTH]!);
@@ -197,9 +230,9 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   const elsewhere = [
     ...keyed(north.patients[B_NORTH]!).values(),
     ...Object.values(south.patients).flatMap((b) => [...keyed(b).values()]),
-  ].map((other) => JSON.stringify(other));
+  ];
   for (const { resource } of result.bundle.entry)
-    assert.ok(!elsewhere.includes(JSON.stringify(resource)));
+    assert.ok(!elsewhere.some((other) => isDeepStrictEqual(other, resource)));
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.denied, []);
 
@@ -249,7 +282,7 @@ test("a pull retries a 503, a 429 and a transport error and gets the same record
       )(request),
   });
   assert.equal(failed.size, 3);
-  assert.deepEqual(keysOf(result).sort(), keysOf(happy).sort());
+  assert.deepEqual(keysOf(result).sort(), keysOf(happy.pull).sort());
 });
 
 test("a loopback sign-in takes the redirect with the state sent, ignores another, and closes", async () => {
@@ -290,7 +323,9 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
     return back;
   };
   const occupied = await freePort();
-  const rows: [string, () => Setup, FailureKind][] = [
+  const spare = await freePort();
+  await new Promise((resolve) => spare.server.close(resolve));
+  const rows: [string, () => Setup, FailureKind, RegExp?][] = [
     [
       "the sign-in page's Cancel",
       () => ({
@@ -406,6 +441,114 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       "sign-in-unavailable",
     ],
     [
+      "the loopback cannot open the sign-in page",
+      () => ({
+        registration: {
+          ...REGISTRATION,
+          redirectUri: `http://127.0.0.1:${spare.port}/callback`,
+        },
+        signIn: () =>
+          loopbackSignIn({
+            open: () => {
+              throw new Error("no browser");
+            },
+          }),
+      }),
+      "sign-in-unavailable",
+    ],
+    [
+      "a FHIR base that is no address",
+      () => ({ row: { ...row, fhirBase: "not an address" } }),
+      "host-not-allowed",
+    ],
+    [
+      "a redirect URI that is no address",
+      () => ({
+        registration: { ...REGISTRATION, redirectUri: "not an address" },
+      }),
+      "sign-in-unavailable",
+    ],
+    [
+      "the token endpoint answers 502 with a page",
+      () => ({
+        alter: async (request, hospital) =>
+          isToken(request)
+            ? new Response("<html>Bad gateway</html>", {
+                status: 502,
+                headers: { "Content-Type": "text/html" },
+              })
+            : hospital(request),
+      }),
+      "hospital-error",
+      /refused the token exchange with 502/,
+    ],
+    [
+      "the token endpoint cannot be reached",
+      () => ({
+        alter: async (request, hospital) =>
+          isToken(request)
+            ? Promise.reject(new TypeError("reset"))
+            : hospital(request),
+      }),
+      "hospital-error",
+    ],
+    [
+      "the token's patient is not a FHIR id",
+      () => ({
+        alter: rewritten(isToken, (body) => {
+          body.patient = "pt 1001!";
+        }),
+      }),
+      "hospital-error",
+      /token response/,
+    ],
+    [
+      "a searched resource whose id is not a FHIR id",
+      () => ({
+        alter: rewritten(
+          (request) => isSearch(request, "Condition"),
+          (body) => {
+            firstResource(body).id = "not an id!";
+          },
+        ),
+      }),
+      "hospital-error",
+    ],
+    [
+      "a searched resource whose type is not a FHIR type",
+      () => ({
+        alter: rewritten(
+          (request) => isSearch(request, "Condition"),
+          (body) => {
+            firstResource(body).resourceType = "Condition/x";
+          },
+        ),
+      }),
+      "hospital-error",
+    ],
+    [
+      "a next link back to the page it is on",
+      () => ({
+        alter: rewritten(
+          (request) => isSearch(request, "Condition"),
+          (body, request) => {
+            body.link = [{ relation: "next", url: request.url }];
+          },
+        ),
+      }),
+      "hospital-error",
+      /next link/,
+    ],
+    [
+      "a redirect a browser hides the address of",
+      () => ({
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition") ? Response.error() : hospital(request),
+      }),
+      "hospital-error",
+      /browser/,
+    ],
+    [
       "discovery without S256",
       () => ({
         alter: async (request, hospital) => {
@@ -426,7 +569,7 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
     ],
   ];
   try {
-    for (const [change, setup, kind] of rows) {
+    for (const [change, setup, kind, message] of rows) {
       const failure = await pulled(setup()).then(
         () => assert.fail(`${change}: no failure`),
         (error: unknown) => error,
@@ -434,6 +577,7 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       assert.ok(failure instanceof ConnectionFailure, change);
       assert.ok(!(failure instanceof Refusal), change);
       assert.equal(failure.kind, kind, change);
+      if (message) assert.match(failure.message, message, change);
       assert.equal(failure.cause, undefined, change);
       const { seen, ...shown } = failure as ConnectionFailure & { seen: Seen };
       const text = `${failure.message} ${JSON.stringify(shown)}`;

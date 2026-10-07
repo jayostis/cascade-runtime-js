@@ -53,8 +53,7 @@ export function loopbackSignIn(options: LoopbackOptions): SignIn {
           return;
         }
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        response.end(DONE);
-        finish(() => resolve(url));
+        response.end(DONE, () => finish(() => resolve(url)));
       });
       const finish = (then: () => void) => {
         if (settled) return;
@@ -99,9 +98,19 @@ export function loopbackSignIn(options: LoopbackOptions): SignIn {
         ),
       );
       server.listen(Number(redirect.port), "127.0.0.1", () => {
+        if (settled) return;
         Promise.resolve()
           .then(() => options.open(authorize))
-          .catch((error: unknown) => finish(() => reject(error)));
+          .catch(() =>
+            finish(() =>
+              reject(
+                new ConnectionFailure(
+                  "sign-in-unavailable",
+                  "the sign-in page could not be opened",
+                ),
+              ),
+            ),
+          );
       });
     });
 }
