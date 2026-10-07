@@ -98,21 +98,33 @@ export function hospitalsAt(origin, demo) {
       const page = `/pods/${encodeURIComponent(pod)}/connections/${n}`;
       let sendTo;
       const authorize = new Promise((resolve) => (sendTo = resolve));
-      const connected = connect(row, registration, {
-        signIn: signIn(sendTo, page),
-        fetch: route,
-      });
-      const pulled = connected.then((connection) =>
-        pull(connection, DEMO_PLAN),
-      );
-      pulled.catch(() => {});
-      connections.set(n, {
+      const connection = {
         pod,
         row,
+        n,
         name: `${idOf(row)}-${n}`,
-        pulled,
+        step: "signing in",
+        requests: 0,
+        pulled: undefined,
         imported: undefined,
+      };
+      const connected = connect(row, registration, {
+        signIn: signIn(sendTo, page),
+        fetch: async (url, init) => {
+          const answer = await route(url, init);
+          connection.requests += 1;
+          return answer;
+        },
       });
+      connection.pulled = connected.then((signedIn) => {
+        connection.step = "pulling";
+        return pull(signedIn, DEMO_PLAN);
+      });
+      connection.pulled.then(
+        () => (connection.step = "pulled"),
+        () => (connection.step = "failed"),
+      );
+      connections.set(n, connection);
       return Promise.race([
         authorize.then((url) => url.href),
         connected.then(
@@ -130,7 +142,10 @@ export function hospitalsAt(origin, demo) {
       return sign.page;
     },
 
-    /** The pod's connection numbered `n`: its row, the name its pull is saved under, the pull, and its import. */
+    /**
+     * The pod's connection numbered `n`: its row, the name its pull is saved under, its step (`signing in`, `pulling`,
+     * `pulled` or `failed`), how many requests its hospital has answered, the pull, and its import.
+     */
     connection(pod, n) {
       const found = connections.get(Number(n));
       return found?.pod === pod ? found : undefined;

@@ -9,6 +9,7 @@ import { get } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
+import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { featureStory, OxigraphStore } from "@cascade-runtime/runtime";
 import { packed, vocabularyOf } from "@cascade-runtime/runtime/node";
@@ -21,7 +22,17 @@ const MEDICATIONS = "pod/My active medications";
 const DRUG_NAME = "https://ns.cascadeprotocol.org/clinical/v1#drugName";
 const ALLERGIES = "pod/My active allergies";
 const REVIEW = "entry/What needs review";
-const QUESTIONS = [ALLERGIES, REVIEW, "pod/How many judgments count"];
+const SOURCES = "entry/Where it came from";
+const ROWAN = "Rowan Ellery Marsh";
+/** The question each tile of a pod's page counts, by the tile's title. */
+const TILES = {
+  Allergies: ALLERGIES,
+  Medications: MEDICATIONS,
+  Conditions: "pod/My active conditions",
+  "Lab results": "pod/My lab results",
+  Immunizations: "pod/My immunizations",
+  Procedures: "pod/My procedures",
+};
 const IMPORTS = "pod/What each import brought in";
 const STATUS = "https://ns.cascadeprotocol.org/clinical/v1#status";
 const ALLERGEN = "https://ns.cascadeprotocol.org/health/v1#allergen";
@@ -101,15 +112,6 @@ function multiset(rows) {
   return rows.map((row) => JSON.stringify(Object.entries(row).sort())).sort();
 }
 
-function escaped(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 /** HTML as the text a person reads: tags dropped, entities read, spaces trimmed. */
 function textOf(html) {
   return html
@@ -120,24 +122,6 @@ function textOf(html) {
     .replaceAll("&#39;", "'")
     .replaceAll("&amp;", "&")
     .trim();
-}
-
-/** Each table of the page, as its rows, each keyed by its column's heading. */
-function tables(html) {
-  return [...html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/g)].map(
-    ([, table]) => {
-      const [head = [], ...rows] = [
-        ...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g),
-      ].map(([, row]) =>
-        [...row.matchAll(/<t([hd])\b[^>]*>([\s\S]*?)<\/t\1>/g)].map(
-          ([, , cell]) => textOf(cell),
-        ),
-      );
-      return rows.map((cells) =>
-        Object.fromEntries(head.map((column, at) => [column, cells[at]])),
-      );
-    },
-  );
 }
 
 /** Each form of the page, as the fields it posts, by name. */
@@ -212,20 +196,76 @@ async function served(server, path) {
   return answer.body;
 }
 
-/** The pod's page holds every value of its three questions' rows, escaped; resolves those rows by question. */
-async function pageShows(server, pod) {
+/** What a person reads of a page: its text, without its style and script. */
+function readable(html) {
+  return textOf(html.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/g, ""));
+}
+
+/** Each item of the page's lists, as its text. */
+function items(html) {
+  return [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, item]) =>
+    textOf(item),
+  );
+}
+
+/** The page's heading, as its text. */
+function heading(html) {
+  return textOf(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? "");
+}
+
+/** The hospital the pod's page says a record was just brought in from, as the page names it, or undefined. */
+function noteOf(html) {
+  return /Brought in the record from (.+?)\./.exec(readable(html))?.[1];
+}
+
+/** Whether `text` names the hospital: by its whole name, or by its first words, two at least. */
+function names(text, hospital) {
+  const words = hospital.split(" ");
+  return words.some(
+    (_, at) => at > 0 && text.includes(words.slice(0, at + 1).join(" ")),
+  );
+}
+
+/**
+ * The pod's page reads as a record: the person's name as a heading, a tile per kind with rows counting that question's
+ * rows, each allergen, and no IRI or address in what a person reads. Resolves the page and the rows by question.
+ */
+async function pageShows(server, pod, person) {
   const html = await served(server, `/pods/${pod}/`);
+  assert.equal(heading(html), person, `the heading of ${pod}`);
+  const text = readable(html);
+  for (const scheme of ["urn:", "ni:", "http://", "https://"])
+    assert.ok(!text.includes(scheme), `the page of ${pod} shows ${scheme}`);
+  const tiles = Object.fromEntries(
+    [
+      ...html.matchAll(
+        /<span class="kind">([^<]*)<\/span><span class="count">(\d+)<\/span>/g,
+      ),
+    ].map(([, kind, count]) => [kind, Number(count)]),
+  );
   const rows = {};
-  for (const question of QUESTIONS) {
+  for (const [kind, question] of Object.entries(TILES)) {
     rows[question] = await asked(question, pod);
-    for (const row of rows[question])
-      for (const value of Object.values(row))
-        assert.ok(
-          html.includes(escaped(value)),
-          `the page of ${pod} lacks ${value}, from "${question}"`,
-        );
+    assert.equal(
+      tiles[kind],
+      rows[question].length === 0 ? undefined : rows[question].length,
+      `the ${kind} tile of ${pod}`,
+    );
   }
-  return rows;
+  for (const { allergen } of rows[ALLERGIES])
+    assert.ok(text.includes(allergen), `no ${allergen} on ${pod}`);
+  return { html, rows };
+}
+
+/** The page at `path`, once it no longer refreshes itself. */
+async function settled(server, path) {
+  const until = Date.now() + 2 * MINUTES;
+  for (;;) {
+    const html = await served(server, path);
+    if (!html.includes('http-equiv="refresh"')) return html;
+    assert.ok(Date.now() < until, `${path} still refreshes`);
+    await setTimeout(200);
+  }
 }
 
 /** The steps `pod:load` printed, by name, in order. */
@@ -262,7 +302,18 @@ const look = await pod.look(files);
 await pod.import(files, { aboutSubject: true });
 const allergens = (await pod.ask(${JSON.stringify(ALLERGIES)})).map(({ allergen }) => allergen).sort();
 await pod.close();
-console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, allergens }));
+const south = await loadHospital("cascade-south");
+const named = (data, person) =>
+  Object.keys(data.patients).find((id) => {
+    const { name } = data.patients[id].entry.find(({ resource }) => resource.resourceType === "Patient").resource;
+    return [...name[0].given, name[0].family].join(" ") === person;
+  });
+const rowan = [north, south].map((data) => ({
+  hospital: data.hospital.name,
+  fhirBase: data.hospital.fhirBase,
+  patient: named(data, ${JSON.stringify(ROWAN)}),
+}));
+console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, allergens, rowan }));
 `;
   // A file, not `--eval`: the import's Bridge runs in a worker, which inherits node's flags, and `--input-type` there
   // refuses its file.
@@ -351,14 +402,8 @@ if (release === undefined)
     const server = await started();
     try {
       const html = await served(server, "/");
-      assert.ok(
-        html.includes("No pod loaded"),
-        "the page has no No pod loaded",
-      );
-      assert.ok(
-        html.includes("npm run pod:load alex-rivera"),
-        "the page names no command",
-      );
+      assert.ok(html.includes("No pods yet"), "the page has no No pods yet");
+      assert.ok(!readable(html).includes("npm "), "the page names a command");
     } finally {
       await server.stop();
     }
@@ -379,13 +424,36 @@ const server = await (async () => {
     const home = await fetched(new URL("/", server.address));
     assert.equal(home.status, 302);
     assert.equal(home.location, "/pods/alex-rivera/");
-    alex = await pageShows(server, "alex-rivera");
+    const shown = await pageShows(server, "alex-rivera", "Alex Rivera");
+    alex = shown.rows;
     assert.deepEqual(
       alex[ALLERGIES].map(({ allergen }) => allergen).sort(),
       story.activeAllergens,
     );
+    const sources = await asked(SOURCES, "alex-rivera");
+    const said = items(shown.html);
+    for (const hospital of new Set(
+      sources.flatMap((row) => row.hospital ?? []),
+    ))
+      assert.ok(said.includes(hospital), `no place ${hospital}`);
+    assert.ok(said.includes("Alex's own entries"), "no place for Alex's own");
+    const penicillin = new Set(
+      sources
+        .filter(({ entryLabel }) => entryLabel === "Allergy entry · Penicillin")
+        .map(({ hospital }) => hospital),
+    );
+    assert.ok(penicillin.size > 1, "Alex's penicillin is from one place");
     assert.ok(
-      alex[REVIEW].some(
+      said.some(
+        (sentence) =>
+          sentence.startsWith("Penicillin was recorded at") &&
+          [...penicillin].every((hospital) => sentence.includes(hospital)),
+      ),
+      "no sentence that penicillin was recorded at each of its places",
+    );
+    const review = await asked(REVIEW, "alex-rivera");
+    assert.ok(
+      review.some(
         ({ entryLabel, needs }) =>
           entryLabel === "Allergy entry · Sulfamethoxazole" &&
           needs === "members disagree on criticality",
@@ -417,11 +485,14 @@ try {
         rows.some(({ started }) => Date.parse(started) === at);
       assert.equal(startedAtE15(await asked(IMPORTS, pod)), false);
       assert.equal(startedAtE15(await asked(IMPORTS, "alex-rivera")), true);
-      const rows = await pageShows(server, pod);
+      const { html, rows } = await pageShows(
+        server,
+        pod,
+        `Alex Rivera ${story.through}`,
+      );
       assert.deepEqual(multiset(rows[ALLERGIES]), multiset(alex[ALLERGIES]));
-      const home = await served(server, "/");
       for (const name of ["alex-rivera", pod])
-        assert.ok(home.includes(`/pods/${name}/`), `/ does not list ${name}`);
+        assert.ok(html.includes(`/pods/${name}/`), `the pods omit ${name}`);
     });
 } finally {
   await server.stop();
@@ -508,104 +579,197 @@ if (release === undefined) {
     },
   );
 
-  await behaviour(
-    "a person signs in to a demo hospital and brings the record in",
-    async () => {
-      const pod = "hospital";
-      assert.equal((await npm("run", "pod:new", pod)).code, 0);
-      const expected = await expectedPull();
-      const server = await started();
-      const origin = new URL(server.address).origin;
-      const at = (path) => new URL(path, origin).href;
-      const send = (path, form, from = origin) =>
-        fetch(at(path), {
-          method: "POST",
-          redirect: "manual",
-          headers: {
-            origin: from,
-            "content-type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams(form),
-        });
-      try {
-        const podPage = await served(server, `/pods/${pod}/`);
-        assert.ok(
-          podPage.includes(`/pods/${pod}/hospitals`),
-          "no hospitals link",
-        );
-        const found = await served(server, `/pods/${pod}/hospitals?q=north`);
-        assert.deepEqual(
-          forms(found).flatMap(({ fhirBase }) => fhirBase ?? []),
-          [expected.row.fhirBase],
-        );
+  {
+    assert.equal((await npm("run", "pod:new", "hospital")).code, 0);
+    const expected = await expectedPull();
+    const server = await started();
+    const origin = new URL(server.address).origin;
+    const at = (path) => new URL(path, origin).href;
+    const send = (path, form, from = origin) =>
+      fetch(at(path), {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          origin: from,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams(form),
+      });
 
-        /** Sign in, and answer the hospital's page with `decision` as patient A; gives the connection's page. */
-        const signIn = async (decision) => {
-          const begun = await send(`/pods/${pod}/hospitals`, {
-            fhirBase: expected.row.fhirBase,
-          });
-          assert.equal(begun.status, 303);
-          const authorize = new URL(begun.headers.get("location"));
-          assert.equal(authorize.origin, origin);
-          const picker = await (await fetch(authorize)).text();
-          for (const patient of expected.patients)
-            assert.ok(picker.includes(`value="${patient}"`), patient);
-          const answered = await send(authorize.pathname, {
-            ...Object.fromEntries(authorize.searchParams),
-            patient: expected.patient,
-            decision,
-          });
-          const back = new URL(answered.headers.get("location"));
-          assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
-          const callback = await fetch(back, { redirect: "manual" });
-          assert.equal(callback.status, 303);
-          return callback.headers.get("location");
-        };
+    /** Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the connection's page. */
+    const signIn = async (pod, fhirBase, patient, decision) => {
+      const begun = await send(`/pods/${pod}/hospitals`, { fhirBase });
+      assert.equal(begun.status, 303);
+      const authorize = new URL(begun.headers.get("location"));
+      assert.equal(authorize.origin, origin);
+      const picker = await (await fetch(authorize)).text();
+      assert.ok(picker.includes(`value="${patient}"`), patient);
+      const answered = await send(authorize.pathname, {
+        ...Object.fromEntries(authorize.searchParams),
+        patient,
+        decision,
+      });
+      const back = new URL(answered.headers.get("location"));
+      assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
+      const callback = await fetch(back, { redirect: "manual" });
+      assert.equal(callback.status, 303);
+      return callback.headers.get("location");
+    };
 
-        const cancelled = await served(server, await signIn("cancel"));
-        assert.ok(cancelled.includes("cancelled"), "Cancel is not cancelled");
-        assert.deepEqual(await asked(ALLERGIES, pod), []);
+    /** Brings the record in through the connection's page; gives the pod's page it goes back to. */
+    const bringIn = async (connection) => {
+      const imported = await send(connection, {});
+      assert.equal(
+        imported.status,
+        303,
+        "the import did not go back to the pod",
+      );
+      return served(server, imported.headers.get("location"));
+    };
 
-        const elsewhere = await send(
-          `/pods/${pod}/hospitals`,
-          { fhirBase: expected.row.fhirBase },
-          "http://elsewhere.invalid",
-        );
-        assert.equal(elsewhere.status, 403);
-        const localhost = await send(
-          `/pods/${pod}/hospitals`,
-          { fhirBase: expected.row.fhirBase },
-          origin.replace("127.0.0.1", "localhost"),
-        );
-        assert.equal(localhost.status, 303, "a form from localhost is refused");
+    try {
+      await behaviour(
+        "a person signs in to a demo hospital and brings the record in",
+        async () => {
+          const pod = "hospital";
+          const north = expected.row.fhirBase;
+          const podPage = await served(server, `/pods/${pod}/`);
+          assert.ok(
+            podPage.includes(`/pods/${pod}/hospitals`),
+            "no hospitals link",
+          );
+          const found = await served(server, `/pods/${pod}/hospitals?q=north`);
+          assert.deepEqual(
+            forms(found).flatMap(({ fhirBase }) => fhirBase ?? []),
+            [north],
+          );
 
-        const connection = await signIn("allow");
-        const looked = await served(server, connection);
-        const [source] = expected.look;
-        assert.ok(looked.includes(escaped(source.name)));
-        assert.ok(looked.includes("holds no records from here yet"));
-        assert.deepEqual(
-          multiset(tables(looked).flat()),
-          multiset(
-            Object.entries(source.records).map(([kind, count]) => ({
-              kind,
-              count: String(count),
-            })),
-          ),
-        );
-        const imported = await send(connection, {});
-        assert.equal(imported.status, 200);
-        assert.ok((await imported.text()).includes("Brought in"));
-        assert.ok(expected.allergens.length > 0, "A has no active allergy");
-        assert.deepEqual(
-          (await asked(ALLERGIES, pod)).map(({ allergen }) => allergen).sort(),
-          expected.allergens,
-        );
-      } finally {
-        await server.stop();
-      }
-    },
-  );
+          const failed = await signIn(pod, north, expected.patient, "cancel");
+          const cancelled = await settled(server, failed);
+          assert.ok(cancelled.includes("cancelled"), "Cancel is not cancelled");
+          assert.deepEqual(await asked(ALLERGIES, pod), []);
+          assert.equal(
+            noteOf(
+              await served(
+                server,
+                `/pods/${pod}/?from=${failed.split("/").at(-1)}`,
+              ),
+            ),
+            undefined,
+            "a note that a cancelled sign-in brought a record in",
+          );
+
+          const elsewhere = await send(
+            `/pods/${pod}/hospitals`,
+            { fhirBase: north },
+            "http://elsewhere.invalid",
+          );
+          assert.equal(elsewhere.status, 403);
+          const localhost = await send(
+            `/pods/${pod}/hospitals`,
+            { fhirBase: north },
+            origin.replace("127.0.0.1", "localhost"),
+          );
+          assert.equal(
+            localhost.status,
+            303,
+            "a form from localhost is refused",
+          );
+
+          const connection = await signIn(
+            pod,
+            north,
+            expected.patient,
+            "allow",
+          );
+          const looked = readable(await settled(server, connection));
+          const [source] = expected.look;
+          const what = /What (.+?) has:/.exec(looked)?.[1];
+          assert.ok(
+            what !== undefined && names(what, expected.row.name),
+            "no What it has",
+          );
+          for (const [kind, count] of Object.entries(source.records))
+            assert.ok(
+              looked.includes(
+                `${count} ${kind.toLowerCase().replace(/y$/, "")}`,
+              ),
+              `no ${count} ${kind}`,
+            );
+          assert.ok(looked.includes("has nothing from here yet"));
+          const back = await bringIn(connection);
+          assert.ok(
+            names(noteOf(back) ?? "", expected.row.name),
+            "no note after the import",
+          );
+          assert.ok(expected.allergens.length > 0, "A has no active allergy");
+          assert.deepEqual(
+            (await asked(ALLERGIES, pod))
+              .map(({ allergen }) => allergen)
+              .sort(),
+            expected.allergens,
+          );
+        },
+      );
+
+      await behaviour("a new pod is made from a person's name", async () => {
+        for (let time = 0; time < 2; time += 1) {
+          const made = await send("/pods", { person: "Ada  Lovelace" });
+          assert.equal(made.status, 303);
+          assert.equal(made.headers.get("location"), "/pods/ada-lovelace/");
+        }
+        const page = await served(server, "/pods/ada-lovelace/");
+        assert.equal(heading(page), "Ada Lovelace");
+        assert.ok(page.includes("Nothing here yet"), "Ada's pod is not empty");
+      });
+
+      await behaviour(
+        "a demo person's pod brings in their records from both hospitals",
+        async () => {
+          const offered = forms(await served(server, "/pods/hospital/"));
+          assert.ok(
+            offered.some(({ person }) => person === ROWAN),
+            `the new-pod box does not offer ${ROWAN}`,
+          );
+          const made = await send("/pods", { person: ROWAN });
+          const page = made.headers.get("location");
+          const pod = page.split("/")[2];
+          assert.deepEqual(
+            forms(await served(server, page))
+              .flatMap(({ fhirBase }) => fhirBase ?? [])
+              .sort(),
+            expected.rowan.map(({ fhirBase }) => fhirBase).sort(),
+          );
+          let shown;
+          for (const { hospital, fhirBase, patient } of expected.rowan) {
+            const connection = await signIn(pod, fhirBase, patient, "allow");
+            await settled(server, connection);
+            shown = await bringIn(connection);
+            assert.ok(
+              names(noteOf(shown) ?? "", hospital),
+              `no note naming ${hospital}`,
+            );
+          }
+          assert.ok(
+            items(shown).some(
+              (sentence) =>
+                /hypertension was recorded at/i.test(sentence) &&
+                expected.rowan.every(({ hospital }) =>
+                  names(sentence, hospital),
+                ),
+            ),
+            "no sentence that hypertension was recorded at both hospitals",
+          );
+          assert.ok(
+            !forms(shown).some(({ person }) => person === ROWAN),
+            `the new-pod box still offers ${ROWAN}`,
+          );
+        },
+      );
+    } finally {
+      await server.stop();
+    }
+  }
 
   await behaviour("the console evaluates await", async () => {
     const prompt = "alex-rivera> ";
