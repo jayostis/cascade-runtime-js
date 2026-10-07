@@ -23,6 +23,7 @@ const PROV = "http://www.w3.org/ns/prov#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const PAV = "http://purl.org/pav/";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
 const TYPE = `${RDF}type`;
 const ENTRY = "urn:cascade:entry:";
@@ -443,7 +444,20 @@ async function namesFollowTheirRules(
   const named9 = new Set(
     whole.triples.flatMap((triple) => triple.map((t) => t.value)),
   );
-  for (const { name, happened } of story.steps) {
+  /** The record's revisions written before the moment, latest last. */
+  const revisionsBefore = (record: Term, moment: string): Term[] =>
+    whole
+      .subjects(`${REC}revisionOf`, record)
+      .map((r) => [r, whole.objects(r, `${PROV}generatedAtTime`)[0]] as const)
+      .filter(
+        ([, t]) => t !== undefined && Date.parse(t.value) < Date.parse(moment),
+      )
+      .sort(
+        ([, a], [, b]) =>
+          Date.parse(a?.value ?? "") - Date.parse(b?.value ?? ""),
+      )
+      .map(([r]) => r);
+  for (const { name, when, happened } of story.steps) {
     if (happened.kind !== "import") continue;
     const thisImport = activityOf.get(name);
     for (const path of await vocabulary.list(at(happened.converted))) {
@@ -514,6 +528,23 @@ async function namesFollowTheirRules(
           .filter(
             (r) => whole.match(r, `${PROV}wasDerivedFrom`, document).length > 0,
           );
+        if (revisions.length === 0 && version !== undefined) {
+          const record = graph.objects(version, `${PROV}specializationOf`)[0];
+          const earlier =
+            record === undefined ? [] : revisionsBefore(record, when);
+          const current = earlier.at(-1);
+          const sourceVersion = graph.objects(arrival, `${PAV}version`)[0];
+          if (
+            (current !== undefined &&
+              whole.match(current, `${REC}version`, version).length > 0) ||
+            (sourceVersion !== undefined &&
+              earlier.some(
+                (r) =>
+                  whole.match(r, `${PAV}version`, sourceVersion).length > 0,
+              ))
+          )
+            continue;
+        }
         const held = new Set(
           revisions.flatMap((r) =>
             whole.match(r).map(([, p, o]) => `${written(p)} ${written(o)}`),
