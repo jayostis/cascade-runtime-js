@@ -63,7 +63,8 @@ script goes after `--`, or npm keeps it for itself.
   folder as a person puts it there: `alex-rivera x-e12` as
   `apple_health_export`, `priya-natarajan kestrel-harbor-health-summary.xml` as
   that file.
-- `--pod` may be left out of `ask` and `console` when there is exactly one pod.
+- `ask` and `console` need `--pod <name>` whenever the app has more than one
+  pod, as a made app does; it may be left out only when there is exactly one.
 
 ## The files
 

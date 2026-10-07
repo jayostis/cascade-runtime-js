@@ -17,7 +17,6 @@ process.exitCode = await create(process.argv.slice(2), {
   err: (text) => process.stderr.write(text),
   ...(stdin.isTTY ? { ask: askFolder } : {}),
   install: npmInstall,
-  // Imported only when a kit is loaded, so a refused command does not wait for the runtime to load.
   load: async (kit, folder) => {
     const { replayKit } = await import("./node/kits.js");
     await replayKit(kit, folder);

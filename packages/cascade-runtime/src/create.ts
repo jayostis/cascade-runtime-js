@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { cp, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { cp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -159,13 +159,15 @@ export async function create(
   for (const kit of KITS) {
     terminal.out(`\nLoading the pod ${kit}, from the kit the package carries…`);
     const started = performance.now();
+    const pod = join(target, "pods", kit);
     try {
-      await terminal.load(kit, join(target, "pods", kit));
+      await terminal.load(kit, pod);
       loaded.push(kit);
       terminal.out(
         ` loaded in ${((performance.now() - started) / 1000).toFixed(1)} s\n`,
       );
     } catch (error) {
+      await rm(pod, { recursive: true, force: true });
       terminal.out("\n");
       terminal.err(
         `the pod ${kit} did not load: ${(error as Error).message}\nThe app is made; \`npm run reset\` in it loads its pods again.\n`,
@@ -175,7 +177,7 @@ export async function create(
   terminal.out(
     [
       "",
-      `Made ${target}${loaded.length === 0 ? "" : `, with the pods ${loaded.join(" and ")}`}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
+      `Made ${target}${loaded.length === 0 ? "" : `, with ${loaded.length === 1 ? "the pod" : "the pods"} ${loaded.join(" and ")}`}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
       "",
       agentPrompt(name),
       "",

@@ -27,28 +27,28 @@ after(async () => {
   await rm(parent, { recursive: true, force: true });
 });
 
-/** A terminal that keeps what is written and records each install and load, which do nothing; a load of `failing` rejects. */
+/** A terminal that keeps what is written and records each install and load, which do nothing; a load of `failing` writes into its folder, then rejects. */
 function recording(failing?: string): Terminal & {
-  readonly installs: string[];
   readonly done: string[];
   text(): string;
 } {
   const written: string[] = [];
-  const installs: string[] = [];
   const done: string[] = [];
   return {
     out: (text) => written.push(text),
     err: (text) => written.push(text),
     install: async (folder) => {
-      installs.push(folder);
       done.push(`install ${folder}`);
       return true;
     },
     load: async (kit, folder) => {
-      if (kit === failing) throw new Error("the kit is broken");
+      if (kit === failing) {
+        await mkdir(folder, { recursive: true });
+        await writeFile(join(folder, "half"), "");
+        throw new Error("the kit is broken");
+      }
       done.push(`load ${kit} into ${folder}`);
     },
-    installs,
     done,
     text: () => written.join(""),
   };
@@ -81,15 +81,14 @@ test("given a folder, it makes the project and names it", async () => {
 
 test("a pod that does not load leaves the app made, and says which", async () => {
   const terminal = recording("priya-natarajan");
-  assert.equal(
-    await create([join(parent, "half-loaded"), "--tarball", ADDRESS], terminal),
-    0,
-  );
+  const folder = join(parent, "half-loaded");
+  assert.equal(await create([folder, "--tarball", ADDRESS], terminal), 0);
+  assert.deepEqual(await readdir(join(folder, "pods")), []);
   assert.match(
     terminal.text(),
     /the pod priya-natarajan did not load: the kit is broken/,
   );
-  assert.match(terminal.text(), /with the pods alex-rivera\./);
+  assert.match(terminal.text(), /with the pod alex-rivera\./);
 });
 
 test("it refuses a folder it cannot use and writes nothing", async () => {
@@ -115,7 +114,7 @@ test("it refuses a folder it cannot use and writes nothing", async () => {
     const terminal = recording();
     assert.equal(await create(args, terminal), 2, what);
     assert.match(terminal.text(), reason, what);
-    assert.deepEqual(terminal.installs, [], what);
+    assert.deepEqual(terminal.done, [], what);
     assert.deepEqual(await readdir(parent, { recursive: true }), before, what);
   }
 });

@@ -14,7 +14,7 @@ import { parseArgs } from "node:util";
 import { featureStory, OxigraphStore } from "@cascade-runtime/runtime";
 import { packed, vocabularyOf } from "@cascade-runtime/runtime/node";
 import { tarballAddress } from "../dist/pack/address.js";
-import { agentPrompt, startLine } from "../dist/src/create.js";
+import { agentPrompt, KITS, startLine } from "../dist/src/create.js";
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
@@ -35,7 +35,6 @@ const TILES = {
 };
 const JUDGMENTS = "pod/How many judgments count";
 const IMPORTS = "pod/What each import brought in";
-const KIT_PODS = ["alex-rivera", "priya-natarajan"];
 const C_CDA = "kestrel-harbor-health-summary.xml";
 const STATUS = "https://ns.cascadeprotocol.org/clinical/v1#status";
 const ALLERGEN = "https://ns.cascadeprotocol.org/health/v1#allergen";
@@ -361,13 +360,13 @@ await behaviour("the command makes the app", async () => {
       : await run(startLine(address, "my-app"), [], { cwd: work, shell: true });
   assert.equal(code, 0, "the command failed");
   assert.ok(out.includes(agentPrompt("my-app")), "no agent prompt");
-  assert.deepEqual(await podsOf(), KIT_PODS);
+  assert.deepEqual(await podsOf(), KITS);
   const loads = [
     ...out.matchAll(/Loading the pod (\S+),[^\n]*? loaded in ([\d.]+) s/g),
   ];
   assert.deepEqual(
     loads.map(([, pod]) => pod),
-    KIT_PODS,
+    KITS,
   );
   stdout.write(
     `\nthe loads took ${loads.map(([, pod, seconds]) => `${pod} ${seconds} s`).join(", ")}\n`,
@@ -837,9 +836,9 @@ if (refused !== undefined) throw new Error(refused);
     );
     assert.equal((await run(execPath, [script])).code, 0, "no record in");
     assert.ok((await asked(IMPORTS, "alex-rivera")).length > fresh.imports);
-    assert.ok((await podsOf()).length > KIT_PODS.length, "no pod was made");
+    assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
-    assert.deepEqual(await podsOf(), KIT_PODS);
+    assert.deepEqual(await podsOf(), KITS);
     assert.equal((await asked(IMPORTS, "alex-rivera")).length, fresh.imports);
     assert.deepEqual(
       multiset(await asked(JUDGMENTS, "alex-rivera")),

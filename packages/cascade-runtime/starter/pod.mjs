@@ -1,18 +1,11 @@
 // `npm run pod:load -- <kit> [--through <step>] [--as <name>]`, `npm run pod:new <name>`, `npm run pod:reset <name>`,
 // `npm run reset`.
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { argv, stdout } from "node:process";
 import { openPod } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
-import {
-  argumentsOf,
-  checkName,
-  podFolder,
-  podNames,
-  PODS,
-  refuse,
-} from "./pods.mjs";
+import { argumentsOf, checkName, podFolder, PODS, refuse } from "./pods.mjs";
 
 /** The kits whose pods the app was made with. */
 const KITS = ["alex-rivera", "priya-natarajan"];
@@ -77,10 +70,10 @@ async function reset() {
 /** Every pod removed and the kits' pods loaded again: the app as it was made. */
 async function everything() {
   argumentsOf(args, "npm run reset", {}, 0);
-  const removed = await podNames();
+  const removed = existsSync(PODS) ? await readdir(PODS) : [];
   await rm(PODS, { recursive: true, force: true });
   stdout.write(
-    `Removed ${removed.length === 0 ? "no pod" : `the pods ${removed.join(", ")}`}.\n`,
+    `Removed ${removed.length === 0 ? "nothing" : `pods/, which held ${removed.join(", ")}`}.\n`,
   );
   for (const kit of KITS) {
     stdout.write(`Loading the pod ${kit}… `);
