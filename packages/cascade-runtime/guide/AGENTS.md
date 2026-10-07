@@ -12,11 +12,13 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Conditions**: name, status, onset.
 - **Immunizations**: vaccine, the day given.
 - **Procedures**: name, the day done.
+- **Medications**: drug, RxNorm code, prescribed or on the person's list.
+- **Lab results**: test, LOINC code, value, unit, the time taken.
 - **Patient profile**: how each hospital names the person.
 
-Nothing else: a daily measurement, medications or lab results need new terms in
-the vocabulary first, so tell the person and build none of them. Records come
-only from an Apple Health export, unzipped, whose clinical records are FHIR R4.
+Nothing else: a daily measurement needs new terms in the vocabulary first, so
+tell the person and build none of them. Records come only from an Apple Health
+export, unzipped, whose clinical records are FHIR R4.
 
 ## What an app never does
 
@@ -155,7 +157,9 @@ async function search(word) {
 - `pod/How many of each kind`: things of each type.
 - `pod/My active allergies`: allergies a hospital gave the status active.
 - `pod/My active conditions`: conditions whose status is active.
+- `pod/My active medications`: medications whose status is active.
 - `pod/My immunizations`: immunizations, newest first.
+- `pod/My lab results`: lab results, newest first.
 - `pod/My procedures`: procedures, newest first.
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.

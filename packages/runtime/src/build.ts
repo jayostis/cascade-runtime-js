@@ -49,18 +49,27 @@ function marked(
 }
 
 /**
- * The type index of a pod at `address`: a registration for each view the layout lists, and one for the views' folder,
- * each named for the file or folder it registers, with its class, its file or folder, and its title.
+ * The type index of a pod at `address`: a registration for each view written, by default each the layout lists, and
+ * one for the views' folder, each named for the file or folder it registers, with its class, its file or folder, and
+ * its title.
  */
-export function typeIndex(address: string, layout: Layout): Triple[] {
+export function typeIndex(
+  address: string,
+  layout: Layout,
+  written: ReadonlySet<string> = new Set(
+    layout.views.flatMap(({ file }) => file ?? []),
+  ),
+): Triple[] {
   const index = address + layout.typeIndex;
   const folder = layout.viewsPlacement;
   const registered = [
-    ...layout.views.map((view) => ({
-      placement: view,
-      listing: `${SOLID}instance`,
-      path: view.file ?? "",
-    })),
+    ...layout.views
+      .filter(({ file }) => written.has(file ?? ""))
+      .map((view) => ({
+        placement: view,
+        listing: `${SOLID}instance`,
+        path: view.file ?? "",
+      })),
     {
       placement: folder,
       listing: `${SOLID}instanceContainer`,
@@ -146,6 +155,20 @@ export async function vocabularyBuild(
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
     const used = rows.flatMap((row) => row.get("version")?.value ?? []);
+    const held = new Set(
+      layout.views
+        .filter(({ writtenAlways }) => writtenAlways)
+        .flatMap(({ file }) => file ?? []),
+    );
+    const unheld = layout.views.filter(({ file }) => !held.has(file ?? ""));
+    if (unheld.length > 0) {
+      const { rows: kinds } = await store.select(
+        `SELECT DISTINCT ?kind WHERE { VALUES ?kind { ${unheld.map(({ kind }) => `<${kind}>`).join(" ")} } ?record a ?kind }`,
+      );
+      const found = new Set(kinds.map((row) => row.get("kind")?.value));
+      for (const { file, kind } of unheld)
+        if (found.has(kind)) held.add(file ?? "");
+    }
     const files = new Map<string, readonly Triple[]>();
     const add = async (path: string, triples: readonly Triple[]) => {
       files.set(path, triples);
@@ -153,18 +176,20 @@ export async function vocabularyBuild(
     };
     for (const group of groups) {
       const made = await Promise.all(
-        group.map(async ({ file, query: path }) => ({
-          file,
-          triples: marked(
-            pod.address + file,
-            await store.construct(query(path)),
-            used,
-          ),
-        })),
+        group
+          .filter(({ file }) => !views.includes(file) || held.has(file))
+          .map(async ({ file, query: path }) => ({
+            file,
+            triples: marked(
+              pod.address + file,
+              await store.construct(query(path)),
+              used,
+            ),
+          })),
       );
       for (const { file, triples } of made) await add(file, triples);
     }
-    await add(layout.typeIndex, typeIndex(pod.address, layout));
+    await add(layout.typeIndex, typeIndex(pod.address, layout, held));
     await add(
       layout.manifest,
       manifest(pod.address + layout.manifest, pod.title, pod.at),

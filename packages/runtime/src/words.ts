@@ -22,6 +22,8 @@ export const KINDS: Readonly<Record<string, string>> = {
   condition: `${HEALTH}ConditionRecord`,
   immunization: `${HEALTH}ImmunizationRecord`,
   procedure: `${CLINICAL}Procedure`,
+  medication: `${CLINICAL}Medication`,
+  "lab result": `${HEALTH}LabResultRecord`,
 };
 
 export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
@@ -29,6 +31,8 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same code and date": `${JDG}SameCodeAndDate`,
   "same mapped code": `${JDG}SameMappedCode`,
   "same mapped code and date": `${JDG}SameMappedCodeAndDate`,
+  "same medication code": `${JDG}SameMedicationCode`,
+  "same result": `${JDG}SameResult`,
 };
 
 const CODES: Readonly<Record<string, (code: string) => string>> = {
@@ -36,14 +40,24 @@ const CODES: Readonly<Record<string, (code: string) => string>> = {
     `{ ?version ?coded <http://snomed.info/sct/${code}> } UNION { ?version <${CLINICAL}snomedCode> ${JSON.stringify(code)} }`,
   RxNorm: (code) =>
     `?version ?coded <http://www.nlm.nih.gov/research/umls/rxnorm/${code}>`,
+  LOINC: (code) => `?version ?coded <http://loinc.org/rdf/${code}>`,
   CVX: (code) => `?version <${HEALTH}vaccineCode> ${JSON.stringify(code)}`,
 };
+
+const either = (words: readonly string[]): string =>
+  words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+
+const SAID = new RegExp(
+  `^(${either(Object.keys(KINDS))})(?: (${either(Object.keys(CODES))}) (\\S+))?(?: "([^"]*)")?(?: from (\\S+))?$`,
+);
 
 const NAMES = [
   `${HEALTH}allergen`,
   `${HEALTH}conditionName`,
   `${HEALTH}vaccineName`,
   `${CLINICAL}procedureName`,
+  `${CLINICAL}drugName`,
+  `${HEALTH}testName`,
 ];
 
 /** A person `people.ttl` names: the pod's subject, its address, and the folder of their scripted input. */
@@ -286,10 +300,7 @@ export class Words {
   async record(words: string): Promise<string> {
     const handled = await this.#handle(words);
     if (handled !== undefined) return this.#remember(words, handled);
-    const said =
-      /^(allergy|condition|immunization|procedure)(?: (SNOMED|RxNorm|CVX) (\S+))?(?: "([^"]*)")?(?: from (\S+))?$/.exec(
-        words,
-      );
+    const said = SAID.exec(words);
     if (said === null || (said[2] === undefined && said[4] === undefined))
       throw new Error(`"${words}" names no record`);
     const [, kind, system, code, name, source] = said;

@@ -88,14 +88,13 @@ export class Site {
     pages: ReadonlyMap<string, string>,
     storedBytes: ReadonlyMap<string, string>,
     built: ReadonlyMap<string, BuiltFile>,
+    views: readonly Term[],
   ) {
     this.questions = answers.get(options.lens) ?? new Map();
     this.things = things;
     this.#pages = pages;
     this.built = built;
-    this.views = options.layout.views.map(({ file }) =>
-      iri(pod.address + (file ?? "")),
-    );
+    this.views = views;
     const copies = new Map(
       pod.files.map((path) => [pod.address + path, COPY + path]),
     );
@@ -180,13 +179,11 @@ export class Site {
     }
     const defaults = answers.get(lens) as Map<string, Answer>;
     const things = thingsWithPages(defaults);
+    const views = options.layout.views
+      .filter(({ file }) => pod.built.has(file ?? ""))
+      .map(({ file }) => iri(pod.address + (file ?? "")));
     const pages = new Map<string, string>();
-    for (const thing of [
-      ...[...things.values()].flat(),
-      ...options.layout.views.map(({ file }) =>
-        iri(pod.address + (file ?? "")),
-      ),
-    ]) {
+    for (const thing of [...[...things.values()].flat(), ...views]) {
       pages.set(thing.value, await pageOf(thing.value));
     }
     const storedFolder = options.layout.storedBytes.folder ?? "";
@@ -202,7 +199,8 @@ export class Site {
     for (const { file, writtenBy } of [...options.layout.built].sort((a, b) =>
       (a.file ?? "") < (b.file ?? "") ? -1 : 1,
     )) {
-      if (file === undefined || writtenBy === undefined) continue;
+      if (file === undefined || writtenBy === undefined || !pod.built.has(file))
+        continue;
       built.set(pod.address + file, {
         answer: new Answer(await read(QUERIES + writtenBy), lens),
         statements: new Set(
@@ -222,6 +220,7 @@ export class Site {
       pages,
       storedBytes,
       built,
+      views,
     );
   }
 

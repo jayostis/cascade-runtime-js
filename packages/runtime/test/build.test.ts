@@ -9,7 +9,7 @@ import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { replay } from "../src/replay.js";
+import { type Replayed, replay } from "../src/replay.js";
 import type { Store } from "../src/store.js";
 import { notIsomorphic } from "./graphs.js";
 import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
@@ -37,11 +37,13 @@ let layout: Layout;
 let pod: CountedFiles;
 /** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
 let reopened: () => CorePod;
+let replayed: Replayed;
 
-/** Files in memory, counting each read that finds a file, and each write, by path. */
+/** Files in memory, counting each read that finds a file, and each write, by path, in the order written. */
 class CountedFiles extends MemoryFiles {
   readonly found = new Map<string, number>();
   readonly writes = new Map<string, number>();
+  readonly log: string[] = [];
 
   override async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     const bytes = await super.read(pathOrIri);
@@ -52,6 +54,7 @@ class CountedFiles extends MemoryFiles {
 
   override write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     this.writes.set(pathOrIri, (this.writes.get(pathOrIri) ?? 0) + 1);
+    this.log.push(pathOrIri);
     return super.write(pathOrIri, bytes);
   }
 }
@@ -67,7 +70,7 @@ before(async () => {
     graph: address,
     alone: true,
   });
-  const replayed = await replay({
+  replayed = await replay({
     story,
     source: files,
     vocabulary: files,
@@ -114,14 +117,25 @@ async function placed(where: string): Promise<string> {
   return found;
 }
 
-test("the build writes each file the layout says a query writes, as a view, and a type index registering each view and the views' folder by its class, file or folder, and title", async () => {
+test("the build writes the labels, each view the layout marks written always, a view of a kind the pod holds a record of and no other, and a type index registering each view written and the views' folder by its class, file or folder, and title", async () => {
+  const held = (
+    await values(
+      store,
+      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a rec:View } } }`,
+    )
+  ).map((kind) => `<${kind}>`);
+  const written = await values(store, `GRAPH ?view { ?view a rec:View }`);
   assert.deepEqual(
-    await values(store, `GRAPH ?view { ?view a rec:View }`),
+    written,
     await values(
       laidOut,
-      `GRAPH <${address}> { [] a rec:Placement ; rec:writtenBy [] ; solid:instance ?file }`,
+      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a rec:Placement ; rec:writtenBy [] ; solid:instance ?file
+        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement rec:writtenAlways ?always }
+        FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
+  assert.ok(written.some((file) => file.endsWith("clinical/allergies.ttl")));
+  assert.ok(!written.some((file) => file.endsWith("clinical/procedures.ttl")));
   const index = await placed(
     `[] solid:forClass solid:TypeIndex ; solid:instance ?file`,
   );
@@ -143,22 +157,41 @@ test("the build writes each file the layout says a query writes, as a view, and 
       laidOut,
       `SELECT ?class ?listing ?target ?title WHERE { GRAPH <${address}> {
         ?placement a rec:Placement ; solid:forClass ${registration}
-        { ?placement rec:writtenBy [] ; solid:instance [] } UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
+        { ?placement rec:writtenBy [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
+        UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
     ),
   );
 });
 
 test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
   assert.deepEqual([...pod.found.keys()], []);
-  assert.equal(pod.writes.get(layout.typeIndex), 1);
+  const begun = replayed.steps.map(({ wrote }) =>
+    wrote.length === 0 ? -1 : pod.log.indexOf(wrote[0] ?? ""),
+  );
+  const builtAt = (path: string): number => {
+    const first = pod.log.indexOf(path);
+    return begun.findLastIndex((at) => at >= 0 && at < first);
+  };
+  const appeared = layout.views.flatMap(({ file }) =>
+    pod.log.includes(file ?? "") ? [builtAt(file ?? "")] : [],
+  );
+  assert.ok(appeared.length > 0);
+  assert.equal(
+    pod.writes.get(layout.typeIndex),
+    new Set([builtAt(layout.typeIndex), ...appeared]).size,
+  );
   assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
   const parser = new OxigraphStore();
   for (const path of layout.rebuilt) {
     const bytes = await pod.read(path);
-    assert.ok(bytes, path);
     const full = await store.construct(
       `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address}${path}> { ?s ?p ?o } }`,
     );
+    if (full.length === 0) {
+      assert.equal(bytes, undefined, path);
+      continue;
+    }
+    assert.ok(bytes, path);
     assert.equal(
       notIsomorphic(full, await parser.parse(bytes, address + path)),
       undefined,
