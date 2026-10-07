@@ -124,6 +124,41 @@ export's are theirs; a second server is a source of its own, and so is a
 hospital's custodian beside its server. `import` with the yes claims every profile not yet claimed, runs the
 matcher (call no `match`), and writes nothing when the export is already in.
 
+## Connect to a hospital
+
+The same calls run in Node and in a browser:
+
+- `connect(row, registration, { signIn })` signs the person in to the hospital a
+  directory row names, as a SMART patient launch, and gives a `Connection`;
+- `pull(connection, DEMO_PLAN)` fetches the record, and gives a `Pull`;
+- `pod.import(pullFiles(pull, name), { aboutSubject: true })` brings it in, as
+  `bringIn` does an export.
+
+A failure is a `ConnectionFailure`, whose `kind` says why: `cancelled` when the
+person said no or closed the sign-in.
+
+**The sign-in step** differs:
+
+- In Node it is `loopbackSignIn`.
+- In a browser it is `popupSignIn({ popup })`. Open the popup with
+  `window.open` in the click that asked to connect, since a browser blocks it
+  once the click is over, and pass it in.
+- The page at the registration's redirect URI, on the app's own origin, calls
+  `finishSignIn()`. It hands the URL back to the window that opened the popup.
+- A real hospital's login page that sends `Cross-Origin-Opener-Policy` cuts the
+  popup off from that window.
+
+**The demo hospitals** need no account:
+
+- In Node, pass `fetch: demoFetch(hospitals)`.
+- In a browser, a service worker serves them. The app hosts its file on its own
+  origin, in the folder of the page, and calls `useDemoHospitals()` before
+  connecting.
+- Their addresses are `https:`, so a CSP's `connect-src` must allow
+  `https://*.demo.invalid`.
+- A hard reload bypasses the worker. The site's `connect/` page shows all of
+  this.
+
 ## Ask
 
 `ask` takes a question's name, or `{ query }` with the app's own `SELECT`, and
