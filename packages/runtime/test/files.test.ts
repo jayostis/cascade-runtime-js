@@ -10,7 +10,7 @@ const POD = "https://pod.example/";
 const text = (bytes: Uint8Array | undefined): string | undefined =>
   bytes && new TextDecoder().decode(bytes);
 
-test("a folder and memory read, write and list alike, by path or by IRI, and only under their root", async () => {
+test("a folder and memory read, write and list alike, by path or by IRI, and only under their root, a file read as a folder and a folder as a file being nothing", async () => {
   const kinds: [string, Files][] = [
     ["memory", new MemoryFiles(POD)],
     ["folder", new FolderFiles(await mkdtemp(join(tmpdir(), "files-")), POD)],
@@ -20,7 +20,13 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
     await files.write(`${POD}records/b.ttl`, new TextEncoder().encode("b"));
     assert.equal(text(await files.read(`${POD}subject/7c/a.ttl`)), "a", kind);
     assert.equal(text(await files.read("records/b.ttl")), "b", kind);
-    assert.equal(await files.read("records/none.ttl"), undefined, kind);
+    for (const nothing of [
+      "records/none.ttl",
+      "records/b.ttl/export.xml",
+      "records",
+    ])
+      assert.equal(await files.read(nothing), undefined, `${kind} ${nothing}`);
+    assert.deepEqual(await files.list("records/b.ttl"), [], kind);
     assert.deepEqual(
       await files.list(""),
       ["records/b.ttl", "subject/7c/a.ttl"],
