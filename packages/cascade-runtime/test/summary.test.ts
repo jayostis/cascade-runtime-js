@@ -118,17 +118,18 @@ test("a cell with nothing to sort by sorts after the rest", () => {
     assert.ok(view.compare(type, "", key) > 0, type);
 });
 
-test("a table opens newest first", () => {
+test("a table opens newest first, a row with no date last", () => {
   const section = view.SECTIONS.find(
     ({ question }: { question: string }) => question === LABS,
   );
   const rows = [
+    { test: "Sodium" },
     { test: "Glucose", performed: "2024-03-01" },
     { test: "Potassium", performed: "2025-06-18T14:10:00-07:00" },
     { test: "Creatinine", performed: "2025-01-05" },
   ];
   assert.deepEqual(
     view.opening(section, rows).map(({ test }: { test: string }) => test),
-    ["Potassium", "Creatinine", "Glucose"],
+    ["Potassium", "Creatinine", "Glucose", "Sodium"],
   );
 });

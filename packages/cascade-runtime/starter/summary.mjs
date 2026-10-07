@@ -326,12 +326,16 @@ export function noticed(answers) {
   ].map((sentence) => sentence[0].toUpperCase() + sentence.slice(1));
 }
 
-/** The section's rows in the order its table opens in. */
+/** The section's rows in the order its table opens in, a row with nothing to sort by last either way. */
 export function opening(section, rows) {
   const column = section.columns[section.sortBy];
   const key = (row) => String(column.key(row) ?? "");
   const order = section.newestFirst ? -1 : 1;
-  return [...rows].sort((a, b) => order * compare(column.type, key(a), key(b)));
+  return [...rows].sort(
+    (a, b) =>
+      Number(key(a) === "") - Number(key(b) === "") ||
+      order * compare(column.type, key(a), key(b)),
+  );
 }
 
 /**
