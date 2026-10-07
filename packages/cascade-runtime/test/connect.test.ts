@@ -254,7 +254,7 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
-test("a pull retries a 503, a 429 and a transport error and gets the same records", async () => {
+test("a pull retries a 503, a 429 and a transport error, and from a base written with a trailing slash names everything without it", async () => {
   const failed = new Set<string>();
   const once =
     (type: string, answer: () => Promise<Response>): Alter =>
@@ -275,6 +275,7 @@ test("a pull retries a 503, a 429 and a transport error and gets the same record
     once("Immunization", () => Promise.reject(new TypeError("reset"))),
   ];
   const { pull: result } = await pulled({
+    row: { ...row, fhirBase: `${row.fhirBase}/` },
     alter: (request, hospital) =>
       alters.reduce<Answer>(
         (next, alter) => (r) => alter(r, next),
@@ -282,7 +283,11 @@ test("a pull retries a 503, a 429 and a transport error and gets the same record
       )(request),
   });
   assert.equal(failed.size, 3);
-  assert.deepEqual(keysOf(result).sort(), keysOf(happy.pull).sort());
+  assert.equal(result.fhirBase, row.fhirBase);
+  assert.deepEqual(
+    result.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
+    happy.pull.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
+  );
 });
 
 test("a loopback sign-in takes the redirect with the state sent, ignores another, and closes", async () => {
@@ -459,7 +464,12 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
     [
       "a FHIR base that is no address",
       () => ({ row: { ...row, fhirBase: "not an address" } }),
-      "host-not-allowed",
+      "hospital-error",
+    ],
+    [
+      "a FHIR base with a query",
+      () => ({ row: { ...row, fhirBase: `${row.fhirBase}?tenant=a` } }),
+      "hospital-error",
     ],
     [
       "a redirect URI that is no address",

@@ -21,6 +21,8 @@ export interface ConnectOptions {
 /** One person signed in to one hospital, held in memory only. */
 export interface Connection {
   readonly row: DirectoryRow;
+  /** The row's FHIR base with one trailing slash removed: the one value every address and record name is made from. */
+  readonly fhirBase: string;
   /** The patient the token is for, by the hospital's id. */
   readonly patient: string;
   readonly scope: string;
@@ -121,11 +123,12 @@ export async function connect(
     { ...LIMITS, ...options.limits },
     options.signal,
   );
-  const base = address(trimmed(row.fhirBase));
-  if (base === undefined)
+  const fhirBase = trimmed(row.fhirBase);
+  const base = address(fhirBase);
+  if (base === undefined || base.search !== "" || base.hash !== "")
     throw new ConnectionFailure(
-      "host-not-allowed",
-      `${row.name}'s FHIR base is no address`,
+      "hospital-error",
+      `${row.name}'s FHIR base is not an address with no query or fragment`,
     );
   const redirectUri = address(registration.redirectUri);
   if (redirectUri === undefined)
@@ -141,9 +144,7 @@ export async function connect(
     );
   const origin = base.origin;
 
-  const discoveryUrl = new URL(
-    `${trimmed(base.href)}/.well-known/smart-configuration`,
-  );
+  const discoveryUrl = new URL(`${fhirBase}/.well-known/smart-configuration`);
   const discovered = await requests.send(discoveryUrl, {
     what: "discovery",
     headers: { Accept: "application/json" },
@@ -185,7 +186,7 @@ export async function connect(
     redirect_uri: registration.redirectUri,
     scope: registration.scopes.join(" "),
     state,
-    aud: row.fhirBase,
+    aud: fhirBase,
     code_challenge: await challenge(verifier),
     code_challenge_method: "S256",
   };
@@ -250,6 +251,7 @@ export async function connect(
   const expiresIn = answer.expires_in;
   const connection: Connection = Object.freeze({
     row,
+    fhirBase,
     patient,
     scope:
       typeof answer.scope === "string" && answer.scope !== ""

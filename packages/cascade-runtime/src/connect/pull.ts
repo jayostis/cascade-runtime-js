@@ -1,4 +1,4 @@
-import { type Connection, FHIR_ID, held, trimmed } from "./connect.js";
+import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { LIMITS, type Limits, type QueryPlan, type Search } from "./plan.js";
 import { type Answer, parsed, Requests } from "./requests.js";
@@ -12,7 +12,7 @@ export interface PulledEntry {
 
 /** A patient's records as one pull from one hospital found them: what an import is made from. */
 export interface Pull {
-  /** The directory row's FHIR base, as given: the `bridge:serverBaseUrl` the adapter names records from. */
+  /** The connection's FHIR base, with no trailing slash: the `bridge:serverBaseUrl` the adapter names records from. */
   readonly fhirBase: string;
   /** The patient, by the hospital's id. */
   readonly patient: string;
@@ -67,7 +67,7 @@ export async function pull(
     { ...LIMITS, ...options.limits },
     options.signal,
   );
-  const base = trimmed(connection.row.fhirBase);
+  const base = connection.fhirBase;
   const origin = new URL(base).origin;
   const patient = encodeURIComponent(connection.patient);
   const entries = new Map<string, PulledEntry>();
@@ -190,7 +190,7 @@ export async function pull(
   }
 
   return {
-    fhirBase: connection.row.fhirBase,
+    fhirBase: base,
     patient: connection.patient,
     retrievedAt: retrievedAt.toISOString(),
     bundle: {
