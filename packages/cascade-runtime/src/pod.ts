@@ -36,8 +36,9 @@ const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
 const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
 const UUID = "urn:uuid:";
-/** The matcher's tables every pod is given: the rules' tables, whose rule list is the newest, alpha test data. */
-export const TABLES = "runtime/scripted-input/gus/references/";
+/** The matcher's tables every pod is given: those of Priya's kit, whose rule list is the newest, alpha test data. */
+export const TABLES =
+  "conformance/priya-natarajan/scripted-input/priya/references/";
 
 /** A name as a person reads it, its runs of white space one space. */
 function spaced(name: string): string {
