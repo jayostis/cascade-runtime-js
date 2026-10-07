@@ -338,6 +338,9 @@ export function opening(section, rows) {
   );
 }
 
+/** A dialog's first link: it covers the page behind the box, so a click outside the box closes it. */
+const BACKDROP = `<a class="backdrop" href="#" aria-label="Close the box" tabindex="-1"></a>`;
+
 /**
  * The section's tile, a link that opens its dialog, and the dialog: a filter box and a table, a heading button per
  * column, each cell holding what it sorts by in `data-key`.
@@ -373,6 +376,7 @@ export function tile(section, rows) {
   return {
     tile: `<a class="tile" href="#${id}"><span class="kind">${escaped(section.title)}</span><span class="count">${rows.length}</span><span class="peek">${escaped(names)}</span></a>`,
     dialog: `<div class="dialog" id="${id}" role="dialog" aria-labelledby="${id}-title">
+${BACKDROP}
 <div class="box wide">
 <a class="close" href="#" aria-label="Close">×</a>
 <h2 id="${id}-title">${escaped(section.title)} <span class="muted">${rows.length}</span></h2>
@@ -537,6 +541,7 @@ export function newPodDialog({ people, pods, action, more }) {
       ? ""
       : `<p><strong>${escaped(said)}</strong></p>\n<ul class="people">\n${items.join("\n")}\n</ul>`;
   return `<div class="dialog" id="new-pod" role="dialog" aria-labelledby="new-pod-title">
+${BACKDROP}
 <div class="box">
 <a class="close" href="#" aria-label="Close">×</a>
 <h2 id="new-pod-title">Make a new pod</h2>
@@ -791,7 +796,8 @@ form.inline { display: inline; }
 .note { border-left: 3px solid var(--accent); padding: 0.5rem 0.9rem; background: var(--tint); border-radius: 0 7px 7px 0; margin: 0 0 1.25rem; }
 .dialog { display: none; position: fixed; inset: 0; background: rgb(0 0 0 / 0.45); padding: 1rem; overflow: auto; }
 .dialog:target { display: grid; place-items: center; }
-.dialog .box { background: var(--panel); border-radius: 12px; padding: 1.5rem 1.75rem; max-width: 34rem; width: 100%; box-shadow: 0 10px 40px rgb(0 0 0 / 0.3); }
+.dialog .backdrop { position: fixed; inset: 0; }
+.dialog .box { position: relative; background: var(--panel); border-radius: 12px; padding: 1.5rem 1.75rem; max-width: 34rem; width: 100%; box-shadow: 0 10px 40px rgb(0 0 0 / 0.3); }
 .dialog .box.wide { max-width: 44rem; }
 .dialog .close { float: right; text-decoration: none; color: var(--muted); font-size: 1.4rem; line-height: 1; }
 .people { list-style: none; padding: 0; margin: 0.5rem 0 1.25rem; }
@@ -804,9 +810,19 @@ form.inline { display: inline; }
 
 /**
  * In a page, under `root`: a heading sorts its table by its column, one way then the other, and a filter box hides the
- * rows without its text. It listens on `root`, so tables written into it later sort and filter too.
+ * rows without its text. It listens on `root`, so tables written into it later sort and filter too. Escape closes the
+ * open box, as its close link does; that listener is the document's, added once however often this runs on it.
  */
 export function sortAndFilter(root, by = compare) {
+  const page = root.ownerDocument ?? root;
+  if (!page.closesOnEscape) {
+    page.closesOnEscape = true;
+    page.addEventListener("keydown", (event) => {
+      const { location } = page.defaultView;
+      if (event.isComposing || event.defaultPrevented) return;
+      if (event.key === "Escape" && location.hash !== "") location.hash = "";
+    });
+  }
   root.addEventListener("click", (event) => {
     const button = event.target.closest?.("th button");
     if (!button) return;

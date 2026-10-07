@@ -349,7 +349,7 @@ async function column(page: Page, head: string): Promise<string[]> {
   );
 }
 
-test("in the lab results' box of the joined pod, a heading sorts by its column one way then the other, numbers as numbers, and the filter keeps only the rows holding its text", async () => {
+test("in the lab results' box of the joined pod, a heading sorts by its column one way then the other, numbers as numbers, the filter keeps only the rows holding its text, and a click outside the box or Escape closes it", async () => {
   const page = watched(await profile.newPage());
   await page.goto(
     `${served.url}try/index.html?pod=${view.slug(joined.person.name)}`,
@@ -387,6 +387,16 @@ test("in the lab results' box of the joined pod, a heading sorts by its column o
     rows.filter((row) => row.toLowerCase().includes(first.toLowerCase())),
   );
   assert.ok(kept.length < rows.length, "the filter hid nothing");
+
+  const open = (): Promise<boolean> => page.isVisible("#see-lab-results");
+  await page.click("#see-lab-results h2");
+  assert.ok(await open(), "a click in the box closed it");
+  await page.mouse.click(5, 5);
+  assert.ok(!(await open()), "a click outside the box left it open");
+  await page.click('a.tile[href="#see-lab-results"]');
+  assert.ok(await open());
+  await page.keyboard.press("Escape");
+  assert.ok(!(await open()), "Escape left the box open");
 });
 
 test("after a reload, the pods made in this browser are still on the left", async () => {
