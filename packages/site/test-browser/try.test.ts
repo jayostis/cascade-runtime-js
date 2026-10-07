@@ -399,18 +399,22 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   );
 });
 
-test("a first visit where no sample copies says there are no pods yet, and offers each sample to load", async () => {
+test("a first visit where no sample copies says there are no pods yet, and offers each sample to load, which loads it", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    await page.route(/\/(alex-rivera|priya-natarajan)\/pod\//, (route) =>
-      route.abort(),
-    );
+    const samples = /\/(alex-rivera|priya-natarajan)\/pod\//;
+    await page.route(samples, (route) => route.abort());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
     assert.equal(await page.textContent("main h1"), "No pods yet");
     assert.deepEqual(await texts(page, "nav a"), []);
     assert.deepEqual(await loadable(page), [ALEX, "priya-natarajan"]);
+
+    await page.unroute(samples);
+    await newPod(page, "Load Alex Rivera");
+    assert.equal(await page.textContent("main h1"), "Alex Rivera");
+    assert.deepEqual(await texts(page, "nav a"), ["Alex Rivera"]);
   } finally {
     await context.close();
   }
