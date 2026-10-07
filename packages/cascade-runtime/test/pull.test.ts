@@ -21,13 +21,21 @@ let south: Pull;
 let pod: Pod;
 let folder: string;
 
-/** The `fullUrl` of the pull's one resource of the type coded so. */
+/** The `fullUrl` of the pull's one resource of the type whose code, or medication's code, is so. */
 function coded(pulled: Pull, type: string, code: string): string {
-  const found = pulled.bundle.entry.filter(
-    ({ resource }) =>
-      (resource as { resourceType?: string }).resourceType === type &&
-      JSON.stringify(resource).includes(`"code":"${code}"`),
-  );
+  const found = pulled.bundle.entry.filter(({ resource }) => {
+    const said = resource as {
+      resourceType?: string;
+      code?: { coding?: { code?: string }[] };
+      medicationCodeableConcept?: { coding?: { code?: string }[] };
+    };
+    return (
+      said.resourceType === type &&
+      (said.code ?? said.medicationCodeableConcept)?.coding?.some(
+        (coding) => coding.code === code,
+      ) === true
+    );
+  });
   assert.equal(found.length, 1, `${pulled.source} has one ${type} ${code}`);
   return found[0]!.fullUrl;
 }

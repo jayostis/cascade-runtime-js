@@ -61,7 +61,7 @@ const KINDS: ReadonlyMap<string, string> = new Map([
 
 /**
  * The pull as the folder `name` of two files: `bundle.json`, its Bundle, the import's one document; and `pull.json`,
- * everything else the pull holds.
+ * everything else the pull holds. A pull the import would refuse is refused here, before it is saved.
  */
 export function pullFiles(
   pull: SavedPull,
@@ -70,6 +70,7 @@ export function pullFiles(
   if (name === "" || name === "." || name === ".." || /[/\\]/.test(name))
     throw new TypeError(`a pull is saved under one folder name, not ${name}`);
   const { bundle, ...rest } = pull;
+  checked(rest);
   const encoder = new TextEncoder();
   return new Map([
     [`${name}/${PULL}`, encoder.encode(`${JSON.stringify(rest, null, 2)}\n`)],
@@ -94,7 +95,10 @@ function json(bytes: Uint8Array): unknown {
 }
 
 function described(bytes: Uint8Array): Described {
-  const value = json(bytes);
+  return checked(json(bytes));
+}
+
+function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error(`${PULL} is not a JSON object`);
   const { fhirBase, patient, source, retrievedAt } = value as Record<
@@ -109,6 +113,8 @@ function described(bytes: Uint8Array): Described {
   }
   if (
     typeof fhirBase !== "string" ||
+    fhirBase !== fhirBase.trim() ||
+    fhirBase.endsWith("/") ||
     base?.protocol !== "https:" ||
     base.search !== "" ||
     base.hash !== "" ||
@@ -116,16 +122,21 @@ function described(bytes: Uint8Array): Described {
     fhirBase.includes("#")
   )
     throw new Error(
-      `${PULL}'s fhirBase is not an https: URL with no query or fragment`,
+      `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
     );
   if (typeof patient !== "string" || !FHIR_ID.test(patient))
     throw new Error(`${PULL}'s patient is not a FHIR id`);
   if (typeof source !== "string" || source.trim() === "")
     throw new Error(`${PULL}'s source is not a name`);
+  const at =
+    typeof retrievedAt === "string" && UTC.test(retrievedAt)
+      ? new Date(retrievedAt)
+      : undefined;
   if (
     typeof retrievedAt !== "string" ||
-    !UTC.test(retrievedAt) ||
-    Number.isNaN(Date.parse(retrievedAt))
+    at === undefined ||
+    Number.isNaN(at.getTime()) ||
+    at.toISOString().slice(0, 19) !== retrievedAt.slice(0, 19)
   )
     throw new Error(`${PULL}'s retrievedAt is not a time in UTC`);
   return { fhirBase, patient, source, retrievedAt };
@@ -164,17 +175,28 @@ async function read(
   return { pull, bytes };
 }
 
-function kindOf(resource: Record<string, unknown>): string {
-  const type = String(resource.resourceType);
-  if (type === "Observation") {
-    const laboratory = (
-      Array.isArray(resource.category) ? resource.category : []
-    ).some((concept: { coding?: { code?: unknown }[] }) =>
-      (concept.coding ?? []).some(({ code }) => code === "laboratory"),
+function codes(concepts: unknown): unknown[] {
+  return (Array.isArray(concepts) ? concepts : []).flatMap((concept) => {
+    const coding =
+      typeof concept === "object" && concept !== null
+        ? (concept as { coding?: unknown }).coding
+        : undefined;
+    return (Array.isArray(coding) ? coding : []).map((one) =>
+      typeof one === "object" && one !== null
+        ? (one as { code?: unknown }).code
+        : undefined,
     );
-    return laboratory ? "Lab result" : type;
-  }
-  return KINDS.get(type) ?? type;
+  });
+}
+
+/** The resource's `rec:kind`, or undefined where the adapter makes no record of it. */
+function kindOf(resource: Record<string, unknown>): string | undefined {
+  const type = resource.resourceType;
+  if (type === "Observation")
+    return codes(resource.category).includes("laboratory")
+      ? "Lab result"
+      : undefined;
+  return typeof type === "string" ? KINDS.get(type) : undefined;
 }
 
 /** The importer of a pull saved by `pullFiles`: its Bundle, with what `pull.json` says of it. */
@@ -199,7 +221,7 @@ export const fhirPull = {
     ];
   },
 
-  /** One entry for each resource of the Bundle but the Patient: a pull has no index apart from its document. */
+  /** One entry for each resource of the Bundle the adapter makes a record of: a pull has no index apart from its document. */
   async index(
     files: PullFiles,
     folder: string,
@@ -220,13 +242,13 @@ export const fhirPull = {
           ? (entry as { resource?: unknown }).resource
           : undefined;
       if (typeof resource !== "object" || resource === null) return [];
-      const record = resource as Record<string, unknown>;
-      if (record.resourceType === "Patient") return [];
+      const kind = kindOf(resource as Record<string, unknown>);
+      if (kind === undefined) return [];
       return [
         {
           source: pull.source,
           server: pull.fhirBase,
-          kind: kindOf(record),
+          kind,
           received: pull.retrievedAt,
         },
       ];
