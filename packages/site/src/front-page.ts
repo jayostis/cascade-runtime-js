@@ -9,6 +9,7 @@ export const START_PAGE = "start.html";
 export const EXAMPLES_PAGE = "examples.html";
 export const TRY = "try/";
 export const TRY_PAGE = `${TRY}index.html`;
+export const CONNECT = "connect/";
 const POD_ENTRY = "manifest.ttl";
 
 /** An example's site, placed in the folder named after its kit. */
@@ -182,13 +183,15 @@ ${
 
 /**
  * The Pages tree: the newcomer's front page, the quick start, the examples' page, each example's site in its folder with its pod's
- * files listed, and the page that tries a pod in a browser, `tried`, under `try/`.
+ * files listed, the page that tries a pod in a browser, `tried`, under `try/`, and the page that connects to a demo
+ * hospital, `connected`, under `connect/`, which nothing links yet.
  */
 export function pagesTree(
   examples: readonly Example[],
   built: BuiltFrom,
   start: Start,
   tried: ReadonlyMap<string, Uint8Array>,
+  connected: ReadonlyMap<string, Uint8Array> = new Map(),
 ): Map<string, Uint8Array> {
   const shown = examples.find(({ folder }) => folder === start.example);
   if (shown === undefined)
@@ -211,6 +214,7 @@ export function pagesTree(
     );
   }
   for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
+  for (const [path, bytes] of connected) tree.set(CONNECT + path, bytes);
   const hasTry = tree.has(TRY_PAGE);
   tree.set(START_PAGE, encoder.encode(startPage(start, shown, hasTry)));
   tree.set(FRONT_PAGE, encoder.encode(frontPage(start, examples, hasTry)));

@@ -44,6 +44,7 @@ export type {
   Row,
 } from "../pod.js";
 export * from "../connect/index.js";
+export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";

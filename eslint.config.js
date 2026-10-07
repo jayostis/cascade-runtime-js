@@ -18,6 +18,18 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/site/connect/**/*.js"],
+    languageOptions: {
+      globals: {
+        document: "readonly",
+        indexedDB: "readonly",
+        location: "readonly",
+        URL: "readonly",
+        window: "readonly",
+      },
+    },
+  },
+  {
     files: ["packages/demo-hospital/**"],
     rules: {
       "no-restricted-imports": [

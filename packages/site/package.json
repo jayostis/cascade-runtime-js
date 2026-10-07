@@ -9,9 +9,11 @@
     ".": "./dist/src/index.js"
   },
   "dependencies": {
+    "@cascade-runtime/demo-hospital": "0.0.0",
     "@cascade-runtime/runtime": "0.0.0"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "playwright": "1.63.0"
   }
 }

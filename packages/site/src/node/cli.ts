@@ -35,6 +35,7 @@ import {
 import { type Example, type Ingredient, pagesTree } from "../front-page.js";
 import { Site } from "../site.js";
 import { TRY_PACKAGE, tryPage } from "../try-page.js";
+import { connectFiles } from "./connect.js";
 import { servePages } from "./serve.js";
 import { startOf } from "./start.js";
 
@@ -276,6 +277,7 @@ async function buildPages(): Promise<number> {
       ["app.js", await readFile(APP)],
       ...staged.files,
     ]),
+    await connectFiles(),
   );
   const out = PAGES;
   await rm(out, { recursive: true, force: true });
