@@ -26,6 +26,23 @@ The server answers on `127.0.0.1` only, at the port in `PORT`, or 3000. It sees
 a pod loaded while it runs; after `pod:reset` of a pod it has shown, restart it.
 Stop it with Ctrl+C in its terminal.
 
+## Bring in a record from a hospital
+
+A pod's page links to "Bring in a record from a hospital". Search the test
+directory by name or place, and press Sign in:
+
+1. Your browser goes to the hospital's own sign-in page. A demo hospital's
+   asks whom to sign in as and offers Allow and Cancel.
+2. The hospital sends you back to this app, at `/callback`.
+3. The connection's page waits while the record is pulled, then shows what it
+   holds and whether the pod already has records from that hospital.
+4. "Bring this record in" imports it into the pod as its person's.
+
+Cascade North and Cascade South are pretend hospitals, in `demo-hospital/`,
+with made-up patients. They need no account and no network: this app serves
+their sign-in pages under `/demo-hospitals/`. The SMART Health IT Sandbox is a
+real test server and needs the network.
+
 ## The commands
 
 An option to an npm script goes after `--`, or npm keeps it for itself.
@@ -47,6 +64,8 @@ beside `alex-rivera`.
 ## The files
 
 - `server.mjs`: the app, on `node:http`, with no framework and no build step.
+- `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
+- `demo-hospital/`: the pretend hospitals, a package of this app's own.
 - `pods.mjs`: what the commands share: where pods live and which one a command
   works on.
 - `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands.

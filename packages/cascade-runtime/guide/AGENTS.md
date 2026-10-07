@@ -40,7 +40,10 @@ This app was made from a starter, a demonstration: rebuild it in any framework,
 keeping the package and the pods, under `pods/<name>/` (it ships none).
 
 - `npm start` serves the app; stop it with Ctrl+C or by its process, never by
-  killing every Node process. An option to an npm script goes after `--`.
+  killing every Node process. A pod's page links to bringing in a record from a
+  hospital of the test directory: the app's `hospitals.mjs` signs in, receiving
+  the redirect on `/callback`, and serves the demo hospitals' sign-in pages
+  under `/demo-hospitals/`. An option to an npm script goes after `--`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
   exports, and `priya-natarajan` Priya Natarajan's, from exports and C-CDA
@@ -139,7 +142,11 @@ person said no or closed the sign-in.
 
 **The sign-in step** differs:
 
-- In Node it is `loopbackSignIn`.
+- In Node, an app with a server of its own, as the starter is, sends the
+  person to the authorize URL and receives the redirect on a route of its own:
+  the starter's `/callback`, at its registration's redirect URI, finds the
+  waiting sign-in by the redirect's `state`. An app with no server uses
+  `loopbackSignIn`, which listens for the redirect itself.
 - In a browser it is `popupSignIn({ popup })`. Open the popup with
   `window.open` in the click that asked to connect, since a browser blocks it
   once the click is over, and pass it in.
@@ -158,6 +165,58 @@ person said no or closed the sign-in.
   `https://*.demo.invalid`.
 - A hard reload bypasses the worker. The site's `connect/` page shows all of
   this.
+- A real browser cannot open a `.demo.invalid` address, so the app serves a
+  demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
+  hospital's page under the app's own origin, and the app hands every request
+  there to that `fetch`. The starter does, under `/demo-hospitals/`.
+
+In Node, from finding the hospital to its record in a pod of its own:
+
+```js
+import { demoFetch } from "@cascade-runtime/demo-hospital";
+import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
+import {
+  connect,
+  DEMO_PLAN,
+  pull,
+  pullFiles,
+  searchDirectory,
+  TEST_DIRECTORY,
+} from "cascade-runtime";
+
+const app = "http://127.0.0.1:3000";
+const demoHospitals = demoFetch(await loadHospitals(), {
+  authorizeBase: `${app}/demo-hospitals/`,
+});
+const [north] = searchDirectory(TEST_DIRECTORY, "north");
+const connection = await connect(
+  north,
+  {
+    clientId: "my-app",
+    redirectUri: `${app}/callback`,
+    scopes: ["launch/patient", "patient/*.read", "patient/*.rs"],
+  },
+  {
+    signIn: (authorize) => openBrowser(authorize),
+    fetch: demoHospitals,
+  },
+);
+const record = await pull(connection, DEMO_PLAN);
+const hospitalPod = await openPod("pods/hospital");
+const files = pullFiles(record, "cascade-north-1");
+if (
+  await askPerson("Are these records yours?", await hospitalPod.look(files))
+) {
+  const brought = await hospitalPod.import(files, { aboutSubject: true });
+  if (brought.refused) await showPerson(`Not brought in: ${brought.refused}`);
+}
+await hospitalPod.close();
+```
+
+`openBrowser(authorize)` is the app's: it sends the person to the hospital's
+page and resolves with the URL the hospital redirected back to, the redirect
+URI with its `code` and `state`. The hospital's page is under the app's
+`/demo-hospitals/`, which the app's server answers with `demoHospitals`.
 
 ## Ask
 
@@ -448,4 +507,7 @@ await her.close();
 - The matcher's tables are alpha test tables: a real export gets few joins.
 - Alex's story runs into 2027: a record entered today orders before hers.
 - Node 22 or later, the pod in a folder or in memory; each call rebuilds its views.
-- No server, sign-in or sharing.
+- Sign-in reaches only the test directory: the demo hospitals and the SMART
+  launcher, no real hospital. A sign-in lasts one pull: no refresh, no staying
+  signed in.
+- No server or sharing.

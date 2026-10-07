@@ -72,7 +72,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ["packages/cascade-runtime/test/**"],
+    files: [
+      "packages/cascade-runtime/test/**",
+      "packages/cascade-runtime/starter/**",
+    ],
     rules: {
       "no-restricted-imports": "off",
     },
