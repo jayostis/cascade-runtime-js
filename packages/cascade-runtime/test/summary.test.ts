@@ -118,6 +118,30 @@ test("a cell with nothing to sort by sorts after the rest", () => {
     assert.ok(view.compare(type, "", key) > 0, type);
 });
 
+test("every box's first link, outside the box, closes it", () => {
+  const page = [
+    view.podPage(
+      {
+        [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
+        [LABS]: [{ entry: "e2", test: "Glucose" }],
+      },
+      { pod: "alex-rivera", signIn: () => "", findHospital: "?hospitals" },
+    ),
+    view.newPodDialog({ people: [], pods: [], action: "make" }),
+  ].join("\n");
+  const boxes = page.split('<div class="dialog"').slice(1);
+  assert.equal(boxes.length, 3);
+  for (const box of boxes) {
+    const first = /<a [^>]*>/.exec(box)?.[0] ?? "";
+    assert.match(first, / href="#"/, box.slice(0, 80));
+    assert.match(first, / aria-label="Close"/, box.slice(0, 80));
+    assert.ok(
+      box.indexOf(first) < box.indexOf('<div class="box'),
+      box.slice(0, 80),
+    );
+  }
+});
+
 test("a table opens newest first, a row with no date last", () => {
   const section = view.SECTIONS.find(
     ({ question }: { question: string }) => question === LABS,
