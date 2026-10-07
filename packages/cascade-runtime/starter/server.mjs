@@ -80,25 +80,24 @@ async function showPod(response, name, query, names) {
   const answers = {};
   for (const question of QUESTIONS) answers[question] = await pod.ask(question);
   const from = query.get("from");
-  const connection =
-    from === null ? undefined : hospitals.connection(name, from);
-  const imported = await connection?.imported?.catch(() => undefined);
+  const noted = from === null ? undefined : hospitals.connection(name, from);
+  const imported = await noted?.imported?.catch(() => undefined);
   const found = query.has("connection")
     ? hospitals.connection(name, query.get("connection"))
     : undefined;
   // As it is now, so that the box and whether the page refreshes agree on its step.
-  const open = found === undefined ? undefined : { ...found };
+  const shown = found === undefined ? undefined : { ...found };
   const box =
-    open === undefined
+    shown === undefined
       ? undefined
       : connectionDialog({
           id: "connection",
           pod: name,
-          hospital: open.row.name,
+          hospital: shown.row.name,
           back: podPath(name),
-          connection: open,
-          bring: `${podPath(name)}connections/${open.n}`,
-          ...(await connectionView(name, open)),
+          connection: shown,
+          bring: `${podPath(name)}connections/${shown.n}`,
+          ...(await connectionView(name, shown)),
         });
   const body = podPage(answers, {
     pod: name,
@@ -106,7 +105,7 @@ async function showPod(response, name, query, names) {
     from:
       imported === undefined || imported.refused !== undefined
         ? undefined
-        : connection.row.name,
+        : noted.row.name,
     signIn: (hospital) =>
       signIn(
         name,
@@ -122,7 +121,7 @@ async function showPod(response, name, query, names) {
     await page(personName(name), body, {
       current: name,
       names,
-      refresh: open?.step === "signing in" || open?.step === "pulling",
+      refresh: shown?.step === "signing in" || shown?.step === "pulling",
     }),
   );
 }
@@ -210,9 +209,14 @@ async function connectionView(name, connection) {
     return {};
   const { failed, pulled, files } = await filesOf(connection);
   if (failed !== undefined) return { failed };
+  let done;
+  try {
+    done = await connection.imported;
+  } catch (error) {
+    return { failed: notBroughtIn(error), retry: true };
+  }
   if (connection.failed !== undefined)
     return { failed: connection.failed, retry: true };
-  const done = await connection.imported?.catch(() => undefined);
   if (done?.refused !== undefined)
     return { failed: `Refused: ${done.refused}` };
   return {
@@ -221,6 +225,8 @@ async function connectionView(name, connection) {
     about: patientName(pulled.bundle),
   };
 }
+
+const notBroughtIn = (error) => `Not brought in: ${error.message}`;
 
 /** Brings a connection's record into the pod, and goes back to it: noting the record, or with the box saying why not. */
 async function bring(response, name, connection) {
@@ -239,7 +245,7 @@ async function bring(response, name, connection) {
     done = await connection.imported;
   } catch (error) {
     connection.imported = undefined;
-    connection.failed = `Not brought in: ${error.message}`;
+    connection.failed = notBroughtIn(error);
     return redirect(response, box);
   }
   if (done.refused !== undefined) return redirect(response, box);

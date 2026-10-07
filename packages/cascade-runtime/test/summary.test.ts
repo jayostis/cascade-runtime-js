@@ -160,6 +160,27 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
   }
 });
 
+test("Escape follows the open box's own close link, and with none clears the hash", () => {
+  const press = (close?: { click: () => void }): string => {
+    let keydown = (_event: object): void => {};
+    const location = { hash: "#connection" };
+    const page = {
+      defaultView: { location },
+      addEventListener: (type: string, listener: typeof keydown) => {
+        if (type === "keydown") keydown = listener;
+      },
+      querySelector: () => close ?? null,
+    };
+    view.sortAndFilter(page);
+    keydown({ key: "Escape" });
+    return location.hash;
+  };
+  let clicked = 0;
+  assert.equal(press({ click: () => (clicked += 1) }), "#connection");
+  assert.equal(clicked, 1);
+  assert.equal(press(), "");
+});
+
 test("a table opens newest first, a row with no date last", () => {
   const section = view.SECTIONS.find(
     ({ question }: { question: string }) => question === LABS,

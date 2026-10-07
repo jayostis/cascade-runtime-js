@@ -824,8 +824,8 @@ form.inline { display: inline; }
 
 /**
  * In a page, under `root`: a heading sorts its table by its column, one way then the other, and a filter box hides the
- * rows without its text. It listens on `root`, so tables written into it later sort and filter too. Escape closes the
- * open box, as its close link does; that listener is the document's, added once however often this runs on it.
+ * rows without its text. It listens on `root`, so tables written into it later sort and filter too. Escape follows the
+ * open box's own close link; that listener is the document's, added once however often this runs on it.
  */
 export function sortAndFilter(root, by = compare) {
   const page = root.ownerDocument ?? root;
@@ -834,7 +834,10 @@ export function sortAndFilter(root, by = compare) {
     page.addEventListener("keydown", (event) => {
       const { location } = page.defaultView;
       if (event.isComposing || event.defaultPrevented) return;
-      if (event.key === "Escape" && location.hash !== "") location.hash = "";
+      if (event.key !== "Escape") return;
+      const close = page.querySelector(".dialog:target .close");
+      if (close) close.click();
+      else if (location.hash !== "") location.hash = "";
     });
   }
   root.addEventListener("click", (event) => {

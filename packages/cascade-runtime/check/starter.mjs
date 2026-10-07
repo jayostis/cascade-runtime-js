@@ -219,16 +219,17 @@ function heading(html) {
   return textOf(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? "");
 }
 
-/** The connection's box over the pod's page, as HTML: from its start to the next box or the end of the page's main. */
+/** The connection's box over the pod's page, as HTML: from its start to the end of the element it starts. */
 function connectionBox(html) {
   const start = html.indexOf('<div class="dialog" id="connection"');
   assert.ok(start !== -1, "the pod's page holds no connection box");
-  const rest = html.slice(start + 1);
-  const ends = [rest.indexOf('<div class="dialog"'), rest.indexOf("</main>")];
-  return html.slice(
-    start,
-    start + 1 + Math.min(...ends.filter((at) => at !== -1)),
-  );
+  let depth = 0;
+  for (const tag of html.slice(start).matchAll(/<(\/?)div\b[^>]*>/g)) {
+    depth += tag[1] === "" ? 1 : -1;
+    if (depth === 0)
+      return html.slice(start, start + tag.index + tag[0].length);
+  }
+  assert.fail("the connection box is never closed");
 }
 
 /** The hospital the pod's page says a record was just brought in from, as the page names it, or undefined. */
@@ -669,10 +670,10 @@ if (release === undefined) {
       return connectionBox(html);
     };
 
-    /** Brings the record in with the button of the connection's box; gives the pod's page it goes back to. */
-    const bringIn = async (connection) => {
+    /** Brings the record in with the button of the connection's box, `box`; gives the pod's page it goes back to. */
+    const bringIn = async (box) => {
       const action = /<form\b[^>]*action="([^"]*\/connections\/\d+)"/.exec(
-        connectionBox(await settled(server, connection)),
+        box,
       )?.[1];
       assert.ok(action, "the connection's box has no button to bring it in");
       const imported = await send(action, {});
@@ -739,7 +740,8 @@ if (release === undefined) {
             expected.patient,
             "allow",
           );
-          const looked = readable(await boxed(connection, "Hospital"));
+          const box = await boxed(connection, "Hospital");
+          const looked = readable(box);
           const [source] = expected.look;
           const what = /What (.+?) has:/.exec(looked)?.[1];
           assert.ok(
@@ -754,7 +756,7 @@ if (release === undefined) {
               `no ${count} ${kind}`,
             );
           assert.ok(looked.includes("has nothing from here yet"));
-          const back = await bringIn(connection);
+          const back = await bringIn(box);
           assert.ok(
             names(noteOf(back) ?? "", expected.row.name),
             "no note after the import",
@@ -800,14 +802,15 @@ if (release === undefined) {
           let shown;
           for (const { hospital, fhirBase, patient } of expected.rowan) {
             const connection = await signIn(pod, fhirBase, patient, "allow");
-            const box = readable(await boxed(connection, ROWAN));
+            const box = await boxed(connection, ROWAN);
+            const said = readable(box);
             assert.ok(
-              box.includes("Record fetched") &&
-                /What (.+?) has:/.test(box) &&
-                names(box, hospital),
+              said.includes("Record fetched") &&
+                /What (.+?) has:/.test(said) &&
+                names(said, hospital),
               `the box over ${ROWAN}'s pod does not say what ${hospital} has`,
             );
-            shown = await bringIn(connection);
+            shown = await bringIn(box);
             assert.ok(
               names(noteOf(shown) ?? "", hospital),
               `no note naming ${hospital}`,
