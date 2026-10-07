@@ -156,7 +156,7 @@ parameter("count", /no file|1 file|\d+ files/, (text) =>
 );
 parameter(
   "view",
-  /allergies|conditions|immunizations|procedures|patient-profile/,
+  /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile/,
 );
 parameter("lens", /[a-z]+/);
 parameter("record", /[^:]+/);
