@@ -181,7 +181,7 @@ jobs:
             build/release-notes.md
           if-no-files-found: error
 
-  # The developer stories' scripts, run on the installed package in an empty folder that it can neither read nor write outside.
+  # The developer stories' scripts and downloads, copied into the folder the package is installed in, run there on the installed package and can neither read nor write outside it.
   package-install:
     name: package-install (${{ matrix.os }})
     needs: package
