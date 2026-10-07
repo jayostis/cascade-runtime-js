@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseGraph } from "../src/graph.js";
-import { contentName, earlierInUtc } from "../src/names.js";
+import {
+  ccdaRecordName,
+  contentName,
+  earlierInUtc,
+  fingerprint,
+} from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 
 test("a version is named from its literals as written, before any store reads them, as the Bridge spec's typed-literals vector names it", async () => {
@@ -28,5 +33,49 @@ test("one time is earlier than another by its instant, whether or not either has
   assert.ok(earlierInUtc("2026-09-01T10:00:00.25Z", "2026-09-01T10:00:00.3Z"));
   assert.ok(
     earlierInUtc("2026-09-01T12:00:00+02:00", "2026-09-01T10:00:00.1Z"),
+  );
+});
+
+test("a C-CDA record is named from its class, its identifier and its key's fingerprint, as the Bridge spec's vectors name it", async () => {
+  const active = [
+    "code=91936005",
+    "effectiveTime=20250327120000+0000",
+    "status=active",
+  ];
+  assert.equal(await fingerprint(active), "506034893686827");
+  assert.equal(
+    await fingerprint([...active].reverse().concat(active)),
+    "506034893686827",
+  );
+  assert.equal(await fingerprint([]), "0");
+  assert.equal(
+    await ccdaRecordName({
+      class: "AllergyIntolerance",
+      identifier: "2.16.840.1.113883.19.5:8237461",
+    }),
+    "urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31",
+  );
+  assert.equal(
+    await ccdaRecordName({
+      class: "AllergyIntolerance",
+      identifier: "2.16.840.1.113883.19.5:2210",
+      key: active,
+    }),
+    "urn:uuid:146187ec-84af-85ab-b1b4-8f06a954fa2c",
+  );
+  assert.equal(
+    await ccdaRecordName({
+      class: "Condition",
+      identifier: "",
+      members: [
+        "urn:hl7-org:v3code@http://sparql.xyz/facade-x/data/nullFlavor=UNK",
+        "urn:hl7-org:v3originalText=left knee pain",
+      ],
+    }),
+    "urn:uuid:6e689e64-69b0-81a5-878f-e5debf9e21f4",
+  );
+  assert.equal(
+    await ccdaRecordName({ class: "Observation", identifier: "" }),
+    "urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982",
   );
 });

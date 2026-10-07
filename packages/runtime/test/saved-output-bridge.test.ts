@@ -8,12 +8,13 @@ import { SavedOutputBridge } from "../src/saved-output-bridge.js";
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-test("the saved-output Bridge answers a conversion from what the step saved, and refuses one it saved nothing for", async () => {
+test("the saved-output Bridge answers a document from what the step saved, declines one it marks unaccepted, and fails on one it saved nothing for", async () => {
   const story = new MemoryFiles("https://vocabulary.example/");
   const peanut = bytes(
     '{"resourceType": "AllergyIntolerance", "id": "peanut"}',
   );
   const mango = bytes('{"resourceType": "AllergyIntolerance", "id": "mango"}');
+  const kiwi = bytes('{"resourceType": "AllergyIntolerance", "id": "kiwi"}');
   await story.write(
     "s/export/clinical-records/AllergyIntolerance-peanut.json",
     peanut,
@@ -21,6 +22,14 @@ test("the saved-output Bridge answers a conversion from what the step saved, and
   await story.write(
     "s/export/clinical-records/AllergyIntolerance-mango.json",
     mango,
+  );
+  await story.write(
+    "s/export/clinical-records/AllergyIntolerance-kiwi.json",
+    kiwi,
+  );
+  await story.write(
+    "s/bridge/AllergyIntolerance-kiwi/unaccepted.txt",
+    new Uint8Array(),
   );
   await story.write(
     "s/bridge/AllergyIntolerance-peanut/graph.ttl",
@@ -59,8 +68,22 @@ test("the saved-output Bridge answers a conversion from what the step saved, and
     true,
   );
 
+  const downloaded = await (
+    await SavedOutputBridge.of(story, {
+      export: "s/export/clinical-records/AllergyIntolerance-peanut.json",
+      converted: "s/bridge",
+    })
+  ).load({ iri: "https://adapter.example/tree/c/", files: new Map() });
+  assert.deepEqual((await downloaded.convert(document)).graph, graph);
+
+  assert.equal(
+    await adapter.accepts({ iri: await documentName(kiwi), bytes: kiwi }),
+    false,
+  );
+  const unsaved = { iri: await documentName(mango), bytes: mango };
+  assert.equal(await adapter.accepts(unsaved), true);
   await assert.rejects(
-    adapter.convert({ iri: await documentName(mango), bytes: mango }),
-    (error) => isBridgeError(error) && error.kind === "document",
+    adapter.convert(unsaved),
+    (error) => isBridgeError(error) && error.kind === "bridge",
   );
 });

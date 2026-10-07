@@ -1,0 +1,17 @@
+{
+  "name": "@cascade-runtime/ccda-download",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The importer of a downloaded C-CDA: hands the file on as one document.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "dependencies": {
+    "saxes": "6.0.0"
+  },
+  "devDependencies": {
+    "oxigraph": "0.5.11"
+  }
+}

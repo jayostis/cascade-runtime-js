@@ -1,10 +1,12 @@
 import type { Files } from "./files.js";
 
-/** A document an importer found in an export. */
+/** A document an importer found in an export or a download. */
 export interface ExportDocument {
   /** Its path within the files the export was read from. */
   readonly path: string;
   readonly bytes: Uint8Array;
+  /** What it is, offered only to the adapters whose `bridge:sourceMediaType` is the same. */
+  readonly mediaType: string;
   readonly envelope?: string;
   /**
    * What the export says of the document and of its import, as Turtle about `bridge:thisDocument` and
@@ -25,10 +27,13 @@ export interface IndexEntry {
   readonly received?: string;
 }
 
-/** Finds the documents in one kind of export; the runtime knows each by the name `cascade-runtime.json` gives it. */
+/**
+ * Finds the documents in one kind of export, a folder or a downloaded file; the runtime knows each by the name
+ * `cascade-runtime.json` gives it.
+ */
 export interface Importer {
   readonly name: string;
-  /** Each document of the export in the folder, in the order they are filed, or undefined when it is no export of this kind. */
+  /** Each document of the export at the path, in the order they are filed, or undefined when it is no export of this kind. */
   documents(
     files: Pick<Files, "read" | "list">,
     folder: string,

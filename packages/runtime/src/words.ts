@@ -1,6 +1,6 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
-import { documentName, inUtc, recordName } from "./names.js";
+import { ccdaRecordName, documentName, inUtc, recordName } from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { iri, RDF, written } from "./rdf.js";
 import { referenceIndex, versionsNumbered } from "./references.js";
@@ -244,6 +244,25 @@ export class Words {
         inUtc(step.step.when),
         String(position),
       ]);
+    }
+    if (typeof inputs.class === "string") {
+      const { identifier, key, members } = inputs;
+      const strings = (value: unknown): value is string[] =>
+        Array.isArray(value) && value.every((part) => typeof part === "string");
+      if (
+        (identifier !== undefined && typeof identifier !== "string") ||
+        (key !== undefined && !strings(key)) ||
+        (members !== undefined && !strings(members))
+      )
+        throw new Error(
+          `handles.json gives ${handle} an identifier, a key or members it cannot read`,
+        );
+      return ccdaRecordName({
+        class: inputs.class,
+        ...(identifier === undefined ? {} : { identifier }),
+        ...(key === undefined ? {} : { key }),
+        ...(members === undefined ? {} : { members }),
+      });
     }
     if (typeof download === "string") {
       const document = await this.#document(`${this.#kit}/${download}`);

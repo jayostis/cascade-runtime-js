@@ -1,6 +1,7 @@
 import { basename, dirname, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ofMediaType,
   OxigraphStore,
   References,
   WasmBridge,
@@ -62,7 +63,7 @@ async function resolve(): Promise<ResolvedParts> {
         );
         const adapters = loaded.map(({ adapter }) => adapter);
         return {
-          adapters,
+          adapters: ofMediaType(loaded),
           close: async () => {
             await Promise.allSettled(adapters.map((adapter) => adapter.free()));
             bridge.close();

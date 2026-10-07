@@ -1,4 +1,9 @@
-import type { BridgeDocument, LoadedAdapter } from "./bridge.js";
+import {
+  type AdaptersOf,
+  type BridgeDocument,
+  isBridgeError,
+  type LoadedAdapter,
+} from "./bridge.js";
 import type { Files } from "./files.js";
 import { Graph, parseGraph } from "./graph.js";
 import type { ExportDocument } from "./importer.js";
@@ -354,23 +359,39 @@ function read(found: ExportDocument, started: string): Uint8Array {
   }
 }
 
+/** The Bridge's answer, a document failure being the document refused (A14). */
+async function refusing<T>(path: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (isBridgeError(error) && error.kind === "document")
+      throw new Refusal(`${path}: ${error.message}`);
+    throw error;
+  }
+}
+
+/** The first adapter of the document's media type that accepts it; none accepting it refuses the step (A14). */
 async function accepting(
-  adapters: readonly LoadedAdapter[],
+  adapters: AdaptersOf,
+  found: ExportDocument,
   document: BridgeDocument,
-): Promise<LoadedAdapter | undefined> {
-  for (const adapter of adapters)
-    if (await adapter.accepts(document)) return adapter;
-  return undefined;
+): Promise<LoadedAdapter> {
+  for (const adapter of adapters(found.mediaType))
+    if (await refusing(found.path, () => adapter.accepts(document)))
+      return adapter;
+  throw new Refusal(
+    `${found.path}: no adapter of ${found.mediaType} accepts it`,
+  );
 }
 
 /**
- * Files an export's documents, each converted by the first adapter that accepts it: A1 to A11, with the import named
- * by a new random ID (N7), and the refusals of A14.
+ * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
+ * the import named by a new random ID (N7), and the refusals of A14.
  */
 export async function fileExport(
   context: StepContext,
   documents: readonly ExportDocument[],
-  adapters: readonly LoadedAdapter[],
+  adapters: AdaptersOf,
 ): Promise<string> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
@@ -391,9 +412,10 @@ export async function fileExport(
       envelope: found.envelope,
       facts: { iri: `${documentIri}#facts`, bytes: read(found, started) },
     };
-    const adapter = await accepting(adapters, document);
-    if (adapter === undefined) continue;
-    const conversion = await adapter.convert(document);
+    const adapter = await accepting(adapters, found, document);
+    const conversion = await refusing(found.path, () =>
+      adapter.convert(document),
+    );
     const graph = await parseGraph(conversion.graph, documentIri, newStore);
     const subject = iri(documentIri);
     refuseUnaccounted(graph, subject, found.path);

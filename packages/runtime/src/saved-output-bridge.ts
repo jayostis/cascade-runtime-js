@@ -13,9 +13,12 @@ import { documentName } from "./names.js";
 
 /** Where a story's import step keeps what it read and what the Bridge made of it. */
 export interface SavedOutput {
-  /** The folder of the export, whose files are the documents. */
+  /** The folder of the export, whose files are the documents, or the one file downloaded. */
   readonly export: string;
-  /** The folder holding `<document's file stem>/graph.ttl` and `findings.ttl` for each document that is converted. */
+  /**
+   * The folder holding, under each document's file stem, `graph.ttl` and `findings.ttl` for a document that is
+   * converted, or `unaccepted.txt` for one no adapter accepted.
+   */
   readonly converted: string;
 }
 
@@ -26,8 +29,9 @@ function stemOf(path: string): string {
 }
 
 /**
- * A Bridge that answers each conversion from the output a story saved for it. It accepts every document, because a
- * story saves the output of every document the Bridge accepts, and it refuses to convert one it holds no output for.
+ * A Bridge that answers each conversion from the output a story saved for it. It accepts every document but one the
+ * story marks unaccepted, and fails as the Bridge itself would, stopping the step, to convert one it holds no output
+ * for: a story saves what became of every document the Bridge was asked about.
  */
 export class SavedOutputBridge implements Bridge {
   private constructor(
@@ -41,7 +45,8 @@ export class SavedOutputBridge implements Bridge {
     saved: SavedOutput,
   ): Promise<SavedOutputBridge> {
     const stems = new Map<string, string>();
-    for (const path of await files.list(saved.export)) {
+    const listed = await files.list(saved.export);
+    for (const path of listed.length > 0 ? listed : [saved.export]) {
       const bytes = await files.read(path);
       if (bytes !== undefined)
         stems.set(await documentName(bytes), stemOf(path));
@@ -65,7 +70,14 @@ export class SavedOutputBridge implements Bridge {
 
   load(_adapter: Named, _vocabulary?: Named): Promise<LoadedAdapter> {
     return Promise.resolve({
-      accepts: () => Promise.resolve(true),
+      accepts: async (document) => {
+        const stem = this.stems.get(document.iri);
+        return (
+          stem === undefined ||
+          (await this.files.read(`${this.converted}${stem}/unaccepted.txt`)) ===
+            undefined
+        );
+      },
       convert: (document, options) => this.#convert(document, options),
       free: () => Promise.resolve(),
     });
@@ -77,14 +89,14 @@ export class SavedOutputBridge implements Bridge {
   ): Promise<Conversion> {
     if (options?.format === "ntriples")
       throw new BridgeError("bridge", "the saved output is Turtle only");
-    const stem = this.stems.get(await documentName(document.bytes));
+    const stem = this.stems.get(document.iri);
     const graph =
       stem === undefined
         ? undefined
         : await this.files.read(`${this.converted}${stem}/graph.ttl`);
     if (stem === undefined || graph === undefined) {
       throw new BridgeError(
-        "document",
+        "bridge",
         `the story saves no Bridge output for ${document.iri}`,
       );
     }

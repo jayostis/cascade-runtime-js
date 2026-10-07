@@ -7,6 +7,6 @@
       "repository": "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
     }
   ],
-  "importers": ["apple-health-export"],
+  "importers": ["apple-health-export", "ccda-download"],
   "lens": "everyday"
 }

@@ -8,7 +8,7 @@ import {
   type Layout,
   lenses,
   literal,
-  type LoadedAdapter,
+  type AdaptersOf,
   MemoryFiles,
   ntriples,
   podDataset,
@@ -106,8 +106,8 @@ export interface Folder {
 }
 
 export interface LoadedBridge {
-  /** The adapters `cascade-runtime.json` names, loaded into it. */
-  readonly adapters: readonly LoadedAdapter[];
+  /** The adapters `cascade-runtime.json` names, loaded into it, by the media type each reads. */
+  readonly adapters: AdaptersOf;
   close(): Promise<void>;
 }
 

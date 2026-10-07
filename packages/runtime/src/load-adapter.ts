@@ -1,4 +1,5 @@
 import {
+  type AdaptersOf,
   type Bridge,
   type BridgeDocument,
   type Description,
@@ -166,4 +167,21 @@ export async function loadAdapter(
       },
     },
   };
+}
+
+/** A media type's essence: its type and subtype, lower-cased, without parameters. */
+function essence(mediaType: string): string {
+  return (mediaType.split(";")[0] ?? "").trim().toLowerCase();
+}
+
+/** Each media type's adapters: those whose description declares it as their `bridge:sourceMediaType`, in their order. */
+export function ofMediaType(loaded: readonly Loaded[]): AdaptersOf {
+  return (mediaType) =>
+    loaded
+      .filter(
+        ({ description }) =>
+          description.sourceMediaType !== undefined &&
+          essence(description.sourceMediaType) === essence(mediaType),
+      )
+      .map(({ adapter }) => adapter);
 }

@@ -3,6 +3,12 @@ import { dirname, join, relative as relativePath, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Files, relative } from "../files.js";
 
+/** Whether a read failed because no file, or no folder, is at the path: a folder read as a file, a file as a folder. */
+function absent(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR";
+}
+
 /** Files in a local folder, named by the folder's file IRI unless given another. */
 export class FolderFiles implements Files {
   readonly iri: string;
@@ -22,7 +28,7 @@ export class FolderFiles implements Files {
     try {
       return new Uint8Array(await readFile(this.#local(pathOrIri)));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      if (absent(error)) return undefined;
       throw error;
     }
   }
@@ -39,7 +45,7 @@ export class FolderFiles implements Files {
     try {
       entries = await readdir(root, { recursive: true, withFileTypes: true });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if (absent(error)) return [];
       throw error;
     }
     return entries

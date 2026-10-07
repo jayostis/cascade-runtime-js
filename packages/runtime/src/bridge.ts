@@ -92,6 +92,9 @@ export interface LoadedAdapter {
   free(): Promise<void>;
 }
 
+/** The loaded adapters a document of a media type is offered to, in the order `cascade-runtime.json` names them. */
+export type AdaptersOf = (mediaType: string) => readonly LoadedAdapter[];
+
 export interface Bridge {
   describe(
     adapterIri: string,

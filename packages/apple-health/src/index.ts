@@ -8,6 +8,7 @@ const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const RECORDS = "clinical-records";
 const ENVELOPE = "#envelope-resource";
+const MEDIA_TYPE = "application/fhir+json";
 const SLICE = 1 << 24;
 
 /** The files an export is read from, by path. */
@@ -21,6 +22,7 @@ export interface AppleHealthDocument {
   readonly path: string;
   readonly bytes: Uint8Array;
   readonly envelope: string;
+  readonly mediaType: string;
   facts(importStarted: string): Uint8Array;
 }
 
@@ -161,6 +163,7 @@ export const appleHealthExport = {
         path,
         bytes,
         envelope: ENVELOPE,
+        mediaType: MEDIA_TYPE,
         facts: (importStarted) => facts(entry, importStarted),
       });
     }

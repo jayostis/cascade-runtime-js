@@ -135,7 +135,7 @@ test("the developer story prints Alex's active allergies as the replay through J
 test(
   "the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry",
   {
-    todo: "waits for #70's step 9: a C-CDA importer, Apple Health's medication and lab result kinds, and a new pod given the newest rule-list tables",
+    todo: "waits for #70's step 9: the C-CDA adapter and its importer's header, Apple Health's medication and lab result kinds, and a new pod given the newest rule-list tables",
   },
   async (t) => {
     const printed = await story(

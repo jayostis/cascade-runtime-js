@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
+import { ccdaDownload } from "@cascade-runtime/ccda-download";
+import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
+import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
+import { StoryTime } from "../src/ids.js";
 import { parseGraph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { replay } from "../src/replay.js";
@@ -185,6 +189,15 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     "s/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
     new TextEncoder().encode('{"resourceType": "AllergyIntolerance"}'),
   );
+  await source.write(
+    "s/broken.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"><id>'),
+  );
+  await source.write(
+    "s/not-a-ccda.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
+  );
+  await source.write("s/bridge/not-a-ccda/unaccepted.txt", new Uint8Array());
   await source.write("s/no-judgment.ttl", new Uint8Array());
   await source.write("s/no-turtle.ttl", new TextEncoder().encode("<a> <b>"));
   await source.write("s/references/references.ttl", new Uint8Array());
@@ -209,6 +222,14 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     [
       { kind: "import", export: "nothing", converted: "bridge" },
       /^no importer of .* reads s\/nothing$/,
+    ],
+    [
+      { kind: "import", export: "broken.xml", converted: "bridge" },
+      /^s\/broken\.xml: /,
+    ],
+    [
+      { kind: "import", export: "not-a-ccda.xml", converted: "bridge" },
+      /^s\/not-a-ccda\.xml: no adapter of application\/cda\+xml accepts it$/,
     ],
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
     [
@@ -257,7 +278,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     pod: new MemoryFiles(story.address),
     newStore,
     layout: await layout(),
-    importers: [appleHealthExport],
+    importers: [appleHealthExport, ccdaDownload],
   });
   assert.equal(stopped, undefined);
   refusals.forEach(([happened, why], index) => {
@@ -265,4 +286,54 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     assert.deepEqual(steps[index]?.wrote, []);
   });
   assert.notDeepEqual(steps.at(-1)?.wrote, []);
+});
+
+test("a document the Bridge fails on is refused with the Bridge's reason, and any other failure stops the step", async () => {
+  const download = new MemoryFiles("https://download.example/");
+  await download.write(
+    "summary.xml",
+    new TextEncoder().encode('<ClinicalDocument xmlns="urn:hl7-org:v3"/>'),
+  );
+  const failing = (
+    on: "accepts" | "convert",
+    kind: "document" | "bridge",
+  ): LoadedAdapter => {
+    const fail = () => Promise.reject(new BridgeError(kind, "it fails"));
+    return {
+      accepts: on === "accepts" ? fail : () => Promise.resolve(true),
+      convert:
+        on === "convert" ? fail : () => Promise.reject(new Error("unreached")),
+      free: () => Promise.resolve(),
+    };
+  };
+  const pod = async (): Promise<CorePod> => {
+    const time = new StoryTime();
+    time.begin("2026-06-01T09:00:00Z");
+    return new CorePod({
+      pod: new MemoryFiles("https://pod.example/"),
+      address: "https://pod.example/",
+      subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+      title: "",
+      vocabulary: await vocabulary(),
+      layout: await layout(),
+      newStore,
+      time,
+      importers: [ccdaDownload],
+      references: () => Promise.reject(new Error("an import reads no table")),
+    });
+  };
+  for (const on of ["accepts", "convert"] as const) {
+    const performed = await (
+      await pod()
+    ).import(download, "summary.xml", () => [failing(on, "document")]);
+    assert.equal(performed.refused, "summary.xml: it fails", on);
+    assert.deepEqual(performed.wrote, [], on);
+    await assert.rejects(
+      (await pod()).import(download, "summary.xml", () => [
+        failing(on, "bridge"),
+      ]),
+      /it fails/,
+      on,
+    );
+  }
 });

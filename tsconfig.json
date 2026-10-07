@@ -5,6 +5,9 @@
       "path": "packages/apple-health"
     },
     {
+      "path": "packages/ccda-download"
+    },
+    {
       "path": "packages/runtime"
     },
     {
