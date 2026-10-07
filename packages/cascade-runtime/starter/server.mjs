@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 import process, { env, exit, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
+import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
 import { hospitalsAt } from "./hospitals.mjs";
 import { NO_POD, podFolder, podNames } from "./pods.mjs";
@@ -149,41 +150,51 @@ ${rows.length === 0 ? "<p>No hospital matches.</p>" : `<ul>\n${list}\n</ul>`}
 /** A connection: why it failed, or what its pull holds and a button to bring it in, or what bringing it in did. */
 async function connectionPage(response, name, connection, importing) {
   const back = `<p><a href="/pods/${escaped(encodeURIComponent(name))}/">Back to ${escaped(name)}</a></p>`;
+  const said = (status, text) =>
+    send(
+      response,
+      status,
+      page(
+        connection.row.name,
+        `<h1>${escaped(connection.row.name)}</h1>\n${text}\n${back}`,
+      ),
+    );
   let pulled;
   try {
     pulled = await connection.pulled;
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    return send(
-      response,
+    return said(
       200,
-      page(
-        connection.row.name,
-        `<h1>${escaped(connection.row.name)}</h1>
-<p>Not connected: <code>${escaped(error.kind)}</code>. ${escaped(error.message)}</p>
-${back}`,
-      ),
+      `<p>Not connected: <code>${escaped(error.kind)}</code>. ${escaped(error.message)}</p>`,
     );
   }
   const pod = await podNamed(name);
-  const files = pullFiles(pulled, connection.name);
+  let files;
+  try {
+    files = pullFiles(pulled, connection.name);
+  } catch (error) {
+    return said(200, `<p>Refused: ${escaped(error.message)}</p>`);
+  }
   if (importing && connection.imported === undefined) {
     connection.imported = pod.import(files, { aboutSubject: true });
     connection.imported.catch(() => (connection.imported = undefined));
   }
   if (connection.imported !== undefined) {
-    const done = await connection.imported;
-    const said =
+    let done;
+    try {
+      done = await connection.imported;
+    } catch (error) {
+      return said(
+        500,
+        `<p>Not brought in: ${escaped(error.message)}</p>\n<form method="post"><button>Try again</button></form>`,
+      );
+    }
+    return said(
+      200,
       done.refused === undefined
         ? `<p>Brought in: ${done.wrote.length} files written.</p>`
-        : `<p>Refused: ${escaped(done.refused)}</p>`;
-    return send(
-      response,
-      200,
-      page(
-        connection.row.name,
-        `<h1>${escaped(connection.row.name)}</h1>\n${said}\n${back}`,
-      ),
+        : `<p>Refused: ${escaped(done.refused)}</p>`,
     );
   }
   const sources = (await pod.look(files))
@@ -233,7 +244,10 @@ async function demoHospitalPage(request, response, url) {
   response.end(Buffer.from(await answer.arrayBuffer()));
 }
 
+const demo = await loadHospitals();
 let origin;
+/** The origins a browser gives this server's own forms: it answers as `localhost` too. */
+let ownOrigins;
 let hospitals;
 
 const server = createServer(async (request, response) => {
@@ -243,7 +257,7 @@ const server = createServer(async (request, response) => {
     const post = request.method === "POST";
     if (!post && request.method !== "GET")
       return send(response, 405, page("Not allowed", "<h1>Not allowed</h1>"));
-    if (post && request.headers.origin !== origin)
+    if (post && !ownOrigins.has(request.headers.origin))
       return send(
         response,
         403,
@@ -294,9 +308,11 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(Number(env.PORT || 3000), "127.0.0.1", async () => {
-  origin = `http://127.0.0.1:${server.address().port}`;
-  hospitals = await hospitalsAt(origin);
+server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
+  const { port } = server.address();
+  origin = `http://127.0.0.1:${port}`;
+  ownOrigins = new Set([origin, `http://localhost:${port}`]);
+  hospitals = hospitalsAt(origin, demo);
   stdout.write(`${origin}/\n`);
 });
 

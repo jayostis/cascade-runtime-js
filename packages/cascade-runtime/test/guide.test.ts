@@ -184,17 +184,15 @@ function pickExport() {
   if (picked === undefined) throw new Error("pickExport() was called more often than the test has exports");
   return picked;
 }
-const __demo = await import("@cascade-runtime/demo-hospital");
-const __demoNode = await import("@cascade-runtime/demo-hospital/node");
-/** The person, in their browser, signs in at North as patient A and presses Allow. */
+/**
+ * The person, in their browser, signs in at North as patient A and presses Allow, on the page the app's server answers
+ * with the example's \`demoHospitals\`.
+ */
 async function openBrowser(authorize) {
-  const hospitals = __demo.demoFetch(await __demoNode.loadHospitals(), {
-    authorizeBase: \`\${authorize.origin}/demo-hospitals/\`,
-  });
   const form = new URLSearchParams(authorize.searchParams);
   form.set("patient", ${JSON.stringify(A_NORTH)});
   form.set("decision", "allow");
-  const answer = await hospitals(\`\${authorize.origin}\${authorize.pathname}\`, {
+  const answer = await demoHospitals(\`\${authorize.origin}\${authorize.pathname}\`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: form,
@@ -280,7 +278,9 @@ test("the hospital example brings patient A's North record into a pod of its own
   const active = (patients[A_NORTH]!.entry ?? []).filter(
     ({ resource }) =>
       resource.resourceType === "AllergyIntolerance" &&
-      JSON.stringify(resource.clinicalStatus).includes('"active"'),
+      (
+        resource.clinicalStatus as { coding?: { code?: string }[] } | undefined
+      )?.coding?.some(({ code }) => code === "active"),
   );
   assert.ok(active.length > 0);
   const pod = await openPod(join(folder, "pods", "hospital"));

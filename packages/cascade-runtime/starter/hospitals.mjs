@@ -3,7 +3,6 @@
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
 import { demoFetch } from "@cascade-runtime/demo-hospital";
-import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
   connect,
   ConnectionFailure,
@@ -23,11 +22,12 @@ function idOf(row) {
 }
 
 /**
- * The hospitals as this app, at `origin`, reaches them. It receives each hospital's redirect on its own `/callback`,
- * and serves the demo hospitals' sign-in pages under `/demo-hospitals/`.
+ * The hospitals as this app, at `origin`, reaches them, `demo` being the demo hospitals as `loadHospitals` gives them.
+ * It receives each hospital's redirect on its own `/callback`, and serves the demo hospitals' sign-in pages under
+ * `/demo-hospitals/`.
  */
-export async function hospitalsAt(origin) {
-  const route = demoFetch(await loadHospitals(), {
+export function hospitalsAt(origin, demo) {
+  const route = demoFetch(demo, {
     authorizeBase: `${origin}/demo-hospitals/`,
   });
   const registration = {

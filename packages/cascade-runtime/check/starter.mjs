@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { get } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
@@ -110,6 +110,52 @@ function escaped(text) {
     .replaceAll("'", "&#39;");
 }
 
+/** HTML as the text a person reads: tags dropped, entities read, spaces trimmed. */
+function textOf(html) {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&amp;", "&")
+    .trim();
+}
+
+/** Each table of the page, as its rows, each keyed by its column's heading. */
+function tables(html) {
+  return [...html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/g)].map(
+    ([, table]) => {
+      const [head = [], ...rows] = [
+        ...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g),
+      ].map(([, row]) =>
+        [...row.matchAll(/<t([hd])\b[^>]*>([\s\S]*?)<\/t\1>/g)].map(
+          ([, , cell]) => textOf(cell),
+        ),
+      );
+      return rows.map((cells) =>
+        Object.fromEntries(head.map((column, at) => [column, cells[at]])),
+      );
+    },
+  );
+}
+
+/** Each form of the page, as the fields it posts, by name. */
+function forms(html) {
+  const attribute = (tag, name) => {
+    const found = new RegExp(`\\s${name}="([^"]*)"`).exec(tag);
+    return found === null ? undefined : textOf(found[1]);
+  };
+  return [...html.matchAll(/<form\b[^>]*>([\s\S]*?)<\/form>/g)].map(
+    ([, form]) =>
+      Object.fromEntries(
+        [...form.matchAll(/<input\b[^>]*>/g)]
+          .map(([tag]) => [attribute(tag, "name"), attribute(tag, "value")])
+          .filter(([name]) => name !== undefined),
+      ),
+  );
+}
+
 function fetched(url) {
   return new Promise((done, failed) => {
     get(url, (response) => {
@@ -192,7 +238,8 @@ function loadedSteps(out) {
 
 /**
  * What the app should show of patient A at Cascade North, worked out in the app with the packages it installed:
- * North's row, its patients, `look` over A's pull made with no person, and A's active allergies by the Bundle.
+ * North's row, its patients, `look` over A's pull made with no person, and the allergens that pull brings into a new
+ * pod.
  */
 async function expectedPull() {
   const script = `
@@ -210,20 +257,18 @@ const connection = await connect(
   { fetch, signIn: async (authorize) => new URL((await fetch(authorize)).headers.get("Location")) },
 );
 const pod = await openPod();
-const look = await pod.look(pullFiles(await pull(connection, DEMO_PLAN), "expected"));
+const files = pullFiles(await pull(connection, DEMO_PLAN), "expected");
+const look = await pod.look(files);
+await pod.import(files, { aboutSubject: true });
+const allergens = (await pod.ask(${JSON.stringify(ALLERGIES)})).map(({ allergen }) => allergen).sort();
 await pod.close();
-const activeAllergies = north.patients[patient].entry.filter(
-  ({ resource }) =>
-    resource.resourceType === "AllergyIntolerance" &&
-    JSON.stringify(resource.clinicalStatus).includes('"active"'),
-).length;
-console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, activeAllergies }));
+console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, allergens }));
 `;
-  const { code, out } = await run(execPath, [
-    "--input-type=module",
-    "--eval",
-    script,
-  ]);
+  // A file, not `--eval`: the import's Bridge runs in a worker, which inherits node's flags, and `--input-type` there
+  // refuses its file.
+  const file = join(app, "expected-pull.mjs");
+  await writeFile(file, script);
+  const { code, out } = await run(execPath, [file]);
   assert.equal(code, 0, "the expected pull failed");
   return JSON.parse(out.trim().split(/\r?\n/).at(-1));
 }
@@ -489,8 +534,10 @@ if (release === undefined) {
           "no hospitals link",
         );
         const found = await served(server, `/pods/${pod}/hospitals?q=north`);
-        assert.ok(found.includes(escaped(expected.row.fhirBase)));
-        assert.equal(found.split("<button>Sign in</button>").length, 2);
+        assert.deepEqual(
+          forms(found).flatMap(({ fhirBase }) => fhirBase ?? []),
+          [expected.row.fhirBase],
+        );
 
         /** Sign in, and answer the hospital's page with `decision` as patient A; gives the connection's page. */
         const signIn = async (decision) => {
@@ -525,25 +572,34 @@ if (release === undefined) {
           "http://elsewhere.invalid",
         );
         assert.equal(elsewhere.status, 403);
+        const localhost = await send(
+          `/pods/${pod}/hospitals`,
+          { fhirBase: expected.row.fhirBase },
+          origin.replace("127.0.0.1", "localhost"),
+        );
+        assert.equal(localhost.status, 303, "a form from localhost is refused");
 
         const connection = await signIn("allow");
         const looked = await served(server, connection);
         const [source] = expected.look;
         assert.ok(looked.includes(escaped(source.name)));
         assert.ok(looked.includes("holds no records from here yet"));
-        for (const [kind, count] of Object.entries(source.records))
-          assert.ok(
-            looked.includes(
-              `<td>${escaped(kind)}</td><td>${escaped(count)}</td>`,
-            ),
-            `the connection's page does not count ${count} ${kind}`,
-          );
+        assert.deepEqual(
+          multiset(tables(looked).flat()),
+          multiset(
+            Object.entries(source.records).map(([kind, count]) => ({
+              kind,
+              count: String(count),
+            })),
+          ),
+        );
         const imported = await send(connection, {});
         assert.equal(imported.status, 200);
         assert.ok((await imported.text()).includes("Brought in"));
-        assert.equal(
-          (await asked(ALLERGIES, pod)).length,
-          expected.activeAllergies,
+        assert.ok(expected.allergens.length > 0, "A has no active allergy");
+        assert.deepEqual(
+          (await asked(ALLERGIES, pod)).map(({ allergen }) => allergen).sort(),
+          expected.allergens,
         );
       } finally {
         await server.stop();

@@ -185,6 +185,9 @@ import {
 } from "cascade-runtime";
 
 const app = "http://127.0.0.1:3000";
+const demoHospitals = demoFetch(await loadHospitals(), {
+  authorizeBase: `${app}/demo-hospitals/`,
+});
 const [north] = searchDirectory(TEST_DIRECTORY, "north");
 const connection = await connect(
   north,
@@ -195,9 +198,7 @@ const connection = await connect(
   },
   {
     signIn: (authorize) => openBrowser(authorize),
-    fetch: demoFetch(await loadHospitals(), {
-      authorizeBase: `${app}/demo-hospitals/`,
-    }),
+    fetch: demoHospitals,
   },
 );
 const record = await pull(connection, DEMO_PLAN);
@@ -214,7 +215,8 @@ await hospitalPod.close();
 
 `openBrowser(authorize)` is the app's: it sends the person to the hospital's
 page and resolves with the URL the hospital redirected back to, the redirect
-URI with its `code` and `state`.
+URI with its `code` and `state`. The hospital's page is under the app's
+`/demo-hospitals/`, which the app's server answers with `demoHospitals`.
 
 ## Ask
 
