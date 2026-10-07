@@ -16,7 +16,11 @@ control of their own data.
 
 It is open source and built on RDF and Turtle, SPARQL 1.1, SHACL, RO-Crate
 and EARL reports.
-FHIR R4 is the first source format this runtime files.
+This runtime files two source formats into one pod: FHIR R4, as an Apple Health
+export carries it, and C-CDA, as a patient portal hands it out. The same record
+from both, an allergy, a medication or a lab result, is joined as one entry. A
+pod holds allergies, conditions, immunizations, procedures, medications, lab
+results and the patient's profile.
 
 Status: a draft. No compatibility is promised before a numbered v1, and no
 claim is made that it is fit for clinical use.
@@ -29,10 +33,26 @@ against the vocabulary's executable examples.
 
 ## Get going
 
+### Build an app
+
+Start at **[jayostis.github.io/cascade-runtime-js](https://jayostis.github.io/cascade-runtime-js)**:
+what a pod is, the command that starts an app, and the prompt to hand a coding
+agent.
+
 - [The quick start](https://jayostis.github.io/cascade-runtime-js/start.html)
 - [An app running in the browser](https://jayostis.github.io/cascade-runtime-js/try/index.html)
-- [The example pods](https://jayostis.github.io/cascade-runtime-js/examples.html)
-- [Build from source](#working-on-this-repository)
+- [The example pods](https://jayostis.github.io/cascade-runtime-js/examples.html):
+  Alex Rivera's, from Apple Health exports, and Priya Natarajan's, from an
+  export and C-CDA downloads together
+
+### In this README
+
+- [The protocol's repositories](#the-protocols-repositories)
+- [How it fits together](#how-it-fits-together), and [its packages](#packages)
+- [Working on this repository](#working-on-this-repository): building from
+  source, [running the tests](#running-it), [the developer stories](#the-developer-story)
+  and [the package](#the-package)
+- [Which version of each component a run uses](#which-version-of-each-component-a-run-uses)
 
 ## The protocol's repositories
 
@@ -88,6 +108,7 @@ with the examples that show it, and a runtime reports each example in EARL.
 | -------------------------- | -------------------------------------------------------------- |
 | `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
 | `packages/apple-health`    | the importer: the documents in an export and the facts of each |
+| `packages/ccda-download`   | the importer: a C-CDA file as downloaded, and its header       |
 | `packages/site`            | the site that documents a pod and its queries                  |
 | `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
@@ -143,7 +164,7 @@ and a failed example's report names its rule and the step that failed.
 
 ### The developer story
 
-`developer-story/allergies.mjs` is what an app would write against the package
+There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package
 `cascade-runtime`: open a pod, look at Alex's first export, import it as hers
 and print her active allergies. It is the developer story of
 [#20](https://github.com/jayostis/cascade-runtime-js/issues/20) and that epic's
