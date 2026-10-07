@@ -1,7 +1,7 @@
 import { basename, dirname, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  ofMediaType,
+  importersNamed,
   OxigraphStore,
   References,
   WasmBridge,
@@ -10,13 +10,12 @@ import {
   compiledBridge,
   componentsOf,
   FolderFiles,
-  importersNamed,
   inWorker,
   loadConfiguredAdapters,
   type LocalVocabulary,
   vocabularyOf,
 } from "@cascade-runtime/runtime/node";
-import { type Parts, TABLES } from "../pod.js";
+import { bridgeLoaded, type Parts, TABLES } from "../pod.js";
 
 export interface ResolvedParts extends Parts {
   /** The vocabulary as a folder, which a kit is replayed from. */
@@ -44,32 +43,18 @@ async function resolve(): Promise<ResolvedParts> {
       return {
         files: new FolderFiles(folder, iri),
         name: basename(folder),
-        parent: new FolderFiles(dirname(folder)),
       };
+    },
+    exportAt: (path) => {
+      const at = absolute(path);
+      return { files: new FolderFiles(dirname(at)), name: basename(at) };
     },
     loadBridge: async () => {
       const found = await components.bridge();
-      const bridge = new WasmBridge(
-        inWorker(await compiledBridge(found.folder)),
+      return bridgeLoaded(
+        new WasmBridge(inWorker(await compiledBridge(found.folder))),
+        (bridge) => loadConfiguredAdapters(bridge, config.adapters, components),
       );
-      try {
-        const loaded = await loadConfiguredAdapters(
-          bridge,
-          config.adapters,
-          components,
-        );
-        const adapters = loaded.map(({ adapter }) => adapter);
-        return {
-          adapters: ofMediaType(loaded),
-          close: async () => {
-            await Promise.allSettled(adapters.map((adapter) => adapter.free()));
-            bridge.close();
-          },
-        };
-      } catch (error) {
-        bridge.close();
-        throw error;
-      }
     },
   };
 }

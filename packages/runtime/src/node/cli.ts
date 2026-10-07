@@ -14,7 +14,7 @@ import { Shapes } from "../shapes.js";
 import { MemoryFiles } from "../files.js";
 import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
-import { importersNamed } from "./importers.js";
+import { importersNamed } from "../importers.js";
 import { type Resolved, resolve } from "./resolver.js";
 import { BRIDGE_REPOSITORY, findBridgePackage } from "./wasm.js";
 import {

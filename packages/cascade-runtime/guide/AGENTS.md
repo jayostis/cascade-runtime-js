@@ -71,11 +71,15 @@ who keeps the pod, `address` a random base its names are made from: no identity
 is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 
 In a browser, the same import, served with the package's `components/` beside
-its `dist/`, runs all but `look` and `import`, which reject. A pod's name names
+its `dist/`, runs every call. A pod's name names
 its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
 an empty one as a copy of the pod published at the URL `from`, as its
 `files.json` lists it. Its address is a name, never the page's. A browser may
 clear its storage, and the pod with it. The site's `try/` page shows this.
+A browser has no path, so `look` and `import` take the files the person picked,
+each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
+from an `<input type="file">`, with `webkitdirectory` for an export's folder.
+Node takes such a map too. The first `import` loads the Bridge, about 4.5 MB.
 
 ## Bring in an export
 

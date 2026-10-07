@@ -7,6 +7,7 @@ import {
   type LoadedAdapter,
   type Named,
 } from "./bridge.js";
+import { type Followed, repositoryName } from "./config.js";
 import type { Files } from "./files.js";
 
 const METADATA = "ro-crate-metadata.json";
@@ -167,6 +168,34 @@ export async function loadAdapter(
       },
     },
   };
+}
+
+/**
+ * Each adapter followed, loaded in order from the source `at` gives it, with the vocabulary its description names from
+ * the source `at` gives that repository; if one fails, those already loaded are freed.
+ */
+export async function loadAdapters(
+  bridge: Bridge,
+  adapters: readonly Followed[],
+  at: (followed: Followed) => Promise<Source>,
+): Promise<Loaded[]> {
+  const loaded: Loaded[] = [];
+  try {
+    for (const followed of adapters)
+      loaded.push(
+        await loadAdapter(bridge, await at(followed), async (repository) => {
+          if (repository === undefined)
+            throw new Error(
+              `${repositoryName(followed)} names vocabulary files but no vocabulary repository`,
+            );
+          return at({ repository });
+        }),
+      );
+  } catch (error) {
+    await Promise.allSettled(loaded.map(({ adapter }) => adapter.free()));
+    throw error;
+  }
+  return loaded;
 }
 
 /** A media type's essence: its type and subtype, lower-cased, without parameters. */

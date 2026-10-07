@@ -69,5 +69,62 @@ export class MemoryFiles implements Files {
   }
 }
 
+/**
+ * An export or a download as the files an app holds, each by its path: a folder or a file a person picked, or bytes
+ * the app fetched. Its one top-level name is the export, as a path names one folder or file.
+ */
+export type Exported = ReadonlyMap<string, Blob | Uint8Array>;
+
+const EXPORTED = "urn:cascade:exported/";
+
+/** Each top-level name the export holds, sorted, once each; one is the export's name. A key that is no path throws. */
+export function exportedNames(exported: Exported): string[] {
+  const names = new Set<string>();
+  for (const path of exported.keys()) {
+    const [top = ""] = path.split("/");
+    let isPath = top !== "";
+    try {
+      relative({ iri: EXPORTED }, path);
+    } catch {
+      isPath = false;
+    }
+    if (!isPath) throw new Error(`the export holds ${path}, which is no path`);
+    names.add(top);
+  }
+  return [...names].sort();
+}
+
+/** The files of an export an app holds, never written; a `Blob` is read only when its file is. */
+export class ExportedFiles implements Files {
+  readonly iri = EXPORTED;
+  readonly #files: Exported;
+  readonly #name: string;
+
+  /** The export, its keys paths as `exportedNames` takes them, named `name` in what it says. */
+  constructor(exported: Exported, name: string) {
+    this.#name = name;
+    this.#files = exported;
+  }
+
+  async read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    const file = this.#files.get(relative(this, pathOrIri));
+    if (file === undefined) return undefined;
+    return ArrayBuffer.isView(file)
+      ? new Uint8Array(file)
+      : new Uint8Array(await file.arrayBuffer());
+  }
+
+  async write(pathOrIri: string): Promise<void> {
+    throw new Error(
+      `${this.#name} is held by the app and never written: ${pathOrIri}`,
+    );
+  }
+
+  async list(folder: string): Promise<string[]> {
+    const prefix = relative(this, folder);
+    return [...this.#files.keys()].filter((path) => under(prefix, path)).sort();
+  }
+}
+
 /** What a folder served over HTTP lists of itself: every path under it but this file, sorted, as a JSON array. */
 export const FILES_JSON = "files.json";

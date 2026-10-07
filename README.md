@@ -94,7 +94,8 @@ them. That is how the same runtime runs in Node and in a browser:
 
 Code that needs Node (a local folder, git, the command line) is under
 `packages/runtime/src/node/`. The core knows an importer only by the name
-`cascade-runtime.json` gives it; `src/node/importers.ts` finds each by name.
+`cascade-runtime.json` gives it; `src/importers.ts` finds each by name, in
+Node and in a browser.
 Code that needs a browser (IndexedDB, the Bridge's worker) is under
 `packages/runtime/src/web/`, and only the browser entry,
 `packages/cascade-runtime/src/browser/`, imports from there.

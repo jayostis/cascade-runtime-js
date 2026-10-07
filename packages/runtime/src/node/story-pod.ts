@@ -3,7 +3,7 @@ import type { Files } from "../files.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { type Replayed, replay, titleOf } from "../replay.js";
 import { vocabularyDerive } from "../build.js";
-import { importersNamed } from "./importers.js";
+import { importersNamed } from "../importers.js";
 import type { LocalVocabulary } from "./runtime.js";
 
 /**

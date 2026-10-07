@@ -1,16 +1,31 @@
 import * as oxigraphWeb from "oxigraph/web.js";
 import {
+  BRIDGE_GLUE,
+  BRIDGE_WASM,
+  type CompiledBridge,
+  type Followed,
+  importersNamed,
   Layout,
+  loadAdapters,
   OxigraphStore,
   parseConfig,
   References,
   repositoryName,
+  type Source,
   treeIri,
   vocabularyBuild,
+  WasmBridge,
 } from "@cascade-runtime/runtime";
-import { FetchedFiles, IndexedDbFiles } from "@cascade-runtime/runtime/web";
 import {
+  compiledBridge,
+  FetchedFiles,
+  IndexedDbFiles,
+  inWebWorker,
+} from "@cascade-runtime/runtime/web";
+import {
+  bridgeLoaded,
   type Done,
+  type Exported,
   type ExportSource,
   type Imported,
   openPodWith,
@@ -20,7 +35,14 @@ import {
   TABLES,
 } from "../pod.js";
 
-export type { Done, ExportSource, Imported, Pod, Row } from "../pod.js";
+export type {
+  Done,
+  Exported,
+  ExportSource,
+  Imported,
+  Pod,
+  Row,
+} from "../pod.js";
 export * from "../connect/index.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
@@ -49,18 +71,30 @@ async function resolve(): Promise<Parts> {
     ),
     fetched("packed.json").then((r) => r.json() as Promise<Packed>),
   ]);
-  const { vocabulary: followed } = config;
-  const commit = packed.components.find(
-    ({ repository }) => repository === followed.repository,
-  )?.commit;
-  if (commit === undefined)
-    throw new Error(
-      `the package carries no ${repositoryName(followed)} (${followed.repository})`,
-    );
-  const vocabulary = new FetchedFiles(
-    new URL(`${repositoryName(followed)}/${commit}/`, COMPONENTS).href,
-    treeIri(followed, commit),
-  );
+  const sources = new Map<string, Source>();
+  /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
+  const carried = (followed: Followed): Source => {
+    const known = sources.get(followed.repository);
+    if (known !== undefined) return known;
+    const commit = packed.components.find(
+      ({ repository }) => repository === followed.repository,
+    )?.commit;
+    if (commit === undefined)
+      throw new Error(
+        `the package carries no ${repositoryName(followed)} (${followed.repository})`,
+      );
+    const iri = treeIri(followed, commit);
+    const source = {
+      iri,
+      files: new FetchedFiles(
+        new URL(`${repositoryName(followed)}/${commit}/`, COMPONENTS).href,
+        iri,
+      ),
+    };
+    sources.set(followed.repository, source);
+    return source;
+  };
+  const vocabulary = carried(config.vocabulary).files;
   const newStore = () => new OxigraphStore();
   const layout = await Layout.read(vocabulary, newStore);
   return {
@@ -68,17 +102,40 @@ async function resolve(): Promise<Parts> {
     layout,
     build: await vocabularyBuild(vocabulary, layout),
     lens: config.lens,
-    importers: [],
+    importers: importersNamed(config.importers),
     references: await References.of(vocabulary, TABLES, newStore),
     newStore,
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
-    loadBridge: () =>
-      Promise.reject(
-        new Error("the browser build of cascade-runtime loads no Bridge"),
+    exportAt: (path) =>
+      `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
+    loadBridge: async () =>
+      bridgeLoaded(
+        new WasmBridge(inWebWorker(await bridgeCompiled())),
+        (bridge) =>
+          loadAdapters(bridge, config.adapters, async (followed) =>
+            carried(followed),
+          ),
       ),
   };
+}
+
+let compiled: Promise<CompiledBridge> | undefined;
+
+/** The Bridge's module beside the browser entry, compiled once per page. */
+function bridgeCompiled(): Promise<CompiledBridge> {
+  if (compiled === undefined) {
+    const compiling = compiledBridge(
+      new URL(BRIDGE_GLUE, import.meta.url).href,
+      new URL(BRIDGE_WASM, import.meta.url).href,
+    );
+    compiled = compiling;
+    compiling.catch(() => {
+      if (compiled === compiling) compiled = undefined;
+    });
+  }
+  return compiled;
 }
 
 let found: Promise<Parts> | undefined;
@@ -94,13 +151,7 @@ function resolved(): Promise<Parts> {
   return found;
 }
 
-function notYet(call: string): Promise<never> {
-  return Promise.reject(
-    new Error(`${call} is not yet in the browser build of cascade-runtime`),
-  );
-}
-
-/** A pod held in a browser, which neither looks into an export nor imports one there. */
+/** A pod held in a browser, closing its database when it is closed. */
 class BrowserPod implements Pod {
   readonly #pod: Pod;
   readonly #database: IndexedDbFiles | undefined;
@@ -122,12 +173,15 @@ class BrowserPod implements Pod {
     return this.#pod.owner;
   }
 
-  look(): Promise<readonly ExportSource[]> {
-    return notYet("look");
+  look(exported: string | Exported): Promise<readonly ExportSource[]> {
+    return this.#pod.look(exported);
   }
 
-  import(): Promise<Imported> {
-    return notYet("import");
+  import(
+    exported: string | Exported,
+    options?: { aboutSubject?: boolean; match?: boolean },
+  ): Promise<Imported> {
+    return this.#pod.import(exported, options);
   }
 
   enter(turtle: string, options?: { match?: boolean }): Promise<Done> {

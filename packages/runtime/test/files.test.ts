@@ -3,7 +3,13 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { type Files, folderOf, MemoryFiles } from "../src/files.js";
+import { runInNewContext } from "node:vm";
+import {
+  ExportedFiles,
+  type Files,
+  folderOf,
+  MemoryFiles,
+} from "../src/files.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 
 const POD = "https://pod.example/";
@@ -50,4 +56,18 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
     ["runtime/vectors/arrivals/story.json", "story.json"].map(folderOf),
     ["runtime/vectors/arrivals", ""],
   );
+});
+
+test("the bytes an app holds are read as a copy, whether a Buffer or a Uint8Array of another realm", async () => {
+  const held: [string, Uint8Array][] = [
+    ["a/buffer.xml", Buffer.from("abc")],
+    ["a/realm.xml", runInNewContext("new Uint8Array([97, 98, 99])")],
+  ];
+  const files = new ExportedFiles(new Map(held), "a");
+  for (const [path, bytes] of held) {
+    const read = await files.read(path);
+    assert.equal(text(read), "abc", path);
+    read?.fill(0);
+    assert.equal(text(bytes), "abc", path);
+  }
 });
