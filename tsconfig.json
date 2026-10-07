@@ -8,6 +8,9 @@
       "path": "packages/ccda-download"
     },
     {
+      "path": "packages/demo-hospital"
+    },
+    {
       "path": "packages/runtime"
     },
     {
