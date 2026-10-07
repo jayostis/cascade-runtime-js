@@ -19,3 +19,4 @@ export {
   type Search,
 } from "./plan.js";
 export { pull, type Pull, type PulledEntry, type PullOptions } from "./pull.js";
+export { pullFiles } from "@cascade-runtime/fhir-pull";

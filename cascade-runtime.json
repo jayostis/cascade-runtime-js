@@ -10,6 +10,6 @@
       "repository": "https://github.com/jayostis/cascade-bridge-adapter-ccda"
     }
   ],
-  "importers": ["apple-health-export", "ccda-download"],
+  "importers": ["apple-health-export", "ccda-download", "fhir-pull"],
   "lens": "everyday"
 }

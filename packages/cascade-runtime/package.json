@@ -38,6 +38,7 @@
     "guide/AGENTS.md"
   ],
   "dependencies": {
+    "@cascade-runtime/fhir-pull": "0.0.0",
     "@cascade-runtime/runtime": "0.0.0",
     "oxigraph": "0.5.11"
   },

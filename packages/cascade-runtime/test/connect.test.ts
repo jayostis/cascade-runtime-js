@@ -3,135 +3,39 @@ import { createServer, type Server } from "node:net";
 import { before, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
-import {
-  type Bundle,
-  demoHospital,
-  type DemoHospital,
-  type DemoHospitalOptions,
-} from "@cascade-runtime/demo-hospital";
+import { type Bundle } from "@cascade-runtime/demo-hospital";
 import { loadHospital } from "@cascade-runtime/demo-hospital/node";
 import {
-  connect,
-  type ConnectOptions,
   ConnectionFailure,
-  DEMO_PLAN,
   type DirectoryRow,
   type FailureKind,
-  type Limits,
-  pull,
   type Pull,
-  type QueryPlan,
-  type Registration,
   type SignIn,
   loopbackSignIn,
 } from "cascade-runtime";
+import {
+  type Alter,
+  type Answer,
+  direct,
+  type Fetch,
+  type Loaded,
+  pulled as pulledAt,
+  REGISTRATION,
+  rowOf,
+  type Seen,
+  type Setup,
+} from "./hospitals.js";
 
 const A_NORTH = "pt-1001";
 const B_NORTH = "pt-1002";
-const FAST: Partial<Limits> = { retryDelayMs: 0 };
-const REGISTRATION: Registration = {
-  clientId: "cascade-test-app",
-  redirectUri: "https://app.test.invalid/callback",
-  scopes: ["launch/patient", "patient/*.rs", "patient/*.read"],
-};
 
-type Loaded = Omit<DemoHospitalOptions, "autoApprove" | "now">;
 let north: Loaded;
 let south: Loaded;
 let row: DirectoryRow;
 let happy: { pull: Pull; seen: Seen };
 
-/** Every request a test's `fetch` sent, and every token and code it saw come back. */
-interface Seen {
-  readonly requests: Request[];
-  readonly secrets: Set<string>;
-}
-
-type Fetch = typeof globalThis.fetch;
-type Answer = (request: Request) => Promise<Response>;
-/** Changes what a hospital answers: given the request and the hospital, gives the response. */
-type Alter = (request: Request, hospital: Answer) => Promise<Response>;
-
-/** A `fetch` that sends each demo hospital's origin to its function and refuses every other address. */
-function routed(
-  hospitals: readonly DemoHospital[],
-  origins: readonly string[],
-  seen: Seen,
-  alter: Alter = (request, hospital) => hospital(request),
-): Fetch {
-  return async (input, init) => {
-    const request = new Request(input, init);
-    seen.requests.push(request.clone());
-    const at = origins.indexOf(new URL(request.url).origin);
-    if (at < 0) throw new TypeError(`no route to ${request.url}`);
-    const response = await alter(request, hospitals[at]!);
-    const location = response.headers.get("Location");
-    const code = location && new URL(location).searchParams.get("code");
-    if (code) seen.secrets.add(code);
-    if (new URL(request.url).pathname.endsWith("/token")) {
-      const body = (await response
-        .clone()
-        .json()
-        .catch(() => ({}))) as { access_token?: string };
-      if (body.access_token) seen.secrets.add(body.access_token);
-    }
-    return response;
-  };
-}
-
-/** A sign-in that hands the authorize URL to the hospital, which approves at once, and follows its redirect. */
-function direct(fetch: Fetch): SignIn {
-  return async (authorize) => {
-    const response = await fetch(authorize, { redirect: "manual" });
-    return new URL(response.headers.get("Location")!);
-  };
-}
-
-interface Setup {
-  readonly row?: DirectoryRow;
-  readonly alter?: Alter;
-  readonly autoApprove?: string;
-  readonly now?: () => Date;
-  readonly signIn?: (fetch: Fetch) => SignIn;
-  readonly registration?: Registration;
-  readonly connectOptions?: Partial<ConnectOptions>;
-  readonly limits?: Partial<Limits>;
-  readonly plan?: QueryPlan;
-  /** Runs between connecting and pulling. */
-  readonly between?: () => void;
-}
-
-async function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
-  const seen: Seen = { requests: [], secrets: new Set() };
-  const hospital = demoHospital({
-    ...north,
-    autoApprove: "autoApprove" in setup ? setup.autoApprove : A_NORTH,
-    ...(setup.now ? { now: setup.now } : {}),
-  });
-  const fetch = routed(
-    [hospital],
-    [new URL(north.hospital.fhirBase).origin],
-    seen,
-    setup.alter,
-  );
-  try {
-    const connection = await connect(
-      setup.row ?? row,
-      setup.registration ?? REGISTRATION,
-      {
-        signIn: (setup.signIn ?? direct)(fetch),
-        fetch,
-        ...setup.connectOptions,
-      },
-    );
-    setup.between?.();
-    const result = await pull(connection, setup.plan ?? DEMO_PLAN, {
-      limits: { ...FAST, ...setup.limits },
-    });
-    return { pull: result, seen };
-  } catch (error) {
-    throw Object.assign(error as object, { seen });
-  }
+function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
+  return pulledAt(north, A_NORTH, setup);
 }
 
 function keyed(bundle: Bundle): Map<string, unknown> {
@@ -208,11 +112,7 @@ function isSearch(request: Request, type: string): boolean {
 before(async () => {
   north = await loadHospital("cascade-north");
   south = await loadHospital("cascade-south");
-  row = {
-    name: north.hospital.name,
-    vendor: "demo",
-    fhirBase: north.hospital.fhirBase,
-  };
+  row = rowOf(north);
   happy = await pulled();
 });
 

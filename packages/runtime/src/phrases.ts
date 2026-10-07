@@ -851,6 +851,22 @@ const readAfter: Act = (compiled, [said, lens]) => {
   };
 };
 
+/** An import of what the person holds at `downloads/<name>`: a downloaded file, or a saved pull's folder. */
+const importDownloaded: Act = (
+  compiled,
+  [name, when],
+  _stated,
+  _compiling,
+  label,
+) => {
+  const step = label ?? (name as string);
+  happen(compiled, label, name as string, when as string, {
+    kind: "import",
+    export: `downloads/${String(name)}`,
+    converted: `bridge/${step}`,
+  });
+};
+
 const DEFINITIONS: Definition[] = [
   // Given and When: what happened.
   [
@@ -876,17 +892,8 @@ const DEFINITIONS: Definition[] = [
       });
     },
   ],
-  [
-    "the download {name} is imported on {time}",
-    (compiled, [name, when], _stated, _compiling, label) => {
-      const step = label ?? (name as string);
-      happen(compiled, label, name as string, when as string, {
-        kind: "import",
-        export: `downloads/${String(name)}`,
-        converted: `bridge/${step}`,
-      });
-    },
-  ],
+  ["the download {name} is imported on {time}", importDownloaded],
+  ["the pull {name} is imported on {time}", importDownloaded],
   [
     "{person} enters {name} on {time}",
     (compiled, [, name, when], _stated, _compiling, label) => {

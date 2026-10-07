@@ -14,6 +14,7 @@
   "dependencies": {
     "@cascade-runtime/apple-health": "0.0.0",
     "@cascade-runtime/ccda-download": "0.0.0",
+    "@cascade-runtime/fhir-pull": "0.0.0",
     "@cucumber/cucumber-expressions": "20.1.0",
     "@cucumber/gherkin": "42.0.1",
     "@cucumber/messages": "34.2.1",

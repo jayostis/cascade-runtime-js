@@ -1,9 +1,10 @@
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
+import { fhirPull } from "@cascade-runtime/fhir-pull";
 import type { Importer } from "./importer.js";
 
 const IMPORTERS: ReadonlyMap<string, Importer> = new Map(
-  [appleHealthExport, ccdaDownload].map((importer) => [
+  [appleHealthExport, ccdaDownload, fhirPull].map((importer) => [
     importer.name,
     importer,
   ]),
