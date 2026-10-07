@@ -184,18 +184,27 @@ after(async () => {
 const texts = (page: Page, selector: string): Promise<string[]> =>
   page.$$eval(selector, (found) => found.map((each) => each.textContent ?? ""));
 
-test("a visitor with no pod loads Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows", async () => {
+/** The samples the new-pod box offers to load, by folder. */
+const loadable = (page: Page): Promise<string[]> =>
+  page.$$eval('#new-pod input[name="pod"]', (found) =>
+    found.map((each) => (each as HTMLInputElement).value),
+  );
+
+test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows", async () => {
   const page = watched(await profile.newPage());
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
-  assert.equal(await page.textContent("main h1"), "No pods yet");
-  await newPod(page, "Load Alex Rivera");
 
   assert.equal(await page.textContent("main h1"), "Alex Rivera");
   assert.equal(
     await page.textContent('nav a[aria-current="page"]'),
     "Alex Rivera",
   );
+  assert.deepEqual(await texts(page, "nav a"), [
+    "Alex Rivera",
+    "Priya Natarajan",
+  ]);
+  assert.deepEqual(await loadable(page), []);
   assert.deepEqual(
     (await texts(page, ".chips li")).sort(),
     [
@@ -386,8 +395,29 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   await settled(page);
   assert.deepEqual(
     (await texts(page, "nav a")).sort(),
-    ["Alex Rivera", joined.person.name].sort(),
+    ["Alex Rivera", "Priya Natarajan", joined.person.name].sort(),
   );
+});
+
+test("a first visit where no sample copies says there are no pods yet, and offers each sample to load, which loads it", async () => {
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    const samples = /\/(alex-rivera|priya-natarajan)\/pod\//;
+    await page.route(samples, (route) => route.abort());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    assert.equal(await page.textContent("main h1"), "No pods yet");
+    assert.deepEqual(await texts(page, "nav a"), []);
+    assert.deepEqual(await loadable(page), [ALEX, "priya-natarajan"]);
+
+    await page.unroute(samples);
+    await newPod(page, "Load Alex Rivera");
+    assert.equal(await page.textContent("main h1"), "Alex Rivera");
+    assert.deepEqual(await texts(page, "nav a"), ["Alex Rivera"]);
+  } finally {
+    await context.close();
+  }
 });
 
 /** What a pod shows after an import, its own address left out, so two pods compare. */

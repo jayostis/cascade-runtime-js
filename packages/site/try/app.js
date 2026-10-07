@@ -301,23 +301,41 @@ function deleted(name) {
   });
 }
 
+/** Copies the published example pod into this browser; one that fails to copy leaves nothing behind, if it can. */
+async function copy(name) {
+  try {
+    await (await openPod(name, { from: `../${name}/pod/` })).close();
+  } catch (error) {
+    const left = await deleted(name).then(
+      () => undefined,
+      (failure) => failure,
+    );
+    if (left === undefined) throw error;
+    throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
+      cause: error,
+    });
+  }
+}
+
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
 async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
-  if (!pods.includes(name))
-    try {
-      await (await openPod(name, { from: `../${name}/pod/` })).close();
-    } catch (error) {
-      const left = await deleted(name).then(
-        () => undefined,
-        (failure) => failure,
-      );
-      if (left === undefined) throw error;
-      throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
-        cause: error,
-      });
-    }
+  if (!pods.includes(name)) await copy(name);
   location.assign(podHref(name));
+}
+
+/**
+ * A browser with no pod starts with a copy of every sample; one that fails and leaves nothing behind stays a "Load"
+ * choice in the new-pod box. One that leaves its database behind, or none copying because the runtime fails, throws.
+ */
+async function firstVisit() {
+  const copies = await Promise.allSettled(SAMPLES.map(copy));
+  pods = await podsHere();
+  const left = SAMPLES.findIndex(
+    (name, at) => copies[at].status === "rejected" && pods.includes(name),
+  );
+  if (left !== -1) throw copies[left].reason;
+  if (pods.length === 0) await (await openPod()).close();
 }
 
 /** Runs the step with the buttons off; anything it did not expect, it shows. */
@@ -363,8 +381,10 @@ busy(async () => {
   [pods, people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
   const asked = query.get("pod");
-  if (asked === null && pods.length === 0)
-    return render("No pods yet", noPods());
+  if (asked === null && pods.length === 0) {
+    await firstVisit();
+    if (pods.length === 0) return render("No pods yet", noPods());
+  }
   if (asked !== null && !pods.includes(asked))
     return render(
       "Not found",
