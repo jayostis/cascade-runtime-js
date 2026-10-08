@@ -11,6 +11,43 @@ const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
+/** What follows a version's file stem in the name of the index of its rows by code. */
+export const CODES = ".codes.json";
+const RECORDS = "ontologies/records/v1-draft/records.ttl";
+
+/** What the vocabulary says of tables: each code system's URI space, and the properties each kind's rows are found by. */
+export interface TableTerms {
+  readonly uriSpaces: readonly string[];
+  /** By kind; `rec:RowSubject` for a row found by its own subject. */
+  readonly foundBy: ReadonlyMap<string, readonly string[]>;
+}
+
+export async function tableTerms(
+  vocabulary: Files,
+  newStore: StoreFactory,
+): Promise<TableTerms> {
+  const graph = new Graph(
+    await newStore().parse(
+      await readText(vocabulary, RECORDS),
+      vocabulary.iri + RECORDS,
+    ),
+  );
+  const foundBy = new Map<string, string[]>();
+  for (const [kind, , property] of graph.match(undefined, `${REC}foundBy`))
+    foundBy.set(kind.value, [
+      ...(foundBy.get(kind.value) ?? []),
+      property.value,
+    ]);
+  return {
+    uriSpaces: graph
+      .subjects(`${RDF}type`, iri(`${REC}CodeSystem`))
+      .flatMap((system) =>
+        graph.objects(system, "http://rdfs.org/ns/void#uriSpace"),
+      )
+      .map(({ value }) => value),
+    foundBy,
+  };
+}
 
 /**
  * Reference tables: `references.ttl`, the index of each series and its versions, and one file per version
@@ -78,7 +115,11 @@ export class References {
     return this.index.objects(iri(series), `${REC}tableKind`)[0]?.value;
   }
 
-  async rows(version: string): Promise<Triple[]> {
+  /**
+   * The version's rows; given codes, and an index of its rows by code beside them (`<stem>.codes.json`, the rows
+   * N-Triples), only the rows found by those codes.
+   */
+  async rows(version: string, codes?: ReadonlySet<string>): Promise<Triple[]> {
     let stem: string;
     try {
       stem = fileStem(version);
@@ -91,7 +132,29 @@ export class References {
     const bytes = await this.#source.read(path);
     if (bytes === undefined)
       throw new Refusal(`${this.#folder} holds no rows for ${version}`);
-    return this.#parse(bytes, this.#source.iri + path);
+    const index =
+      codes === undefined
+        ? undefined
+        : await this.#source.read(`${this.#folder}${stem}${CODES}`);
+    if (codes === undefined || index === undefined)
+      return this.#parse(bytes, this.#source.iri + path);
+    const found = JSON.parse(new TextDecoder().decode(index)) as Record<
+      string,
+      readonly string[]
+    >;
+    const subjects = new Set(
+      [...codes].flatMap(
+        (code) => (Object.hasOwn(found, code) ? found[code] : []) ?? [],
+      ),
+    );
+    const lines = new TextDecoder()
+      .decode(bytes)
+      .split("\n")
+      .filter((line) => subjects.has(/^<([^>]*)>/.exec(line)?.[1] ?? ""));
+    return this.#parse(
+      new TextEncoder().encode(lines.join("\n")),
+      this.#source.iri + path,
+    );
   }
 
   /** The one series whose versions hold the matcher's rules. */

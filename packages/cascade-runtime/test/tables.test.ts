@@ -338,6 +338,38 @@ ${shots.join("\n")}`);
   await revised.close();
 });
 
+test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {
+  const tables = tablesOver(feed);
+  await tables.check();
+  const references = await tables.references();
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const names = feed.catalog.find(
+    ([subject, predicate]) =>
+      predicate.value === CURRENT &&
+      feed.catalog.some(
+        ([s, , o]) =>
+          s.value === subject.value && o.value.endsWith("#CodeNames"),
+      ),
+  )?.[2].value;
+  assert.ok(names);
+  const subjects = (rows: readonly Triple[]): string[] =>
+    [...new Set(rows.map(([subject]) => subject.value))].sort();
+  const sources = (rows: readonly Triple[]): string[] =>
+    rows
+      .filter(([, predicate]) => predicate.value.endsWith("#annotatedSource"))
+      .map(([, , object]) => object.value);
+
+  const found = await references.rows(groups.second, new Set([cvx141]));
+  assert.deepEqual(sources(found), [cvx141]);
+  assert.ok(
+    subjects(await references.rows(groups.second)).length >
+      subjects(found).length,
+  );
+  assert.deepEqual(subjects(await references.rows(names, new Set([cvx141]))), [
+    cvx141,
+  ]);
+});
+
 test("a check keeps nothing of a version that does not verify, and tries a feed or rows it cannot read later", async () => {
   const cases: [string, () => Promise<Served>, RegExp, "refused" | "later"][] =
     [

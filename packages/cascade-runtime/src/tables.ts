@@ -1,4 +1,5 @@
 import {
+  CODES,
   contentName,
   type Files,
   fileStem,
@@ -9,6 +10,8 @@ import {
   References,
   relative,
   type StoreFactory,
+  tableTerms,
+  type TableTerms,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -156,6 +159,24 @@ export function shipped(references: References): string[] {
     .sort();
 }
 
+/** Each row's subject by each code it is found by: a value of a property `foundBy` names, or its own subject. */
+function byCode(
+  rows: readonly Triple[],
+  foundBy: readonly string[],
+): Record<string, string[]> {
+  const found = new Map<string, Set<string>>();
+  const add = (code: string, row: string): void => {
+    found.set(code, (found.get(code) ?? new Set()).add(row));
+  };
+  for (const [subject, predicate, object] of rows) {
+    if (foundBy.includes(`${REC}RowSubject`)) add(subject.value, subject.value);
+    if (foundBy.includes(predicate.value)) add(object.value, subject.value);
+  }
+  return Object.fromEntries(
+    [...found].map(([code, subjects]) => [code, [...subjects].sort()]),
+  );
+}
+
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
 class TablesFiles implements Files {
   readonly iri: string;
@@ -197,6 +218,7 @@ export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
+  #termsRead: Promise<TableTerms> | undefined;
 
   constructor(options: TablesOptions) {
     this.#options = options;
@@ -278,6 +300,14 @@ export class Tables {
       HELD,
       new TextEncoder().encode(`${JSON.stringify(held, null, 2)}\n`),
     );
+  }
+
+  #terms(): Promise<TableTerms> {
+    this.#termsRead ??= tableTerms(
+      this.#options.vocabulary,
+      this.#options.newStore,
+    );
+    return this.#termsRead;
   }
 
   async #index(): Promise<Graph> {
@@ -373,9 +403,16 @@ export class Tables {
         refused.push({ version: version.value, reason: error.message });
         continue;
       }
+      const stem = fileStem(version.value);
+      await this.#options.files.write(`${stem}.ttl`, ntriples(rows));
+      const kind = catalog.objects(series, `${REC}tableKind`)[0]?.value ?? "";
       await this.#options.files.write(
-        `${fileStem(version.value)}.ttl`,
-        ntriples(rows),
+        stem + CODES,
+        new TextEncoder().encode(
+          JSON.stringify(
+            byCode(rows, (await this.#terms()).foundBy.get(kind) ?? []),
+          ),
+        ),
       );
       index = new Graph([
         ...index.triples.filter(
