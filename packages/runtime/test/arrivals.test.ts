@@ -252,6 +252,10 @@ test("a step given bad input by its story is refused, and the replay goes on", a
       { kind: "reference", name: "urn:example:unlisted" },
       /urn:example:unlisted, a version references\.ttl does not list$/,
     ],
+    [
+      { kind: "open", tables: "tables/missing/" },
+      /s\/tables\/missing\/references\.ttl does not exist$/,
+    ],
   ];
   const story: Story = {
     address: "https://pod.example/",

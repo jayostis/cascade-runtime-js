@@ -294,18 +294,18 @@ async function namedVersions(union: Dataset): Promise<Map<string, string[]>> {
 }
 
 /**
- * What the rules' queries join over the dataset, each rule citing the versions of its kind loaded, and keeping only
- * the origins given.
+ * What the rules' queries join, given each query's rows, each rule citing the versions of its kind loaded, and keeping
+ * only the origins given.
  */
 async function joins(
-  dataset: Dataset,
+  rowsOf: (query: string) => Promise<readonly Row[]>,
   found: readonly { rule: MatcherRule; text: string }[],
   loaded: ReadonlyMap<string, ReadonlySet<string>>,
   kept: ReadonlySet<string>,
 ): Promise<Joins> {
   const all = new Map<string, Map<string, Set<string>>>();
   for (const { rule, text } of found) {
-    const { rows } = await dataset.select(text);
+    const rows = await rowsOf(text);
     const pairs = new Map<string, Set<string>>();
     for (const [key, origins] of joined(
       rule,
@@ -422,8 +422,17 @@ class Matcher {
         "urn:cascade:references",
       );
     }
+    const selected = new Map<string, Promise<readonly Row[]>>();
+    const rowsOf = (query: string): Promise<readonly Row[]> => {
+      let rows = selected.get(query);
+      if (rows === undefined) {
+        rows = union.select(query).then((answer) => answer.rows);
+        selected.set(query, rows);
+      }
+      return rows;
+    };
     const matched = await joins(
-      union,
+      rowsOf,
       found,
       loaded,
       new Set(["", ...versions]),
@@ -447,9 +456,12 @@ class Matcher {
           : await matcherRules(
               new Graph(await references.rows(rulesBefore)),
               context.vocabulary,
-            );
+            ).catch((error: unknown) => {
+              if (error instanceof Refusal) return [];
+              throw error;
+            });
     const known = await joins(
-      union,
+      rowsOf,
       foundBefore,
       loaded,
       new Set(["", ...versionsBefore]),
@@ -534,6 +546,10 @@ class Matcher {
       ...names,
       ...used,
     ]);
+    for (const version of applied) {
+      this.describe(this.references.seriesOf(version) ?? "");
+      this.describe(version);
+    }
     if (this.pod.held.has(name)) return;
     const same = iri(name);
     const matcher = iri(MATCHER);
@@ -557,10 +573,6 @@ class Matcher {
       [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
     ];
     writes.add(layout.place(`${JDG}Judgment`).path(name), ntriples(triples));
-    for (const version of applied) {
-      this.describe(this.references.seriesOf(version) ?? "");
-      this.describe(version);
-    }
   }
 
   /** Files a Same for each record taken, in arrival order, of it and what it joins among the records before it (M3-M5). */
@@ -573,17 +585,14 @@ class Matcher {
     );
     for (const record of [...taken].sort(byArrival)) {
       for (const rule of this.rules) {
-        const origins = new Set(
-          compared.flatMap((other) => [
-            ...this.origins(joined, rule, record, other),
-          ]),
-        );
-        for (const origin of [...origins].sort()) {
-          const matched = compared.filter((other) =>
-            this.origins(joined, rule, record, other).has(origin),
-          );
+        const byOrigin = new Map<string, SubjectRecord[]>();
+        for (const other of compared)
+          for (const origin of this.origins(joined, rule, record, other))
+            byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), other]);
+        for (const [origin, matched] of [...byOrigin].sort(([a], [b]) =>
+          a < b ? -1 : 1,
+        ))
           await this.same(rule, origin, [record, ...matched]);
-        }
       }
       compared.push(record);
     }
@@ -618,6 +627,7 @@ class Matcher {
 
   /** Files again each Same of the matcher's that used a version the tables revise and still joins two of its members (M7). */
   async recheck(): Promise<void> {
+    if (this.rulesVersion === "") return;
     const byJustification = new Map(
       this.rules.map((rule) => [rule.justification, rule]),
     );

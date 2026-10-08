@@ -122,13 +122,20 @@ export const PERFORMERS: Performers = {
   open: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "open") throw new Error("the step is no open");
-    const tables = await References.of(
-      story.source,
-      inStory(story.folder, happened.tables),
-      story.newStore,
-    );
     begun(story, step);
-    return pod.open(tables);
+    return withStoryFile(
+      pod,
+      story,
+      `${happened.tables}references.ttl`,
+      async () =>
+        pod.open(
+          await References.of(
+            story.source,
+            inStory(story.folder, happened.tables),
+            story.newStore,
+          ),
+        ),
+    );
   },
 };
 

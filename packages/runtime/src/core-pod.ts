@@ -325,10 +325,10 @@ export class CorePod {
 
   /** The pod opened with the tables (O1, O2), which it matches with from then on. */
   async open(tables: References): Promise<Performed> {
-    this.#references = Promise.resolve(tables);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
       unheld = await openPod(context, tables);
+      this.#references = Promise.resolve(tables);
     });
     return unheld.length === 0 ? performed : { ...performed, unheld };
   }
