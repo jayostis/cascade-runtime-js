@@ -102,6 +102,53 @@ test("an open whose tables list another version of the pod's rule list matches n
   assert.deepEqual(opened?.unheld, [`urn:uuid:${rules}`]);
 });
 
+test("an open on a clock that moves between judgments files each Same once when its recheck and its new joins both give it (O1)", async () => {
+  const files = await vocabulary();
+  const { story, folder } = await storyFrom(
+    FEATURE,
+    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair",
+  );
+  const pod = new MemoryFiles(story.address);
+  await replay({
+    story: { ...story, steps: story.steps.slice(0, -1) },
+    source: files,
+    vocabulary: files,
+    folder,
+    title: "",
+    pod,
+    newStore,
+    layout: await layout(),
+  });
+  const tables = (name: string) =>
+    References.of(files, `${folder}/tables/${name}/`, newStore);
+  let tick = Date.parse("2026-07-03T09:00:00Z");
+  const reopened = new CorePod({
+    pod,
+    address: story.address,
+    subject: story.subject,
+    title: "",
+    vocabulary: files,
+    layout: await layout(),
+    newStore,
+    time: { newId: randomId, now: () => new Date(tick++).toISOString() },
+    importers: [],
+    references: () => tables("app"),
+  });
+  const opened = await reopened.open(await tables("app-new-rules"));
+  assert.equal(opened.refused, undefined);
+  const judgments = [];
+  for (const path of opened.wrote) {
+    const { triples } = await parseGraph(
+      (await pod.read(path)) ?? new Uint8Array(),
+      pod.iri + path,
+      newStore,
+    );
+    if (triples.some(([, , object]) => object.value === JUDGMENT))
+      judgments.push(path);
+  }
+  assert.equal(judgments.length, 2);
+});
+
 test("a refused open leaves the pod matching with the tables it had", async () => {
   const files = await vocabulary();
   const { story, folder } = await storyFrom(
