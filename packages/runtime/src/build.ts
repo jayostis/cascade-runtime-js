@@ -2,7 +2,7 @@ import { Derivations, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
 import { blank, iri, literal, RDF, type Triple, XSD } from "./rdf.js";
-import type { Store } from "./store.js";
+import type { Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const DCT = "http://purl.org/dc/terms/";
@@ -21,9 +21,9 @@ export interface PodState {
   readonly title: string;
 }
 
-/** Adds the lens's derived state, and the files built from it, to a store holding a pod; returns those files. */
+/** Adds the lens's derived state, and the files built from it, to a union holding a pod; returns those files. */
 export type Derive = (
-  store: Store,
+  union: Union,
   lens: string,
   pod: PodState,
 ) => Promise<ReadonlyMap<string, readonly Triple[]>>;
@@ -117,9 +117,9 @@ function manifest(file: string, title: string, at: string): Triple[] {
 /** The vocabulary's derivations, and the queries that write the layout's files, read once, run as they are. */
 export interface VocabularyBuild {
   readonly derivations: Derivations;
-  /** Adds the files the build writes to a store holding a pod and its derived state; returns them. */
+  /** Adds the files the build writes to a union holding a pod and its derived state; returns them. */
   files(
-    store: Store,
+    union: Union,
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>>;
 }
@@ -150,11 +150,13 @@ export async function vocabularyBuild(
   );
 
   const written = async (
-    store: Store,
+    union: Union,
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
-    const { rows } = await store.select(query(CURRENT_REFERENCE_VERSIONS));
-    const used = rows.flatMap((row) => row.get("version")?.value ?? []);
+    const { rows } = await union.select(query(CURRENT_REFERENCE_VERSIONS));
+    const used = [
+      ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
+    ];
     const held = new Set(
       layout.views
         .filter(({ writtenAlways }) => writtenAlways)
@@ -162,7 +164,7 @@ export async function vocabularyBuild(
     );
     const unheld = layout.views.filter(({ file }) => !held.has(file ?? ""));
     if (unheld.length > 0) {
-      const { rows: kinds } = await store.select(
+      const { rows: kinds } = await union.select(
         `SELECT DISTINCT ?kind WHERE { VALUES ?kind { ${unheld.map(({ kind }) => `<${kind}>`).join(" ")} } ?record a ?kind }`,
       );
       const found = new Set(kinds.map((row) => row.get("kind")?.value));
@@ -172,7 +174,7 @@ export async function vocabularyBuild(
     const files = new Map<string, readonly Triple[]>();
     const add = async (path: string, triples: readonly Triple[]) => {
       files.set(path, triples);
-      await store.add(triples, { graph: pod.address + path });
+      await union.add(triples, pod.address + path);
     };
     for (const group of groups) {
       const made = await Promise.all(
@@ -182,7 +184,7 @@ export async function vocabularyBuild(
             file,
             triples: marked(
               pod.address + file,
-              await store.construct(query(path)),
+              await union.construct(query(path)),
               used,
             ),
           })),
@@ -205,8 +207,8 @@ export async function vocabularyDerive(
   layout: Layout,
 ): Promise<Derive> {
   const { derivations, files } = await vocabularyBuild(vocabulary, layout);
-  return async (store, lens, pod) => {
-    await derivations.derive(store, lens);
-    return files(store, pod);
+  return async (union, lens, pod) => {
+    await derivations.derive(union, lens);
+    return files(union, pod);
   };
 }

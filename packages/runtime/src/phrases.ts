@@ -21,7 +21,7 @@ import {
 } from "./rdf.js";
 import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
-import { type Row, selected, type Store } from "./store.js";
+import { type Row, selected, type Dataset } from "./store.js";
 import { REC } from "./step.js";
 import type { Happened, Step } from "./story.js";
 import {
@@ -62,7 +62,7 @@ type ReplayedStep = Replayed["steps"][number];
 
 /** What an example's `Then` steps read: the pod as it stood at a step, under a lens. */
 export interface Reading {
-  readonly store: Store;
+  readonly store: Dataset;
   readonly replayed: Replayed;
   readonly words: Words;
   readonly person: Person;
@@ -510,7 +510,7 @@ interface Judged {
   readonly used: Set<string>;
 }
 
-async function matcherJudgments(store: Store): Promise<Judged[]> {
+async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
   for (const [name, justification, member, at, used] of await selected(
     store,

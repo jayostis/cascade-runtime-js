@@ -11,6 +11,7 @@ import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, kitsOf } from "../src/kit.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
+import { Union } from "../src/store.js";
 import { layout, ROOT, vocabulary } from "./vocabulary.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -43,8 +44,8 @@ async function report(): Promise<{
     "--report",
     file,
   ]);
-  const store = new OxigraphStore();
-  await store.loadTurtle(await readFile(file), { graph: "urn:report" });
+  const store = new Union(new OxigraphStore());
+  await store.loadTurtle(await readFile(file), "urn:report");
   const { rows } = await store.select(`PREFIX earl: <${EARL}>
     SELECT ?test ?outcome ?why WHERE {
       ?assertion a earl:Assertion ; earl:test ?test ; earl:result ?result . ?result earl:outcome ?outcome

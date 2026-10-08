@@ -2,19 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, written } from "../src/rdf.js";
+import { Union } from "../src/store.js";
 
-test("the store answers over named graphs, and its default graph holds what was not loaded alone, blank nodes and all", async () => {
+test("a query's default graph is the union of the graphs it names, GRAPH reads every graph, and blank nodes are shared across graphs", async () => {
   const store = new OxigraphStore();
   await store.loadTurtle('<#a> <https://ex.example/p> "x"@en, 1 .', {
     graph: "https://pod.example/one.ttl",
   });
   await store.add([[iri("urn:s"), iri("https://ex.example/p"), literal("y")]], {
     graph: "urn:aside",
-    alone: true,
   });
 
   const { variables, rows } = await store.select(
     "SELECT ?g ?s ?o WHERE { GRAPH ?g { ?s <https://ex.example/p> ?o } }",
+    new Set(),
   );
   assert.deepEqual(variables, ["g", "s", "o"]);
   assert.deepEqual(
@@ -31,39 +32,44 @@ test("the store answers over named graphs, and its default graph holds what was 
       '<urn:aside> <urn:s> "y"',
     ],
   );
+  const one = new Set(["https://pod.example/one.ttl"]);
   assert.equal(
-    await store.ask('ASK { <https://pod.example/one.ttl#a> ?p "x"@en }'),
+    await store.ask('ASK { <https://pod.example/one.ttl#a> ?p "x"@en }', one),
     true,
   );
-  assert.equal(await store.ask("ASK { <urn:s> ?p ?o }"), false);
+  assert.equal(await store.ask("ASK { <urn:s> ?p ?o }", one), false);
+  assert.equal(
+    await store.ask("ASK { <urn:s> ?p ?o }", new Set([...one, "urn:aside"])),
+    true,
+  );
+  assert.equal(await store.ask("ASK { ?s ?p ?o }", new Set()), false);
+
   await store.loadTurtle("<urn:b> <urn:r> _:x, [] .", { graph: "urn:blank" });
   const joined = await store.select(
     "SELECT ?o WHERE { <urn:b> <urn:r> ?o . GRAPH <urn:blank> { <urn:b> <urn:r> ?o } }",
+    new Set(["urn:blank"]),
   );
   assert.equal(joined.rows.length, 2);
   await store.loadTurtle("<urn:b> <urn:r> _:x .", { graph: "urn:other" });
   const apart = await store.select(
     "SELECT DISTINCT ?o WHERE { <urn:b> <urn:r> ?o }",
+    new Set(["urn:blank", "urn:other"]),
   );
   assert.equal(apart.rows.length, 3);
-  const [[, , loaded] = []] = await store.construct(
-    "CONSTRUCT { <urn:b> <urn:r> ?o } WHERE { GRAPH <urn:other> { <urn:b> <urn:r> ?o } }",
+
+  const union = new Union(store, ["urn:other"]);
+  const [[, , loaded] = []] = await union.construct(
+    "CONSTRUCT { <urn:b> <urn:r> ?o } WHERE { <urn:b> <urn:r> ?o }",
   );
   assert.equal(loaded?.termType, "BlankNode");
-  await store.add([[loaded, iri("urn:t"), literal("z")]], {
-    graph: "urn:added",
-  });
+  await union.add([[loaded, iri("urn:t"), literal("z")]], "urn:added");
+  assert.deepEqual(union.graphs, new Set(["urn:added", "urn:other"]));
   assert.equal(
-    await store.ask(
-      'ASK { GRAPH <urn:other> { <urn:b> <urn:r> ?o } GRAPH <urn:added> { ?o <urn:t> "z" } ?o <urn:t> "z" }',
-    ),
+    await union.ask('ASK { <urn:b> <urn:r> ?o . ?o <urn:t> "z" }'),
     true,
   );
-  const built = await store.construct(
-    "CONSTRUCT { ?s <urn:q> ?o } WHERE { GRAPH <urn:aside> { ?s ?p ?o } }",
-  );
-  assert.deepEqual(
-    built.map((triple) => triple.map(written).join(" ")),
-    ['<urn:s> <urn:q> "y"'],
+  assert.equal(
+    await new Union(store, ["urn:other"]).ask("ASK { ?o <urn:t> ?z }"),
+    false,
   );
 });
