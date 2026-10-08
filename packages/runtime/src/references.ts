@@ -10,6 +10,7 @@ const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
+const REVISION_OF = `${PROV}wasRevisionOf`;
 
 /**
  * Reference tables: `references.ttl`, the index of each series and its versions, and one file per version
@@ -116,40 +117,69 @@ export class References {
     return series;
   }
 
-  /** The version of the series the pod names as current (`named`), and otherwise the one it ships with. */
-  current(series: string, named: readonly string[]): string {
-    const label =
-      this.index.objects(iri(series), `${RDFS}label`)[0]?.value ?? series;
-    const lists = (version: string | undefined): version is string =>
-      version !== undefined && this.seriesOf(version) === series;
-    if (named.length === 0) {
-      const shipped = this.index.objects(iri(series), SHIPS_WITH)[0]?.value;
-      if (!lists(shipped))
-        throw new Refusal(
-          `${label} ships with ${shipped}, a version it does not list`,
-        );
-      return shipped;
-    }
-    const [version, ...others] = named;
-    if (others.length > 0 || !lists(version))
+  /** The version this one revises, if any. */
+  revisionOf(version: string): string | undefined {
+    return this.index.objects(iri(version), REVISION_OF)[0]?.value;
+  }
+
+  /** Every version a version of these tables revises. */
+  revised(): Set<string> {
+    return new Set(
+      this.index
+        .match(undefined, REVISION_OF)
+        .map(([, , earlier]) => earlier.value),
+    );
+  }
+
+  /** The series' default (M10): the version it ships with. */
+  fallback(series: string): string {
+    const shipped = this.index.objects(iri(series), SHIPS_WITH)[0]?.value;
+    if (shipped === undefined || this.seriesOf(shipped) !== series)
       throw new Refusal(
-        `the pod holds no one current version the matcher knows of ${label}`,
+        `${this.#label(series)} ships with ${shipped}, a version it does not list`,
       );
-    return version;
+    return shipped;
+  }
+
+  /**
+   * The version of the series the pod names as current (`named`), and otherwise its default; none when the pod names
+   * a version these tables do not list (O2).
+   */
+  current(series: string, named: readonly string[]): string | undefined {
+    const [version, ...others] = named;
+    if (version === undefined) return this.fallback(series);
+    if (others.length > 0)
+      throw new Refusal(
+        `the pod holds ${named.length} current versions of ${this.#label(series)}, not one`,
+      );
+    return this.seriesOf(version) === series ? version : undefined;
+  }
+
+  #label(series: string): string {
+    return this.index.objects(iri(series), `${RDFS}label`)[0]?.value ?? series;
   }
 }
 
-/** A person's reference index, `references/references.ttl` under their folder: empty when they have none. */
+/**
+ * A person's reference indexes as one: `references/references.ttl` under their folder and each tables folder's under
+ * `tables/`; empty when they have none.
+ */
 export async function referenceIndex(
   files: Files,
   folder: string,
   parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>,
 ): Promise<Graph> {
-  const path = `${folder}/references/references.ttl`;
-  const bytes = await files.read(path);
-  return new Graph(
-    bytes === undefined ? [] : await parse(bytes, files.iri + path),
-  );
+  const tables = await files.list(`${folder}/tables/`);
+  const triples: Triple[] = [];
+  for (const path of [
+    `${folder}/references/references.ttl`,
+    ...tables.filter((path) => path.endsWith("/references.ttl")),
+  ]) {
+    const bytes = await files.read(path);
+    if (bytes !== undefined)
+      triples.push(...(await parse(bytes, files.iri + path)));
+  }
+  return new Graph(triples);
 }
 
 /** The versions the index numbers so (`pav:version`) of the series so labelled. */

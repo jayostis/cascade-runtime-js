@@ -19,6 +19,7 @@ interface StorySide {
   readonly activities: ReadonlyMap<string, string>;
   /** The time the pod's steps are performed at, which a performer begins at its step's. */
   readonly time: StoryTime;
+  readonly newStore: StoreFactory;
 }
 
 /** Performs a story's step by turning it into its inputs and calling the pod's step of its kind. */
@@ -118,15 +119,21 @@ export const PERFORMERS: Performers = {
       ? Promise.resolve({ wrote: [] })
       : pod.match(activity);
   },
+  open: async (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "open") throw new Error("the step is no open");
+    const tables = await References.of(
+      story.source,
+      inStory(story.folder, happened.tables),
+      story.newStore,
+    );
+    begun(story, step);
+    return pod.open(tables);
+  },
 };
 
-export interface ReplayedStep {
+export interface ReplayedStep extends Performed {
   readonly step: Step;
-  /** The files new to the pod that the step wrote, in the order it wrote them. */
-  readonly wrote: readonly string[];
-  readonly refused?: string;
-  /** The import or entry session the step made. */
-  readonly activity?: string;
 }
 
 /** A story replayed into a pod, as far as the runtime can perform its steps. */
@@ -250,6 +257,7 @@ export class Replay {
         folder: options.folder,
         activities: this.#activities,
         time: this.#time,
+        newStore: options.newStore,
       });
     } catch (error) {
       if (error instanceof BuildFailure) {
@@ -265,14 +273,10 @@ export class Replay {
     this.#record(step, performed);
   }
 
-  #record(step: Step, { wrote, refused, activity }: Performed): void {
-    if (activity !== undefined) this.#activities.set(step.name, activity);
-    this.#steps.push({
-      step,
-      wrote,
-      ...(refused === undefined ? {} : { refused }),
-      ...(activity === undefined ? {} : { activity }),
-    });
+  #record(step: Step, performed: Performed): void {
+    if (performed.activity !== undefined)
+      this.#activities.set(step.name, performed.activity);
+    this.#steps.push({ step, ...performed });
   }
 
   /** A replay that stands where this one does, over a copy of its pod. */

@@ -7,7 +7,7 @@ import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
-import { matcherView, runMatcher } from "./matcher.js";
+import { matcherView, openPod, runMatcher } from "./matcher.js";
 import { documentName } from "./names.js";
 import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
@@ -54,6 +54,8 @@ export interface Performed {
   readonly refused?: string;
   /** The import or entry session it made. */
   readonly activity?: string;
+  /** The versions the pod names that the tables an open was given do not hold (O2). */
+  readonly unheld?: readonly string[];
 }
 
 /** The build after a step failed: the step itself is in the pod, as `performed` says. */
@@ -319,6 +321,16 @@ export class CorePod {
     return this.#step(async (context) =>
       fileReference(context, await this.#tables(), version),
     );
+  }
+
+  /** The pod opened with the tables (O1, O2), which it matches with from then on. */
+  async open(tables: References): Promise<Performed> {
+    this.#references = Promise.resolve(tables);
+    let unheld: readonly string[] = [];
+    const performed = await this.#step(async (context) => {
+      unheld = await openPod(context, tables);
+    });
+    return unheld.length === 0 ? performed : { ...performed, unheld };
   }
 
   /** A matcher run taking the import or entry session given, or, given none, a recheck (M7). */

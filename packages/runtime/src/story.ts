@@ -8,7 +8,8 @@ export type Happened =
   | { readonly kind: "entry"; readonly file: string }
   | { readonly kind: "judgment"; readonly file: string }
   | { readonly kind: "reference"; readonly name: string }
-  | { readonly kind: "matcher"; readonly takes?: string };
+  | { readonly kind: "matcher"; readonly takes?: string }
+  | { readonly kind: "open"; readonly tables: string };
 
 export type StepKind = Happened["kind"];
 
