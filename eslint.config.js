@@ -17,7 +17,6 @@ export default tseslint.config(
         history: "readonly",
         indexedDB: "readonly",
         location: "readonly",
-        requestAnimationFrame: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",
         window: "readonly",

@@ -322,7 +322,7 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       await page.click(`.tiles .tile[href="${box}"]`);
       filter = (await page.textContent(`${box} tbody td`)) ?? "";
       await page.fill(`${box} .filter`, filter);
-      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
     }
   }
 

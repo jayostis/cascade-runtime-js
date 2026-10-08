@@ -498,6 +498,26 @@ export function steps({ step, requests }) {
 }
 
 /**
+ * `steps` of `connection`, which in a browser draws itself again once a frame while the connection signs in or fetches,
+ * so the host only counts `connection.requests` and the page around it is not drawn again.
+ */
+function Steps({ connection }) {
+  const [, setRequests] = useState(connection.requests);
+  useEffect(() => {
+    if (connection.step !== "signing in" && connection.step !== "pulling")
+      return;
+    let frame;
+    const again = () => {
+      setRequests(connection.requests);
+      frame = globalThis.requestAnimationFrame(again);
+    };
+    again();
+    return () => globalThis.cancelAnimationFrame(frame);
+  }, [connection, connection.step]);
+  return steps(connection);
+}
+
+/**
  * Every person the demo hospitals hold, by name, the same person at two hospitals once, by name and birth date; each
  * with the hospitals that hold them. `demo` is the demo hospitals as `loadHospitals` gives them.
  */
@@ -776,7 +796,7 @@ export function connectionDialog({
   const said = (body) => box(id, name, body, { back });
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
-      html`<div class="card">${steps(connection)}<p class="muted">This refreshes itself until the record is here.</p></div>`,
+      html`<div class="card"><${Steps} connection=${connection} /><p class="muted">This refreshes itself until the record is here.</p></div>`,
     );
   if (failed !== undefined)
     return said(
@@ -790,7 +810,7 @@ export function connectionDialog({
   const denied = pulled.denied.map(({ type, category }) =>
     category === undefined ? type : `${type} (${category})`,
   );
-  return said(html`<div class="card">${steps(connection)}</div>
+  return said(html`<div class="card"><${Steps} connection=${connection} /></div>
 ${
   about !== undefined &&
   slug(about) !== pod &&

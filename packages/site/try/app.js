@@ -253,18 +253,6 @@ async function signIn(fhirBase, popup) {
     if (state.connection === shown) showConnection(said, doing);
   };
   now();
-  let counting = false;
-  /** Shows the requests answered once a frame, and only while the step they were counted in is still the one shown. */
-  const counted = () => {
-    shown.requests += 1;
-    if (counting) return;
-    counting = true;
-    const step = shown.step;
-    requestAnimationFrame(() => {
-      counting = false;
-      if (shown.step === step) now();
-    });
-  };
   const failed = (said) => {
     shown.step = "failed";
     return now({ failed: said }, "ready");
@@ -280,7 +268,7 @@ async function signIn(fhirBase, popup) {
       signIn: popupSignIn({ popup }),
       fetch: async (url, init) => {
         const answer = await globalThis.fetch(url, init);
-        counted();
+        shown.requests += 1;
         return answer;
       },
     });
