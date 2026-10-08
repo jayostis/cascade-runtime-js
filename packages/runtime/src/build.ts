@@ -154,7 +154,9 @@ export async function vocabularyBuild(
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
     const { rows } = await union.select(query(CURRENT_REFERENCE_VERSIONS));
-    const used = rows.flatMap((row) => row.get("version")?.value ?? []);
+    const used = [
+      ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
+    ];
     const held = new Set(
       layout.views
         .filter(({ writtenAlways }) => writtenAlways)

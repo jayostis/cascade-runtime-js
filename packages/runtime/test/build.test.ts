@@ -9,8 +9,9 @@ import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
-import { Union } from "../src/store.js";
+import { type Dataset, Union } from "../src/store.js";
 import { notIsomorphic } from "./graphs.js";
 import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
 
@@ -28,7 +29,7 @@ const PREFIXES = `PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
   PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>`;
 
-let store: Union;
+let store: Dataset;
 /** The vocabulary's pod layout as it reads, its paths resolved against the pod's address, read without `Layout`. */
 let laidOut: Union;
 let address: string;
@@ -38,6 +39,8 @@ let pod: CountedFiles;
 /** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
 let reopened: () => CorePod;
 let replayed: Replayed;
+/** The folder the story's steps name their files under. */
+let storyFolder: string;
 
 /** Files in memory, counting each read that finds a file, and each write, by path, in the order written. */
 class CountedFiles extends MemoryFiles {
@@ -65,6 +68,7 @@ before(async () => {
   const derive = await vocabularyDerive(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
+  storyFolder = folder;
   laidOut = new Union(new OxigraphStore());
   await laidOut.loadTurtle(await readText(files, LAYOUT_FILE), address);
   replayed = await replay({
@@ -96,7 +100,7 @@ before(async () => {
     });
 });
 
-async function values(on: Union, where: string): Promise<string[]> {
+async function values(on: Dataset, where: string): Promise<string[]> {
   const { rows, variables } = await on.select(
     `${PREFIXES} SELECT * WHERE { ${where} }`,
   );
@@ -289,4 +293,40 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
     ),
     [],
   );
+});
+
+test("the matcher reads a statement two files of the pod make as one", async () => {
+  const [[first, record] = []] = (
+    await values(
+      store,
+      `SELECT ?first ?record WHERE { ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf [] } }`,
+    )
+  ).map((row) => row.split(" "));
+  const files = await vocabulary();
+  const copy = await reopened().fork(clock);
+  await copy.files.write(
+    "restated.ttl",
+    new TextEncoder().encode(
+      `<${first ?? ""}> <https://ns.cascadeprotocol.org/records/v1-draft#revisionOf> <${record ?? ""}> .`,
+    ),
+  );
+  const restated = new CorePod({
+    pod: copy.files,
+    address,
+    subject: replayed.story.subject,
+    title: "matching",
+    vocabulary: files,
+    layout,
+    newStore: () => new OxigraphStore(),
+    time: clock,
+    importers: [],
+    references: () =>
+      References.of(
+        files,
+        `${storyFolder}/references/`,
+        () => new OxigraphStore(),
+      ),
+    build: { lens: LENS, derive: await vocabularyDerive(files, layout) },
+  });
+  assert.equal((await restated.match()).refused, undefined);
 });

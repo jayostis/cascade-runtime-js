@@ -168,7 +168,7 @@ async function subjectRecords(
   const kinds = grouped(
     await column(
       dataset,
-      `SELECT ?record ?kind WHERE { ${theirs} ?record rec:kind ?kind }`,
+      `SELECT DISTINCT ?record ?kind WHERE { ${theirs} ?record rec:kind ?kind }`,
       "record",
       "kind",
     ),
@@ -176,7 +176,7 @@ async function subjectRecords(
   const versions = grouped(
     await column(
       dataset,
-      `SELECT ?record ?version WHERE { ${theirs} ?record pav:hasCurrentVersion ?version }`,
+      `SELECT DISTINCT ?record ?version WHERE { ${theirs} ?record pav:hasCurrentVersion ?version }`,
       "record",
       "version",
     ),
@@ -184,7 +184,7 @@ async function subjectRecords(
   const firsts = grouped(
     await column(
       dataset,
-      `SELECT ?record ?first WHERE { ${theirs} ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
+      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
       "record",
       "first",
     ),
@@ -192,7 +192,7 @@ async function subjectRecords(
   const times = grouped(
     await column(
       dataset,
-      `SELECT ?first ?at WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:generatedAtTime ?at }`,
+      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:generatedAtTime ?at }`,
       "first",
       "at",
     ),
@@ -200,7 +200,7 @@ async function subjectRecords(
   const activities = grouped(
     await column(
       dataset,
-      `SELECT ?first ?activity WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
+      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
       "first",
       "activity",
     ),
@@ -285,7 +285,7 @@ class Matcher {
     const named = grouped(
       await column(
         union,
-        "SELECT ?series ?version WHERE { ?series pav:hasCurrentVersion ?version }",
+        "SELECT DISTINCT ?series ?version WHERE { ?series pav:hasCurrentVersion ?version }",
         "series",
         "version",
       ),
@@ -472,7 +472,7 @@ async function recheckable(dataset: Dataset): Promise<Judged[]> {
         grouped(
           await column(
             dataset,
-            `SELECT ?judgment ?value WHERE { ${ours} ?judgment ${predicate} ?value }`,
+            `SELECT DISTINCT ?judgment ?value WHERE { ${ours} ?judgment ${predicate} ?value }`,
             "judgment",
             "value",
           ),

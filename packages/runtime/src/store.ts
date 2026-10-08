@@ -21,16 +21,15 @@ export interface Store {
   /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
   parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
-  select(query: string, union: readonly string[]): Promise<Rows>;
-  ask(query: string, union: readonly string[]): Promise<boolean>;
-  construct(query: string, union: readonly string[]): Promise<Triple[]>;
+  select(query: string, union: ReadonlySet<string>): Promise<Rows>;
+  ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
+  construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;
 }
 
 export type StoreFactory = () => Store;
 
 /** A dataset as a query reads it: a default graph and named graphs. */
 export interface Dataset {
-  parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   select(query: string): Promise<Rows>;
   ask(query: string): Promise<boolean>;
   construct(query: string): Promise<Triple[]>;
@@ -50,8 +49,8 @@ export class Union implements Dataset {
     this.#graphs = new Set(graphs);
   }
 
-  get graphs(): readonly string[] {
-    return [...this.#graphs];
+  get graphs(): ReadonlySet<string> {
+    return this.#graphs;
   }
 
   async loadTurtle(turtle: Uint8Array | string, graph: string): Promise<void> {
@@ -64,20 +63,16 @@ export class Union implements Dataset {
     this.#graphs.add(graph);
   }
 
-  parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {
-    return this.store.parse(turtle, base);
-  }
-
   select(query: string): Promise<Rows> {
-    return this.store.select(query, this.graphs);
+    return this.store.select(query, this.#graphs);
   }
 
   ask(query: string): Promise<boolean> {
-    return this.store.ask(query, this.graphs);
+    return this.store.ask(query, this.#graphs);
   }
 
   construct(query: string): Promise<Triple[]> {
-    return this.store.construct(query, this.graphs);
+    return this.store.construct(query, this.#graphs);
   }
 }
 

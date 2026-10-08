@@ -15,7 +15,7 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
 
   const { variables, rows } = await store.select(
     "SELECT ?g ?s ?o WHERE { GRAPH ?g { ?s <https://ex.example/p> ?o } }",
-    [],
+    new Set(),
   );
   assert.deepEqual(variables, ["g", "s", "o"]);
   assert.deepEqual(
@@ -32,28 +32,28 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
       '<urn:aside> <urn:s> "y"',
     ],
   );
-  const one = ["https://pod.example/one.ttl"];
+  const one = new Set(["https://pod.example/one.ttl"]);
   assert.equal(
     await store.ask('ASK { <https://pod.example/one.ttl#a> ?p "x"@en }', one),
     true,
   );
   assert.equal(await store.ask("ASK { <urn:s> ?p ?o }", one), false);
   assert.equal(
-    await store.ask("ASK { <urn:s> ?p ?o }", [...one, "urn:aside"]),
+    await store.ask("ASK { <urn:s> ?p ?o }", new Set([...one, "urn:aside"])),
     true,
   );
-  assert.equal(await store.ask("ASK { ?s ?p ?o }", []), false);
+  assert.equal(await store.ask("ASK { ?s ?p ?o }", new Set()), false);
 
   await store.loadTurtle("<urn:b> <urn:r> _:x, [] .", { graph: "urn:blank" });
   const joined = await store.select(
     "SELECT ?o WHERE { <urn:b> <urn:r> ?o . GRAPH <urn:blank> { <urn:b> <urn:r> ?o } }",
-    ["urn:blank"],
+    new Set(["urn:blank"]),
   );
   assert.equal(joined.rows.length, 2);
   await store.loadTurtle("<urn:b> <urn:r> _:x .", { graph: "urn:other" });
   const apart = await store.select(
     "SELECT DISTINCT ?o WHERE { <urn:b> <urn:r> ?o }",
-    ["urn:blank", "urn:other"],
+    new Set(["urn:blank", "urn:other"]),
   );
   assert.equal(apart.rows.length, 3);
 
@@ -63,7 +63,7 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
   );
   assert.equal(loaded?.termType, "BlankNode");
   await union.add([[loaded, iri("urn:t"), literal("z")]], "urn:added");
-  assert.deepEqual(union.graphs, ["urn:other", "urn:added"]);
+  assert.deepEqual(union.graphs, new Set(["urn:added", "urn:other"]));
   assert.equal(
     await union.ask('ASK { <urn:b> <urn:r> ?o . ?o <urn:t> "z" }'),
     true,

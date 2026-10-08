@@ -6,7 +6,7 @@ import { iri, RDF, written } from "./rdf.js";
 import { referenceIndex, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { REC } from "./step.js";
-import { selected, type Dataset } from "./store.js";
+import { selected, type Dataset, type StoreFactory } from "./store.js";
 
 export const PROV = "http://www.w3.org/ns/prov#";
 export const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
@@ -133,6 +133,7 @@ export function listed(words: string): string[] {
 /** Things named in words, resolved over one pod as an example reads it. */
 export class Words {
   readonly #store: Dataset;
+  readonly #newStore: StoreFactory;
   readonly #replayed: Replayed;
   readonly #vocabulary: Files;
   readonly #person: Person;
@@ -144,6 +145,7 @@ export class Words {
 
   constructor(options: {
     readonly store: Dataset;
+    readonly newStore: StoreFactory;
     readonly replayed: Replayed;
     readonly vocabulary: Files;
     readonly person: Person;
@@ -153,6 +155,7 @@ export class Words {
     readonly handles?: Handles;
   }) {
     this.#store = options.store;
+    this.#newStore = options.newStore;
     this.#replayed = options.replayed;
     this.#vocabulary = options.vocabulary;
     this.#person = options.person;
@@ -200,7 +203,7 @@ export class Words {
     this.#references ??= referenceIndex(
       this.#vocabulary,
       this.#person.folder,
-      (bytes, base) => this.#store.parse(bytes, base),
+      (bytes, base) => this.#newStore().parse(bytes, base),
     );
     return this.#references;
   }
@@ -332,7 +335,7 @@ export class Words {
     if (filed !== null) {
       const path = `${this.#person.folder}/judgments/${filed[1] ?? ""}.ttl`;
       const graph = new Graph(
-        await this.#store.parse(
+        await this.#newStore().parse(
           await readText(this.#vocabulary, path),
           this.#vocabulary.iri + path,
         ),
@@ -350,7 +353,7 @@ export class Words {
     );
     const found = (
       await this
-        .#select(`SELECT ?judgment (GROUP_CONCAT(STR(?member); separator=" ") AS ?members) WHERE {
+        .#select(`SELECT ?judgment (GROUP_CONCAT(DISTINCT STR(?member); separator=" ") AS ?members) WHERE {
         ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${justification}> ; <${PROV}hadMember> ?member
       } GROUP BY ?judgment`)
     ).filter(

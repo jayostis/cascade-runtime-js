@@ -21,7 +21,7 @@ import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { referenceIndex } from "./references.js";
 import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Dataset, Store, StoreFactory } from "./store.js";
+import type { Dataset, StoreFactory } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
 
@@ -204,24 +204,18 @@ function named(
   };
 }
 
-/** A dataset built only once something reads it; parsing needs none. */
+/** A dataset built only once something reads it. */
 class LazyDataset implements Dataset {
   #made: Promise<Dataset> | undefined;
   readonly #make: () => Promise<Dataset>;
-  readonly #parser: Store;
 
-  constructor(make: () => Promise<Dataset>, parser: Store) {
+  constructor(make: () => Promise<Dataset>) {
     this.#make = make;
-    this.#parser = parser;
   }
 
   #dataset(): Promise<Dataset> {
     this.#made ??= this.#make();
     return this.#made;
-  }
-
-  parse(...args: Parameters<Dataset["parse"]>) {
-    return this.#parser.parse(...args);
   }
 
   async select(query: string) {
@@ -316,14 +310,12 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
-    const store = new LazyDataset(
-      () =>
-        this.dataset(
-          node,
-          lens,
-          replayed.steps.map(({ step }) => step.name),
-        ),
-      this.#options.newStore(),
+    const store = new LazyDataset(() =>
+      this.dataset(
+        node,
+        lens,
+        replayed.steps.map(({ step }) => step.name),
+      ),
     );
     const { person } = compiled;
     let handles = this.#handles.get(feature.folder);
@@ -341,6 +333,7 @@ class Run {
       layout: this.layout,
       words: new Words({
         store,
+        newStore: this.#options.newStore,
         replayed,
         vocabulary,
         person,
@@ -507,6 +500,7 @@ export async function runConformance(
         folder: person.folder,
         replayed,
         final: await run.dataset(node, KIT_LENS, names),
+        newStore: options.newStore,
         layout,
         shapes: options.shapes as Shapes,
       }))

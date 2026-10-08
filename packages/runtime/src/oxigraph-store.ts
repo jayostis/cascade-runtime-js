@@ -49,14 +49,16 @@ export class OxigraphStore implements Store {
    * many times slower, so a union naming every graph held is read as the former.
    */
   #over(
-    union: readonly string[],
+    union: ReadonlySet<string>,
   ):
     | { use_default_graph_as_union: true }
     | { default_graph: oxigraph.NamedNode[] } {
-    const named = new Set(union);
-    return [...this.#graphs].every((graph) => named.has(graph))
-      ? { use_default_graph_as_union: true }
-      : { default_graph: union.map((graph) => oxigraph.namedNode(graph)) };
+    for (const graph of this.#graphs)
+      if (!union.has(graph))
+        return {
+          default_graph: [...union].map((graph) => oxigraph.namedNode(graph)),
+        };
+    return { use_default_graph_as_union: true };
   }
 
   async loadTurtle(
@@ -84,7 +86,9 @@ export class OxigraphStore implements Store {
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
     const graph = oxigraph.namedNode(options.graph);
     const ground: string[] = [];
+    let any = false;
     for (const triple of triples) {
+      any = true;
       const [subject, predicate, object] = triple;
       if (subject.termType !== "BlankNode" && object.termType !== "BlankNode") {
         ground.push(`${triple.map(written).join(" ")} .\n`);
@@ -98,18 +102,17 @@ export class OxigraphStore implements Store {
           graph,
         ),
       );
-      this.#graphs.add(options.graph);
     }
     if (ground.length > 0) {
       this.#store.load(ground.join(""), {
         format: N_TRIPLES,
         to_graph_name: graph,
       });
-      this.#graphs.add(options.graph);
     }
+    if (any) this.#graphs.add(options.graph);
   }
 
-  async select(query: string, union: readonly string[]): Promise<Rows> {
+  async select(query: string, union: ReadonlySet<string>): Promise<Rows> {
     const answer = parseResults(
       this.#store.query(query, {
         results_format: RESULTS_JSON,
@@ -121,14 +124,17 @@ export class OxigraphStore implements Store {
     return answer;
   }
 
-  async ask(query: string, union: readonly string[]): Promise<boolean> {
+  async ask(query: string, union: ReadonlySet<string>): Promise<boolean> {
     const answer = this.#store.query(query, this.#over(union));
     if (typeof answer !== "boolean")
       throw new Error("a query that is no ASK was run as one");
     return answer;
   }
 
-  async construct(query: string, union: readonly string[]): Promise<Triple[]> {
+  async construct(
+    query: string,
+    union: ReadonlySet<string>,
+  ): Promise<Triple[]> {
     const answer = this.#store.query(query, this.#over(union));
     if (!Array.isArray(answer) || answer.some((item) => item instanceof Map)) {
       throw new Error("a query that is no CONSTRUCT was run as one");

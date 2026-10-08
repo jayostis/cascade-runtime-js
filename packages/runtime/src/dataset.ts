@@ -4,7 +4,7 @@ import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed } from "./replay.js";
-import { type Store, Union } from "./store.js";
+import { type Dataset, type Store, Union } from "./store.js";
 
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
@@ -27,7 +27,7 @@ async function addLayout(
   }
   let triples = byAddress.get(address);
   if (triples === undefined) {
-    triples = union.parse(layout.turtle, address).then(ntriples);
+    triples = union.store.parse(layout.turtle, address).then(ntriples);
     byAddress.set(address, triples);
   }
   await union.loadTurtle(await triples, LAYOUT_GRAPH);
@@ -66,7 +66,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
-): Promise<Union> {
+): Promise<Dataset> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
   );
@@ -111,7 +111,7 @@ export interface PodBuild {
   readonly title: string;
   /** Every file of the pod, and each file the build writes that the pod lacks. */
   readonly files: readonly string[];
-  readonly store: Union;
+  readonly store: Dataset;
   readonly derived: readonly DerivedStep[];
   /** The files the build wrote again, which the store holds in place of the pod's copies. */
   readonly built: ReadonlyMap<string, readonly Triple[]>;

@@ -17,7 +17,7 @@ import {
 import { blank, iri, RDF, type Term, type Triple, written } from "./rdf.js";
 import type { Replayed } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Dataset } from "./store.js";
+import type { Dataset, StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
@@ -53,6 +53,7 @@ export interface KitRun {
   readonly replayed: Replayed;
   /** The pod after the story's last step, as an example's dataset holds it. */
   readonly final: Dataset;
+  readonly newStore: StoreFactory;
   readonly layout: Layout;
   readonly shapes: Shapes;
 }
@@ -155,7 +156,7 @@ async function viewsEqualExpected(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
 ): Promise<string[]> {
-  const { vocabulary, kit, replayed, final, layout } = run;
+  const { vocabulary, kit, replayed, newStore, layout } = run;
   const failures: string[] = [];
   const expectedFiles = (await vocabulary.list(`${kit}/expected`)).filter(
     (path) => path.endsWith(".ttl"),
@@ -164,7 +165,7 @@ async function viewsEqualExpected(
     return [`${kit}/expected/ holds no view to compare`];
   for (const path of expectedFiles) {
     const view = `${layout.viewsFolder}${path.slice(path.lastIndexOf("/") + 1)}`;
-    const expected = await final.parse(
+    const expected = await newStore().parse(
       await readText(vocabulary, path),
       vocabulary.iri + path,
     );
@@ -224,7 +225,7 @@ async function inputGraph(
   const bytes = await run.vocabulary.read(path);
   return bytes === undefined
     ? undefined
-    : new Graph(await run.final.parse(bytes, run.vocabulary.iri + path));
+    : new Graph(await run.newStore().parse(bytes, run.vocabulary.iri + path));
 }
 
 /** Check 4: N1 to N7, N9 and N10, and A9 and A11, from the run's own inputs. */
