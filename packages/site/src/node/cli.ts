@@ -199,12 +199,10 @@ async function stagedPackage(): Promise<{
     `components/${CONFIG_FILE}`,
     `components/${PACKED}`,
   ];
-  for (const component of packed.components)
-    paths.push(
-      ...(await staged.list(
-        `components/${repositoryName(component)}/${component.commit}`,
-      )),
-    );
+  for (const component of packed.components) {
+    const tree = `components/${repositoryName(component)}/${component.commit}`;
+    paths.push(`${tree}.json`, ...(await staged.list(tree)));
+  }
   const files = new Map<string, Uint8Array>();
   for (const path of paths) {
     const bytes = await staged.read(path);

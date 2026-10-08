@@ -87,6 +87,7 @@ test("an adapter is given the files its description lists, and each file a call 
       return Promise.resolve({ iri: vocabulary.iri, files: vocabulary });
     },
   );
+  assert.deepEqual(loads, [], "an adapter loaded before a call needed it");
   await adapter.convert({ iri: "urn:document", bytes: bytes("{}") });
 
   assert.deepEqual(asked, [REPOSITORY]);
@@ -107,7 +108,7 @@ test("an adapter whose every file is at hand is given them all, without git's", 
   const loads: Given[] = [];
   const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
   await vocabulary.write("core.ttl", bytes("core"));
-  await loadAdapter(
+  const { adapter } = await loadAdapter(
     bridge(loads),
     {
       iri: "https://adapter.example/tree/c/",
@@ -116,6 +117,7 @@ test("an adapter whose every file is at hand is given them all, without git's", 
     },
     () => Promise.resolve({ iri: vocabulary.iri, files: vocabulary }),
   );
+  await adapter.accepts({ iri: "urn:document", bytes: bytes("{}") });
   assert.deepEqual(
     loads.map(([adapter]) => adapter),
     [

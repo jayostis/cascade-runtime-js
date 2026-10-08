@@ -10,6 +10,7 @@ export * from "./features.js";
 export * from "./derive.js";
 export * from "./files.js";
 export * from "./filings.js";
+export * from "./folder-pack.js";
 export * from "./graph.js";
 export * from "./kit.js";
 export * from "./ids.js";
