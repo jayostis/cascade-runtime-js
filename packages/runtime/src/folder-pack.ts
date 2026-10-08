@@ -40,15 +40,43 @@ export function packFolder(
   return { paths, text, base64 };
 }
 
+const isRecordOfText = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every((text) => typeof text === "string");
+
+/** Whether a value read as JSON is a `FolderPack`. */
+export function isFolderPack(value: unknown): value is FolderPack {
+  if (typeof value !== "object" || value === null) return false;
+  const { paths, text, base64 } = value as Partial<Record<string, unknown>>;
+  return (
+    Array.isArray(paths) &&
+    paths.every((path) => typeof path === "string") &&
+    isRecordOfText(text) &&
+    isRecordOfText(base64)
+  );
+}
+
+/** The bytes of the file at `path`, decoded from the pack when it is read; none where the pack does not hold it. */
+export function unpackFile(
+  pack: FolderPack,
+  path: string,
+): Uint8Array | undefined {
+  const text = Object.hasOwn(pack.text, path) ? pack.text[path] : undefined;
+  if (text !== undefined) return new TextEncoder().encode(text);
+  const base64 = Object.hasOwn(pack.base64, path)
+    ? pack.base64[path]
+    : undefined;
+  return base64 === undefined ? undefined : bytesOf(base64);
+}
+
 /** The bytes of each file the pack holds, by its path. */
 export function unpackFolder(pack: FolderPack): Map<string, Uint8Array> {
-  const encoder = new TextEncoder();
-  return new Map([
-    ...Object.entries(pack.text).map(
-      ([path, text]) => [path, encoder.encode(text)] as const,
-    ),
-    ...Object.entries(pack.base64).map(
-      ([path, base64]) => [path, bytesOf(base64)] as const,
-    ),
-  ]);
+  return new Map(
+    [...Object.keys(pack.text), ...Object.keys(pack.base64)].flatMap((path) => {
+      const bytes = unpackFile(pack, path);
+      return bytes === undefined ? [] : [[path, bytes] as const];
+    }),
+  );
 }

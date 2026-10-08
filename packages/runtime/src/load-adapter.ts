@@ -78,24 +78,29 @@ export async function loadAdapter(
       ? undefined
       : await vocabularyAt(description.vocabulary?.repository);
 
-  let maps: { adapter: Named; vocabulary?: Named } | undefined;
-  /** The files the first load is given, read when it needs them. */
-  const given = async (): Promise<{ adapter: Named; vocabulary?: Named }> => {
-    if (maps === undefined) {
-      const [adapter, vocabulary] = await Promise.all([
-        source.whole
-          ? everyFile(source.files).then((paths) => read(source.files, paths))
-          : read(source.files, description.loadFiles),
-        vocabularySource && read(vocabularySource.files, listed),
-      ]);
-      maps ??= {
-        adapter: { iri: source.iri, files: adapter },
-        ...(vocabularySource &&
-          vocabulary && {
-            vocabulary: { iri: vocabularySource.iri, files: vocabulary },
-          }),
-      };
-    }
+  type Maps = { adapter: Named; vocabulary?: Named };
+  const reading = async (): Promise<Maps> => {
+    const [adapter, vocabulary] = await Promise.all([
+      source.whole
+        ? everyFile(source.files).then((paths) => read(source.files, paths))
+        : read(source.files, description.loadFiles),
+      vocabularySource && read(vocabularySource.files, listed),
+    ]);
+    return {
+      adapter: { iri: source.iri, files: adapter },
+      ...(vocabularySource &&
+        vocabulary && {
+          vocabulary: { iri: vocabularySource.iri, files: vocabulary },
+        }),
+    };
+  };
+  let maps: Promise<Maps> | undefined;
+  /** The files the first load is given, read when it needs them, and again when reading them failed. */
+  const given = (): Promise<Maps> => {
+    maps ??= reading().catch((error: unknown) => {
+      maps = undefined;
+      throw error;
+    });
     return maps;
   };
   const sources = { adapter: source, vocabulary: vocabularySource };
@@ -106,7 +111,7 @@ export async function loadAdapter(
       map?: "adapter" | "vocabulary";
       path?: string;
     };
-    const named = map && maps?.[map];
+    const named = map && (await given())[map];
     const from = map && sources[map];
     if (named === undefined || from === undefined || path === undefined)
       return false;
@@ -181,8 +186,10 @@ export async function loadAdapter(
 }
 
 /**
- * Each adapter followed, loaded in order from the source `at` gives it, with the vocabulary its description names from
- * the source `at` gives that repository; if one fails, those already loaded are freed.
+ * Each adapter followed, described in order from the source `at` gives it, with the vocabulary its description names
+ * from the source `at` gives that repository; if one fails, those already described are freed. None is loaded here: an
+ * adapter loads when its first `accepts` or `convert` needs it, a load that fails rejects that call with a plain error,
+ * and the next call tries the load again.
  */
 export async function loadAdapters(
   bridge: Bridge,

@@ -1,35 +1,16 @@
 import { FILES_JSON, type Files, relative, under } from "../files.js";
-import { type FolderPack, unpackFolder } from "../folder-pack.js";
-
-interface Unpacked {
-  readonly paths: readonly string[];
-  readonly files: ReadonlyMap<string, Uint8Array>;
-}
-
-/** A promise kept until it fails, so a failed fetch is tried again. */
-function kept<T>(
-  get: () => Promise<T> | undefined,
-  set: (promise: Promise<T> | undefined) => void,
-  make: () => Promise<T>,
-): Promise<T> {
-  const known = get();
-  if (known !== undefined) return known;
-  const made = make();
-  set(made);
-  made.catch(() => {
-    if (get() === made) set(undefined);
-  });
-  return made;
-}
+import { type FolderPack, isFolderPack, unpackFile } from "../folder-pack.js";
 
 /**
  * A folder served over HTTP, read by `fetch`, each file once: listed by its `files.json`, or by its `FolderPack` where
- * one is served; never written.
+ * one is served; never written. The first read fetches its file alone, so describing an adapter costs one small request;
+ * the pack is fetched from the second read or the first list on.
  */
 export class FetchedFiles implements Files {
   readonly #url: string;
   readonly #pack: string | undefined;
-  #unpacked: Promise<Unpacked | undefined> | undefined;
+  #readBefore = false;
+  #packed: Promise<FolderPack | undefined> | undefined;
   #listed: Promise<string[]> | undefined;
   readonly #fetchedOnce = new Map<string, Promise<Uint8Array | undefined>>();
 
@@ -47,22 +28,13 @@ export class FetchedFiles implements Files {
 
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     const path = relative(this, pathOrIri);
-    const bytes =
-      (await this.#unpacking())?.files.get(path) ??
-      (await kept(
-        () => this.#fetchedOnce.get(path),
-        (promise) =>
-          promise === undefined
-            ? this.#fetchedOnce.delete(path)
-            : this.#fetchedOnce.set(path, promise),
-        async () => {
-          const response = await this.#fetched(path);
-          return response.status === 404
-            ? undefined
-            : new Uint8Array(await response.arrayBuffer());
-        },
-      ));
-    return bytes?.slice();
+    const first = !this.#readBefore && this.#packed === undefined;
+    this.#readBefore = true;
+    const pack = first ? undefined : await this.#packing();
+    return (
+      (pack && unpackFile(pack, path)) ??
+      (await this.#fetchedFile(path))?.slice()
+    );
   }
 
   async write(pathOrIri: string): Promise<void> {
@@ -76,37 +48,55 @@ export class FetchedFiles implements Files {
     return (await this.#listing()).filter((path) => under(prefix, path));
   }
 
-  #unpacking(): Promise<Unpacked | undefined> {
+  #fetchedFile(path: string): Promise<Uint8Array | undefined> {
+    let fetched = this.#fetchedOnce.get(path);
+    if (fetched === undefined) {
+      fetched = this.#fetched(path)
+        .then(async (response) =>
+          response.status === 404
+            ? undefined
+            : new Uint8Array(await response.arrayBuffer()),
+        )
+        .catch((error: unknown) => {
+          this.#fetchedOnce.delete(path);
+          throw error;
+        });
+      this.#fetchedOnce.set(path, fetched);
+    }
+    return fetched;
+  }
+
+  #packing(): Promise<FolderPack | undefined> {
     const pack = this.#pack;
     if (pack === undefined) return Promise.resolve(undefined);
-    return kept(
-      () => this.#unpacked,
-      (promise) => (this.#unpacked = promise),
-      async () => {
-        const response = await fetch(pack);
-        if (response.status === 404) return undefined;
-        if (!response.ok)
-          throw new Error(
-            `${pack} answered ${response.status} ${response.statusText}`,
-          );
-        const read = (await response.json()) as FolderPack;
-        if (!Array.isArray(read.paths))
-          throw new Error(`${pack} is no pack of a folder`);
-        return { paths: read.paths, files: unpackFolder(read) };
-      },
-    );
+    this.#packed ??= (async () => {
+      const response = await fetch(pack);
+      if (response.status === 404) return undefined;
+      if (!response.ok)
+        throw new Error(
+          `${pack} answered ${response.status} ${response.statusText}`,
+        );
+      const read = (await response.json()) as unknown;
+      if (!isFolderPack(read))
+        throw new Error(`${pack} is no pack of a folder`);
+      return read;
+    })().catch((error: unknown) => {
+      this.#packed = undefined;
+      throw error;
+    });
+    return this.#packed;
   }
 
   #listing(): Promise<string[]> {
-    return kept(
-      () => this.#listed,
-      (promise) => (this.#listed = promise),
-      async () => {
-        const listed =
-          (await this.#unpacking())?.paths ?? (await this.#listedByFilesJson());
-        return listed.filter((path) => path !== FILES_JSON).sort();
-      },
-    );
+    this.#listed ??= (async () => {
+      const listed =
+        (await this.#packing())?.paths ?? (await this.#listedByFilesJson());
+      return listed.filter((path) => path !== FILES_JSON).sort();
+    })().catch((error: unknown) => {
+      this.#listed = undefined;
+      throw error;
+    });
+    return this.#listed;
   }
 
   async #listedByFilesJson(): Promise<string[]> {
