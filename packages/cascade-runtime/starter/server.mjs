@@ -310,29 +310,11 @@ async function demoHospitalPage(request, response, url) {
 
 const demo = await loadHospitals();
 const people = demoPeople(demo);
-const packageOf = async (url) => JSON.parse(await readFile(url, "utf8"));
-
-/** cascade-runtime's `package.json`, the first one up from where the package resolves; empty when none can be read. */
-async function runtimePackage() {
-  try {
-    let folder = new URL(".", import.meta.resolve("cascade-runtime"));
-    for (;;) {
-      const found = await packageOf(new URL("package.json", folder)).catch(
-        () => undefined,
-      );
-      if (found?.name === "cascade-runtime") return found;
-      const up = new URL("..", folder);
-      if (up.href === folder.href) return {};
-      folder = up;
-    }
-  } catch {
-    return {};
-  }
-}
-
+const packageOf = async (path) =>
+  JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 const [app, runtime] = await Promise.all([
-  packageOf(new URL("package.json", import.meta.url)),
-  runtimePackage(),
+  packageOf("package.json"),
+  packageOf("node_modules/cascade-runtime/package.json").catch(() => ({})),
 ]);
 /**
  * What Help, About says: this app, the cascade-runtime it runs on, and that package's README, where its code is; the
