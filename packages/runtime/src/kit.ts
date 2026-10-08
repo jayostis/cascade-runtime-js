@@ -17,7 +17,7 @@ import {
 import { blank, iri, RDF, type Term, type Triple, written } from "./rdf.js";
 import type { Replayed } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Store } from "./store.js";
+import type { Dataset } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
@@ -52,7 +52,7 @@ export interface KitRun {
   readonly folder: string;
   readonly replayed: Replayed;
   /** The pod after the story's last step, as an example's dataset holds it. */
-  readonly final: Store;
+  readonly final: Dataset;
   readonly layout: Layout;
   readonly shapes: Shapes;
 }
@@ -69,7 +69,7 @@ const base = (term: Term): string => term.value.split("#")[0] ?? "";
 
 /** Every file of the pod that the dataset holds, written by a step or built, as its triples by its path. */
 async function podFiles(
-  store: Store,
+  store: Dataset,
   address: string,
 ): Promise<Map<string, Triple[]>> {
   const { rows } = await store.select(`SELECT ?g ?s ?p ?o WHERE {

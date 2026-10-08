@@ -1,6 +1,6 @@
 import { type Files, readText } from "./files.js";
 import { fileStem } from "./names.js";
-import type { StoreFactory } from "./store.js";
+import { type StoreFactory, Union } from "./store.js";
 
 export const LAYOUT_FILE = "runtime/pod-layout.ttl";
 export const LAYOUT_GRAPH = "urn:cascade:pod-layout";
@@ -63,9 +63,9 @@ export class Layout {
     newStore: StoreFactory,
   ): Promise<Layout> {
     const turtle = await readText(vocabulary, LAYOUT_FILE);
-    const store = newStore();
-    await store.loadTurtle(turtle, { graph: BASE });
-    const { rows } = await store.select(`
+    const layout = new Union(newStore());
+    await layout.loadTurtle(turtle, BASE);
+    const { rows } = await layout.select(`
       PREFIX rec: <${REC}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>

@@ -14,6 +14,7 @@ import {
   type StoreFactory,
   type Term,
   type Triple,
+  Union,
   type VocabularyBuild,
   type VocabularyQuery,
   written,
@@ -330,7 +331,7 @@ async function vocabularyLabels(
   const { "@graph": graph } = JSON.parse(await readText(vocabulary, CRATE)) as {
     "@graph": readonly CrateEntity[];
   };
-  const store = newStore();
+  const ontologies = new Union(newStore());
   for (const { "@id": path, about } of graph) {
     if (
       path === undefined ||
@@ -339,11 +340,9 @@ async function vocabularyLabels(
       about?.["@id"] === undefined
     )
       continue;
-    await store.loadTurtle(await readText(vocabulary, path), {
-      graph: about["@id"],
-    });
+    await ontologies.loadTurtle(await readText(vocabulary, path), about["@id"]);
   }
-  const { rows } = await store.select(called.text);
+  const { rows } = await ontologies.select(called.text);
   const labels = new Map<string, string>();
   for (const row of rows) {
     const [thing, label] = [row.get("thing"), row.get("label")];

@@ -58,12 +58,14 @@ test("the saved-output Bridge answers a document from what the step saved, decli
   assert.equal(
     await store.ask(
       "ASK { GRAPH <urn:graph> { <urn:record> a <urn:Allergy> } }",
+      [],
     ),
     true,
   );
   assert.equal(
     await store.ask(
       "ASK { GRAPH <urn:findings> { <urn:finding> a <urn:Finding> } }",
+      [],
     ),
     true,
   );

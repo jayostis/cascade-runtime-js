@@ -10,7 +10,7 @@ import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { type Replayed, replay } from "../src/replay.js";
-import type { Store } from "../src/store.js";
+import { Union } from "../src/store.js";
 import { notIsomorphic } from "./graphs.js";
 import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
 
@@ -28,9 +28,9 @@ const PREFIXES = `PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
   PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>`;
 
-let store: Store;
+let store: Union;
 /** The vocabulary's pod layout as it reads, its paths resolved against the pod's address, read without `Layout`. */
-let laidOut: Store;
+let laidOut: Union;
 let address: string;
 let layout: Layout;
 /** The pod the story was replayed into, with a build after every step. */
@@ -65,11 +65,8 @@ before(async () => {
   const derive = await vocabularyDerive(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
-  laidOut = new OxigraphStore();
-  await laidOut.loadTurtle(await readText(files, LAYOUT_FILE), {
-    graph: address,
-    alone: true,
-  });
+  laidOut = new Union(new OxigraphStore());
+  await laidOut.loadTurtle(await readText(files, LAYOUT_FILE), address);
   replayed = await replay({
     story,
     source: files,
@@ -99,7 +96,7 @@ before(async () => {
     });
 });
 
-async function values(on: Store, where: string): Promise<string[]> {
+async function values(on: Union, where: string): Promise<string[]> {
   const { rows, variables } = await on.select(
     `${PREFIXES} SELECT * WHERE { ${where} }`,
   );

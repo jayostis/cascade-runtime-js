@@ -5,7 +5,7 @@ import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
 import type { References } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
-import type { Store } from "./store.js";
+import { type Dataset, Union } from "./store.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -102,11 +102,11 @@ export async function matcherRules(
 }
 
 async function column(
-  store: Store,
+  dataset: Dataset,
   query: string,
   ...names: string[]
 ): Promise<(string | undefined)[][]> {
-  const { rows } = await store.select(`${PREFIXES} ${query}`);
+  const { rows } = await dataset.select(`${PREFIXES} ${query}`);
   return rows.map((row) => names.map((name) => row.get(name)?.value));
 }
 
@@ -149,10 +149,10 @@ function byArrival(a: SubjectRecord, b: SubjectRecord): number {
 
 /** The pod's one subject's records, by name, each with its kind, current version and first revision's arrival. */
 async function subjectRecords(
-  store: Store,
+  dataset: Dataset,
 ): Promise<Map<string, SubjectRecord>> {
   const subjects = await column(
-    store,
+    dataset,
     "SELECT DISTINCT ?subject WHERE { ?subject a rec:Subject }",
     "subject",
   );
@@ -161,13 +161,13 @@ async function subjectRecords(
     throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
   const theirs = `?record rec:subject <${subject[0]}> .`;
   const records = await column(
-    store,
+    dataset,
     `SELECT DISTINCT ?record WHERE { ${theirs} }`,
     "record",
   );
   const kinds = grouped(
     await column(
-      store,
+      dataset,
       `SELECT ?record ?kind WHERE { ${theirs} ?record rec:kind ?kind }`,
       "record",
       "kind",
@@ -175,7 +175,7 @@ async function subjectRecords(
   );
   const versions = grouped(
     await column(
-      store,
+      dataset,
       `SELECT ?record ?version WHERE { ${theirs} ?record pav:hasCurrentVersion ?version }`,
       "record",
       "version",
@@ -183,7 +183,7 @@ async function subjectRecords(
   );
   const firsts = grouped(
     await column(
-      store,
+      dataset,
       `SELECT ?record ?first WHERE { ${theirs} ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
       "record",
       "first",
@@ -191,7 +191,7 @@ async function subjectRecords(
   );
   const times = grouped(
     await column(
-      store,
+      dataset,
       `SELECT ?first ?at WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:generatedAtTime ?at }`,
       "first",
       "at",
@@ -199,7 +199,7 @@ async function subjectRecords(
   );
   const activities = grouped(
     await column(
-      store,
+      dataset,
       `SELECT ?first ?activity WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
       "first",
       "activity",
@@ -230,31 +230,31 @@ async function subjectRecords(
 const derivations = new WeakMap<Files, Promise<Derivations>>();
 
 /**
- * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, in
- * the default graph of a new store.
+ * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
+ * union of a new store.
  */
 export async function matcherView(
   context: Pick<
     StepContext,
     "layout" | "pod" | "address" | "vocabulary" | "newStore"
   >,
-): Promise<Store> {
+): Promise<Union> {
   const { layout, pod, address } = context;
   let read = derivations.get(context.vocabulary);
   if (read === undefined) {
     read = Derivations.of(context.vocabulary);
     derivations.set(context.vocabulary, read);
   }
-  const store = context.newStore();
+  const union = new Union(context.newStore());
   const rebuilt = new Set(layout.rebuilt);
   for (const path of await pod.list("")) {
     if (!layout.isRdf(path) || rebuilt.has(path)) continue;
     const bytes = await pod.read(path);
     if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
-    await store.loadTurtle(bytes, { graph: address + path });
+    await union.loadTurtle(bytes, address + path);
   }
-  await (await read).derive(store, LENS);
-  return store;
+  await (await read).derive(union, LENS);
+  return union;
 }
 
 /** What the matcher reads of the pod and its derived state, before any table's rows are added to it. */
@@ -281,10 +281,10 @@ class Matcher {
     context: StepContext,
     references: References,
   ): Promise<Matcher> {
-    const store = await matcherView(context);
+    const union = await matcherView(context);
     const named = grouped(
       await column(
-        store,
+        union,
         "SELECT ?series ?version WHERE { ?series pav:hasCurrentVersion ?version }",
         "series",
         "version",
@@ -302,14 +302,15 @@ class Matcher {
         table === undefined ? [] : [[table, current(table)] as const],
       ),
     );
-    const pod = await read(store, references);
+    const pod = await read(union, references);
     for (const version of new Set(tableVersions.values()))
-      await store.add(await references.rows(version), {
-        graph: `urn:cascade:reference:${version}`,
-      });
+      await union.add(
+        await references.rows(version),
+        `urn:cascade:reference:${version}`,
+      );
     const matched = new Map<string, Set<string>>();
     for (const { rule, text } of found) {
-      const { rows } = await store.select(text);
+      const { rows } = await union.select(text);
       matched.set(
         rule.justification,
         new Set(
@@ -457,7 +458,7 @@ function pair(record: string | undefined, other: string | undefined): string {
 }
 
 /** The matcher's Sames that nothing retracts and no unretracted judgment supersedes, in order of name. */
-async function recheckable(store: Store): Promise<Judged[]> {
+async function recheckable(dataset: Dataset): Promise<Judged[]> {
   const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same .
     FILTER NOT EXISTS {
       ?superseding npx:supersedes ?judgment
@@ -470,7 +471,7 @@ async function recheckable(store: Store): Promise<Judged[]> {
       async (predicate) =>
         grouped(
           await column(
-            store,
+            dataset,
             `SELECT ?judgment ?value WHERE { ${ours} ?judgment ${predicate} ?value }`,
             "judgment",
             "value",
@@ -479,7 +480,7 @@ async function recheckable(store: Store): Promise<Judged[]> {
     ),
   );
   const names = await column(
-    store,
+    dataset,
     `SELECT DISTINCT ?judgment WHERE { ${ours} }`,
     "judgment",
   );
@@ -494,21 +495,21 @@ async function recheckable(store: Store): Promise<Judged[]> {
     }));
 }
 
-async function read(store: Store, references: References): Promise<Pod> {
+async function read(dataset: Dataset, references: References): Promise<Pod> {
   const held = await column(
-    store,
+    dataset,
     "SELECT DISTINCT ?thing WHERE { ?thing ?p ?o FILTER isIRI(?thing) }",
     "thing",
   );
   const revised = await column(
-    store,
+    dataset,
     "SELECT DISTINCT ?version WHERE { ?later prov:wasRevisionOf ?version }",
     "version",
   );
   return {
     held: new Set(held.flatMap(([thing]) => thing ?? [])),
-    theirs: await subjectRecords(store),
-    judgments: await recheckable(store),
+    theirs: await subjectRecords(dataset),
+    judgments: await recheckable(dataset),
     revised: new Set(
       revised.flatMap(([version]) =>
         version !== undefined && references.isVersion(version) ? [version] : [],

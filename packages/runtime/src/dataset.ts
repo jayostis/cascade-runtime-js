@@ -4,7 +4,7 @@ import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
 import type { Replayed } from "./replay.js";
-import type { Store } from "./store.js";
+import { type Store, Union } from "./store.js";
 
 export const STEPS_GRAPH = "urn:cascade:steps";
 export const STEP = "urn:cascade:step:";
@@ -16,7 +16,7 @@ const DCT = "http://purl.org/dc/terms/";
 const writtenLayouts = new WeakMap<Layout, Map<string, Promise<Uint8Array>>>();
 
 async function addLayout(
-  store: Store,
+  union: Union,
   layout: Layout,
   address: string,
 ): Promise<void> {
@@ -27,13 +27,13 @@ async function addLayout(
   }
   let triples = byAddress.get(address);
   if (triples === undefined) {
-    triples = store.parse(layout.turtle, address).then(ntriples);
+    triples = union.parse(layout.turtle, address).then(ntriples);
     byAddress.set(address, triples);
   }
-  await store.loadTurtle(await triples, { graph: LAYOUT_GRAPH });
+  await union.loadTurtle(await triples, LAYOUT_GRAPH);
 }
 
-/** The pod's files, in the store, each RDF file a named graph; and what `derive` builds from them at the time given. */
+/** The pod's files, in the union, each RDF file a named graph; and what `derive` builds from them at the time given. */
 export async function built(
   pod: Files,
   layout: Layout,
@@ -42,23 +42,23 @@ export async function built(
   at: string | undefined,
   title: string,
   lens: string,
-  store: Store,
+  union: Union,
   derive?: Derive,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   for (const path of files.filter((path) => layout.isRdf(path))) {
     const bytes = await pod.read(path);
     if (bytes === undefined)
       throw new Error(`${address}${path} was written and is gone`);
-    await store.loadTurtle(bytes, { graph: address + path });
+    await union.loadTurtle(bytes, address + path);
   }
   if (derive === undefined || at === undefined) return new Map();
-  return derive(store, lens, { address, at, title });
+  return derive(union, lens, { address, at, title });
 }
 
 /**
  * The pod as it stood after the step, in the store: each RDF file a named graph, named by the pod's address plus its
- * path; what `derive` adds for the lens; and `urn:cascade:steps`, outside the default graph, listing each file new to
- * the pod that each step through this one wrote.
+ * path; what `derive` adds for the lens; and `urn:cascade:steps`, outside the union, listing each file new to the pod
+ * that each step through this one wrote.
  */
 export async function dataset(
   replayed: Replayed,
@@ -66,7 +66,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
-): Promise<Store> {
+): Promise<Union> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
   );
@@ -80,6 +80,7 @@ export async function dataset(
   }
   const steps = replayed.steps.slice(0, index + 1);
   const address = replayed.story.address;
+  const union = new Union(store);
   await built(
     replayed.pod,
     replayed.layout,
@@ -88,10 +89,10 @@ export async function dataset(
     steps.at(-1)?.step.when,
     replayed.title,
     lens,
-    store,
+    union,
     derive,
   );
-  await addLayout(store, replayed.layout, address);
+  await addLayout(union, replayed.layout, address);
   await store.add(
     steps.flatMap(({ step, wrote }) =>
       wrote.map(
@@ -99,9 +100,9 @@ export async function dataset(
           [iri(STEP + step.name), iri(GENERATED), iri(address + path)] as const,
       ),
     ),
-    { graph: STEPS_GRAPH, alone: true },
+    { graph: STEPS_GRAPH },
   );
-  return store;
+  return union;
 }
 
 /** A pod read from its own files and built under a lens. */
@@ -110,7 +111,7 @@ export interface PodBuild {
   readonly title: string;
   /** Every file of the pod, and each file the build writes that the pod lacks. */
   readonly files: readonly string[];
-  readonly store: Store;
+  readonly store: Union;
   readonly derived: readonly DerivedStep[];
   /** The files the build wrote again, which the store holds in place of the pod's copies. */
   readonly built: ReadonlyMap<string, readonly Triple[]>;
@@ -154,27 +155,28 @@ export async function podDataset(
   const at = valueOf(manifest, `${DCT}created`)?.value ?? otherwise.at;
   const rebuilt = new Set(layout.rebuilt);
   const held = await pod.list("");
+  const union = new Union(store);
   for (const path of held.filter(
     (path) => layout.isRdf(path) && !rebuilt.has(path),
   )) {
     const bytes = await pod.read(path);
     if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
     try {
-      await store.loadTurtle(bytes, { graph: address + path });
+      await union.loadTurtle(bytes, address + path);
     } catch (error) {
       throw new Error(`${pod.iri}${path} is no Turtle: ${String(error)}`, {
         cause: error,
       });
     }
   }
-  const derived = await build.derivations.derive(store, lens);
-  const built = await build.files(store, { address, at, title });
-  await addLayout(store, layout, address);
+  const derived = await build.derivations.derive(union, lens);
+  const built = await build.files(union, { address, at, title });
+  await addLayout(union, layout, address);
   return {
     address,
     title,
     files: [...new Set([...held, ...built.keys()])].sort(),
-    store,
+    store: union,
     derived,
     built,
   };

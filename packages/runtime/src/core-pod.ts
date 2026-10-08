@@ -13,7 +13,7 @@ import { ntriples } from "./rdf.js";
 import type { References } from "./references.js";
 import { Shapes } from "./shapes.js";
 import { Refusal, type StepContext, type StepFile } from "./step.js";
-import type { Rows, StoreFactory } from "./store.js";
+import { type Rows, type StoreFactory, Union } from "./store.js";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -306,7 +306,7 @@ export class CorePod {
       at,
       title,
       build.lens,
-      newStore(),
+      new Union(newStore()),
       build.derive,
     );
     for (const [path, triples] of made)

@@ -1,12 +1,12 @@
 import {
   blank,
+  type Dataset,
   iri,
   literal,
   ntriples,
   parseResults,
   RDF,
   type Rows,
-  type Store,
   type Term,
   type Triple,
   type VocabularyQuery,
@@ -44,7 +44,7 @@ export function configuration(id: string, title: string): Uint8Array {
 
 /** Each named graph of the store, with its triples. */
 export async function graphsOf(
-  store: Store,
+  store: Dataset,
 ): Promise<Map<string, readonly Triple[]>> {
   const { rows } = await store.select(
     "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
@@ -162,7 +162,7 @@ export class GraphDB {
 
   /** Puts each named graph of the store in the repository as a graph of its own, and saves each question by its name. */
   async fill(
-    store: Store,
+    store: Dataset,
     questions: ReadonlyMap<string, VocabularyQuery>,
   ): Promise<Loaded> {
     const graphs = await graphsOf(store);
@@ -232,7 +232,7 @@ export class GraphDB {
 export async function load(
   graphdb: GraphDB,
   title: string,
-  store: Store,
+  store: Dataset,
   questions: ReadonlyMap<string, VocabularyQuery>,
   log: (line: string) => void = () => {},
 ): Promise<Loaded> {

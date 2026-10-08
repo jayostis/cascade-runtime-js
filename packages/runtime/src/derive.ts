@@ -1,6 +1,6 @@
 import { type Files, readText, under } from "./files.js";
 import { type Triple, written } from "./rdf.js";
-import type { Store } from "./store.js";
+import type { Union } from "./store.js";
 
 export const DERIVED = "urn:cascade:derived:";
 export const QUERIES = "queries/v1-draft/";
@@ -77,18 +77,18 @@ export class Derivations {
   }
 
   /**
-   * Runs the lens's derivations in turn over the store's default graph, each adding what it constructs that the store
-   * did not already hold, and puts all they added in `urn:cascade:derived:<lens>` as well; returns what each added.
+   * Runs the lens's derivations in turn over the union, each adding to `urn:cascade:derived:<lens>`, and so to the
+   * union, what it constructs that the union did not already hold; returns what each added.
    */
-  async derive(store: Store, lens: string): Promise<DerivedStep[]> {
-    const { rows } = await store.select("SELECT ?s ?p ?o WHERE { ?s ?p ?o }");
+  async derive(union: Union, lens: string): Promise<DerivedStep[]> {
+    const { rows } = await union.select("SELECT ?s ?p ?o WHERE { ?s ?p ?o }");
     const held = new Set(
       rows.map((row) =>
         ["s", "p", "o"]
           .map((name) => {
             const term = row.get(name);
             if (term === undefined)
-              throw new Error("a triple of the default graph lacks a term");
+              throw new Error("a triple of the union lacks a term");
             return written(term);
           })
           .join(" "),
@@ -97,12 +97,12 @@ export class Derivations {
     const added: DerivedStep[] = [];
     for (const { path, query } of this.for(lens)) {
       const fresh: Triple[] = [];
-      for (const triple of await store.construct(query)) {
+      for (const triple of await union.construct(query)) {
         if (held.has(key(triple))) continue;
         held.add(key(triple));
         fresh.push(triple);
       }
-      await store.add(fresh, { graph: DERIVED + lens });
+      await union.add(fresh, DERIVED + lens);
       added.push({ path, added: fresh });
     }
     return added;

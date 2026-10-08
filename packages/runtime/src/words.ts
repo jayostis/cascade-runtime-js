@@ -6,7 +6,7 @@ import { iri, RDF, written } from "./rdf.js";
 import { referenceIndex, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { REC } from "./step.js";
-import { selected, type Store } from "./store.js";
+import { selected, type Dataset } from "./store.js";
 
 export const PROV = "http://www.w3.org/ns/prov#";
 export const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
@@ -132,7 +132,7 @@ export function listed(words: string): string[] {
 
 /** Things named in words, resolved over one pod as an example reads it. */
 export class Words {
-  readonly #store: Store;
+  readonly #store: Dataset;
   readonly #replayed: Replayed;
   readonly #vocabulary: Files;
   readonly #person: Person;
@@ -143,7 +143,7 @@ export class Words {
   readonly #names = new Map<string, string>();
 
   constructor(options: {
-    readonly store: Store;
+    readonly store: Dataset;
     readonly replayed: Replayed;
     readonly vocabulary: Files;
     readonly person: Person;

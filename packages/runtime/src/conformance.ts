@@ -21,7 +21,7 @@ import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { referenceIndex } from "./references.js";
 import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Store, StoreFactory } from "./store.js";
+import type { Dataset, Store, StoreFactory } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
 
@@ -104,7 +104,7 @@ interface Node {
   readonly step?: Step;
   readonly children: Map<string, Node>;
   replayed?: Replayed;
-  readonly datasets: Map<string, Promise<Store>>;
+  readonly datasets: Map<string, Promise<Dataset>>;
 }
 
 const newNode = (step?: Step): Node => ({
@@ -204,44 +204,36 @@ function named(
   };
 }
 
-/** A store built only once something reads it; parsing needs none. */
-class LazyStore implements Store {
-  #made: Promise<Store> | undefined;
-  readonly #make: () => Promise<Store>;
+/** A dataset built only once something reads it; parsing needs none. */
+class LazyDataset implements Dataset {
+  #made: Promise<Dataset> | undefined;
+  readonly #make: () => Promise<Dataset>;
   readonly #parser: Store;
 
-  constructor(make: () => Promise<Store>, parser: Store) {
+  constructor(make: () => Promise<Dataset>, parser: Store) {
     this.#make = make;
     this.#parser = parser;
   }
 
-  #store(): Promise<Store> {
+  #dataset(): Promise<Dataset> {
     this.#made ??= this.#make();
     return this.#made;
   }
 
-  async loadTurtle(...args: Parameters<Store["loadTurtle"]>) {
-    return (await this.#store()).loadTurtle(...args);
-  }
-
-  parse(...args: Parameters<Store["parse"]>) {
+  parse(...args: Parameters<Dataset["parse"]>) {
     return this.#parser.parse(...args);
   }
 
-  async add(...args: Parameters<Store["add"]>) {
-    return (await this.#store()).add(...args);
+  async select(query: string) {
+    return (await this.#dataset()).select(query);
   }
 
-  async select(...args: Parameters<Store["select"]>) {
-    return (await this.#store()).select(...args);
+  async ask(query: string) {
+    return (await this.#dataset()).ask(query);
   }
 
-  async ask(...args: Parameters<Store["ask"]>) {
-    return (await this.#store()).ask(...args);
-  }
-
-  async construct(...args: Parameters<Store["construct"]>) {
-    return (await this.#store()).construct(...args);
+  async construct(query: string) {
+    return (await this.#dataset()).construct(query);
   }
 }
 
@@ -262,7 +254,11 @@ class Run {
   }
 
   /** The pod as it stood at the node, under the lens, its steps named as the example names them. */
-  dataset(node: Node, lens: string, names?: readonly string[]): Promise<Store> {
+  dataset(
+    node: Node,
+    lens: string,
+    names?: readonly string[],
+  ): Promise<Dataset> {
     const key = JSON.stringify([lens, names]);
     let found = node.datasets.get(key);
     if (found === undefined) {
@@ -320,7 +316,7 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
-    const store = new LazyStore(
+    const store = new LazyDataset(
       () =>
         this.dataset(
           node,

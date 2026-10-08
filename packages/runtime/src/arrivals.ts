@@ -38,7 +38,7 @@ import {
   type StepFile,
 } from "./step.js";
 import type { Shapes } from "./shapes.js";
-import type { StoreFactory } from "./store.js";
+import { type StoreFactory, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
@@ -146,15 +146,14 @@ class Revisions {
     newStore: StoreFactory,
     layout: Layout,
   ): Promise<Revisions> {
-    const store = newStore();
+    const union = new Union(newStore());
     for (const { folder } of layout.recordPlacements) {
       for (const path of await pod.list(folder ?? "")) {
         const bytes = await pod.read(path);
-        if (bytes !== undefined)
-          await store.loadTurtle(bytes, { graph: pod.iri + path });
+        if (bytes !== undefined) await union.loadTurtle(bytes, pod.iri + path);
       }
     }
-    const { rows } = await store.select(`
+    const { rows } = await union.select(`
       PREFIX rec: <${REC}>
       PREFIX prov: <${PROV}>
       PREFIX pav: <${PAV}>
