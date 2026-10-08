@@ -4,7 +4,7 @@ import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
 import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
-import { type References, tableTerms } from "./references.js";
+import { type References, tableTerms, type TableTerms } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
 
@@ -286,9 +286,8 @@ interface Pod {
  */
 async function podCodes(
   union: Dataset,
-  context: StepContext,
+  { uriSpaces }: TableTerms,
 ): Promise<Set<string>> {
-  const { uriSpaces } = await tableTerms(context.vocabulary, context.newStore);
   const { rows } = await union.select(
     `${PREFIXES} SELECT DISTINCT ?value WHERE { ?record pav:hasCurrentVersion ?version . ?version ?property ?value }`,
   );
@@ -440,9 +439,10 @@ class Matcher {
         ),
       ]),
     );
-    const codes = await podCodes(union, context);
+    const terms = await tableTerms(context.vocabulary, context.newStore);
+    const find = { codes: await podCodes(union, terms), terms };
     for (const version of new Set([...versions, ...versionsBefore])) {
-      await union.add(await references.rows(version, codes), version);
+      await union.add(await references.rows(version, find), version);
       await union.add(
         [
           ...references.description(version),

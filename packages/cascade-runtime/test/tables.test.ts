@@ -12,6 +12,7 @@ import {
   MemoryFiles,
   ntriples,
   OxigraphStore,
+  tableTerms,
   type Triple,
 } from "@cascade-runtime/runtime";
 import { checkouts, findRoot } from "@cascade-runtime/runtime/node";
@@ -164,6 +165,22 @@ async function ruleListRevised(): Promise<Files> {
   return {
     iri: vocabulary.iri,
     read: async (path) => files.get(path) ?? vocabulary.read(path),
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
+}
+
+/** The vocabulary with its records ontology changed by `change`. */
+function recordsChanged(change: (turtle: string) => string): Files {
+  const { vocabulary } = parts;
+  return {
+    iri: vocabulary.iri,
+    read: async (path) => {
+      const bytes = await vocabulary.read(path);
+      return bytes === undefined || !path.endsWith("records.ttl")
+        ? bytes
+        : new TextEncoder().encode(change(new TextDecoder().decode(bytes)));
+    },
     write: (path, bytes) => vocabulary.write(path, bytes),
     list: (folder) => vocabulary.list(folder),
   };
@@ -359,15 +376,98 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
       .filter(([, predicate]) => predicate.value.endsWith("#annotatedSource"))
       .map(([, , object]) => object.value);
 
-  const found = await references.rows(groups.second, new Set([cvx141]));
+  const find = {
+    codes: new Set([cvx141]),
+    terms: await tableTerms(parts.vocabulary, parts.newStore),
+  };
+  const found = await references.rows(groups.second, find);
   assert.deepEqual(sources(found), [cvx141]);
   assert.ok(
     subjects(await references.rows(groups.second)).length >
       subjects(found).length,
   );
-  assert.deepEqual(subjects(await references.rows(names, new Set([cvx141]))), [
-    cvx141,
-  ]);
+  assert.deepEqual(subjects(await references.rows(names, find)), [cvx141]);
+});
+
+test("rows are found through no index that is unreadable, or was built for a kind found by nothing or by fewer properties: the rows a code finds are among them", async () => {
+  const checked = tablesOver(feed);
+  await checked.check();
+  const all = await (await checked.references()).rows(groups.second);
+  const [, , target] =
+    all.find(([, predicate]) => predicate.value.endsWith("#annotatedTarget")) ??
+    [];
+  assert.ok(target !== undefined);
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const source = "rec:foundBy owl:annotatedSource .";
+  const cases: [string, Files, (files: Files) => Promise<void>, string][] = [
+    [
+      "unreadable",
+      parts.vocabulary,
+      (files) =>
+        files.write(
+          `${fileStem(groups.second)}.codes.json`,
+          new TextEncoder().encode("{"),
+        ),
+      cvx141,
+    ],
+    [
+      "found by nothing",
+      recordsChanged((turtle) =>
+        turtle.replace(source, "rdfs:seeAlso owl:annotatedSource ."),
+      ),
+      async () => {},
+      cvx141,
+    ],
+    ["found by fewer", parts.vocabulary, async () => {}, target.value],
+  ];
+  const reading = recordsChanged((turtle) =>
+    turtle.replace(
+      source,
+      "rec:foundBy owl:annotatedSource , owl:annotatedTarget .",
+    ),
+  );
+  for (const [name, vocabulary, change, code] of cases) {
+    const files = new MemoryFiles("urn:test:tables/");
+    await tablesOver(feed, files, vocabulary).check();
+    await change(files);
+    const references = await tablesOver(feed, files, reading).references();
+    const found = new Set(
+      (
+        await references.rows(groups.second, {
+          codes: new Set([code]),
+          terms: await tableTerms(reading, parts.newStore),
+        })
+      ).map(([subject]) => subject.value),
+    );
+    const wanted = all.filter(
+      ([, predicate, object]) =>
+        /#annotated(Source|Target)$/.test(predicate.value) &&
+        object.value === code,
+    );
+    assert.ok(wanted.length > 0, name);
+    for (const [subject] of wanted) assert.ok(found.has(subject.value), name);
+  }
+});
+
+test("a check whose read of the vocabulary fails keeps the version a later check reads it for", async () => {
+  let failed = false;
+  const { vocabulary } = parts;
+  const once: Files = {
+    iri: vocabulary.iri,
+    read: async (path) => {
+      if (path.endsWith("records.ttl") && !failed) {
+        failed = true;
+        throw new Error("the vocabulary could not be read");
+      }
+      return vocabulary.read(path);
+    },
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
+  const tables = tablesOver(feed, new MemoryFiles("urn:test:tables/"), once);
+  await assert.rejects(tables.check(), /could not be read/);
+  await tables.check();
+  assert.ok((await tables.references()).isVersion(groups.second));
 });
 
 test("a check keeps nothing of a version that does not verify, and tries a feed or rows it cannot read later", async () => {

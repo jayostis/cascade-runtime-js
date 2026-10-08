@@ -22,7 +22,22 @@ export interface TableTerms {
   readonly foundBy: ReadonlyMap<string, readonly string[]>;
 }
 
-export async function tableTerms(
+const termsRead = new WeakMap<Files, Promise<TableTerms>>();
+
+export function tableTerms(
+  vocabulary: Files,
+  newStore: StoreFactory,
+): Promise<TableTerms> {
+  let read = termsRead.get(vocabulary);
+  if (read === undefined) {
+    read = readTableTerms(vocabulary, newStore);
+    read.catch(() => termsRead.delete(vocabulary));
+    termsRead.set(vocabulary, read);
+  }
+  return read;
+}
+
+async function readTableTerms(
   vocabulary: Files,
   newStore: StoreFactory,
 ): Promise<TableTerms> {
@@ -47,6 +62,56 @@ export async function tableTerms(
       .map(({ value }) => value),
     foundBy,
   };
+}
+
+/** The index of a version's rows by each code they are found by, built for these properties; none for none. */
+export function rowsByCode(
+  rows: readonly Triple[],
+  foundBy: readonly string[],
+): Uint8Array | undefined {
+  if (foundBy.length === 0) return undefined;
+  const found = new Map<string, Set<string>>();
+  const add = (code: string, row: string): void => {
+    found.set(code, (found.get(code) ?? new Set()).add(row));
+  };
+  if (foundBy.includes(`${REC}RowSubject`))
+    for (const [subject] of rows) add(subject.value, subject.value);
+  for (const [subject, predicate, object] of rows)
+    if (foundBy.includes(predicate.value)) add(object.value, subject.value);
+  return new TextEncoder().encode(
+    JSON.stringify({
+      foundBy: [...foundBy].sort(),
+      rows: Object.fromEntries(
+        [...found].map(([code, subjects]) => [code, [...subjects].sort()]),
+      ),
+    }),
+  );
+}
+
+/** An index `rowsByCode` wrote for these properties; none when it is missing, unreadable or built for others. */
+function indexed(
+  bytes: Uint8Array | undefined,
+  foundBy: readonly string[],
+): ReadonlyMap<string, readonly string[]> | undefined {
+  if (bytes === undefined) return undefined;
+  try {
+    const index = JSON.parse(new TextDecoder().decode(bytes)) as {
+      foundBy: unknown;
+      rows: Record<string, unknown>;
+    };
+    const rows = new Map(Object.entries(index.rows));
+    return JSON.stringify(index.foundBy) ===
+      JSON.stringify([...foundBy].sort()) &&
+      [...rows.values()].every(
+        (subjects) =>
+          Array.isArray(subjects) &&
+          subjects.every((subject) => typeof subject === "string"),
+      )
+      ? (rows as Map<string, string[]>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -117,9 +182,12 @@ export class References {
 
   /**
    * The version's rows; given codes, and an index of its rows by code beside them (`<stem>.codes.json`, the rows
-   * N-Triples), only the rows found by those codes.
+   * N-Triples) built for the properties the vocabulary gives its kind, only the rows found by those codes.
    */
-  async rows(version: string, codes?: ReadonlySet<string>): Promise<Triple[]> {
+  async rows(
+    version: string,
+    find?: { readonly codes: ReadonlySet<string>; readonly terms: TableTerms },
+  ): Promise<Triple[]> {
     let stem: string;
     try {
       stem = fileStem(version);
@@ -132,20 +200,19 @@ export class References {
     const bytes = await this.#source.read(path);
     if (bytes === undefined)
       throw new Refusal(`${this.#folder} holds no rows for ${version}`);
-    const index =
-      codes === undefined
+    const found =
+      find === undefined
         ? undefined
-        : await this.#source.read(`${this.#folder}${stem}${CODES}`);
-    if (codes === undefined || index === undefined)
+        : indexed(
+            await this.#source.read(`${this.#folder}${stem}${CODES}`),
+            find.terms.foundBy.get(
+              this.kindOf(this.seriesOf(version) ?? "") ?? "",
+            ) ?? [],
+          );
+    if (find === undefined || found === undefined)
       return this.#parse(bytes, this.#source.iri + path);
-    const found = JSON.parse(new TextDecoder().decode(index)) as Record<
-      string,
-      readonly string[]
-    >;
     const subjects = new Set(
-      [...codes].flatMap(
-        (code) => (Object.hasOwn(found, code) ? found[code] : []) ?? [],
-      ),
+      [...find.codes].flatMap((code) => found.get(code) ?? []),
     );
     const lines = new TextDecoder()
       .decode(bytes)
