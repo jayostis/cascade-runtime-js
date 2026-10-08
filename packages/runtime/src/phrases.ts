@@ -948,6 +948,15 @@ const DEFINITIONS: Definition[] = [
     },
   ],
   [
+    "the pod is opened with the tables {name} on {time}",
+    (compiled, [name, when], _stated, _compiling, label) => {
+      happen(compiled, label, name as string, when as string, {
+        kind: "open",
+        tables: `tables/${String(name)}/`,
+      });
+    },
+  ],
+  [
     "the matcher rechecks on {time}",
     (compiled, [when], _stated, _compiling, label) => {
       happen(compiled, label ?? "recheck", undefined, when as string, {

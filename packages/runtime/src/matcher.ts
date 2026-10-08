@@ -276,51 +276,145 @@ interface Pod {
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
   readonly judgments: readonly Judged[];
   readonly revised: ReadonlySet<string>;
+  /** Each ordered pair of members of a matcher Same a person retracted. */
+  readonly retracted: ReadonlySet<string>;
 }
 
-/** The matcher's procedure, M1 to M11, over the pod as the steps before this one left it. */
+/** For each rule's justification, the origins that join each pair: "" for a rule that reads no table. */
+type Joins = ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>;
+
+/** The version of each series the pod names as current, by series. */
+async function namedVersions(union: Dataset): Promise<Map<string, string[]>> {
+  return grouped(
+    await column(
+      union,
+      "SELECT DISTINCT ?series ?version WHERE { ?series a rec:ReferenceSeries ; pav:hasCurrentVersion ?version }",
+      "series",
+      "version",
+    ),
+  );
+}
+
+/**
+ * What the rules' queries join, given each query's rows, each rule citing the versions of its kind loaded, and keeping
+ * only the origins given.
+ */
+async function joins(
+  rowsOf: (query: string) => Promise<readonly Row[]>,
+  found: readonly { rule: MatcherRule; text: string }[],
+  loaded: ReadonlyMap<string, ReadonlySet<string>>,
+  kept: ReadonlySet<string>,
+): Promise<Joins> {
+  const all = new Map<string, Map<string, Set<string>>>();
+  for (const { rule, text } of found) {
+    const rows = await rowsOf(text);
+    const pairs = new Map<string, Set<string>>();
+    for (const [key, origins] of joined(
+      rule,
+      rows,
+      rule.kind === undefined
+        ? new Set([""])
+        : (loaded.get(rule.kind) ?? new Set()),
+    )) {
+      const cited = [...origins].filter((origin) => kept.has(origin));
+      if (cited.length > 0) pairs.set(key, new Set(cited));
+    }
+    all.set(rule.justification, pairs);
+  }
+  return all;
+}
+
+/** The matcher's procedure, M1 to M11, and O1, over the pod as the steps before this one left it. */
 class Matcher {
+  /** The reference descriptions the run writes after all its judgments, by path (W1). */
+  readonly #descriptions = new Map<string, Uint8Array>();
+
   private constructor(
     readonly context: StepContext,
     readonly references: References,
     readonly pod: Pod,
     readonly rulesVersion: string,
     readonly rules: readonly MatcherRule[],
-    readonly current: (series: string) => string,
-    readonly matched: ReadonlyMap<string, ReadonlyMap<string, Set<string>>>,
+    readonly current: (series: string) => string | undefined,
+    readonly matched: Joins,
+    readonly fresh: Joins,
   ) {}
 
+  /**
+   * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
+   * `fresh` holds the joins the pod's own rule list and versions do not make (O1).
+   */
   static async of(
     context: StepContext,
     references: References,
+    adopted?: ReadonlyMap<string, string>,
   ): Promise<Matcher> {
     const union = await context.matcherView();
-    const named = grouped(
-      await column(
-        union,
-        "SELECT DISTINCT ?series ?version WHERE { ?series pav:hasCurrentVersion ?version }",
-        "series",
-        "version",
-      ),
-    );
-    const current = (series: string): string =>
+    const named = await namedVersions(union);
+    const current = (series: string): string | undefined =>
+      adopted?.get(series) ??
       references.current(series, named.get(series) ?? []);
+    const pod = await read(union, references);
     const rulesVersion = current(await references.ruleList());
+    const none: Joins = new Map();
+    if (rulesVersion === undefined)
+      return new Matcher(context, references, pod, "", [], current, none, none);
     const found = await matcherRules(
       new Graph(await references.rows(rulesVersion)),
       context.vocabulary,
     );
-    const loaded = new Map(
-      found.flatMap(({ rule: { kind } }) =>
-        kind === undefined
-          ? []
-          : [[kind, new Set(references.seriesOfKind(kind).map(current))]],
+    const rules = found.map(({ rule }) => rule);
+    const kinds = new Set(found.flatMap(({ rule: { kind } }) => kind ?? []));
+    const versions = [
+      ...new Set(
+        [...kinds]
+          .flatMap((kind) => references.seriesOfKind(kind))
+          .flatMap((series) => current(series) ?? []),
       ),
+    ];
+    const before = (version: string): string | undefined => {
+      if (version === "") return "";
+      const series = references.seriesOf(version) ?? "";
+      const [was, ...others] = named.get(series) ?? [];
+      return was !== undefined &&
+        others.length === 0 &&
+        references.seriesOf(was) === series
+        ? was
+        : undefined;
+    };
+    const rulesBefore = before(rulesVersion);
+    if (
+      adopted !== undefined &&
+      adopted.size === 0 &&
+      rulesBefore === rulesVersion &&
+      versions.every((version) => before(version) === version)
+    )
+      return new Matcher(
+        context,
+        references,
+        pod,
+        rulesVersion,
+        rules,
+        current,
+        none,
+        none,
+      );
+    const versionsBefore =
+      adopted === undefined
+        ? []
+        : versions.flatMap((version) => before(version) ?? []);
+    const loaded = new Map(
+      [...kinds].map((kind) => [
+        kind,
+        new Set(
+          [...versions, ...versionsBefore].filter(
+            (version) =>
+              references.kindOf(references.seriesOf(version) ?? "") === kind,
+          ),
+        ),
+      ]),
     );
-    const pod = await read(union, references);
-    for (const version of new Set(
-      [...loaded.values()].flatMap((versions) => [...versions]),
-    )) {
+    for (const version of new Set([...versions, ...versionsBefore])) {
       await union.add(await references.rows(version), version);
       await union.add(
         [
@@ -330,43 +424,111 @@ class Matcher {
         "urn:cascade:references",
       );
     }
-    const matched = new Map<string, Map<string, Set<string>>>();
-    for (const { rule, text } of found) {
-      const { rows } = await union.select(text);
-      matched.set(
-        rule.justification,
-        joined(
-          rule,
-          rows,
-          rule.kind === undefined
-            ? new Set([""])
-            : (loaded.get(rule.kind) ?? new Set()),
-        ),
+    const selected = new Map<string, Promise<readonly Row[]>>();
+    const rowsOf = (query: string): Promise<readonly Row[]> => {
+      let rows = selected.get(query);
+      if (rows === undefined) {
+        rows = union.select(query).then((answer) => answer.rows);
+        selected.set(query, rows);
+      }
+      return rows;
+    };
+    const matched = await joins(
+      rowsOf,
+      found,
+      loaded,
+      new Set(["", ...versions]),
+    );
+    if (adopted === undefined)
+      return new Matcher(
+        context,
+        references,
+        pod,
+        rulesVersion,
+        rules,
+        current,
+        matched,
+        none,
       );
+    const foundBefore =
+      rulesBefore === undefined
+        ? []
+        : rulesBefore === rulesVersion
+          ? found
+          : await matcherRules(
+              new Graph(await references.rows(rulesBefore)),
+              context.vocabulary,
+            ).catch((error: unknown) => {
+              if (error instanceof Refusal) return [];
+              throw error;
+            });
+    const known = await joins(
+      rowsOf,
+      foundBefore,
+      loaded,
+      new Set(["", ...versionsBefore]),
+    );
+    const fresh = new Map<string, Map<string, Set<string>>>();
+    for (const [justification, pairs] of matched) {
+      const newly = new Map<string, Set<string>>();
+      for (const [key, origins] of pairs) {
+        if (pod.retracted.has(key)) continue;
+        const unknown = [...origins].filter((origin) => {
+          const was = before(origin);
+          return (
+            was === undefined ||
+            !(known.get(justification)?.get(key)?.has(was) ?? false)
+          );
+        });
+        if (unknown.length > 0) newly.set(key, new Set(unknown));
+      }
+      fresh.set(justification, newly);
     }
     return new Matcher(
       context,
       references,
       pod,
       rulesVersion,
-      found.map(({ rule }) => rule),
+      rules,
       current,
       matched,
+      fresh,
     );
   }
 
-  /** The origins whose rows join the record to the other under the rule: "" for a rule that reads no table. */
+  /** The origins whose rows join the record to the other under the rule, among the joins given. */
   private origins(
+    joined: Joins,
     rule: MatcherRule,
     record: SubjectRecord,
     other: SubjectRecord,
   ): ReadonlySet<string> {
     if (!rule.appliesTo.has(record.kind)) return new Set();
     return (
-      this.matched
-        .get(rule.justification)
-        ?.get(pair(record.name, other.name)) ?? new Set()
+      joined.get(rule.justification)?.get(pair(record.name, other.name)) ??
+      new Set()
     );
+  }
+
+  /** Writes, after every judgment, what the pod lacks of the series or version's description (M8, W1). */
+  describe(thing: string): void {
+    if (this.pod.held.has(thing)) return;
+    const { layout } = this.context;
+    const place = layout.place(`${REC}ReferenceSeries`);
+    const path = this.references.isVersion(thing)
+      ? layout.version(place, thing)
+      : place.path(thing);
+    if (!this.#descriptions.has(path))
+      this.#descriptions.set(
+        path,
+        ntriples(this.references.description(thing)),
+      );
+  }
+
+  /** Writes the descriptions held back for after the judgments. */
+  finish(): void {
+    for (const [path, bytes] of this.#descriptions)
+      this.context.writes.add(path, bytes);
   }
 
   /** Writes the rule's Same of the members by the origin's rows, unless the pod holds it (M5, M8, M9). */
@@ -387,6 +549,10 @@ class Matcher {
       ...names,
       ...used,
     ]);
+    for (const version of applied) {
+      this.describe(this.references.seriesOf(version) ?? "");
+      this.describe(version);
+    }
     if (this.pod.held.has(name)) return;
     const same = iri(name);
     const matcher = iri(MATCHER);
@@ -410,45 +576,61 @@ class Matcher {
       [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
     ];
     writes.add(layout.place(`${JDG}Judgment`).path(name), ntriples(triples));
-    const place = layout.place(`${REC}ReferenceSeries`);
-    for (const version of applied) {
-      const series = this.references.seriesOf(version) ?? "";
-      for (const [thing, path] of [
-        [series, place.path(series)],
-        [version, layout.version(place, version)],
-      ] as const) {
-        if (!this.pod.held.has(thing))
-          writes.add(path, ntriples(this.references.description(thing)));
-      }
-    }
   }
 
-  /** Files a Same for each of the subject's records that the activity's first revisions began, in arrival order (M1-M5). */
-  async take(activity: string): Promise<void> {
-    const records = [...this.pod.theirs.values()];
-    const taken = records
-      .filter((record) => record.activity === activity)
-      .sort(byArrival);
-    const compared = records.filter((record) => !taken.includes(record));
-    for (const record of taken) {
+  /** Files a Same for each record taken, in arrival order, of it and what it joins among the records before it (M3-M5). */
+  private async file(
+    taken: readonly SubjectRecord[],
+    joined: Joins,
+  ): Promise<void> {
+    const compared = [...this.pod.theirs.values()].filter(
+      (record) => !taken.includes(record),
+    );
+    for (const record of [...taken].sort(byArrival)) {
       for (const rule of this.rules) {
         const byOrigin = new Map<string, SubjectRecord[]>();
-        for (const other of compared) {
-          for (const origin of this.origins(rule, record, other))
+        for (const other of compared)
+          for (const origin of this.origins(joined, rule, record, other))
             byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), other]);
-        }
-        for (const origin of [...byOrigin.keys()].sort())
-          await this.same(rule, origin, [
-            record,
-            ...(byOrigin.get(origin) ?? []),
-          ]);
+        for (const [origin, matched] of [...byOrigin].sort(([a], [b]) =>
+          a < b ? -1 : 1,
+        ))
+          await this.same(rule, origin, [record, ...matched]);
       }
       compared.push(record);
     }
   }
 
-  /** Files again each Same of the matcher's that used a since-revised table and still joins two of its members (M7). */
+  /** Files a Same for each of the subject's records that the activity's first revisions began (M1-M5). */
+  async take(activity: string): Promise<void> {
+    await this.file(
+      [...this.pod.theirs.values()].filter(
+        (record) => record.activity === activity,
+      ),
+      this.matched,
+    );
+  }
+
+  /** Files a Same for each pair the tables newly join, taking the records of those pairs (M1, O1). */
+  async rejoin(): Promise<void> {
+    const records = [...this.pod.theirs.values()];
+    await this.file(
+      records.filter((record) =>
+        this.rules.some((rule) =>
+          records.some(
+            (other) =>
+              this.origins(this.fresh, rule, record, other).size > 0 ||
+              this.origins(this.fresh, rule, other, record).size > 0,
+          ),
+        ),
+      ),
+      this.fresh,
+    );
+  }
+
+  /** Files again each Same of the matcher's that used a version the tables revise and still joins two of its members (M7). */
   async recheck(): Promise<void> {
+    if (this.rulesVersion === "") return;
     const byJustification = new Map(
       this.rules.map((rule) => [rule.justification, rule]),
     );
@@ -470,13 +652,15 @@ class Matcher {
                   this.references.kindOf(found) === rule.kind,
               );
       const origin = series === undefined ? "" : this.current(series);
+      if (origin === undefined) continue;
       const members = judged.members.flatMap(
         (member) => this.pod.theirs.get(member) ?? [],
       );
       const still = members.filter((member) =>
         members.some(
           (other) =>
-            other !== member && this.origins(rule, member, other).has(origin),
+            other !== member &&
+            this.origins(this.matched, rule, member, other).has(origin),
         ),
       );
       if (still.length >= 2) await this.same(rule, origin, still);
@@ -539,18 +723,29 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     "SELECT DISTINCT ?thing WHERE { ?thing ?p ?o FILTER isIRI(?thing) }",
     "thing",
   );
-  const revised = await column(
-    dataset,
-    "SELECT DISTINCT ?version WHERE { ?later prov:wasRevisionOf ?version }",
-    "version",
+  const retracted = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?judgment ?member WHERE {
+        ?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same ; prov:hadMember ?member .
+        ?retracting npx:retracts ?judgment
+      }`,
+      "judgment",
+      "member",
+    ),
   );
   return {
     held: new Set(held.flatMap(([thing]) => thing ?? [])),
     theirs: await subjectRecords(dataset),
     judgments: await recheckable(dataset),
-    revised: new Set(
-      revised.flatMap(([version]) =>
-        version !== undefined && references.isVersion(version) ? [version] : [],
+    revised: references.revised(),
+    retracted: new Set(
+      [...retracted.values()].flatMap((members) =>
+        members.flatMap((record) =>
+          members.flatMap((other) =>
+            record === other ? [] : [pair(record, other)],
+          ),
+        ),
       ),
     ),
   };
@@ -565,4 +760,52 @@ export async function runMatcher(
   const matcher = await Matcher.of(context, references);
   if (activity === undefined) await matcher.recheck();
   else await matcher.take(activity);
+  matcher.finish();
+}
+
+/** The versions after `from` on the line that ends at `to`, oldest first: none when `to` does not descend from it. */
+function descent(references: References, to: string, from: string): string[] {
+  const line: string[] = [];
+  for (
+    let at: string | undefined = to;
+    at !== from;
+    at = references.revisionOf(at)
+  ) {
+    if (at === undefined || line.includes(at)) return [];
+    line.unshift(at);
+  }
+  return line;
+}
+
+/**
+ * Opens the pod with the tables: adopts each series' default that descends from the version the pod names, and files
+ * what that and any rule or series new to the pod join (O1); a version the tables do not hold is left out (O2). Gives
+ * the versions the pod names that the tables do not hold.
+ */
+export async function openPod(
+  context: StepContext,
+  references: References,
+): Promise<string[]> {
+  const named = await namedVersions(await context.matcherView());
+  const adopted = new Map<string, string>();
+  const line: string[] = [];
+  const unheld: string[] = [];
+  for (const [series, [version, ...others]] of named) {
+    if (version === undefined || others.length > 0) continue;
+    if (references.seriesOf(version) !== series) {
+      unheld.push(version);
+      continue;
+    }
+    const after = descent(references, references.fallback(series), version);
+    const last = after.at(-1);
+    if (last === undefined) continue;
+    adopted.set(series, last);
+    line.push(...after);
+  }
+  const matcher = await Matcher.of(context, references, adopted);
+  for (const version of line) matcher.describe(version);
+  await matcher.recheck();
+  await matcher.rejoin();
+  matcher.finish();
+  return unheld.sort();
 }
