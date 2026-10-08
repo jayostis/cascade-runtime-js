@@ -128,7 +128,13 @@ async function showPod(response, name, query, names) {
     ? hospitals.connection(name, query.get("connection"))
     : undefined;
   // As it is now, so that the box and whether the page refreshes agree on its step.
-  const shown = found === undefined ? undefined : { ...found };
+  const shown =
+    found === undefined
+      ? undefined
+      : {
+          ...found,
+          ...(found.bringing !== undefined && { step: "bringing in" }),
+        };
   const box =
     shown === undefined
       ? undefined
@@ -164,7 +170,7 @@ async function showPod(response, name, query, names) {
       current: name,
       names,
       note: didNote(query, KITS),
-      refresh: shown?.step === "signing in" || shown?.step === "pulling",
+      refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
     }),
   );
 }
@@ -249,7 +255,7 @@ async function filesOf(connection) {
  * the hospital has, for the button that brings it in.
  */
 async function connectionView(name, connection) {
-  if (connection.step === "signing in" || connection.step === "pulling")
+  if (["signing in", "pulling", "bringing in"].includes(connection.step))
     return {};
   const { failed, pulled, files } = await filesOf(connection);
   if (failed !== undefined) return { failed };
@@ -280,9 +286,17 @@ async function bring(response, name, connection) {
   if (files === undefined) return redirect(response, box);
   if (connection.imported === undefined) {
     connection.failed = undefined;
-    connection.imported = (await podNamed(name)).import(files, {
-      aboutSubject: true,
-    });
+    connection.bringing = { part: "loading the adapter" };
+    connection.imported = (await podNamed(name))
+      .import(files, {
+        aboutSubject: true,
+        onProgress: (part) => {
+          connection.bringing = part;
+        },
+      })
+      .finally(() => {
+        connection.bringing = undefined;
+      });
   }
   let done;
   try {

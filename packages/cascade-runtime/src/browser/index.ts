@@ -29,6 +29,7 @@ import {
   type Exported,
   type ExportSource,
   type Imported,
+  type ImportOptions,
   openPodWith,
   type Parts,
   type Pod,
@@ -41,6 +42,8 @@ export type {
   Exported,
   ExportSource,
   Imported,
+  ImportOptions,
+  ImportProgress,
   Pod,
   Row,
 } from "../pod.js";
@@ -171,6 +174,19 @@ function resolved(): Promise<Resolved> {
   return found;
 }
 
+/**
+ * A frame for the page to paint in, or no wait where nothing is seen: a worker, or a hidden page, whose frames wait
+ * until it is shown. A page hidden during the wait ends it by a timer.
+ */
+function painted(): Promise<void> {
+  if (globalThis.document?.visibilityState !== "visible")
+    return Promise.resolve();
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+    setTimeout(resolve, 100);
+  });
+}
+
 /** A pod held in a browser, closing its databases when it is closed. */
 class BrowserPod implements Pod {
   readonly #pod: Pod;
@@ -197,11 +213,24 @@ class BrowserPod implements Pod {
     return this.#pod.look(exported);
   }
 
+  /** Waits, after each `onProgress`, for a frame the page paints what it was told in. */
   import(
     exported: string | Exported,
-    options?: { aboutSubject?: boolean; match?: boolean },
+    options: ImportOptions = {},
   ): Promise<Imported> {
-    return this.#pod.import(exported, options);
+    const { onProgress } = options;
+    return this.#pod.import(
+      exported,
+      onProgress === undefined
+        ? options
+        : {
+            ...options,
+            onProgress: async (progress) => {
+              await onProgress(progress);
+              await painted();
+            },
+          },
+    );
   }
 
   enter(turtle: string, options?: { match?: boolean }): Promise<Done> {

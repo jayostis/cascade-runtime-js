@@ -12,6 +12,18 @@ export class Refusal extends Error {
   override readonly name = "Refusal";
 }
 
+/** What an import is doing, as it begins each part, with what is done so far. */
+export interface ImportProgress {
+  readonly part: "loading the adapter" | "converting" | "saving" | "judging";
+  /** How many of the part's documents, or of judging's steps, are done, where they are counted. */
+  readonly done?: number;
+  /** How many there are, where they are counted. */
+  readonly of?: number;
+}
+
+/** Told of each part of an import as it begins; the import goes on once what it returns settles. */
+export type OnProgress = (progress: ImportProgress) => void | Promise<void>;
+
 /** What a step is performed with. */
 export interface StepContext {
   /** The pod's address, which every file of it is named from. */

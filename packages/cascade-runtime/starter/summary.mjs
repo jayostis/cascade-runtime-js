@@ -482,15 +482,32 @@ function bringIn({ empty, person, signIn, findHospital }) {
 </div>`;
 }
 
-/** Where a connection has got to, as a list of steps: those done ticked, the one under way marked. */
-export function steps({ step, requests }) {
-  const at = ["signing in", "pulling", "pulled"].indexOf(step);
+/** What an import is doing, as `pod.import`'s `onProgress` says it: `converting, 3 of 10 documents done`. */
+export function importPart({ part, done, of }) {
+  const counted =
+    of === undefined
+      ? ""
+      : `, ${done} of ${of} ${part === "converting" ? "documents" : "steps"} done`;
+  return `${part}${counted}`;
+}
+
+/**
+ * Where a connection has got to, as a list of steps: those done ticked, the one under way marked. While its record is
+ * brought in, `bringing` is the import's part, as `onProgress` last said it.
+ */
+export function steps({ step, requests, bringing }) {
+  const at = ["signing in", "pulling", "pulled", "bringing in"].indexOf(step);
   const items = [
     at === 0 ? "Signing in at the hospital" : "Signed in at the hospital",
     at === 1
       ? `Fetching the record: ${requests} requests answered so far`
       : "Fetching the record",
     at === 2 ? `Record fetched, in ${requests} requests` : "Record fetched",
+    ...(at === 3
+      ? [
+          `Bringing it in${bringing === undefined ? "" : `: ${importPart(bringing)}`}`,
+        ]
+      : []),
   ].map((text, index) => {
     const state = index < at || at === 2 ? "done" : index === at ? "now" : "";
     return html`<li class=${state}>${text}</li>`;
@@ -499,17 +516,18 @@ export function steps({ step, requests }) {
 }
 
 /**
- * `steps` of `connection`, which in a browser draws itself again once a frame while the connection signs in or fetches,
- * so the host only counts `connection.requests` and the page around it is not drawn again.
+ * `steps` of `connection`, which in a browser draws itself again once a frame while the connection signs in, fetches or
+ * brings its record in, so the host only counts `connection.requests` or sets `connection.bringing` and the page around
+ * it is not drawn again.
  */
 function Steps({ connection }) {
-  const [, setRequests] = useState(connection.requests);
+  const [, setSeen] = useState();
   useEffect(() => {
-    if (connection.step !== "signing in" && connection.step !== "pulling")
+    if (!["signing in", "pulling", "bringing in"].includes(connection.step))
       return;
     let frame;
     const again = () => {
-      setRequests(connection.requests);
+      setSeen(JSON.stringify([connection.requests, connection.bringing]));
       frame = globalThis.requestAnimationFrame(again);
     };
     again();
@@ -788,6 +806,10 @@ export function connectionDialog({
   const who = personName(pod);
   const name = hospitalName(hospital);
   const said = (body) => box(id, name, body, { back });
+  if (connection.step === "bringing in")
+    return said(
+      html`<div class="card"><${Steps} connection=${connection} /></div>`,
+    );
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
       html`<div class="card"><${Steps} connection=${connection} /><p class="muted">This refreshes itself until the record is here.</p></div>`,

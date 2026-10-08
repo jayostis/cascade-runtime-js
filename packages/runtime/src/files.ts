@@ -8,8 +8,23 @@ export interface Files {
   /** The file's bytes, or undefined when there is no such file. */
   read(pathOrIri: string): Promise<Uint8Array | undefined>;
   write(pathOrIri: string, bytes: Uint8Array): Promise<void>;
+  /**
+   * Writes every file, or, when one fails, none: where the host has transactions, one of them. Files without it are
+   * written one by one, and a failure leaves those before it written.
+   */
+  writeAll?(files: Iterable<readonly [string, Uint8Array]>): Promise<void>;
   /** The path of every file under the folder, the whole root when it is "", sorted. */
   list(folder: string): Promise<string[]>;
+}
+
+/** Writes the files in one `writeAll` where the files have one, else one by one, in the order given. */
+export async function writeAll(
+  files: Files,
+  written: readonly (readonly [string, Uint8Array])[],
+): Promise<void> {
+  if (written.length === 0) return;
+  if (files.writeAll !== undefined) return files.writeAll(written);
+  for (const [path, bytes] of written) await files.write(path, bytes);
 }
 
 /** The path an IRI under the root's IRI names, or the path itself; anything else is refused. */

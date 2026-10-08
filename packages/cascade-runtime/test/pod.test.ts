@@ -17,7 +17,12 @@ import {
   recordName,
 } from "@cascade-runtime/runtime";
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
-import { type Exported, openPod, type Pod } from "cascade-runtime";
+import {
+  type Exported,
+  type ImportProgress,
+  openPod,
+  type Pod,
+} from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 import { openPodWith, type Parts } from "../src/pod.js";
@@ -199,8 +204,42 @@ test("an import without the claim only files and names its unclaimed profile; an
   ]);
 });
 
-test("an import with the claim records an About for each unclaimed profile and is matched at once", async () => {
-  const imported = await pod.import(exported("x-e4"), { aboutSubject: true });
+test("an import with the claim records an About for each unclaimed profile and is matched at once, saying each part as it begins", async () => {
+  await assert.rejects(
+    pod.import(exported("x-e4"), {
+      onProgress: async () => {
+        throw new Error("not told");
+      },
+    }),
+    /not told/,
+  );
+  const told: ImportProgress[] = [];
+  const imported = await pod.import(exported("x-e4"), {
+    aboutSubject: true,
+    onProgress: (progress) => {
+      told.push(progress);
+    },
+  });
+  assert.deepEqual(
+    told
+      .map(({ part }) => part)
+      .filter((part, index, parts) => part !== parts[index - 1]),
+    ["loading the adapter", "converting", "saving", "judging"],
+  );
+  const converting = told.filter(({ part }) => part === "converting");
+  assert.ok(
+    converting.every(
+      ({ done = -1, of = 0 }, index) =>
+        done < of && done > (converting[index - 1]?.done ?? -1),
+    ),
+  );
+  assert.deepEqual(
+    told.filter(({ part }) => part === "judging"),
+    [
+      { part: "judging", done: 0, of: 2 },
+      { part: "judging", done: 1, of: 2 },
+    ],
+  );
   assert.deepEqual(
     imported.claimed.map(({ profile }) => profile),
     [await profileOf("J2")],

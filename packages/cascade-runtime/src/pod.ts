@@ -3,6 +3,7 @@ import {
   CorePod,
   type Files,
   type Importer,
+  type ImportProgress,
   type IndexEntry,
   iri,
   type Layout,
@@ -65,7 +66,16 @@ function sorted(counts: Map<string, number>): Record<string, number> {
   return Object.fromEntries([...counts].sort(([a], [b]) => compared(a, b)));
 }
 
-export type { Exported } from "@cascade-runtime/runtime";
+export type { Exported, ImportProgress } from "@cascade-runtime/runtime";
+
+export interface ImportOptions {
+  /** Records an About for each profile of the import no counting About ties to the subject. */
+  readonly aboutSubject?: boolean;
+  /** Runs the matcher on the import; on unless false. */
+  readonly match?: boolean;
+  /** Told as each part of the import begins, with what is done so far; the import goes on once what it returns settles. */
+  readonly onProgress?: (progress: ImportProgress) => void | Promise<void>;
+}
 
 export interface Pod {
   /** The pod's naming base, ending in a slash. */
@@ -78,7 +88,7 @@ export interface Pod {
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
     exported: string | Exported,
-    options?: { aboutSubject?: boolean; match?: boolean },
+    options?: ImportOptions,
   ): Promise<Imported>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
   judge(turtle: string): Promise<Done>;
@@ -297,7 +307,7 @@ class OpenPod implements Pod {
 
   import(
     exported: string | Exported,
-    options: { aboutSubject?: boolean; match?: boolean } = {},
+    options: ImportOptions = {},
   ): Promise<Imported> {
     return this.#next(() => this.#import(exported, options));
   }
@@ -469,7 +479,7 @@ class OpenPod implements Pod {
 
   async #import(
     exported: string | Exported,
-    options: { aboutSubject?: boolean; match?: boolean },
+    options: ImportOptions,
   ): Promise<Imported> {
     const found = this.#exportOf(exported);
     if (typeof found === "string")
@@ -478,25 +488,30 @@ class OpenPod implements Pod {
         claimed: [],
         unclaimed: [],
       };
+    const { onProgress } = options;
     const filed = await this.#core.import(
       found.files,
       found.name,
       async () => (await this.#loadedBridge()).adapters,
+      onProgress,
     );
     const activity = filed.activity;
     if (filed.refused !== undefined || activity === undefined)
       return { ...filed, claimed: [], unclaimed: [] };
+    const matching = options.match !== false;
+    const profiles =
+      options.aboutSubject === true ? await this.#unclaimed(activity) : [];
+    const of = profiles.length + (matching ? 1 : 0);
+    if (of > 0) await onProgress?.({ part: "judging", done: 0, of });
     const claimed: { profile: string; judgment: string }[] = [];
-    if (options.aboutSubject === true) {
-      for (const profile of await this.#unclaimed(activity)) {
-        const { judgment } = await this.#judge(
-          about(this.subject, profile, this.owner),
-        );
-        if (judgment !== undefined) claimed.push({ profile, judgment });
-      }
+    for (const [index, profile] of profiles.entries()) {
+      const { judgment } = await this.#judge(
+        about(this.subject, profile, this.owner),
+      );
+      if (judgment !== undefined) claimed.push({ profile, judgment });
+      await onProgress?.({ part: "judging", done: index + 1, of });
     }
-    const matched =
-      options.match === false ? undefined : await this.#core.match(activity);
+    const matched = matching ? await this.#core.match(activity) : undefined;
     return {
       ...filed,
       ...(matched === undefined ? {} : { matched }),
