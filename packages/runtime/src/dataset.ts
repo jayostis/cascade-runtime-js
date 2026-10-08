@@ -15,7 +15,7 @@ const DCT = "http://purl.org/dc/terms/";
 /** The layout read with each pod's address as its base, as N-Triples, once per address. */
 const writtenLayouts = new WeakMap<Layout, Map<string, Promise<Uint8Array>>>();
 
-async function addLayout(
+export async function addLayout(
   union: Union,
   layout: Layout,
   address: string,
@@ -133,6 +133,62 @@ function valueOf(
   return triples?.find(([, p]) => p.value === predicate)?.[2];
 }
 
+/** What a pod's own files say of it: the address its owner's profile names, and its manifest's title and time. */
+export interface PodStated {
+  readonly address: string;
+  readonly title?: string;
+  readonly at?: string;
+}
+
+export async function podStated(
+  pod: Files,
+  layout: Layout,
+  store: Store,
+): Promise<PodStated> {
+  const storage = valueOf(await triplesOf(pod, layout.card, store), STORAGE);
+  if (storage?.termType !== "NamedNode")
+    throw new Error(`${pod.iri}${layout.card} names no storage for the pod`);
+  const manifest = await triplesOf(pod, layout.manifest, store);
+  const title = valueOf(manifest, `${DCT}title`)?.value;
+  const at = valueOf(manifest, `${DCT}created`)?.value;
+  return {
+    address: storage.value,
+    ...(title === undefined ? {} : { title }),
+    ...(at === undefined ? {} : { at }),
+  };
+}
+
+/**
+ * Loads each RDF file of the pod but those the build writes into the union, named by the address plus its path;
+ * returns every file the pod holds, as `held` lists them when given.
+ */
+export async function podFiles(
+  pod: Files,
+  layout: Layout,
+  address: string,
+  union: Union,
+  held?: readonly string[],
+): Promise<readonly string[]> {
+  const rebuilt = new Set(layout.rebuilt);
+  const listed = held ?? (await pod.list(""));
+  const paths = listed.filter(
+    (path) => layout.isRdf(path) && !rebuilt.has(path),
+  );
+  const read = await Promise.all(paths.map((path) => pod.read(path)));
+  for (const [index, path] of paths.entries()) {
+    const bytes = read[index];
+    if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
+    try {
+      await union.loadTurtle(bytes, address + path);
+    } catch (error) {
+      throw new Error(`${pod.iri}${path} is no Turtle: ${String(error)}`, {
+        cause: error,
+      });
+    }
+  }
+  return listed;
+}
+
 /**
  * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
  * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
@@ -146,29 +202,12 @@ export async function podDataset(
   store: Store,
   otherwise: { readonly title: string; readonly at: string },
 ): Promise<PodBuild> {
-  const storage = valueOf(await triplesOf(pod, layout.card, store), STORAGE);
-  if (storage?.termType !== "NamedNode")
-    throw new Error(`${pod.iri}${layout.card} names no storage for the pod`);
-  const address = storage.value;
-  const manifest = await triplesOf(pod, layout.manifest, store);
-  const title = valueOf(manifest, `${DCT}title`)?.value ?? otherwise.title;
-  const at = valueOf(manifest, `${DCT}created`)?.value ?? otherwise.at;
-  const rebuilt = new Set(layout.rebuilt);
-  const held = await pod.list("");
+  const stated = await podStated(pod, layout, store);
+  const { address } = stated;
+  const title = stated.title ?? otherwise.title;
+  const at = stated.at ?? otherwise.at;
   const union = new Union(store);
-  for (const path of held.filter(
-    (path) => layout.isRdf(path) && !rebuilt.has(path),
-  )) {
-    const bytes = await pod.read(path);
-    if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
-    try {
-      await union.loadTurtle(bytes, address + path);
-    } catch (error) {
-      throw new Error(`${pod.iri}${path} is no Turtle: ${String(error)}`, {
-        cause: error,
-      });
-    }
-  }
+  const held = await podFiles(pod, layout, address, union);
   const derived = await build.derivations.derive(union, lens);
   const built = await build.files(union, { address, at, title });
   await addLayout(union, layout, address);

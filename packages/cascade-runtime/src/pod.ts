@@ -17,14 +17,17 @@ import {
   ExportedFiles,
   MemoryFiles,
   ntriples,
-  podDataset,
+  podFiles,
+  podStated,
   questions,
   randomId,
   RDF,
   type References,
   type StoreFactory,
   type Triple,
+  Union,
   type VocabularyBuild,
+  type VocabularyQuery,
   XSD,
 } from "@cascade-runtime/runtime";
 
@@ -209,6 +212,26 @@ function isSelect(query: string): boolean {
   return /^SELECT\b/i.test(body);
 }
 
+const read = new WeakMap<
+  Files,
+  Promise<{
+    readonly questions: ReadonlyMap<string, VocabularyQuery>;
+    readonly lenses: readonly string[];
+  }>
+>();
+
+/** The vocabulary's questions and lenses, read once. */
+function askable(vocabulary: Files) {
+  let found = read.get(vocabulary);
+  if (found === undefined) {
+    const reading = Promise.all([questions(vocabulary), lenses(vocabulary)]);
+    found = reading.then(([questions, lenses]) => ({ questions, lenses }));
+    read.set(vocabulary, found);
+    found.catch(() => read.delete(vocabulary));
+  }
+  return found;
+}
+
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -233,7 +256,6 @@ function newBase(): string {
 class OpenPod implements Pod {
   readonly #parts: Parts;
   readonly #core: CorePod;
-  readonly #title: string;
   #queue: Promise<unknown> = Promise.resolve();
   #bridge: Promise<LoadedBridge> | undefined;
   #closed = false;
@@ -243,11 +265,9 @@ class OpenPod implements Pod {
     core: CorePod,
     readonly address: string,
     readonly subject: string,
-    title: string,
   ) {
     this.#parts = parts;
     this.#core = core;
-    this.#title = title;
   }
 
   get owner(): string {
@@ -303,6 +323,7 @@ class OpenPod implements Pod {
   close(): Promise<void> {
     return this.#next(async () => {
       this.#closed = true;
+      this.#core.close();
       const bridge = this.#bridge;
       this.#bridge = undefined;
       if (bridge !== undefined) await (await bridge).close();
@@ -579,14 +600,15 @@ class OpenPod implements Pod {
     question: string | { query: string },
     options: { lens?: string },
   ): Promise<Row[]> {
-    const { vocabulary, layout, build, newStore } = this.#parts;
     const lens = options.lens ?? this.#parts.lens;
-    const offered = await lenses(vocabulary);
-    if (!offered.includes(lens))
-      throw new Error(`no lens ${lens}; there are ${offered.join(", ")}`);
+    const offered = await askable(this.#parts.vocabulary);
+    if (!offered.lenses.includes(lens))
+      throw new Error(
+        `no lens ${lens}; there are ${offered.lenses.join(", ")}`,
+      );
     let query: string;
     if (typeof question === "string") {
-      const asked = await questions(vocabulary);
+      const asked = offered.questions;
       const found = asked.get(question);
       if (found === undefined)
         throw new Error(
@@ -597,14 +619,7 @@ class OpenPod implements Pod {
       if (!isSelect(question.query)) throw new Error("the query is no SELECT");
       query = question.query;
     }
-    const { store } = await podDataset(
-      this.#core.files,
-      layout,
-      build,
-      lens,
-      newStore(),
-      { title: this.#title, at: clock.now() },
-    );
+    const store = await this.#core.dataset(lens);
     return (await store.select(query)).rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
     );
@@ -617,27 +632,31 @@ function coreOver(
   address: string,
   subject: string,
   title: string,
+  opened?: Union,
 ): CorePod {
   const { build } = parts;
-  return new CorePod({
-    pod,
-    address,
-    subject,
-    title,
-    vocabulary: parts.vocabulary,
-    layout: parts.layout,
-    newStore: parts.newStore,
-    time: clock,
-    importers: parts.importers,
-    references: () => Promise.resolve(parts.references),
-    build: {
-      lens: parts.lens,
-      derive: async (store, lens, pod) => {
-        await build.derivations.derive(store, lens);
-        return build.files(store, pod);
+  return new CorePod(
+    {
+      pod,
+      address,
+      subject,
+      title,
+      vocabulary: parts.vocabulary,
+      layout: parts.layout,
+      newStore: parts.newStore,
+      time: clock,
+      importers: parts.importers,
+      references: () => Promise.resolve(parts.references),
+      build: {
+        lens: parts.lens,
+        derive: async (store, lens, pod) => {
+          await build.derivations.derive(store, lens);
+          return build.files(store, pod);
+        },
       },
     },
-  });
+    opened,
+  );
 }
 
 /**
@@ -663,21 +682,19 @@ export async function openPodWith(
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
-    return new OpenPod(parts, core, address, subject, title);
+    return new OpenPod(parts, core, address, subject);
   }
   if ((await disk.files.read(parts.layout.card)) === undefined)
     throw new Error(
       `${folder} holds files but no owner's profile, ${parts.layout.card}: it holds no pod`,
     );
-  const { address, title, store } = await podDataset(
-    disk.files,
-    parts.layout,
-    parts.build,
-    parts.lens,
-    parts.newStore(),
-    { title: disk.name, at: clock.now() },
-  );
-  const { rows } = await store.select(
+  const store = parts.newStore();
+  const stated = await podStated(disk.files, parts.layout, store);
+  const { address } = stated;
+  const title = stated.title ?? disk.name;
+  const opened = new Union(store);
+  await podFiles(disk.files, parts.layout, address, opened, held);
+  const { rows } = await opened.select(
     `SELECT DISTINCT ?subject WHERE { ?subject a <${REC}Subject> }`,
   );
   const [subject, ...others] = rows.flatMap(
@@ -688,9 +705,8 @@ export async function openPodWith(
   const files = parts.folder(folder, address).files;
   return new OpenPod(
     parts,
-    coreOver(parts, files, address, subject, title),
+    coreOver(parts, files, address, subject, title, opened),
     address,
     subject,
-    title,
   );
 }

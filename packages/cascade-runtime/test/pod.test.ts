@@ -162,14 +162,17 @@ async function allergens(of: Pod = pod): Promise<string[]> {
   return (await of.ask(QUESTION)).map(({ allergen }) => allergen ?? "").sort();
 }
 
-test("an import without the claim only files and names its unclaimed profile; an About judged and a match bring it into the views", async () => {
+test("an import without the claim only files and names its unclaimed profile; an About judged and a match bring it into the views, and each read after a step sees it", async () => {
   const profile = await profileOf("J1");
+  const claimed = async (): Promise<boolean[]> =>
+    (await pod.look(exported("x-e2"))).map((source) => source.claimed);
   const imported = await pod.import(exported("x-e2"), { match: false });
   assert.ok(imported.activity);
   assert.equal(imported.matched, undefined);
   assert.deepEqual(imported.claimed, []);
   assert.deepEqual(imported.unclaimed, [profile]);
   assert.deepEqual(await pod.ask(QUESTION), []);
+  assert.deepEqual(await claimed(), [false]);
 
   await assert.rejects(
     pod.judge(about(profile, "urn:uuid:9e1d1f66-8f43-4a8e-9c7b-2f0c5e6d7a81")),
@@ -177,6 +180,7 @@ test("an import without the claim only files and names its unclaimed profile; an
   );
   const judged = await pod.judge(about(profile));
   assert.match(judged.judgment ?? "", /^urn:uuid:/);
+  assert.deepEqual(await claimed(), [true]);
   const matched = await pod.match(imported.activity);
   assert.equal(matched.refused, undefined);
   assert.deepEqual(await allergens(), [

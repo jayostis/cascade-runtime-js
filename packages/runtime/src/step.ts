@@ -3,7 +3,7 @@ import { Graph } from "./graph.js";
 import type { IdsAndTime } from "./ids.js";
 import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
-import type { StoreFactory } from "./store.js";
+import type { StoreFactory, Union } from "./store.js";
 
 export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 
@@ -26,6 +26,8 @@ export interface StepContext {
   readonly layout: Layout;
   /** The vocabulary, whose queries the matcher runs. */
   readonly vocabulary: Files;
+  /** The pod as the matcher reads it before the step, built once for the pod as it stands. */
+  matcherView(): Promise<Union>;
 }
 
 /** A file a step is given: an entry's or a person's judgment's Turtle. */

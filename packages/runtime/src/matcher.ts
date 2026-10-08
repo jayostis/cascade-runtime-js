@@ -1,6 +1,7 @@
 import { Derivations, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
+import { podFiles } from "./dataset.js";
 import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
 import type { References } from "./references.js";
@@ -239,20 +240,13 @@ export async function matcherView(
     "layout" | "pod" | "address" | "vocabulary" | "newStore"
   >,
 ): Promise<Union> {
-  const { layout, pod, address } = context;
   let read = derivations.get(context.vocabulary);
   if (read === undefined) {
     read = Derivations.of(context.vocabulary);
     derivations.set(context.vocabulary, read);
   }
   const union = new Union(context.newStore());
-  const rebuilt = new Set(layout.rebuilt);
-  for (const path of await pod.list("")) {
-    if (!layout.isRdf(path) || rebuilt.has(path)) continue;
-    const bytes = await pod.read(path);
-    if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);
-    await union.loadTurtle(bytes, address + path);
-  }
+  await podFiles(context.pod, context.layout, context.address, union);
   await (await read).derive(union, LENS);
   return union;
 }
@@ -281,7 +275,7 @@ class Matcher {
     context: StepContext,
     references: References,
   ): Promise<Matcher> {
-    const union = await matcherView(context);
+    const union = await context.matcherView();
     const named = grouped(
       await column(
         union,

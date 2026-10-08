@@ -1,19 +1,25 @@
 import { fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import type { Derive } from "./build.js";
-import { built } from "./dataset.js";
+import { addLayout, built, podFiles, podStated } from "./dataset.js";
 import { type Files, MemoryFiles, relative, under } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { matcherView, runMatcher } from "./matcher.js";
+import { documentName } from "./names.js";
 import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
 import type { References } from "./references.js";
 import { Shapes } from "./shapes.js";
 import { Refusal, type StepContext, type StepFile } from "./step.js";
 import { type Rows, type StoreFactory, Union } from "./store.js";
+
+const OPENED = "opened";
+const DATASET = "dataset:";
+const MATCHER_VIEW = "matcher view";
+const REVISION = "revision";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -140,13 +146,76 @@ export class CorePod {
   readonly #options: CorePodOptions;
   #references: Promise<References> | undefined;
   #readShapes: Promise<Shapes> | undefined;
+  /** What is built of the pod as it stands, by what it is; a step drops it all. */
+  #kept = new Map<string, Promise<unknown>>();
 
-  constructor(options: CorePodOptions) {
+  /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the build lens's dataset. */
+  constructor(options: CorePodOptions, opened?: Union) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
+    if (opened !== undefined) this.#kept.set(OPENED, Promise.resolve(opened));
   }
 
   get files(): Files {
     return this.#options.pod;
+  }
+
+  /**
+   * The pod as an ask reads it under the lens: its files but those the build writes, the files the build writes, the
+   * lens's derived state and the layout, each a graph of a store of its own.
+   */
+  dataset(lens: string): Promise<Union> {
+    return this.#held(`${DATASET}${lens}`, async () => {
+      const { pod, layout, address, title, newStore, time, build } =
+        this.#options;
+      const opened =
+        lens === build?.lens
+          ? (this.#kept.get(OPENED) as Promise<Union> | undefined)
+          : undefined;
+      this.#kept.delete(OPENED);
+      const union = (await opened) ?? new Union(newStore());
+      if (opened === undefined) await podFiles(pod, layout, address, union);
+      const at = (await podStated(pod, layout, newStore())).at ?? time.now();
+      await built(
+        pod,
+        layout,
+        address,
+        [],
+        at,
+        title,
+        lens,
+        union,
+        build?.derive,
+      );
+      await addLayout(union, layout, address);
+      return union;
+    });
+  }
+
+  /**
+   * The pod's revision: the hash of its address, the files it holds but those the build writes, and its manifest. Any
+   * step that writes changes it, and so does a refused one, whose build writes the manifest again.
+   */
+  revision(): Promise<string> {
+    return this.#held(REVISION, async () => {
+      const { pod, layout, address } = this.#options;
+      const rebuilt = new Set(layout.rebuilt);
+      const listing = new TextEncoder().encode(
+        JSON.stringify([
+          address,
+          (await pod.list("")).filter((path) => !rebuilt.has(path)).sort(),
+        ]),
+      );
+      const manifest = (await pod.read(layout.manifest)) ?? new Uint8Array();
+      const bytes = new Uint8Array(listing.length + manifest.length);
+      bytes.set(listing);
+      bytes.set(manifest, listing.length);
+      return documentName(bytes);
+    });
+  }
+
+  /** Drops what is kept; the pod builds again when next read. */
+  close(): void {
+    this.#kept = new Map();
   }
 
   /** The pod's creation (A13). */
@@ -218,7 +287,24 @@ export class CorePod {
 
   /** The query's rows over the pod as the matcher reads it: its RDF files but those the build writes, and the everyday lens's derived state. */
   async select(query: string): Promise<Rows> {
-    return (await matcherView(this.#options)).select(query);
+    return (await this.#matcherView()).select(query);
+  }
+
+  #matcherView(): Promise<Union> {
+    return this.#held(MATCHER_VIEW, () => matcherView(this.#options));
+  }
+
+  /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
+  #held<T>(key: string, make: () => Promise<T>): Promise<T> {
+    const kept = this.#kept;
+    const found = kept.get(key) as Promise<T> | undefined;
+    if (found !== undefined) return found;
+    const making = make();
+    kept.set(key, making);
+    making.catch(() => {
+      if (kept.get(key) === making) kept.delete(key);
+    });
+    return making;
   }
 
   /** A pod that stands where this one does, over a copy of its files, with its own time. */
@@ -273,6 +359,7 @@ export class CorePod {
         newStore: options.newStore,
         layout: options.layout,
         vocabulary: options.vocabulary,
+        matcherView: () => this.#matcherView(),
       });
       const wrote = await writes.commit(options.pod);
       performed =
@@ -280,6 +367,8 @@ export class CorePod {
     } catch (error) {
       if (!(error instanceof Refusal)) throw error;
       performed = { wrote: [], refused: error.message };
+    } finally {
+      this.#kept = new Map();
     }
     if (options.build !== undefined) {
       try {
@@ -298,6 +387,7 @@ export class CorePod {
     const { pod, layout, address, title, newStore } = this.#options;
     const rebuilt = new Set(layout.rebuilt);
     const files = (await pod.list("")).filter((path) => !rebuilt.has(path));
+    const union = new Union(newStore());
     const made = await built(
       pod,
       layout,
@@ -306,10 +396,12 @@ export class CorePod {
       at,
       title,
       build.lens,
-      new Union(newStore()),
+      union,
       build.derive,
     );
     for (const [path, triples] of made)
       await pod.write(path, ntriples(triples));
+    await addLayout(union, layout, address);
+    this.#kept.set(DATASET + build.lens, Promise.resolve(union));
   }
 }
