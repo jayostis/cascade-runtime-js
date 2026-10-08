@@ -10,6 +10,7 @@ import {
   type BrowserContext,
   chromium,
   type Page,
+  type Route,
 } from "playwright";
 import {
   connect,
@@ -41,6 +42,8 @@ import { newPod, settled, tiles, watched } from "./shown.js";
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PAGES = join(ROOT, "build", "pages");
 const ALEX = "alex-rivera";
+/** Oxigraph's module, the engine a pod computes with. */
+const ENGINE = /\/web_bg\.wasm$/;
 
 type Answers = Record<string, Row[]>;
 interface Person {
@@ -190,8 +193,12 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows", async () => {
+test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw before the engine loads, which then loads in the background", async () => {
   const page = watched(await profile.newPage());
+  const held: Route[] = [];
+  await page.route(ENGINE, (route) => {
+    held.push(route);
+  });
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
 
@@ -226,6 +233,19 @@ test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads
       ]).filter(([, count]) => count > 0),
     ),
   );
+
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.click('nav a:has-text("Priya Natarajan")'),
+  ]);
+  await settled(page);
+  assert.equal(await page.textContent("main h1"), "Priya Natarajan");
+  assert.equal(await page.getAttribute("body", "data-engine"), null);
+  await page.unroute(ENGINE);
+  for (const route of held) await route.continue().catch(() => undefined);
+  await page.reload();
+  await page.waitForSelector('body[data-engine="ready"]', { timeout: 60_000 });
+  await page.close();
 });
 
 test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on, a box's filter kept as each record comes in", async () => {
@@ -515,7 +535,7 @@ test("a first visit where no sample copies leaves no database, says there are no
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    const samples = /\/(alex-rivera|priya-natarajan)\/pod\//;
+    const samples = /\/(alex-rivera|priya-natarajan)\/pod[/.]/;
     await page.route(samples, (route) => route.abort());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -544,7 +564,7 @@ test("a failed copy whose database another connection holds open says so, and on
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    await page.route(/\/(alex-rivera|priya-natarajan)\/pod\//, (route) =>
+    await page.route(/\/(alex-rivera|priya-natarajan)\/pod[/.]/, (route) =>
       route.abort(),
     );
     await page.goto(`${served.url}try/index.html`);

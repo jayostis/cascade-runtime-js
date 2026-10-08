@@ -2,7 +2,8 @@
 // to make one or load a published one, and a sign-in at the demo hospitals that brings a record in. The view is the
 // starter's `summary.mjs`, served beside it as `summary.js`; this file routes, reads the pods, and hands the view the addresses of this page.
 // What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
-// filter and a scroll stay as they were.
+// filter and a scroll stay as they were. A pod's page is drawn from its kept answers; once it is, the engine loads in
+// the background, and `data-engine` on the body says when it is ready.
 import { render as renderInto } from "preact";
 import {
   connect,
@@ -14,6 +15,7 @@ import {
   pullFiles,
   searchDirectory,
   TEST_DIRECTORY,
+  warm,
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
@@ -525,4 +527,11 @@ busy(async () => {
   pod = await openPod(state.current);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   await showPod();
-});
+}).then(() =>
+  warm().then(
+    () => {
+      document.body.dataset.engine = "ready";
+    },
+    () => undefined,
+  ),
+);

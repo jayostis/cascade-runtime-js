@@ -13,10 +13,19 @@ import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
   JUSTIFICATIONS,
+  Layout,
+  MemoryFiles,
   OxigraphStore,
+  type Placed,
+  questions,
   recordName,
 } from "@cascade-runtime/runtime";
-import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
+import {
+  checkouts,
+  findRoot,
+  FolderFiles,
+  localVocabulary,
+} from "@cascade-runtime/runtime/node";
 import {
   type Exported,
   type ImportProgress,
@@ -24,8 +33,10 @@ import {
   type Pod,
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
+import { Answers } from "../src/answers.js";
+import { partsOf, publishedAnswers } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
-import { openPodWith, type Parts } from "../src/pod.js";
+import { keptPod, openPodWith, type Parts } from "../src/pod.js";
 
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
@@ -642,4 +653,45 @@ test("a kit's download, a folder or a file, is found by name, or refused naming 
     ["alex-rivera", "x-e99", /it has .*x-e12/],
   ] as const)
     await assert.rejects(kitDownload(kit, download), reason);
+});
+
+test("a published pod's answers, as the site computes them, are read back without the engine: every question under the lens as the pod answers it, and what the pod is", async () => {
+  const files = new FolderFiles(folder);
+  const published = new Map<string, Uint8Array>();
+  for (const path of await files.list("")) {
+    const bytes = await files.read(path);
+    if (bytes !== undefined) published.set(path, bytes);
+  }
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const answers = new MemoryFiles("urn:test:answers/");
+  for (const [path, bytes] of await publishedAnswers(
+    await partsOf(await checkouts(root)),
+    "pod",
+    published,
+    "published",
+  ))
+    await answers.write(path, bytes);
+  const { vocabulary, build, lens, layout } = kept;
+  const read = await keptPod(
+    {
+      vocabulary,
+      build,
+      lens,
+      layout: Layout.of(
+        layout.turtle,
+        JSON.parse(JSON.stringify(layout.placements)) as Placed[],
+      ),
+    },
+    files,
+    new Answers(answers, "published"),
+  );
+  assert.ok(read);
+  assert.deepEqual(
+    [read.address, read.subject, read.owner],
+    [pod.address, pod.subject, pod.owner],
+  );
+  for (const question of (await questions(vocabulary)).keys())
+    assert.deepEqual(await read.rows(question), await pod.ask(question));
+  await assert.rejects(read.rows("pod/No such question"), /no question/);
+  await assert.rejects(read.rows(QUESTION, "no such lens"), /no lens/);
 });

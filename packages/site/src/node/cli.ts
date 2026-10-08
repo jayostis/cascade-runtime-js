@@ -20,6 +20,7 @@ import {
   BRIDGE_REPOSITORY,
   type BridgePackageFound,
   checkout,
+  type Components,
   CONFIG_FILE,
   FolderFiles,
   findBridgePackage,
@@ -28,11 +29,22 @@ import {
   localVocabulary,
   PACKED,
   type Packed,
+  packed as packedComponents,
   type Resolved,
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import { type Example, type Ingredient, pagesTree } from "../front-page.js";
+import {
+  entryVersion,
+  partsOf,
+  publishedAnswers,
+} from "cascade-runtime/published";
+import {
+  type Example,
+  type Ingredient,
+  pagesTree,
+  podOf,
+} from "../front-page.js";
 import { Site } from "../site.js";
 import { TRY_PACKAGE } from "../try-page.js";
 import { tryFiles } from "./try.js";
@@ -54,6 +66,8 @@ const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
 const STAGE = join(ROOT, "build", "package");
+/** The browser entry in the staged package, whose bytes are in its version. */
+const BROWSER_ENTRY = "dist/browser/index.js";
 const PAGES = join(ROOT, "build", "pages");
 const log = (line: string): void => console.error(line);
 
@@ -173,6 +187,9 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
 async function stagedPackage(): Promise<{
   readonly files: Map<string, Uint8Array>;
   readonly vocabulary: string;
+  readonly components: Components;
+  /** The version of its browser entry, which a copied pod's answers are kept under. */
+  readonly runtime: string;
 }> {
   const components = join(STAGE, "components");
   if (!existsSync(join(components, PACKED)))
@@ -209,7 +226,15 @@ async function stagedPackage(): Promise<{
     if (bytes === undefined) throw new Error(`${STAGE} holds no ${path}`);
     files.set(TRY_PACKAGE + path, bytes);
   }
-  return { files, vocabulary: commit };
+  const entry = files.get(TRY_PACKAGE + BROWSER_ENTRY);
+  if (entry === undefined)
+    throw new Error(`${STAGE} holds no ${BROWSER_ENTRY}`);
+  return {
+    files,
+    vocabulary: commit,
+    components: await packedComponents(components),
+    runtime: await entryVersion(entry, packed.components),
+  };
 }
 
 /** Builds every kit's pod and site with build-example, and writes them under build/pages beneath the newcomer's page and the examples' page. */
@@ -219,6 +244,7 @@ async function buildPages(): Promise<number> {
   log(
     `the pods are built from cascade-vocabulary at ${vocabulary.resolved.version}; try/ reads the one the package carries, at ${staged.vocabulary}`,
   );
+  const parts = await partsOf(staged.components);
   const examples: Example[] = [];
   for (const kit of await kitsOf(vocabulary.files)) {
     const name = kit.slice(KIT.length);
@@ -230,6 +256,13 @@ async function buildPages(): Promise<number> {
       const bytes = await folder.read(path);
       if (bytes !== undefined) site.set(path, bytes);
     }
+    for (const [path, bytes] of await publishedAnswers(
+      parts,
+      name,
+      podOf(site),
+      staged.runtime,
+    ))
+      site.set(path, bytes);
     examples.push({
       folder: name,
       title: await titleOf(vocabulary.files, kit),

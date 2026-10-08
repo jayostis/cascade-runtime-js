@@ -38,6 +38,21 @@ export function answerKey(computed: Computed): Promise<string> {
   return documentName(new TextEncoder().encode(JSON.stringify(computed)));
 }
 
+/** The version of a browser entry of these bytes carrying these components, which every answer it keeps is kept under. */
+export async function entryVersion(
+  entry: Uint8Array,
+  components: readonly {
+    readonly repository: string;
+    readonly commit: string;
+  }[],
+): Promise<string> {
+  return documentName(
+    new TextEncoder().encode(
+      JSON.stringify([await documentName(entry), components]),
+    ),
+  );
+}
+
 async function json(files: Files, path: string): Promise<unknown> {
   const bytes = await files.read(path);
   if (bytes === undefined) return undefined;

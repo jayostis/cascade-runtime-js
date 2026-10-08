@@ -83,10 +83,15 @@ pod; removing a pod's folder, remove its `.answers/<name>` too.
 In a browser, the same import, served with the package's `components/` beside
 its `dist/`, runs every call. A pod's name names
 its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
-an empty one as a copy of the pod published at the URL `from`, as its
-`files.json` lists it. Its answers are kept in `cascade-answers:<name>`, and
-`deletePod(name)` deletes both. Its address is a name, never the page's. A
-browser may clear its storage, and the pod with it.
+an empty one as a copy of the pod published at the URL `from`: from its pack,
+`<folder>.pack.json`, when one is published beside it, else as its `files.json`
+lists it, with the `answers.json` and `pod.json` published beside it. Its
+answers are kept in `cascade-answers:<name>`, and `deletePod(name)` deletes
+both. Its address is a name, never the page's. A browser may clear its storage,
+and the pod with it. A pod with kept answers opens and answers its questions
+without the engine, a 4 MB module; the first call that computes loads it, and
+`warm()` loads it and compiles the Bridge ahead, so both are ready when a
+record arrives.
 A browser has no path, so `look` and `import` take the files the person picked,
 each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
 from an `<input type="file">`, with `webkitdirectory` for an export's folder.

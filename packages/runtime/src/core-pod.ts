@@ -156,6 +156,26 @@ class HeldFiles implements Files {
   }
 }
 
+/** The hash of the pod's address, the files it holds but those the build writes, and its manifest's bytes; nothing is parsed. */
+export async function podRevision(
+  pod: Files,
+  layout: Layout,
+  address: string,
+): Promise<string> {
+  const rebuilt = new Set(layout.rebuilt);
+  const listing = new TextEncoder().encode(
+    JSON.stringify([
+      address,
+      (await pod.list("")).filter((path) => !rebuilt.has(path)).sort(),
+    ]),
+  );
+  const manifest = (await pod.read(layout.manifest)) ?? new Uint8Array();
+  const bytes = new Uint8Array(listing.length + manifest.length);
+  bytes.set(listing);
+  bytes.set(manifest, listing.length);
+  return documentName(bytes);
+}
+
 /** A copy of the pod's files, in memory. */
 async function copied(pod: Files): Promise<Files> {
   const copy = new MemoryFiles(pod.iri);
@@ -217,24 +237,13 @@ export class CorePod {
   }
 
   /**
-   * The pod's revision: the hash of its address, the files it holds but those the build writes, and its manifest. Any
-   * step that writes changes it, and so does a refused one, whose build writes the manifest again.
+   * The pod's revision, as `podRevision` names it. Any step that writes changes it, and so does a refused one, whose
+   * build writes the manifest again.
    */
   revision(): Promise<string> {
-    return this.#held(REVISION, async () => {
+    return this.#held(REVISION, () => {
       const { pod, layout, address } = this.#options;
-      const rebuilt = new Set(layout.rebuilt);
-      const listing = new TextEncoder().encode(
-        JSON.stringify([
-          address,
-          (await pod.list("")).filter((path) => !rebuilt.has(path)).sort(),
-        ]),
-      );
-      const manifest = (await pod.read(layout.manifest)) ?? new Uint8Array();
-      const bytes = new Uint8Array(listing.length + manifest.length);
-      bytes.set(listing);
-      bytes.set(manifest, listing.length);
-      return documentName(bytes);
+      return podRevision(pod, layout, address);
     });
   }
 

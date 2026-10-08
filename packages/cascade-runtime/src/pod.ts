@@ -20,6 +20,7 @@ import {
   MemoryFiles,
   ntriples,
   podFiles,
+  podRevision,
   podStated,
   questions,
   randomId,
@@ -33,7 +34,12 @@ import {
   type VocabularyQuery,
   XSD,
 } from "@cascade-runtime/runtime";
-import { answerKey, Answers, type AnswerStore } from "./answers.js";
+import {
+  answerKey,
+  Answers,
+  type AnswerStore,
+  type Described,
+} from "./answers.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -254,6 +260,96 @@ function askable(vocabulary: Files) {
     found.catch(() => read.delete(vocabulary));
   }
   return found;
+}
+
+type Askable = Awaited<ReturnType<typeof askable>>;
+
+function offeredLens(offered: Askable, lens: string): void {
+  if (!offered.lenses.includes(lens))
+    throw new Error(`no lens ${lens}; there are ${offered.lenses.join(", ")}`);
+}
+
+/** The text of the question the vocabulary offers by the name; none offered throws. */
+function questionText(offered: Askable, question: string): string {
+  const found = offered.questions.get(question);
+  if (found === undefined)
+    throw new Error(
+      `no question ${question}; there are ${[...offered.questions.keys()].join(", ")}`,
+    );
+  return found.text;
+}
+
+/** The key the answer to the question, of the text given, under the lens is kept under at the revision. */
+function keyOf(
+  build: VocabularyBuild,
+  layout: string,
+  asked: {
+    readonly runtime: string;
+    readonly question: string;
+    readonly text: string;
+    readonly lens: string;
+    readonly revision: string;
+  },
+): Promise<string> {
+  const { runtime, question, text, lens, revision } = asked;
+  return answerKey({
+    runtime,
+    question,
+    lens,
+    revision,
+    texts: [
+      text,
+      ...build.derivations.for(lens).map(({ query }) => query),
+      layout,
+      ...build.queries,
+    ],
+  });
+}
+
+/** What a pod's kept answers are read with: no store, so no engine. */
+export type Reading = Pick<Parts, "vocabulary" | "layout" | "build" | "lens">;
+
+/** A pod as its kept answers read it, without the engine. */
+export interface KeptPod extends Described {
+  readonly owner: string;
+  /**
+   * The rows kept for the question, by its name, under the lens for the pod as it stands; none when none were. A
+   * question or lens the vocabulary does not offer throws, as the pod opened with the engine would.
+   */
+  rows(question: string, lens?: string): Promise<Row[] | undefined>;
+}
+
+/** The pod in `pod`, as its answers kept in `answers` read it: what `pod.json` says it is; none when it says nothing. */
+export async function keptPod(
+  reading: Reading,
+  pod: Files,
+  answers: Answers,
+): Promise<KeptPod | undefined> {
+  const described = await answers.described();
+  if (described === undefined) return undefined;
+  const { vocabulary, layout, build } = reading;
+  let revision: Promise<string> | undefined;
+  return {
+    ...described,
+    owner: `${described.address}${layout.card}#me`,
+    rows: async (question, lens = reading.lens) => {
+      const offered = await askable(vocabulary);
+      offeredLens(offered, lens);
+      const text = questionText(offered, question);
+      revision ??= podRevision(pod, layout, described.address);
+      return answers.rows(
+        lens,
+        question,
+        await keyOf(build, offered.layout, {
+          runtime: answers.runtime,
+          question,
+          text,
+          lens,
+          revision: await revision,
+        }),
+      );
+    },
+  };
 }
 
 function failure(error: unknown): string {
@@ -635,33 +731,19 @@ class OpenPod implements Pod {
     const lens = options.lens ?? this.#parts.lens;
     const { vocabulary, build } = this.#parts;
     const offered = await askable(vocabulary);
-    if (!offered.lenses.includes(lens))
-      throw new Error(
-        `no lens ${lens}; there are ${offered.lenses.join(", ")}`,
-      );
+    offeredLens(offered, lens);
     let query: string;
     let keep: ((rows: Row[]) => Promise<void>) | undefined;
     if (typeof question === "string") {
-      const asked = offered.questions;
-      const found = asked.get(question);
-      if (found === undefined)
-        throw new Error(
-          `no question ${question}; there are ${[...asked.keys()].join(", ")}`,
-        );
-      query = found.text;
+      query = questionText(offered, question);
       const answers = this.#answers;
       if (answers !== undefined) {
-        const key = await answerKey({
+        const key = await keyOf(build, offered.layout, {
           runtime: answers.runtime,
           question,
+          text: query,
           lens,
           revision: await this.#core.revision(),
-          texts: [
-            query,
-            ...build.derivations.for(lens).map(({ query }) => query),
-            offered.layout,
-            ...build.queries,
-          ],
         });
         const kept = await answers.rows(lens, question, key);
         if (kept !== undefined) return kept;
