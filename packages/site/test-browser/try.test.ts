@@ -193,7 +193,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, Back draws Alex's again, and the engine then loads in the background", async () => {
+test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -237,6 +237,8 @@ test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads
   await inPlace(page, () => page.click('nav a:has-text("Priya Natarajan")'));
   assert.equal(await page.textContent("main h1"), "Priya Natarajan");
   assert.equal(await page.getAttribute("body", "data-engine"), null);
+  await inPlace(page, () => page.click('nav a[aria-current="page"]'));
+  assert.equal(await page.textContent("main h1"), "Priya Natarajan");
   await inPlace(page, async () => {
     await page.goBack();
     await page.waitForFunction(

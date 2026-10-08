@@ -309,19 +309,28 @@ async function route() {
   await showPod();
 }
 
-/** Goes to `href`, an address of this page, without leaving it: a box open by the hash is closed first. */
+/**
+ * Goes to `href`, an address of this page, without leaving it: a box open by the hash is closed first. The address
+ * shown already is drawn again in place of its entry in the history, not after it.
+ */
 function go(href) {
   closeDialog();
-  history.pushState(null, "", href);
+  if (new URL(href, location.href).search === location.search)
+    history.replaceState(null, "", href);
+  else history.pushState(null, "", href);
   return route();
 }
 
-/** Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open. */
+/**
+ * Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open.
+ * Once Back or Forward has moved the address under the step, the box is not opened: the page follows the address
+ * when the step ends.
+ */
 function showConnection(said, doing) {
   state.connection.said = said;
   state.doing = doing;
   redraw();
-  if (location.hash === `#${BOX}`) return;
+  if (location.hash === `#${BOX}` || location.search !== routed) return;
   replaceAddress(podHref(state.current));
   location.replace(`#${BOX}`);
 }
@@ -413,7 +422,7 @@ async function bring() {
     return showConnection({ failed: `Refused: ${done.refused}` }, "ready");
   }
   state.connection = undefined;
-  replaceAddress(podHref(state.current));
+  if (location.hash === `#${BOX}`) closeDialog();
   await showPod(shown.row.name);
 }
 
@@ -487,12 +496,11 @@ async function deleteAll() {
     state.saying = "Waiting for the pods to close in your other tabs…";
     showDoing();
   }, 2000);
-  try {
-    await Promise.all([...all].map(deletePod));
-  } finally {
-    window.clearTimeout(waiting);
-  }
-  state.pods = [];
+  const deleted = await Promise.allSettled([...all].map(deletePod));
+  window.clearTimeout(waiting);
+  state.pods = await podsHere();
+  const failed = deleted.find(({ status }) => status === "rejected");
+  if (failed !== undefined) throw failed.reason;
   return names;
 }
 
@@ -527,8 +535,9 @@ async function firstVisit() {
 }
 
 /**
- * Runs the step with the page busy, saying `saying`; while the page is busy, another step does not start. Anything
- * the step did not expect, it shows.
+ * Runs the step with the page busy, saying `saying`; while the page is busy, another step does not start. Back or
+ * Forward pressed meanwhile moves the address, and the page follows it once the step ends. Anything the step did not
+ * expect, it shows.
  */
 async function busy(step, saying = "Working…") {
   if (state.doing === "busy") return;
@@ -537,6 +546,7 @@ async function busy(step, saying = "Working…") {
   showDoing();
   try {
     await step();
+    if (location.search !== routed) await route();
   } catch (error) {
     closeDialog();
     render(
@@ -567,6 +577,8 @@ document.addEventListener("click", (event) => {
   const href = link.getAttribute("href") ?? "";
   const to = new URL(href, location.href);
   if (href.startsWith("#") || to.pathname !== location.pathname) return;
+  // While the page is busy, the link is the browser's, which loads the page it names.
+  if (state.doing === "busy") return;
   event.preventDefault();
   busy(() => go(to.search), opening(to.search));
 });

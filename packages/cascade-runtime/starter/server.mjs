@@ -158,7 +158,7 @@ async function showPod(response, name, query, names) {
   lastShown.set(name, answers);
   const from = query.get("from");
   const noted = from === null ? undefined : hospitals.connection(name, from);
-  const imported = await noted?.imported?.catch(() => undefined);
+  const broughtIn = await noted?.imported?.catch(() => undefined);
   const box =
     shown === undefined
       ? undefined
@@ -175,7 +175,7 @@ async function showPod(response, name, query, names) {
     pod: name,
     person: people.find((each) => slug(each.name) === name),
     from:
-      imported === undefined || imported.refused !== undefined
+      broughtIn === undefined || broughtIn.refused !== undefined
         ? undefined
         : noted.row.name,
     signIn: (hospital) =>
