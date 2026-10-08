@@ -516,17 +516,18 @@ export function steps({ step, requests, bringing }) {
 }
 
 /**
- * `steps` of `connection`, which in a browser draws itself again once a frame while the connection signs in or fetches,
- * so the host only counts `connection.requests` and the page around it is not drawn again.
+ * `steps` of `connection`, which in a browser draws itself again once a frame while the connection signs in, fetches or
+ * brings its record in, so the host only counts `connection.requests` or sets `connection.bringing` and the page around
+ * it is not drawn again.
  */
 function Steps({ connection }) {
-  const [, setRequests] = useState(connection.requests);
+  const [, setSeen] = useState();
   useEffect(() => {
-    if (connection.step !== "signing in" && connection.step !== "pulling")
+    if (!["signing in", "pulling", "bringing in"].includes(connection.step))
       return;
     let frame;
     const again = () => {
-      setRequests(connection.requests);
+      setSeen(JSON.stringify([connection.requests, connection.bringing]));
       frame = globalThis.requestAnimationFrame(again);
     };
     again();
@@ -806,7 +807,9 @@ export function connectionDialog({
   const name = hospitalName(hospital);
   const said = (body) => box(id, name, body, { back });
   if (connection.step === "bringing in")
-    return said(html`<div class="card">${steps(connection)}</div>`);
+    return said(
+      html`<div class="card"><${Steps} connection=${connection} /></div>`,
+    );
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
       html`<div class="card"><${Steps} connection=${connection} /><p class="muted">This refreshes itself until the record is here.</p></div>`,

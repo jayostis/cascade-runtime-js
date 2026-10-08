@@ -314,13 +314,12 @@ async function bring() {
   shown.step = "bringing in";
   shown.bringing = undefined;
   let done;
+  showConnection({}, "busy");
   try {
-    await showConnection({}, "busy");
     done = await pod.import(shown.files, {
       aboutSubject: true,
       onProgress: (part) => {
         shown.bringing = part;
-        if (connection === shown) void showConnection({}, "busy");
       },
     });
   } catch (error) {
