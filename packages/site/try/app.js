@@ -4,10 +4,13 @@
 // What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
 // filter and a scroll stay as they were. A pod's page is drawn from its kept answers; once it is, the engine loads in
 // the background, and `data-engine` on the body says when it is ready.
+// It is one page: its own links and forms change the address with `history.pushState` and `route()` draws what it
+// names; a `#…` link is the browser's, which opens and closes the boxes. Each pod opened stays open.
 import { render as renderInto } from "preact";
 import {
   connect,
   ConnectionFailure,
+  deletePod,
   DEMO_PLAN,
   openPod,
   popupSignIn,
@@ -22,6 +25,7 @@ import {
   closing,
   connectionDialog,
   didNote,
+  doing,
   hospitalName,
   hospitalsPage,
   html,
@@ -38,6 +42,7 @@ import {
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
+const ANSWERS = "cascade-answers:";
 const BOX = "connection";
 const REGISTRATION = {
   clientId: "cascade-runtime-demo",
@@ -71,8 +76,8 @@ hospitalsReady.catch(() => undefined);
  * What the page shows: the pods here and the demo people; the pod shown, by name; `page`, the pod's page as its
  * `answers` and the hospital a record was just brought in `from`, or another page's `title` and `body`; the
  * `connection` under way or done, with its row, step, requests answered, once pulled the files to import, and what its
- * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; and what the page
- * is doing (`doing`), in `data-state` on the body.
+ * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; what the page
+ * is doing (`doing`), in `data-state` on the body, and while it is busy, what it says it is doing (`saying`).
  */
 const state = {
   pods: [],
@@ -82,21 +87,40 @@ const state = {
   connection: undefined,
   note: undefined,
   doing: "opening",
+  saying: undefined,
 };
+/** Each pod opened, by name, kept open until every pod is deleted. */
+const open = new Map();
 /** The pod shown, open. */
 let pod;
+/** The address's query, as `route()` last drew it. */
+let routed;
 
 const root = document.createElement("div");
+const line = document.createElement("div");
 const style = document.createElement("style");
 style.textContent = STYLE;
 document.head.append(style);
 
-async function podsHere() {
+/** The names of the databases here whose name starts with `prefix`, without it. */
+async function databases(prefix) {
   return (await indexedDB.databases())
     .map(({ name }) => name ?? "")
-    .filter((name) => name.startsWith(DATABASE))
-    .map((name) => name.slice(DATABASE.length))
+    .filter((name) => name.startsWith(prefix))
+    .map((name) => name.slice(prefix.length))
     .sort();
+}
+
+const podsHere = () => databases(DATABASE);
+
+/** The pod named `name`, opened with `options` the first time it is asked for, and kept open. */
+function podNamed(name, options) {
+  if (!open.has(name)) {
+    const opening = openPod(name, options);
+    opening.catch(() => open.delete(name));
+    open.set(name, opening);
+  }
+  return open.get(name);
 }
 
 /** The demo people, as the view's `demoPeople` gave them when the site was built; none, when they cannot be read. */
@@ -109,18 +133,24 @@ async function demoPeople() {
   }
 }
 
-/** Closes the new-pod box, as its close link does, so that what an action in it shows is not hidden behind it. */
+/** Replaces the address with `href`, which `route()` then takes as drawn. */
+function replaceAddress(href) {
+  history.replaceState(null, "", href);
+  routed = location.search;
+}
+
+/** Closes the box open by the address's hash, as its close link does, so that what an action shows is not hidden behind it. */
 function closeDialog() {
   if (location.hash === "") return;
   location.replace("#");
-  history.replaceState(null, "", location.pathname + location.search);
+  replaceAddress(location.pathname + location.search);
 }
 
 const personOf = (name) =>
   state.people.find((each) => slug(each.name) === name);
 
 const signInButton = (fhirBase, label) =>
-  postButton("sign-in", { fhirBase }, label);
+  postButton("sign-in", { fhirBase }, label, undefined, "Signing in…");
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
@@ -160,7 +190,7 @@ function redraw() {
   const { title, body } = pageShown();
   const samples = SAMPLES.filter((name) => !pods.includes(name));
   document.title = `${title} · Cascade`;
-  if (!root.isConnected) document.body.replaceChildren(root);
+  if (!root.isConnected) document.body.replaceChildren(root, line);
   renderInto(
     layout({
       body,
@@ -184,6 +214,7 @@ function redraw() {
                   note: "A copy of a published example pod",
                   action: "load",
                   fields: { pod: name },
+                  doing: `Loading ${personName(name)}'s pod…`,
                 })),
               },
       }),
@@ -193,11 +224,17 @@ function redraw() {
   showDoing();
 }
 
-/** `state.doing` in `data-state` on the body, and every button off while the page is busy. */
+/**
+ * `state.doing` in `data-state` on the body; while the page is busy, every button off and the line saying what it is
+ * doing, drawn in a root of its own so that it shows before the page is drawn again.
+ */
 function showDoing() {
+  const busy = state.doing === "busy";
   document.body.dataset.state = state.doing;
   for (const button of document.querySelectorAll("button"))
-    button.disabled = state.doing === "busy";
+    button.disabled = busy;
+  if (!line.isConnected) document.body.append(line);
+  renderInto(doing(busy ? state.saying : undefined), line);
 }
 
 /** Shows `body` titled `title`; `doing` is what the page says it is doing. */
@@ -239,13 +276,62 @@ function showHospitals(text) {
   );
 }
 
-/** Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open. */
+/** Draws the page the address names: a pod's page, its hospitals, or no pod; the samples copied in on a first visit. */
+async function route() {
+  routed = location.search;
+  const query = new URLSearchParams(location.search);
+  state.connection = undefined;
+  state.note = didNote(query, SAMPLES);
+  if (state.note !== undefined) {
+    const rest = new URLSearchParams(query);
+    rest.delete("deleted");
+    rest.delete("reset");
+    replaceAddress(String(rest) === "" ? location.pathname : `?${rest}`);
+  }
+  const asked = query.get("pod");
+  state.current = asked ?? undefined;
+  if (asked === null && state.pods.length === 0) {
+    if (!query.has("deleted") && !deletedAll()) await firstVisit();
+    if (state.pods.length === 0) return render("No pods yet", noPods());
+  }
+  if (asked !== null && !state.pods.includes(asked)) {
+    state.current = undefined;
+    return render(
+      "Not found",
+      html`<h1>Not found</h1>
+<p>This browser keeps no pod named ${asked}.</p>`,
+    );
+  }
+  state.current = asked ?? state.pods[0];
+  if (asked === null) replaceAddress(podHref(state.current));
+  pod = await podNamed(state.current);
+  if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
+  await showPod();
+}
+
+/**
+ * Goes to `href`, an address of this page, without leaving it: a box open by the hash is closed first. The address
+ * shown already is drawn again in place of its entry in the history, not after it.
+ */
+function go(href) {
+  closeDialog();
+  if (new URL(href, location.href).search === location.search)
+    history.replaceState(null, "", href);
+  else history.pushState(null, "", href);
+  return route();
+}
+
+/**
+ * Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open.
+ * Once Back or Forward has moved the address under the step, the box is not opened: the page follows the address
+ * when the step ends.
+ */
 function showConnection(said, doing) {
   state.connection.said = said;
   state.doing = doing;
   redraw();
-  if (location.hash === `#${BOX}`) return;
-  history.replaceState(null, "", podHref(state.current));
+  if (location.hash === `#${BOX}` || location.search !== routed) return;
+  replaceAddress(podHref(state.current));
   location.replace(`#${BOX}`);
 }
 
@@ -336,7 +422,7 @@ async function bring() {
     return showConnection({ failed: `Refused: ${done.refused}` }, "ready");
   }
   state.connection = undefined;
-  history.replaceState(null, "", podHref(state.current));
+  if (location.hash === `#${BOX}`) closeDialog();
   await showPod(shown.row.name);
 }
 
@@ -376,27 +462,14 @@ async function make(person) {
     );
   }
   if (!state.pods.includes(name))
-    await (await openPod(name, { title: person.trim() })).close();
-  location.assign(podHref(name));
+    await podNamed(name, { title: person.trim() });
+  state.pods = await podsHere();
+  return go(podHref(name));
 }
 
-function deleted(name) {
-  return new Promise((resolve, reject) => {
-    const deleting = indexedDB.deleteDatabase(DATABASE + name);
-    deleting.onsuccess = () => resolve();
-    deleting.onerror = () => reject(deleting.error);
-    deleting.onblocked = () =>
-      reject(
-        new Error(
-          `${personName(name)}'s pod goes once this page is closed in your other tabs.`,
-        ),
-      );
-  });
-}
-
-/** Copies the published example pod into this browser. */
+/** Copies the published example pod into this browser, and keeps it open. */
 async function copy(name) {
-  await (await openPod(name, { from: `../${name}/pod/` })).close();
+  await podNamed(name, { from: `../${name}/pod/` });
 }
 
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
@@ -404,23 +477,30 @@ async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
   markDeletedAll(false);
   if (!state.pods.includes(name)) await copy(name);
-  location.assign(podHref(name));
+  state.pods = await podsHere();
+  return go(podHref(name));
 }
 
-/** Closes the pod shown and deletes every pod's database, all of them tried; gives the names of those there were, or throws saying which stayed. */
+/**
+ * Closes every pod open and deletes every pod and its answers, saying so when another tab keeps one open; gives the
+ * names of the pods there were.
+ */
 async function deleteAll() {
-  await pod?.close();
+  const opened = [...open.values()];
+  open.clear();
   pod = undefined;
+  await Promise.allSettled(opened.map(async (each) => (await each).close()));
   const names = await podsHere();
-  const done = await Promise.allSettled(names.map(deleted));
-  const kept = done.filter(({ status }) => status === "rejected");
-  if (kept.length > 0)
-    throw new Error(
-      [
-        "Not every pod was deleted.",
-        ...kept.map(({ reason }) => reason?.message ?? reason),
-      ].join(" "),
-    );
+  const all = new Set([...names, ...(await databases(ANSWERS))]);
+  const waiting = window.setTimeout(() => {
+    state.saying = "Waiting for the pods to close in your other tabs…";
+    showDoing();
+  }, 2000);
+  const deleted = await Promise.allSettled([...all].map(deletePod));
+  window.clearTimeout(waiting);
+  state.pods = await podsHere();
+  const failed = deleted.find(({ status }) => status === "rejected");
+  if (failed !== undefined) throw failed.reason;
   return names;
 }
 
@@ -428,7 +508,7 @@ async function deleteAll() {
 async function deleteEverything() {
   const names = await deleteAll();
   markDeletedAll(true);
-  location.assign(`?deleted=${names.length}`);
+  return go(`?deleted=${names.length}`);
 }
 
 /** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
@@ -436,9 +516,8 @@ async function resetEverything() {
   markDeletedAll(false);
   await deleteAll();
   await Promise.all(SAMPLES.map(copy));
-  location.assign(
-    SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`,
-  );
+  state.pods = await podsHere();
+  return go(SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`);
 }
 
 /**
@@ -455,12 +534,19 @@ async function firstVisit() {
   if (state.pods.length === 0) await (await openPod()).close();
 }
 
-/** Runs the step with the buttons off; anything it did not expect, it shows. */
-async function busy(step) {
+/**
+ * Runs the step with the page busy, saying `saying`; while the page is busy, another step does not start. Back or
+ * Forward pressed meanwhile moves the address, and the page follows it once the step ends. Anything the step did not
+ * expect, it shows.
+ */
+async function busy(step, saying = "Working…") {
+  if (state.doing === "busy") return;
   state.doing = "busy";
+  state.saying = saying;
   showDoing();
   try {
     await step();
+    if (location.search !== routed) await route();
   } catch (error) {
     closeDialog();
     render(
@@ -470,64 +556,64 @@ async function busy(step) {
       "error",
     );
   }
+  if (state.doing === "busy") {
+    state.doing = "ready";
+    showDoing();
+  }
+}
+
+/** What the page says while it goes to the address in `query`. */
+function opening(query) {
+  const name = new URLSearchParams(query).get("pod");
+  return name === null ? "Opening…" : `Opening ${personName(name)}'s pod…`;
 }
 
 closing(document);
+document.addEventListener("click", (event) => {
+  const link = event.target.closest?.("a[href]");
+  if (link === null || link === undefined || event.defaultPrevented) return;
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey)
+    return;
+  const href = link.getAttribute("href") ?? "";
+  const to = new URL(href, location.href);
+  if (href.startsWith("#") || to.pathname !== location.pathname) return;
+  event.preventDefault();
+  busy(() => go(to.search), opening(to.search));
+});
 document.addEventListener("submit", (event) => {
   const form = event.target;
   event.preventDefault();
+  if (state.doing === "busy") return;
   const action = form.getAttribute("action") ?? "";
   const fields = new FormData(form);
+  const saying = form.dataset.doing;
   if (form.method === "get") {
     const to = new URL(action, location.href);
     for (const [key, value] of fields) to.searchParams.set(key, String(value));
-    location.assign(to);
+    busy(() => go(to.search), saying);
   } else if (action === "sign-in") {
     const popup = window.open(
       "",
       "cascade-sign-in",
       "popup,width=520,height=720",
     );
-    busy(() => signIn(String(fields.get("fhirBase")), popup));
-  } else if (action === "bring") busy(bring);
-  else if (action === "load") busy(() => load(String(fields.get("pod"))));
+    busy(() => signIn(String(fields.get("fhirBase")), popup), saying);
+  } else if (action === "bring") busy(bring, saying);
+  else if (action === "load")
+    busy(() => load(String(fields.get("pod"))), saying);
   else if (action === "make")
-    busy(() => make(String(fields.get("person") ?? "")));
-  else if (action === MENU.deleteAll) busy(deleteEverything);
-  else if (action === MENU.resetAll) busy(resetEverything);
+    busy(() => make(String(fields.get("person") ?? "")), saying);
+  else if (action === MENU.deleteAll) busy(deleteEverything, saying);
+  else if (action === MENU.resetAll) busy(resetEverything, saying);
+});
+window.addEventListener("popstate", () => {
+  if (location.search !== routed) busy(route, opening(location.search));
 });
 
 busy(async () => {
   [state.pods, state.people] = await Promise.all([podsHere(), demoPeople()]);
-  const query = new URLSearchParams(location.search);
-  state.note = didNote(query, SAMPLES);
-  if (state.note !== undefined) {
-    const rest = new URLSearchParams(query);
-    rest.delete("deleted");
-    rest.delete("reset");
-    history.replaceState(
-      null,
-      "",
-      String(rest) === "" ? location.pathname : `?${rest}`,
-    );
-  }
-  const asked = query.get("pod");
-  if (asked === null && state.pods.length === 0) {
-    if (!query.has("deleted") && !deletedAll()) await firstVisit();
-    if (state.pods.length === 0) return render("No pods yet", noPods());
-  }
-  if (asked !== null && !state.pods.includes(asked))
-    return render(
-      "Not found",
-      html`<h1>Not found</h1>
-<p>This browser keeps no pod named ${asked}.</p>`,
-    );
-  state.current = asked ?? state.pods[0];
-  if (asked === null) history.replaceState(null, "", podHref(state.current));
-  pod = await openPod(state.current);
-  if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
-  await showPod();
-}).then(() =>
+  await route();
+}, "Opening…").then(() =>
   warm().then(
     () => {
       document.body.dataset.engine = "ready";

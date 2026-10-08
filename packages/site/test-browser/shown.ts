@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import type { Page } from "playwright";
 
 const pageErrors = new WeakMap<Page, string[]>();
@@ -38,14 +39,27 @@ export async function settled(page: Page, timeout = 120_000): Promise<void> {
     );
 }
 
-/** Opens the new-pod box and clicks the choice that holds `label`, then waits for the pod's page. */
+/** Does `act`, then waits for try/ to finish its step, which must have drawn the page in place, never loading one. */
+export async function inPlace(
+  page: Page,
+  act: () => Promise<unknown>,
+): Promise<void> {
+  const mark = (): Promise<unknown> =>
+    page.evaluate(() => (globalThis as { stayed?: boolean }).stayed);
+  await page.evaluate(() => {
+    (globalThis as { stayed?: boolean }).stayed = true;
+  });
+  await act();
+  await settled(page);
+  assert.equal(await mark(), true, "try/ loaded a page");
+}
+
+/** Opens the new-pod box and clicks the choice that holds `label`, then waits for the pod's page, drawn in place. */
 export async function newPod(page: Page, label: string): Promise<void> {
   await page.click('a[href="#new-pod"]');
-  await Promise.all([
-    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+  await inPlace(page, () =>
     page.click(`#new-pod button:has-text(${JSON.stringify(label)})`),
-  ]);
-  await settled(page);
+  );
 }
 
 /** Each tile the pod's page shows, by its kind, with the count it shows. */

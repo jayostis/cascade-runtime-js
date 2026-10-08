@@ -279,12 +279,14 @@ async function pageShows(server, pod, person) {
   return { html, rows };
 }
 
-/** The page at `path`, once it no longer refreshes itself. */
+/** The page at `path`, once it no longer refreshes itself, or the page it redirects to once it does. */
 async function settled(server, path) {
   const until = Date.now() + 2 * MINUTES;
   for (;;) {
-    const html = await served(server, path);
-    if (!html.includes('http-equiv="refresh"')) return html;
+    const answer = await fetched(new URL(path, server.address));
+    if (answer.status === 303) return served(server, answer.location);
+    assert.equal(answer.status, 200, `GET ${path} answered ${answer.status}`);
+    if (!answer.body.includes('http-equiv="refresh"')) return answer.body;
     assert.ok(Date.now() < until, `${path} still refreshes`);
     await setTimeout(200);
   }
@@ -686,19 +688,32 @@ if (release === undefined) {
       return connectionBox(html);
     };
 
-    /** Brings the record in with the button of the connection's box, `box`; gives the pod's page it goes back to. */
+    /**
+     * Brings the record in with the button of the connection's box, `box`, which goes at once to the box saying it
+     * brings the record in, unless the record is in already, where the button posted again goes too; gives the pod's
+     * page the box goes to once the record is in.
+     */
     const bringIn = async (box) => {
       const action = /<form\b[^>]*action="([^"]*\/connections\/\d+)"/.exec(
         box,
       )?.[1];
       assert.ok(action, "the connection's box has no button to bring it in");
       const imported = await send(action, {});
-      assert.equal(
-        imported.status,
-        303,
-        "the import did not go back to the pod",
-      );
-      return served(server, imported.headers.get("location"));
+      assert.equal(imported.status, 303, "the import did not go to the box");
+      const boxed = imported.headers.get("location");
+      assert.match(boxed, /\?connection=\d+#connection$/);
+      const bringing = await fetched(at(boxed));
+      if (bringing.status === 200)
+        assert.ok(
+          readable(connectionBox(bringing.body)).includes("Bringing it in") &&
+            bringing.body.includes('http-equiv="refresh"'),
+          "the box does not say it brings the record in",
+        );
+      else assert.equal(bringing.status, 303, `GET ${boxed}`);
+      const again = await send(action, {});
+      assert.equal(again.status, 303);
+      assert.equal(again.headers.get("location"), boxed);
+      return settled(server, boxed);
     };
 
     try {
