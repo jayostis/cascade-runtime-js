@@ -9,7 +9,7 @@ import {
   treeIri,
 } from "../config.js";
 import { vocabularyBuild } from "../build.js";
-import { Layout } from "../layout.js";
+import { Layout, type Placed } from "../layout.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { FolderFiles } from "./folder-files.js";
 import { type Resolved, type ResolverOptions, resolve } from "./resolver.js";
@@ -45,6 +45,8 @@ export interface Packed {
     readonly commit: string;
   }[];
   readonly bridge: { readonly release: string; readonly commit: string };
+  /** The vocabulary's layout as `Layout.read` places it, which a browser builds with `Layout.of`, without the engine. */
+  readonly layout: readonly Placed[];
 }
 
 /** The components the runtime at `root` uses, found as every development run finds them. */

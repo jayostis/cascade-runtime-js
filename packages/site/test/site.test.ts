@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, test } from "node:test";
 import {
+  type FolderPack,
   iri,
   kitsOf,
   literal,
@@ -10,6 +11,7 @@ import {
   OxigraphStore,
   questions,
   titleOf,
+  unpackFolder,
   written,
   XSD,
 } from "@cascade-runtime/runtime";
@@ -361,6 +363,15 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
       .sort();
     assert.ok(held.length > 0);
     assert.deepEqual(listed, held, folder);
+    const pack = JSON.parse(
+      new TextDecoder().decode(tree.get(`${folder}/pod.pack.json`)),
+    ) as FolderPack;
+    assert.deepEqual(pack.paths, held, folder);
+    assert.deepEqual(
+      unpackFolder(pack),
+      new Map(held.map((path) => [path, tree.get(`${pod}${path}`)])),
+      folder,
+    );
   }
 });
 

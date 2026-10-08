@@ -1,4 +1,4 @@
-import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
+import { FILES_JSON, type Layout, packFolder } from "@cascade-runtime/runtime";
 import { markup } from "./html.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
@@ -180,9 +180,25 @@ ${
 `.text;
 }
 
+/** The pack of an example's pod beside its folder, which a browser copies the pod from in one request. */
+export const POD_PACK = `${COPY.slice(0, -1)}.pack.json`;
+
+/** The pod's files of an example's site, by their paths in the pod, sorted. */
+export function podOf(
+  site: ReadonlyMap<string, Uint8Array>,
+): Map<string, Uint8Array> {
+  return new Map(
+    [...site]
+      .filter(([path]) => path.startsWith(COPY))
+      .map(([path, bytes]) => [path.slice(COPY.length), bytes] as const)
+      .filter(([path]) => path !== FILES_JSON)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+}
+
 /**
  * The Pages tree: the newcomer's front page, the quick start, the examples' page, each example's site in its folder with its pod's
- * files listed, and the page that keeps pods in a browser, `tried`, under `try/`.
+ * files listed and packed beside it, and the page that keeps pods in a browser, `tried`, under `try/`.
  */
 export function pagesTree(
   examples: readonly Example[],
@@ -200,14 +216,15 @@ export function pagesTree(
   ]);
   for (const { folder, site } of examples) {
     for (const [path, bytes] of site) tree.set(`${folder}/${path}`, bytes);
-    const pod = [...site.keys()]
-      .filter((path) => path.startsWith(COPY))
-      .map((path) => path.slice(COPY.length))
-      .filter((path) => path !== FILES_JSON)
-      .sort();
+    const pod = podOf(site);
+    const paths = [...pod.keys()];
     tree.set(
       `${folder}/${COPY}${FILES_JSON}`,
-      encoder.encode(`${JSON.stringify(pod, null, 2)}\n`),
+      encoder.encode(`${JSON.stringify(paths, null, 2)}\n`),
+    );
+    tree.set(
+      `${folder}/${POD_PACK}`,
+      encoder.encode(JSON.stringify(packFolder(paths, pod))),
     );
   }
   for (const [path, bytes] of tried) tree.set(TRY + path, bytes);

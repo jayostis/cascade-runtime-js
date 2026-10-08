@@ -3,17 +3,21 @@ import {
   BRIDGE_GLUE,
   BRIDGE_WASM,
   type CompiledBridge,
-  documentName,
   type Followed,
   importersNamed,
   Layout,
+  LAYOUT_FILE,
   loadAdapters,
   OxigraphStore,
   parseConfig,
+  type Placed,
+  readText,
   References,
   repositoryName,
+  type RuntimeConfig,
   type Source,
   treeIri,
+  type VocabularyBuild,
   vocabularyBuild,
   WasmBridge,
 } from "@cascade-runtime/runtime";
@@ -23,6 +27,7 @@ import {
   IndexedDbFiles,
   inWebWorker,
 } from "@cascade-runtime/runtime/web";
+import { ANSWERS, Answers, DESCRIBED, entryVersion } from "../answers.js";
 import {
   bridgeLoaded,
   type Done,
@@ -30,6 +35,8 @@ import {
   type ExportSource,
   type Imported,
   type ImportOptions,
+  type KeptPod,
+  keptPod,
   openPodWith,
   type Parts,
   type Pod,
@@ -53,7 +60,7 @@ export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";
 /** What names the IndexedDB database a pod's answers are kept in, before the pod's name. */
-const ANSWERS = "cascade-answers:";
+const ANSWERS_DATABASE = "cascade-answers:";
 const COMPONENTS = new URL("../../components/", import.meta.url);
 
 interface Packed {
@@ -61,6 +68,7 @@ interface Packed {
     readonly repository: string;
     readonly commit: string;
   }[];
+  readonly layout: readonly Placed[];
 }
 
 async function fetched(path: string): Promise<Response> {
@@ -70,25 +78,43 @@ async function fetched(path: string): Promise<Response> {
   return response;
 }
 
-/** The parts, and the runtime's version: the browser entry's bytes and the components it carries. */
-type Resolved = Parts & { readonly runtime: string };
+/** The promise `make` gives, made at the first call and kept; one that fails is made again at the next call. */
+function once<T>(make: () => Promise<T>): () => Promise<T> {
+  let made: Promise<T> | undefined;
+  return () => {
+    if (made === undefined) {
+      const making = make();
+      made = making;
+      making.catch(() => {
+        if (made === making) made = undefined;
+      });
+    }
+    return made;
+  };
+}
 
-async function resolve(): Promise<Resolved> {
-  await (oxigraphWeb as unknown as { default(): Promise<unknown> }).default();
+/** What a pod's kept answers are read with, no engine: the components, the vocabulary, its layout and build, and the runtime's version. */
+interface Read {
+  readonly config: RuntimeConfig;
+  readonly runtime: string;
+  readonly vocabulary: FetchedFiles;
+  readonly layout: Layout;
+  readonly build: VocabularyBuild;
+  /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
+  carried(followed: Followed): Source;
+}
+
+const reading = once(async (): Promise<Read> => {
   const [config, packed, entry] = await Promise.all([
     fetched("cascade-runtime.json").then(async (r) =>
       parseConfig(await r.text()),
     ),
     fetched("packed.json").then((r) => r.json() as Promise<Packed>),
-    fetched(import.meta.url).then(async (r) =>
-      documentName(new Uint8Array(await r.arrayBuffer())),
+    fetched(import.meta.url).then(
+      async (r) => new Uint8Array(await r.arrayBuffer()),
     ),
   ]);
-  const runtime = await documentName(
-    new TextEncoder().encode(JSON.stringify([entry, packed.components])),
-  );
   const sources = new Map<string, Source>();
-  /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
   const carried = (followed: Followed): Source => {
     const known = sources.get(followed.repository);
     if (known !== undefined) return known;
@@ -116,13 +142,35 @@ async function resolve(): Promise<Resolved> {
     sources.set(followed.repository, source);
     return source;
   };
-  const vocabulary = carried(config.vocabulary).files;
-  const newStore = () => new OxigraphStore();
-  const layout = await Layout.read(vocabulary, newStore);
+  const vocabulary = carried(config.vocabulary).files as FetchedFiles;
+  const layout = Layout.of(
+    await readText(vocabulary, LAYOUT_FILE),
+    packed.layout,
+  );
   return {
+    config,
+    runtime: await entryVersion(entry, packed.components),
     vocabulary,
     layout,
     build: await vocabularyBuild(vocabulary, layout),
+    carried,
+  };
+});
+
+/** The parts, and the runtime's version: everything a pod reads with, and the engine. */
+type Resolved = Parts & { readonly runtime: string };
+
+const resolved = once(async (): Promise<Resolved> => {
+  const [read] = await Promise.all([
+    reading(),
+    (oxigraphWeb as unknown as { default(): Promise<unknown> }).default(),
+  ]);
+  const { config, vocabulary, carried } = read;
+  const newStore = () => new OxigraphStore();
+  return {
+    vocabulary,
+    layout: read.layout,
+    build: read.build,
     lens: config.lens,
     importers: importersNamed(config.importers),
     references: await References.of(vocabulary, TABLES, newStore),
@@ -130,7 +178,7 @@ async function resolve(): Promise<Resolved> {
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
-    runtime,
+    runtime: read.runtime,
     exportAt: (path) =>
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
     loadBridge: async () =>
@@ -142,36 +190,22 @@ async function resolve(): Promise<Resolved> {
           ),
       ),
   };
-}
-
-let compiled: Promise<CompiledBridge> | undefined;
+});
 
 /** The Bridge's module beside the browser entry, compiled once per page. */
-function bridgeCompiled(): Promise<CompiledBridge> {
-  if (compiled === undefined) {
-    const compiling = compiledBridge(
-      new URL(BRIDGE_GLUE, import.meta.url).href,
-      new URL(BRIDGE_WASM, import.meta.url).href,
-    );
-    compiled = compiling;
-    compiling.catch(() => {
-      if (compiled === compiling) compiled = undefined;
-    });
-  }
-  return compiled;
-}
+const bridgeCompiled = once((): Promise<CompiledBridge> =>
+  compiledBridge(
+    new URL(BRIDGE_GLUE, import.meta.url).href,
+    new URL(BRIDGE_WASM, import.meta.url).href,
+  ),
+);
 
-let found: Promise<Resolved> | undefined;
-
-function resolved(): Promise<Resolved> {
-  if (found === undefined) {
-    const resolving = resolve();
-    found = resolving;
-    resolving.catch(() => {
-      if (found === resolving) found = undefined;
-    });
-  }
-  return found;
+/**
+ * Loads the engine and what needs it, once per page, so that it is ready when a pod first computes: a question whose
+ * answer is not kept, an import, an entry. A pod's kept answers are read without it.
+ */
+export async function warm(): Promise<void> {
+  await resolved();
 }
 
 /**
@@ -187,39 +221,68 @@ function painted(): Promise<void> {
   });
 }
 
-/** A pod held in a browser, closing its databases when it is closed. */
+/**
+ * A pod held in a browser, closing its databases when it is closed. Until it computes, it answers a question by name
+ * from its kept answers; anything else opens it with the engine, once, and is handed to it from then on.
+ */
 class BrowserPod implements Pod {
-  readonly #pod: Pod;
+  readonly #kept: KeptPod | undefined;
+  readonly #open: () => Promise<Pod>;
   readonly #databases: readonly IndexedDbFiles[];
+  #opened: Pod | undefined;
+  #closed = false;
 
-  constructor(pod: Pod, databases: readonly IndexedDbFiles[]) {
-    this.#pod = pod;
+  constructor(
+    open: Pod | (() => Promise<Pod>),
+    databases: readonly IndexedDbFiles[],
+    kept?: KeptPod,
+  ) {
+    if (typeof open === "function") this.#open = once(open);
+    else {
+      this.#opened = open;
+      this.#open = () => Promise.resolve(open);
+    }
     this.#databases = databases;
+    this.#kept = kept;
+  }
+
+  /** The pod, opened with the engine. */
+  async #pod(): Promise<Pod> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    this.#opened ??= await this.#open();
+    return this.#opened;
+  }
+
+  #known(): Pod | KeptPod {
+    const known = this.#opened ?? this.#kept;
+    if (known === undefined)
+      throw new Error("the pod is neither open nor kept");
+    return known;
   }
 
   get address(): string {
-    return this.#pod.address;
+    return this.#known().address;
   }
 
   get subject(): string {
-    return this.#pod.subject;
+    return this.#known().subject;
   }
 
   get owner(): string {
-    return this.#pod.owner;
+    return this.#known().owner;
   }
 
-  look(exported: string | Exported): Promise<readonly ExportSource[]> {
-    return this.#pod.look(exported);
+  async look(exported: string | Exported): Promise<readonly ExportSource[]> {
+    return (await this.#pod()).look(exported);
   }
 
   /** Waits, after each `onProgress`, for a frame the page paints what it was told in. */
-  import(
+  async import(
     exported: string | Exported,
     options: ImportOptions = {},
   ): Promise<Imported> {
     const { onProgress } = options;
-    return this.#pod.import(
+    return (await this.#pod()).import(
       exported,
       onProgress === undefined
         ? options
@@ -233,49 +296,83 @@ class BrowserPod implements Pod {
     );
   }
 
-  enter(turtle: string, options?: { match?: boolean }): Promise<Done> {
-    return this.#pod.enter(turtle, options);
+  async enter(turtle: string, options?: { match?: boolean }): Promise<Done> {
+    return (await this.#pod()).enter(turtle, options);
   }
 
-  judge(turtle: string): Promise<Done> {
-    return this.#pod.judge(turtle);
+  async judge(turtle: string): Promise<Done> {
+    return (await this.#pod()).judge(turtle);
   }
 
-  match(activity?: string): Promise<Done> {
-    return this.#pod.match(activity);
+  async match(activity?: string): Promise<Done> {
+    return (await this.#pod()).match(activity);
   }
 
-  ask(
+  async ask(
     question: string | { query: string },
-    options?: { lens?: string },
+    options: { lens?: string } = {},
   ): Promise<Row[]> {
-    return this.#pod.ask(question, options);
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    if (this.#opened === undefined && typeof question === "string") {
+      const rows = await this.#kept?.rows(question, options.lens);
+      if (rows !== undefined) return rows;
+    }
+    return (await this.#pod()).ask(question, options);
   }
 
   async close(): Promise<void> {
+    this.#closed = true;
     try {
-      await this.#pod.close();
+      await this.#opened?.close();
     } finally {
       for (const database of this.#databases) database.close();
     }
   }
 }
 
-/** Copies every file the folder at the URL lists into the database, all or none. */
-async function copied(from: string, database: IndexedDbFiles): Promise<void> {
-  const published = new FetchedFiles(
-    new URL(from, globalThis.location.href).href,
-  );
+/** The pack published beside the folder at the URL, named after it: `<folder>.pack.json`. */
+function packBeside(folder: URL): string {
+  const name = folder.pathname.split("/").at(-2) ?? "";
+  return new URL(`../${name}.pack.json`, folder).href;
+}
+
+/**
+ * Copies every file the folder at the URL lists into the database, all or none: from its pack when one is published
+ * beside it, otherwise file by file as its `files.json` lists them.
+ */
+async function copied(folder: URL, database: IndexedDbFiles): Promise<void> {
+  const published = new FetchedFiles(folder.href, folder.href, {
+    pack: packBeside(folder),
+  });
   const paths = await published.list("");
   const files = await Promise.all(
     paths.map(async (path) => {
       const bytes = await published.read(path);
       if (bytes === undefined)
-        throw new Error(`${from} lists ${path} but does not serve it`);
+        throw new Error(`${folder.href} lists ${path} but does not serve it`);
       return [path, bytes] as const;
     }),
   );
   await database.writeAll(files);
+}
+
+/** The answers published beside the folder at the URL, `answers.json` and `pod.json`, those there are; a cache, so none on failure. */
+async function answersBeside(
+  folder: URL,
+): Promise<(readonly [string, Uint8Array])[]> {
+  const found = await Promise.all(
+    [ANSWERS, DESCRIBED].map(async (path) => {
+      try {
+        const response = await fetch(new URL(`../${path}`, folder));
+        return response.ok
+          ? [[path, new Uint8Array(await response.arrayBuffer())] as const]
+          : [];
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return found.flat();
 }
 
 /**
@@ -303,47 +400,70 @@ function deleted(name: string, copying: unknown): Promise<void> {
 /**
  * The pod in the browser's IndexedDB database `cascade-pod:<name>`, or, with no name, in memory; `options.title` is
  * used only when the pod is new. A missing or empty database is a new pod, or, with `options.from`, a copy of the pod
- * published in the folder at that URL, as its `files.json` lists it. A copy that fails leaves no database, unless
- * another copy filled it meanwhile, which it keeps. Its answers are kept in a database of their own,
- * `cascade-answers:<name>`, with its address, subject and title in `pod.json`.
+ * published in the folder at that URL, from its pack `<folder>.pack.json` when one is published beside it, else as its
+ * `files.json` lists it, with the answers published beside it. A copy that fails leaves no database, unless another
+ * copy filled it meanwhile, which it keeps. Its answers are kept in a database of their own, `cascade-answers:<name>`,
+ * with its address, subject and title in `pod.json`. A pod whose `pod.json` is kept opens without the engine, and
+ * answers a question by name from its kept answers until it first computes.
  */
 export async function openPod(
   name?: string,
   options: { title?: string; from?: string } = {},
 ): Promise<Pod> {
-  const parts = await resolved();
   const { from, ...rest } = options;
   if (name === undefined)
-    return new BrowserPod(await openPodWith(parts, undefined, rest), []);
+    return new BrowserPod(
+      await openPodWith(await resolved(), undefined, rest),
+      [],
+    );
+  const read = await reading();
   const named = DATABASE + name;
   const database = await IndexedDbFiles.open(named, `${named}/`);
   let answers: IndexedDbFiles | undefined;
   let copying = false;
   try {
-    if (from !== undefined && (await database.list("")).length === 0) {
+    let held = await database.list("");
+    let published: Promise<(readonly [string, Uint8Array])[]> | undefined;
+    if (from !== undefined && held.length === 0) {
+      const folder = new URL(from, globalThis.location.href);
+      published = answersBeside(folder);
       copying = true;
-      await copied(from, database);
+      await copied(folder, database);
       copying = false;
+      held = await database.list("");
     }
     const kept = await IndexedDbFiles.open(
-      ANSWERS + name,
-      `${ANSWERS}${name}/`,
+      ANSWERS_DATABASE + name,
+      `${ANSWERS_DATABASE}${name}/`,
     );
     answers = kept;
-    const pod = await openPodWith(
-      {
-        ...parts,
-        folder: (_path, iri) => ({
-          files: iri === undefined ? database : database.at(iri),
-          name,
-          parent: database,
-        }),
-        answers: { runtime: parts.runtime, at: () => kept },
-      },
-      name,
-      rest,
-    );
-    return new BrowserPod(pod, [database, kept]);
+    const carried = (await published) ?? [];
+    if (carried.length > 0) await kept.writeAll(carried).catch(() => undefined);
+    const open = async () =>
+      openPodWith(
+        {
+          ...(await resolved()),
+          folder: (_path, iri) => ({
+            files: iri === undefined ? database : database.at(iri),
+            name,
+          }),
+          answers: { runtime: read.runtime, at: () => kept },
+        },
+        name,
+        rest,
+      );
+    const databases = [database, kept];
+    const pod =
+      held.length === 0
+        ? undefined
+        : await keptPod(
+            { ...read, lens: read.config.lens },
+            database,
+            new Answers(kept, read.runtime),
+          );
+    return pod === undefined
+      ? new BrowserPod(await open(), databases)
+      : new BrowserPod(open, databases, pod);
   } catch (error) {
     const empty =
       copying &&
@@ -361,6 +481,8 @@ export async function openPod(
 /** Deletes the pod in the browser's database `cascade-pod:<name>` and its answers, once every connection to them is closed. */
 export async function deletePod(name: string): Promise<void> {
   await Promise.all(
-    [DATABASE, ANSWERS].map((prefix) => IndexedDbFiles.delete(prefix + name)),
+    [DATABASE, ANSWERS_DATABASE].map((prefix) =>
+      IndexedDbFiles.delete(prefix + name),
+    ),
   );
 }

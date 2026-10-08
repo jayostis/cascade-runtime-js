@@ -28,6 +28,10 @@
     "./fixtures": {
       "types": "./dist/src/fixtures.d.ts",
       "default": "./dist/src/fixtures.js"
+    },
+    "./published": {
+      "types": "./dist/src/node/published.d.ts",
+      "default": "./dist/src/node/published.js"
     }
   },
   "files": [

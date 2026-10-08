@@ -9,6 +9,7 @@ import {
 } from "@cascade-runtime/runtime";
 import {
   compiledBridge,
+  type Components,
   componentsOf,
   FolderFiles,
   inWorker,
@@ -31,14 +32,22 @@ export function answersBeside(path: string): FolderFiles {
 
 async function resolve(): Promise<ResolvedParts> {
   const packageFolder = fileURLToPath(new URL("../../../", import.meta.url));
-  const components = await componentsOf(packageFolder);
-  const local = await vocabularyOf(components);
-  const { config, files, layout, build } = local;
+  const parts = await partsOf(await componentsOf(packageFolder));
   const { version } = JSON.parse(
     await readFile(join(packageFolder, "package.json"), "utf8"),
   ) as { version: string };
   const stored =
-    /-commit-[0-9a-f]+$/.test(version) && local.resolved.uncommitted === 0;
+    /-commit-[0-9a-f]+$/.test(version) &&
+    parts.local.resolved.uncommitted === 0;
+  return stored
+    ? { ...parts, answers: { runtime: version, at: answersBeside } }
+    : parts;
+}
+
+/** What a pod is opened with over the components, folders on disk; nothing is kept. */
+export async function partsOf(components: Components): Promise<ResolvedParts> {
+  const local = await vocabularyOf(components);
+  const { config, files, layout, build } = local;
   const newStore = () => new OxigraphStore();
   return {
     local,
@@ -56,7 +65,6 @@ async function resolve(): Promise<ResolvedParts> {
         name: basename(folder),
       };
     },
-    ...(stored ? { answers: { runtime: version, at: answersBeside } } : {}),
     exportAt: (path) => {
       const at = absolute(path);
       return { files: new FolderFiles(dirname(at)), name: basename(at) };

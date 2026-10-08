@@ -19,6 +19,8 @@ import {
   FILES_JSON,
   type Followed,
   kitsOf,
+  Layout,
+  OxigraphStore,
   packFolder,
   repositoryName,
   WasmBridge,
@@ -198,6 +200,12 @@ async function packComponents(): Promise<{
       commit: version,
     })),
     bridge: { release: bridge.release, commit: bridge.commit },
+    layout: (
+      await Layout.read(
+        new FolderFiles(treeOf(vocabulary)),
+        () => new OxigraphStore(),
+      )
+    ).placements,
   };
   await writeJson(join(COMPONENTS, PACKED), record);
   for (const component of resolved) await writeListed(treeOf(component));

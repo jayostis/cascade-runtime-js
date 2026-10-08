@@ -38,6 +38,9 @@ export class Placement {
   }
 }
 
+/** A placement's terms, without its methods. */
+export type Placed = Omit<Placement, "path">;
+
 /** Where a pod's files go, as the vocabulary's `runtime/pod-layout.ttl` says. */
 export class Layout {
   /** The layout's Turtle, whose relative IRIs resolve against a pod's address when read with it as the base. */
@@ -56,6 +59,28 @@ export class Layout {
       throw new Error(`${LAYOUT_FILE} gives no one folder for the views`);
     this.viewsPlacement = placement;
     this.viewsFolder = placement.folder;
+  }
+
+  /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
+  static of(turtle: string, placements: readonly Placed[]): Layout {
+    return new Layout(
+      turtle,
+      placements.map(
+        (placed) =>
+          new Placement(
+            placed.kind,
+            placed.file,
+            placed.folder,
+            placed.filedWith,
+            placed.forSubjectsOf,
+            placed.fanOut,
+            placed.writtenBy,
+            placed.title,
+            placed.storesBytes,
+            placed.writtenAlways,
+          ),
+      ),
+    );
   }
 
   static async read(
