@@ -426,7 +426,9 @@ test("a first visit where no sample copies leaves no database, says there are no
     await settled(page);
     assert.deepEqual(
       await page.evaluate(async () =>
-        (await indexedDB.databases()).map(({ name }) => name),
+        (await indexedDB.databases())
+          .map(({ name }) => name ?? "")
+          .filter((name) => name.startsWith("cascade-pod:")),
       ),
       [],
     );
@@ -438,6 +440,81 @@ test("a first visit where no sample copies leaves no database, says there are no
     await newPod(page, "Load Alex Rivera");
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.deepEqual(await texts(page, "nav a"), ["Alex Rivera"]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("a failed copy whose database another connection holds open says so, and one into a database another copy filled keeps it", async () => {
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.route(/\/(alex-rivera|priya-natarajan)\/pod\//, (route) =>
+      route.abort(),
+    );
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    const outcome = await page.evaluate(async () => {
+      const { openPod } = (await import("cascade-runtime" as string)) as {
+        openPod(name: string, options: { from: string }): Promise<unknown>;
+      };
+      const raw = (name: string) =>
+        new Promise<IDBDatabase>((resolve, reject) => {
+          const opening = indexedDB.open(name, 1);
+          opening.onupgradeneeded = () =>
+            opening.result.createObjectStore("files");
+          opening.onsuccess = () => resolve(opening.result);
+          opening.onerror = () => reject(opening.error);
+        });
+      const failure = (opening: Promise<unknown>) =>
+        Promise.race([
+          opening.then(
+            () => "opened",
+            (error: unknown) => (error as Error).message,
+          ),
+          new Promise<string>((resolve) =>
+            setTimeout(() => resolve("still waiting"), 5_000),
+          ),
+        ]);
+
+      const holder = await raw("cascade-pod:held");
+      const held = await failure(openPod("held", { from: "../nowhere/" }));
+      holder.close();
+
+      const fetched = globalThis.fetch;
+      globalThis.fetch = async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (!url.includes("/raced/")) return fetched(input, init);
+        if (url.endsWith("/files.json")) return Response.json(["mine.ttl"]);
+        const other = await raw("cascade-pod:raced");
+        await new Promise<void>((resolve, reject) => {
+          const writing = other.transaction("files", "readwrite");
+          writing
+            .objectStore("files")
+            .put(new TextEncoder().encode("theirs"), "theirs.ttl");
+          writing.oncomplete = () => resolve();
+          writing.onerror = () => reject(writing.error);
+        });
+        other.close();
+        throw new TypeError("this copy failed");
+      };
+      const raced = await failure(openPod("raced", { from: "../raced/" }));
+      globalThis.fetch = fetched;
+      const kept = await raw("cascade-pod:raced");
+      const paths = await new Promise<IDBValidKey[]>((resolve, reject) => {
+        const keys = kept
+          .transaction("files")
+          .objectStore("files")
+          .getAllKeys();
+        keys.onsuccess = () => resolve(keys.result);
+        keys.onerror = () => reject(keys.error);
+      });
+      kept.close();
+      return { held, raced, kept: paths.map(String) };
+    });
+    assert.equal(outcome.raced, "this copy failed");
+    assert.deepEqual(outcome.kept, ["theirs.ttl"]);
+    assert.match(outcome.held, /has no files\.json.*cascade-pod:held/);
   } finally {
     await context.close();
   }

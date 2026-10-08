@@ -230,32 +230,33 @@ async function copied(from: string, database: IndexedDbFiles): Promise<void> {
   await database.writeAll(files);
 }
 
-/** Copies the folder at the URL into the empty database named `name`, which, when the copy fails, is closed and deleted. */
-async function copiedOrNone(
-  from: string,
-  database: IndexedDbFiles,
-  name: string,
-): Promise<void> {
-  try {
-    await copied(from, database);
-  } catch (error) {
-    database.close();
-    const left = await IndexedDbFiles.delete(name).then(
-      () => undefined,
-      (failure: unknown) => failure,
-    );
-    if (left === undefined) throw error;
-    throw new Error(
-      `${(error as Error)?.message ?? error}, and the empty database ${name} is left: ${(left as Error)?.message ?? left}`,
-      { cause: error },
-    );
-  }
+/**
+ * Deletes the database a copy failed into, or throws one error saying it is left, with the copy's error as its cause;
+ * a connection elsewhere holding it open is a failure, not a wait.
+ */
+function deleted(name: string, copying: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const left = (why: string) =>
+      reject(
+        new Error(
+          `${(copying as Error)?.message ?? copying}, and the empty database ${name} is left: ${why}`,
+          { cause: copying },
+        ),
+      );
+    const deleting = indexedDB.deleteDatabase(name);
+    deleting.onsuccess = () => resolve();
+    deleting.onerror = () =>
+      left(deleting.error?.message ?? "it could not be deleted");
+    deleting.onblocked = () =>
+      left("it is open elsewhere, and is deleted once that closes");
+  });
 }
 
 /**
  * The pod in the browser's IndexedDB database `cascade-pod:<name>`, or, with no name, in memory; `options.title` is
  * used only when the pod is new. A missing or empty database is a new pod, or, with `options.from`, a copy of the pod
- * published in the folder at that URL, as its `files.json` lists it; a copy that fails leaves no database.
+ * published in the folder at that URL, as its `files.json` lists it. A copy that fails leaves no database, unless
+ * another copy filled it meanwhile, which it keeps.
  */
 export async function openPod(
   name?: string,
@@ -265,13 +266,15 @@ export async function openPod(
   const { from, ...rest } = options;
   if (name === undefined)
     return new BrowserPod(await openPodWith(parts, undefined, rest), undefined);
-  const database = await IndexedDbFiles.open(
-    DATABASE + name,
-    `${DATABASE}${name}/`,
-  );
+  const named = DATABASE + name;
+  const database = await IndexedDbFiles.open(named, `${named}/`);
+  let copying = false;
   try {
-    if (from !== undefined && (await database.list("")).length === 0)
-      await copiedOrNone(from, database, DATABASE + name);
+    if (from !== undefined && (await database.list("")).length === 0) {
+      copying = true;
+      await copied(from, database);
+      copying = false;
+    }
     const pod = await openPodWith(
       {
         ...parts,
@@ -286,7 +289,14 @@ export async function openPod(
     );
     return new BrowserPod(pod, database);
   } catch (error) {
+    const empty =
+      copying &&
+      (await database.list("").then(
+        (paths) => paths.length === 0,
+        () => false,
+      ));
     database.close();
+    if (empty) await deleted(named, error);
     throw error;
   }
 }

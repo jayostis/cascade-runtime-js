@@ -302,7 +302,7 @@ async function make(person) {
   location.assign(podHref(name));
 }
 
-/** Copies the published example pod into this browser; one that fails to copy leaves nothing behind. */
+/** Copies the published example pod into this browser. */
 async function copy(name) {
   await (await openPod(name, { from: `../${name}/pod/` })).close();
 }
