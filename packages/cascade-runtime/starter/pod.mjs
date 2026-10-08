@@ -5,6 +5,7 @@ import { argv, stdout } from "node:process";
 import { openPod } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 import {
+  answersFolder,
   argumentsOf,
   checkName,
   deletePod,
@@ -65,7 +66,8 @@ async function create() {
 async function reset() {
   const { positionals } = argumentsOf(args, "npm run pod:reset <name>", {}, 1);
   const name = checkName(positionals[0]);
-  if (!existsSync(podFolder(name))) refuse(`there is no pod ${name}`);
+  if (!existsSync(podFolder(name)) && !existsSync(answersFolder(name)))
+    refuse(`there is no pod ${name}`);
   await deletePod(name);
   stdout.write(`Removed the pod ${name}. If the app is running, restart it.\n`);
 }

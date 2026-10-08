@@ -20,7 +20,6 @@ import {
   ntriples,
   podFiles,
   podStated,
-  QUERIES,
   questions,
   randomId,
   RDF,
@@ -223,29 +222,23 @@ const read = new WeakMap<
   Promise<{
     readonly questions: ReadonlyMap<string, VocabularyQuery>;
     readonly lenses: readonly string[];
-    /** The layout's text and the build's queries' texts. */
-    readonly built: readonly string[];
+    readonly layout: string;
   }>
 >();
 
-/** The vocabulary's questions and lenses, and the texts its build is made of, read once. */
-function askable(vocabulary: Files, layout: Layout) {
+/** The vocabulary's questions, lenses and layout, read once. */
+function askable(vocabulary: Files) {
   let found = read.get(vocabulary);
   if (found === undefined) {
     const reading = Promise.all([
       questions(vocabulary),
       lenses(vocabulary),
-      Promise.all(
-        [
-          LAYOUT_FILE,
-          ...layout.built.map(({ writtenBy }) => QUERIES + (writtenBy ?? "")),
-        ].map((path) => readText(vocabulary, path)),
-      ),
+      readText(vocabulary, LAYOUT_FILE),
     ]);
-    found = reading.then(([questions, lenses, built]) => ({
+    found = reading.then(([questions, lenses, layout]) => ({
       questions,
       lenses,
-      built,
+      layout,
     }));
     read.set(vocabulary, found);
     found.catch(() => read.delete(vocabulary));
@@ -625,14 +618,14 @@ class OpenPod implements Pod {
     options: { lens?: string },
   ): Promise<Row[]> {
     const lens = options.lens ?? this.#parts.lens;
-    const { vocabulary, layout, build } = this.#parts;
-    const offered = await askable(vocabulary, layout);
+    const { vocabulary, build } = this.#parts;
+    const offered = await askable(vocabulary);
     if (!offered.lenses.includes(lens))
       throw new Error(
         `no lens ${lens}; there are ${offered.lenses.join(", ")}`,
       );
     let query: string;
-    let key: string | undefined;
+    let keep: ((rows: Row[]) => Promise<void>) | undefined;
     if (typeof question === "string") {
       const asked = offered.questions;
       const found = asked.get(question);
@@ -641,20 +634,23 @@ class OpenPod implements Pod {
           `no question ${question}; there are ${[...asked.keys()].join(", ")}`,
         );
       query = found.text;
-      if (this.#answers !== undefined) {
-        key = await answerKey({
-          runtime: this.#answers.runtime,
+      const answers = this.#answers;
+      if (answers !== undefined) {
+        const key = await answerKey({
+          runtime: answers.runtime,
           question,
           lens,
           revision: await this.#core.revision(),
           texts: [
             query,
             ...build.derivations.for(lens).map(({ query }) => query),
-            ...offered.built,
+            offered.layout,
+            ...build.queries,
           ],
         });
-        const kept = await this.#answers.rows(lens, question, key);
+        const kept = await answers.rows(lens, question, key);
         if (kept !== undefined) return kept;
+        keep = (rows) => answers.keep(lens, question, key, rows);
       }
     } else {
       if (!isSelect(question.query)) throw new Error("the query is no SELECT");
@@ -664,8 +660,7 @@ class OpenPod implements Pod {
     const rows = (await store.select(query)).rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
     );
-    if (key !== undefined && typeof question === "string")
-      await this.#answers?.keep(lens, question, key, rows);
+    await keep?.(rows);
     return rows;
   }
 }
@@ -739,10 +734,12 @@ export async function openPodWith(
     return new OpenPod(parts, core, address, subject, answers);
   }
   const store = parts.newStore();
-  const stated = await podStated(disk.files, parts.layout, store);
+  const [stated, described] = await Promise.all([
+    podStated(disk.files, parts.layout, store),
+    answers?.described(),
+  ]);
   const { address } = stated;
   const title = stated.title ?? disk.name;
-  const described = await answers?.described();
   let subject = described?.address === address ? described.subject : undefined;
   let opened: Union | undefined;
   if (subject === undefined) {

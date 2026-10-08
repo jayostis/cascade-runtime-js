@@ -117,6 +117,8 @@ function manifest(file: string, title: string, at: string): Triple[] {
 /** The vocabulary's derivations, and the queries that write the layout's files, read once, run as they are. */
 export interface VocabularyBuild {
   readonly derivations: Derivations;
+  /** The texts of the queries the build runs, besides the derivations. */
+  readonly queries: readonly string[];
   /** Adds the files the build writes to a union holding a pod and its derived state; returns them. */
   files(
     union: Union,
@@ -198,7 +200,7 @@ export async function vocabularyBuild(
     );
     return files;
   };
-  return { derivations, files: written };
+  return { derivations, queries: [...queries.values()], files: written };
 }
 
 /** The vocabulary's derivations and the queries that write the layout's files, read once, run as they are. */

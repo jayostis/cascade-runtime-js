@@ -27,7 +27,7 @@ export interface Computed {
   readonly runtime: string;
   readonly question: string;
   readonly lens: string;
-  /** The pod's revision. */
+  /** `CorePod.revision()`: any step changes it. */
   readonly revision: string;
   /** The question's text, the lens's derivations in order, the layout and the build's queries. */
   readonly texts: readonly string[];
@@ -48,14 +48,22 @@ async function json(files: Files, path: string): Promise<unknown> {
   }
 }
 
+/** Answers are kept only to be found again: one that cannot be written, as beside a pod on a read-only disk, is not kept. */
 function written(files: Files, path: string, value: unknown): Promise<void> {
-  return files.write(path, new TextEncoder().encode(JSON.stringify(value)));
+  return files
+    .write(path, new TextEncoder().encode(JSON.stringify(value)))
+    .catch(() => undefined);
+}
+
+function copied(rows: readonly Row[]): Row[] {
+  return rows.map((row) => ({ ...row }));
 }
 
 /** A pod's kept answers and `pod.json`, in files of their own. */
 export class Answers {
   readonly #files: Files;
   #kept: Promise<Kept> | undefined;
+  #described: Promise<Described | undefined> | undefined;
 
   constructor(
     files: Files,
@@ -65,13 +73,16 @@ export class Answers {
   }
 
   /** What `pod.json` says the pod is, if it says. */
-  async described(): Promise<Described | undefined> {
-    const found = (await json(this.#files, DESCRIBED)) as Partial<Described>;
-    return typeof found?.address === "string" &&
-      typeof found.subject === "string" &&
-      typeof found.title === "string"
-      ? { address: found.address, subject: found.subject, title: found.title }
-      : undefined;
+  described(): Promise<Described | undefined> {
+    this.#described ??= json(this.#files, DESCRIBED).then((read) => {
+      const found = read as Partial<Described> | undefined;
+      return typeof found?.address === "string" &&
+        typeof found.subject === "string" &&
+        typeof found.title === "string"
+        ? { address: found.address, subject: found.subject, title: found.title }
+        : undefined;
+    });
+    return this.#described;
   }
 
   /** Writes `pod.json`, unless it says this already. */
@@ -81,8 +92,10 @@ export class Answers {
       found?.address !== described.address ||
       found.subject !== described.subject ||
       found.title !== described.title
-    )
+    ) {
+      this.#described = Promise.resolve(described);
       await written(this.#files, DESCRIBED, described);
+    }
   }
 
   /** The rows kept for the question under the lens, if they were kept under the key. */
@@ -92,7 +105,9 @@ export class Answers {
     key: string,
   ): Promise<Row[] | undefined> {
     const kept = (await this.#read())[lens]?.[question];
-    return kept?.key === key ? kept.rows : undefined;
+    return kept?.key === key && Array.isArray(kept.rows)
+      ? copied(kept.rows)
+      : undefined;
   }
 
   /** Keeps the rows for the question under the lens, in place of what was kept. */
@@ -103,7 +118,7 @@ export class Answers {
     rows: Row[],
   ): Promise<void> {
     const kept = await this.#read();
-    kept[lens] = { ...kept[lens], [question]: { key, rows } };
+    kept[lens] = { ...kept[lens], [question]: { key, rows: copied(rows) } };
     await written(this.#files, ANSWERS, kept);
   }
 

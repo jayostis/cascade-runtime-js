@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { get } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
@@ -535,7 +535,7 @@ try {
 
 if (release === undefined) {
   await behaviour(
-    "a new pod is empty, its answers are kept beside the pods and are no pod, and a reset removes it and them",
+    "a new pod is empty, its answers are kept beside the pods and are no pod, and a reset removes it and them, or them alone",
     async () => {
       const answers = join(app, "pods", ".answers", "scratch");
       assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
@@ -546,6 +546,9 @@ if (release === undefined) {
       );
       assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
       assert.equal(existsSync(join(app, "pods", "scratch")), false);
+      assert.equal(existsSync(answers), false);
+      await mkdir(answers, { recursive: true });
+      assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
       assert.equal(existsSync(answers), false);
       const { code, err } = await npm("run", "ask", ALLERGIES);
       assert.equal(code, 2);

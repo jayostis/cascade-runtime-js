@@ -484,6 +484,7 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
       [unbuilt.address, unbuilt.subject, unbuilt.owner],
       [address, subject, owner],
     );
+    (await unbuilt.ask(QUESTION)).pop();
     assert.deepEqual(await allergens(unbuilt), rows);
     await assert.rejects(
       unbuilt.ask("pod/My active medications"),
@@ -492,14 +493,59 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
   } finally {
     await unbuilt.close();
   }
-  pod = await openPodWith(kept, folder);
-
-  const notAPod = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  const rebuilt = await openPodWith(
+    {
+      ...kept,
+      build: {
+        ...kept.build,
+        queries: [],
+        files: () => Promise.reject(new Error("the pod was built")),
+      },
+    },
+    folder,
+  );
   try {
-    await writeFile(join(notAPod, "notes.txt"), "");
-    await assert.rejects(openPod(notAPod), /owner's profile/);
+    await assert.rejects(allergens(rebuilt), /the pod was built/);
   } finally {
-    await rm(notAPod, { recursive: true, force: true });
+    await rebuilt.close();
+  }
+  const answers = join(pods, ".answers", "pod", "answers.json");
+  const stored = JSON.parse(await readFile(answers, "utf8")) as Record<
+    string,
+    Record<string, { rows: unknown }>
+  >;
+  for (const lens of Object.values(stored))
+    for (const answer of Object.values(lens)) answer.rows = null;
+  await writeFile(answers, JSON.stringify(stored));
+  pod = await openPodWith(kept, folder);
+  assert.deepEqual(await allergens(), rows);
+
+  const elsewhere = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  try {
+    await writeFile(join(elsewhere, "notes.txt"), "");
+    await assert.rejects(openPod(elsewhere), /owner's profile/);
+    const unwritable = await openPodWith(
+      {
+        ...kept,
+        answers: {
+          runtime: "test",
+          at: () => ({
+            iri: "file:///answers/",
+            read: () => Promise.resolve(undefined),
+            list: () => Promise.resolve([]),
+            write: () => Promise.reject(new Error("read-only")),
+          }),
+        },
+      },
+      join(elsewhere, "pod"),
+    );
+    try {
+      assert.deepEqual(await allergens(unwritable), []);
+    } finally {
+      await unwritable.close();
+    }
+  } finally {
+    await rm(elsewhere, { recursive: true, force: true });
   }
 });
 

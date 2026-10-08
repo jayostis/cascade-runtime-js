@@ -67,9 +67,12 @@ async function fetched(path: string): Promise<Response> {
   return response;
 }
 
-async function resolve(): Promise<Parts> {
+/** The parts, and the runtime's version: the browser entry's bytes and the components it carries. */
+type Resolved = Parts & { readonly runtime: string };
+
+async function resolve(): Promise<Resolved> {
   await (oxigraphWeb as unknown as { default(): Promise<unknown> }).default();
-  const [config, packed, runtime] = await Promise.all([
+  const [config, packed, entry] = await Promise.all([
     fetched("cascade-runtime.json").then(async (r) =>
       parseConfig(await r.text()),
     ),
@@ -78,6 +81,9 @@ async function resolve(): Promise<Parts> {
       documentName(new Uint8Array(await r.arrayBuffer())),
     ),
   ]);
+  const runtime = await documentName(
+    new TextEncoder().encode(JSON.stringify([entry, packed.components])),
+  );
   const sources = new Map<string, Source>();
   /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
   const carried = (followed: Followed): Source => {
@@ -121,12 +127,7 @@ async function resolve(): Promise<Parts> {
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
-    answers: {
-      runtime,
-      at: () => {
-        throw new Error("the browser build of cascade-runtime opens no folder");
-      },
-    },
+    runtime,
     exportAt: (path) =>
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
     loadBridge: async () =>
@@ -157,9 +158,9 @@ function bridgeCompiled(): Promise<CompiledBridge> {
   return compiled;
 }
 
-let found: Promise<Parts> | undefined;
+let found: Promise<Resolved> | undefined;
 
-function resolved(): Promise<Parts> {
+function resolved(): Promise<Resolved> {
   if (found === undefined) {
     const resolving = resolve();
     found = resolving;
@@ -308,9 +309,7 @@ export async function openPod(
           name,
           parent: database,
         }),
-        ...(parts.answers === undefined
-          ? {}
-          : { answers: { runtime: parts.answers.runtime, at: () => kept } }),
+        answers: { runtime: parts.runtime, at: () => kept },
       },
       name,
       rest,

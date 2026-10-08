@@ -40,10 +40,15 @@ export async function podNames() {
   }
 }
 
+/** The folder the runtime keeps the pod's answers in. */
+export function answersFolder(name) {
+  return join(PODS, ".answers", name);
+}
+
 /** Removes the pod and its answers. */
 export async function deletePod(name) {
   await rm(podFolder(name), { recursive: true, force: true });
-  await rm(join(PODS, ".answers", name), { recursive: true, force: true });
+  await rm(answersFolder(name), { recursive: true, force: true });
 }
 
 /** Removes every pod; gives the names of those there were. */
