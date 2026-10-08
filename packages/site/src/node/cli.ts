@@ -222,10 +222,7 @@ async function stagedPackage(): Promise<{
     const tree = `components/${repositoryName(component)}/${component.commit}`;
     paths.push(`${tree}.json`, ...(await staged.list(tree)));
   }
-  paths.push(
-    `${STARTER_TABLES}.json`,
-    ...(await staged.list(STARTER_TABLES)),
-  );
+  paths.push(`${STARTER_TABLES}.json`, ...(await staged.list(STARTER_TABLES)));
   const files = new Map<string, Uint8Array>();
   for (const path of paths) {
     const bytes = await staged.read(path);
