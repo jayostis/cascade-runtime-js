@@ -252,18 +252,16 @@ async function buildPages(): Promise<number> {
       `${ROOT} is not a git checkout, so no commit built the pages`,
     );
   const self = { repository: RUNTIME };
+  const builtFrom = atCommit(
+    repositoryName(self),
+    treeIri(self, runtime.commit),
+    runtime.commit,
+    runtime.uncommitted,
+  );
   const tree = pagesTree(
     examples,
     {
-      ingredients: [
-        atCommit(
-          repositoryName(self),
-          treeIri(self, runtime.commit),
-          runtime.commit,
-          runtime.uncommitted,
-        ),
-        resolvedIngredient(vocabulary.resolved),
-      ],
+      ingredients: [builtFrom, resolvedIngredient(vocabulary.resolved)],
       configured: [
         ...adapters.map(resolvedIngredient),
         bridgeIngredient(bridge),
@@ -272,7 +270,10 @@ async function buildPages(): Promise<number> {
     },
     await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
     new Map([
-      ...(await tryFiles(examples.map(({ folder }) => folder))),
+      ...(await tryFiles(
+        examples.map(({ folder }) => folder),
+        builtFrom.version,
+      )),
       ...staged.files,
     ]),
   );

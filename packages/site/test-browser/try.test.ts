@@ -416,6 +416,47 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   );
 });
 
+test("File, Delete all data empties the pods column and says how many went, and Reset all data brings both samples back", async () => {
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    const before = await texts(page, "nav a");
+    /** Opens File, picks `item`, and presses the confirming box's one button; waits for the page it goes to. */
+    const fromFile = async (item: string): Promise<void> => {
+      await page.click('.menu summary:has-text("File")');
+      await page.click(`.menu a:has-text(${JSON.stringify(item)})`);
+      await Promise.all([
+        page.waitForEvent(
+          "framenavigated",
+          (frame) => frame === page.mainFrame(),
+        ),
+        page.click(".dialog:target button"),
+      ]);
+      await settled(page);
+    };
+    await fromFile("Delete all data");
+    assert.deepEqual(await texts(page, "nav a"), []);
+    assert.equal(await page.textContent("main h1"), "No pods yet");
+    assert.equal(
+      await page.textContent("main .note"),
+      `Deleted ${before.length} pods.`,
+    );
+    await fromFile("Reset all data");
+    assert.deepEqual(await texts(page, "nav a"), [
+      "Alex Rivera",
+      "Priya Natarajan",
+    ]);
+    assert.equal(
+      await page.textContent("main .note"),
+      "Reset: Alex Rivera and Priya Natarajan are back.",
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 test("a first visit where no sample copies leaves no database, says there are no pods yet, and offers each sample to load, which loads it", async () => {
   const context = await browser.newContext();
   try {

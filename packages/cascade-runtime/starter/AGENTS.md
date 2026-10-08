@@ -17,7 +17,11 @@ answers requests and hands it the rows. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the
 hospital's own page, and `hospitals.mjs` receives the redirect on `/callback`,
 which goes back to the pod's page with the connection in a box over it
-(`?connection=<n>#connection`); the demo hospitals, in `demo-hospital/`, are pretend. Stop the app's server
+(`?connection=<n>#connection`); the demo hospitals, in `demo-hospital/`, are pretend.
+The title bar's File menu posts to `/delete-all` and `/reset-all`, which call
+`deleteAll` and `resetAll` in `pods.mjs`, as `npm run reset` does; Help,
+About says the app's name and version and the `cascade-runtime` it runs on.
+Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.
 

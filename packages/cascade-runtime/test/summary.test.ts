@@ -160,25 +160,107 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
   }
 });
 
-test("Escape follows the open box's own close link, and with none clears the hash", () => {
-  const press = (close?: { click: () => void }): string => {
-    let keydown = (_event: object): void => {};
+test("the frame's title bar has File, whose two items open boxes that confirm with one button posting to the host's action, and Help, whose About names the app, its version and cascade-runtime's", () => {
+  const page = view.frame({
+    title: "Alex Rivera",
+    body: "<h1>Alex Rivera</h1>",
+    pods: ["alex-rivera"],
+    current: "alex-rivera",
+    href: (pod: string) => `/pods/${pod}/`,
+    home: "/",
+    dialog: "",
+    menu: {
+      deleteAll: "/delete-all",
+      resetAll: "/reset-all",
+      about: { name: "my-app", version: "1.2.3", runtime: "4.5.6", code: "c" },
+    },
+    note: view.didNote({ deleted: 3 }),
+  });
+  const menus = [
+    ...page.matchAll(
+      /<details class="menu"><summary>(\w+)<\/summary>([\s\S]*?)<\/details>/g,
+    ),
+  ].map(([, name, items]) => [
+    name,
+    [...items.matchAll(/<a href="([^"]*)">([^<]*)</g)].map(
+      ([, href, label]) => [href, label],
+    ),
+  ]);
+  assert.deepEqual(menus, [
+    [
+      "File",
+      [
+        ["#delete-all", "Delete all data"],
+        ["#reset-all", "Reset all data"],
+      ],
+    ],
+    ["Help", [["#about", "About"]]],
+  ]);
+  const boxOf = (id: string): string =>
+    page.split(`<div class="dialog" id="${id}"`)[1]?.split("</form>")[0] ?? "";
+  for (const [id, action] of [
+    ["delete-all", "/delete-all"],
+    ["reset-all", "/reset-all"],
+  ] as const) {
+    const box = boxOf(id);
+    assert.match(box, / class="backdrop"/, id);
+    assert.deepEqual(
+      [...box.matchAll(/<form [^>]*action="([^"]*)"/g)].map(([, to]) => to),
+      [action],
+      id,
+    );
+  }
+  const about = boxOf("about");
+  for (const said of ["my-app", "1.2.3", "cascade-runtime 4.5.6", "made up"])
+    assert.ok(about.includes(said), said);
+  assert.match(about, /<a href="c">/);
+  assert.match(page, /<p class="note" role="status">Deleted 3 pods\.<\/p>/);
+  assert.equal(
+    view.didNote({ reset: ["alex-rivera", "priya-natarajan"] }),
+    "Reset: Alex Rivera and Priya Natarajan are back.",
+  );
+});
+
+test("Escape closes an open menu and follows the open box's own close link, or with none clears the hash; a click closes every open menu but the one whose name it is on", () => {
+  const listening = (close?: { click: () => void }) => {
+    const on: Record<string, ((event: object) => void)[]> = {};
     const location = { hash: "#connection" };
+    const menus = [{ open: true }, { open: true }];
     const page = {
       defaultView: { location },
-      addEventListener: (type: string, listener: typeof keydown) => {
-        if (type === "keydown") keydown = listener;
+      addEventListener: (type: string, listener: (event: object) => void) => {
+        on[type] = [...(on[type] ?? []), listener];
       },
       querySelector: () => close ?? null,
+      querySelectorAll: () => menus.filter(({ open }) => open),
     };
     view.sortAndFilter(page);
-    keydown({ key: "Escape" });
-    return location.hash;
+    const fire = (type: string, event: object) => {
+      for (const listener of on[type] ?? []) listener(event);
+    };
+    return { fire, location, menus };
   };
+  const opened = (menus: { open: boolean }[]) => menus.map(({ open }) => open);
   let clicked = 0;
-  assert.equal(press({ click: () => (clicked += 1) }), "#connection");
+  const boxed = listening({ click: () => (clicked += 1) });
+  boxed.fire("keydown", { key: "Escape" });
+  assert.equal(boxed.location.hash, "#connection");
   assert.equal(clicked, 1);
-  assert.equal(press(), "");
+  assert.deepEqual(opened(boxed.menus), [false, false]);
+  const bare = listening();
+  bare.fire("keydown", { key: "Escape" });
+  assert.equal(bare.location.hash, "");
+  for (const menu of bare.menus) menu.open = true;
+  const [first] = bare.menus;
+  bare.fire("click", {
+    target: {
+      closest: (selector: string) =>
+        selector === "summary" ? { parentElement: first } : null,
+    },
+  });
+  assert.deepEqual(opened(bare.menus), [true, false]);
+  bare.fire("click", { target: { closest: () => null } });
+  assert.deepEqual(opened(bare.menus), [false, false]);
 });
 
 test("a table opens newest first, a row with no date last", () => {

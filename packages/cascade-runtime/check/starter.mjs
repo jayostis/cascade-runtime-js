@@ -832,6 +832,40 @@ if (release === undefined) {
           );
         },
       );
+
+      await behaviour(
+        "the File menu deletes every pod and says how many, and resets to the kits' pods",
+        async () => {
+          const before = await podsOf();
+          const page = await served(server, `/pods/${before[0]}/`);
+          for (const action of ["/delete-all", "/reset-all"])
+            assert.ok(page.includes(`action="${action}"`), `no ${action}`);
+          const deleted = await send("/delete-all", {});
+          assert.equal(deleted.status, 303);
+          assert.deepEqual(await podsOf().catch(() => []), []);
+          const home = await served(server, deleted.headers.get("location"));
+          assert.equal(heading(home), "No pods yet");
+          assert.ok(
+            readable(home).includes(`Deleted ${before.length} pods.`),
+            "the page does not say how many pods went",
+          );
+          const reset = await send("/reset-all", {});
+          assert.equal(reset.status, 303);
+          assert.deepEqual(await podsOf(), KITS);
+          const back = await served(server, reset.headers.get("location"));
+          assert.equal(heading(back), "Alex Rivera");
+          assert.ok(
+            readable(back).includes(
+              "Reset: Alex Rivera and Priya Natarajan are back.",
+            ),
+            "the page does not say which pods are back",
+          );
+          assert.equal(
+            (await send("/delete-all", {}, "http://elsewhere.example")).status,
+            403,
+          );
+        },
+      );
     } finally {
       await server.stop();
     }

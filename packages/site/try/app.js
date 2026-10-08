@@ -15,6 +15,7 @@ import {
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionDialog,
+  didNote,
   escaped,
   frame,
   hospitalName,
@@ -41,8 +42,28 @@ const DEMO = TEST_DIRECTORY.filter(({ vendor }) => vendor === "demo");
 const SAMPLES = (document.body.dataset.samples ?? "")
   .split(" ")
   .filter(Boolean);
+/** What the File menu's items do, through the `submit` listener, and what Help, About says. */
+const MENU = {
+  deleteAll: "delete-all",
+  resetAll: "reset-all",
+  about: {
+    name: "Cascade try",
+    version: document.body.dataset.version ?? "",
+    runtime: document.body.dataset.runtime ?? "",
+    code: "../",
+  },
+};
 
 const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
+
+/** What the File menu just did, from the page's address: `?deleted=<n>` or `reset`. */
+function didOf(query) {
+  const deleted = query.get("deleted");
+  if (deleted !== null && /^\d+$/.test(deleted))
+    return didNote({ deleted: Number(deleted) });
+  if (query.has("reset")) return didNote({ reset: SAMPLES });
+  return undefined;
+}
 
 const hospitalsReady = useDemoHospitals(
   new URL("demo-hospital-worker.js", location.href),
@@ -94,6 +115,8 @@ function render(title, body, state = "ready") {
     current,
     href: podHref,
     home: "../",
+    menu: MENU,
+    note: didOf(new URLSearchParams(location.search)),
     dialog: newPodDialog({
       people,
       pods,
@@ -302,6 +325,20 @@ async function make(person) {
   location.assign(podHref(name));
 }
 
+function deleted(name) {
+  return new Promise((resolve, reject) => {
+    const deleting = indexedDB.deleteDatabase(DATABASE + name);
+    deleting.onsuccess = () => resolve();
+    deleting.onerror = () => reject(deleting.error);
+    deleting.onblocked = () =>
+      reject(
+        new Error(
+          "What was copied is removed once this page is closed in your other tabs.",
+        ),
+      );
+  });
+}
+
 /** Copies the published example pod into this browser. */
 async function copy(name) {
   await (await openPod(name, { from: `../${name}/pod/` })).close();
@@ -312,6 +349,29 @@ async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
   if (!pods.includes(name)) await copy(name);
   location.assign(podHref(name));
+}
+
+/** Closes the pod shown and deletes every pod's database; gives the names of those there were. */
+async function deleteAll() {
+  await pod?.close();
+  pod = undefined;
+  const names = await podsHere();
+  for (const name of names) await deleted(name);
+  return names;
+}
+
+/** File, Delete all data: then the page says how many went, and copies no sample in. */
+async function deleteEverything() {
+  location.assign(`?deleted=${(await deleteAll()).length}`);
+}
+
+/** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
+async function resetEverything() {
+  await deleteAll();
+  for (const name of SAMPLES) await copy(name);
+  location.assign(
+    SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`,
+  );
 }
 
 /**
@@ -365,6 +425,8 @@ document.addEventListener("submit", (event) => {
   else if (action === "load") busy(() => load(String(fields.get("pod"))));
   else if (action === "make")
     busy(() => make(String(fields.get("person") ?? "")));
+  else if (action === MENU.deleteAll) busy(deleteEverything);
+  else if (action === MENU.resetAll) busy(resetEverything);
 });
 
 busy(async () => {
@@ -372,7 +434,7 @@ busy(async () => {
   const query = new URLSearchParams(location.search);
   const asked = query.get("pod");
   if (asked === null && pods.length === 0) {
-    await firstVisit();
+    if (!query.has("deleted")) await firstVisit();
     if (pods.length === 0) return render("No pods yet", noPods());
   }
   if (asked !== null && !pods.includes(asked))

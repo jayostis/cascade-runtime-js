@@ -563,10 +563,73 @@ ${more === undefined ? "" : list(more.said, more.choices.map(choice))}
 </div>`;
 }
 
+/** A box over the page, shown when the page's address ends `#<id>`, with `body` under its heading `title`. */
+function box(id, title, body) {
+  return `<div class="dialog" id="${id}" role="dialog" aria-labelledby="${id}-title">
+${backdrop()}
+<div class="box">
+<a class="close" href="#" aria-label="Close">×</a>
+<h2 id="${id}-title">${escaped(title)}</h2>
+${body}
+</div>
+</div>`;
+}
+
+/** A menu of the title bar: `<details>`, so it opens and closes with no script, each item a link to a box. */
+function menu(name, items) {
+  return `<details class="menu"><summary>${escaped(name)}</summary><ul>
+${items.map(([href, label]) => `<li><a href="${escaped(href)}">${escaped(label)}</a></li>`).join("\n")}
+</ul></details>`;
+}
+
 /**
- * A whole page: the title bar, the pods by their people's names, `body`, and `dialog` (the new-pod box). `pods` are
- * the pods' names, `current` the one shown, `href(pod)` a pod's address and `home` the title bar's; `refresh` makes the
- * page reload itself every second.
+ * The title bar's menus and their boxes: File's two items each open a box asking to confirm, whose one button posts
+ * to `deleteAll` or `resetAll`; Help's About gives the application's `name` and `version`, the `runtime` version it is
+ * built on, and a link to its `code`.
+ */
+function menus({ deleteAll, resetAll, about }) {
+  return {
+    bar: `${menu("File", [
+      ["#delete-all", "Delete all data"],
+      ["#reset-all", "Reset all data"],
+    ])}${menu("Help", [["#about", "About"]])}`,
+    boxes: [
+      box(
+        "delete-all",
+        "Delete all data?",
+        `<p>Every pod in this app goes.</p>\n${postButton(deleteAll, {}, "Delete all data", "warm")}`,
+      ),
+      box(
+        "reset-all",
+        "Reset all data?",
+        `<p>Every pod goes, and Alex's and Priya's are loaded again.</p>\n${postButton(resetAll, {}, "Reset all data", "warm")}`,
+      ),
+      box(
+        "about",
+        `About ${about.name}`,
+        `<p><strong>${escaped(about.name)}</strong> ${escaped(about.version)}</p>
+<p>Built on cascade-runtime ${escaped(about.runtime)}.</p>
+<p>Every person here is made up.</p>
+<p><a href="${escaped(about.code)}">The code</a></p>`,
+      ),
+    ].join("\n"),
+  };
+}
+
+/** What the page says after a File menu item: how many pods were `deleted`, or which pods `reset` brought back. */
+export function didNote({ deleted, reset }) {
+  if (reset !== undefined)
+    return `Reset: ${listed(reset.map(personName))} ${reset.length === 1 ? "is" : "are"} back.`;
+  return deleted === 0
+    ? "There was no pod to delete."
+    : `Deleted ${deleted} ${deleted === 1 ? "pod" : "pods"}.`;
+}
+
+/**
+ * A whole page: the title bar with its menus, the pods by their people's names, `note` above `body` when given, and
+ * `dialog` (the new-pod box). `pods` are the pods' names, `current` the one shown, `href(pod)` a pod's address and
+ * `home` the title bar's; `menu` is what the menus need, as `{ deleteAll, resetAll, about: { name, version, runtime,
+ * code } }`: the addresses the two File items post to, and what the About box says. `refresh` makes the page reload itself every second.
  */
 export function frame({
   title,
@@ -576,6 +639,8 @@ export function frame({
   href,
   home,
   dialog,
+  menu,
+  note,
   refresh,
 }) {
   const items = pods
@@ -584,6 +649,7 @@ export function frame({
         `<li><a href="${escaped(href(pod))}"${pod === current ? ' aria-current="page"' : ""}>${escaped(personName(pod))}</a></li>`,
     )
     .join("\n");
+  const { bar, boxes } = menus(menu);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -593,7 +659,7 @@ ${refresh ? '<meta http-equiv="refresh" content="1">\n' : ""}<title>${escaped(ti
 <style>${STYLE}</style>
 </head>
 <body>
-<header class="bar"><a href="${escaped(home)}">Cascade</a><span class="demo">Demo: every person here is made up</span></header>
+<header class="bar"><a href="${escaped(home)}">Cascade</a>${bar}<span class="demo">Demo: every person here is made up</span></header>
 <div class="layout">
 <aside>
 <nav><h2>Pods</h2><ul>
@@ -602,10 +668,11 @@ ${items}
 <a class="button wide" href="#new-pod">+ New pod</a>
 </aside>
 <main>
-${body}
+${note === undefined ? "" : `<p class="note" role="status">${escaped(note)}</p>\n`}${body}
 </main>
 </div>
 ${dialog}
+${boxes}
 <script>${SCRIPT}</script>
 </body>
 </html>
@@ -747,8 +814,19 @@ export const STYLE = `
 * { box-sizing: border-box; }
 body { margin: 0; font: 16px/1.55 system-ui, sans-serif; background: var(--page); color: var(--text); }
 header.bar { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1.25rem; background: var(--bar); color: var(--on-bar); }
-header.bar a { color: var(--on-bar); text-decoration: none; font-weight: 600; letter-spacing: 0.02em; }
+header.bar > a { color: var(--on-bar); text-decoration: none; font-weight: 600; letter-spacing: 0.02em; }
 header.bar .demo { margin-left: auto; font-size: 0.8rem; opacity: 0.75; }
+.menu { position: relative; font-size: 0.9rem; }
+.menu summary { list-style: none; cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 5px; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary:hover, .menu[open] summary { background: rgb(255 255 255 / 0.14); }
+.menu ul { position: absolute; top: calc(100% + 0.35rem); left: 0; z-index: 10; min-width: 11rem; list-style: none; margin: 0; padding: 0.3rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); }
+.menu li a { display: block; padding: 0.4rem 0.7rem; border-radius: 5px; color: var(--text); text-decoration: none; white-space: nowrap; }
+.menu li a:hover, .menu li a:focus { background: var(--soft); }
+@media (max-width: 46rem) {
+  header.bar { gap: 0.5rem; padding: 0.6rem 1rem; }
+  header.bar .demo { font-size: 0.72rem; text-align: right; }
+}
 .layout { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 2.7rem); }
 aside { background: var(--panel); border-right: 1px solid var(--line); padding: 1.25rem 1rem; }
 main { padding: 1.75rem 2.25rem 3rem; max-width: 62rem; min-width: 0; }
@@ -794,6 +872,7 @@ tr[hidden] { display: none; }
 .tag.warm { border-color: transparent; background: var(--warm-bg); color: var(--warm); font-weight: 600; }
 .button, button { display: inline-block; font: inherit; padding: 0.45rem 1rem; border-radius: 7px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; text-decoration: none; }
 .button.quiet, button.quiet { background: transparent; color: var(--accent); }
+button.warm { background: var(--warm); border-color: var(--warm); color: var(--panel); }
 .button.wide { display: block; text-align: center; }
 input { font: inherit; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); }
 form.inline { display: inline; }
@@ -808,7 +887,7 @@ form.inline { display: inline; }
 .steps li.now { color: var(--text); font-weight: 600; }
 .steps li.now::before { content: "…  "; }
 .note { border-left: 3px solid var(--accent); padding: 0.5rem 0.9rem; background: var(--tint); border-radius: 0 7px 7px 0; margin: 0 0 1.25rem; }
-.dialog { display: none; position: fixed; inset: 0; background: rgb(0 0 0 / 0.45); padding: 1rem; overflow: auto; }
+.dialog { display: none; position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / 0.45); padding: 1rem; overflow: auto; }
 .dialog:target { display: grid; place-items: center; }
 .dialog .backdrop { position: fixed; inset: 0; }
 .dialog .box { position: relative; background: var(--panel); border-radius: 12px; padding: 1.5rem 1.75rem; max-width: 34rem; width: 100%; box-shadow: 0 10px 40px rgb(0 0 0 / 0.3); }
@@ -824,17 +903,26 @@ form.inline { display: inline; }
 
 /**
  * In a page, under `root`: a heading sorts its table by its column, one way then the other, and a filter box hides the
- * rows without its text. It listens on `root`, so tables written into it later sort and filter too. Escape follows the
- * open box's own close link; that listener is the document's, added once however often this runs on it.
+ * rows without its text. It listens on `root`, so tables written into it later sort and filter too. A click anywhere
+ * but on an open menu's own name closes that menu; Escape closes an open menu, and follows the open box's own close
+ * link. Those listeners are the document's, added once however often this runs on it.
  */
 export function sortAndFilter(root, by = compare) {
   const page = root.ownerDocument ?? root;
   if (!page.closesOnEscape) {
     page.closesOnEscape = true;
+    const closeMenus = (except) => {
+      for (const menu of page.querySelectorAll("details.menu[open]"))
+        if (menu !== except) menu.open = false;
+    };
+    page.addEventListener("click", (event) =>
+      closeMenus(event.target.closest?.("summary")?.parentElement),
+    );
     page.addEventListener("keydown", (event) => {
       const { location } = page.defaultView;
       if (event.isComposing || event.defaultPrevented) return;
       if (event.key !== "Escape") return;
+      closeMenus();
       const close = page.querySelector(".dialog:target .close");
       if (close) close.click();
       else if (location.hash !== "") location.hash = "";

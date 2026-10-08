@@ -25,16 +25,20 @@ function head(title: string): Html {
 
 /**
  * The page that keeps pods in the browser and shows each as a person reads it; its app writes everything it shows,
- * and offers to load a copy of each published pod in `samples`, by its folder.
+ * and offers to load a copy of each published pod in `samples`, by its folder. Its About box gives `version`, what the
+ * page was built from, and `runtime`, the version of cascade-runtime it runs.
  */
-export function tryPage(samples: readonly string[]): string {
+export function tryPage(
+  samples: readonly string[],
+  { version, runtime }: { version: string; runtime: string },
+): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
 ${head("Cascade in your browser")}
 <script type="module" src="app.js"></script>
 </head>
-<body data-state="opening" data-samples="${samples.join(" ")}">
+<body data-state="opening" data-samples="${samples.join(" ")}" data-version="${version}" data-runtime="${runtime}">
 <main><p role="status">Opening…</p></main>
 </body>
 </html>

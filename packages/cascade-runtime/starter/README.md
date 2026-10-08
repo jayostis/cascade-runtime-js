@@ -24,6 +24,11 @@ each kind of record, which opens a table you can sort by a heading and filter.
 "+ New pod" makes a pod for anyone by name, or for one of the demo hospitals'
 made-up patients in one click.
 
+The title bar has two menus. File has "Delete all data", which removes every
+pod, and "Reset all data", which does what `npm run reset` does; each first
+asks you to confirm. Help has "About": this app's name and version, the
+`cascade-runtime` it runs on, and where its code is.
+
 The server answers on `127.0.0.1` only, at the port in `PORT`, or 3000. It sees
 a pod loaded while it runs; after `pod:reset` of a pod it has shown, restart it.
 Stop it with Ctrl+C in its terminal.
@@ -55,7 +60,9 @@ script goes after `--`, or npm keeps it for itself.
 
 - `npm run dev` serves the app as `npm start` does, restarting it whenever a
   file is saved.
-- `npm run reset` removes every pod and loads Alex's and Priya's again.
+- `npm run reset` removes every pod and loads Alex's and Priya's again, as
+  the File menu's "Reset all data" does, through the same function in
+  `pods.mjs`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`. One app can hold a kit at two points:
   `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24` beside
@@ -75,8 +82,8 @@ script goes after `--`, or npm keeps it for itself.
   HTML, with no import, so a browser can run it too. Rewrite it freely.
 - `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
-- `pods.mjs`: what the commands share: where pods live and which one a command
-  works on.
+- `pods.mjs`: what the commands and the server share: where pods live, which
+  one a command works on, and deleting and resetting them all.
 - `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands, and
   `help.mjs`, which lists them.
 - `AGENTS.md`: for a coding agent building on this app.
