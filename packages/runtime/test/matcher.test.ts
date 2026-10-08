@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Graph } from "../src/graph.js";
-import { arrival, matcherRules } from "../src/matcher.js";
+import {
+  arrival,
+  joined,
+  type MatcherRule,
+  matcherRules,
+} from "../src/matcher.js";
 import { documentName } from "../src/names.js";
-import { blank, iri, literal, type Triple } from "../src/rdf.js";
+import { blank, iri, literal, type Term, type Triple } from "../src/rdf.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
@@ -29,10 +34,33 @@ async function row(
   ];
 }
 
-test("a rule list naming a query outside matcher/, by any path, or giving one justification twice refuses the run", async () => {
+test("a rule list naming a query outside matcher/, by any path, giving one justification twice, or two table kinds for a rule, or a rule's row citing a table it does not read, refuses the run", async () => {
   const files = await vocabulary();
   const sameCode = await row("a", "SameCode", "matcher/same-code.rq");
   assert.equal((await matcherRules(new Graph(sameCode), files)).length, 1);
+  const kindless: MatcherRule = {
+    justification: JDG + "SameMappedCode",
+    appliesTo: new Set(["Condition"]),
+    query: "matcher/same-mapped-code.rq",
+  };
+  const rule: MatcherRule = { ...kindless, kind: `${REC}CodeMappings` };
+  const version = "urn:example:mappings-2";
+  const loaded = new Set([version]);
+  const joins = (origin?: string): Map<string, Term> =>
+    new Map<string, Term>([
+      ["record", iri("urn:example:a")],
+      ["other", iri("urn:example:b")],
+      ...(origin === undefined ? [] : [["origin", iri(origin)] as const]),
+    ]);
+  assert.deepEqual(
+    [...joined(rule, [joins(version)], loaded).values()],
+    [loaded],
+  );
+  const refusals: (() => Promise<unknown>)[] = [
+    async () => joined(rule, [joins()], loaded),
+    async () => joined(rule, [joins("urn:example:mappings-1")], loaded),
+    async () => joined(kindless, [joins(version)], new Set([""])),
+  ];
   for (const rows of [
     await row(
       "a",
@@ -51,9 +79,18 @@ test("a rule list naming a query outside matcher/, by any path, or giving one ju
       ...(await row("b", "SameCode", "matcher/same-code-and-date.rq")),
     ],
     sameCode.filter(([, predicate]) => predicate.value !== `${REC}queryHash`),
+    [
+      ...sameCode,
+      ...["VaccineGroups", "CodeNames"].map((kind): Triple => [
+        blank("a"),
+        iri(`${REC}tableKind`),
+        iri(REC + kind),
+      ]),
+    ],
   ]) {
-    await assert.rejects(matcherRules(new Graph(rows), files), Refusal);
+    refusals.push(() => matcherRules(new Graph(rows), files));
   }
+  for (const refused of refusals) await assert.rejects(refused, Refusal);
 });
 
 test("a first revision's time with no zone, or no time at all, refuses the run rather than aborting the replay", () => {

@@ -66,6 +66,17 @@ export class References {
     return this.index.objects(iri(version), SPECIALIZATION_OF)[0]?.value;
   }
 
+  seriesOfKind(kind: string): string[] {
+    return this.index
+      .subjects(`${REC}tableKind`, iri(kind))
+      .map(({ value }) => value)
+      .sort();
+  }
+
+  kindOf(series: string): string | undefined {
+    return this.index.objects(iri(series), `${REC}tableKind`)[0]?.value;
+  }
+
   async rows(version: string): Promise<Triple[]> {
     let stem: string;
     try {
