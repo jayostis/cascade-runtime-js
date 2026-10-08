@@ -34,7 +34,7 @@ import {
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
-import { publishedAnswers } from "../src/node/published.js";
+import { partsOf, publishedAnswers } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 import { keptPod, openPodWith, type Parts } from "../src/pod.js";
 
@@ -665,7 +665,7 @@ test("a published pod's answers, as the site computes them, are read back withou
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const answers = new MemoryFiles("urn:test:answers/");
   for (const [path, bytes] of await publishedAnswers(
-    await checkouts(root),
+    await partsOf(await checkouts(root)),
     "pod",
     published,
     "published",
@@ -692,5 +692,6 @@ test("a published pod's answers, as the site computes them, are read back withou
   );
   for (const question of (await questions(vocabulary)).keys())
     assert.deepEqual(await read.rows(question), await pod.ask(question));
-  assert.equal(await read.rows("pod/No such question"), undefined);
+  await assert.rejects(read.rows("pod/No such question"), /no question/);
+  await assert.rejects(read.rows(QUESTION, "no such lens"), /no lens/);
 });

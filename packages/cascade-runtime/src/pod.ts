@@ -262,6 +262,23 @@ function askable(vocabulary: Files) {
   return found;
 }
 
+type Askable = Awaited<ReturnType<typeof askable>>;
+
+function offeredLens(offered: Askable, lens: string): void {
+  if (!offered.lenses.includes(lens))
+    throw new Error(`no lens ${lens}; there are ${offered.lenses.join(", ")}`);
+}
+
+/** The text of the question the vocabulary offers by the name; none offered throws. */
+function questionText(offered: Askable, question: string): string {
+  const found = offered.questions.get(question);
+  if (found === undefined)
+    throw new Error(
+      `no question ${question}; there are ${[...offered.questions.keys()].join(", ")}`,
+    );
+  return found.text;
+}
+
 /** The key the answer to the question, of the text given, under the lens is kept under at the revision. */
 function keyOf(
   build: VocabularyBuild,
@@ -295,7 +312,10 @@ export type Reading = Pick<Parts, "vocabulary" | "layout" | "build" | "lens">;
 /** A pod as its kept answers read it, without the engine. */
 export interface KeptPod extends Described {
   readonly owner: string;
-  /** The rows kept for the question, by its name, under the lens for the pod as it stands; none when none were. */
+  /**
+   * The rows kept for the question, by its name, under the lens for the pod as it stands; none when none were. A
+   * question or lens the vocabulary does not offer throws, as the pod opened with the engine would.
+   */
   rows(question: string, lens?: string): Promise<Row[] | undefined>;
 }
 
@@ -314,9 +334,8 @@ export async function keptPod(
     owner: `${described.address}${layout.card}#me`,
     rows: async (question, lens = reading.lens) => {
       const offered = await askable(vocabulary);
-      const text = offered.questions.get(question)?.text;
-      if (text === undefined || !offered.lenses.includes(lens))
-        return undefined;
+      offeredLens(offered, lens);
+      const text = questionText(offered, question);
       revision ??= podRevision(pod, layout, described.address);
       return answers.rows(
         lens,
@@ -712,20 +731,11 @@ class OpenPod implements Pod {
     const lens = options.lens ?? this.#parts.lens;
     const { vocabulary, build } = this.#parts;
     const offered = await askable(vocabulary);
-    if (!offered.lenses.includes(lens))
-      throw new Error(
-        `no lens ${lens}; there are ${offered.lenses.join(", ")}`,
-      );
+    offeredLens(offered, lens);
     let query: string;
     let keep: ((rows: Row[]) => Promise<void>) | undefined;
     if (typeof question === "string") {
-      const asked = offered.questions;
-      const found = asked.get(question);
-      if (found === undefined)
-        throw new Error(
-          `no question ${question}; there are ${[...asked.keys()].join(", ")}`,
-        );
-      query = found.text;
+      query = questionText(offered, question);
       const answers = this.#answers;
       if (answers !== undefined) {
         const key = await keyOf(build, offered.layout, {

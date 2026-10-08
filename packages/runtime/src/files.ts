@@ -66,9 +66,16 @@ export function under(folder: string, path: string): boolean {
 }
 
 export class MemoryFiles implements Files {
-  readonly #files = new Map<string, Uint8Array>();
+  #files = new Map<string, Uint8Array>();
 
   constructor(readonly iri: string) {}
+
+  /** The same files, named by another IRI. */
+  at(iri: string): MemoryFiles {
+    const named = new MemoryFiles(iri);
+    named.#files = this.#files;
+    return named;
+  }
 
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     return this.#files.get(relative(this, pathOrIri))?.slice();

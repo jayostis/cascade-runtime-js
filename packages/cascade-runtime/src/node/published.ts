@@ -1,43 +1,31 @@
-import { MemoryFiles, podStated, questions } from "@cascade-runtime/runtime";
-import type { Components } from "@cascade-runtime/runtime/node";
+import { MemoryFiles, questions } from "@cascade-runtime/runtime";
 import { ANSWERS, DESCRIBED } from "../answers.js";
-import { openPodWith } from "../pod.js";
-import { partsOf } from "./resolved.js";
+import { openPodWith, type Parts } from "../pod.js";
 
 export { entryVersion } from "../answers.js";
-
-async function inMemory(
-  iri: string,
-  files: ReadonlyMap<string, Uint8Array>,
-): Promise<MemoryFiles> {
-  const memory = new MemoryFiles(iri);
-  for (const [path, bytes] of files) await memory.write(path, bytes);
-  return memory;
-}
+export { partsOf } from "./resolved.js";
 
 /**
  * The answers a browser keeps for a published pod, `name`, whose files are given, so that a copy of it reads without
- * the engine: `answers.json`, every question under the components' lens, and `pod.json`, computed over the components
- * under `runtime`, the version of the browser entry that copies it.
+ * the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
+ * `runtime`, the version of the browser entry that copies it.
  */
 export async function publishedAnswers(
-  components: Components,
+  parts: Parts,
   name: string,
   pod: ReadonlyMap<string, Uint8Array>,
   runtime: string,
 ): Promise<Map<string, Uint8Array>> {
-  const parts = await partsOf(components);
-  const { address } = await podStated(
-    await inMemory("urn:cascade:published/", pod),
-    parts.layout,
-    parts.newStore(),
-  );
-  const files = await inMemory(address, pod);
+  const files = new MemoryFiles("urn:cascade:published/");
+  for (const [path, bytes] of pod) await files.write(path, bytes);
   const kept = new MemoryFiles("urn:cascade:answers/");
   const opened = await openPodWith(
     {
       ...parts,
-      folder: () => ({ files, name }),
+      folder: (_path, iri) => ({
+        files: iri === undefined ? files : files.at(iri),
+        name,
+      }),
       answers: { runtime, at: () => kept },
     },
     name,

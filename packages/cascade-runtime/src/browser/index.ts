@@ -68,7 +68,8 @@ interface Packed {
     readonly repository: string;
     readonly commit: string;
   }[];
-  readonly layout: readonly Placed[];
+  /** None in a `packed.json` packed before the layout travelled in it. */
+  readonly layout?: readonly Placed[];
 }
 
 async function fetched(path: string): Promise<Response> {
@@ -142,6 +143,10 @@ const reading = once(async (): Promise<Read> => {
     sources.set(followed.repository, source);
     return source;
   };
+  if (packed.layout === undefined)
+    throw new Error(
+      `${new URL("packed.json", COMPONENTS).href} records no layout: it was packed before this runtime, so pack it again`,
+    );
   const vocabulary = carried(config.vocabulary).files as FetchedFiles;
   const layout = Layout.of(
     await readText(vocabulary, LAYOUT_FILE),
@@ -201,11 +206,11 @@ const bridgeCompiled = once((): Promise<CompiledBridge> =>
 );
 
 /**
- * Loads the engine and what needs it, once per page, so that it is ready when a pod first computes: a question whose
- * answer is not kept, an import, an entry. A pod's kept answers are read without it.
+ * Loads the engine and what needs it, and compiles the Bridge, once per page, so that they are ready when a pod first
+ * computes: a question whose answer is not kept, an import, an entry. A pod's kept answers are read without them.
  */
 export async function warm(): Promise<void> {
-  await resolved();
+  await Promise.all([resolved(), bridgeCompiled()]);
 }
 
 /**
@@ -230,6 +235,7 @@ class BrowserPod implements Pod {
   readonly #open: () => Promise<Pod>;
   readonly #databases: readonly IndexedDbFiles[];
   #opened: Pod | undefined;
+  #opening: Promise<Pod> | undefined;
   #closed = false;
 
   constructor(
@@ -246,10 +252,15 @@ class BrowserPod implements Pod {
     this.#kept = kept;
   }
 
-  /** The pod, opened with the engine. */
+  /** The pod, opened with the engine; one closed while it opened is closed by `close`. */
   async #pod(): Promise<Pod> {
-    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
-    this.#opened ??= await this.#open();
+    if (!this.#closed && this.#opened === undefined) {
+      this.#opening = this.#open();
+      const opened = await this.#opening;
+      if (!this.#closed) this.#opened = opened;
+    }
+    if (this.#closed || this.#opened === undefined)
+      throw new Error(`the pod at ${this.address} is closed`);
     return this.#opened;
   }
 
@@ -323,7 +334,9 @@ class BrowserPod implements Pod {
   async close(): Promise<void> {
     this.#closed = true;
     try {
-      await this.#opened?.close();
+      const opened =
+        this.#opened ?? (await this.#opening?.catch(() => undefined));
+      await opened?.close();
     } finally {
       for (const database of this.#databases) database.close();
     }
@@ -338,13 +351,16 @@ function packBeside(folder: URL): string {
 
 /**
  * Copies every file the folder at the URL lists into the database, all or none: from its pack when one is published
- * beside it, otherwise file by file as its `files.json` lists them.
+ * beside it and reads as one, otherwise file by file as its `files.json` lists them.
  */
 async function copied(folder: URL, database: IndexedDbFiles): Promise<void> {
-  const published = new FetchedFiles(folder.href, folder.href, {
+  let published = new FetchedFiles(folder.href, folder.href, {
     pack: packBeside(folder),
   });
-  const paths = await published.list("");
+  const paths = await published.list("").catch(() => {
+    published = new FetchedFiles(folder.href);
+    return published.list("");
+  });
   const files = await Promise.all(
     paths.map(async (path) => {
       const bytes = await published.read(path);
@@ -401,7 +417,7 @@ function deleted(name: string, copying: unknown): Promise<void> {
  * The pod in the browser's IndexedDB database `cascade-pod:<name>`, or, with no name, in memory; `options.title` is
  * used only when the pod is new. A missing or empty database is a new pod, or, with `options.from`, a copy of the pod
  * published in the folder at that URL, from its pack `<folder>.pack.json` when one is published beside it, else as its
- * `files.json` lists it, with the answers published beside it. A copy that fails leaves no database, unless another
+ * `files.json` lists it, with the answers published beside it in place of any kept before. A copy that fails leaves no database, unless another
  * copy filled it meanwhile, which it keeps. Its answers are kept in a database of their own, `cascade-answers:<name>`,
  * with its address, subject and title in `pod.json`. A pod whose `pod.json` is kept opens without the engine, and
  * answers a question by name from its kept answers until it first computes.
@@ -428,6 +444,7 @@ export async function openPod(
       const folder = new URL(from, globalThis.location.href);
       published = answersBeside(folder);
       copying = true;
+      await IndexedDbFiles.delete(ANSWERS_DATABASE + name);
       await copied(folder, database);
       copying = false;
       held = await database.list("");

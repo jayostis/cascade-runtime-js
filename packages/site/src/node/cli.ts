@@ -34,7 +34,11 @@ import {
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import { entryVersion, publishedAnswers } from "cascade-runtime/published";
+import {
+  entryVersion,
+  partsOf,
+  publishedAnswers,
+} from "cascade-runtime/published";
 import {
   type Example,
   type Ingredient,
@@ -240,6 +244,7 @@ async function buildPages(): Promise<number> {
   log(
     `the pods are built from cascade-vocabulary at ${vocabulary.resolved.version}; try/ reads the one the package carries, at ${staged.vocabulary}`,
   );
+  const parts = await partsOf(staged.components);
   const examples: Example[] = [];
   for (const kit of await kitsOf(vocabulary.files)) {
     const name = kit.slice(KIT.length);
@@ -252,7 +257,7 @@ async function buildPages(): Promise<number> {
       if (bytes !== undefined) site.set(path, bytes);
     }
     for (const [path, bytes] of await publishedAnswers(
-      staged.components,
+      parts,
       name,
       podOf(site),
       staged.runtime,
