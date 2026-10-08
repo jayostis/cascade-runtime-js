@@ -424,7 +424,7 @@ const server = createServer(async (request, response) => {
     send(
       response,
       500,
-      await page("Error", html`<pre>${error.message}</pre>`, {
+      await page("Error", html`<pre>${error?.message ?? String(error)}</pre>`, {
         names: [],
       }),
     );

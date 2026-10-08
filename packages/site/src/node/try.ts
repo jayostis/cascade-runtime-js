@@ -23,6 +23,7 @@ const RUNTIME_PACKAGE = fileURLToPath(
 const VIEW = fileURLToPath(
   new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
 );
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SOURCE = fileURLToPath(
   new URL("../../../../demo-hospital/dist/src/", import.meta.url),
 );
@@ -31,15 +32,26 @@ const PAGE_SIDE = `export { useDemoHospitals } from "./web/page.js";
 export { hospitalId } from "./route.js";
 `;
 
-/** The demo hospital's web code, `entry` or a module of the given contents, bundled, as a classic script or a module. */
+/**
+ * The demo hospital's web code, `entry` or a module of the given contents, or a view package's browser build, bundled,
+ * as a classic script or a module. A view package imports the others by name, as the import map serves them.
+ */
 async function bundled(
-  entry: string | { contents: string },
+  entry: string | { contents: string } | { package: string },
   format: "iife" | "esm",
 ): Promise<Uint8Array> {
   const { outputFiles } = await build({
     ...(typeof entry === "string"
       ? { entryPoints: [join(SOURCE, "web", entry)] }
-      : { stdin: { contents: entry.contents, resolveDir: SOURCE } }),
+      : "package" in entry
+        ? {
+            entryPoints: [entry.package],
+            absWorkingDir: HERE,
+            external: Object.keys(VIEW_PACKAGES).filter(
+              (name) => name !== entry.package,
+            ),
+          }
+        : { stdin: { contents: entry.contents, resolveDir: SOURCE } }),
     bundle: true,
     format,
     platform: "browser",
@@ -50,7 +62,7 @@ async function bundled(
   const [output] = outputFiles;
   if (output === undefined)
     throw new Error(
-      `esbuild built nothing of ${typeof entry === "string" ? entry : "the page side"}`,
+      `esbuild built nothing of ${typeof entry === "string" ? entry : "package" in entry ? entry.package : "the page side"}`,
     );
   return output.contents;
 }
@@ -66,20 +78,34 @@ export async function tryFiles(
   version: string,
 ): Promise<Map<string, Uint8Array>> {
   const encoder = new TextEncoder();
-  const [hospitals, app, view, worker, workerPage, { demoPeople }, runtime] =
-    await Promise.all([
-      loadHospitals(),
-      readFile(APP),
-      readFile(VIEW),
-      bundled("worker.js", "iife"),
-      bundled({ contents: PAGE_SIDE }, "esm"),
-      import(pathToFileURL(VIEW).href) as Promise<{
-        demoPeople(demo: unknown): unknown;
-      }>,
-      readFile(RUNTIME_PACKAGE, "utf8").then(
-        (text) => (JSON.parse(text) as { version: string }).version,
+  const [
+    hospitals,
+    app,
+    view,
+    worker,
+    workerPage,
+    { demoPeople },
+    runtime,
+    packages,
+  ] = await Promise.all([
+    loadHospitals(),
+    readFile(APP),
+    readFile(VIEW),
+    bundled("worker.js", "iife"),
+    bundled({ contents: PAGE_SIDE }, "esm"),
+    import(pathToFileURL(VIEW).href) as Promise<{
+      demoPeople(demo: unknown): unknown;
+    }>,
+    readFile(RUNTIME_PACKAGE, "utf8").then(
+      (text) => (JSON.parse(text) as { version: string }).version,
+    ),
+    Promise.all(
+      Object.entries(VIEW_PACKAGES).map(
+        async ([name, file]) =>
+          [file, await bundled({ package: name }, "esm")] as const,
       ),
-    ]);
+    ),
+  ]);
   const files = new Map<string, Uint8Array>([
     ["index.html", encoder.encode(tryPage(samples, { version, runtime }))],
     ["app.js", app],
@@ -88,9 +114,8 @@ export async function tryFiles(
     [SIGNED_IN, encoder.encode(signedInPage())],
     [WORKER, worker],
     [WORKER_PAGE, workerPage],
+    ...packages,
   ]);
-  for (const [name, file] of Object.entries(VIEW_PACKAGES))
-    files.set(file, await readFile(fileURLToPath(import.meta.resolve(name))));
   for (const loaded of hospitals)
     files.set(
       `${WORKER_DATA}${hospitalId(loaded)}.json`,
