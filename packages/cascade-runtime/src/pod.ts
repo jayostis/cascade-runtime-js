@@ -851,7 +851,7 @@ export async function openPodWith(
       throw new Error(`the pod's creation was refused: ${created.refused}`);
     await answers?.describe({ address, subject, title });
     if (folder !== undefined)
-      await parts.tables.opened(address, shipped(references));
+      await parts.tables.opened(address, shipped(references), disk?.name);
     return new OpenPod(parts, core, address, subject, tables, answers);
   }
   const store = parts.newStore();
@@ -896,7 +896,13 @@ export async function openPodWith(
     answers,
     options.adopt === false
       ? undefined
-      : await openedWithTables(parts.tables, references, core, address),
+      : await openedWithTables(
+          parts.tables,
+          references,
+          core,
+          address,
+          disk.name,
+        ),
   );
 }
 
@@ -906,20 +912,24 @@ async function openedWithTables(
   references: References,
   core: CorePod,
   address: string,
+  name: string,
 ): Promise<Opened | undefined> {
   const current = shipped(references);
   const before = await tables.openedWith(address);
   if (before === null) {
-    await tables.opened(address, current);
+    await tables.opened(address, current, name);
     return undefined;
   }
   if (
     before !== undefined &&
     before.length === current.length &&
     before.every((version, index) => version === current[index])
-  )
+  ) {
+    await tables.named(address, name);
     return undefined;
+  }
   const performed = await core.open(references);
-  if (performed.refused === undefined) await tables.opened(address, current);
+  if (performed.refused === undefined)
+    await tables.opened(address, current, name);
   return { ...performed, unheld: performed.unheld ?? [] };
 }

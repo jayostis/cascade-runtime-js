@@ -534,6 +534,31 @@ try {
       for (const name of ["alex-rivera", pod])
         assert.ok(html.includes(`/pods/${name}/`), `the pods omit ${name}`);
     });
+  await behaviour(
+    "the reference tables are listed under the pods, and Check now says what it did",
+    async () => {
+      const html = await served(server, "/pods/alex-rivera/");
+      const aside = html.slice(
+        html.indexOf("<aside>"),
+        html.indexOf("</aside>"),
+      );
+      assert.ok(
+        readable(aside).indexOf("Reference tables") >
+          readable(aside).indexOf("Alex Rivera"),
+        "no reference tables under the pods",
+      );
+      assert.match(aside, /<form [^>]*action="\/tables\/check"/);
+      const origin = new URL(server.address).origin;
+      const checked = await fetch(new URL("/tables/check", origin), {
+        method: "POST",
+        redirect: "manual",
+        headers: { origin },
+      });
+      assert.equal(checked.status, 303);
+      const page = await served(server, checked.headers.get("location"));
+      assert.match(page, /<p class="note" role="status">[^<]+<\/p>/);
+    },
+  );
 } finally {
   await server.stop();
 }

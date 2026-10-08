@@ -8,6 +8,8 @@
 // names; a `#…` link is the browser's, which opens and closes the boxes. Each pod opened stays open.
 import { render as renderInto } from "preact";
 import {
+  appTables,
+  checkTables,
   connect,
   ConnectionFailure,
   deletePod,
@@ -22,6 +24,7 @@ import {
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
+  checkedNote,
   closing,
   connectionDialog,
   didNote,
@@ -32,6 +35,7 @@ import {
   layout,
   newPodDialog,
   noPods,
+  noTables,
   patientName,
   personName,
   podPage,
@@ -39,6 +43,8 @@ import {
   QUESTIONS,
   slug,
   STYLE,
+  tableId,
+  tablePage,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -65,6 +71,9 @@ const MENU = {
 };
 
 const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
+const tableHref = (series) =>
+  `?table=${encodeURIComponent(tableId(series.iri))}`;
+const CHECK = "check-tables";
 
 const hospitalsReady = useDemoHospitals(
   new URL("demo-hospital-worker.js", location.href),
@@ -76,11 +85,14 @@ hospitalsReady.catch(() => undefined);
  * `answers` and the hospital a record was just brought in `from`, or another page's `title` and `body`; the
  * `connection` under way or done, with its row, step, requests answered, once pulled the files to import, and what its
  * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; what the page
- * is doing (`doing`), in `data-state` on the body, and while it is busy, what it says it is doing (`saying`).
+ * is doing (`doing`), in `data-state` on the body, and while it is busy, what it says it is doing (`saying`); the
+ * reference tables this browser holds (`tables`), read once the engine is ready, and the one shown (`table`), by IRI.
  */
 const state = {
   pods: [],
   people: [],
+  tables: [],
+  table: undefined,
   current: undefined,
   page: undefined,
   connection: undefined,
@@ -179,6 +191,7 @@ function pageShown() {
           `Sign in at ${hospitalName(hospital.name)}`,
         ),
       findHospital: `${podHref(current)}&hospitals`,
+      unheld: pod?.opened?.unheld,
     }),
   };
 }
@@ -199,6 +212,12 @@ function redraw() {
       home: "../",
       menu: MENU,
       note,
+      tables: {
+        series: state.tables,
+        current: state.table,
+        href: tableHref,
+        check: CHECK,
+      },
       dialog: newPodDialog({
         people,
         pods,
@@ -275,6 +294,60 @@ function showHospitals(text) {
   );
 }
 
+/** Reads the reference tables this browser holds into `state.tables`. */
+async function readTables() {
+  state.tables = await (await appTables()).held();
+}
+
+/** The reference table `id` names, or the first with none, searched for `text`. */
+async function showTable(id, text) {
+  const tables = await appTables();
+  await readTables();
+  state.current = undefined;
+  const series =
+    id === ""
+      ? state.tables[0]
+      : state.tables.find((each) => tableId(each.iri) === id);
+  if (series === undefined)
+    return id === ""
+      ? render("Reference tables", noTables())
+      : render(
+          "Not found",
+          html`<h1>Not found</h1>
+<p>This browser holds no reference table ${id}.</p>`,
+        );
+  state.table = series.iri;
+  render(
+    series.label,
+    tablePage({
+      series,
+      searched: await tables.search(series.iri, text),
+      text,
+      search: tableHref(series),
+      uses: await tables.uses(),
+      pods: state.pods,
+      href: podHref,
+      now: Date.now(),
+    }),
+  );
+}
+
+/** Check now: reads every feed past any cache, opens the pods again with what it kept, and says what it did. */
+async function checkNow() {
+  const checked = await checkTables();
+  if (checked.some(({ kept }) => kept.length > 0)) {
+    const opened = [...open.values()];
+    open.clear();
+    pod = undefined;
+    await Promise.allSettled(opened.map(async (each) => (await each).close()));
+  }
+  await readTables();
+  const note = checkedNote(checked, state.tables);
+  await go("?table=");
+  state.note = note;
+  redraw();
+}
+
 /** Draws the page the address names: a pod's page, its hospitals, or no pod; the samples copied in on a first visit. */
 async function route() {
   routed = location.search;
@@ -287,6 +360,9 @@ async function route() {
     rest.delete("reset");
     replaceAddress(String(rest) === "" ? location.pathname : `?${rest}`);
   }
+  state.table = undefined;
+  if (query.has("table"))
+    return showTable(query.get("table") ?? "", query.get("q") ?? "");
   const asked = query.get("pod");
   state.current = asked ?? undefined;
   if (asked === null && state.pods.length === 0) {
@@ -605,6 +681,7 @@ document.addEventListener("submit", (event) => {
     busy(() => make(String(fields.get("person") ?? "")), saying);
   else if (action === MENU.deleteAll) busy(deleteEverything, saying);
   else if (action === MENU.resetAll) busy(resetEverything, saying);
+  else if (action === CHECK) busy(checkNow, saying);
 });
 window.addEventListener("popstate", () => {
   if (location.search !== routed) busy(route, opening(location.search));
@@ -615,8 +692,11 @@ busy(async () => {
   await route();
 }, "Opening…").then(() =>
   warm().then(
-    () => {
+    async () => {
       document.body.dataset.engine = "ready";
+      await readTables().catch(() => undefined);
+      if (state.page !== undefined) redraw();
+      document.body.dataset.tables = "ready";
     },
     () => undefined,
   ),

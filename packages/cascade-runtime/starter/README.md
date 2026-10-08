@@ -79,7 +79,9 @@ script goes after `--`, or npm keeps it for itself.
 
 - `server.mjs`: the app, on `node:http`, with no build step: it answers
   requests, reads the pods, and renders each page to HTML with
-  `preact-render-to-string`.
+  `preact-render-to-string`. Under the pods, the sidebar lists the reference
+  tables the pods are matched with, kept in `pods/.tables/`; `/tables/<id>/`
+  shows one with a search, and Check now reads their feeds again.
 - `summary.mjs`: what the pages show, as [Preact](https://preactjs.com)
   components written with [`htm`](https://github.com/developit/htm), plain
   functions from a pod's answers to the page's elements, so a browser can

@@ -90,6 +90,13 @@ nothing is thrown. Opening a pod after its tables changed gives it them:
 names that the app does not hold, which it is matched without. A pod in memory
 gets the package's starter copies.
 
+What a page shows of the tables, the same `Tables` answers, in Node and in a
+browser (`appTables()`), as plain values: `held()`, each series with its
+source, licence, credit, versions and how fresh its feed is; `uses()`, the
+pods last opened with each version, by name; `search(series, text)`, the codes
+of its current version that are `text` or whose name holds it, each with what
+`about(codes)` says of it (its name and status) and the codes it maps to.
+
 In a browser, the same import, served with the package's `components/` beside
 its `dist/`, runs every call. A pod's name names
 its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts

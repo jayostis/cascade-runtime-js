@@ -440,11 +440,12 @@ export function tile(section, rows) {
  * - `from`: the hospital a record was just brought in from, by its name, or undefined;
  * - `signIn(hospital)`: a button that signs the pod's person in at one of `person`'s hospitals;
  * - `findHospital`: the address of the page that finds a hospital;
- * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined.
+ * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined;
+ * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them.
  */
 export function podPage(
   answers,
-  { pod, person, from, signIn, findHospital, connection },
+  { pod, person, from, signIn, findHospital, connection, unheld = [] },
 ) {
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
@@ -461,6 +462,7 @@ export function podPage(
 <p class="lead">${lead}</p>
 ${places.length > 0 && html`<ul class="chips">${places.map((place) => html`<li>${place}</li>`)}</ul>`}
 ${from !== undefined && html`<p class="note">Brought in the record from ${hospitalName(from)}.</p>`}
+${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.length === 1 ? "a reference table version" : `${unheld.length} reference table versions`} this app does not hold, and is matched without ${unheld.length === 1 ? "it" : "them"}.</p>`}
 ${sentences.length > 0 && html`<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => html`<li>${sentence}</li>`)}</ul></div>`}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
 ${tiles.map(({ dialog }) => dialog)}
@@ -688,7 +690,8 @@ export function didNote(query, kits) {
  * bar with its menus, the pods by their people's names, `note` above `body` when given, and `dialog` (the new-pod
  * box). `pods` are the pods' names, `current` the one shown, `href(pod)` a pod's address and `home` the title bar's;
  * `menu` is what the menus need, as `{ deleteAll, resetAll, about: { name, version, runtime, code } }`: the addresses
- * the two File items post to, and what the About box says.
+ * the two File items post to, and what the About box says. `tables`, when given, puts the reference tables under the
+ * pods, as `tablesNav` takes them.
  */
 export function layout({
   body,
@@ -699,6 +702,7 @@ export function layout({
   dialog,
   menu,
   note,
+  tables,
 }) {
   const { bar, boxes } = menus(menu);
   return html`<${Fragment}>
@@ -709,6 +713,7 @@ export function layout({
 ${pods.map((pod) => html`<li><a href=${href(pod)} aria-current=${pod === current ? "page" : undefined}>${personName(pod)}</a></li>`)}
 </ul></nav>
 <a class="button wide" href="#new-pod">+ New pod</a>
+${tables !== undefined && tablesNav(tables)}
 </aside>
 <main>
 ${note !== undefined && html`<p class="note" role="status">${note}</p>`}
@@ -795,6 +800,186 @@ ${
 <form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by name or place" aria-label="Search by name or place" /><button>Search</button></form>
 ${cards.length === 0 ? html`<p class="muted">No hospital matches.</p>` : cards}
 <p><a href=${back}>Back to ${who}</a></p>`;
+}
+
+/** A reference table's name in an address: its `urn:uuid:` without the prefix. */
+export function tableId(series) {
+  return series.replace(/^urn:uuid:/, "");
+}
+
+/** The licences tables are published under, by their IRI, as a person names them. */
+const LICENCES = {
+  "http://creativecommons.org/publicdomain/zero/1.0/": "CC0 1.0",
+  "http://creativecommons.org/publicdomain/mark/1.0/": "Public domain",
+};
+
+/** How long before `now` the time `at` was: `just now`, `5 minutes ago`, `2 hours ago`, `3 days ago`. */
+export function ago(at, now = Date.now()) {
+  const minutes = Math.floor((now - Date.parse(at)) / 60_000);
+  if (Number.isNaN(minutes)) return "at an unknown time";
+  const said = (count, unit) => `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return said(minutes, "minute");
+  if (minutes < 60 * 24) return said(Math.floor(minutes / 60), "hour");
+  return said(Math.floor(minutes / (60 * 24)), "day");
+}
+
+/**
+ * How fresh a series is, at `now`, in sentences: when the publisher's watcher last checked its source and whether it
+ * found a new release, when this app last read the feed, and when the feed last changed.
+ */
+export function freshness(series, now = Date.now()) {
+  const { watched, checked, modified } = series;
+  return [
+    watched === undefined
+      ? "The feed does not say when its watcher last checked the publisher."
+      : `The watcher checked the publisher ${ago(watched.at, now)}: ${watched.found === "new" ? "a new release" : "nothing new"}.`,
+    checked === undefined
+      ? "This app has not read the feed yet."
+      : `This app last read the feed ${ago(checked, now)}.`,
+    modified !== undefined && `The feed last changed on ${day(modified)}.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** A version as a person reads it: `version 2, Oct 8, 2026`. */
+function versionName({ label, issued }) {
+  return [
+    label === undefined ? "an unlabelled version" : `version ${label}`,
+    issued !== undefined && day(issued),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
+ * The sidebar's reference tables, under the pods: `series` the series the app holds, as `held()` gives them, each a
+ * link to `href(series)`, the one whose IRI is `current` marked; and a Check now button posting to `check`.
+ */
+export function tablesNav({ series, current, href, check }) {
+  return html`<nav class="tables"><h2>Reference tables</h2>
+${
+  series.length === 0
+    ? html`<p class="muted">None yet.</p>`
+    : html`<ul>
+${series.map((each) => html`<li><a href=${href(each)} aria-current=${each.iri === current ? "page" : undefined}>${each.label}</a></li>`)}
+</ul>`
+}
+${postButton(check, {}, "Check now", "quiet wide", "Checking the feeds…")}
+</nav>`;
+}
+
+/** A code, as written: the end of its IRI. */
+function codeShown(code) {
+  return code.replace(/^.*[/#]/, "");
+}
+
+/** What a found code's `about` says of its status: `Retired`, `Retired, replaced by 141`, or nothing. */
+function statusOf(about) {
+  const status = about?.status;
+  if (status?.deprecated !== true) return "";
+  return status.replacedBy.length === 0
+    ? "Retired"
+    : `Retired, replaced by ${listed(status.replacedBy.map(codeShown))}`;
+}
+
+/**
+ * A reference table's page: `series` as `held()` gives it, its source, licence, version and how fresh it is at `now`;
+ * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer); and each
+ * version held with the pods among `pods` that `uses` (`uses()`'s answer) says were opened with it, each a link to
+ * `href(pod)`.
+ */
+export function tablePage({
+  series,
+  searched,
+  text,
+  search,
+  uses,
+  pods,
+  href,
+  now,
+}) {
+  const { found, total } = searched;
+  const maps = found.some((each) => each.mapsTo.length > 0);
+  const named = ({ notation, about }) =>
+    about?.name === undefined ? notation : `${notation} ${about.name.label}`;
+  const rows = found.map(
+    ({ notation, about, mapsTo }) =>
+      html`<tr><td>${notation}</td><td>${about?.name?.label}${
+        (about?.name?.altLabels.length ?? 0) > 0 &&
+        html` <span class="muted">${about.name.altLabels.join("; ")}</span>`
+      }</td><td>${statusOf(about)}</td>${
+        maps && html`<td>${mapsTo.map(named).join(", ")}</td>`
+      }</tr>`,
+  );
+  const using = (version) =>
+    (uses[version.iri] ?? []).filter((pod) => pods.includes(pod));
+  return html`<h1>${series.label}</h1>
+<p class="lead">Using ${versionName(series.current)}</p>
+<div class="card"><dl class="facts">
+<dt>Source</dt><dd>${series.publisher === undefined ? "" : html`<a href=${series.publisher}>${series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1")}</a>`}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
+<dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : html`<a href=${series.licence}>${LICENCES[series.licence] ?? series.licence}</a>`}</dd>
+<dt>Fresh</dt><dd>${freshness(series, now)}</dd>
+</dl></div>
+<form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by code or name" aria-label="Search by code or name" /><button>Search</button></form>
+${
+  total === 0
+    ? html`<p class="muted">No code matches.</p>`
+    : html`<p class="muted">${total > found.length ? `The first ${found.length} of ${total} codes.` : `${total} ${total === 1 ? "code" : "codes"}.`}</p>
+<div class="scroll"><table class="codes">
+<thead><tr><th>Code</th><th>Name</th><th>Status</th>${maps && html`<th>Maps to</th>`}</tr></thead>
+<tbody>
+${rows}
+</tbody>
+</table></div>`
+}
+<div class="card versions"><h2>Which pods use which version</h2><ul>
+${series.versions.map((version) => {
+  const pods = using(version);
+  return html`<li><strong>${versionName(version)}</strong>${version.iri === series.current.iri && html` <span class="tag">current</span>`}: ${
+    pods.length === 0
+      ? html`<span class="muted">no pod</span>`
+      : pods.map(
+          (pod, index) =>
+            html`${index > 0 && ", "}<a href=${href(pod)}>${personName(pod)}</a>`,
+        )
+  }</li>`;
+})}
+</ul></div>`;
+}
+
+/** The page of reference tables when the app holds none. */
+export function noTables() {
+  return html`<h1>No reference tables yet</h1>
+<p class="lead">Reference tables name codes and join records that say the same thing differently. This app keeps the ones its feeds publish; Check now reads them.</p>`;
+}
+
+/**
+ * What a check did, as one note: `checked` its answer, `held` what the app holds after it, as `held()` gives it, to
+ * name each version kept.
+ */
+export function checkedNote(checked, held) {
+  const kept = checked.flatMap((each) => each.kept);
+  const named = (version) => {
+    const series = held.find((each) =>
+      each.versions.some((one) => one.iri === version),
+    );
+    const found = series?.versions.find((one) => one.iri === version);
+    return series === undefined
+      ? "a version"
+      : `${series.label}, ${versionName(found)}`;
+  };
+  const said = [
+    kept.length > 0 && `Kept ${listed(kept.map(named))}.`,
+    ...checked.flatMap(({ later }) =>
+      later === undefined ? [] : [`Not read now, tried again later: ${later}.`],
+    ),
+    ...checked.flatMap(({ refused }) =>
+      refused.map(({ reason }) => `Refused a version: ${reason}.`),
+    ),
+  ].filter(Boolean);
+  return said.length === 0 ? "Checked the feeds: nothing new." : said.join(" ");
 }
 
 const BRINGING = "Bringing the record in…";
@@ -899,6 +1084,15 @@ nav ul { list-style: none; padding: 0; margin: 0 0 1rem; }
 nav a { display: block; padding: 0.4rem 0.6rem; border-radius: 6px; color: var(--text); text-decoration: none; }
 nav a:hover { background: var(--soft); }
 nav a[aria-current] { background: var(--tint); color: var(--accent); font-weight: 600; }
+nav.tables { margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+nav.tables p { margin: 0 0 0.75rem 0.6rem; }
+nav.tables form { display: block; }
+nav.tables button { width: 100%; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; margin: 0; }
+.facts dt { color: var(--muted); font-size: 0.9rem; }
+.facts dd { margin: 0; }
+.versions ul { margin: 0; padding-left: 1.2rem; }
+.versions li { margin: 0.3rem 0; }
 h1 { font-size: 1.75rem; margin: 0 0 0.2rem; }
 h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
 a { color: var(--accent); }

@@ -15,6 +15,14 @@ export type {
   Row,
 } from "./pod.js";
 export type { Checked, Tables } from "./tables.js";
+export type {
+  About,
+  Found,
+  HeldSeries,
+  HeldVersion,
+  Searched,
+  Watched,
+} from "./tables.js";
 export * from "./connect/index.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
 
