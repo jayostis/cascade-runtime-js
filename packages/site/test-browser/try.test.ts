@@ -1040,3 +1040,75 @@ ${shots.join("\n")}`);
     await context.close();
   }
 });
+
+test("try/ ships the starter tables its published answers were computed with: after a check that finds nothing new, a visit draws a copied pod from its kept answers, the engine held back", async () => {
+  const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
+  const [feedUrl] = config.tables.feeds;
+  assert.ok(feedUrl);
+  const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+  const shipped = (
+    await new OxigraphStore().parse(
+      await readFile(
+        join(
+          PAGES,
+          "try",
+          "cascade-runtime",
+          "components",
+          "tables",
+          "references.ttl",
+        ),
+      ),
+      "urn:test:starter/",
+    )
+  ).filter(([, predicate]) => predicate.value === `${REC}shipsWith`);
+  assert.ok(shipped.length > 0, "try/ ships no starter tables");
+  const feed = new TextDecoder().decode(
+    ntriples(
+      shipped.flatMap(([series, , version]) => [
+        [
+          series,
+          iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
+          iri(`${REC}ReferenceSeries`),
+        ],
+        [series, iri(`${DCAT}hasCurrentVersion`), version],
+      ]),
+    ),
+  );
+  const context = await browser.newContext();
+  try {
+    await context.route(feedUrl, (route) =>
+      route.fulfill({ body: feed, contentType: "text/turtle" }),
+    );
+    await context.route(new URL("checked.json", feedUrl).href, (route) =>
+      route.fulfill({ status: 404 }),
+    );
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 60_000,
+    });
+    const checked = await page.evaluate(async () => {
+      const runtime = (await import("cascade-runtime" as string)) as {
+        checkTables(): Promise<
+          { kept: string[]; later?: string; refused: unknown[] }[]
+        >;
+      };
+      return runtime.checkTables();
+    });
+    assert.deepEqual(
+      checked.map(({ kept, later, refused }) => ({ kept, later, refused })),
+      [{ kept: [], later: undefined, refused: [] }],
+    );
+
+    await page.route(ENGINE, (route) => route.abort());
+    await page.goto(`${served.url}try/index.html?pod=${ALEX}`);
+    await settled(page, 30_000);
+    assert.equal(await page.textContent("main h1"), "Alex Rivera");
+    assert.ok((await tiles(page)).size > 0);
+    assert.equal(await page.getAttribute("body", "data-engine"), null);
+    await page.close();
+  } finally {
+    await context.close();
+  }
+});

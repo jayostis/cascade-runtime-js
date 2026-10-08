@@ -78,6 +78,8 @@ const ANSWERS_DATABASE = "cascade-answers:";
 /** What names the tables' IndexedDB database, after the app's name. */
 const TABLES_DATABASE = "cascade-tables";
 const COMPONENTS = new URL("../../components/", import.meta.url);
+/** The folder of `components/` holding the package's starter copies of the feeds' series. */
+const STARTER_TABLES = "tables";
 
 interface Packed {
   readonly components: readonly {
@@ -237,6 +239,11 @@ async function tablesOf(
     vocabulary,
     newStore: () => new OxigraphStore(),
     preference: config.tables.preference,
+    starter: new FetchedFiles(
+      new URL(`${STARTER_TABLES}/`, COMPONENTS).href,
+      "urn:cascade:starter-tables/",
+      { pack: new URL(`${STARTER_TABLES}.json`, COMPONENTS).href },
+    ),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
   });
 }

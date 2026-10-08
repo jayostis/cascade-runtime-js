@@ -238,6 +238,7 @@ async function packStarterTables(
       );
     log(`${feed}: ${kept.length} starter copies`);
   }
+  await writeListed(folder);
 }
 
 /** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`. */

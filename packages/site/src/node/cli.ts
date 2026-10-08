@@ -66,6 +66,8 @@ const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
 const KIT = "conformance/";
 const STAGE = join(ROOT, "build", "package");
+/** The package's starter copies of the feeds' series, which try/'s published answers are computed with. */
+const STARTER_TABLES = "components/tables";
 /** The browser entry in the staged package, whose bytes are in its version. */
 const BROWSER_ENTRY = "dist/browser/index.js";
 const PAGES = join(ROOT, "build", "pages");
@@ -220,6 +222,7 @@ async function stagedPackage(): Promise<{
     const tree = `components/${repositoryName(component)}/${component.commit}`;
     paths.push(`${tree}.json`, ...(await staged.list(tree)));
   }
+  paths.push(`${STARTER_TABLES}.json`, ...(await staged.list(STARTER_TABLES)));
   const files = new Map<string, Uint8Array>();
   for (const path of paths) {
     const bytes = await staged.read(path);
@@ -244,7 +247,9 @@ async function buildPages(): Promise<number> {
   log(
     `the pods are built from cascade-vocabulary at ${vocabulary.resolved.version}; try/ reads the one the package carries, at ${staged.vocabulary}`,
   );
-  const parts = await partsOf(staged.components);
+  const parts = await partsOf(staged.components, {
+    starter: new FolderFiles(join(STAGE, STARTER_TABLES)),
+  });
   const examples: Example[] = [];
   for (const kit of await kitsOf(vocabulary.files)) {
     const name = kit.slice(KIT.length);
