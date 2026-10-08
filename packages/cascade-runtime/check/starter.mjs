@@ -110,8 +110,11 @@ async function asked(question, pod) {
     .map((line) => JSON.parse(line));
 }
 
+/** The pods' folders, without `.answers`, which keeps their answers. */
 async function podsOf() {
-  return (await readdir(join(app, "pods"))).sort();
+  return (await readdir(join(app, "pods")))
+    .filter((name) => !name.startsWith("."))
+    .sort();
 }
 
 function multiset(rows) {
@@ -935,6 +938,7 @@ if (refused !== undefined) throw new Error(refused);
     assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
     assert.deepEqual(await podsOf(), KITS);
+    assert.equal(existsSync(join(app, "pods", ".answers")), false);
     assert.equal((await asked(IMPORTS, "alex-rivera")).length, fresh.imports);
     assert.deepEqual(
       multiset(await asked(JUDGMENTS, "alex-rivera")),
