@@ -16,12 +16,15 @@ export function watched(page: Page): Page {
   return page;
 }
 
-/** Waits for try/ to finish its step; a page that reports an error, or never finishes, fails with what it said. */
-export async function settled(page: Page): Promise<void> {
+/**
+ * Waits for try/ to finish its step, `timeout` ms at most; a page that reports an error, or never finishes, fails with
+ * what it said.
+ */
+export async function settled(page: Page, timeout = 120_000): Promise<void> {
   try {
     await page.waitForSelector(
       'body[data-state="ready"], body[data-state="error"]',
-      { timeout: 120_000 },
+      { timeout },
     );
   } catch (error) {
     throw new Error(

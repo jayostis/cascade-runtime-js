@@ -325,7 +325,8 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       });
     });
     await page.click("#connection button:has-text('Bring it into')");
-    await settled(page);
+    // A bring takes 70 s and more in Chromium on CI (#131, step 6 measures it): the second one passed 120 s.
+    await settled(page, 300_000);
     assert.equal(
       await page.textContent("main .note"),
       `Brought in the record from ${view.hospitalName(hospital)}.`,
