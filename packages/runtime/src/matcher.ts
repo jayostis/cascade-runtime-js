@@ -6,7 +6,7 @@ import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
 import type { References } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
-import { type Dataset, Union } from "./store.js";
+import { type Dataset, type Row, Union } from "./store.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -100,6 +100,25 @@ export async function matcherRules(
   return found.sort((a, b) =>
     a.rule.justification < b.rule.justification ? -1 : 1,
   );
+}
+
+/** The origins whose rows join each ordered pair under the rule, each one of the origins it may cite: "" for a rule that reads no table (M5). */
+export function joined(
+  rule: MatcherRule,
+  rows: readonly Row[],
+  origins: ReadonlySet<string>,
+): Map<string, Set<string>> {
+  const pairs = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const key = pair(row.get("record")?.value, row.get("other")?.value);
+    const origin = row.get("origin")?.value ?? "";
+    if (!origins.has(origin))
+      throw new Refusal(
+        `the rule for ${rule.justification} joins ${key} by ${origin === "" ? "no table" : origin}, not by a table version it reads`,
+      );
+    pairs.set(key, new Set([...(pairs.get(key) ?? []), origin]));
+  }
+  return pairs;
 }
 
 async function column(
@@ -291,12 +310,17 @@ class Matcher {
       new Graph(await references.rows(rulesVersion)),
       context.vocabulary,
     );
-    const kinds = new Set(found.flatMap(({ rule: { kind } }) => kind ?? []));
-    const versions = [...kinds]
-      .flatMap((kind) => references.seriesOfKind(kind))
-      .map(current);
+    const loaded = new Map(
+      found.flatMap(({ rule: { kind } }) =>
+        kind === undefined
+          ? []
+          : [[kind, new Set(references.seriesOfKind(kind).map(current))]],
+      ),
+    );
     const pod = await read(union, references);
-    for (const version of new Set(versions)) {
+    for (const version of new Set(
+      [...loaded.values()].flatMap((versions) => [...versions]),
+    )) {
       await union.add(await references.rows(version), version);
       await union.add(
         [
@@ -309,14 +333,16 @@ class Matcher {
     const matched = new Map<string, Map<string, Set<string>>>();
     for (const { rule, text } of found) {
       const { rows } = await union.select(text);
-      const pairs = new Map<string, Set<string>>();
-      for (const row of rows) {
-        const key = pair(row.get("record")?.value, row.get("other")?.value);
-        const origins = pairs.get(key) ?? new Set<string>();
-        origins.add(row.get("origin")?.value ?? "");
-        pairs.set(key, origins);
-      }
-      matched.set(rule.justification, pairs);
+      matched.set(
+        rule.justification,
+        joined(
+          rule,
+          rows,
+          rule.kind === undefined
+            ? new Set([""])
+            : (loaded.get(rule.kind) ?? new Set()),
+        ),
+      );
     }
     return new Matcher(
       context,
@@ -406,15 +432,16 @@ class Matcher {
     const compared = records.filter((record) => !taken.includes(record));
     for (const record of taken) {
       for (const rule of this.rules) {
-        const origins = new Set(
-          compared.flatMap((other) => [...this.origins(rule, record, other)]),
-        );
-        for (const origin of [...origins].sort()) {
-          const matched = compared.filter((other) =>
-            this.origins(rule, record, other).has(origin),
-          );
-          await this.same(rule, origin, [record, ...matched]);
+        const byOrigin = new Map<string, SubjectRecord[]>();
+        for (const other of compared) {
+          for (const origin of this.origins(rule, record, other))
+            byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), other]);
         }
+        for (const origin of [...byOrigin.keys()].sort())
+          await this.same(rule, origin, [
+            record,
+            ...(byOrigin.get(origin) ?? []),
+          ]);
       }
       compared.push(record);
     }
@@ -432,16 +459,17 @@ class Matcher {
         throw new Refusal(
           `the rule list has no rule for ${judged.justification}, which ${judged.name} gives`,
         );
-      const used = judged.used.find(
-        (thing) =>
-          rule.kind !== undefined &&
-          this.references.kindOf(this.references.seriesOf(thing) ?? "") ===
-            rule.kind,
-      );
-      const origin =
-        used === undefined
-          ? ""
-          : this.current(this.references.seriesOf(used) ?? "");
+      const series =
+        rule.kind === undefined
+          ? undefined
+          : judged.used
+              .map((thing) => this.references.seriesOf(thing))
+              .find(
+                (found) =>
+                  found !== undefined &&
+                  this.references.kindOf(found) === rule.kind,
+              );
+      const origin = series === undefined ? "" : this.current(series);
       const members = judged.members.flatMap(
         (member) => this.pod.theirs.get(member) ?? [],
       );
