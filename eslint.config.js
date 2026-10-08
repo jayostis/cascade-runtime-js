@@ -12,13 +12,11 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         document: "readonly",
-        DOMParser: "readonly",
         fetch: "readonly",
         FormData: "readonly",
         history: "readonly",
         indexedDB: "readonly",
         location: "readonly",
-        requestAnimationFrame: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",
         window: "readonly",
@@ -83,9 +81,9 @@ export default tseslint.config(
         "error",
         {
           selector:
-            "ImportDeclaration[source.value!=/^(preact|htm|preact-render-to-string)$/], ImportExpression",
+            "ImportDeclaration[source.value!=/^(preact|preact\\/hooks|htm|preact-render-to-string)$/], ImportExpression",
           message:
-            "The view runs in a browser too: it imports only preact, htm and preact-render-to-string.",
+            "The view runs in a browser too: it imports only preact, preact/hooks, htm and preact-render-to-string.",
         },
       ],
     },

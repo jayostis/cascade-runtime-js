@@ -7,8 +7,8 @@ export const SUMMARY = "summary.js";
 /** The packages the view and the app import, each beside the page as one `.js` module, by the name they import. */
 export const VIEW_PACKAGES = {
   preact: "preact.js",
+  "preact/hooks": "preact-hooks.js",
   htm: "htm.js",
-  "preact-render-to-string": "preact-render-to-string.js",
 } as const;
 /** The demo hospitals' worker, its page side and its data, beside the page, so the worker's scope is the page's folder. */
 export const WORKER = "demo-hospital-worker.js";

@@ -228,7 +228,7 @@ test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads
   );
 });
 
-test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on", async () => {
+test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on, a box's filter kept as each record comes in", async () => {
   const { person, patients, has } = joined;
   const page = watched(await profile.newPage());
   const said: string[] = [];
@@ -289,6 +289,9 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
   await closed.close();
   assert.match(await failed(), /^Not connected: .*closed/);
 
+  /** A box over the pod's page, by its address, and the text typed into its filter after the first record came in. */
+  let box = "";
+  let filter = "";
   for (const hospital of [north, south]) {
     const allowed = await signIn(hospital);
     await page.evaluate(() => {
@@ -314,7 +317,25 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       `Brought in the record from ${view.hospitalName(hospital)}.`,
     );
     assert.equal(await page.$("#connection"), null, "the box is still there");
+    if (hospital === north) {
+      box = (await page.getAttribute(".tiles .tile", "href")) ?? "";
+      await page.click(`.tiles .tile[href="${box}"]`);
+      filter = (await page.textContent(`${box} tbody td`)) ?? "";
+      await page.fill(`${box} .filter`, filter);
+      await page.mouse.click(5, 5);
+    }
   }
+
+  assert.equal(await page.inputValue(`${box} .filter`), filter);
+  const rows = await page.$$eval(`${box} tbody tr`, (shown) =>
+    shown.map((row) => [(row as HTMLElement).hidden, row.textContent ?? ""]),
+  );
+  for (const [hidden, text] of rows)
+    assert.equal(
+      hidden,
+      !String(text).toLowerCase().includes(filter.toLowerCase()),
+      `the filter did not survive the import: ${String(text)}`,
+    );
 
   const noticed = await texts(page, ".noticed li");
   assert.deepEqual(noticed, joined.noticed);

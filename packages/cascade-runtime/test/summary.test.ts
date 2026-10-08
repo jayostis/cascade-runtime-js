@@ -291,7 +291,7 @@ test("Escape closes an open menu and follows the open box's own close link, or w
       querySelector: () => close ?? null,
       querySelectorAll: () => menus.filter(({ open }) => open),
     };
-    view.sortAndFilter(page);
+    view.closing(page);
     const fire = (type: string, event: object) => {
       for (const listener of on[type] ?? []) listener(event);
     };

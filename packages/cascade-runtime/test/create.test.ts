@@ -64,11 +64,14 @@ test("given a folder, it makes the project and names it, with the view's package
   ) as { name: string; dependencies: Record<string, string> };
   assert.equal(manifest.name, "my-app");
   assert.equal(manifest.dependencies["cascade-runtime"], ADDRESS);
-  for (const tested of ["../../package.json", "../../../site/package.json"]) {
+  for (const [tested, names] of [
+    ["../../package.json", ["preact", "htm", "preact-render-to-string"]],
+    ["../../../site/package.json", ["preact", "htm"]],
+  ] as const) {
     const { devDependencies } = JSON.parse(
       await readFile(new URL(tested, import.meta.url), "utf8"),
     ) as { devDependencies: Record<string, string> };
-    for (const name of ["preact", "htm", "preact-render-to-string"])
+    for (const name of names)
       assert.equal(manifest.dependencies[name], devDependencies[name], name);
   }
   const ignored = (await readFile(join(folder, ".gitignore"), "utf8")).split(
