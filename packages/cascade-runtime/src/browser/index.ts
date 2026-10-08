@@ -526,8 +526,7 @@ export async function openPod(
       published === undefined
         ? undefined
         : await new Answers(kept, read.runtime).described();
-    if (copy !== undefined)
-      await read.tables.opened(copy.address, await read.tables.current());
+    if (copy !== undefined) await read.tables.opened(copy.address, null);
     const open = async () =>
       openPodWith(
         {

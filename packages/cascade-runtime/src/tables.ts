@@ -55,7 +55,7 @@ interface Held {
   /** The version of each held series a pod opened now is given, sorted. */
   readonly current: readonly string[];
   /** The versions each pod was last opened with, the rule list's among them, by the pod's naming base. */
-  readonly pods: Record<string, readonly string[]>;
+  readonly pods: Record<string, readonly string[] | null>;
 }
 
 const NOTHING_HELD: Held = { feeds: {}, current: [], pods: {} };
@@ -227,13 +227,13 @@ export class Tables {
     return (await this.#held()).current;
   }
 
-  /** The versions the pod was last opened with; none if it never was. */
-  async openedWith(pod: string): Promise<readonly string[] | undefined> {
+  /** The versions the pod was last opened with; none if it never was, and null if it is to be taken as it is. */
+  async openedWith(pod: string): Promise<readonly string[] | null | undefined> {
     return (await this.#held()).pods[pod];
   }
 
-  /** Records that the pod was opened with the versions. */
-  opened(pod: string, versions: readonly string[]): Promise<void> {
+  /** Records that the pod was opened with the versions, or, with null, that its next open takes it as it is. */
+  opened(pod: string, versions: readonly string[] | null): Promise<void> {
     return this.#next(async () => {
       const held = await this.#held();
       await this.#write({ ...held, pods: { ...held.pods, [pod]: versions } });
