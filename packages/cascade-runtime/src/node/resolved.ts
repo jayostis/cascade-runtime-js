@@ -76,7 +76,6 @@ export async function partsOf(
       newStore,
       ...options,
     });
-  const kept = new Map<string, Tables>();
   return {
     local,
     vocabulary: files,
@@ -85,15 +84,7 @@ export async function partsOf(
     lens: config.lens,
     importers: importersNamed(config.importers),
     tables: tablesOver(new MemoryFiles("urn:cascade:tables/")),
-    tablesIn: (folder) => {
-      const at = absolute(folder);
-      let tables = kept.get(at);
-      if (tables === undefined) {
-        tables = tablesOver(new FolderFiles(at));
-        kept.set(at, tables);
-      }
-      return tables;
-    },
+    tablesIn: (folder) => tablesOver(new FolderFiles(absolute(folder))),
     newStore,
     folder: (path, iri) => {
       const folder = absolute(path);

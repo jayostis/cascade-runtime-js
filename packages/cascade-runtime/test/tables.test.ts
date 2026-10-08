@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
+  type Files,
   fileStem,
   iri,
   literal,
@@ -16,7 +17,7 @@ import {
 import { checkouts, findRoot } from "@cascade-runtime/runtime/node";
 import { partsOf, type ResolvedParts } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { Tables } from "../src/tables.js";
+import { RULE_LIST, Tables } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
@@ -24,6 +25,7 @@ const SPDX = "http://spdx.org/rdf/terms#";
 const PROV = "http://www.w3.org/ns/prov#";
 const CURRENT = `${DCAT}hasCurrentVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
+const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const PREFIXES = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
@@ -37,6 +39,8 @@ interface Served {
   readonly files: ReadonlyMap<string, Uint8Array>;
   /** What is served as the feed in place of its catalog. */
   readonly text?: string;
+  /** The URL whose download breaks off. */
+  readonly broken?: string;
 }
 
 let parts: ResolvedParts;
@@ -102,6 +106,13 @@ after(async () => {
 function fetchOf(served: Served): typeof fetch {
   return async (input) => {
     const url = String(input);
+    if (url === served.broken)
+      return new Response(
+        new ReadableStream({
+          start: (controller) =>
+            controller.error(new TypeError("the connection was reset")),
+        }),
+      );
     if (url === FEED)
       return new Response(
         served.text ?? new TextDecoder().decode(ntriples(served.catalog)),
@@ -116,14 +127,46 @@ function fetchOf(served: Served): typeof fetch {
 function tablesOver(
   served: Served,
   files = new MemoryFiles("urn:test:tables/"),
+  vocabulary: Files = parts.vocabulary,
 ): Tables {
   return new Tables({
     files,
     feeds: [FEED],
-    vocabulary: parts.vocabulary,
+    vocabulary,
     newStore: parts.newStore,
     fetch: fetchOf(served),
   });
+}
+
+/** The vocabulary as a package shipping a revision of its rule list would carry it: the same rules, a new version. */
+async function ruleListRevised(): Promise<Files> {
+  const { vocabulary } = parts;
+  const index = new TextDecoder().decode(
+    await vocabulary.read(`${RULE_LIST}references.ttl`),
+  );
+  const [, shipped] = /rec:shipsWith <([^>]+)>/.exec(index) ?? [];
+  const [, series] = /<([^>]+)> a rec:ReferenceSeries/.exec(index) ?? [];
+  assert.ok(shipped !== undefined && series !== undefined);
+  const next = "urn:uuid:0b8f3c1e-6d2a-4e5b-9c7f-1a2b3c4d5e6f";
+  const rows = await vocabulary.read(`${RULE_LIST}${fileStem(shipped)}.ttl`);
+  assert.ok(rows);
+  const files = new Map([
+    [
+      `${RULE_LIST}references.ttl`,
+      new TextEncoder().encode(
+        `${index.replace(`rec:shipsWith <${shipped}>`, `rec:shipsWith <${next}>`)}
+<${next}> a prov:Entity ; prov:specializationOf <${series}> ; prov:wasRevisionOf <${shipped}> ; pav:version "2" .
+`,
+      ),
+    ],
+    [`${RULE_LIST}${fileStem(next)}.ttl`, rows],
+  ]);
+  return {
+    iri: vocabulary.iri,
+    read: async (path) => files.get(path) ?? vocabulary.read(path),
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
 }
 
 /** The URL of a version's rows. */
@@ -171,10 +214,24 @@ async function withRows(
   version: string,
   change: (nquads: string) => string,
 ): Promise<Served> {
+  const was = served.files.get(rowsUrl(served, version));
+  assert.ok(was);
+  return withBytes(
+    served,
+    version,
+    await gzipped(change(await gunzipped(was))),
+  );
+}
+
+/** The feed serving the bytes as the version's rows, and giving their checksum. */
+async function withBytes(
+  served: Served,
+  version: string,
+  bytes: Uint8Array,
+): Promise<Served> {
   const url = rowsUrl(served, version);
   const was = served.files.get(url);
   assert.ok(was);
-  const bytes = await gzipped(change(await gunzipped(was)));
   const [oldSum, newSum] = [await hex(was), await hex(bytes)];
   return {
     files: new Map([...served.files, [url, bytes]]),
@@ -186,7 +243,7 @@ async function withRows(
   };
 }
 
-test("a pod opened after a check keeps the planted newer version adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one; and opened after the rule list is revised, it is opened with that", async () => {
   const store = new MemoryFiles("urn:test:tables/");
   const before = tablesOver(first, store);
   const [kept] = await before.check();
@@ -195,6 +252,28 @@ test("a pod opened after a check keeps the planted newer version adopts it: it r
 
   const folder = join(scratch, "pods", "hana");
   let pod = await openPodWith({ ...parts, tables: before }, folder);
+  const relabelled = "Vaccine groups, relabelled";
+  const after = tablesOver(
+    {
+      ...feed,
+      catalog: feed.catalog.map(([subject, predicate, object]) =>
+        subject.value === groups.series && predicate.value === `${RDFS}label`
+          ? [subject, predicate, literal(relabelled)]
+          : [subject, predicate, object],
+      ),
+    },
+    store,
+  );
+  const [checked] = await after.check({ cache: "no-cache" });
+  assert.deepEqual(checked?.refused, []);
+  assert.ok(checked?.kept.includes(groups.second));
+  assert.deepEqual(
+    (await after.references())
+      .description(groups.series)
+      .filter(([, predicate]) => predicate.value === `${RDFS}label`)
+      .map(([, , label]) => label.value),
+    [relabelled],
+  );
   const shots = [
     ["141", "2025-10-01"],
     ["150", "2025-10-01"],
@@ -217,10 +296,6 @@ ${shots.join("\n")}`);
   assert.equal(entered.matched?.refused, undefined);
   await pod.close();
 
-  const after = tablesOver(feed, store);
-  const [checked] = await after.check({ cache: "no-cache" });
-  assert.deepEqual(checked?.refused, []);
-  assert.ok(checked?.kept.includes(groups.second));
   pod = await openPodWith({ ...parts, tables: after }, folder);
   try {
     assert.equal(pod.opened?.refused, undefined);
@@ -251,6 +326,16 @@ ${shots.join("\n")}`);
   const again = await openPodWith({ ...parts, tables: after }, folder);
   assert.equal(again.opened, undefined);
   await again.close();
+
+  const empty = join(scratch, "pods", "empty");
+  await (await openPodWith({ ...parts, tables: after }, empty)).close();
+  const revised = await openPodWith(
+    { ...parts, tables: tablesOver(feed, store, await ruleListRevised()) },
+    empty,
+  );
+  assert.ok(revised.opened);
+  assert.equal(revised.opened.refused, undefined);
+  await revised.close();
 });
 
 test("a check keeps nothing of a version that does not verify, and tries a feed or rows it cannot read later", async () => {
@@ -296,6 +381,25 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
           ),
         /not N-Quads/,
         "refused",
+      ],
+      [
+        "rows that are not gzip",
+        () =>
+          withBytes(feed, groups.second, new TextEncoder().encode("not gzip")),
+        /not gzip/,
+        "refused",
+      ],
+      [
+        "rows whose download breaks off",
+        async () => ({ ...feed, broken: rowsUrl(feed, groups.second) }),
+        /could not be read: the connection was reset/,
+        "later",
+      ],
+      [
+        "a feed whose download breaks off",
+        async () => ({ ...feed, broken: FEED }),
+        /could not be read: the connection was reset/,
+        "later",
       ],
       [
         "rows the feed's site no longer serves",

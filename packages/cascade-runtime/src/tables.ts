@@ -51,7 +51,7 @@ interface Held {
   readonly feeds: Record<string, { checked: string; modified?: string }>;
   /** The version of each held series a pod opened now is given, sorted. */
   readonly current: readonly string[];
-  /** The current versions each pod was last opened with, by the pod's naming base. */
+  /** The versions each pod was last opened with, the rule list's among them, by the pod's naming base. */
   readonly pods: Record<string, readonly string[]>;
 }
 
@@ -102,14 +102,19 @@ async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     .join("");
 }
 
+class Unverified extends Error {}
+
 async function gunzipped(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const stream = new Blob([bytes])
     .stream()
     .pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
+  try {
+    return await new Response(stream).text();
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    throw new Unverified(`its rows are not gzip: ${error.message}`);
+  }
 }
-
-class Unverified extends Error {}
 
 /** The N-Quads' triples, each of which must be in the graph named by the version. */
 async function rowsOf(
@@ -141,6 +146,14 @@ function only(graph: Graph, subject: Term, kept: readonly string[]): Triple[] {
       ([, predicate, object]) =>
         kept.includes(predicate.value) && object.termType !== "BlankNode",
     );
+}
+
+/** The version each series of the tables ships with, the rule list's among them, sorted. */
+export function shipped(references: References): string[] {
+  return references.index
+    .match(undefined, `${REC}shipsWith`)
+    .map(([, , version]) => version.value)
+    .sort();
 }
 
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
@@ -211,7 +224,7 @@ export class Tables {
     return (await this.#held()).current;
   }
 
-  /** The current versions the pod was last opened with; none if it never was. */
+  /** The versions the pod was last opened with; none if it never was. */
   async openedWith(pod: string): Promise<readonly string[] | undefined> {
     return (await this.#held()).pods[pod];
   }
@@ -280,22 +293,24 @@ export class Tables {
     const fetching = this.#options.fetch ?? fetch;
     const kept: string[] = [];
     const refused: { version: string; reason: string }[] = [];
-    const answer = async (url: string): Promise<Response | string> => {
+    const answer = async (
+      url: string,
+    ): Promise<Uint8Array<ArrayBuffer> | string> => {
       try {
         const response = await fetching(url, init);
-        return response.ok ? response : `${url} answered ${response.status}`;
+        return response.ok
+          ? new Uint8Array(await response.arrayBuffer())
+          : `${url} answered ${response.status}`;
       } catch (error) {
         return `${url} could not be read: ${error instanceof Error ? error.message : String(error)}`;
       }
     };
-    const response = await answer(feed);
-    if (typeof response === "string")
-      return { feed, kept, later: response, refused };
+    const answered = await answer(feed);
+    if (typeof answered === "string")
+      return { feed, kept, later: answered, refused };
     let catalog: Graph;
     try {
-      catalog = new Graph(
-        await this.#options.newStore().parse(await response.text(), feed),
-      );
+      catalog = new Graph(await this.#options.newStore().parse(answered, feed));
     } catch (error) {
       return {
         feed,
@@ -334,12 +349,11 @@ export class Tables {
         });
         continue;
       }
-      const download = await answer(url.value);
-      if (typeof download === "string") {
-        later = download;
+      const bytes = await answer(url.value);
+      if (typeof bytes === "string") {
+        later = bytes;
         continue;
       }
-      const bytes = new Uint8Array(await download.arrayBuffer());
       const previous = catalog.objects(version, REVISION_OF)[0]?.value;
       let rows: Triple[];
       try {
@@ -355,8 +369,7 @@ export class Tables {
         if ((await versionName(series.value, previous, rows)) !== version.value)
           throw new Unverified("its rows and line do not give its name");
       } catch (error) {
-        if (!(error instanceof Unverified) && !(error instanceof TypeError))
-          throw error;
+        if (!(error instanceof Unverified)) throw error;
         refused.push({ version: version.value, reason: error.message });
         continue;
       }
@@ -369,7 +382,7 @@ export class Tables {
           ([subject, predicate]) =>
             !(
               subject.value === series.value &&
-              predicate.value === `${REC}shipsWith`
+              [...SERIES_KEPT, `${REC}shipsWith`].includes(predicate.value)
             ),
         ),
         ...only(catalog, series, SERIES_KEPT),

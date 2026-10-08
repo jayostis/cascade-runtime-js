@@ -137,19 +137,6 @@ async function handled(): Promise<(handle: string) => Promise<string>> {
   };
 }
 
-/** The justifications the app's rule list gives: a join of Alex's kit's own rule list alone, his penicillin's among them, is not. */
-async function appJustifications(): Promise<Set<string>> {
-  const references = await kept.tables.references();
-  const rows = await references.rows(
-    references.fallback(await references.ruleList()),
-  );
-  return new Set(
-    rows
-      .filter(([, predicate]) => predicate.value.endsWith("#justifiedAs"))
-      .map(([, , object]) => object.value),
-  );
-}
-
 /** The folder or file at the path as an app holds it: each file by its path under the folder's or file's own name. */
 async function heldExport(
   at: string,
@@ -283,7 +270,6 @@ test("an import with the claim records an About for each unclaimed profile and i
   const joined = (justification: string, members: string[]): string =>
     `${justification} ${members.sort().join(" ")}`;
   const named = await handled();
-  const given = await appJustifications();
   assert.deepEqual(
     judgments
       .map(({ justification = "", members = "" }) =>
@@ -293,9 +279,8 @@ test("an import with the claim records an About for each unclaimed profile and i
     (
       await Promise.all(
         expected
-          .filter(({ justification = "" }) =>
-            given.has(JUSTIFICATIONS[justification] ?? justification),
-          )
+          // Alex's penicillin is joined by a rule of his kit's own rule list, which the app's has not.
+          .filter(({ justification }) => justification !== "same mapped code")
           .map(async ({ justification = "", members = "" }) =>
             joined(
               JUSTIFICATIONS[justification] ?? justification,

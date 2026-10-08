@@ -81,7 +81,7 @@ its folder. An ask by name returns what was kept until any step changes the
 pod or the tables; removing a pod's folder, remove its `.answers/<name>` too.
 
 The matcher's reference tables come from the feeds `cascade-runtime.json`
-names. The pods in a folder share `tables/` beside it: the first `openPod` in a
+names. The pods in a folder share `.tables/` in it: the first `openPod` in a
 process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
 newer version that verifies. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
 checks again ("Check now"); a feed that cannot be read now says `later`, and

@@ -26,6 +26,7 @@ import {
   randomId,
   RDF,
   readText,
+  type References,
   type StoreFactory,
   type Triple,
   Union,
@@ -39,7 +40,7 @@ import {
   type AnswerStore,
   type Described,
 } from "./answers.js";
-import type { Tables } from "./tables.js";
+import { shipped, type Tables } from "./tables.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -338,6 +339,7 @@ export async function keptPod(
   if (described === undefined) return undefined;
   const { vocabulary, layout, build } = reading;
   let revision: Promise<string> | undefined;
+  let tables: Promise<readonly string[]> | undefined;
   return {
     ...described,
     owner: `${described.address}${layout.card}#me`,
@@ -346,6 +348,7 @@ export async function keptPod(
       offeredLens(offered, lens);
       const text = questionText(offered, question);
       revision ??= podRevision(pod, layout, described.address);
+      tables ??= reading.tables.current();
       return answers.rows(
         lens,
         question,
@@ -355,7 +358,7 @@ export async function keptPod(
           text,
           lens,
           revision: await revision,
-          tables: await reading.tables.current(),
+          tables: await tables,
         }),
       );
     },
@@ -387,6 +390,8 @@ class OpenPod implements Pod {
   readonly #parts: Parts;
   readonly #core: CorePod;
   readonly #answers: Answers | undefined;
+  /** The current versions of the tables the pod was opened with, which its kept answers are keyed by. */
+  readonly #tables: readonly string[];
   #queue: Promise<unknown> = Promise.resolve();
   #bridge: Promise<LoadedBridge> | undefined;
   #closed = false;
@@ -396,12 +401,14 @@ class OpenPod implements Pod {
     core: CorePod,
     readonly address: string,
     readonly subject: string,
+    tables: readonly string[],
     answers?: Answers,
     readonly opened?: Opened,
   ) {
     this.#parts = parts;
     this.#core = core;
     this.#answers = answers;
+    this.#tables = tables;
   }
 
   get owner(): string {
@@ -755,7 +762,7 @@ class OpenPod implements Pod {
           text: query,
           lens,
           revision: await this.#core.revision(),
-          tables: await this.#parts.tables.current(),
+          tables: this.#tables,
         });
         const kept = await answers.rows(lens, question, key);
         if (kept !== undefined) return kept;
@@ -776,6 +783,7 @@ class OpenPod implements Pod {
 
 function coreOver(
   parts: Parts,
+  references: References,
   pod: Files,
   address: string,
   subject: string,
@@ -794,7 +802,7 @@ function coreOver(
       newStore: parts.newStore,
       time: clock,
       importers: parts.importers,
-      references: () => parts.tables.references(),
+      references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,
         derive: async (store, lens, pod) => {
@@ -823,6 +831,8 @@ export async function openPodWith(
       : new Answers(parts.answers.at(folder), parts.answers.runtime);
   const card =
     disk === undefined ? undefined : await disk.files.read(parts.layout.card);
+  const references = await parts.tables.references();
+  const tables = await parts.tables.current();
   if (disk === undefined || folder === undefined || card === undefined) {
     if (disk !== undefined && (await disk.files.list("")).length > 0)
       throw new Error(
@@ -835,13 +845,13 @@ export async function openPodWith(
       folder === undefined
         ? new MemoryFiles(address)
         : parts.folder(folder, address).files;
-    const core = coreOver(parts, files, address, subject, title);
+    const core = coreOver(parts, references, files, address, subject, title);
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
     await answers?.describe({ address, subject, title });
-    await parts.tables.opened(address, await parts.tables.current());
-    return new OpenPod(parts, core, address, subject, answers);
+    await parts.tables.opened(address, shipped(references));
+    return new OpenPod(parts, core, address, subject, tables, answers);
   }
   const store = parts.newStore();
   const [stated, described] = await Promise.all([
@@ -867,26 +877,36 @@ export async function openPodWith(
   }
   await answers?.describe({ address, subject, title });
   const files = parts.folder(folder, address).files;
-  const core = coreOver(parts, files, address, subject, title, opened);
+  const core = coreOver(
+    parts,
+    references,
+    files,
+    address,
+    subject,
+    title,
+    opened,
+  );
   return new OpenPod(
     parts,
     core,
     address,
     subject,
+    tables,
     answers,
     options.adopt === false
       ? undefined
-      : await openedWithTables(parts.tables, core, address),
+      : await openedWithTables(parts.tables, references, core, address),
   );
 }
 
 /** The pod given the app's tables when they changed since it was last opened, or it never was (O1, O2). */
 async function openedWithTables(
   tables: Tables,
+  references: References,
   core: CorePod,
   address: string,
 ): Promise<Opened | undefined> {
-  const current = await tables.current();
+  const current = shipped(references);
   const before = await tables.openedWith(address);
   if (
     before !== undefined &&
@@ -894,7 +914,7 @@ async function openedWithTables(
     before.every((version, index) => version === current[index])
   )
     return undefined;
-  const performed = await core.open(await tables.references());
+  const performed = await core.open(references);
   if (performed.refused === undefined) await tables.opened(address, current);
   return { ...performed, unheld: performed.unheld ?? [] };
 }
