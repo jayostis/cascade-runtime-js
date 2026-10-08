@@ -1101,12 +1101,13 @@ test("try/ ships the starter tables its published answers were computed with: af
       [{ kept: [], later: undefined, refused: [] }],
     );
 
-    await page.route(ENGINE, () => undefined);
+    await page.route(ENGINE, (route) => route.abort());
     await page.goto(`${served.url}try/index.html?pod=${ALEX}`);
     await settled(page, 30_000);
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.ok((await tiles(page)).size > 0);
     assert.equal(await page.getAttribute("body", "data-engine"), null);
+    await page.close();
   } finally {
     await context.close();
   }
