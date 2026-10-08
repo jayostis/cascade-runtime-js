@@ -321,10 +321,10 @@ function bring(response, name, connection) {
   redirect(response, `${podPath(name)}?connection=${connection.n}#connection`);
 }
 
-/** The import of a connection's pull into the pod, its parts in `connection.bringing`; undefined when it has no files. */
+/** The import of a connection's pull into the pod, its parts in `connection.bringing`; it throws when there are no files. */
 async function imported(name, connection) {
-  const { files } = await filesOf(connection);
-  if (files === undefined) return undefined;
+  const { failed, files } = await filesOf(connection);
+  if (files === undefined) throw new Error(failed);
   return (await podNamed(name)).import(files, {
     aboutSubject: true,
     onProgress: (part) => {

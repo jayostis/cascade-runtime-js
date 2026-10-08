@@ -577,8 +577,6 @@ document.addEventListener("click", (event) => {
   const href = link.getAttribute("href") ?? "";
   const to = new URL(href, location.href);
   if (href.startsWith("#") || to.pathname !== location.pathname) return;
-  // While the page is busy, the link is the browser's, which loads the page it names.
-  if (state.doing === "busy") return;
   event.preventDefault();
   busy(() => go(to.search), opening(to.search));
 });
