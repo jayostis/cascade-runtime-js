@@ -136,10 +136,17 @@ test("an open on a clock that moves between judgments files each Same once when 
   });
   const opened = await reopened.open(await tables("app-new-rules"));
   assert.equal(opened.refused, undefined);
-  assert.equal(
-    opened.wrote.filter((path) => path.includes("judgments")).length,
-    2,
-  );
+  const judgments = [];
+  for (const path of opened.wrote) {
+    const { triples } = await parseGraph(
+      (await pod.read(path)) ?? new Uint8Array(),
+      pod.iri + path,
+      newStore,
+    );
+    if (triples.some(([, , object]) => object.value === JUDGMENT))
+      judgments.push(path);
+  }
+  assert.equal(judgments.length, 2);
 });
 
 test("a refused open leaves the pod matching with the tables it had", async () => {
