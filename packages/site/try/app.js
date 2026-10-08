@@ -302,8 +302,31 @@ async function bring() {
   await showPod(shown.row.name);
 }
 
+/** In this browser's storage while Delete all data is the last thing done, so that a later visit copies no sample in. */
+const DELETED_ALL = "cascade-try:deleted-all";
+
+/** Whether Delete all data was the last thing done; false when storage cannot be read. */
+function deletedAll() {
+  try {
+    return globalThis.localStorage.getItem(DELETED_ALL) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Notes, or with `false` forgets, that Delete all data was the last thing done; nothing when storage cannot be written. */
+function markDeletedAll(deleted) {
+  try {
+    if (deleted) globalThis.localStorage.setItem(DELETED_ALL, "1");
+    else globalThis.localStorage.removeItem(DELETED_ALL);
+  } catch {
+    // Without storage, a later visit copies the samples, as a first one does.
+  }
+}
+
 /** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it. */
 async function make(person) {
+  markDeletedAll(false);
   const name = slug(person);
   if (SAMPLES.includes(name)) return load(name);
   if (name === "") {
@@ -340,6 +363,7 @@ async function copy(name) {
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
 async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
+  markDeletedAll(false);
   if (!pods.includes(name)) await copy(name);
   location.assign(podHref(name));
 }
@@ -361,13 +385,16 @@ async function deleteAll() {
   return names;
 }
 
-/** File, Delete all data: then the page says how many went, and copies no sample in. */
+/** File, Delete all data: then the page says how many went, and no visit copies a sample in until a pod is made again. */
 async function deleteEverything() {
-  location.assign(`?deleted=${(await deleteAll()).length}`);
+  const names = await deleteAll();
+  markDeletedAll(true);
+  location.assign(`?deleted=${names.length}`);
 }
 
 /** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
 async function resetEverything() {
+  markDeletedAll(false);
   await deleteAll();
   await Promise.all(SAMPLES.map(copy));
   location.assign(
@@ -446,7 +473,7 @@ busy(async () => {
   }
   const asked = query.get("pod");
   if (asked === null && pods.length === 0) {
-    if (!query.has("deleted")) await firstVisit();
+    if (!query.has("deleted") && !deletedAll()) await firstVisit();
     if (pods.length === 0) return render("No pods yet", noPods());
   }
   if (asked !== null && !pods.includes(asked))

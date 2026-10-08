@@ -416,7 +416,7 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   );
 });
 
-test("File, Delete all data empties the pods column and says how many went, and Reset all data brings both samples back", async () => {
+test("File, Delete all data empties the pods column and says how many went, a later visit still has no pods, and Reset all data brings both samples back", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -443,6 +443,10 @@ test("File, Delete all data empties the pods column and says how many went, and 
       await page.textContent("main .note"),
       `Deleted ${before.length} pods.`,
     );
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    assert.equal(await page.textContent("main h1"), "No pods yet");
+    assert.deepEqual(await texts(page, "nav a"), []);
     await fromFile("Reset all data");
     assert.deepEqual(await texts(page, "nav a"), [
       "Alex Rivera",
