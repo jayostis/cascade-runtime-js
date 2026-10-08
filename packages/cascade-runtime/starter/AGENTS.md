@@ -14,7 +14,8 @@ of Priya's C-CDA files under its own name. What the pages show is in
 `summary.mjs`: Preact components written with `htm`, no JSX and no build
 step, plain functions from a pod's question rows to the page's elements,
 which a browser can render too. Change one by editing its `` html`…` ``
-template; it imports only `preact` and `htm`. Rewrite it as you like.
+template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
+you like.
 `server.mjs` answers requests, hands it the rows, and renders each page to
 HTML with `preact-render-to-string`. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the

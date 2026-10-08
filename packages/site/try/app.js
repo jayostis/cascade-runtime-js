@@ -17,6 +17,7 @@ import {
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
+  closing,
   connectionDialog,
   didNote,
   hospitalName,
@@ -187,7 +188,14 @@ function redraw() {
     }),
     root,
   );
+  showDoing();
+}
+
+/** `state.doing` in `data-state` on the body, and every button off while the page is busy. */
+function showDoing() {
   document.body.dataset.state = state.doing;
+  for (const button of document.querySelectorAll("button"))
+    button.disabled = state.doing === "busy";
 }
 
 /** Shows `body` titled `title`; `doing` is what the page says it is doing. */
@@ -434,15 +442,10 @@ async function firstVisit() {
   if (state.pods.length === 0) await (await openPod()).close();
 }
 
-/**
- * Runs the step with the buttons off; anything it did not expect, it shows. A step that ends showing a page here, not
- * going to another, turns the buttons on again, since the page keeps them.
- */
+/** Runs the step with the buttons off; anything it did not expect, it shows. */
 async function busy(step) {
   state.doing = "busy";
-  document.body.dataset.state = state.doing;
-  const off = [...document.querySelectorAll("button")];
-  for (const button of off) button.disabled = true;
+  showDoing();
   try {
     await step();
   } catch (error) {
@@ -454,9 +457,9 @@ async function busy(step) {
       "error",
     );
   }
-  if (state.doing !== "busy") for (const button of off) button.disabled = false;
 }
 
+closing(document);
 document.addEventListener("submit", (event) => {
   const form = event.target;
   event.preventDefault();

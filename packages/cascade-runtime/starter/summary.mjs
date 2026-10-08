@@ -1,7 +1,8 @@
 // A pod as a person reads it: who it is for, where its records came from, what Cascade noticed, and a tile for each
 // kind of record. Preact components written with `htm`: functions from a pod's question rows to the page's elements,
 // which `server.mjs` renders to HTML and a page in a browser can render too, keeping a table's sort and filter in its
-// state. It imports only `preact` and `htm`, with no build step. Rewrite it freely: it is only this app's view.
+// state. It imports only `preact`, `preact/hooks` and `htm`, with no build step. Rewrite it freely: it is only this
+// app's view.
 import { Fragment, h } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
@@ -359,7 +360,8 @@ ${body}
 }
 
 /**
- * A section's filter box and table, a heading button per column, each cell holding what it sorts by in `data-key`.
+ * A section's filter box and table of `rows`, given in `opening` order, a heading button per column, each cell holding
+ * what it sorts by in `data-key`.
  * Its state is the column it is sorted by and which way, and the filter's text: a heading sorts by its column, one way
  * then the other, and the filter hides the rows without its text. Rendered to a string, it is the table as it opens,
  * and the page's script sorts and filters it.
@@ -374,9 +376,9 @@ function Table({ section, rows }) {
   const shown = (column, row) => column.show(row) ?? "";
   const key = (row) => String(section.columns[at].key(row) ?? "");
   const sorted =
-    sort === undefined
-      ? opening(section, rows)
-      : opening(section, rows).sort(
+    at === section.sortBy && up === !section.newestFirst
+      ? rows
+      : [...rows].sort(
           (a, b) =>
             (up ? 1 : -1) * compare(section.columns[at].type, key(a), key(b)),
         );
@@ -415,15 +417,14 @@ ${body}
 /** The section's tile, a link that opens its dialog, and the dialog: its `Table`. */
 export function tile(section, rows) {
   const id = `see-${slug(section.title)}`;
-  const names = opening(section, rows)
-    .map((row) => section.name(row) ?? "")
-    .join(", ");
+  const opened = opening(section, rows);
+  const names = opened.map((row) => section.name(row) ?? "").join(", ");
   return {
     tile: html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
     dialog: box(
       id,
       html`${section.title} <span class="muted">${rows.length}</span>`,
-      html`<${Table} section=${section} rows=${rows} />`,
+      html`<${Table} section=${section} rows=${opened} />`,
       { wide: true },
     ),
   };
@@ -691,14 +692,7 @@ ${body}
 </div>
 ${dialog}
 ${boxes}
-<${Closing} />
 <//>`;
-}
-
-/** In a browser, `closing` on the page; rendered to a string, nothing, and the page's script runs it. */
-function Closing() {
-  useEffect(() => closing(globalThis.document), []);
-  return null;
 }
 
 /**
