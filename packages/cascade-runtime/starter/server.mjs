@@ -8,7 +8,12 @@ import { createServer } from "node:http";
 import process, { env, exit, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
-import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
+import {
+  ConnectionFailure,
+  openPod,
+  pullFiles,
+  tablesBeside,
+} from "cascade-runtime";
 import { render } from "preact-render-to-string";
 import { hospitalsAt } from "./hospitals.mjs";
 import {
@@ -17,9 +22,11 @@ import {
   podFolder,
   podNames,
   POD_NAME,
+  PODS,
   resetAll,
 } from "./pods.mjs";
 import {
+  checkedNote,
   connectionDialog,
   demoPeople,
   didNote,
@@ -29,12 +36,15 @@ import {
   html,
   newPodDialog,
   noPods,
+  noTables,
   patientName,
   personName,
   podPage,
   postButton,
   QUESTIONS,
   slug,
+  tableId,
+  tablePage,
 } from "./summary.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
@@ -63,11 +73,26 @@ async function answered(pod) {
 
 const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 
+/** The reference tables the pods are matched with, kept in `pods/.tables/`. */
+const tables = () => tablesBeside(PODS);
+const tablePath = (series) =>
+  `/tables/${encodeURIComponent(tableId(series.iri))}/`;
+/** What the last Check now did, which the page it goes to says. */
+let lastCheck;
+
 /**
- * `body` in the frame, with the pods there are, as HTML; `names` given, it reads none. `note` says what was just done.
+ * `body` in the frame, with the pods there are and the reference tables, as HTML; `names` given, it reads no pods.
+ * `current` is the pod shown, `table` the reference table's IRI; `note` says what was just done.
  */
-async function page(title, body, { current, refresh, names, note } = {}) {
+async function page(
+  title,
+  body,
+  { current, table, refresh, names, note } = {},
+) {
   const pods = names ?? (await podNames());
+  const held = await tables()
+    .then((kept) => kept.held())
+    .catch(() => []);
   return `<!doctype html>\n${render(
     frame({
       title,
@@ -80,17 +105,82 @@ async function page(title, body, { current, refresh, names, note } = {}) {
       menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
       note,
       refresh,
+      tables: {
+        series: held,
+        current: table,
+        href: tablePath,
+        check: "/tables/check",
+      },
     }),
   )}`;
 }
 
-/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
-async function closeAll() {
+/**
+ * A reference table, by its id, or the first with none; `query`'s `q` is what to search it for, and `checked` that
+ * the page says what the last Check now did.
+ */
+async function showTable(response, id, query) {
+  const kept = await tables();
+  const held = await kept.held();
+  const series =
+    id === undefined ? held[0] : held.find((each) => tableId(each.iri) === id);
+  const note = query.has("checked") ? lastCheck : undefined;
+  if (series === undefined)
+    return id === undefined
+      ? send(
+          response,
+          200,
+          await page("Reference tables", noTables(), { note }),
+        )
+      : send(
+          response,
+          404,
+          await page(
+            "Not found",
+            html`<h1>Not found</h1>
+<p>This app holds no reference table ${id}.</p>`,
+          ),
+        );
+  const text = query.get("q") ?? "";
+  const names = await podNames();
+  const body = tablePage({
+    series,
+    searched: await kept.search(series.iri, text),
+    text,
+    search: tablePath(series),
+    uses: await kept.uses(),
+    pods: names,
+    href: podPath,
+    now: Date.now(),
+  });
+  send(
+    response,
+    200,
+    await page(series.label, body, { names, table: series.iri, note }),
+  );
+}
+
+/** Check now: reads every feed past any cache; the pods held open close when it kept a version, to open with it. */
+async function checkNow(response) {
+  const kept = await tables();
+  const checked = await kept.check({ cache: "no-cache" });
+  if (checked.some((each) => each.kept.length > 0)) await closePods();
+  lastCheck = checkedNote(checked, await kept.held());
+  redirect(response, "/tables/?checked");
+}
+
+/** Closes every pod the server holds open, to be opened again on the next request for it. */
+async function closePods() {
   const pods = [...open.values()];
   open.clear();
   lastShown.clear();
-  hospitals?.forget();
   await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
+}
+
+/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
+async function closeAll() {
+  hospitals?.forget();
+  await closePods();
 }
 
 /** File, Delete all data: every pod removed, then the home page says how many. */
@@ -186,6 +276,7 @@ async function showPod(response, name, query, names) {
       ),
     findHospital: `${podPath(name)}hospitals`,
     connection: box,
+    unheld: (await podNamed(name)).opened?.unheld,
   });
   send(
     response,
@@ -403,6 +494,14 @@ const server = createServer(async (request, response) => {
       return await deleteEverything(response);
     if (post && pathname === "/reset-all")
       return await resetEverything(response);
+    if (post && pathname === "/tables/check") return await checkNow(response);
+    const table = /^\/tables\/(?:([^/]+)\/)?$/.exec(pathname);
+    if (!post && table !== null)
+      return await showTable(
+        response,
+        table[1] === undefined ? undefined : decodeURIComponent(table[1]),
+        url.searchParams,
+      );
     if (!post && pathname === "/callback") {
       const back = hospitals.back(url);
       if (back !== undefined) return redirect(response, back);

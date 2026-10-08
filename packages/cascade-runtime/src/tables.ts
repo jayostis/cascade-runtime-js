@@ -23,6 +23,12 @@ const DCAT = "http://www.w3.org/ns/dcat#";
 const DCT = "http://purl.org/dc/terms/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPDX = "http://spdx.org/rdf/terms#";
+const SKOS = "http://www.w3.org/2004/02/skos/core#";
+const OWL = "http://www.w3.org/2002/07/owl#";
+const SHIPS_WITH = `${REC}shipsWith`;
+/** Beside a feed, when its watcher last checked each source. */
+const WATCHED = "checked.json";
+const SEARCHED_AT_MOST = 50;
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 const THIS_VERSION = "urn:cascade:this-version";
@@ -52,13 +58,96 @@ const VERSION_KEPT = [
   `${DCT}issued`,
 ];
 
+/** A watcher's last check of a source, as the feed's `checked.json` gives it. */
+export interface Watched {
+  readonly at: string;
+  /** `nothing new` or `new`. */
+  readonly found: string;
+}
+
+interface FeedChecked {
+  readonly checked: string;
+  readonly modified?: string;
+  /** Each series the feed describes, by its IRI, with the source it is built from. */
+  readonly series?: Record<string, string | null>;
+  /** Each publisher's name the feed gives, by the publisher's IRI. */
+  readonly publishers?: Record<string, string>;
+  /** The watcher's last check of each source, by the source's IRI. */
+  readonly watched?: Record<string, Watched>;
+}
+
 interface Held {
   /** Each feed's last check, by its URL. */
-  readonly feeds: Record<string, { checked: string; modified?: string }>;
+  readonly feeds: Record<string, FeedChecked>;
   /** The version of each held series a pod opened now is given, sorted. */
   readonly current: readonly string[];
   /** The versions each pod was last opened with, the rule list's among them, by the pod's naming base. */
   readonly pods: Record<string, readonly string[] | null>;
+  /** The name the app opened each pod by, by the pod's naming base. */
+  readonly names?: Record<string, string>;
+}
+
+export interface HeldVersion {
+  readonly iri: string;
+  /** The publisher's label for it. */
+  readonly label?: string;
+  readonly issued?: string;
+}
+
+/** A series the app holds, as a person reads of it. */
+export interface HeldSeries {
+  readonly iri: string;
+  readonly label: string;
+  readonly kind?: string;
+  readonly licence?: string;
+  readonly publisher?: string;
+  /** The publisher's name, when the feed gives it. */
+  readonly publisherName?: string;
+  /** The credit its publisher asks for. */
+  readonly credit?: string;
+  /** The version a pod opened now is given. */
+  readonly current: HeldVersion;
+  /** Every version held, the current one first, then the newest. */
+  readonly versions: readonly HeldVersion[];
+  readonly feed?: string;
+  /** When the feed last changed, as it says. */
+  readonly modified?: string;
+  /** When this app last read the feed. */
+  readonly checked?: string;
+  /** The watcher's last check of the series' source; none when the feed does not say. */
+  readonly watched?: Watched;
+}
+
+/** What a names or status series says of a code, from the first series in the order of preference that holds it. */
+export interface About {
+  readonly name?: {
+    readonly label: string;
+    readonly altLabels: readonly string[];
+    readonly origin: string;
+  };
+  readonly status?: {
+    readonly deprecated: boolean;
+    readonly replacedBy: readonly string[];
+    readonly origin: string;
+  };
+}
+
+/** A code a search found in a series. */
+export interface Found {
+  readonly code: string;
+  /** The code as written, without its code system's IRI. */
+  readonly notation: string;
+  readonly about?: About;
+  /** In a mapping series, the codes the code maps to. */
+  readonly mapsTo: readonly { code: string; notation: string; about?: About }[];
+}
+
+export interface Searched {
+  /** The version searched; none when the series is not held. */
+  readonly version?: string;
+  /** How many codes matched, of which `found` holds the first. */
+  readonly total: number;
+  readonly found: readonly Found[];
 }
 
 const NOTHING_HELD: Held = { feeds: {}, current: [], pods: {} };
@@ -162,6 +251,32 @@ export function shipped(references: References): string[] {
     .sort();
 }
 
+/** The feed that last described the series. */
+function feedOf(held: Held, series: string): string | undefined {
+  return Object.entries(held.feeds).find(
+    ([, checked]) => checked.series?.[series] !== undefined,
+  )?.[0];
+}
+
+/** The watcher's checks in a feed's `checked.json`, by source; none when it is not one. */
+function watchedIn(bytes: Uint8Array): Record<string, Watched> | undefined {
+  try {
+    const { checked } = JSON.parse(new TextDecoder().decode(bytes)) as {
+      checked?: Record<string, { at?: unknown; found?: unknown }>;
+    };
+    if (typeof checked !== "object" || checked === null) return undefined;
+    return Object.fromEntries(
+      Object.entries(checked).flatMap(([source, { at, found }]) =>
+        typeof at === "string" && typeof found === "string"
+          ? [[source, { at, found }]]
+          : [],
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
 class TablesFiles implements Files {
   readonly iri: string;
@@ -203,6 +318,7 @@ export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
+  readonly #rows = new Map<string, Promise<Triple[]>>();
 
   constructor(options: TablesOptions) {
     this.#options = options;
@@ -235,12 +351,231 @@ export class Tables {
     return (await this.#held()).pods[pod];
   }
 
-  /** Records that the pod was opened with the versions, or, with null, that its next open takes it as it is. */
-  opened(pod: string, versions: readonly string[] | null): Promise<void> {
+  /**
+   * Records that the pod was opened with the versions, or, with null, that its next open takes it as it is; and,
+   * given, the name the app opened it by.
+   */
+  opened(
+    pod: string,
+    versions: readonly string[] | null,
+    name?: string,
+  ): Promise<void> {
     return this.#next(async () => {
       const held = await this.#held();
-      await this.#write({ ...held, pods: { ...held.pods, [pod]: versions } });
+      await this.#write({
+        ...held,
+        pods: { ...held.pods, [pod]: versions },
+        ...(name === undefined
+          ? {}
+          : { names: { ...held.names, [pod]: name } }),
+      });
     });
+  }
+
+  /** Records the name the app opens the pod by, when it is not the one recorded. */
+  async named(pod: string, name: string): Promise<void> {
+    if ((await this.#held()).names?.[pod] === name) return;
+    await this.#next(async () => {
+      const held = await this.#held();
+      await this.#write({ ...held, names: { ...held.names, [pod]: name } });
+    });
+  }
+
+  /** Each series the app holds, in the order of its feeds and then by label. */
+  async held(): Promise<HeldSeries[]> {
+    const [index, held] = await Promise.all([this.#index(), this.#held()]);
+    return this.#ordered(index, held).map((series) => {
+      const one = (subject: Term, predicate: string): string | undefined =>
+        index.objects(subject, predicate)[0]?.value;
+      const version = (of: Term): HeldVersion => ({
+        iri: of.value,
+        label: one(of, `${PAV}version`),
+        issued: one(of, `${DCT}issued`),
+      });
+      const [current] = index.objects(series, SHIPS_WITH);
+      const versions = index
+        .subjects(SPECIALIZATION_OF, series)
+        .filter((each) => each.value !== current?.value)
+        .map(version)
+        .sort((a, b) => (b.issued ?? "").localeCompare(a.issued ?? ""));
+      const feed = feedOf(held, series.value);
+      const checked = feed === undefined ? undefined : held.feeds[feed];
+      const source = checked?.series?.[series.value];
+      const publisher = one(series, `${DCT}publisher`);
+      return {
+        iri: series.value,
+        label: one(series, `${RDFS}label`) ?? series.value,
+        kind: one(series, `${REC}tableKind`),
+        licence: one(series, `${DCT}license`),
+        publisher,
+        publisherName:
+          publisher === undefined
+            ? undefined
+            : checked?.publishers?.[publisher],
+        credit: one(series, `${DCT}bibliographicCitation`),
+        current: version(current ?? series),
+        versions: [version(current ?? series), ...versions],
+        feed,
+        modified: checked?.modified,
+        checked: checked?.checked,
+        watched:
+          source === undefined || source === null
+            ? undefined
+            : checked?.watched?.[source],
+      };
+    });
+  }
+
+  /** The pods last opened with each version, by the names the app opened them by, sorted. */
+  async uses(): Promise<Record<string, string[]>> {
+    const { pods, names = {} } = await this.#held();
+    const using: Record<string, string[]> = {};
+    for (const [pod, versions] of Object.entries(pods)) {
+      const name = names[pod];
+      if (name === undefined || versions === null) continue;
+      for (const version of versions) (using[version] ??= []).push(name);
+    }
+    for (const named of Object.values(using)) named.sort();
+    return using;
+  }
+
+  /**
+   * The codes in the series' current version that are `text`, as written or as an IRI, or whose name holds it,
+   * ignoring case; every code for no text. At most `limit`, in the order of their codes, each with what names and
+   * status say of it and, in a mapping series, the codes it maps to.
+   */
+  async search(
+    series: string,
+    text: string,
+    limit = SEARCHED_AT_MOST,
+  ): Promise<Searched> {
+    const version = (await this.#index()).objects(iri(series), SHIPS_WITH)[0]
+      ?.value;
+    if (version === undefined) return { total: 0, found: [] };
+    const [rows, { uriSpaces }] = await Promise.all([
+      this.#rowsOf(version),
+      tableTerms(this.#options.vocabulary, this.#options.newStore),
+    ]);
+    const notation = (code: string): string =>
+      code.slice(uriSpaces.find((space) => code.startsWith(space))?.length);
+    const codes = new Set<string>();
+    for (const [subject] of rows)
+      if (uriSpaces.some((space) => subject.value.startsWith(space)))
+        codes.add(subject.value);
+    const mapped = new Map<string, Set<string>>();
+    const targets = new Set<string>();
+    const axioms = new Graph(rows);
+    for (const [axiom, , source] of axioms.match(
+      undefined,
+      `${OWL}annotatedSource`,
+    )) {
+      codes.add(source.value);
+      for (const target of axioms.objects(axiom, `${OWL}annotatedTarget`)) {
+        targets.add(target.value);
+        mapped.set(
+          source.value,
+          (mapped.get(source.value) ?? new Set()).add(target.value),
+        );
+      }
+    }
+    const about = await this.about([...codes, ...targets]);
+    const wanted = text.trim().toLowerCase();
+    const named = (code: string): string[] => {
+      const name = about.get(code)?.name;
+      return name === undefined ? [] : [name.label, ...name.altLabels];
+    };
+    const matched = [...codes]
+      .filter(
+        (code) =>
+          wanted === "" ||
+          code.toLowerCase() === wanted ||
+          notation(code).toLowerCase() === wanted ||
+          named(code).some((label) => label.toLowerCase().includes(wanted)),
+      )
+      .sort((a, b) =>
+        notation(a).localeCompare(notation(b), "en", { numeric: true }),
+      );
+    return {
+      version,
+      total: matched.length,
+      found: matched.slice(0, limit).map((code) => ({
+        code,
+        notation: notation(code),
+        about: about.get(code),
+        mapsTo: [...(mapped.get(code) ?? [])].sort().map((target) => ({
+          code: target,
+          notation: notation(target),
+          about: about.get(target),
+        })),
+      })),
+    };
+  }
+
+  /** What the names and status series the app holds say of each code, from the first series that holds it. */
+  async about(codes: readonly string[]): Promise<Map<string, About>> {
+    const [index, held] = await Promise.all([this.#index(), this.#held()]);
+    const found = new Map<string, About>();
+    for (const series of this.#ordered(index, held)) {
+      const kind = index.objects(series, `${REC}tableKind`)[0]?.value;
+      const origin = index.objects(series, SHIPS_WITH)[0]?.value;
+      if (
+        origin === undefined ||
+        (kind !== `${REC}CodeNames` && kind !== `${REC}CodeStatus`)
+      )
+        continue;
+      const rows = new Graph(await this.#rowsOf(origin));
+      for (const code of codes) {
+        const said = found.get(code) ?? {};
+        const values = (predicate: string): string[] =>
+          rows.objects(iri(code), predicate).map((term) => term.value);
+        const [label] = values(`${SKOS}prefLabel`);
+        if (kind === `${REC}CodeNames` && said.name === undefined && label)
+          found.set(code, {
+            ...said,
+            name: { label, altLabels: values(`${SKOS}altLabel`), origin },
+          });
+        const deprecated = values(`${OWL}deprecated`);
+        if (
+          kind === `${REC}CodeStatus` &&
+          said.status === undefined &&
+          deprecated.length > 0
+        )
+          found.set(code, {
+            ...said,
+            status: {
+              deprecated: deprecated.includes("true"),
+              replacedBy: values(`${DCT}isReplacedBy`),
+              origin,
+            },
+          });
+      }
+    }
+    return found;
+  }
+
+  /** The series the store holds, in the order of the feeds that describe them, and then by label. */
+  #ordered(index: Graph, held: Held): Term[] {
+    const { feeds } = this.#options;
+    const place = (series: Term): number => {
+      const at = feeds.indexOf(feedOf(held, series.value) ?? "");
+      return at < 0 ? feeds.length : at;
+    };
+    const label = (series: Term): string =>
+      index.objects(series, `${RDFS}label`)[0]?.value ?? series.value;
+    return index
+      .subjects(SHIPS_WITH)
+      .sort((a, b) => place(a) - place(b) || label(a).localeCompare(label(b)));
+  }
+
+  /** A held version's rows, read once: a version's rows never change. */
+  #rowsOf(version: string): Promise<Triple[]> {
+    let rows = this.#rows.get(version);
+    if (rows === undefined) {
+      rows = this.references().then((references) => references.rows(version));
+      rows.catch(() => this.#rows.delete(version));
+      this.#rows.set(version, rows);
+    }
+    return rows;
   }
 
   #next<T>(call: () => Promise<T>): Promise<T> {
@@ -253,7 +588,7 @@ export class Tables {
     return next;
   }
 
-  /** An empty store starts from the starter copies. */
+  /** An empty store starts from the starter copies, and again whenever it is emptied, as removing an app's pods does. */
   #start(): Promise<void> {
     this.#started ??= (async () => {
       const { files, starter } = this.#options;
@@ -267,7 +602,9 @@ export class Tables {
         const bytes = await starter.read(path);
         if (bytes !== undefined) await files.write(path, bytes);
       }
-    })();
+    })().finally(() => {
+      this.#started = undefined;
+    });
     return this.#started;
   }
 
@@ -412,6 +749,7 @@ export class Tables {
       await this.#options.files.write(INDEX, ntriples(index.triples));
       kept.push(version.value);
     }
+    const watched = await answer(new URL(WATCHED, feed).href);
     const held = await this.#held();
     const modified = catalog.objects(iri(feed), `${DCT}modified`)[0]?.value;
     await this.#write({
@@ -421,6 +759,27 @@ export class Tables {
         [feed]: {
           checked: new Date().toISOString(),
           ...(modified === undefined ? {} : { modified }),
+          series: Object.fromEntries(
+            catalog
+              .subjects(`${RDF}type`, iri(`${REC}ReferenceSeries`))
+              .map((series) => [
+                series.value,
+                catalog.objects(series, `${DCT}source`)[0]?.value ?? null,
+              ]),
+          ),
+          publishers: Object.fromEntries(
+            catalog
+              .match(undefined, `${DCT}publisher`)
+              .flatMap(([, , publisher]) =>
+                catalog
+                  .objects(publisher, `${RDFS}label`)
+                  .slice(0, 1)
+                  .map((label) => [publisher.value, label.value]),
+              ),
+          ),
+          watched:
+            (typeof watched === "string" ? undefined : watchedIn(watched)) ??
+            held.feeds[feed]?.watched,
         },
       },
       current: index

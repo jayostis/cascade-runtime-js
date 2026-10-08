@@ -913,6 +913,9 @@ test("in the browser, a check keeps the test feed's planted newer version in the
         );
       },
     );
+    await context.route(new URL("checked.json", feedUrl).href, (route) =>
+      route.fulfill({ status: 404 }),
+    );
     const page = watched(await context.newPage());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -1005,6 +1008,33 @@ ${shots.join("\n")}`);
     assert.ok(
       after.databases.some((name) => name.endsWith(":cascade-tables")),
       `no tables database among ${after.databases.join(", ")}`,
+    );
+
+    await page.goto(
+      `${served.url}try/index.html?table=${series.replace(/^urn:uuid:/, "")}&q=141`,
+    );
+    await settled(page);
+    const label = of(series, "http://www.w3.org/2000/01/rdf-schema#label");
+    assert.ok(label);
+    assert.ok(
+      (await page.locator("aside section.tables").innerText()).includes(label),
+    );
+    const shown = await page.locator("main").innerText();
+    assert.ok(
+      shown.includes(
+        `Using version ${of(second, "http://purl.org/pav/version") ?? ""}`,
+      ),
+      shown,
+    );
+    assert.deepEqual(
+      await page.locator("table.codes tbody td:first-child").allInnerTexts(),
+      ["141"],
+    );
+    assert.ok(shown.includes("Tables Proof"), shown);
+    await inPlace(page, () => page.click("section.tables button"));
+    assert.match(
+      await page.locator("p.note").innerText(),
+      /^Checked the feeds: nothing new\.$/,
     );
   } finally {
     await context.close();

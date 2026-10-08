@@ -59,6 +59,14 @@ export type {
 export * from "../connect/index.js";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
+export type {
+  About,
+  Found,
+  HeldSeries,
+  HeldVersion,
+  Searched,
+  Watched,
+} from "../tables.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";
@@ -222,9 +230,9 @@ export async function checkTables(): Promise<Checked[]> {
   return checkedAndKept((await resolved()).tables, { cache: "no-cache" });
 }
 
-/** The app's tables, as this site keeps them. */
+/** The app's tables, as this site keeps them, once the engine that reads them is loaded. */
 export async function appTables(): Promise<Tables> {
-  return (await reading()).tables;
+  return (await resolved()).tables;
 }
 
 /** The parts, and the runtime's version: everything a pod reads with, and the engine. */
@@ -535,7 +543,7 @@ export async function openPod(
         (await new Answers(kept, read.runtime).described())?.address ??
         (await podStated(database, read.layout, (await resolved()).newStore()))
           .address;
-      await read.tables.opened(address, null);
+      await read.tables.opened(address, null, name);
     }
     const open = async () =>
       openPodWith(

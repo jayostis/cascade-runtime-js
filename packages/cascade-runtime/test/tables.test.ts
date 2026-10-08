@@ -15,7 +15,11 @@ import {
   tableTerms,
   type Triple,
 } from "@cascade-runtime/runtime";
-import { checkouts, findRoot } from "@cascade-runtime/runtime/node";
+import {
+  checkouts,
+  findRoot,
+  FolderFiles,
+} from "@cascade-runtime/runtime/node";
 import { partsOf, type ResolvedParts } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
 import { RULE_LIST, Tables } from "../src/tables.js";
@@ -357,6 +361,100 @@ ${shots.join("\n")}`);
   const inMemory = await openPodWith({ ...parts, tables: after }, undefined);
   assert.equal(await after.openedWith(inMemory.address), undefined);
   await inMemory.close();
+});
+
+test("the app tells what it holds: each series with its versions, credit and how fresh its feed is, the pods that use each version by name, and the codes a search finds by code or by name, named and mapped", async () => {
+  const of = (subject: string, predicate: string): string | undefined =>
+    feed.catalog.find(
+      ([s, p]) => s.value === subject && p.value === predicate,
+    )?.[2].value;
+  const source = of(groups.series, "http://purl.org/dc/terms/source") ?? "";
+  const watched = { at: "2026-10-08T19:00:00Z", found: "nothing new" };
+  const store = new MemoryFiles("urn:test:tables/");
+  await tablesOver(first, store).check();
+  const folder = join(scratch, "pods", "uses");
+  await (
+    await openPodWith({ ...parts, tables: tablesOver(first, store) }, folder)
+  ).close();
+  const tables = tablesOver(
+    {
+      ...feed,
+      files: new Map([
+        ...feed.files,
+        [
+          new URL("checked.json", FEED).href,
+          new TextEncoder().encode(
+            JSON.stringify({
+              checked: { [source]: { label: "example", ...watched } },
+            }),
+          ),
+        ],
+      ]),
+    },
+    store,
+  );
+  await tables.check();
+
+  const held = await tables.held();
+  const label = (series: string): string =>
+    of(series, `${RDFS}label`) ?? series;
+  assert.deepEqual(
+    held.map((series) => series.label),
+    held.map((series) => label(series.iri)).sort(),
+  );
+  const vaccineGroups = held.find((series) => series.iri === groups.series);
+  assert.ok(vaccineGroups);
+  assert.deepEqual(
+    vaccineGroups.versions.map((version) => version.iri),
+    [groups.second, groups.first],
+  );
+  assert.equal(
+    vaccineGroups.credit,
+    of(groups.series, "http://purl.org/dc/terms/bibliographicCitation"),
+  );
+  assert.deepEqual(vaccineGroups.watched, watched);
+  assert.equal(vaccineGroups.feed, FEED);
+  assert.deepEqual((await tables.uses())[groups.first], ["uses"]);
+
+  const names = held.find((series) => series.kind?.endsWith("#CodeNames"));
+  assert.ok(names);
+  const nameRows = await gunzipped(
+    feed.files.get(rowsUrl(feed, names.current.iri)) ?? new Uint8Array(),
+  );
+  const nameOf = (code: string): string | undefined =>
+    new RegExp(`/cvx/${code}> <[^>]*#prefLabel> "([^"]*)"`).exec(nameRows)?.[1];
+  const [shot, ...others] = (await tables.search(groups.series, "141")).found;
+  assert.equal(others.length, 0);
+  assert.equal(shot?.notation, "141");
+  assert.equal(shot.about?.name?.label, nameOf("141"));
+  assert.ok(shot.mapsTo.length > 0);
+  for (const group of shot.mapsTo)
+    assert.equal(group.about?.name?.label, nameOf(group.notation));
+  const named = await tables.search(names.iri, "SPLIT VIRUS");
+  assert.ok(named.found.some(({ notation }) => notation === "141"));
+  for (const { about } of named.found)
+    assert.ok(
+      [about?.name?.label ?? "", ...(about?.name?.altLabels ?? [])].some(
+        (text) => text.toLowerCase().includes("split virus"),
+      ),
+    );
+});
+
+test("a store emptied while the app runs, as Reset all data empties it, starts again from the starter copies", async () => {
+  const starter = new MemoryFiles("urn:test:starter/");
+  await tablesOver(first, starter).check();
+  const app = join(scratch, "reset");
+  const tables = new Tables({
+    files: new FolderFiles(join(app, ".tables")),
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    starter,
+  });
+  const shipped = await tables.current();
+  assert.ok(shipped.includes(groups.first));
+  await rm(app, { recursive: true, force: true });
+  assert.deepEqual(await tables.current(), shipped);
 });
 
 test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {

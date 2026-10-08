@@ -383,3 +383,138 @@ test("a table opens newest first, a row with no date last", () => {
     ["Potassium", "Creatinine", "Glucose", "Sodium"],
   );
 });
+
+const GROUPS = {
+  iri: "urn:uuid:c1a6678c-2b4d-4287-b852-9039e6a71afd",
+  label: "Example vaccine groups",
+  licence: "http://creativecommons.org/publicdomain/zero/1.0/",
+  publisher: "https://publisher.example/",
+  credit: "Source: an example publisher",
+  current: { iri: "ni:///v2", label: "2", issued: "2026-10-08T19:22:23Z" },
+  versions: [
+    { iri: "ni:///v2", label: "2", issued: "2026-10-08T19:22:23Z" },
+    { iri: "ni:///v1", label: "1", issued: "2026-10-01T00:00:00Z" },
+  ],
+  checked: "2026-10-08T21:55:00Z",
+  watched: { at: "2026-10-08T20:00:00Z", found: "nothing new" },
+};
+const NOW = Date.parse("2026-10-08T22:00:00Z");
+
+/** The page's text, its tags dropped and its runs of white space one space. */
+const textOf = (page: string): string =>
+  page
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+test("the sidebar lists the pods, then the reference tables and Check now; a table's page gives its source, licence, version and freshness, the codes a search found, and the pods using each version", () => {
+  const page = render(
+    view.layout({
+      body: "",
+      pods: ["alex-rivera"],
+      href: (pod: string) => `/pods/${pod}/`,
+      home: "/",
+      dialog: "",
+      menu: { deleteAll: "d", resetAll: "r", about: { name: "a" } },
+      tables: {
+        series: [GROUPS],
+        current: GROUPS.iri,
+        href: (series: { iri: string }) =>
+          `/tables/${view.tableId(series.iri)}/`,
+        check: "/tables/check",
+      },
+    }),
+  );
+  const aside = page.slice(page.indexOf("<aside>"), page.indexOf("</aside>"));
+  assert.deepEqual(
+    [...aside.matchAll(/<h2>([^<]*)<\/h2>/g)].map(([, heading]) => heading),
+    ["Pods", "Reference tables"],
+  );
+  assert.match(
+    aside,
+    /<a href="\/tables\/c1a6678c-2b4d-4287-b852-9039e6a71afd\/" aria-current="page">Example vaccine groups<\/a>/,
+  );
+  assert.match(aside, /<form [^>]*action="\/tables\/check"[\s\S]*Check now/);
+
+  const shown = render(
+    view.tablePage({
+      series: GROUPS,
+      searched: {
+        total: 1,
+        found: [
+          {
+            code: "http://hl7.org/fhir/sid/cvx/141",
+            notation: "141",
+            about: {
+              name: { label: "flu, split", altLabels: [], origin: "n" },
+              status: { deprecated: true, replacedBy: [], origin: "s" },
+            },
+            mapsTo: [
+              {
+                code: "http://hl7.org/fhir/sid/cvx/88",
+                notation: "88",
+                about: {
+                  name: { label: "flu, NOS", altLabels: [], origin: "n" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      text: "141",
+      search: "/tables/c1a6678c/",
+      uses: { "ni:///v1": ["alex-rivera", "gone"], "ni:///v2": [] },
+      pods: ["alex-rivera"],
+      href: (pod: string) => `/pods/${pod}/`,
+      now: NOW,
+    }),
+  );
+  const text = textOf(shown);
+  for (const said of [
+    "Using version 2, Oct 8, 2026",
+    "publisher.example Source: an example publisher",
+    "CC0 1.0",
+    "The watcher checked the publisher 2 hours ago: nothing new. This app last read the feed 5 minutes ago.",
+    "141 flu, split Retired 88 flu, NOS",
+    "version 2, Oct 8, 2026 current : no pod",
+    "version 1, Oct 1, 2026 : Alex Rivera",
+  ])
+    assert.ok(text.includes(said), said);
+  assert.match(shown, /<form method="get" action="\/tables\/c1a6678c\/"/);
+  assert.match(shown, /<a href="\/pods\/alex-rivera\/">Alex Rivera<\/a>/);
+  assert.ok(!text.includes("Gone"));
+});
+
+test("what a check did, in one note", () => {
+  const checked = (fields: object) => ({
+    feed: "https://f.example/feed.ttl",
+    kept: [],
+    refused: [],
+    ...fields,
+  });
+  for (const [did, said] of [
+    [[checked({})], "Checked the feeds: nothing new."],
+    [
+      [checked({ kept: ["ni:///v2"] })],
+      "Kept Example vaccine groups, version 2, Oct 8, 2026.",
+    ],
+    [
+      [checked({ later: "https://f.example/feed.ttl answered 503" })],
+      "Not read now, tried again later: https://f.example/feed.ttl answered 503.",
+    ],
+    [
+      [
+        checked({
+          refused: [
+            {
+              version: "ni:///v3",
+              reason: "its rows do not have the checksum the feed gives",
+            },
+          ],
+        }),
+      ],
+      "Refused a version: its rows do not have the checksum the feed gives.",
+    ],
+  ] as const)
+    assert.equal(view.checkedNote(did, [GROUPS]), said);
+});
