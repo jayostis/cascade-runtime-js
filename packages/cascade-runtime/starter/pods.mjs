@@ -1,12 +1,15 @@
 // What the scripts share: where pods live, what a pod may be called, and which pod a script works on.
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { exit, stderr } from "node:process";
 import { fileURLToPath, URL } from "node:url";
 import { parseArgs } from "node:util";
+import { replayKit } from "cascade-runtime/fixtures";
 
 /** Every pod of this app is a folder here, named as the pod. */
 export const PODS = fileURLToPath(new URL("pods/", import.meta.url));
+/** The kits whose pods the app was made with. */
+export const KITS = ["alex-rivera", "priya-natarajan"];
 export const POD_NAME = /^[a-z0-9][a-z0-9._-]*$/;
 export const NO_POD =
   "No pod loaded. Run `npm run reset` to load Alex's and Priya's pods.";
@@ -31,6 +34,32 @@ export async function podNames() {
     if (error.code === "ENOENT") return [];
     throw error;
   }
+}
+
+/** Removes every pod; gives the names of those there were. */
+export async function deleteAll() {
+  const names = await podNames();
+  await rm(PODS, { recursive: true, force: true });
+  return names;
+}
+
+/**
+ * Removes every pod and loads the kits' pods again, the app as it was made: what `npm run reset` and the File menu's
+ * Reset all data do. `loading(kit)` is called as each kit starts. Gives the names of the pods there were.
+ */
+export async function resetAll(loading = () => undefined) {
+  const names = await deleteAll();
+  for (const kit of KITS) {
+    loading(kit);
+    try {
+      await replayKit(kit, podFolder(kit));
+    } catch (error) {
+      throw new Error(`the pod ${kit} did not load: ${error.message}`, {
+        cause: error,
+      });
+    }
+  }
+  return names;
 }
 
 /** Says why, and ends the script with exit code 2. */

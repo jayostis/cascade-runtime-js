@@ -15,6 +15,7 @@ import {
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionDialog,
+  didNote,
   escaped,
   frame,
   hospitalName,
@@ -41,6 +42,17 @@ const DEMO = TEST_DIRECTORY.filter(({ vendor }) => vendor === "demo");
 const SAMPLES = (document.body.dataset.samples ?? "")
   .split(" ")
   .filter(Boolean);
+/** What the File menu's items do, through the `submit` listener, and what Help, About says. */
+const MENU = {
+  deleteAll: "delete-all",
+  resetAll: "reset-all",
+  about: {
+    name: "Cascade try",
+    version: document.body.dataset.version ?? "",
+    runtime: document.body.dataset.runtime ?? "",
+    code: "../",
+  },
+};
 
 const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
 
@@ -55,6 +67,8 @@ let current;
 let pod;
 /** The sign-in under way or done, with its row, step, requests answered, and once pulled the files to import. */
 let connection;
+/** What the File menu just did, as the address said when the page opened. */
+let note;
 
 async function podsHere() {
   return (await indexedDB.databases())
@@ -94,6 +108,8 @@ function render(title, body, state = "ready") {
     current,
     href: podHref,
     home: "../",
+    menu: MENU,
+    note,
     dialog: newPodDialog({
       people,
       pods,
@@ -286,8 +302,31 @@ async function bring() {
   await showPod(shown.row.name);
 }
 
+/** In this browser's storage while Delete all data is the last thing done, so that a later visit copies no sample in. */
+const DELETED_ALL = "cascade-try:deleted-all";
+
+/** Whether Delete all data was the last thing done; false when storage cannot be read. */
+function deletedAll() {
+  try {
+    return globalThis.localStorage.getItem(DELETED_ALL) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Notes, or with `false` forgets, that Delete all data was the last thing done; nothing when storage cannot be written. */
+function markDeletedAll(deleted) {
+  try {
+    if (deleted) globalThis.localStorage.setItem(DELETED_ALL, "1");
+    else globalThis.localStorage.removeItem(DELETED_ALL);
+  } catch {
+    // Without storage, a later visit copies the samples, as a first one does.
+  }
+}
+
 /** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it. */
 async function make(person) {
+  markDeletedAll(false);
   const name = slug(person);
   if (SAMPLES.includes(name)) return load(name);
   if (name === "") {
@@ -302,6 +341,20 @@ async function make(person) {
   location.assign(podHref(name));
 }
 
+function deleted(name) {
+  return new Promise((resolve, reject) => {
+    const deleting = indexedDB.deleteDatabase(DATABASE + name);
+    deleting.onsuccess = () => resolve();
+    deleting.onerror = () => reject(deleting.error);
+    deleting.onblocked = () =>
+      reject(
+        new Error(
+          `${personName(name)}'s pod goes once this page is closed in your other tabs.`,
+        ),
+      );
+  });
+}
+
 /** Copies the published example pod into this browser. */
 async function copy(name) {
   await (await openPod(name, { from: `../${name}/pod/` })).close();
@@ -310,8 +363,43 @@ async function copy(name) {
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
 async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
+  markDeletedAll(false);
   if (!pods.includes(name)) await copy(name);
   location.assign(podHref(name));
+}
+
+/** Closes the pod shown and deletes every pod's database, all of them tried; gives the names of those there were, or throws saying which stayed. */
+async function deleteAll() {
+  await pod?.close();
+  pod = undefined;
+  const names = await podsHere();
+  const done = await Promise.allSettled(names.map(deleted));
+  const kept = done.filter(({ status }) => status === "rejected");
+  if (kept.length > 0)
+    throw new Error(
+      [
+        "Not every pod was deleted.",
+        ...kept.map(({ reason }) => reason?.message ?? reason),
+      ].join(" "),
+    );
+  return names;
+}
+
+/** File, Delete all data: then the page says how many went, and no visit copies a sample in until a pod is made again. */
+async function deleteEverything() {
+  const names = await deleteAll();
+  markDeletedAll(true);
+  location.assign(`?deleted=${names.length}`);
+}
+
+/** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
+async function resetEverything() {
+  markDeletedAll(false);
+  await deleteAll();
+  await Promise.all(SAMPLES.map(copy));
+  location.assign(
+    SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`,
+  );
 }
 
 /**
@@ -365,14 +453,27 @@ document.addEventListener("submit", (event) => {
   else if (action === "load") busy(() => load(String(fields.get("pod"))));
   else if (action === "make")
     busy(() => make(String(fields.get("person") ?? "")));
+  else if (action === MENU.deleteAll) busy(deleteEverything);
+  else if (action === MENU.resetAll) busy(resetEverything);
 });
 
 busy(async () => {
   [pods, people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
+  note = didNote(query, SAMPLES);
+  if (note !== undefined) {
+    const rest = new URLSearchParams(query);
+    rest.delete("deleted");
+    rest.delete("reset");
+    history.replaceState(
+      null,
+      "",
+      String(rest) === "" ? location.pathname : `?${rest}`,
+    );
+  }
   const asked = query.get("pod");
   if (asked === null && pods.length === 0) {
-    await firstVisit();
+    if (!query.has("deleted") && !deletedAll()) await firstVisit();
     if (pods.length === 0) return render("No pods yet", noPods());
   }
   if (asked !== null && !pods.includes(asked))

@@ -151,6 +151,9 @@ export function hospitalsAt(origin, demo) {
       return found?.pod === pod ? found : undefined;
     },
 
+    /** Forgets every connection, as when the pods they were for are gone. */
+    forget: () => connections.clear(),
+
     /** A demo hospital's answer to a request for its sign-in page. */
     demo: (url, init) => route(url, init),
   };

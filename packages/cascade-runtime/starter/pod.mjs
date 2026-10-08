@@ -1,14 +1,17 @@
 // `npm run pod:load -- <kit> [--through <step>] [--as <name>]`, `npm run pod:new <name>`, `npm run pod:reset <name>`,
 // `npm run reset`.
 import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { argv, stdout } from "node:process";
 import { openPod } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
-import { argumentsOf, checkName, podFolder, PODS, refuse } from "./pods.mjs";
-
-/** The kits whose pods the app was made with. */
-const KITS = ["alex-rivera", "priya-natarajan"];
+import {
+  argumentsOf,
+  checkName,
+  podFolder,
+  refuse,
+  resetAll,
+} from "./pods.mjs";
 
 const [command, ...args] = argv.slice(2);
 
@@ -70,21 +73,17 @@ async function reset() {
 /** Every pod removed and the kits' pods loaded again: the app as it was made. */
 async function everything() {
   argumentsOf(args, "npm run reset", {}, 0);
-  const removed = existsSync(PODS) ? await readdir(PODS) : [];
-  await rm(PODS, { recursive: true, force: true });
-  stdout.write(
-    `Removed ${removed.length === 0 ? "nothing" : `pods/, which held ${removed.join(", ")}`}.\n`,
-  );
-  for (const kit of KITS) {
-    stdout.write(`Loading the pod ${kit}… `);
-    try {
-      await replayKit(kit, podFolder(kit));
-    } catch (error) {
-      refuse(`\nthe pod ${kit} did not load: ${error.message}`);
-    }
-    stdout.write("loaded.\n");
+  let removed;
+  try {
+    removed = await resetAll((kit) =>
+      stdout.write(`Loading the pod ${kit}…\n`),
+    );
+  } catch (error) {
+    refuse(error.message);
   }
-  stdout.write("If the app is running, restart it.\n");
+  stdout.write(
+    `Removed ${removed.length === 0 ? "no pod" : removed.join(", ")}, and loaded the app's pods again. If the app is running, restart it.\n`,
+  );
 }
 
 const commands = { load, new: create, reset, everything };

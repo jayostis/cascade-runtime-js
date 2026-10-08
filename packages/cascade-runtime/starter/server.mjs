@@ -3,16 +3,25 @@
 // `npm start`, then open the address it prints. What the pages show is in `summary.mjs`; this file answers requests,
 // reads the pods, and hands the module what it shows, with the addresses of this app.
 import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import process, { env, exit, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
 import { hospitalsAt } from "./hospitals.mjs";
-import { podFolder, podNames, POD_NAME } from "./pods.mjs";
+import {
+  deleteAll,
+  KITS,
+  podFolder,
+  podNames,
+  POD_NAME,
+  resetAll,
+} from "./pods.mjs";
 import {
   connectionDialog,
   demoPeople,
+  didNote,
   escaped,
   frame,
   hospitalName,
@@ -44,8 +53,8 @@ function podNamed(name) {
 
 const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 
-/** `body` in the frame, with the pods there are; `names` given, it reads none. */
-async function page(title, body, { current, refresh, names } = {}) {
+/** `body` in the frame, with the pods there are; `names` given, it reads none. `note` says what was just done. */
+async function page(title, body, { current, refresh, names, note } = {}) {
   const pods = names ?? (await podNames());
   return frame({
     title,
@@ -55,8 +64,32 @@ async function page(title, body, { current, refresh, names } = {}) {
     href: podPath,
     home: "/",
     dialog: newPodDialog({ people, pods, action: "/pods" }),
+    menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
+    note,
     refresh,
   });
+}
+
+/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
+async function closeAll() {
+  const pods = [...open.values()];
+  open.clear();
+  hospitals?.forget();
+  await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
+}
+
+/** File, Delete all data: every pod removed, then the home page says how many. */
+async function deleteEverything(response) {
+  await closeAll();
+  const removed = await deleteAll();
+  redirect(response, `/?deleted=${removed.length}`);
+}
+
+/** File, Reset all data: what `npm run reset` does, then the first pod's page says which are back. */
+async function resetEverything(response) {
+  await closeAll();
+  await resetAll();
+  redirect(response, `${podPath(KITS[0])}?reset`);
 }
 
 /** A button that starts signing the pod's person in to the hospital at `fhirBase`. */
@@ -64,10 +97,14 @@ function signIn(name, fhirBase, label) {
   return postButton(`${podPath(name)}hospitals`, { fhirBase }, escaped(label));
 }
 
-async function home(response) {
+async function home(response, query) {
   const names = await podNames();
   if (names.length > 0) return redirect(response, podPath(names[0]), 302);
-  send(response, 200, await page("No pods yet", noPods(), { names }));
+  send(
+    response,
+    200,
+    await page("No pods yet", noPods(), { names, note: didNote(query, KITS) }),
+  );
 }
 
 /**
@@ -121,6 +158,7 @@ async function showPod(response, name, query, names) {
     await page(personName(name), body, {
       current: name,
       names,
+      note: didNote(query, KITS),
       refresh: shown?.step === "signing in" || shown?.step === "pulling",
     }),
   );
@@ -272,6 +310,25 @@ async function demoHospitalPage(request, response, url) {
 
 const demo = await loadHospitals();
 const people = demoPeople(demo);
+const packageOf = async (path) =>
+  JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
+const [app, runtime] = await Promise.all([
+  packageOf("package.json"),
+  packageOf("node_modules/cascade-runtime/package.json").catch(() => ({})),
+]);
+/**
+ * What Help, About says: this app, the cascade-runtime it runs on, and that package's README, where its code is; the
+ * version unknown and no link when its `package.json` cannot be read.
+ */
+const about = {
+  name: app.name,
+  version: app.version,
+  runtime: runtime.version ?? "(version unknown)",
+  code:
+    runtime.repository === undefined
+      ? undefined
+      : `${runtime.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}/tree/main/${runtime.repository.directory}#readme`,
+};
 let origin;
 /** The origins a browser gives this server's own forms: it answers as `localhost` too. */
 let ownOrigins;
@@ -296,8 +353,13 @@ const server = createServer(async (request, response) => {
       );
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
-    if (!post && pathname === "/") return await home(response);
+    if (!post && pathname === "/")
+      return await home(response, url.searchParams);
     if (post && pathname === "/pods") return await newPod(request, response);
+    if (post && pathname === "/delete-all")
+      return await deleteEverything(response);
+    if (post && pathname === "/reset-all")
+      return await resetEverything(response);
     if (!post && pathname === "/callback") {
       const back = hospitals.back(url);
       if (back !== undefined) return redirect(response, back);
@@ -370,9 +432,7 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
 
 async function stop() {
   server.close();
-  await Promise.allSettled(
-    [...open.values()].map(async (pod) => (await pod).close()),
-  );
+  await closeAll();
   exit(0);
 }
 process.on("SIGINT", stop);
