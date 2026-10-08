@@ -534,19 +534,29 @@ try {
 }
 
 if (release === undefined) {
-  await behaviour("a new pod is empty, and a reset removes it", async () => {
-    assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
-    assert.deepEqual(await asked(ALLERGIES, "scratch"), []);
-    assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
-    assert.equal(existsSync(join(app, "pods", "scratch")), false);
-    const { code, err } = await npm("run", "ask", ALLERGIES);
-    assert.equal(code, 2);
-    for (const name of [
-      "alex-rivera",
-      `alex-rivera-${story.through.toLowerCase()}`,
-    ])
-      assert.ok(err.includes(name), `ask does not name ${name}`);
-  });
+  await behaviour(
+    "a new pod is empty, its answers are kept beside the pods and are no pod, and a reset removes it and them",
+    async () => {
+      const answers = join(app, "pods", ".answers", "scratch");
+      assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
+      assert.deepEqual(await asked(ALLERGIES, "scratch"), []);
+      assert.ok(
+        existsSync(join(answers, "answers.json")),
+        "no answer was kept",
+      );
+      assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
+      assert.equal(existsSync(join(app, "pods", "scratch")), false);
+      assert.equal(existsSync(answers), false);
+      const { code, err } = await npm("run", "ask", ALLERGIES);
+      assert.equal(code, 2);
+      assert.ok(!err.includes(".answers"), "ask names .answers as a pod");
+      for (const name of [
+        "alex-rivera",
+        `alex-rivera-${story.through.toLowerCase()}`,
+      ])
+        assert.ok(err.includes(name), `ask does not name ${name}`);
+    },
+  );
 
   await behaviour("a kit's download is copied whole", async () => {
     const source = join(
@@ -917,6 +927,7 @@ if (refused !== undefined) throw new Error(refused);
     );
     assert.equal((await run(execPath, [script])).code, 0, "no record in");
     assert.ok((await asked(IMPORTS, "alex-rivera")).length > fresh.imports);
+    assert.ok(existsSync(join(app, "pods", ".answers")), "no answer was kept");
     assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
     assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");

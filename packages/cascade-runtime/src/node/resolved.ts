@@ -1,4 +1,5 @@
-import { basename, dirname, resolve as absolute } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   importersNamed,
@@ -22,12 +23,22 @@ export interface ResolvedParts extends Parts {
   readonly local: LocalVocabulary;
 }
 
+/** The answers of the pod in the folder: a folder of their own, `.answers/<name>`, beside the pod's. */
+export function answersBeside(path: string): FolderFiles {
+  const folder = absolute(path);
+  return new FolderFiles(join(dirname(folder), ".answers", basename(folder)));
+}
+
 async function resolve(): Promise<ResolvedParts> {
-  const components = await componentsOf(
-    fileURLToPath(new URL("../../../", import.meta.url)),
-  );
+  const packageFolder = fileURLToPath(new URL("../../../", import.meta.url));
+  const components = await componentsOf(packageFolder);
   const local = await vocabularyOf(components);
   const { config, files, layout, build } = local;
+  const { version } = JSON.parse(
+    await readFile(join(packageFolder, "package.json"), "utf8"),
+  ) as { version: string };
+  const stored =
+    /-commit-[0-9a-f]+$/.test(version) && local.resolved.uncommitted === 0;
   const newStore = () => new OxigraphStore();
   return {
     local,
@@ -45,6 +56,7 @@ async function resolve(): Promise<ResolvedParts> {
         name: basename(folder),
       };
     },
+    ...(stored ? { answers: { runtime: version, at: answersBeside } } : {}),
     exportAt: (path) => {
       const at = absolute(path);
       return { files: new FolderFiles(dirname(at)), name: basename(at) };

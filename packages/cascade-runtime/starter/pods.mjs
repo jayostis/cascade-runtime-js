@@ -18,7 +18,10 @@ export function podFolder(name) {
   return join(PODS, name);
 }
 
-/** The pods there are, by name: a folder still empty is none, so reading it never makes a pod. */
+/**
+ * The pods there are, by name: a folder still empty is none, so reading it never makes a pod, and neither is
+ * `.answers`, where the runtime keeps each pod's answers.
+ */
 export async function podNames() {
   try {
     const entries = await readdir(PODS, { withFileTypes: true });
@@ -26,6 +29,7 @@ export async function podNames() {
     for (const entry of entries)
       if (
         entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
         (await readdir(podFolder(entry.name))).length > 0
       )
         names.push(entry.name);
@@ -34,6 +38,12 @@ export async function podNames() {
     if (error.code === "ENOENT") return [];
     throw error;
   }
+}
+
+/** Removes the pod and its answers. */
+export async function deletePod(name) {
+  await rm(podFolder(name), { recursive: true, force: true });
+  await rm(join(PODS, ".answers", name), { recursive: true, force: true });
 }
 
 /** Removes every pod; gives the names of those there were. */

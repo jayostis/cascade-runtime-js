@@ -19,8 +19,8 @@ import {
 import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
 import { type Exported, openPod, type Pod } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
-import { resolved } from "../src/node/resolved.js";
-import { openPodWith } from "../src/pod.js";
+import { answersBeside, resolved } from "../src/node/resolved.js";
+import { openPodWith, type Parts } from "../src/pod.js";
 
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
@@ -38,19 +38,27 @@ const UUID4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 let kit: string;
+let pods: string;
 let folder: string;
 let pod: Pod;
+/** The parts a packed runtime opens a pod with: its answers kept beside it. */
+let kept: Parts;
 
 before(async () => {
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   kit = (await localVocabulary(root)).files.folder;
-  folder = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
-  pod = await openPod(folder);
+  pods = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  folder = join(pods, "pod");
+  kept = {
+    ...(await resolved()),
+    answers: { runtime: "test", at: answersBeside },
+  };
+  pod = await openPodWith(kept, folder);
 });
 
 after(async () => {
   await pod.close();
-  await rm(folder, { recursive: true, force: true });
+  await rm(pods, { recursive: true, force: true });
 });
 
 function inKit(path: string): string {
@@ -438,7 +446,7 @@ test("ask runs a question by name or the caller's own query, under the lens name
   );
 });
 
-test("a new pod is named from a base of its own, and the vocabulary's queries find it there; opened again it is the pod it was", async () => {
+test("a new pod is named from a base of its own, and the vocabulary's queries find it there; opened again it is the pod it was, and answers what it answered without a build", async () => {
   const [, base] = /^pod:\/\/([^/]+)\/$/.exec(pod.address) ?? [];
   assert.match(base ?? "", UUID4);
   assert.ok(pod.owner.startsWith(pod.address));
@@ -461,12 +469,30 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
   const { address, subject, owner } = pod;
   const rows = await allergens();
   await pod.close();
-  pod = await openPod(folder);
-  assert.deepEqual(
-    [pod.address, pod.subject, pod.owner],
-    [address, subject, owner],
+  const unbuilt = await openPodWith(
+    {
+      ...kept,
+      build: {
+        ...kept.build,
+        files: () => Promise.reject(new Error("the pod was built")),
+      },
+    },
+    folder,
   );
-  assert.deepEqual(await allergens(), rows);
+  try {
+    assert.deepEqual(
+      [unbuilt.address, unbuilt.subject, unbuilt.owner],
+      [address, subject, owner],
+    );
+    assert.deepEqual(await allergens(unbuilt), rows);
+    await assert.rejects(
+      unbuilt.ask("pod/My active medications"),
+      /the pod was built/,
+    );
+  } finally {
+    await unbuilt.close();
+  }
+  pod = await openPodWith(kept, folder);
 
   const notAPod = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
   try {
