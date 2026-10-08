@@ -11,6 +11,7 @@ import {
   OxigraphStore,
   parseConfig,
   type Placed,
+  podStated,
   readText,
   repositoryName,
   type RuntimeConfig,
@@ -42,7 +43,7 @@ import {
   type Pod,
   type Row,
 } from "../pod.js";
-import { type Checked, Tables } from "../tables.js";
+import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
   Done,
@@ -169,6 +170,7 @@ const reading = once(async (): Promise<Read> => {
 });
 
 let configured: TablesSettings = {};
+let tablesMade = false;
 
 export interface TablesSettings {
   /** What reads the feeds; the page's own `fetch` otherwise. */
@@ -179,6 +181,10 @@ export interface TablesSettings {
 
 /** Sets how the tables are read and kept, before the first pod is opened. */
 export function configureTables(settings: TablesSettings): void {
+  if (tablesMade)
+    throw new Error(
+      "configureTables comes before the first pod opens: the tables are already made",
+    );
   configured = settings;
 }
 
@@ -187,17 +193,17 @@ async function tablesOf(
   config: RuntimeConfig,
   vocabulary: FetchedFiles,
 ): Promise<Tables> {
+  tablesMade = true;
   const name =
     configured.name ?? new URL(".", globalThis.location.href).pathname;
   const database = `${name}:${TABLES_DATABASE}`;
-  const tables = new Tables({
-    files: await IndexedDbFiles.open(database, `urn:cascade:tables/`),
+  return new Tables({
+    files: await IndexedDbFiles.open(database, "urn:cascade:tables/"),
     feeds: config.tables.feeds,
     vocabulary,
     newStore: () => new OxigraphStore(),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
   });
-  return tables;
 }
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
@@ -232,7 +238,9 @@ const resolved = once(async (): Promise<Resolved> => {
   const { config, vocabulary, carried } = read;
   const newStore = () => new OxigraphStore();
   if (config.tables.checkOnOpen)
-    void checkedAndKept(read.tables, {}).catch(() => undefined);
+    void checkedAndKept(read.tables, {
+      signal: AbortSignal.timeout(CHECK_ON_OPEN_MS),
+    }).catch(() => undefined);
   return {
     vocabulary,
     layout: read.layout,
@@ -522,11 +530,13 @@ export async function openPod(
     answers = kept;
     const carried = (await published) ?? [];
     if (carried.length > 0) await kept.writeAll(carried).catch(() => undefined);
-    const copy =
-      published === undefined
-        ? undefined
-        : await new Answers(kept, read.runtime).described();
-    if (copy !== undefined) await read.tables.opened(copy.address, null);
+    if (published !== undefined) {
+      const address =
+        (await new Answers(kept, read.runtime).described())?.address ??
+        (await podStated(database, read.layout, (await resolved()).newStore()))
+          .address;
+      await read.tables.opened(address, null);
+    }
     const open = async () =>
       openPodWith(
         {

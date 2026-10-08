@@ -110,8 +110,9 @@ A browser keeps its tables in one IndexedDB database for the app,
 `<name>:cascade-tables`, `name` the page's folder unless
 `configureTables({ name, fetch })` says otherwise before the first pod opens.
 It reads the feeds once the engine loads, and `checkTables()` is "Check now".
-A pod copied with `from` is taken as published; it adopts only tables newer
-than those the browser held when it copied it.
+A pod copied with `from` is taken as published: its first open records the
+tables the browser then holds without adopting them, and a later open adopts
+only tables newer than those.
 
 ## Bring in an export
 

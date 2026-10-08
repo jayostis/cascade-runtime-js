@@ -32,6 +32,9 @@ const INDEX = "references.ttl";
 /** What the store holds that is not RDF: each feed's last check, the current versions, and each pod's. */
 export const HELD = "tables.json";
 
+/** How long the check an open starts may take: a network that stalls must not hold a local pod closed. */
+export const CHECK_ON_OPEN_MS = 10_000;
+
 /** What a pod keeps of a series, from the feed's description of it. */
 const SERIES_KEPT = [
   `${RDF}type`,
