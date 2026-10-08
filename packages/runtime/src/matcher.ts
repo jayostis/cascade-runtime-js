@@ -276,6 +276,8 @@ interface Pod {
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
   readonly judgments: readonly Judged[];
   readonly revised: ReadonlySet<string>;
+  /** Each ordered pair of members of a matcher Same a person retracted. */
+  readonly retracted: ReadonlySet<string>;
 }
 
 /** For each rule's justification, the origins that join each pair: "" for a rule that reads no table. */
@@ -470,6 +472,7 @@ class Matcher {
     for (const [justification, pairs] of matched) {
       const newly = new Map<string, Set<string>>();
       for (const [key, origins] of pairs) {
+        if (pod.retracted.has(key)) continue;
         const unknown = [...origins].filter((origin) => {
           const was = before(origin);
           return (
@@ -720,11 +723,31 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     "SELECT DISTINCT ?thing WHERE { ?thing ?p ?o FILTER isIRI(?thing) }",
     "thing",
   );
+  const retracted = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?judgment ?member WHERE {
+        ?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same ; prov:hadMember ?member .
+        ?retracting npx:retracts ?judgment
+      }`,
+      "judgment",
+      "member",
+    ),
+  );
   return {
     held: new Set(held.flatMap(([thing]) => thing ?? [])),
     theirs: await subjectRecords(dataset),
     judgments: await recheckable(dataset),
     revised: references.revised(),
+    retracted: new Set(
+      [...retracted.values()].flatMap((members) =>
+        members.flatMap((record) =>
+          members.flatMap((other) =>
+            record === other ? [] : [pair(record, other)],
+          ),
+        ),
+      ),
+    ),
   };
 }
 
