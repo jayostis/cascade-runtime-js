@@ -6,19 +6,30 @@ type Subject = Triple[0];
 /** A graph's triples in memory, each once. */
 export class Graph {
   readonly triples: readonly Triple[];
+  /** The triples by their subject, as `written` gives it. */
+  readonly #bySubject = new Map<string, Triple[]>();
 
   constructor(triples: Iterable<Triple>) {
     const unique = new Map<string, Triple>();
     for (const triple of triples)
       unique.set(triple.map(written).join(" "), triple);
     this.triples = [...unique.values()];
+    for (const triple of this.triples) {
+      const subject = written(triple[0]);
+      const held = this.#bySubject.get(subject);
+      if (held === undefined) this.#bySubject.set(subject, [triple]);
+      else held.push(triple);
+    }
   }
 
   /** The triples matching each term given; an undefined term matches any. */
   match(subject?: Term, predicate?: string, object?: Term): Triple[] {
-    return this.triples.filter(
-      ([s, p, o]) =>
-        (subject === undefined || written(s) === written(subject)) &&
+    const from =
+      subject === undefined
+        ? this.triples
+        : (this.#bySubject.get(written(subject)) ?? []);
+    return from.filter(
+      ([, p, o]) =>
         (predicate === undefined || p.value === predicate) &&
         (object === undefined || written(o) === written(object)),
     );
