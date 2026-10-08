@@ -54,7 +54,7 @@ function recording(failing?: string): Terminal & {
   };
 }
 
-test("given a folder, it makes the project and names it", async () => {
+test("given a folder, it makes the project and names it, with the view's packages at the versions the repository tests", async () => {
   const folder = join(parent, "my-app");
   const terminal = recording();
   assert.equal(await create([folder, "--tarball", ADDRESS], terminal), 0);
@@ -64,6 +64,13 @@ test("given a folder, it makes the project and names it", async () => {
   ) as { name: string; dependencies: Record<string, string> };
   assert.equal(manifest.name, "my-app");
   assert.equal(manifest.dependencies["cascade-runtime"], ADDRESS);
+  for (const tested of ["../../package.json", "../../../site/package.json"]) {
+    const { devDependencies } = JSON.parse(
+      await readFile(new URL(tested, import.meta.url), "utf8"),
+    ) as { devDependencies: Record<string, string> };
+    for (const name of ["preact", "htm", "preact-render-to-string"])
+      assert.equal(manifest.dependencies[name], devDependencies[name], name);
+  }
   const ignored = (await readFile(join(folder, ".gitignore"), "utf8")).split(
     /\r?\n/,
   );

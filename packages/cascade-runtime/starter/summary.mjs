@@ -1,6 +1,15 @@
 // A pod as a person reads it: who it is for, where its records came from, what Cascade noticed, and a tile for each
-// kind of record. Pure functions from a pod's question rows to HTML, with no import, so a page in a browser can run
-// them too. Rewrite it freely: it is only this app's view.
+// kind of record. Preact components written with `htm`: functions from a pod's question rows to the page's elements,
+// which `server.mjs` renders to HTML and a page in a browser can render too. It imports only `preact` and `htm`, with
+// no build step. Rewrite it freely: it is only this app's view.
+import { Fragment, h } from "preact";
+import htm from "htm";
+
+/**
+ * Markup as Preact's elements: `${…}` in the template is a value, escaped when rendered, or more elements. A run of
+ * spaces with a line break between two tags is dropped, so a space that matters stays on its line.
+ */
+export const html = htm.bind(h);
 
 /** A column of a section's table: its heading, what a cell shows, and what the column sorts by. */
 const text = (head, of) => ({ head, type: "text", key: of, show: of });
@@ -125,15 +134,6 @@ export const QUESTIONS = [
   REVIEW,
   ...SECTIONS.map(({ question }) => question),
 ];
-
-export function escaped(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 /** A measurement to three significant figures, as a lab report gives it: `60.967166` is `61`, `4.7055` is `4.71`. */
 export function rounded(value) {
@@ -340,18 +340,18 @@ export function opening(section, rows) {
 
 /** A dialog's first link, to `href`: it covers the page behind the box, so a click outside the box closes it. */
 const backdrop = (href) =>
-  `<a class="backdrop" href="${escaped(href)}" aria-label="Close the box" tabindex="-1"></a>`;
+  html`<a class="backdrop" href=${href} aria-label="Close the box" tabindex="-1"></a>`;
 
 /**
- * A box over the page, shown when the page's address ends `#<id>`, with `body` under the HTML `heading`; its close
- * link and backdrop go to `back`, and a `wide` one is for a table.
+ * A box over the page, shown when the page's address ends `#<id>`, with `body` under `heading`; its close link and
+ * backdrop go to `back`, and a `wide` one is for a table.
  */
 function box(id, heading, body, { back = "#", wide = false } = {}) {
-  return `<div class="dialog" id="${escaped(id)}" role="dialog" aria-labelledby="${escaped(id)}-title">
+  return html`<div class="dialog" id=${id} role="dialog" aria-labelledby="${id}-title">
 ${backdrop(back)}
 <div class="box${wide ? " wide" : ""}">
-<a class="close" href="${escaped(back)}" aria-label="Close">×</a>
-<h2 id="${escaped(id)}-title">${heading}</h2>
+<a class="close" href=${back} aria-label="Close">×</a>
+<h2 id="${id}-title">${heading}</h2>
 ${body}
 </div>
 </div>`;
@@ -364,37 +364,30 @@ ${body}
 export function tile(section, rows) {
   const sorted = opening(section, rows);
   const id = `see-${slug(section.title)}`;
-  const head = section.columns
-    .map((column, at) => {
-      const sort =
-        at !== section.sortBy
-          ? ""
-          : ` aria-sort="${section.newestFirst ? "descending" : "ascending"}"`;
-      return `<th${sort}><button type="button" data-type="${column.type}">${escaped(column.head)}</button></th>`;
-    })
-    .join("");
-  const body = sorted
-    .map(
-      (row) =>
-        `<tr>${section.columns
-          .map((column) => {
-            const shown = escaped(column.show(row) ?? "");
-            const cell =
-              column.tag && shown !== ""
-                ? `<span class="tag${column.warm(row) ? " warm" : ""}">${shown}</span>`
-                : shown;
-            return `<td data-key="${escaped(column.key(row) ?? "")}">${cell}</td>`;
-          })
-          .join("")}</tr>`,
-    )
-    .join("\n");
+  const order = section.newestFirst ? "descending" : "ascending";
+  const head = section.columns.map(
+    (column, at) =>
+      html`<th aria-sort=${at === section.sortBy ? order : undefined}><button type="button" data-type=${column.type}>${column.head}</button></th>`,
+  );
+  const cell = (column, row) => {
+    const shown = column.show(row) ?? "";
+    return html`<td data-key=${column.key(row) ?? ""}>${
+      column.tag && shown !== ""
+        ? html`<span class="tag${column.warm(row) ? " warm" : ""}">${shown}</span>`
+        : shown
+    }</td>`;
+  };
+  const body = sorted.map(
+    (row) =>
+      html`<tr>${section.columns.map((column) => cell(column, row))}</tr>`,
+  );
   const names = sorted.map((row) => section.name(row) ?? "").join(", ");
   return {
-    tile: `<a class="tile" href="#${id}"><span class="kind">${escaped(section.title)}</span><span class="count">${rows.length}</span><span class="peek">${escaped(names)}</span></a>`,
+    tile: html`<a class="tile" href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
     dialog: box(
       id,
-      `${escaped(section.title)} <span class="muted">${rows.length}</span>`,
-      `<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${escaped(section.title.toLowerCase())}">
+      html`${section.title} <span class="muted">${rows.length}</span>`,
+      html`<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${section.title.toLowerCase()}" />
 <div class="scroll"><table>
 <thead><tr>${head}</tr></thead>
 <tbody>
@@ -414,15 +407,14 @@ ${body}
  * - `pod`: the pod's name;
  * - `person`: the demo person the pod is for, as `demoPeople` gives them, or undefined;
  * - `from`: the hospital a record was just brought in from, by its name, or undefined;
- * - `signIn(hospital)`: the HTML of a button that signs the pod's person in at one of `person`'s hospitals;
+ * - `signIn(hospital)`: a button that signs the pod's person in at one of `person`'s hospitals;
  * - `findHospital`: the address of the page that finds a hospital;
  * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined.
  */
 export function podPage(
   answers,
-  { pod, person, from, signIn, findHospital, connection = "" },
+  { pod, person, from, signIn, findHospital, connection },
 ) {
-  const who = personName(pod);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
@@ -434,27 +426,15 @@ export function podPage(
     records === 0
       ? "Nothing here yet."
       : `${records} ${records === 1 ? "record" : "records"}, from ${places.length === 1 ? "one place" : `${places.length} places`}`;
-  return [
-    `<h1>${escaped(who)}</h1>`,
-    `<p class="lead">${lead}</p>`,
-    places.length === 0
-      ? ""
-      : `<ul class="chips">${places.map((place) => `<li>${escaped(place)}</li>`).join("")}</ul>`,
-    from === undefined
-      ? ""
-      : `<p class="note">Brought in the record from ${escaped(hospitalName(from))}.</p>`,
-    sentences.length === 0
-      ? ""
-      : `<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => `<li>${escaped(sentence)}</li>`).join("")}</ul></div>`,
-    tiles.length === 0
-      ? ""
-      : `<div class="tiles">${tiles.map(({ tile }) => tile).join("\n")}</div>`,
-    ...tiles.map(({ dialog }) => dialog),
-    connection,
-    bringIn({ empty: records === 0, person, signIn, findHospital }),
-  ]
-    .filter((part) => part !== "")
-    .join("\n");
+  return html`<h1>${personName(pod)}</h1>
+<p class="lead">${lead}</p>
+${places.length > 0 && html`<ul class="chips">${places.map((place) => html`<li>${place}</li>`)}</ul>`}
+${from !== undefined && html`<p class="note">Brought in the record from ${hospitalName(from)}.</p>`}
+${sentences.length > 0 && html`<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => html`<li>${sentence}</li>`)}</ul></div>`}
+${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
+${tiles.map(({ dialog }) => dialog)}
+${connection}
+${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
 }
 
 /** The card that brings in more: a sign-in button per hospital holding the demo person, and "Find a hospital". */
@@ -463,11 +443,11 @@ function bringIn({ empty, person, signIn, findHospital }) {
   const said =
     person === undefined
       ? "Sign in at a hospital, see what it has, and bring it into this pod."
-      : `${escaped(person.name)} has records waiting at ${escaped(listed(at))}.${at.length > 1 ? " Bring in each to see the pod join what they agree on." : ""}`;
-  return `<div class="card">
+      : `${person.name} has records waiting at ${listed(at)}.${at.length > 1 ? " Bring in each to see the pod join what they agree on." : ""}`;
+  return html`<div class="card">
 <h2>${empty ? "Bring in records" : "Bring in more"}</h2>
 <p>${said}</p>
-<div class="row">${(person?.at ?? []).map(signIn).join("\n")}<a class="button quiet" href="${escaped(findHospital)}">Find a hospital</a></div>
+<div class="row">${(person?.at ?? []).map(signIn)}<a class="button quiet" href=${findHospital}>Find a hospital</a></div>
 </div>`;
 }
 
@@ -482,9 +462,9 @@ export function steps({ step, requests }) {
     at === 2 ? `Record fetched, in ${requests} requests` : "Record fetched",
   ].map((text, index) => {
     const state = index < at || at === 2 ? "done" : index === at ? "now" : "";
-    return `<li class="${state}">${escaped(text)}</li>`;
+    return html`<li class=${state}>${text}</li>`;
   });
-  return `<ul class="steps">\n${items.join("\n")}\n</ul>`;
+  return html`<ul class="steps">${items}</ul>`;
 }
 
 /**
@@ -518,24 +498,18 @@ export function patientName(bundle) {
     : [...(name.given ?? []), name.family].filter(Boolean).join(" ");
 }
 
-/** A button that posts `fields` to `action`, as a form of its own; `inner` is its HTML. */
+/** A button that posts `fields` to `action`, as a form of its own, with `inner` in it. */
 export function postButton(action, fields, inner, className) {
-  const hidden = Object.entries(fields)
-    .map(
-      ([name, value]) =>
-        `<input type="hidden" name="${escaped(name)}" value="${escaped(value)}">`,
-    )
-    .join("\n");
-  return `<form class="inline" method="post" action="${escaped(action)}">
-${hidden}
-<button${className === undefined ? "" : ` class="${className}"`}>${inner}</button>
+  return html`<form class="inline" method="post" action=${action}>
+${Object.entries(fields).map(([name, value]) => html`<input type="hidden" name=${name} value=${value} />`)}
+<button class=${className}>${inner}</button>
 </form>`;
 }
 
 /** A one-click choice in a list of the new-pod box: a form that posts `fields` to `action`, or a link to `href`. */
 function choice({ label, note, action, fields = {}, href }) {
-  const inner = `${escaped(label)}<span class="muted">${escaped(note ?? "")}</span>`;
-  return `<li>${href === undefined ? postButton(action, fields, inner) : `<a class="button" href="${escaped(href)}">${inner}</a>`}</li>`;
+  const inner = html`${label}<span class="muted">${note ?? ""}</span>`;
+  return html`<li>${href === undefined ? postButton(action, fields, inner) : html`<a class="button" href=${href}>${inner}</a>`}</li>`;
 }
 
 /**
@@ -556,18 +530,18 @@ export function newPodDialog({ people, pods, action, more }) {
       }),
     );
   const list = (said, items) =>
-    items.length === 0
-      ? ""
-      : `<p><strong>${escaped(said)}</strong></p>\n<ul class="people">\n${items.join("\n")}\n</ul>`;
+    items.length > 0 &&
+    html`<p><strong>${said}</strong></p>
+<ul class="people">${items}</ul>`;
   return box(
     "new-pod",
     "Make a new pod",
-    `<p>A pod keeps one person's health records, wherever they come from: files they download, and hospitals they sign in to. It notices when two sources describe the same thing, and when they disagree.</p>
+    html`<p>A pod keeps one person's health records, wherever they come from: files they download, and hospitals they sign in to. It notices when two sources describe the same thing, and when they disagree.</p>
 ${list("Try someone with records waiting at the demo hospitals. They are made up, and signing in needs no password.", demo)}
-${more === undefined ? "" : list(more.said, more.choices.map(choice))}
+${more !== undefined && list(more.said, more.choices.map(choice))}
 <p><strong>Or make one for anyone.</strong> You can bring in records afterwards.</p>
-<form method="post" action="${escaped(action)}" class="row">
-<input name="person" placeholder="A person's name" aria-label="A person's name" required>
+<form method="post" action=${action} class="row">
+<input name="person" placeholder="A person's name" aria-label="A person's name" required />
 <button>Make the pod</button>
 </form>`,
   );
@@ -575,8 +549,8 @@ ${more === undefined ? "" : list(more.said, more.choices.map(choice))}
 
 /** A menu of the title bar: `<details>`, so it opens and closes with no script, each item a link to a box. */
 function menu(name, items) {
-  return `<details class="menu"><summary>${escaped(name)}</summary><ul>
-${items.map(([href, label]) => `<li><a href="${escaped(href)}">${escaped(label)}</a></li>`).join("\n")}
+  return html`<details class="menu"><summary>${name}</summary><ul>
+${items.map(([href, label]) => html`<li><a href=${href}>${label}</a></li>`)}
 </ul></details>`;
 }
 
@@ -587,7 +561,7 @@ ${items.map(([href, label]) => `<li><a href="${escaped(href)}">${escaped(label)}
  */
 function menus({ deleteAll, resetAll, about }) {
   return {
-    bar: `${menu("File", [
+    bar: html`${menu("File", [
       ["#delete-all", "Delete all data"],
       ["#reset-all", "Reset all data"],
     ])}${menu("Help", [["#about", "About"]])}`,
@@ -595,22 +569,24 @@ function menus({ deleteAll, resetAll, about }) {
       box(
         "delete-all",
         "Delete all data?",
-        `<p>Every pod in this app goes.</p>\n${postButton(deleteAll, {}, "Delete all data", "warm")}`,
+        html`<p>Every pod in this app goes.</p>
+${postButton(deleteAll, {}, "Delete all data", "warm")}`,
       ),
       box(
         "reset-all",
         "Reset all data?",
-        `<p>Every pod goes, and Alex's and Priya's are loaded again.</p>\n${postButton(resetAll, {}, "Reset all data", "warm")}`,
+        html`<p>Every pod goes, and Alex's and Priya's are loaded again.</p>
+${postButton(resetAll, {}, "Reset all data", "warm")}`,
       ),
       box(
         "about",
-        `About ${escaped(about.name)}`,
-        `<p><strong>${escaped(about.name)}</strong> ${escaped(about.version)}</p>
-<p>Built on cascade-runtime ${escaped(about.runtime)}.</p>
+        `About ${about.name}`,
+        html`<p><strong>${about.name}</strong> ${about.version}</p>
+<p>Built on cascade-runtime ${about.runtime}.</p>
 <p>Every person here is made up.</p>
-${about.code === undefined ? "" : `<p><a href="${escaped(about.code)}">The code</a></p>`}`,
+${about.code !== undefined && html`<p><a href=${about.code}>The code</a></p>`}`,
       ),
-    ].join("\n"),
+    ],
   };
 }
 
@@ -632,13 +608,13 @@ export function didNote(query, kits) {
 }
 
 /**
- * A whole page: the title bar with its menus, the pods by their people's names, `note` above `body` when given, and
- * `dialog` (the new-pod box). `pods` are the pods' names, `current` the one shown, `href(pod)` a pod's address and
- * `home` the title bar's; `menu` is what the menus need, as `{ deleteAll, resetAll, about: { name, version, runtime,
- * code } }`: the addresses the two File items post to, and what the About box says. `refresh` makes the page reload itself every second.
+ * What a page shows, without the document around it, which a page in a browser renders into its own root: the title
+ * bar with its menus, the pods by their people's names, `note` above `body` when given, and `dialog` (the new-pod
+ * box). `pods` are the pods' names, `current` the one shown, `href(pod)` a pod's address and `home` the title bar's;
+ * `menu` is what the menus need, as `{ deleteAll, resetAll, about: { name, version, runtime, code } }`: the addresses
+ * the two File items post to, and what the About box says.
  */
-export function frame({
-  title,
+export function layout({
   body,
   pods,
   current,
@@ -647,55 +623,58 @@ export function frame({
   dialog,
   menu,
   note,
-  refresh,
 }) {
-  const items = pods
-    .map(
-      (pod) =>
-        `<li><a href="${escaped(href(pod))}"${pod === current ? ' aria-current="page"' : ""}>${escaped(personName(pod))}</a></li>`,
-    )
-    .join("\n");
   const { bar, boxes } = menus(menu);
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-${refresh ? '<meta http-equiv="refresh" content="1">\n' : ""}<title>${escaped(title)} · Cascade</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<header class="bar"><a href="${escaped(home)}">Cascade</a>${bar}<span class="demo">Demo: every person here is made up</span></header>
+  return html`<${Fragment}>
+<header class="bar"><a href=${home}>Cascade</a>${bar}<span class="demo">Demo: every person here is made up</span></header>
 <div class="layout">
 <aside>
 <nav><h2>Pods</h2><ul>
-${items}
+${pods.map((pod) => html`<li><a href=${href(pod)} aria-current=${pod === current ? "page" : undefined}>${personName(pod)}</a></li>`)}
 </ul></nav>
 <a class="button wide" href="#new-pod">+ New pod</a>
 </aside>
 <main>
-${note === undefined ? "" : `<p class="note" role="status">${escaped(note)}</p>\n`}${body}
+${note !== undefined && html`<p class="note" role="status">${note}</p>`}
+${body}
 </main>
 </div>
 ${dialog}
 ${boxes}
-<script>${SCRIPT}</script>
+<//>`;
+}
+
+/**
+ * A whole page: `layout` in a document titled `title`, with the stylesheet and the page's script. `refresh` makes the
+ * page reload itself every second. Render it to a string after `<!doctype html>`.
+ */
+export function frame({ title, refresh, ...shown }) {
+  return html`<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+${refresh && html`<meta http-equiv="refresh" content="1" />`}
+<title>${title} · Cascade</title>
+<style dangerouslySetInnerHTML=${{ __html: STYLE }}></style>
+</head>
+<body>
+${layout(shown)}
+<script dangerouslySetInnerHTML=${{ __html: SCRIPT }}></script>
 </body>
-</html>
-`;
+</html>`;
 }
 
 /** The page when there is no pod yet. */
 export function noPods() {
-  return `<h1>No pods yet</h1>
+  return html`<h1>No pods yet</h1>
 <p class="lead">A pod keeps one person's health records, wherever they come from.</p>
 <p><a class="button" href="#new-pod">Make your first pod</a></p>`;
 }
 
 /**
  * Finding a hospital for the pod `pod`: a search box that sends `q` to `search`, then a card per directory row in
- * `rows`, with its places, `signIn(row)` (the HTML of its sign-in button), and the demo people in `people` it holds,
- * each with where else they are. `back` is the pod's address.
+ * `rows`, with its places, `signIn(row)` (its sign-in button), and the demo people in `people` it holds, each with
+ * where else they are. `back` is the pod's address.
  */
 export function hospitalsPage({
   pod,
@@ -716,23 +695,24 @@ export function hospitalsPage({
         const elsewhere = person.at
           .filter((each) => each.fhirBase !== row.fhirBase)
           .map(({ name }) => hospitalName(name));
-        return `<li>${escaped(person.name)}${elsewhere.length === 0 ? "" : ` <span class="muted">also at ${escaped(listed(elsewhere))}</span>`}</li>`;
+        return html`<li>${person.name}${elsewhere.length > 0 && html` <span class="muted">also at ${listed(elsewhere)}</span>`}</li>`;
       });
-    return `<div class="card">
-<div class="row"><h2>${escaped(hospitalName(row.name))}</h2>${signIn(row)}</div>
-${row.places === undefined ? "" : `<p class="muted">${escaped(row.places.join("; "))}</p>`}
+    return html`<div class="card">
+<div class="row"><h2>${hospitalName(row.name)}</h2>${signIn(row)}</div>
+${row.places !== undefined && html`<p class="muted">${row.places.join("; ")}</p>`}
 ${
   here.length === 0
-    ? `<p class="muted">A test server: you choose a patient on its own sign-in page.</p>`
-    : `<p class="muted">Sample patients here:</p>\n<ul>\n${here.join("\n")}\n</ul>`
+    ? html`<p class="muted">A test server: you choose a patient on its own sign-in page.</p>`
+    : html`<p class="muted">Sample patients here:</p>
+<ul>${here}</ul>`
 }
 </div>`;
   });
-  return `<h1>Find a hospital</h1>
-<p class="lead">Sign in on the hospital's own page, see what it has, and bring it into ${escaped(who)}'s pod.</p>
-<form method="get" action="${escaped(search)}" class="row card"><input name="q" value="${escaped(text)}" placeholder="Search by name or place" aria-label="Search by name or place"><button>Search</button></form>
-${cards.length === 0 ? `<p class="muted">No hospital matches.</p>` : cards.join("\n")}
-<p><a href="${escaped(back)}">Back to ${escaped(who)}</a></p>`;
+  return html`<h1>Find a hospital</h1>
+<p class="lead">Sign in on the hospital's own page, see what it has, and bring it into ${who}'s pod.</p>
+<form method="get" action=${search} class="row card"><input name="q" value=${text} placeholder="Search by name or place" aria-label="Search by name or place" /><button>Search</button></form>
+${cards.length === 0 ? html`<p class="muted">No hospital matches.</p>` : cards}
+<p><a href=${back}>Back to ${who}</a></p>`;
 }
 
 /**
@@ -756,40 +736,34 @@ export function connectionDialog({
 }) {
   const who = personName(pod);
   const name = hospitalName(hospital);
-  const said = (body) => box(id, escaped(name), body, { back });
+  const said = (body) => box(id, name, body, { back });
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
-      `<div class="card">${steps(connection)}\n<p class="muted">This refreshes itself until the record is here.</p></div>`,
+      html`<div class="card">${steps(connection)}<p class="muted">This refreshes itself until the record is here.</p></div>`,
     );
   if (failed !== undefined)
     return said(
-      `<div class="card"><p>${escaped(failed)}</p>${retry ? postButton(bring, {}, "Try again") : ""}</div>`,
+      html`<div class="card"><p>${failed}</p>${retry && postButton(bring, {}, "Try again")}</div>`,
     );
-  const has = sources
-    .map(
-      (source) =>
-        `<p><strong>What ${escaped(name)} has:</strong> ${escaped(counted(source.records) || "nothing")}.</p>
-<p class="muted">${escaped(who)}'s pod ${source.claimed ? "already has records from here" : "has nothing from here yet"}.</p>`,
-    )
-    .join("\n");
-  const notes = [
-    pulled.missing.length === 0
-      ? ""
-      : `<p class="muted">Mentioned, but not sent: ${escaped(pulled.missing.join(", "))}</p>`,
-    pulled.denied.length === 0
-      ? ""
-      : `<p class="muted">Not allowed to read: ${escaped(pulled.denied.map(({ type, category }) => (category === undefined ? type : `${type} (${category})`)).join(", "))}</p>`,
-  ].join("");
-  const whose =
-    about === undefined || slug(about) === pod
-      ? ""
-      : `<p class="note">This record is ${escaped(about)}'s. Bringing it in makes this ${escaped(about)}'s pod.</p>`;
-  return said(`<div class="card">${steps(connection)}</div>
-${whose}
+  const has = sources.map(
+    (source) =>
+      html`<p><strong>What ${name} has:</strong> ${counted(source.records) || "nothing"}.</p>
+<p class="muted">${who}'s pod ${source.claimed ? "already has records from here" : "has nothing from here yet"}.</p>`,
+  );
+  const denied = pulled.denied.map(({ type, category }) =>
+    category === undefined ? type : `${type} (${category})`,
+  );
+  return said(html`<div class="card">${steps(connection)}</div>
+${
+  about !== undefined &&
+  slug(about) !== pod &&
+  html`<p class="note">This record is ${about}'s. Bringing it in makes this ${about}'s pod.</p>`
+}
 <div class="card">
 ${has}
-${notes}
-${postButton(bring, {}, `Bring it into ${escaped(who)}'s pod`)}
+${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
+${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
+${postButton(bring, {}, `Bring it into ${who}'s pod`)}
 </div>`);
 }
 

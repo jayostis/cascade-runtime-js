@@ -82,8 +82,10 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         {
-          selector: "ImportDeclaration, ImportExpression",
-          message: "The view runs in a browser too: it imports nothing.",
+          selector:
+            "ImportDeclaration[source.value!=/^(preact|htm|preact-render-to-string)$/], ImportExpression",
+          message:
+            "The view runs in a browser too: it imports only preact, htm and preact-render-to-string.",
         },
       ],
     },
