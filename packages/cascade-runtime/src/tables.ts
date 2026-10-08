@@ -459,25 +459,26 @@ export class Tables {
     const notation = (code: string): string =>
       code.slice(uriSpaces.find((space) => code.startsWith(space))?.length);
     const codes = new Set<string>();
-    for (const [subject, , object] of rows)
-      for (const term of [subject, object])
-        if (
-          term.termType === "NamedNode" &&
-          uriSpaces.some((space) => term.value.startsWith(space))
-        )
-          codes.add(term.value);
+    for (const [subject] of rows)
+      if (uriSpaces.some((space) => subject.value.startsWith(space)))
+        codes.add(subject.value);
     const mapped = new Map<string, Set<string>>();
+    const targets = new Set<string>();
     const axioms = new Graph(rows);
     for (const [axiom, , source] of axioms.match(
       undefined,
       `${OWL}annotatedSource`,
-    ))
-      for (const target of axioms.objects(axiom, `${OWL}annotatedTarget`))
+    )) {
+      codes.add(source.value);
+      for (const target of axioms.objects(axiom, `${OWL}annotatedTarget`)) {
+        targets.add(target.value);
         mapped.set(
           source.value,
           (mapped.get(source.value) ?? new Set()).add(target.value),
         );
-    const about = await this.about([...codes]);
+      }
+    }
+    const about = await this.about([...codes, ...targets]);
     const wanted = text.trim().toLowerCase();
     const named = (code: string): string[] => {
       const name = about.get(code)?.name;

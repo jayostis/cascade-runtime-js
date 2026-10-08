@@ -1017,7 +1017,7 @@ ${shots.join("\n")}`);
     const label = of(series, "http://www.w3.org/2000/01/rdf-schema#label");
     assert.ok(label);
     assert.ok(
-      (await page.locator("aside nav.tables").innerText()).includes(label),
+      (await page.locator("aside section.tables").innerText()).includes(label),
     );
     const shown = await page.locator("main").innerText();
     assert.ok(
@@ -1031,7 +1031,7 @@ ${shots.join("\n")}`);
       ["141"],
     );
     assert.ok(shown.includes("Tables Proof"), shown);
-    await inPlace(page, () => page.click("nav.tables button"));
+    await inPlace(page, () => page.click("section.tables button"));
     assert.match(
       await page.locator("p.note").innerText(),
       /^Checked the feeds: nothing new\.$/,

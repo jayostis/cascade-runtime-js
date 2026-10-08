@@ -858,7 +858,7 @@ function versionName({ label, issued }) {
  * link to `href(series)`, the one whose IRI is `current` marked; and a Check now button posting to `check`.
  */
 export function tablesNav({ series, current, href, check }) {
-  return html`<nav class="tables"><h2>Reference tables</h2>
+  return html`<section class="tables" aria-label="Reference tables"><h2>Reference tables</h2>
 ${
   series.length === 0
     ? html`<p class="muted">None yet.</p>`
@@ -867,7 +867,12 @@ ${series.map((each) => html`<li><a href=${href(each)} aria-current=${each.iri ==
 </ul>`
 }
 ${postButton(check, {}, "Check now", "quiet wide", "Checking the feeds…")}
-</nav>`;
+</section>`;
+}
+
+/** `text`, a link to `iri` when a feed gave a web address, never another scheme. */
+function linked(iri, text) {
+  return /^https?:\/\//.test(iri) ? html`<a href=${iri}>${text}</a>` : text;
 }
 
 /** A code, as written: the end of its IRI. */
@@ -918,8 +923,8 @@ export function tablePage({
   return html`<h1>${series.label}</h1>
 <p class="lead">Using ${versionName(series.current)}</p>
 <div class="card"><dl class="facts">
-<dt>Source</dt><dd>${series.publisher === undefined ? "" : html`<a href=${series.publisher}>${series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1")}</a>`}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
-<dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : html`<a href=${series.licence}>${LICENCES[series.licence] ?? series.licence}</a>`}</dd>
+<dt>Source</dt><dd>${series.publisher !== undefined && linked(series.publisher, series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1"))}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
+<dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : linked(series.licence, LICENCES[series.licence] ?? series.licence)}</dd>
 <dt>Fresh</dt><dd>${freshness(series, now)}</dd>
 </dl></div>
 <form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by code or name" aria-label="Search by code or name" /><button>Search</button></form>
@@ -1080,14 +1085,14 @@ main { padding: 1.75rem 2.25rem 3rem; max-width: 62rem; min-width: 0; }
   main { padding: 1.25rem; }
 }
 aside h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 0.5rem 0.6rem; }
-nav ul { list-style: none; padding: 0; margin: 0 0 1rem; }
-nav a { display: block; padding: 0.4rem 0.6rem; border-radius: 6px; color: var(--text); text-decoration: none; }
-nav a:hover { background: var(--soft); }
-nav a[aria-current] { background: var(--tint); color: var(--accent); font-weight: 600; }
-nav.tables { margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
-nav.tables p { margin: 0 0 0.75rem 0.6rem; }
-nav.tables form { display: block; }
-nav.tables button { width: 100%; }
+nav ul, .tables ul { list-style: none; padding: 0; margin: 0 0 1rem; }
+nav a, .tables li a { display: block; padding: 0.4rem 0.6rem; border-radius: 6px; color: var(--text); text-decoration: none; }
+nav a:hover, .tables li a:hover { background: var(--soft); }
+nav a[aria-current], .tables li a[aria-current] { background: var(--tint); color: var(--accent); font-weight: 600; }
+.tables { margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.tables p { margin: 0 0 0.75rem 0.6rem; }
+.tables form { display: block; }
+.tables button { width: 100%; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; margin: 0; }
 .facts dt { color: var(--muted); font-size: 0.9rem; }
 .facts dd { margin: 0; }

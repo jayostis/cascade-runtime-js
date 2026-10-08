@@ -230,9 +230,9 @@ export async function checkTables(): Promise<Checked[]> {
   return checkedAndKept((await resolved()).tables, { cache: "no-cache" });
 }
 
-/** The app's tables, as this site keeps them. */
+/** The app's tables, as this site keeps them, once the engine that reads them is loaded. */
 export async function appTables(): Promise<Tables> {
-  return (await reading()).tables;
+  return (await resolved()).tables;
 }
 
 /** The parts, and the runtime's version: everything a pod reads with, and the engine. */
