@@ -318,7 +318,11 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
         const text = now?.textContent ?? "";
         if (text.startsWith("Bringing it in") && seen.at(-1) !== text)
           seen.push(text);
-      }).observe(document.body, { childList: true, subtree: true });
+      }).observe(document.body, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
     });
     await page.click("#connection button:has-text('Bring it into')");
     await settled(page);
