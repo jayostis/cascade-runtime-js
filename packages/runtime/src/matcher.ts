@@ -353,6 +353,8 @@ async function joins(
 class Matcher {
   /** The reference descriptions the run writes after all its judgments, by path (W1). */
   readonly #descriptions = new Map<string, Uint8Array>();
+  /** The Sames the run has written, which its recheck and its new joins may both give. */
+  readonly #filed = new Set<string>();
 
   private constructor(
     readonly context: StepContext,
@@ -580,7 +582,8 @@ class Matcher {
       this.describe(this.references.seriesOf(version) ?? "");
       this.describe(version);
     }
-    if (this.pod.held.has(name)) return;
+    if (this.pod.held.has(name) || this.#filed.has(name)) return;
+    this.#filed.add(name);
     const same = iri(name);
     const matcher = iri(MATCHER);
     const triples: Triple[] = [
