@@ -6,6 +6,8 @@ export type {
   Exported,
   ExportSource,
   Imported,
+  ImportOptions,
+  ImportProgress,
   Pod,
   Row,
 } from "./pod.js";

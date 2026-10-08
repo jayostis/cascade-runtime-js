@@ -29,6 +29,7 @@ import {
   type Exported,
   type ExportSource,
   type Imported,
+  type ImportOptions,
   openPodWith,
   type Parts,
   type Pod,
@@ -41,6 +42,8 @@ export type {
   Exported,
   ExportSource,
   Imported,
+  ImportOptions,
+  ImportProgress,
   Pod,
   Row,
 } from "../pod.js";
@@ -199,7 +202,7 @@ class BrowserPod implements Pod {
 
   import(
     exported: string | Exported,
-    options?: { aboutSubject?: boolean; match?: boolean },
+    options?: ImportOptions,
   ): Promise<Imported> {
     return this.#pod.import(exported, options);
   }

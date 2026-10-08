@@ -31,6 +31,7 @@ import {
   XSD,
 } from "./rdf.js";
 import {
+  type OnProgress,
   parseStepFile,
   REC,
   Refusal,
@@ -385,12 +386,14 @@ async function accepting(
 
 /**
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
- * the import named by a new random ID (N7), and the refusals of A14.
+ * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
+ * adapter is found.
  */
 export async function fileExport(
   context: StepContext,
   documents: readonly ExportDocument[],
   adapters: AdaptersOf,
+  onProgress?: OnProgress,
 ): Promise<string> {
   const { pod, writes, newStore, time } = context;
   const name = time.newId();
@@ -398,7 +401,7 @@ export async function fileExport(
   const { layout } = context;
   const revisions = await Revisions.of(pod, newStore, layout);
   const kept = new Map<string, Triple[]>();
-  for (const found of documents) {
+  for (const [done, found] of documents.entries()) {
     const documentIri = await documentName(found.bytes);
     if (
       kept.has(documentIri) ||
@@ -412,6 +415,7 @@ export async function fileExport(
       facts: { iri: `${documentIri}#facts`, bytes: read(found, started) },
     };
     const adapter = await accepting(adapters, found, document);
+    await onProgress?.({ part: "converting", done, of: documents.length });
     const conversion = await refusing(found.path, () =>
       adapter.convert(document),
     );

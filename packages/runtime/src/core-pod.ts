@@ -2,7 +2,7 @@ import { fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import type { Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
-import { type Files, MemoryFiles, relative, under } from "./files.js";
+import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
@@ -13,7 +13,12 @@ import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
 import type { References } from "./references.js";
 import { Shapes } from "./shapes.js";
-import { Refusal, type StepContext, type StepFile } from "./step.js";
+import {
+  type OnProgress,
+  Refusal,
+  type StepContext,
+  type StepFile,
+} from "./step.js";
 import { type Rows, type StoreFactory, Union } from "./store.js";
 
 const OPENED = "opened";
@@ -110,14 +115,28 @@ class HeldFiles implements Files {
     return bytes === undefined ? undefined : new Uint8Array(bytes);
   }
 
-  async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
-    const path = relative(this, pathOrIri);
-    const held = await this.#held(path);
-    if (held !== undefined && same(held, bytes)) return;
+  write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    return this.writeAll([[pathOrIri, bytes]]);
+  }
+
+  /** Writes, in one `writeAll` on the pod, each file it does not hold with the same bytes; held once all are written. */
+  async writeAll(
+    files: Iterable<readonly [string, Uint8Array]>,
+  ): Promise<void> {
+    const changed: [string, Uint8Array][] = [];
+    for (const [pathOrIri, bytes] of files) {
+      const path = relative(this, pathOrIri);
+      const held = await this.#held(path);
+      if (held === undefined || !same(held, bytes))
+        changed.push([path, new Uint8Array(bytes)]);
+    }
+    if (changed.length === 0) return;
     const listed = await this.#listed();
-    await this.#pod.write(path, bytes);
-    this.#bytes.set(path, new Uint8Array(bytes));
-    listed.add(path);
+    await writeAll(this.#pod, changed);
+    for (const [path, bytes] of changed) {
+      this.#bytes.set(path, bytes);
+      listed.add(path);
+    }
   }
 
   async list(folder: string): Promise<string[]> {
@@ -223,12 +242,13 @@ export class CorePod {
   /**
    * An export's or a download's arrival: its documents, as the first importer that reads the path finds them, each
    * converted by the first adapter of its media type that accepts it (A1 to A11, A14). The adapters are asked for only
-   * once an importer reads the path.
+   * once an importer reads the path. `onProgress` is told as loading the adapter, each conversion and saving begin.
    */
   import(
     exported: Pick<Files, "read" | "list">,
     folder: string,
     adapters: () => Promise<AdaptersOf>,
+    onProgress?: OnProgress,
   ): Promise<Performed> {
     const { importers } = this.#options;
     return this.#step(async (context) => {
@@ -247,7 +267,15 @@ export class CorePod {
         throw new Refusal(
           `no importer of ${importers.map((importer) => importer.name).join(", ") || "none"} reads ${folder}`,
         );
-      return fileExport(context, documents, await adapters());
+      await onProgress?.({ part: "loading the adapter" });
+      const activity = await fileExport(
+        context,
+        documents,
+        await adapters(),
+        onProgress,
+      );
+      await onProgress?.({ part: "saving" });
+      return activity;
     });
   }
 
@@ -396,8 +424,10 @@ export class CorePod {
       union,
       build.derive,
     );
-    for (const [path, triples] of made)
-      await pod.write(path, ntriples(triples));
+    await writeAll(
+      pod,
+      [...made].map(([path, triples]) => [path, ntriples(triples)] as const),
+    );
     await addLayout(union, layout, address);
     this.#kept.set(DATASET + build.lens, Promise.resolve(union));
   }
