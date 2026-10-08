@@ -175,6 +175,10 @@ test("a package's components resolve to the trees it carries at the commits it r
       adapters: [{ repository: "https://example.org/cascade-adapter" }],
       importers: [],
       lens: "everyday",
+      tables: {
+        repository: "https://example.org/cascade-reference-tables",
+        feeds: [],
+      },
     }),
   );
   await writeFile(

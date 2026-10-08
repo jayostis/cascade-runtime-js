@@ -1,10 +1,12 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type Files,
   importersNamed,
+  MemoryFiles,
   OxigraphStore,
-  References,
   WasmBridge,
 } from "@cascade-runtime/runtime";
 import {
@@ -17,11 +19,21 @@ import {
   type LocalVocabulary,
   vocabularyOf,
 } from "@cascade-runtime/runtime/node";
-import { bridgeLoaded, type Parts, TABLES } from "../pod.js";
+import { bridgeLoaded, type Parts } from "../pod.js";
+import { Tables } from "../tables.js";
 
 export interface ResolvedParts extends Parts {
   /** The vocabulary as a folder, which a kit is replayed from. */
   readonly local: LocalVocabulary;
+  /** The tables kept in the folder, started from the starter copies; `tables` is kept in memory. */
+  tablesIn(folder: string): Tables;
+}
+
+export interface PartsOptions {
+  /** The package's starter copies of the feeds' series. */
+  readonly starter?: Files;
+  /** What reads the feeds. */
+  readonly fetch?: typeof fetch;
 }
 
 /** The answers of the pod in the folder: a folder of their own, `.answers/<name>`, beside the pod's. */
@@ -32,7 +44,11 @@ export function answersBeside(path: string): FolderFiles {
 
 async function resolve(): Promise<ResolvedParts> {
   const packageFolder = fileURLToPath(new URL("../../../", import.meta.url));
-  const parts = await partsOf(await componentsOf(packageFolder));
+  const starter = join(packageFolder, "components", "tables");
+  const parts = await partsOf(
+    await componentsOf(packageFolder),
+    existsSync(starter) ? { starter: new FolderFiles(starter) } : {},
+  );
   const { version } = JSON.parse(
     await readFile(join(packageFolder, "package.json"), "utf8"),
   ) as { version: string };
@@ -45,10 +61,21 @@ async function resolve(): Promise<ResolvedParts> {
 }
 
 /** What a pod is opened with over the components, folders on disk; nothing is kept. */
-export async function partsOf(components: Components): Promise<ResolvedParts> {
+export async function partsOf(
+  components: Components,
+  options: PartsOptions = {},
+): Promise<ResolvedParts> {
   const local = await vocabularyOf(components);
   const { config, files, layout, build } = local;
   const newStore = () => new OxigraphStore();
+  const tablesOver = (store: Files): Tables =>
+    new Tables({
+      files: store,
+      feeds: config.tables.feeds,
+      vocabulary: files,
+      newStore,
+      ...options,
+    });
   return {
     local,
     vocabulary: files,
@@ -56,7 +83,8 @@ export async function partsOf(components: Components): Promise<ResolvedParts> {
     build,
     lens: config.lens,
     importers: importersNamed(config.importers),
-    references: await References.of(files, TABLES, newStore),
+    tables: tablesOver(new MemoryFiles("urn:cascade:tables/")),
+    tablesIn: (folder) => tablesOver(new FolderFiles(absolute(folder))),
     newStore,
     folder: (path, iri) => {
       const folder = absolute(path);

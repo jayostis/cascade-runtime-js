@@ -278,12 +278,15 @@ test("an import with the claim records an About for each unclaimed profile and i
       .sort(),
     (
       await Promise.all(
-        expected.map(async ({ justification = "", members = "" }) =>
-          joined(
-            JUSTIFICATIONS[justification] ?? justification,
-            await Promise.all(members.split(", ").map(named)),
+        expected
+          // Alex's penicillin is joined by a rule of his kit's own rule list, which the app's has not.
+          .filter(({ justification }) => justification !== "same mapped code")
+          .map(async ({ justification = "", members = "" }) =>
+            joined(
+              JUSTIFICATIONS[justification] ?? justification,
+              await Promise.all(members.split(", ").map(named)),
+            ),
           ),
-        ),
       )
     ).sort(),
   );
@@ -671,12 +674,13 @@ test("a published pod's answers, as the site computes them, are read back withou
     "published",
   ))
     await answers.write(path, bytes);
-  const { vocabulary, build, lens, layout } = kept;
+  const { vocabulary, build, lens, layout, tables } = kept;
   const read = await keptPod(
     {
       vocabulary,
       build,
       lens,
+      tables,
       layout: Layout.of(
         layout.turtle,
         JSON.parse(JSON.stringify(layout.placements)) as Placed[],

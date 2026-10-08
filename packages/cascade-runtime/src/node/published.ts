@@ -29,6 +29,7 @@ export async function publishedAnswers(
       answers: { runtime, at: () => kept },
     },
     name,
+    { adopt: false },
   );
   try {
     for (const question of (await questions(parts.vocabulary)).keys())

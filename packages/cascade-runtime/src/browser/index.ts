@@ -11,8 +11,8 @@ import {
   OxigraphStore,
   parseConfig,
   type Placed,
+  MemoryFiles,
   readText,
-  References,
   repositoryName,
   type RuntimeConfig,
   type Source,
@@ -41,8 +41,8 @@ import {
   type Parts,
   type Pod,
   type Row,
-  TABLES,
 } from "../pod.js";
+import { Tables } from "../tables.js";
 
 export type {
   Done,
@@ -101,6 +101,7 @@ interface Read {
   readonly vocabulary: FetchedFiles;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
+  readonly tables: Tables;
   /** A component the package carries, read by URL and named by its tree, as Node names it; one per repository. */
   carried(followed: Followed): Source;
 }
@@ -158,6 +159,12 @@ const reading = once(async (): Promise<Read> => {
     vocabulary,
     layout,
     build: await vocabularyBuild(vocabulary, layout),
+    tables: new Tables({
+      files: new MemoryFiles("urn:cascade:tables/"),
+      feeds: config.tables.feeds,
+      vocabulary,
+      newStore: () => new OxigraphStore(),
+    }),
     carried,
   };
 });
@@ -178,7 +185,7 @@ const resolved = once(async (): Promise<Resolved> => {
     build: read.build,
     lens: config.lens,
     importers: importersNamed(config.importers),
-    references: await References.of(vocabulary, TABLES, newStore),
+    tables: read.tables,
     newStore,
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
@@ -467,7 +474,7 @@ export async function openPod(
           answers: { runtime: read.runtime, at: () => kept },
         },
         name,
-        rest,
+        { ...rest, adopt: false },
       );
     const databases = [database, kept];
     const pod =

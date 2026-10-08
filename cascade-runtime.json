@@ -11,5 +11,9 @@
     }
   ],
   "importers": ["apple-health-export", "ccda-download", "fhir-pull"],
-  "lens": "everyday"
+  "lens": "everyday",
+  "tables": {
+    "repository": "https://github.com/jayostis/cascade-reference-tables",
+    "feeds": ["https://jayostis.github.io/cascade-reference-tables/feed.ttl"]
+  }
 }

@@ -29,6 +29,8 @@ export interface Computed {
   readonly lens: string;
   /** `CorePod.revision()`: any step changes it. */
   readonly revision: string;
+  /** The current version of each series the app holds, which a question may read. */
+  readonly tables: readonly string[];
   /** The question's text, the lens's derivations in order, the layout and the build's queries. */
   readonly texts: readonly string[];
 }
