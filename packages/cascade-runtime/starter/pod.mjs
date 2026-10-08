@@ -1,13 +1,14 @@
 // `npm run pod:load -- <kit> [--through <step>] [--as <name>]`, `npm run pod:new <name>`, `npm run pod:reset <name>`,
 // `npm run reset`.
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
 import { argv, stdout } from "node:process";
 import { openPod } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 import {
+  answersFolder,
   argumentsOf,
   checkName,
+  deletePod,
   podFolder,
   refuse,
   resetAll,
@@ -65,8 +66,9 @@ async function create() {
 async function reset() {
   const { positionals } = argumentsOf(args, "npm run pod:reset <name>", {}, 1);
   const name = checkName(positionals[0]);
-  if (!existsSync(podFolder(name))) refuse(`there is no pod ${name}`);
-  await rm(podFolder(name), { recursive: true, force: true });
+  if (!existsSync(podFolder(name)) && !existsSync(answersFolder(name)))
+    refuse(`there is no pod ${name}`);
+  await deletePod(name);
   stdout.write(`Removed the pod ${name}. If the app is running, restart it.\n`);
 }
 

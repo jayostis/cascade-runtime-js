@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { get } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
@@ -110,8 +110,11 @@ async function asked(question, pod) {
     .map((line) => JSON.parse(line));
 }
 
+/** The pods' folders, without `.answers`, which keeps their answers. */
 async function podsOf() {
-  return (await readdir(join(app, "pods"))).sort();
+  return (await readdir(join(app, "pods")))
+    .filter((name) => !name.startsWith("."))
+    .sort();
 }
 
 function multiset(rows) {
@@ -534,19 +537,32 @@ try {
 }
 
 if (release === undefined) {
-  await behaviour("a new pod is empty, and a reset removes it", async () => {
-    assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
-    assert.deepEqual(await asked(ALLERGIES, "scratch"), []);
-    assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
-    assert.equal(existsSync(join(app, "pods", "scratch")), false);
-    const { code, err } = await npm("run", "ask", ALLERGIES);
-    assert.equal(code, 2);
-    for (const name of [
-      "alex-rivera",
-      `alex-rivera-${story.through.toLowerCase()}`,
-    ])
-      assert.ok(err.includes(name), `ask does not name ${name}`);
-  });
+  await behaviour(
+    "a new pod is empty, its answers are kept beside the pods and are no pod, and a reset removes it and them, or them alone",
+    async () => {
+      const answers = join(app, "pods", ".answers", "scratch");
+      assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
+      assert.deepEqual(await asked(ALLERGIES, "scratch"), []);
+      assert.ok(
+        existsSync(join(answers, "answers.json")),
+        "no answer was kept",
+      );
+      assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
+      assert.equal(existsSync(join(app, "pods", "scratch")), false);
+      assert.equal(existsSync(answers), false);
+      await mkdir(answers, { recursive: true });
+      assert.equal((await npm("run", "pod:reset", "scratch")).code, 0);
+      assert.equal(existsSync(answers), false);
+      const { code, err } = await npm("run", "ask", ALLERGIES);
+      assert.equal(code, 2);
+      assert.ok(!err.includes(".answers"), "ask names .answers as a pod");
+      for (const name of [
+        "alex-rivera",
+        `alex-rivera-${story.through.toLowerCase()}`,
+      ])
+        assert.ok(err.includes(name), `ask does not name ${name}`);
+    },
+  );
 
   await behaviour("a kit's download is copied whole", async () => {
     const source = join(
@@ -917,10 +933,12 @@ if (refused !== undefined) throw new Error(refused);
     );
     assert.equal((await run(execPath, [script])).code, 0, "no record in");
     assert.ok((await asked(IMPORTS, "alex-rivera")).length > fresh.imports);
+    assert.ok(existsSync(join(app, "pods", ".answers")), "no answer was kept");
     assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
     assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
     assert.deepEqual(await podsOf(), KITS);
+    assert.equal(existsSync(join(app, "pods", ".answers")), false);
     assert.equal((await asked(IMPORTS, "alex-rivera")).length, fresh.imports);
     assert.deepEqual(
       multiset(await asked(JUDGMENTS, "alex-rivera")),
