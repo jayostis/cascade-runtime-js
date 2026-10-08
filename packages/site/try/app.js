@@ -56,15 +56,6 @@ const MENU = {
 
 const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
 
-/** What the File menu just did, from the page's address: `?deleted=<n>` or `reset`. */
-function didOf(query) {
-  const deleted = query.get("deleted");
-  if (deleted !== null && /^\d+$/.test(deleted))
-    return didNote({ deleted: Number(deleted) });
-  if (query.has("reset")) return didNote({ reset: SAMPLES });
-  return undefined;
-}
-
 const hospitalsReady = useDemoHospitals(
   new URL("demo-hospital-worker.js", location.href),
 );
@@ -76,6 +67,8 @@ let current;
 let pod;
 /** The sign-in under way or done, with its row, step, requests answered, and once pulled the files to import. */
 let connection;
+/** What the File menu just did, as the address said when the page opened. */
+let note;
 
 async function podsHere() {
   return (await indexedDB.databases())
@@ -116,7 +109,7 @@ function render(title, body, state = "ready") {
     href: podHref,
     home: "../",
     menu: MENU,
-    note: didOf(new URLSearchParams(location.search)),
+    note,
     dialog: newPodDialog({
       people,
       pods,
@@ -333,7 +326,7 @@ function deleted(name) {
     deleting.onblocked = () =>
       reject(
         new Error(
-          "What was copied is removed once this page is closed in your other tabs.",
+          `${personName(name)}'s pod goes once this page is closed in your other tabs.`,
         ),
       );
   });
@@ -351,12 +344,20 @@ async function load(name) {
   location.assign(podHref(name));
 }
 
-/** Closes the pod shown and deletes every pod's database; gives the names of those there were. */
+/** Closes the pod shown and deletes every pod's database, all of them tried; gives the names of those there were, or throws saying which stayed. */
 async function deleteAll() {
   await pod?.close();
   pod = undefined;
   const names = await podsHere();
-  for (const name of names) await deleted(name);
+  const done = await Promise.allSettled(names.map(deleted));
+  const kept = done.filter(({ status }) => status === "rejected");
+  if (kept.length > 0)
+    throw new Error(
+      [
+        "Not every pod was deleted.",
+        ...kept.map(({ reason }) => reason?.message ?? reason),
+      ].join(" "),
+    );
   return names;
 }
 
@@ -368,7 +369,7 @@ async function deleteEverything() {
 /** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
 async function resetEverything() {
   await deleteAll();
-  for (const name of SAMPLES) await copy(name);
+  await Promise.all(SAMPLES.map(copy));
   location.assign(
     SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`,
   );
@@ -432,6 +433,17 @@ document.addEventListener("submit", (event) => {
 busy(async () => {
   [pods, people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
+  note = didNote(query, SAMPLES);
+  if (note !== undefined) {
+    const rest = new URLSearchParams(query);
+    rest.delete("deleted");
+    rest.delete("reset");
+    history.replaceState(
+      null,
+      "",
+      String(rest) === "" ? location.pathname : `?${rest}`,
+    );
+  }
   const asked = query.get("pod");
   if (asked === null && pods.length === 0) {
     if (!query.has("deleted")) await firstVisit();

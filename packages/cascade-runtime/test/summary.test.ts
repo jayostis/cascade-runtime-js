@@ -174,7 +174,7 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
       resetAll: "/reset-all",
       about: { name: "my-app", version: "1.2.3", runtime: "4.5.6", code: "c" },
     },
-    note: view.didNote({ deleted: 3 }),
+    note: view.didNote(new URLSearchParams("deleted=3"), []),
   });
   const menus = [
     ...page.matchAll(
@@ -196,8 +196,18 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
     ],
     ["Help", [["#about", "About"]]],
   ]);
-  const boxOf = (id: string): string =>
-    page.split(`<div class="dialog" id="${id}"`)[1]?.split("</form>")[0] ?? "";
+  /** The box `id`, to the tag that closes it. */
+  const boxOf = (id: string): string => {
+    const start = page.indexOf(`<div class="dialog" id="${id}"`);
+    assert.notEqual(start, -1, id);
+    let depth = 0;
+    for (const tag of page.slice(start).matchAll(/<(\/?)div\b[^>]*>/g)) {
+      depth += tag[1] === "" ? 1 : -1;
+      if (depth === 0)
+        return page.slice(start, start + (tag.index ?? 0) + tag[0].length);
+    }
+    return assert.fail(`the box ${id} is never closed`);
+  };
   for (const [id, action] of [
     ["delete-all", "/delete-all"],
     ["reset-all", "/reset-all"],
@@ -216,8 +226,15 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
   assert.match(about, /<a href="c">/);
   assert.match(page, /<p class="note" role="status">Deleted 3 pods\.<\/p>/);
   assert.equal(
-    view.didNote({ reset: ["alex-rivera", "priya-natarajan"] }),
+    view.didNote(new URLSearchParams("pod=alex-rivera&reset"), [
+      "alex-rivera",
+      "priya-natarajan",
+    ]),
     "Reset: Alex Rivera and Priya Natarajan are back.",
+  );
+  assert.equal(
+    view.didNote(new URLSearchParams("pod=alex-rivera"), []),
+    undefined,
   );
 });
 

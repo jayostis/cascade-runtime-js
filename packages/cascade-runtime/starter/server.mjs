@@ -70,19 +70,11 @@ async function page(title, body, { current, refresh, names, note } = {}) {
   });
 }
 
-/** What the File menu just did, from the page's address: `?deleted=<n>` or `?reset`. */
-function didOf(query) {
-  const deleted = query.get("deleted");
-  if (deleted !== null && /^\d+$/.test(deleted))
-    return didNote({ deleted: Number(deleted) });
-  if (query.has("reset")) return didNote({ reset: KITS });
-  return undefined;
-}
-
-/** Closes every pod the server holds open, so that their folders can go. */
+/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
 async function closeAll() {
   const pods = [...open.values()];
   open.clear();
+  hospitals?.forget();
   await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
 }
 
@@ -111,7 +103,7 @@ async function home(response, query) {
   send(
     response,
     200,
-    await page("No pods yet", noPods(), { names, note: didOf(query) }),
+    await page("No pods yet", noPods(), { names, note: didNote(query, KITS) }),
   );
 }
 
@@ -166,7 +158,7 @@ async function showPod(response, name, query, names) {
     await page(personName(name), body, {
       current: name,
       names,
-      note: didOf(query),
+      note: didNote(query, KITS),
       refresh: shown?.step === "signing in" || shown?.step === "pulling",
     }),
   );
@@ -318,18 +310,42 @@ async function demoHospitalPage(request, response, url) {
 
 const demo = await loadHospitals();
 const people = demoPeople(demo);
-const packageOf = async (path) =>
-  JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
+const packageOf = async (url) => JSON.parse(await readFile(url, "utf8"));
+
+/** cascade-runtime's `package.json`, the first one up from where the package resolves; empty when none can be read. */
+async function runtimePackage() {
+  try {
+    let folder = new URL(".", import.meta.resolve("cascade-runtime"));
+    for (;;) {
+      const found = await packageOf(new URL("package.json", folder)).catch(
+        () => undefined,
+      );
+      if (found?.name === "cascade-runtime") return found;
+      const up = new URL("..", folder);
+      if (up.href === folder.href) return {};
+      folder = up;
+    }
+  } catch {
+    return {};
+  }
+}
+
 const [app, runtime] = await Promise.all([
-  packageOf("package.json"),
-  packageOf("node_modules/cascade-runtime/package.json"),
+  packageOf(new URL("package.json", import.meta.url)),
+  runtimePackage(),
 ]);
-/** What Help, About says: this app, the cascade-runtime it runs on, and that package's README, where its code is. */
+/**
+ * What Help, About says: this app, the cascade-runtime it runs on, and that package's README, where its code is; the
+ * version unknown and no link when its `package.json` cannot be read.
+ */
 const about = {
   name: app.name,
   version: app.version,
-  runtime: runtime.version,
-  code: `${runtime.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}/tree/main/${runtime.repository.directory}#readme`,
+  runtime: runtime.version ?? "(version unknown)",
+  code:
+    runtime.repository === undefined
+      ? undefined
+      : `${runtime.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}/tree/main/${runtime.repository.directory}#readme`,
 };
 let origin;
 /** The origins a browser gives this server's own forms: it answers as `localhost` too. */
@@ -434,9 +450,7 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
 
 async function stop() {
   server.close();
-  await Promise.allSettled(
-    [...open.values()].map(async (pod) => (await pod).close()),
-  );
+  await closeAll();
   exit(0);
 }
 process.on("SIGINT", stop);

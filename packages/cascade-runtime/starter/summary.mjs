@@ -339,8 +339,23 @@ export function opening(section, rows) {
 }
 
 /** A dialog's first link, to `href`: it covers the page behind the box, so a click outside the box closes it. */
-const backdrop = (href = "#") =>
+const backdrop = (href) =>
   `<a class="backdrop" href="${escaped(href)}" aria-label="Close the box" tabindex="-1"></a>`;
+
+/**
+ * A box over the page, shown when the page's address ends `#<id>`, with `body` under the HTML `heading`; its close
+ * link and backdrop go to `back`, and a `wide` one is for a table.
+ */
+function box(id, heading, body, { back = "#", wide = false } = {}) {
+  return `<div class="dialog" id="${escaped(id)}" role="dialog" aria-labelledby="${escaped(id)}-title">
+${backdrop(back)}
+<div class="box${wide ? " wide" : ""}">
+<a class="close" href="${escaped(back)}" aria-label="Close">×</a>
+<h2 id="${escaped(id)}-title">${heading}</h2>
+${body}
+</div>
+</div>`;
+}
 
 /**
  * The section's tile, a link that opens its dialog, and the dialog: a filter box and a table, a heading button per
@@ -376,20 +391,18 @@ export function tile(section, rows) {
   const names = sorted.map((row) => section.name(row) ?? "").join(", ");
   return {
     tile: `<a class="tile" href="#${id}"><span class="kind">${escaped(section.title)}</span><span class="count">${rows.length}</span><span class="peek">${escaped(names)}</span></a>`,
-    dialog: `<div class="dialog" id="${id}" role="dialog" aria-labelledby="${id}-title">
-${backdrop()}
-<div class="box wide">
-<a class="close" href="#" aria-label="Close">×</a>
-<h2 id="${id}-title">${escaped(section.title)} <span class="muted">${rows.length}</span></h2>
-<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${escaped(section.title.toLowerCase())}">
+    dialog: box(
+      id,
+      `${escaped(section.title)} <span class="muted">${rows.length}</span>`,
+      `<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${escaped(section.title.toLowerCase())}">
 <div class="scroll"><table>
 <thead><tr>${head}</tr></thead>
 <tbody>
 ${body}
 </tbody>
-</table></div>
-</div>
-</div>`,
+</table></div>`,
+      { wide: true },
+    ),
   };
 }
 
@@ -546,33 +559,18 @@ export function newPodDialog({ people, pods, action, more }) {
     items.length === 0
       ? ""
       : `<p><strong>${escaped(said)}</strong></p>\n<ul class="people">\n${items.join("\n")}\n</ul>`;
-  return `<div class="dialog" id="new-pod" role="dialog" aria-labelledby="new-pod-title">
-${backdrop()}
-<div class="box">
-<a class="close" href="#" aria-label="Close">×</a>
-<h2 id="new-pod-title">Make a new pod</h2>
-<p>A pod keeps one person's health records, wherever they come from: files they download, and hospitals they sign in to. It notices when two sources describe the same thing, and when they disagree.</p>
+  return box(
+    "new-pod",
+    "Make a new pod",
+    `<p>A pod keeps one person's health records, wherever they come from: files they download, and hospitals they sign in to. It notices when two sources describe the same thing, and when they disagree.</p>
 ${list("Try someone with records waiting at the demo hospitals. They are made up, and signing in needs no password.", demo)}
 ${more === undefined ? "" : list(more.said, more.choices.map(choice))}
 <p><strong>Or make one for anyone.</strong> You can bring in records afterwards.</p>
 <form method="post" action="${escaped(action)}" class="row">
 <input name="person" placeholder="A person's name" aria-label="A person's name" required>
 <button>Make the pod</button>
-</form>
-</div>
-</div>`;
-}
-
-/** A box over the page, shown when the page's address ends `#<id>`, with `body` under its heading `title`. */
-function box(id, title, body) {
-  return `<div class="dialog" id="${id}" role="dialog" aria-labelledby="${id}-title">
-${backdrop()}
-<div class="box">
-<a class="close" href="#" aria-label="Close">×</a>
-<h2 id="${id}-title">${escaped(title)}</h2>
-${body}
-</div>
-</div>`;
+</form>`,
+  );
 }
 
 /** A menu of the title bar: `<details>`, so it opens and closes with no script, each item a link to a box. */
@@ -606,23 +604,31 @@ function menus({ deleteAll, resetAll, about }) {
       ),
       box(
         "about",
-        `About ${about.name}`,
+        `About ${escaped(about.name)}`,
         `<p><strong>${escaped(about.name)}</strong> ${escaped(about.version)}</p>
 <p>Built on cascade-runtime ${escaped(about.runtime)}.</p>
 <p>Every person here is made up.</p>
-<p><a href="${escaped(about.code)}">The code</a></p>`,
+${about.code === undefined ? "" : `<p><a href="${escaped(about.code)}">The code</a></p>`}`,
       ),
     ].join("\n"),
   };
 }
 
-/** What the page says after a File menu item: how many pods were `deleted`, or which pods `reset` brought back. */
-export function didNote({ deleted, reset }) {
-  if (reset !== undefined)
-    return `Reset: ${listed(reset.map(personName))} ${reset.length === 1 ? "is" : "are"} back.`;
-  return deleted === 0
-    ? "There was no pod to delete."
-    : `Deleted ${deleted} ${deleted === 1 ? "pod" : "pods"}.`;
+/**
+ * What the page says after a File menu item, from its address's `query`: `deleted=<n>`, how many pods went; `reset`,
+ * that the pods `kits` are back; else undefined.
+ */
+export function didNote(query, kits) {
+  const deleted = query.get("deleted");
+  if (deleted !== null && /^\d+$/.test(deleted)) {
+    const count = Number(deleted);
+    return count === 0
+      ? "There was no pod to delete."
+      : `Deleted ${count} ${count === 1 ? "pod" : "pods"}.`;
+  }
+  if (query.has("reset"))
+    return `Reset: ${listed(kits.map(personName))} ${kits.length === 1 ? "is" : "are"} back.`;
+  return undefined;
 }
 
 /**
@@ -750,16 +756,7 @@ export function connectionDialog({
 }) {
   const who = personName(pod);
   const name = hospitalName(hospital);
-  const said = (
-    body,
-  ) => `<div class="dialog" id="${escaped(id)}" role="dialog" aria-labelledby="${escaped(id)}-title">
-${backdrop(back)}
-<div class="box">
-<a class="close" href="${escaped(back)}" aria-label="Close">×</a>
-<h2 id="${escaped(id)}-title">${escaped(name)}</h2>
-${body}
-</div>
-</div>`;
+  const said = (body) => box(id, escaped(name), body, { back });
   if (connection.step === "signing in" || connection.step === "pulling")
     return said(
       `<div class="card">${steps(connection)}\n<p class="muted">This refreshes itself until the record is here.</p></div>`,
