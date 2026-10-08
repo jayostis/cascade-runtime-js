@@ -24,7 +24,7 @@ export interface MatcherRule {
   readonly justification: string;
   readonly appliesTo: ReadonlySet<string>;
   readonly query: string;
-  readonly table?: string;
+  readonly kind?: string;
 }
 
 interface SubjectRecord {
@@ -77,10 +77,10 @@ export async function matcherRules(
       throw new Refusal(
         `${query} does not hash to ${expected}, as the rule for ${justification} says it does`,
       );
-    const tables = rows.objects(row, `${REC}table`);
-    if (tables.length > 1)
+    const kinds = rows.objects(row, `${REC}tableKind`);
+    if (kinds.length > 1)
       throw new Refusal(
-        `the rule for ${justification} reads ${tables.length} tables, not one`,
+        `the rule for ${justification} reads ${kinds.length} table kinds, not one`,
       );
     found.push({
       rule: {
@@ -89,7 +89,7 @@ export async function matcherRules(
           rows.objects(row, `${REC}appliesTo`).map(({ value }) => value),
         ),
         query: path,
-        ...(tables[0] === undefined ? {} : { table: tables[0].value }),
+        ...(kinds[0] === undefined ? {} : { kind: kinds[0].value }),
       },
       text: new TextDecoder().decode(bytes),
     });
@@ -267,8 +267,8 @@ class Matcher {
     readonly pod: Pod,
     readonly rulesVersion: string,
     readonly rules: readonly MatcherRule[],
-    readonly tableVersions: ReadonlyMap<string, string>,
-    readonly matched: ReadonlyMap<string, ReadonlySet<string>>,
+    readonly current: (series: string) => string,
+    readonly matched: ReadonlyMap<string, ReadonlyMap<string, Set<string>>>,
   ) {}
 
   static async of(
@@ -291,28 +291,32 @@ class Matcher {
       new Graph(await references.rows(rulesVersion)),
       context.vocabulary,
     );
-    const tableVersions = new Map(
-      found.flatMap(({ rule: { table } }) =>
-        table === undefined ? [] : [[table, current(table)] as const],
-      ),
-    );
+    const kinds = new Set(found.flatMap(({ rule: { kind } }) => kind ?? []));
+    const versions = [...kinds]
+      .flatMap((kind) => references.seriesOfKind(kind))
+      .map(current);
     const pod = await read(union, references);
-    for (const version of new Set(tableVersions.values()))
+    for (const version of new Set(versions)) {
+      await union.add(await references.rows(version), version);
       await union.add(
-        await references.rows(version),
-        `urn:cascade:reference:${version}`,
+        [
+          ...references.description(version),
+          ...references.description(references.seriesOf(version) ?? ""),
+        ],
+        "urn:cascade:references",
       );
-    const matched = new Map<string, Set<string>>();
+    }
+    const matched = new Map<string, Map<string, Set<string>>>();
     for (const { rule, text } of found) {
       const { rows } = await union.select(text);
-      matched.set(
-        rule.justification,
-        new Set(
-          rows.map((row) =>
-            pair(row.get("record")?.value, row.get("other")?.value),
-          ),
-        ),
-      );
+      const pairs = new Map<string, Set<string>>();
+      for (const row of rows) {
+        const key = pair(row.get("record")?.value, row.get("other")?.value);
+        const origins = pairs.get(key) ?? new Set<string>();
+        origins.add(row.get("origin")?.value ?? "");
+        pairs.set(key, origins);
+      }
+      matched.set(rule.justification, pairs);
     }
     return new Matcher(
       context,
@@ -320,37 +324,33 @@ class Matcher {
       pod,
       rulesVersion,
       found.map(({ rule }) => rule),
-      tableVersions,
+      current,
       matched,
     );
   }
 
-  private matches(
+  /** The origins whose rows join the record to the other under the rule: "" for a rule that reads no table. */
+  private origins(
     rule: MatcherRule,
     record: SubjectRecord,
     other: SubjectRecord,
-  ): boolean {
+  ): ReadonlySet<string> {
+    if (!rule.appliesTo.has(record.kind)) return new Set();
     return (
-      rule.appliesTo.has(record.kind) &&
-      (this.matched
+      this.matched
         .get(rule.justification)
-        ?.has(pair(record.name, other.name)) ??
-        false)
+        ?.get(pair(record.name, other.name)) ?? new Set()
     );
   }
 
-  /** Writes the rule's Same of the members, unless the pod holds it (M5, M8, M9). */
+  /** Writes the rule's Same of the members by the origin's rows, unless the pod holds it (M5, M8, M9). */
   private async same(
     rule: MatcherRule,
+    origin: string,
     members: readonly SubjectRecord[],
   ): Promise<void> {
     const { layout, writes, time } = this.context;
-    const table =
-      rule.table === undefined ? undefined : this.tableVersions.get(rule.table);
-    const applied = [
-      this.rulesVersion,
-      ...(table === undefined ? [] : [table]),
-    ];
+    const applied = [this.rulesVersion, ...(origin === "" ? [] : [origin])];
     const used = [
       ...new Set([...applied, ...members.map(({ version }) => version)]),
     ].sort();
@@ -406,10 +406,15 @@ class Matcher {
     const compared = records.filter((record) => !taken.includes(record));
     for (const record of taken) {
       for (const rule of this.rules) {
-        const matched = compared.filter((other) =>
-          this.matches(rule, record, other),
+        const origins = new Set(
+          compared.flatMap((other) => [...this.origins(rule, record, other)]),
         );
-        if (matched.length > 0) await this.same(rule, [record, ...matched]);
+        for (const origin of [...origins].sort()) {
+          const matched = compared.filter((other) =>
+            this.origins(rule, record, other).has(origin),
+          );
+          await this.same(rule, origin, [record, ...matched]);
+        }
       }
       compared.push(record);
     }
@@ -427,15 +432,26 @@ class Matcher {
         throw new Refusal(
           `the rule list has no rule for ${judged.justification}, which ${judged.name} gives`,
         );
+      const used = judged.used.find(
+        (thing) =>
+          rule.kind !== undefined &&
+          this.references.kindOf(this.references.seriesOf(thing) ?? "") ===
+            rule.kind,
+      );
+      const origin =
+        used === undefined
+          ? ""
+          : this.current(this.references.seriesOf(used) ?? "");
       const members = judged.members.flatMap(
         (member) => this.pod.theirs.get(member) ?? [],
       );
       const still = members.filter((member) =>
         members.some(
-          (other) => other !== member && this.matches(rule, member, other),
+          (other) =>
+            other !== member && this.origins(rule, member, other).has(origin),
         ),
       );
-      if (still.length >= 2) await this.same(rule, still);
+      if (still.length >= 2) await this.same(rule, origin, still);
     }
   }
 }

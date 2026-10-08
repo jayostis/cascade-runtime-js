@@ -29,7 +29,7 @@ async function row(
   ];
 }
 
-test("a rule list naming a query outside matcher/, by any path, or giving one justification twice refuses the run", async () => {
+test("a rule list naming a query outside matcher/, by any path, giving one justification twice, or two table kinds for a rule refuses the run", async () => {
   const files = await vocabulary();
   const sameCode = await row("a", "SameCode", "matcher/same-code.rq");
   assert.equal((await matcherRules(new Graph(sameCode), files)).length, 1);
@@ -51,6 +51,14 @@ test("a rule list naming a query outside matcher/, by any path, or giving one ju
       ...(await row("b", "SameCode", "matcher/same-code-and-date.rq")),
     ],
     sameCode.filter(([, predicate]) => predicate.value !== `${REC}queryHash`),
+    [
+      ...sameCode,
+      ...["VaccineGroups", "CodeNames"].map((kind): Triple => [
+        blank("a"),
+        iri(`${REC}tableKind`),
+        iri(REC + kind),
+      ]),
+    ],
   ]) {
     await assert.rejects(matcherRules(new Graph(rows), files), Refusal);
   }
