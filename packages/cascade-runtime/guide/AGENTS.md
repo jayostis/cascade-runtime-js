@@ -78,7 +78,17 @@ who keeps the pod, `address` a random base its names are made from: no identity
 is registered under either (that comes later, jayostis/cascade-vocabulary#62).
 A pod's answers are kept beside it, never in it: in `.answers/<name>/` beside
 its folder. An ask by name returns what was kept until any step changes the
-pod; removing a pod's folder, remove its `.answers/<name>` too.
+pod or the tables; removing a pod's folder, remove its `.answers/<name>` too.
+
+The matcher's reference tables come from the feeds `cascade-runtime.json`
+names. The pods in a folder share `tables/` beside it: the first `openPod` in a
+process reads the feeds, unless `tables.checkOnOpen` is `false`, and keeps each
+newer version that verifies. `(await tablesBeside("pods")).check({ cache: "no-cache" })`
+checks again ("Check now"); a feed that cannot be read now says `later`, and
+nothing is thrown. Opening a pod after its tables changed gives it them:
+`pod.opened` says what that wrote, and `pod.opened.unheld` the versions it
+names that the app does not hold, which it is matched without. A pod in memory
+gets the package's starter copies.
 
 In a browser, the same import, served with the package's `components/` beside
 its `dist/`, runs every call. A pod's name names
@@ -518,7 +528,8 @@ await her.close();
 
 ## What it cannot do yet
 
-- The matcher's tables are alpha test tables: a real export gets few joins.
+- The feed is a draft: until it publishes a series, a rule reading its kind
+  joins nothing. In a browser, tables are not yet kept or adopted.
 - Alex's story runs into 2027: a record entered today orders before hers.
 - Node 22 or later, the pod in a folder or in memory; each call rebuilds its views.
 - Sign-in reaches only the test directory: the demo hospitals and the SMART

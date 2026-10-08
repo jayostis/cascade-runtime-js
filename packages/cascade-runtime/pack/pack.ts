@@ -40,7 +40,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
-import { TABLES } from "../src/pod.js";
+import { Tables } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -64,8 +64,11 @@ const VOCABULARY = [
   "ontologies",
   "queries",
   "runtime/pod-layout.ttl",
+  "runtime/rule-list",
   "runtime/rules.md",
 ];
+/** Where the package carries its starter copies of the feeds' series, under `components/`. */
+const TABLES_FOLDER = "tables";
 /** What an adapter reads of another vocabulary repository it names. */
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];
 /** The folder of the starter that holds the demo hospitals. */
@@ -193,6 +196,7 @@ async function packComponents(): Promise<{
       filter: (path) => relative(adapter.folder, path).split(sep)[0] !== ".git",
     });
   await copyFile(join(ROOT, CONFIG_FILE), join(COMPONENTS, CONFIG_FILE));
+  await packStarterTables(config.tables.feeds, treeOf(vocabulary));
   const resolved = [vocabulary, ...adapters, ...others];
   const record: Packed = {
     components: resolved.map(({ component, version }) => ({
@@ -212,11 +216,34 @@ async function packComponents(): Promise<{
   return { resolved, bridge: record.bridge, bridgeFolder: bridge.folder };
 }
 
-/** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`, other than the matcher's tables. */
+/** The starter copies: each series' current version in the feeds as they are now, kept as an app keeps them. */
+async function packStarterTables(
+  feeds: readonly string[],
+  vocabulary: string,
+): Promise<void> {
+  const folder = join(COMPONENTS, TABLES_FOLDER);
+  await mkdir(folder, { recursive: true });
+  const tables = new Tables({
+    files: new FolderFiles(folder),
+    feeds,
+    vocabulary: new FolderFiles(vocabulary),
+    newStore: () => new OxigraphStore(),
+  });
+  for (const { feed, kept, later, refused } of await tables.check({
+    cache: "no-cache",
+  })) {
+    if (later !== undefined || refused.length > 0)
+      throw new Error(
+        `${feed} gave no starter copies: ${later ?? refused.map(({ version, reason }) => `${version}: ${reason}`).join("; ")}`,
+      );
+    log(`${feed}: ${kept.length} starter copies`);
+  }
+}
+
+/** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`. */
 function read(path: string): boolean {
-  return (
-    path.startsWith(TABLES) ||
-    !["conformance/", "fixtures/"].some((folder) => path.startsWith(folder))
+  return !["conformance/", "fixtures/"].some((folder) =>
+    path.startsWith(folder),
   );
 }
 

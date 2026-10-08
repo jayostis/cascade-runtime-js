@@ -9,6 +9,36 @@ export interface RuntimeConfig {
   readonly adapters: readonly Followed[];
   readonly importers: readonly string[];
   readonly lens: string;
+  readonly tables: TablesConfig;
+}
+
+/** The reference tables an app reads: the feeds, and the repository whose feed's shape and fixtures they follow. */
+export interface TablesConfig {
+  readonly repository: Followed;
+  /** Each feed's URL, read in this order. */
+  readonly feeds: readonly string[];
+  /** Whether an app checks its feeds when it opens; otherwise only when asked. */
+  readonly checkOnOpen: boolean;
+}
+
+function tables(value: unknown): TablesConfig {
+  const {
+    repository,
+    feeds,
+    checkOnOpen = true,
+  } = (value ?? {}) as Record<string, unknown>;
+  if (
+    !Array.isArray(feeds) ||
+    feeds.some((feed) => typeof feed !== "string" || !URL.canParse(feed))
+  )
+    throw new Error("tables.feeds is not a list of URLs");
+  if (typeof checkOnOpen !== "boolean")
+    throw new Error("tables.checkOnOpen is not true or false");
+  return {
+    repository: followed({ repository }, "tables"),
+    feeds: feeds as string[],
+    checkOnOpen,
+  };
 }
 
 function followed(value: unknown, where: string): Followed {
@@ -46,6 +76,7 @@ export function parseConfig(text: string): RuntimeConfig {
     ),
     importers: importers as string[],
     lens,
+    tables: tables(config.tables),
   };
 }
 

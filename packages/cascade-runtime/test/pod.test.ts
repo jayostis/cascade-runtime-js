@@ -137,6 +137,19 @@ async function handled(): Promise<(handle: string) => Promise<string>> {
   };
 }
 
+/** The justifications the app's rule list gives: a join of Alex's kit's own rule list alone, his penicillin's among them, is not. */
+async function appJustifications(): Promise<Set<string>> {
+  const references = await kept.tables.references();
+  const rows = await references.rows(
+    references.fallback(await references.ruleList()),
+  );
+  return new Set(
+    rows
+      .filter(([, predicate]) => predicate.value.endsWith("#justifiedAs"))
+      .map(([, , object]) => object.value),
+  );
+}
+
 /** The folder or file at the path as an app holds it: each file by its path under the folder's or file's own name. */
 async function heldExport(
   at: string,
@@ -270,6 +283,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   const joined = (justification: string, members: string[]): string =>
     `${justification} ${members.sort().join(" ")}`;
   const named = await handled();
+  const given = await appJustifications();
   assert.deepEqual(
     judgments
       .map(({ justification = "", members = "" }) =>
@@ -278,12 +292,16 @@ test("an import with the claim records an About for each unclaimed profile and i
       .sort(),
     (
       await Promise.all(
-        expected.map(async ({ justification = "", members = "" }) =>
-          joined(
-            JUSTIFICATIONS[justification] ?? justification,
-            await Promise.all(members.split(", ").map(named)),
+        expected
+          .filter(({ justification = "" }) =>
+            given.has(JUSTIFICATIONS[justification] ?? justification),
+          )
+          .map(async ({ justification = "", members = "" }) =>
+            joined(
+              JUSTIFICATIONS[justification] ?? justification,
+              await Promise.all(members.split(", ").map(named)),
+            ),
           ),
-        ),
       )
     ).sort(),
   );
@@ -671,12 +689,13 @@ test("a published pod's answers, as the site computes them, are read back withou
     "published",
   ))
     await answers.write(path, bytes);
-  const { vocabulary, build, lens, layout } = kept;
+  const { vocabulary, build, lens, layout, tables } = kept;
   const read = await keptPod(
     {
       vocabulary,
       build,
       lens,
+      tables,
       layout: Layout.of(
         layout.turtle,
         JSON.parse(JSON.stringify(layout.placements)) as Placed[],

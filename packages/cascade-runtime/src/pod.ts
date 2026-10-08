@@ -26,7 +26,6 @@ import {
   randomId,
   RDF,
   readText,
-  type References,
   type StoreFactory,
   type Triple,
   Union,
@@ -40,6 +39,7 @@ import {
   type AnswerStore,
   type Described,
 } from "./answers.js";
+import type { Tables } from "./tables.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -55,9 +55,6 @@ const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
 const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
 const UUID = "urn:uuid:";
-/** The matcher's tables every pod is given: those of Priya's kit, alpha test data. */
-export const TABLES =
-  "conformance/priya-natarajan/scripted-input/priya/references/";
 
 /** A name as a person reads it, its runs of white space one space. */
 function spaced(name: string): string {
@@ -90,6 +87,8 @@ export interface Pod {
   readonly subject: string;
   /** The owner's profile's #me. */
   readonly owner: string;
+  /** The open that gave the pod the app's newer tables when it was opened (O1, O2); none when they had not changed. */
+  readonly opened?: Opened;
   /** The export or download at the path, or the files the app holds of one. */
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
@@ -136,6 +135,11 @@ export interface Done {
   readonly judgment?: string;
   /** The matcher run taking it, with matching on. */
   readonly matched?: Done;
+}
+
+export interface Opened extends Done {
+  /** The versions the pod names that the app does not hold, which it is matched without (O2). */
+  readonly unheld: readonly string[];
 }
 
 export interface Imported extends Done {
@@ -191,8 +195,8 @@ export interface Parts {
   /** The lens `cascade-runtime.json` names. */
   readonly lens: string;
   readonly importers: readonly Importer[];
-  /** The matcher's tables. */
-  readonly references: References;
+  /** The matcher's tables: the versions the app keeps from its feeds, and the vocabulary's rule list. */
+  readonly tables: Tables;
   readonly newStore: StoreFactory;
   folder(path: string, iri?: string): Folder;
   /** Where the answers of a pod in a folder are kept; none when nothing may be kept. */
@@ -289,14 +293,16 @@ function keyOf(
     readonly text: string;
     readonly lens: string;
     readonly revision: string;
+    readonly tables: readonly string[];
   },
 ): Promise<string> {
-  const { runtime, question, text, lens, revision } = asked;
+  const { runtime, question, text, lens, revision, tables } = asked;
   return answerKey({
     runtime,
     question,
     lens,
     revision,
+    tables,
     texts: [
       text,
       ...build.derivations.for(lens).map(({ query }) => query),
@@ -307,7 +313,10 @@ function keyOf(
 }
 
 /** What a pod's kept answers are read with: no store, so no engine. */
-export type Reading = Pick<Parts, "vocabulary" | "layout" | "build" | "lens">;
+export type Reading = Pick<
+  Parts,
+  "vocabulary" | "layout" | "build" | "lens" | "tables"
+>;
 
 /** A pod as its kept answers read it, without the engine. */
 export interface KeptPod extends Described {
@@ -346,6 +355,7 @@ export async function keptPod(
           text,
           lens,
           revision: await revision,
+          tables: await reading.tables.current(),
         }),
       );
     },
@@ -387,6 +397,7 @@ class OpenPod implements Pod {
     readonly address: string,
     readonly subject: string,
     answers?: Answers,
+    readonly opened?: Opened,
   ) {
     this.#parts = parts;
     this.#core = core;
@@ -744,6 +755,7 @@ class OpenPod implements Pod {
           text: query,
           lens,
           revision: await this.#core.revision(),
+          tables: await this.#parts.tables.current(),
         });
         const kept = await answers.rows(lens, question, key);
         if (kept !== undefined) return kept;
@@ -782,7 +794,7 @@ function coreOver(
       newStore: parts.newStore,
       time: clock,
       importers: parts.importers,
-      references: () => Promise.resolve(parts.references),
+      references: () => parts.tables.references(),
       build: {
         lens: parts.lens,
         derive: async (store, lens, pod) => {
@@ -797,12 +809,12 @@ function coreOver(
 
 /**
  * The pod in the folder, or in memory with none. A missing or empty folder, or memory, is a new pod, named from a base
- * of its own and created; a folder holding a pod opens as it is.
+ * of its own and created; a folder holding a pod opens as it is, and is given the app's tables unless `adopt` is false.
  */
 export async function openPodWith(
   parts: Parts,
   folder?: string,
-  options: { title?: string } = {},
+  options: { title?: string; adopt?: boolean } = {},
 ): Promise<Pod> {
   const disk = folder === undefined ? undefined : parts.folder(folder);
   const answers =
@@ -828,6 +840,7 @@ export async function openPodWith(
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
     await answers?.describe({ address, subject, title });
+    await parts.tables.opened(address, await parts.tables.current());
     return new OpenPod(parts, core, address, subject, answers);
   }
   const store = parts.newStore();
@@ -854,11 +867,34 @@ export async function openPodWith(
   }
   await answers?.describe({ address, subject, title });
   const files = parts.folder(folder, address).files;
+  const core = coreOver(parts, files, address, subject, title, opened);
   return new OpenPod(
     parts,
-    coreOver(parts, files, address, subject, title, opened),
+    core,
     address,
     subject,
     answers,
+    options.adopt === false
+      ? undefined
+      : await openedWithTables(parts.tables, core, address),
   );
+}
+
+/** The pod given the app's tables when they changed since it was last opened, or it never was (O1, O2). */
+async function openedWithTables(
+  tables: Tables,
+  core: CorePod,
+  address: string,
+): Promise<Opened | undefined> {
+  const current = await tables.current();
+  const before = await tables.openedWith(address);
+  if (
+    before !== undefined &&
+    before.length === current.length &&
+    before.every((version, index) => version === current[index])
+  )
+    return undefined;
+  const performed = await core.open(await tables.references());
+  if (performed.refused === undefined) await tables.opened(address, current);
+  return { ...performed, unheld: performed.unheld ?? [] };
 }

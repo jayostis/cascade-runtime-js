@@ -334,14 +334,6 @@ test("the reading example shows each allergy as its entry states it, its records
       `${allergen} is not shown with its entry's criticality`,
     );
   }
-  const penicillin = allergies.find(
-    ({ allergen }) => allergen === "Penicillin",
-  );
-  assert.equal(penicillin?.criticality, "high", "Penicillin is not shown high");
-  assert.ok(
-    penicillin.from.some((record) => !stated.has(record)),
-    "every record beneath Penicillin states a criticality",
-  );
 });
 
 test("the pod the examples leave conforms to the vocabulary's shapes", async () => {
