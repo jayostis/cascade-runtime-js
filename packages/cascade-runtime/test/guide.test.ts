@@ -577,3 +577,17 @@ test("the starter's AGENTS.md points at the guide that ships", async () => {
   ) as { files: string[] };
   assert.ok(files.includes(path), `the package's files leave out ${path}`);
 });
+
+test("the guide installs the cascade-reference-tables the runtime is tested with", async () => {
+  const { devDependencies } = JSON.parse(
+    await readFile(join(ROOT, "package.json"), "utf8"),
+  ) as { devDependencies: Record<string, string> };
+  const pinned = devDependencies["cascade-reference-tables"];
+  assert.ok(pinned);
+  assert.ok(
+    (await readFile(GUIDE, "utf8")).includes(
+      `npm install --save-exact ${pinned}`,
+    ),
+    `the guide does not install ${pinned}`,
+  );
+});

@@ -14,6 +14,14 @@
   "lens": "everyday",
   "tables": {
     "repository": "https://github.com/jayostis/cascade-reference-tables",
-    "feeds": ["https://jayostis.github.io/cascade-reference-tables/feed.ttl"]
+    "feeds": ["https://jayostis.github.io/cascade-reference-tables/feed.ttl"],
+    "preference": {
+      "https://ns.cascadeprotocol.org/records/v1-draft#CodeNames": [
+        "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0"
+      ],
+      "https://ns.cascadeprotocol.org/records/v1-draft#CodeStatus": [
+        "urn:uuid:624f752e-dfba-45e7-a3e5-710ff7204a79"
+      ]
+    }
   }
 }

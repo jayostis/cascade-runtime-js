@@ -97,6 +97,22 @@ pods last opened with each version, by name; `search(series, text)`, the codes
 of its current version that are `text` or whose name holds it, each with what
 `about(codes)` says of it (its name and status) and the codes it maps to.
 
+An app sets its own tables in a `cascade-runtime.json` of its own, in the
+folder it runs in, naming `tables` and nothing else, or in code with
+`configureTables({ ... })` before the first pod opens; each field given replaces
+the package's, and code wins over the file. `feeds` lists every feed the app
+reads, the package's among them if it keeps it; `preference` gives each table
+kind's IRI the series a person reads it from, first first; `checkOnOpen: false`
+leaves only "Check now". `(await tablesBeside("pods")).about([codeIri])` gives
+each code's name and status from the first series in that order that holds it.
+In Node only, `builders` names sources whose builders run on this machine in
+each check, a name under cascade-reference-tables' `builders/` or a path from
+the file; what one builds is kept as a feed's versions are, from
+`pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
+the app installs itself:
+`npm install --save-exact github:jayostis/cascade-reference-tables#1101d9b070dcc435098c0b1a616152f9fc64b3ea`.
+A version that does not descend from the one held of its series is never kept.
+
 In a browser, the same import, served with the package's `components/` beside
 its `dist/`, runs every call. A pod's name names
 its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
@@ -117,6 +133,8 @@ A browser keeps its tables in one IndexedDB database for the app,
 `<name>:cascade-tables`, `name` the page's folder unless
 `configureTables({ name, fetch })` says otherwise before the first pod opens.
 It reads the feeds once the engine loads, and `checkTables()` is "Check now".
+`configureTables` also takes `feeds`, `preference` and `checkOnOpen`, as Node
+does; a browser runs no builder and reads no file of the app's.
 A pod copied with `from` is taken as published: its first open records the
 tables the browser then holds without adopting them, and a later open adopts
 only tables newer than those.

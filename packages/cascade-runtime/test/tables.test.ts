@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
@@ -13,16 +13,25 @@ import {
   ntriples,
   OxigraphStore,
   tableTerms,
+  tablesSettings,
   type Triple,
+  withTables,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
+  type Components,
   findRoot,
   FolderFiles,
 } from "@cascade-runtime/runtime/node";
-import { partsOf, type ResolvedParts } from "../src/node/resolved.js";
+import {
+  appSettings,
+  configureTables,
+  partsOf,
+  type ResolvedParts,
+  resolved,
+} from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { RULE_LIST, Tables } from "../src/tables.js";
+import { type Checked, RULE_LIST, Tables } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
@@ -48,6 +57,7 @@ interface Served {
   readonly broken?: string;
 }
 
+let components: Components;
 let parts: ResolvedParts;
 let feed: Served;
 /** The test feed with each series' first version current. */
@@ -58,7 +68,7 @@ let scratch: string;
 
 before(async () => {
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
-  const components = await checkouts(root);
+  components = await checkouts(root);
   parts = await partsOf(components);
   const { folder } = await components.resolve(
     components.config.tables.repository,
@@ -674,4 +684,216 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
       input,
     );
   }
+});
+
+const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const CVX_NAMES = "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0";
+const CVX_STATUS = "urn:uuid:624f752e-dfba-45e7-a3e5-710ff7204a79";
+const EXAMPLE_NAMES = "urn:uuid:6e9c1dc9-8c36-49a8-929c-cd9f6701076c";
+const EXAMPLE_STATUS = "urn:uuid:57b9415b-3531-4995-8dfb-48b69ead096f";
+const HOST_ROOT = join(
+  dirname(fileURLToPath(import.meta.resolve("cascade-reference-tables"))),
+  "..",
+  "..",
+  "..",
+);
+const EXAMPLE_BUILDER = join(HOST_ROOT, "fixtures", "builder");
+
+/** The test feed, and each builder's publisher serving its fixture release: 304 to a request asking if it changed. */
+function publishersAnd(served: Served): typeof fetch {
+  const cdc = "https://www2a.cdc.gov/vaccines/iis/iisstandards/downloads/";
+  const cvx = join(HOST_ROOT, "builders", "cdc-cvx", "fixtures", "release");
+  const releases = new Map([
+    [`${cdc}CVX.txt`, join(cvx, "CVX.txt")],
+    [`${cdc}VG.txt`, join(cvx, "VG.txt")],
+    [
+      "https://publisher.example/downloads/codes.txt",
+      join(EXAMPLE_BUILDER, "fixtures", "release-2", "codes.txt"),
+    ],
+  ]);
+  const feeds = fetchOf(served);
+  return async (input, init) => {
+    const path = releases.get(String(input));
+    if (path === undefined) return feeds(input, init);
+    return new Headers(init?.headers).has("If-Modified-Since")
+      ? new Response(null, { status: 304 })
+      : new Response(await readFile(path), {
+          headers: { "Last-Modified": "Wed, 17 Sep 2026 00:00:00 GMT" },
+        });
+  };
+}
+
+/** The test feed's versions and those the CDC CVX builder and the example builder build locally, kept beside pods. */
+const built = (() => {
+  let checking: Promise<{ store: string; checked: Checked[][] }> | undefined;
+  return () =>
+    (checking ??= (async () => {
+      const store = join(scratch, "built", ".tables");
+      const local = await partsOf(components, {
+        fetch: publishersAnd(feed),
+        tables: { feeds: [FEED], builders: ["cdc-cvx", EXAMPLE_BUILDER] },
+      });
+      const tables = local.tablesIn(store);
+      return { store, checked: [await tables.check(), await tables.check()] };
+    })());
+})();
+
+test("a builder the configuration names runs locally and its versions are kept as a feed's; one that does not descend from the version held is refused; a check finding nothing new keeps nothing", async () => {
+  const {
+    checked: [first, second],
+  } = await built();
+  const [fromFeed, cvx, example] = first ?? [];
+  assert.ok(fromFeed?.kept.includes(groups.second));
+  assert.match(cvx?.feed ?? "", /^file:.*\/\.builds\/cdc-cvx\/feed\.ttl$/);
+  assert.equal(cvx?.kept.length, 3);
+  assert.deepEqual(cvx?.refused, []);
+  assert.match(
+    example?.refused.map(({ reason }) => reason).join("\n") ?? "",
+    new RegExp(`does not descend from ${groups.second}`),
+  );
+  assert.deepEqual(
+    second?.map(({ kept, later }) => ({ kept, later })),
+    [
+      { kept: [], later: undefined },
+      { kept: [], later: undefined },
+      { kept: [], later: undefined },
+    ],
+  );
+});
+
+test("a code's name and status come from the first series of their kinds, in the order of preference, that holds it, a later one where the first does not", async () => {
+  const { store } = await built();
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const cvx57 = "http://hl7.org/fhir/sid/cvx/57";
+  const cvx03 = "http://hl7.org/fhir/sid/cvx/03";
+  const unknown = "http://hl7.org/fhir/sid/cvx/999999";
+  for (const [names, status, label] of [
+    [CVX_NAMES, CVX_STATUS, "Influenza, split virus, trivalent, preservative"],
+    [EXAMPLE_NAMES, EXAMPLE_STATUS, "flu, split"],
+  ] as const) {
+    const tables = (
+      await partsOf(components, {
+        tables: {
+          feeds: [],
+          preference: {
+            [`${REC}CodeNames`]: [names],
+            [`${REC}CodeStatus`]: [status],
+          },
+        },
+      })
+    ).tablesIn(store);
+    const references = await tables.references();
+    const about = await tables.about([cvx141, cvx57, cvx03, unknown]);
+    const name = about.get(cvx141)?.name;
+    assert.equal(name?.label, label);
+    assert.equal(references.seriesOf(name?.origin ?? ""), names);
+    for (const [code, holder] of [
+      [cvx57, CVX_STATUS],
+      [cvx03, EXAMPLE_STATUS],
+    ] as const) {
+      const retired = about.get(code)?.status;
+      assert.equal(retired?.deprecated, true, code);
+      assert.equal(references.seriesOf(retired?.origin ?? ""), holder, code);
+    }
+    assert.equal(about.has(unknown), false);
+  }
+});
+
+test("an app's tables are the package's with each field of its own file, then of its code, in their place; and what an app cannot set is refused", async () => {
+  const packaged = parts.local.config;
+  const packageConfig = join(
+    findRoot(dirname(fileURLToPath(import.meta.url))),
+    "cascade-runtime.json",
+  );
+  const app = await mkdtemp(join(scratch, "app-"));
+  const other = "https://tables.example/other.ttl";
+  const preference = { [`${REC}CodeNames`]: [EXAMPLE_NAMES] };
+  const cases: [string, unknown, object, object | RegExp][] = [
+    [
+      "the file's feeds and order of preference, the package's check on open",
+      { tables: { feeds: [other], preference } },
+      {},
+      { feeds: [other], preference, checkOnOpen: packaged.tables.checkOnOpen },
+    ],
+    [
+      "the code's over the file's",
+      { tables: { feeds: [FEED] } },
+      { feeds: [other], checkOnOpen: false },
+      { feeds: [other], checkOnOpen: false },
+    ],
+    ["no feed", { tables: { feeds: [] } }, {}, { feeds: [] }],
+    [
+      "a builder by its name, and by its path from the file",
+      { tables: { builders: ["cdc-cvx", "../mine"] } },
+      {},
+      { builders: ["cdc-cvx", resolve(app, "..", "mine")] },
+    ],
+    [
+      "two builders built into one folder",
+      { tables: { builders: ["loinc", "./mine/loinc"] } },
+      {},
+      /builders names more than one builder built into loinc/,
+    ],
+    [
+      "a file naming more than tables",
+      { tables: {}, lens: "everyday" },
+      {},
+      /names lens, and names nothing but tables/,
+    ],
+    [
+      "an order of preference not of IRIs",
+      { tables: { preference: { [`${REC}CodeNames`]: ["names"] } } },
+      {},
+      /preference does not give/,
+    ],
+    [
+      "a feed that is no URL",
+      { tables: { feeds: ["feed.ttl"] } },
+      {},
+      /feeds is not a list of URLs/,
+    ],
+    [
+      "code setting what is not the tables'",
+      { tables: {} },
+      { repository: other },
+      /configureTables names repository, which it cannot set/,
+    ],
+  ];
+  for (const [name, file, code, expected] of cases) {
+    await writeFile(join(app, "cascade-runtime.json"), JSON.stringify(file));
+    const configured = async () =>
+      withTables(
+        packaged,
+        await appSettings(app, packageConfig),
+        tablesSettings(code, "configureTables"),
+      ).tables;
+    if (expected instanceof RegExp)
+      await assert.rejects(configured(), expected, name);
+    else
+      assert.deepEqual(
+        await configured(),
+        { ...packaged.tables, ...expected },
+        name,
+      );
+  }
+  assert.deepEqual(
+    await appSettings(app, join(app, "cascade-runtime.json")),
+    {},
+    "the package's own file",
+  );
+  await writeFile(
+    join(app, "cascade-runtime.json"),
+    JSON.stringify({ lens: "everyday" }),
+  );
+  const cwd = process.cwd();
+  process.chdir(app);
+  try {
+    await assert.rejects(resolved(), /names nothing but tables/);
+  } finally {
+    process.chdir(cwd);
+  }
+  assert.doesNotThrow(
+    () => configureTables({}),
+    "configureTables after a start that failed",
+  );
 });
