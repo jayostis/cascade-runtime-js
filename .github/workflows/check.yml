@@ -165,13 +165,13 @@ jobs:
           PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
           COMMIT: ${{ github.sha }}
 
-  # connect and pull against the SMART launcher, a server this project did not write, over the network: nightly and by
-  # hand only, so a network failure gates no pull request.
+  # connect and pull, and try/ in Chromium, against the SMART launcher, a server this project did not write, over the
+  # network: nightly and by hand only, so a network failure gates no pull request.
   launcher:
     name: launcher
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -181,6 +181,15 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - name: Pack the package, whose browser build try/ serves
+        run: npm run build:package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Build every kit's pod and site, and the front page above them
+        run: npm run build:pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:launcher
 
   # The package, packed once from the head of every default branch, so every system below tests the same bytes.
