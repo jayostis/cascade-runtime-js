@@ -4,7 +4,7 @@ import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
 import { documentName, inUtc, recordName } from "./names.js";
 import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
-import type { References } from "./references.js";
+import { type References, tableTerms, type TableTerms } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
 
@@ -280,6 +280,31 @@ interface Pod {
   readonly retracted: ReadonlySet<string>;
 }
 
+/**
+ * Every code a current version of the pod's records may join a table by: each IRI it states under a code system's URI
+ * space, and each literal it states written after each URI space.
+ */
+async function podCodes(
+  union: Dataset,
+  { uriSpaces }: TableTerms,
+): Promise<Set<string>> {
+  const { rows } = await union.select(
+    `${PREFIXES} SELECT DISTINCT ?value WHERE { ?record pav:hasCurrentVersion ?version . ?version ?property ?value }`,
+  );
+  const codes = new Set<string>();
+  for (const row of rows) {
+    const value = row.get("value");
+    if (value?.termType === "Literal")
+      for (const space of uriSpaces) codes.add(space + value.value);
+    else if (
+      value?.termType === "NamedNode" &&
+      uriSpaces.some((space) => value.value.startsWith(space))
+    )
+      codes.add(value.value);
+  }
+  return codes;
+}
+
 /** For each rule's justification, the origins that join each pair: "" for a rule that reads no table. */
 type Joins = ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>;
 
@@ -414,8 +439,10 @@ class Matcher {
         ),
       ]),
     );
+    const terms = await tableTerms(context.vocabulary, context.newStore);
+    const find = { codes: await podCodes(union, terms), terms };
     for (const version of new Set([...versions, ...versionsBefore])) {
-      await union.add(await references.rows(version), version);
+      await union.add(await references.rows(version, find), version);
       await union.add(
         [
           ...references.description(version),

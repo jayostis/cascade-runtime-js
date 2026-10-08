@@ -1,4 +1,5 @@
 import {
+  CODES,
   contentName,
   type Files,
   fileStem,
@@ -9,6 +10,8 @@ import {
   References,
   relative,
   type StoreFactory,
+  rowsByCode,
+  tableTerms,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -373,10 +376,17 @@ export class Tables {
         refused.push({ version: version.value, reason: error.message });
         continue;
       }
-      await this.#options.files.write(
-        `${fileStem(version.value)}.ttl`,
-        ntriples(rows),
+      const kind = catalog.objects(series, `${REC}tableKind`)[0]?.value ?? "";
+      const codes = rowsByCode(
+        rows,
+        (
+          await tableTerms(this.#options.vocabulary, this.#options.newStore)
+        ).foundBy.get(kind) ?? [],
       );
+      const stem = fileStem(version.value);
+      await this.#options.files.write(`${stem}.ttl`, ntriples(rows));
+      if (codes !== undefined)
+        await this.#options.files.write(stem + CODES, codes);
       index = new Graph([
         ...index.triples.filter(
           ([subject, predicate]) =>
