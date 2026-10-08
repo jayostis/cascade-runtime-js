@@ -1,6 +1,9 @@
 // The starter's view, in the browser: pods kept in this browser's own storage, each shown as a person reads it, a way
 // to make one or load a published one, and a sign-in at the demo hospitals that brings a record in. The view is the
 // starter's `summary.mjs`, served beside it as `summary.js`; this file routes, reads the pods, and hands the view the addresses of this page.
+// What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
+// filter and a scroll stay as they were.
+import { render as renderInto } from "preact";
 import {
   connect,
   ConnectionFailure,
@@ -12,15 +15,14 @@ import {
   searchDirectory,
   TEST_DIRECTORY,
 } from "cascade-runtime";
-import { render as renderToString } from "preact-render-to-string";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionDialog,
   didNote,
-  frame,
   hospitalName,
   hospitalsPage,
   html,
+  layout,
   newPodDialog,
   noPods,
   patientName,
@@ -29,7 +31,7 @@ import {
   postButton,
   QUESTIONS,
   slug,
-  sortAndFilter,
+  STYLE,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -62,14 +64,29 @@ const hospitalsReady = useDemoHospitals(
 );
 hospitalsReady.catch(() => undefined);
 
-let pods = [];
-let people = [];
-let current;
+/**
+ * What the page shows: the pods here and the demo people; the pod shown, by name; `page`, the pod's page as its
+ * `answers` and the hospital a record was just brought in `from`, or another page's `title` and `body`; the
+ * `connection` under way or done, with its row, step, requests answered, once pulled the files to import, and what its
+ * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; and what the page
+ * is doing (`doing`), in `data-state` on the body.
+ */
+const state = {
+  pods: [],
+  people: [],
+  current: undefined,
+  page: undefined,
+  connection: undefined,
+  note: undefined,
+  doing: "opening",
+};
+/** The pod shown, open. */
 let pod;
-/** The sign-in under way or done, with its row, step, requests answered, and once pulled the files to import. */
-let connection;
-/** What the File menu just did, as the address said when the page opened. */
-let note;
+
+const root = document.createElement("div");
+const style = document.createElement("style");
+style.textContent = STYLE;
+document.head.append(style);
 
 async function podsHere() {
   return (await indexedDB.databases())
@@ -96,73 +113,34 @@ function closeDialog() {
   history.replaceState(null, "", location.pathname + location.search);
 }
 
-/**
- * Shows `body` in the frame, under a new root that the tables' sorting and filtering listen on; `state` is what the
- * page says it is doing, in `data-state` on the body.
- */
-function render(title, body, state = "ready") {
-  const samples = SAMPLES.filter((name) => !pods.includes(name));
-  const page = frame({
-    title,
-    body,
-    pods,
-    current,
-    href: podHref,
-    home: "../",
-    menu: MENU,
-    note,
-    dialog: newPodDialog({
-      people,
-      pods,
-      action: "make",
-      more:
-        samples.length === 0
-          ? undefined
-          : {
-              said: "Or open a sample pod, already filled with records from several places.",
-              choices: samples.map((name) => ({
-                label: `Load ${personName(name)}`,
-                note: "A copy of a published example pod",
-                action: "load",
-                fields: { pod: name },
-              })),
-            },
-    }),
-  });
-  const parsed = new DOMParser().parseFromString(
-    renderToString(page),
-    "text/html",
-  );
-  document.title = parsed.title;
-  if (document.head.querySelector("style") === null)
-    document.head.append(parsed.head.querySelector("style"));
-  for (const script of parsed.body.querySelectorAll("script")) script.remove();
-  const root = document.createElement("div");
-  root.append(...parsed.body.childNodes);
-  document.body.replaceChildren(root);
-  sortAndFilter(root);
-  document.body.dataset.state = state;
-}
-
-const personOf = (name) => people.find((each) => slug(each.name) === name);
+const personOf = (name) =>
+  state.people.find((each) => slug(each.name) === name);
 
 const signInButton = (fhirBase, label) =>
   postButton("sign-in", { fhirBase }, label);
 
-/** The pod's page; `from` names the hospital a record was just brought in from, `box` is a connection's box over it. */
-async function showPod(from, box) {
-  const answers = Object.fromEntries(
-    await Promise.all(
-      QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
-    ),
-  );
-  render(
-    personName(current),
-    podPage(answers, {
+/** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
+function pageShown() {
+  const { answers, from, title, body } = state.page;
+  if (answers === undefined) return { title, body };
+  const { current, connection } = state;
+  return {
+    title: personName(current),
+    body: podPage(answers, {
       pod: current,
       person: personOf(current),
       from,
-      connection: box,
+      connection:
+        connection &&
+        connectionDialog({
+          id: BOX,
+          pod: current,
+          hospital: connection.row.name,
+          back: podHref(current),
+          connection,
+          bring: "bring",
+          ...connection.said,
+        }),
       signIn: (hospital) =>
         signInButton(
           hospital.fhirBase,
@@ -170,10 +148,73 @@ async function showPod(from, box) {
         ),
       findHospital: `${podHref(current)}&hospitals`,
     }),
+  };
+}
+
+/** Renders `state` into the page's root, changing only what changed. */
+function redraw() {
+  const { pods, people, current, note } = state;
+  const { title, body } = pageShown();
+  const samples = SAMPLES.filter((name) => !pods.includes(name));
+  document.title = `${title} · Cascade`;
+  if (!root.isConnected) document.body.replaceChildren(root);
+  renderInto(
+    layout({
+      body,
+      pods,
+      current,
+      href: podHref,
+      home: "../",
+      menu: MENU,
+      note,
+      dialog: newPodDialog({
+        people,
+        pods,
+        action: "make",
+        more:
+          samples.length === 0
+            ? undefined
+            : {
+                said: "Or open a sample pod, already filled with records from several places.",
+                choices: samples.map((name) => ({
+                  label: `Load ${personName(name)}`,
+                  note: "A copy of a published example pod",
+                  action: "load",
+                  fields: { pod: name },
+                })),
+              },
+      }),
+    }),
+    root,
+  );
+  document.body.dataset.state = state.doing;
+}
+
+/** Shows `body` titled `title`; `doing` is what the page says it is doing. */
+function render(title, body, doing = "ready") {
+  state.page = { title, body };
+  state.doing = doing;
+  redraw();
+}
+
+/** Every question's rows from the pod shown, by question. */
+async function answered() {
+  return Object.fromEntries(
+    await Promise.all(
+      QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
+    ),
   );
 }
 
+/** The pod's page; `from` names the hospital a record was just brought in from. */
+async function showPod(from) {
+  state.page = { answers: await answered(), from };
+  state.doing = "ready";
+  redraw();
+}
+
 function showHospitals(text) {
+  const { current, people } = state;
   render(
     "Find a hospital",
     hospitalsPage({
@@ -188,33 +229,14 @@ function showHospitals(text) {
   );
 }
 
-/**
- * Shows the connection in its box over the pod's page: the first time, the page with the box open by its hash; after
- * that, the box's contents replaced in place, the box itself kept so that it stays the page's target.
- */
-async function showConnection(view, state) {
-  const dialog = connectionDialog({
-    id: BOX,
-    pod: current,
-    hospital: connection.row.name,
-    back: podHref(current),
-    connection,
-    bring: "bring",
-    ...view,
-  });
-  const box = document.getElementById(BOX);
-  if (box === null) {
-    await showPod(undefined, dialog);
-    history.replaceState(null, "", podHref(current));
-    location.replace(`#${BOX}`);
-  } else {
-    const parsed = new DOMParser().parseFromString(
-      renderToString(dialog),
-      "text/html",
-    );
-    box.replaceChildren(...parsed.getElementById(BOX).childNodes);
-  }
-  document.body.dataset.state = state;
+/** Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open. */
+function showConnection(said, doing) {
+  state.connection.said = said;
+  state.doing = doing;
+  redraw();
+  if (location.hash === `#${BOX}`) return;
+  history.replaceState(null, "", podHref(state.current));
+  location.replace(`#${BOX}`);
 }
 
 /** Signs in at the hospital in `popup`, opened in the click, fetches the record, and shows what it has. */
@@ -225,12 +247,12 @@ async function signIn(fhirBase, popup) {
     throw new Error("That hospital is not in the directory.");
   }
   const shown = { row, step: "signing in", requests: 0 };
-  connection = shown;
-  const now = async (view = {}, state = "busy") => {
-    if (connection === shown) await showConnection(view, state);
+  state.connection = shown;
+  state.page = { answers: await answered() };
+  const now = (said = {}, doing = "busy") => {
+    if (state.connection === shown) showConnection(said, doing);
   };
-  document.getElementById(BOX)?.remove();
-  await now();
+  now();
   let counting = false;
   /** Shows the requests answered once a frame, and only while the step they were counted in is still the one shown. */
   const counted = () => {
@@ -263,14 +285,14 @@ async function signIn(fhirBase, popup) {
       },
     });
     shown.step = "pulling";
-    await now();
+    now();
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(
       pulled,
       `${hospitalId({ hospital: row })}-${Date.now()}`,
     );
     shown.step = "pulled";
-    await now(
+    now(
       {
         sources: await pod.look(shown.files),
         pulled,
@@ -280,7 +302,7 @@ async function signIn(fhirBase, popup) {
     );
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    await failed(`Not connected: ${error.message}.`);
+    failed(`Not connected: ${error.message}.`);
   } finally {
     popup?.close();
   }
@@ -288,7 +310,7 @@ async function signIn(fhirBase, popup) {
 
 /** Brings the pulled record into the pod, and goes back to it, noting where the record came from. */
 async function bring() {
-  const shown = connection;
+  const shown = state.connection;
   if (shown?.files === undefined) return showPod();
   let done;
   try {
@@ -302,10 +324,10 @@ async function bring() {
   }
   if (done.refused !== undefined) {
     shown.step = "failed";
-    return showConnection({ failed: `Refused: ${done.refused}` });
+    return showConnection({ failed: `Refused: ${done.refused}` }, "ready");
   }
-  connection = undefined;
-  history.replaceState(null, "", podHref(current));
+  state.connection = undefined;
+  history.replaceState(null, "", podHref(state.current));
   await showPod(shown.row.name);
 }
 
@@ -344,7 +366,7 @@ async function make(person) {
 <p>Give a name with at least one letter from a to z, or a digit.</p>`,
     );
   }
-  if (!pods.includes(name))
+  if (!state.pods.includes(name))
     await (await openPod(name, { title: person.trim() })).close();
   location.assign(podHref(name));
 }
@@ -372,7 +394,7 @@ async function copy(name) {
 async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
   markDeletedAll(false);
-  if (!pods.includes(name)) await copy(name);
+  if (!state.pods.includes(name)) await copy(name);
   location.assign(podHref(name));
 }
 
@@ -416,19 +438,23 @@ async function resetEverything() {
  */
 async function firstVisit() {
   const copies = await Promise.allSettled(SAMPLES.map(copy));
-  pods = await podsHere();
+  state.pods = await podsHere();
   const left = SAMPLES.findIndex(
-    (name, at) => copies[at].status === "rejected" && pods.includes(name),
+    (name, at) => copies[at].status === "rejected" && state.pods.includes(name),
   );
   if (left !== -1) throw copies[left].reason;
-  if (pods.length === 0) await (await openPod()).close();
+  if (state.pods.length === 0) await (await openPod()).close();
 }
 
-/** Runs the step with the buttons off; anything it did not expect, it shows. */
+/**
+ * Runs the step with the buttons off; anything it did not expect, it shows. A step that ends showing a page here, not
+ * going to another, turns the buttons on again, since the page keeps them.
+ */
 async function busy(step) {
-  document.body.dataset.state = "busy";
-  for (const button of document.querySelectorAll("button"))
-    button.disabled = true;
+  state.doing = "busy";
+  document.body.dataset.state = state.doing;
+  const off = [...document.querySelectorAll("button")];
+  for (const button of off) button.disabled = true;
   try {
     await step();
   } catch (error) {
@@ -440,6 +466,7 @@ async function busy(step) {
       "error",
     );
   }
+  if (state.doing !== "busy") for (const button of off) button.disabled = false;
 }
 
 document.addEventListener("submit", (event) => {
@@ -467,10 +494,10 @@ document.addEventListener("submit", (event) => {
 });
 
 busy(async () => {
-  [pods, people] = await Promise.all([podsHere(), demoPeople()]);
+  [state.pods, state.people] = await Promise.all([podsHere(), demoPeople()]);
   const query = new URLSearchParams(location.search);
-  note = didNote(query, SAMPLES);
-  if (note !== undefined) {
+  state.note = didNote(query, SAMPLES);
+  if (state.note !== undefined) {
     const rest = new URLSearchParams(query);
     rest.delete("deleted");
     rest.delete("reset");
@@ -481,19 +508,19 @@ busy(async () => {
     );
   }
   const asked = query.get("pod");
-  if (asked === null && pods.length === 0) {
+  if (asked === null && state.pods.length === 0) {
     if (!query.has("deleted") && !deletedAll()) await firstVisit();
-    if (pods.length === 0) return render("No pods yet", noPods());
+    if (state.pods.length === 0) return render("No pods yet", noPods());
   }
-  if (asked !== null && !pods.includes(asked))
+  if (asked !== null && !state.pods.includes(asked))
     return render(
       "Not found",
       html`<h1>Not found</h1>
 <p>This browser keeps no pod named ${asked}.</p>`,
     );
-  current = asked ?? pods[0];
-  if (asked === null) history.replaceState(null, "", podHref(current));
-  pod = await openPod(current);
+  state.current = asked ?? state.pods[0];
+  if (asked === null) history.replaceState(null, "", podHref(state.current));
+  pod = await openPod(state.current);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   await showPod();
 });

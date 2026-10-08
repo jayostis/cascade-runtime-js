@@ -1,8 +1,9 @@
 // A pod as a person reads it: who it is for, where its records came from, what Cascade noticed, and a tile for each
 // kind of record. Preact components written with `htm`: functions from a pod's question rows to the page's elements,
-// which `server.mjs` renders to HTML and a page in a browser can render too. It imports only `preact` and `htm`, with
-// no build step. Rewrite it freely: it is only this app's view.
+// which `server.mjs` renders to HTML and a page in a browser can render too, keeping a table's sort and filter in its
+// state. It imports only `preact` and `htm`, with no build step. Rewrite it freely: it is only this app's view.
 import { Fragment, h } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 
 /**
@@ -347,7 +348,7 @@ const backdrop = (href) =>
  * backdrop go to `back`, and a `wide` one is for a table.
  */
 function box(id, heading, body, { back = "#", wide = false } = {}) {
-  return html`<div class="dialog" id=${id} role="dialog" aria-labelledby="${id}-title">
+  return html`<div class="dialog" id=${id} key=${id} role="dialog" aria-labelledby="${id}-title">
 ${backdrop(back)}
 <div class="box${wide ? " wide" : ""}">
 <a class="close" href=${back} aria-label="Close">×</a>
@@ -358,42 +359,71 @@ ${body}
 }
 
 /**
- * The section's tile, a link that opens its dialog, and the dialog: a filter box and a table, a heading button per
- * column, each cell holding what it sorts by in `data-key`.
+ * A section's filter box and table, a heading button per column, each cell holding what it sorts by in `data-key`.
+ * Its state is the column it is sorted by and which way, and the filter's text: a heading sorts by its column, one way
+ * then the other, and the filter hides the rows without its text. Rendered to a string, it is the table as it opens,
+ * and the page's script sorts and filters it.
  */
-export function tile(section, rows) {
-  const sorted = opening(section, rows);
-  const id = `see-${slug(section.title)}`;
-  const order = section.newestFirst ? "descending" : "ascending";
-  const head = section.columns.map(
-    (column, at) =>
-      html`<th aria-sort=${at === section.sortBy ? order : undefined}><button type="button" data-type=${column.type}>${column.head}</button></th>`,
-  );
+function Table({ section, rows }) {
+  const [sort, setSort] = useState();
+  const [wanted, setWanted] = useState("");
+  const { at, up } = sort ?? {
+    at: section.sortBy,
+    up: !section.newestFirst,
+  };
+  const shown = (column, row) => column.show(row) ?? "";
+  const key = (row) => String(section.columns[at].key(row) ?? "");
+  const sorted =
+    sort === undefined
+      ? opening(section, rows)
+      : opening(section, rows).sort(
+          (a, b) =>
+            (up ? 1 : -1) * compare(section.columns[at].type, key(a), key(b)),
+        );
+  const head = section.columns.map((column, index) => {
+    const by = index === at ? (up ? "ascending" : "descending") : undefined;
+    const click = () => setSort({ at: index, up: by !== "ascending" });
+    return html`<th aria-sort=${by}><button type="button" data-type=${column.type} onClick=${click}>${column.head}</button></th>`;
+  });
   const cell = (column, row) => {
-    const shown = column.show(row) ?? "";
+    const text = shown(column, row);
     return html`<td data-key=${column.key(row) ?? ""}>${
-      column.tag && shown !== ""
-        ? html`<span class="tag${column.warm(row) ? " warm" : ""}">${shown}</span>`
-        : shown
+      column.tag && text !== ""
+        ? html`<span class="tag${column.warm(row) ? " warm" : ""}">${text}</span>`
+        : text
     }</td>`;
   };
-  const body = sorted.map(
-    (row) =>
-      html`<tr>${section.columns.map((column) => cell(column, row))}</tr>`,
-  );
-  const names = sorted.map((row) => section.name(row) ?? "").join(", ");
-  return {
-    tile: html`<a class="tile" href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
-    dialog: box(
-      id,
-      html`${section.title} <span class="muted">${rows.length}</span>`,
-      html`<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${section.title.toLowerCase()}" />
+  const body = sorted.map((row) => {
+    const hidden = !section.columns
+      .map((column) => shown(column, row))
+      .join("")
+      .toLowerCase()
+      .includes(wanted);
+    return html`<tr hidden=${hidden || undefined}>${section.columns.map((column) => cell(column, row))}</tr>`;
+  });
+  const filter = (event) =>
+    setWanted(event.currentTarget.value.trim().toLowerCase());
+  return html`<input type="search" class="filter" placeholder="Filter" aria-label="Filter ${section.title.toLowerCase()}" onInput=${filter} />
 <div class="scroll"><table>
 <thead><tr>${head}</tr></thead>
 <tbody>
 ${body}
 </tbody>
-</table></div>`,
+</table></div>`;
+}
+
+/** The section's tile, a link that opens its dialog, and the dialog: its `Table`. */
+export function tile(section, rows) {
+  const id = `see-${slug(section.title)}`;
+  const names = opening(section, rows)
+    .map((row) => section.name(row) ?? "")
+    .join(", ");
+  return {
+    tile: html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
+    dialog: box(
+      id,
+      html`${section.title} <span class="muted">${rows.length}</span>`,
+      html`<${Table} section=${section} rows=${rows} />`,
       { wide: true },
     ),
   };
@@ -641,7 +671,14 @@ ${body}
 </div>
 ${dialog}
 ${boxes}
+<${Closing} />
 <//>`;
+}
+
+/** In a browser, `closing` on the page; rendered to a string, nothing, and the page's script runs it. */
+function Closing() {
+  useEffect(() => closing(globalThis.document), []);
+  return null;
 }
 
 /**
@@ -873,32 +910,35 @@ form.inline { display: inline; }
 `;
 
 /**
- * In a page, under `root`: a heading sorts its table by its column, one way then the other, and a filter box hides the
- * rows without its text. It listens on `root`, so tables written into it later sort and filter too. A click anywhere
- * but on an open menu's own name closes that menu; Escape closes an open menu, and follows the open box's own close
- * link. Those listeners are the document's, added once however often this runs on it.
+ * On the document `page`: a click anywhere but on an open menu's own name closes that menu; Escape closes an open menu,
+ * and follows the open box's own close link. The listeners are added once however often this runs on the page.
+ */
+export function closing(page) {
+  if (page.closesOnEscape) return;
+  page.closesOnEscape = true;
+  const closeMenus = (except) => {
+    for (const menu of page.querySelectorAll("details.menu[open]"))
+      if (menu !== except) menu.open = false;
+  };
+  page.addEventListener("click", (event) =>
+    closeMenus(event.target.closest?.("summary")?.parentElement),
+  );
+  page.addEventListener("keydown", (event) => {
+    const { location } = page.defaultView;
+    if (event.isComposing || event.defaultPrevented) return;
+    if (event.key !== "Escape") return;
+    closeMenus();
+    const close = page.querySelector(".dialog:target .close");
+    if (close) close.click();
+    else if (location.hash !== "") location.hash = "";
+  });
+}
+
+/**
+ * In a page rendered to a string, under `root`: a heading sorts its table by its column, one way then the other, and a
+ * filter box hides the rows without its text, as `Table` does in a browser.
  */
 export function sortAndFilter(root, by = compare) {
-  const page = root.ownerDocument ?? root;
-  if (!page.closesOnEscape) {
-    page.closesOnEscape = true;
-    const closeMenus = (except) => {
-      for (const menu of page.querySelectorAll("details.menu[open]"))
-        if (menu !== except) menu.open = false;
-    };
-    page.addEventListener("click", (event) =>
-      closeMenus(event.target.closest?.("summary")?.parentElement),
-    );
-    page.addEventListener("keydown", (event) => {
-      const { location } = page.defaultView;
-      if (event.isComposing || event.defaultPrevented) return;
-      if (event.key !== "Escape") return;
-      closeMenus();
-      const close = page.querySelector(".dialog:target .close");
-      if (close) close.click();
-      else if (location.hash !== "") location.hash = "";
-    });
-  }
   root.addEventListener("click", (event) => {
     const button = event.target.closest?.("th button");
     if (!button) return;
@@ -923,5 +963,5 @@ export function sortAndFilter(root, by = compare) {
   });
 }
 
-/** `sortAndFilter` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${sortAndFilter})(document, ${compare});`;
+/** `closing` and `sortAndFilter` as a page's inline script, over the whole document. */
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});`;
