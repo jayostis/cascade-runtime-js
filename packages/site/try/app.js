@@ -1,5 +1,5 @@
 // The starter's view, in the browser: pods kept in this browser's own storage, each shown as a person reads it, a way
-// to make one or load a published one, and a sign-in at the demo hospitals that brings a record in. The view is the
+// to make one or load a published one, and a sign-in at a test hospital that brings a record in. The view is the
 // starter's `summary.mjs`, served beside it as `summary.js`; this file routes, reads the pods, and hands the view the addresses of this page.
 // What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
 // filter and a scroll stay as they were. A pod's page is drawn from its kept answers; once it is, the engine loads in
@@ -49,7 +49,6 @@ const REGISTRATION = {
   redirectUri: new URL("signed-in.html", location.href).href,
   scopes: ["launch/patient", "patient/*.read"],
 };
-const DEMO = TEST_DIRECTORY.filter(({ vendor }) => vendor === "demo");
 const SAMPLES = (document.body.dataset.samples ?? "")
   .split(" ")
   .filter(Boolean);
@@ -266,7 +265,7 @@ function showHospitals(text) {
     "Find a hospital",
     hospitalsPage({
       pod: current,
-      rows: searchDirectory(DEMO, text),
+      rows: searchDirectory(TEST_DIRECTORY, text),
       text,
       search: `${podHref(current)}&hospitals`,
       signIn: (row) => signInButton(row.fhirBase, "Sign in"),
@@ -337,7 +336,7 @@ function showConnection(said, doing) {
 
 /** Signs in at the hospital in `popup`, opened in the click, fetches the record, and shows what it has. */
 async function signIn(fhirBase, popup) {
-  const row = DEMO.find((each) => each.fhirBase === fhirBase);
+  const row = TEST_DIRECTORY.find((each) => each.fhirBase === fhirBase);
   if (row === undefined) {
     popup?.close();
     throw new Error("That hospital is not in the directory.");
@@ -353,8 +352,9 @@ async function signIn(fhirBase, popup) {
     shown.step = "failed";
     return now({ failed: said }, "ready");
   };
+  const demo = row.vendor === "demo";
   try {
-    await hospitalsReady;
+    if (demo) await hospitalsReady;
   } catch (error) {
     popup?.close();
     return failed(error.message);
@@ -373,7 +373,7 @@ async function signIn(fhirBase, popup) {
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(
       pulled,
-      `${hospitalId({ hospital: row })}-${Date.now()}`,
+      `${demo ? hospitalId({ hospital: row }) : row.vendor}-${Date.now()}`,
     );
     shown.step = "pulled";
     now(
