@@ -416,7 +416,7 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   );
 });
 
-test("a first visit where no sample copies says there are no pods yet, and offers each sample to load, which loads it", async () => {
+test("a first visit where no sample copies leaves no database, says there are no pods yet, and offers each sample to load, which loads it", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -424,6 +424,12 @@ test("a first visit where no sample copies says there are no pods yet, and offer
     await page.route(samples, (route) => route.abort());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
+    assert.deepEqual(
+      await page.evaluate(async () =>
+        (await indexedDB.databases()).map(({ name }) => name),
+      ),
+      [],
+    );
     assert.equal(await page.textContent("main h1"), "No pods yet");
     assert.deepEqual(await texts(page, "nav a"), []);
     assert.deepEqual(await loadable(page), [ALEX, "priya-natarajan"]);

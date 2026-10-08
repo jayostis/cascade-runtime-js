@@ -302,34 +302,9 @@ async function make(person) {
   location.assign(podHref(name));
 }
 
-function deleted(name) {
-  return new Promise((resolve, reject) => {
-    const deleting = indexedDB.deleteDatabase(DATABASE + name);
-    deleting.onsuccess = () => resolve();
-    deleting.onerror = () => reject(deleting.error);
-    deleting.onblocked = () =>
-      reject(
-        new Error(
-          "What was copied is removed once this page is closed in your other tabs.",
-        ),
-      );
-  });
-}
-
-/** Copies the published example pod into this browser; one that fails to copy leaves nothing behind, if it can. */
+/** Copies the published example pod into this browser; one that fails to copy leaves nothing behind. */
 async function copy(name) {
-  try {
-    await (await openPod(name, { from: `../${name}/pod/` })).close();
-  } catch (error) {
-    const left = await deleted(name).then(
-      () => undefined,
-      (failure) => failure,
-    );
-    if (left === undefined) throw error;
-    throw new Error(`${error?.message ?? error} ${left?.message ?? left}`, {
-      cause: error,
-    });
-  }
+  await (await openPod(name, { from: `../${name}/pod/` })).close();
 }
 
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */

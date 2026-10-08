@@ -230,10 +230,32 @@ async function copied(from: string, database: IndexedDbFiles): Promise<void> {
   await database.writeAll(files);
 }
 
+/** Copies the folder at the URL into the empty database named `name`, which, when the copy fails, is closed and deleted. */
+async function copiedOrNone(
+  from: string,
+  database: IndexedDbFiles,
+  name: string,
+): Promise<void> {
+  try {
+    await copied(from, database);
+  } catch (error) {
+    database.close();
+    const left = await IndexedDbFiles.delete(name).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    if (left === undefined) throw error;
+    throw new Error(
+      `${(error as Error)?.message ?? error}, and the empty database ${name} is left: ${(left as Error)?.message ?? left}`,
+      { cause: error },
+    );
+  }
+}
+
 /**
  * The pod in the browser's IndexedDB database `cascade-pod:<name>`, or, with no name, in memory; `options.title` is
  * used only when the pod is new. A missing or empty database is a new pod, or, with `options.from`, a copy of the pod
- * published in the folder at that URL, as its `files.json` lists it.
+ * published in the folder at that URL, as its `files.json` lists it; a copy that fails leaves no database.
  */
 export async function openPod(
   name?: string,
@@ -249,7 +271,7 @@ export async function openPod(
   );
   try {
     if (from !== undefined && (await database.list("")).length === 0)
-      await copied(from, database);
+      await copiedOrNone(from, database, DATABASE + name);
     const pod = await openPodWith(
       {
         ...parts,
