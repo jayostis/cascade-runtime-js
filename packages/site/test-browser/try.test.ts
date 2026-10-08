@@ -37,7 +37,7 @@ import {
   type Packed,
 } from "@cascade-runtime/runtime/node";
 import { type Served, servePages } from "../src/node/serve.js";
-import { newPod, settled, tiles, watched } from "./shown.js";
+import { inPlace, newPod, settled, tiles, watched } from "./shown.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PAGES = join(ROOT, "build", "pages");
@@ -193,7 +193,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw before the engine loads, which then loads in the background", async () => {
+test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, Back draws Alex's again, and the engine then loads in the background", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -234,13 +234,16 @@ test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads
     ),
   );
 
-  await Promise.all([
-    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
-    page.click('nav a:has-text("Priya Natarajan")'),
-  ]);
-  await settled(page);
+  await inPlace(page, () => page.click('nav a:has-text("Priya Natarajan")'));
   assert.equal(await page.textContent("main h1"), "Priya Natarajan");
   assert.equal(await page.getAttribute("body", "data-engine"), null);
+  await inPlace(page, async () => {
+    await page.goBack();
+    await page.waitForFunction(
+      () => document.querySelector("main h1")?.textContent === "Alex Rivera",
+    );
+  });
+  assert.equal(new URL(page.url()).searchParams.get("pod"), ALEX);
   await page.unroute(ENGINE);
   for (const route of held) await route.continue().catch(() => undefined);
   await page.reload();
@@ -345,6 +348,10 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       });
     });
     await page.click("#connection button:has-text('Bring it into')");
+    assert.equal(
+      await page.textContent(".doing:not([hidden])"),
+      "Bringing the record in…",
+    );
     // A bring takes 70 s and more in Chromium on CI (#131, step 6 measures it): the second one passed 120 s.
     await settled(page, 300_000);
     assert.equal(
@@ -486,28 +493,29 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   );
 });
 
-test("File, Delete all data empties the pods column and says how many went, a later visit still has no pods, and Reset all data brings both samples back", async () => {
+test("File, Delete all data empties the pods column, leaves no pod nor answers in the browser and says how many went, a later visit still has no pods, and Reset all data brings both samples back", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
     const before = await texts(page, "nav a");
-    /** Opens File, picks `item`, and presses the confirming box's one button; waits for the page it goes to. */
+    /** Opens File, picks `item`, and presses the confirming box's one button; waits for the page it draws in place. */
     const fromFile = async (item: string): Promise<void> => {
       await page.click('.menu summary:has-text("File")');
       await page.click(`.menu a:has-text(${JSON.stringify(item)})`);
-      await Promise.all([
-        page.waitForEvent(
-          "framenavigated",
-          (frame) => frame === page.mainFrame(),
-        ),
-        page.click(".dialog:target button"),
-      ]);
-      await settled(page);
+      await inPlace(page, () => page.click(".dialog:target button"));
     };
     await fromFile("Delete all data");
     assert.deepEqual(await texts(page, "nav a"), []);
+    assert.deepEqual(
+      await page.evaluate(async () =>
+        (await indexedDB.databases())
+          .map(({ name }) => name ?? "")
+          .filter((name) => /^cascade-(pod|answers):/.test(name)),
+      ),
+      [],
+    );
     assert.equal(await page.textContent("main h1"), "No pods yet");
     assert.equal(
       await page.textContent("main .note"),

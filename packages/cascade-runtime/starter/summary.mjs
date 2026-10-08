@@ -567,18 +567,24 @@ export function patientName(bundle) {
     : [...(name.given ?? []), name.family].filter(Boolean).join(" ");
 }
 
-/** A button that posts `fields` to `action`, as a form of its own, with `inner` in it. */
-export function postButton(action, fields, inner, className) {
-  return html`<form class="inline" method="post" action=${action}>
+/**
+ * A button that posts `fields` to `action`, as a form of its own, with `inner` in it; `doing` is what the page says
+ * while the form is posted.
+ */
+export function postButton(action, fields, inner, className, doing) {
+  return html`<form class="inline" method="post" action=${action} data-doing=${doing}>
 ${Object.entries(fields).map(([name, value]) => html`<input type="hidden" name=${name} value=${value} />`)}
 <button class=${className}>${inner}</button>
 </form>`;
 }
 
-/** A one-click choice in a list of the new-pod box: a form that posts `fields` to `action`, or a link to `href`. */
-function choice({ label, note, action, fields = {}, href }) {
+/**
+ * A one-click choice in a list of the new-pod box: a form that posts `fields` to `action`, saying `doing` while it
+ * does, or a link to `href`.
+ */
+function choice({ label, note, action, fields = {}, href, doing }) {
   const inner = html`${label}<span class="muted">${note ?? ""}</span>`;
-  return html`<li>${href === undefined ? postButton(action, fields, inner) : html`<a class="button" href=${href}>${inner}</a>`}</li>`;
+  return html`<li>${href === undefined ? postButton(action, fields, inner, undefined, doing) : html`<a class="button" href=${href}>${inner}</a>`}</li>`;
 }
 
 /**
@@ -596,6 +602,7 @@ export function newPodDialog({ people, pods, action, more }) {
         note: `Records waiting at ${listed(person.at.map(({ name }) => hospitalName(name)))}`,
         action,
         fields: { person: person.name },
+        doing: `Making ${person.name}'s pod…`,
       }),
     );
   const list = (said, items) =>
@@ -609,7 +616,7 @@ export function newPodDialog({ people, pods, action, more }) {
 ${list("Try someone with records waiting at the demo hospitals. They are made up, and signing in needs no password.", demo)}
 ${more !== undefined && list(more.said, more.choices.map(choice))}
 <p><strong>Or make one for anyone.</strong> You can bring in records afterwards.</p>
-<form method="post" action=${action} class="row">
+<form method="post" action=${action} class="row" data-doing="Making the pod…">
 <input name="person" placeholder="A person's name" aria-label="A person's name" required />
 <button>Make the pod</button>
 </form>`,
@@ -639,13 +646,13 @@ function menus({ deleteAll, resetAll, about }) {
         "delete-all",
         "Delete all data?",
         html`<p>Every pod in this app goes.</p>
-${postButton(deleteAll, {}, "Delete all data", "warm")}`,
+${postButton(deleteAll, {}, "Delete all data", "warm", "Deleting all data…")}`,
       ),
       box(
         "reset-all",
         "Reset all data?",
         html`<p>Every pod goes, and Alex's and Priya's are loaded again.</p>
-${postButton(resetAll, {}, "Reset all data", "warm")}`,
+${postButton(resetAll, {}, "Reset all data", "warm", "Resetting all data…")}`,
       ),
       box(
         "about",
@@ -728,9 +735,15 @@ ${refresh && html`<meta http-equiv="refresh" content="1" />`}
 </head>
 <body>
 ${layout(shown)}
+${doing()}
 <script dangerouslySetInnerHTML=${{ __html: SCRIPT }}></script>
 </body>
 </html>`;
+}
+
+/** What a page says while it is busy: a spinner and `said`, one line; hidden while `said` is undefined. */
+export function doing(said) {
+  return html`<p class="doing" role="status" hidden=${said === undefined}><span class="spinner" aria-hidden="true"></span><span class="said">${said}</span></p>`;
 }
 
 /** The page when there is no pod yet. */
@@ -779,10 +792,12 @@ ${
   });
   return html`<h1>Find a hospital</h1>
 <p class="lead">Sign in on the hospital's own page, see what it has, and bring it into ${who}'s pod.</p>
-<form method="get" action=${search} class="row card"><input name="q" value=${text} placeholder="Search by name or place" aria-label="Search by name or place" /><button>Search</button></form>
+<form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by name or place" aria-label="Search by name or place" /><button>Search</button></form>
 ${cards.length === 0 ? html`<p class="muted">No hospital matches.</p>` : cards}
 <p><a href=${back}>Back to ${who}</a></p>`;
 }
+
+const BRINGING = "Bringing the record in…";
 
 /**
  * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
@@ -816,7 +831,7 @@ export function connectionDialog({
     );
   if (failed !== undefined)
     return said(
-      html`<div class="card"><p>${failed}</p>${retry && postButton(bring, {}, "Try again")}</div>`,
+      html`<div class="card"><p>${failed}</p>${retry && postButton(bring, {}, "Try again", undefined, BRINGING)}</div>`,
     );
   const has = sources.map(
     (source) =>
@@ -836,7 +851,7 @@ ${
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
-${postButton(bring, {}, `Bring it into ${who}'s pod`)}
+${postButton(bring, {}, `Bring it into ${who}'s pod`, undefined, BRINGING)}
 </div>`);
 }
 
@@ -943,6 +958,11 @@ form.inline { display: inline; }
 .people button, .people .button { display: block; width: 100%; text-align: left; background: var(--soft); color: var(--text); border-color: var(--line); }
 .people button:hover, .people .button:hover { border-color: var(--accent); background: var(--tint); }
 .people .muted { display: block; font-size: 0.8rem; }
+.doing { position: fixed; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 16px rgb(0 0 0 / 0.2); }
+.doing[hidden] { display: none; }
+.spinner { width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+body[data-state="busy"] { cursor: progress; }
 `;
 
 /**
@@ -999,5 +1019,29 @@ export function sortAndFilter(root, by = compare) {
   });
 }
 
-/** `closing` and `sortAndFilter` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});`;
+/**
+ * On the document `page`, rendered to a string: a form's submit turns every button off, says the form's `data-doing`
+ * in the page's `doing` line and sets `data-state="busy"` on the body until the page changes; a second submit
+ * meanwhile does nothing. A page shown again from the browser's history is on again.
+ */
+export function busyForms(page) {
+  const line = page.querySelector(".doing");
+  const busy = (on, said) => {
+    if (on) page.body.dataset.state = "busy";
+    else delete page.body.dataset.state;
+    for (const button of page.querySelectorAll("button")) button.disabled = on;
+    line.hidden = !on;
+    line.querySelector(".said").textContent = said ?? "";
+  };
+  page.addEventListener("submit", (event) => {
+    if (event.defaultPrevented) return;
+    if (page.body.dataset.state === "busy") return event.preventDefault();
+    busy(true, event.target.dataset.doing ?? "Working…");
+  });
+  page.defaultView.addEventListener("pageshow", (event) => {
+    if (event.persisted) busy(false);
+  });
+}
+
+/** `closing`, `sortAndFilter` and `busyForms` as a page's inline script, over the whole document. */
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);`;

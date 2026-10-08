@@ -686,19 +686,42 @@ if (release === undefined) {
       return connectionBox(html);
     };
 
-    /** Brings the record in with the button of the connection's box, `box`; gives the pod's page it goes back to. */
+    /**
+     * Brings the record in with the button of the connection's box, `box`, which goes at once to the box saying it
+     * brings the record in, where the button posted again goes too; gives the pod's page the box goes to once the
+     * record is in.
+     */
     const bringIn = async (box) => {
       const action = /<form\b[^>]*action="([^"]*\/connections\/\d+)"/.exec(
         box,
       )?.[1];
       assert.ok(action, "the connection's box has no button to bring it in");
       const imported = await send(action, {});
-      assert.equal(
-        imported.status,
-        303,
-        "the import did not go back to the pod",
+      assert.equal(imported.status, 303, "the import did not go to the box");
+      const boxed = imported.headers.get("location");
+      assert.match(boxed, /\?connection=\d+#connection$/);
+      const bringing = await fetched(at(boxed));
+      assert.equal(bringing.status, 200, "the import ended before its box");
+      assert.ok(
+        readable(connectionBox(bringing.body)).includes("Bringing it in") &&
+          bringing.body.includes('http-equiv="refresh"'),
+        "the box does not say it brings the record in",
       );
-      return served(server, imported.headers.get("location"));
+      const again = await send(action, {});
+      assert.equal(again.status, 303);
+      assert.equal(again.headers.get("location"), boxed);
+      const until = Date.now() + 2 * MINUTES;
+      for (;;) {
+        const answer = await fetched(at(boxed));
+        if (answer.status === 303) return served(server, answer.location);
+        assert.equal(answer.status, 200, `GET ${boxed}`);
+        assert.ok(
+          answer.body.includes('http-equiv="refresh"'),
+          readable(connectionBox(answer.body)),
+        );
+        assert.ok(Date.now() < until, `${boxed} still refreshes`);
+        await setTimeout(200);
+      }
     };
 
     try {

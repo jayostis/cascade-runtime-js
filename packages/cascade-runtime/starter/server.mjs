@@ -52,6 +52,15 @@ function podNamed(name) {
   return open.get(name);
 }
 
+/** Each pod's answers, by question, as its page last showed them. */
+const lastShown = new Map();
+
+async function answered(pod) {
+  const answers = {};
+  for (const question of QUESTIONS) answers[question] = await pod.ask(question);
+  return answers;
+}
+
 const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 
 /**
@@ -79,6 +88,7 @@ async function page(title, body, { current, refresh, names, note } = {}) {
 async function closeAll() {
   const pods = [...open.values()];
   open.clear();
+  lastShown.clear();
   hospitals?.forget();
   await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
 }
@@ -99,7 +109,13 @@ async function resetEverything(response) {
 
 /** A button that starts signing the pod's person in to the hospital at `fhirBase`. */
 function signIn(name, fhirBase, label) {
-  return postButton(`${podPath(name)}hospitals`, { fhirBase }, label);
+  return postButton(
+    `${podPath(name)}hospitals`,
+    { fhirBase },
+    label,
+    undefined,
+    "Signing in…",
+  );
 }
 
 async function home(response, query) {
@@ -115,18 +131,17 @@ async function home(response, query) {
 /**
  * The pod as a person reads it. `query`'s `from` is the number of a connection, and the page notes the record it
  * brought in when its import did; its `connection` is the number of one whose box the page holds, refreshing itself
- * while it signs in and fetches.
+ * while it signs in, fetches and brings the record in. Once the record is in, the box's address goes to the note.
  */
 async function showPod(response, name, query, names) {
-  const pod = await podNamed(name);
-  const answers = {};
-  for (const question of QUESTIONS) answers[question] = await pod.ask(question);
-  const from = query.get("from");
-  const noted = from === null ? undefined : hospitals.connection(name, from);
-  const imported = await noted?.imported?.catch(() => undefined);
   const found = query.has("connection")
     ? hospitals.connection(name, query.get("connection"))
     : undefined;
+  if (found?.imported !== undefined && found.bringing === undefined) {
+    const done = await found.imported.catch(() => undefined);
+    if (done !== undefined && done.refused === undefined)
+      return redirect(response, `${podPath(name)}?from=${found.n}`);
+  }
   // As it is now, so that the box and whether the page refreshes agree on its step.
   const shown =
     found === undefined
@@ -135,6 +150,15 @@ async function showPod(response, name, query, names) {
           ...found,
           ...(found.bringing !== undefined && { step: "bringing in" }),
         };
+  // A pod answers once its import is done, so while one runs the page behind the box is the one last shown.
+  const answers =
+    shown?.step === "bringing in" && lastShown.has(name)
+      ? lastShown.get(name)
+      : await answered(await podNamed(name));
+  lastShown.set(name, answers);
+  const from = query.get("from");
+  const noted = from === null ? undefined : hospitals.connection(name, from);
+  const imported = await noted?.imported?.catch(() => undefined);
   const box =
     shown === undefined
       ? undefined
@@ -278,36 +302,35 @@ async function connectionView(name, connection) {
 
 const notBroughtIn = (error) => `Not brought in: ${error.message}`;
 
-/** Brings a connection's record into the pod, and goes back to it: noting the record, or with the box saying why not. */
-async function bring(response, name, connection) {
-  const box = `${podPath(name)}?connection=${connection.n}#connection`;
-  if (connection.step !== "pulled") return redirect(response, box);
-  const { files } = await filesOf(connection);
-  if (files === undefined) return redirect(response, box);
-  if (connection.imported === undefined) {
+/**
+ * Starts bringing a connection's record into the pod, unless it is under way or done, and goes at once to its box,
+ * which says each part of the import and, once the record is in, goes to the pod's page noting it.
+ */
+function bring(response, name, connection) {
+  if (connection.step === "pulled" && connection.imported === undefined) {
     connection.failed = undefined;
     connection.bringing = { part: "loading the adapter" };
-    connection.imported = (await podNamed(name))
-      .import(files, {
-        aboutSubject: true,
-        onProgress: (part) => {
-          connection.bringing = part;
-        },
-      })
-      .finally(() => {
-        connection.bringing = undefined;
-      });
+    connection.imported = imported(name, connection).finally(() => {
+      connection.bringing = undefined;
+    });
+    connection.imported.catch((error) => {
+      connection.imported = undefined;
+      connection.failed = notBroughtIn(error);
+    });
   }
-  let done;
-  try {
-    done = await connection.imported;
-  } catch (error) {
-    connection.imported = undefined;
-    connection.failed = notBroughtIn(error);
-    return redirect(response, box);
-  }
-  if (done.refused !== undefined) return redirect(response, box);
-  redirect(response, `${podPath(name)}?from=${connection.n}`);
+  redirect(response, `${podPath(name)}?connection=${connection.n}#connection`);
+}
+
+/** The import of a connection's pull into the pod, its parts in `connection.bringing`; undefined when it has no files. */
+async function imported(name, connection) {
+  const { files } = await filesOf(connection);
+  if (files === undefined) return undefined;
+  return (await podNamed(name)).import(files, {
+    aboutSubject: true,
+    onProgress: (part) => {
+      connection.bringing = part;
+    },
+  });
 }
 
 /** A demo hospital's sign-in page, the form posted back to it included. */
@@ -425,7 +448,7 @@ const server = createServer(async (request, response) => {
       const connection =
         n === undefined ? undefined : hospitals.connection(name, n);
       if (post && connection !== undefined)
-        return await bring(response, name, connection);
+        return bring(response, name, connection);
       if (!post && n === undefined)
         return await showPod(response, name, url.searchParams, names);
     }

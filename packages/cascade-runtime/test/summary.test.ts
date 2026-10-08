@@ -320,6 +320,54 @@ test("Escape closes an open menu and follows the open box's own close link, or w
   assert.deepEqual(opened(bare.menus), [false, false]);
 });
 
+test("a form posted turns every button off and says what its button does until the page changes, a second post meanwhile is cancelled, and a page shown again from history is on again", () => {
+  assert.match(
+    render(
+      view.postButton("/bring", {}, "Bring it in", undefined, "Bringing…"),
+    ),
+    /^<form [^>]*data-doing="Bringing…"/,
+  );
+  const said = (html: string) => /<span class="said">([^<]*)</.exec(html)?.[1];
+  assert.match(render(view.doing()), /^<p class="doing" [^>]*hidden/);
+  assert.equal(said(render(view.doing("Bringing…"))), "Bringing…");
+  const on: Record<string, (event: object) => void> = {};
+  const listen = (type: string, listener: (event: object) => void) => {
+    on[type] = listener;
+  };
+  const shown = { textContent: "" };
+  const line = { hidden: true, querySelector: () => shown };
+  const buttons = [{ disabled: false }, { disabled: false }];
+  const body = { dataset: {} as Record<string, string> };
+  view.busyForms({
+    body,
+    querySelector: () => line,
+    querySelectorAll: () => buttons,
+    addEventListener: listen,
+    defaultView: { addEventListener: listen },
+  });
+  const submit = () => {
+    const event = {
+      defaultPrevented: false,
+      target: { dataset: { doing: "Bringing…" } },
+      preventDefault: () => (event.defaultPrevented = true),
+    };
+    on.submit?.(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(submit(), false);
+  assert.deepEqual(
+    [body.dataset.state, line.hidden, shown.textContent, buttons],
+    ["busy", false, "Bringing…", [{ disabled: true }, { disabled: true }]],
+  );
+  assert.equal(submit(), true);
+  on.pageshow?.({ persisted: true });
+  assert.deepEqual(
+    [body.dataset.state, line.hidden, buttons],
+    [undefined, true, [{ disabled: false }, { disabled: false }]],
+  );
+  assert.equal(submit(), false);
+});
+
 test("a table opens newest first, a row with no date last", () => {
   const section = view.SECTIONS.find(
     ({ question }: { question: string }) => question === LABS,
