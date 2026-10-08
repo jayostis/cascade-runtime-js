@@ -310,11 +310,35 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       ),
       has.get(hospital),
     );
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      Object.assign(globalThis, { bringing: seen });
+      new MutationObserver(() => {
+        const now = document.querySelector("#connection .steps li.now");
+        const text = now?.textContent ?? "";
+        if (text.startsWith("Bringing it in") && seen.at(-1) !== text)
+          seen.push(text);
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await page.click("#connection button:has-text('Bring it into')");
     await settled(page);
     assert.equal(
       await page.textContent("main .note"),
       `Brought in the record from ${view.hospitalName(hospital)}.`,
+    );
+    const bringing = await page.evaluate(
+      () => (globalThis as unknown as { bringing: string[] }).bringing,
+    );
+    assert.deepEqual(
+      [
+        ...new Set(
+          bringing.flatMap(
+            (line) => /^Bringing it in: ([a-z ]+)/.exec(line)?.[1] ?? [],
+          ),
+        ),
+      ],
+      ["loading the adapter", "converting", "saving", "judging"],
+      bringing.join("\n"),
     );
     assert.equal(await page.$("#connection"), null, "the box is still there");
     if (hospital === north) {

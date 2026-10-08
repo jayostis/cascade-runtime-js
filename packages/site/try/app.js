@@ -304,13 +304,25 @@ async function signIn(fhirBase, popup) {
   }
 }
 
-/** Brings the pulled record into the pod, and goes back to it, noting where the record came from. */
+/**
+ * Brings the pulled record into the pod, its box saying each part as it begins, and goes back to the pod, noting
+ * where the record came from.
+ */
 async function bring() {
   const shown = state.connection;
   if (shown?.files === undefined) return showPod();
+  shown.step = "bringing in";
+  shown.bringing = undefined;
   let done;
   try {
-    done = await pod.import(shown.files, { aboutSubject: true });
+    await showConnection({}, "busy");
+    done = await pod.import(shown.files, {
+      aboutSubject: true,
+      onProgress: (part) => {
+        shown.bringing = part;
+        if (connection === shown) void showConnection({}, "busy");
+      },
+    });
   } catch (error) {
     shown.step = "failed";
     return showConnection(
