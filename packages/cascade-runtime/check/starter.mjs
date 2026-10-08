@@ -917,6 +917,7 @@ if (refused !== undefined) throw new Error(refused);
     );
     assert.equal((await run(execPath, [script])).code, 0, "no record in");
     assert.ok((await asked(IMPORTS, "alex-rivera")).length > fresh.imports);
+    assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
     assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
     assert.deepEqual(await podsOf(), KITS);
