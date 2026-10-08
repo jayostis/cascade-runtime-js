@@ -10,6 +10,7 @@ import {
   signedInPage,
   SUMMARY,
   tryPage,
+  VIEW_PACKAGES,
   WORKER,
   WORKER_DATA,
   WORKER_PAGE,
@@ -56,7 +57,7 @@ async function bundled(
 
 /**
  * The files of `try/` but the package: the page, which offers the examples published in `samples` (their folders),
- * its app, the starter's view, the demo people as the view names them, the redirect page, and the demo hospitals'
+ * its app, the starter's view and the packages it imports, the demo people as the view names them, the redirect page, and the demo hospitals'
  * worker, its page side and one data file per hospital beside them. The page cannot read the data files itself: the
  * worker answers every address under them as a hospital's sign-in page. `version` is what the pages were built from.
  */
@@ -88,6 +89,8 @@ export async function tryFiles(
     [WORKER, worker],
     [WORKER_PAGE, workerPage],
   ]);
+  for (const [name, file] of Object.entries(VIEW_PACKAGES))
+    files.set(file, await readFile(fileURLToPath(import.meta.resolve(name))));
   for (const loaded of hospitals)
     files.set(
       `${WORKER_DATA}${hospitalId(loaded)}.json`,

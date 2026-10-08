@@ -1,7 +1,7 @@
 // The app: each pod as a person reads it, a way to make a new one, and a box over it that brings a record in from a
 // hospital.
 // `npm start`, then open the address it prints. What the pages show is in `summary.mjs`; this file answers requests,
-// reads the pods, and hands the module what it shows, with the addresses of this app.
+// reads the pods, hands the module what it shows, with the addresses of this app, and renders what it gives to HTML.
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -9,6 +9,7 @@ import process, { env, exit, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import { ConnectionFailure, openPod, pullFiles } from "cascade-runtime";
+import { render } from "preact-render-to-string";
 import { hospitalsAt } from "./hospitals.mjs";
 import {
   deleteAll,
@@ -22,10 +23,10 @@ import {
   connectionDialog,
   demoPeople,
   didNote,
-  escaped,
   frame,
   hospitalName,
   hospitalsPage,
+  html,
   newPodDialog,
   noPods,
   patientName,
@@ -53,21 +54,25 @@ function podNamed(name) {
 
 const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 
-/** `body` in the frame, with the pods there are; `names` given, it reads none. `note` says what was just done. */
+/**
+ * `body` in the frame, with the pods there are, as HTML; `names` given, it reads none. `note` says what was just done.
+ */
 async function page(title, body, { current, refresh, names, note } = {}) {
   const pods = names ?? (await podNames());
-  return frame({
-    title,
-    body,
-    pods,
-    current,
-    href: podPath,
-    home: "/",
-    dialog: newPodDialog({ people, pods, action: "/pods" }),
-    menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
-    note,
-    refresh,
-  });
+  return `<!doctype html>\n${render(
+    frame({
+      title,
+      body,
+      pods,
+      current,
+      href: podPath,
+      home: "/",
+      dialog: newPodDialog({ people, pods, action: "/pods" }),
+      menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
+      note,
+      refresh,
+    }),
+  )}`;
 }
 
 /** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
@@ -94,7 +99,7 @@ async function resetEverything(response) {
 
 /** A button that starts signing the pod's person in to the hospital at `fhirBase`. */
 function signIn(name, fhirBase, label) {
-  return postButton(`${podPath(name)}hospitals`, { fhirBase }, escaped(label));
+  return postButton(`${podPath(name)}hospitals`, { fhirBase }, label);
 }
 
 async function home(response, query) {
@@ -178,7 +183,8 @@ async function newPod(request, response) {
       400,
       await page(
         "No pod made",
-        `<h1>No pod made</h1>\n<p>${escaped(refused)}</p>`,
+        html`<h1>No pod made</h1>
+<p>${refused}</p>`,
       ),
     );
   await podNamed(name);
@@ -343,13 +349,13 @@ const server = createServer(async (request, response) => {
       return send(
         response,
         405,
-        await page("Not allowed", "<h1>Not allowed</h1>"),
+        await page("Not allowed", html`<h1>Not allowed</h1>`),
       );
     if (post && !ownOrigins.has(request.headers.origin))
       return send(
         response,
         403,
-        await page("Refused", "<h1>Refused: a form from another site</h1>"),
+        await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
@@ -366,7 +372,10 @@ const server = createServer(async (request, response) => {
       return send(
         response,
         400,
-        await page("Not waiting", "<h1>No sign-in is waiting for this</h1>"),
+        await page(
+          "Not waiting",
+          html`<h1>No sign-in is waiting for this</h1>`,
+        ),
       );
     }
     const at = /^\/pods\/([^/]+)\/(?:(hospitals)|connections\/(\d+))?$/.exec(
@@ -394,7 +403,7 @@ const server = createServer(async (request, response) => {
           400,
           await page(
             "Unknown",
-            "<h1>That hospital is not in the directory</h1>",
+            html`<h1>That hospital is not in the directory</h1>`,
             { names },
           ),
         );
@@ -409,13 +418,13 @@ const server = createServer(async (request, response) => {
     send(
       response,
       404,
-      await page("Not found", "<h1>Not found</h1>", { names }),
+      await page("Not found", html`<h1>Not found</h1>`, { names }),
     );
   } catch (error) {
     send(
       response,
       500,
-      await page("Error", `<pre>${escaped(error.message)}</pre>`, {
+      await page("Error", html`<pre>${error.message}</pre>`, {
         names: [],
       }),
     );

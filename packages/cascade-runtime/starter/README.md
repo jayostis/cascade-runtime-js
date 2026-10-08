@@ -76,10 +76,16 @@ script goes after `--`, or npm keeps it for itself.
 
 ## The files
 
-- `server.mjs`: the app, on `node:http`, with no framework and no build step:
-  it answers requests and reads the pods.
-- `summary.mjs`: what the pages show, as functions from a pod's answers to
-  HTML, with no import, so a browser can run it too. Rewrite it freely.
+- `server.mjs`: the app, on `node:http`, with no build step: it answers
+  requests, reads the pods, and renders each page to HTML with
+  `preact-render-to-string`.
+- `summary.mjs`: what the pages show, as [Preact](https://preactjs.com)
+  components written with [`htm`](https://github.com/developit/htm), plain
+  functions from a pod's answers to the page's elements, so a browser can
+  render them too. To change one, edit its `` html`…` `` template as HTML:
+  `${…}` puts in a value, escaped, or more elements; close every tag, `<input />`
+  too; a line break between two tags drops the spaces around it. Rewrite it
+  freely.
 - `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
 - `pods.mjs`: what the commands and the server share: where pods live, which

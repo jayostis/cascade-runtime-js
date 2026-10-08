@@ -44,6 +44,9 @@
   },
   "devDependencies": {
     "@cascade-runtime/demo-hospital": "0.0.0",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "htm": "3.1.1",
+    "preact": "11.0.0",
+    "preact-render-to-string": "6.8.0"
   }
 }

@@ -11,9 +11,12 @@ package carries; `npm run reset` puts them back as they were made, and
 the app as `apple_health_export`, and
 `npm run kit:export -- priya-natarajan kestrel-harbor-health-summary.xml` one
 of Priya's C-CDA files under its own name. What the pages show is in
-`summary.mjs`: pure functions from a pod's question rows to HTML, with no
-import, which a browser can run too; rewrite it as you like. `server.mjs`
-answers requests and hands it the rows. A pod's page also brings in a
+`summary.mjs`: Preact components written with `htm`, no JSX and no build
+step, plain functions from a pod's question rows to the page's elements,
+which a browser can render too. Change one by editing its `` html`…` ``
+template; it imports only `preact` and `htm`. Rewrite it as you like.
+`server.mjs` answers requests, hands it the rows, and renders each page to
+HTML with `preact-render-to-string`. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the
 hospital's own page, and `hospitals.mjs` receives the redirect on `/callback`,
 which goes back to the pod's page with the connection in a box over it

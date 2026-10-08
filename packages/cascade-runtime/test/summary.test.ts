@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { render } from "preact-render-to-string";
 
 const view = await import(
   new URL("../../starter/summary.mjs", import.meta.url).href
@@ -121,26 +122,28 @@ test("a cell with nothing to sort by sorts after the rest", () => {
 test("a pod's page with a connection holds its tiles and the connection's box; every box's first link, outside the box, closes it", () => {
   const back = "/pods/alex-rivera/";
   const page = [
-    view.podPage(
-      {
-        [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
-        [LABS]: [{ entry: "e2", test: "Glucose" }],
-      },
-      {
-        pod: "alex-rivera",
-        signIn: () => "",
-        findHospital: "?hospitals",
-        connection: view.connectionDialog({
-          id: "connection",
+    render(
+      view.podPage(
+        {
+          [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
+          [LABS]: [{ entry: "e2", test: "Glucose" }],
+        },
+        {
           pod: "alex-rivera",
-          hospital: "Cascade North Demo Hospital",
-          back,
-          connection: { step: "pulling", requests: 3 },
-          bring: "bring",
-        }),
-      },
+          signIn: () => "",
+          findHospital: "?hospitals",
+          connection: view.connectionDialog({
+            id: "connection",
+            pod: "alex-rivera",
+            hospital: "Cascade North Demo Hospital",
+            back,
+            connection: { step: "pulling", requests: 3 },
+            bring: "bring",
+          }),
+        },
+      ),
     ),
-    view.newPodDialog({ people: [], pods: [], action: "make" }),
+    render(view.newPodDialog({ people: [], pods: [], action: "make" })),
   ].join("\n");
   assert.equal((page.match(/<a class="tile"/g) ?? []).length, 2);
   const boxes = page.split('<div class="dialog"').slice(1);
@@ -161,26 +164,33 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
 });
 
 test("the frame's title bar has File, whose two items open boxes that confirm with one button posting to the host's action, and Help, whose About names the app, its version and cascade-runtime's", () => {
-  const page = view.frame({
-    title: "Alex Rivera",
-    body: "<h1>Alex Rivera</h1>",
-    pods: ["alex-rivera"],
-    current: "alex-rivera",
-    href: (pod: string) => `/pods/${pod}/`,
-    home: "/",
-    dialog: "",
-    menu: {
-      deleteAll: "/delete-all",
-      resetAll: "/reset-all",
-      about: { name: "my-app", version: "1.2.3", runtime: "4.5.6", code: "c" },
-    },
-    note: view.didNote(new URLSearchParams("deleted=3"), []),
-  });
+  const page = render(
+    view.frame({
+      title: "Alex Rivera",
+      body: view.html`<h1>Alex Rivera</h1>`,
+      pods: ["alex-rivera"],
+      current: "alex-rivera",
+      href: (pod: string) => `/pods/${pod}/`,
+      home: "/",
+      dialog: "",
+      menu: {
+        deleteAll: "/delete-all",
+        resetAll: "/reset-all",
+        about: {
+          name: "my-app",
+          version: "1.2.3",
+          runtime: "4.5.6",
+          code: "c",
+        },
+      },
+      note: view.didNote(new URLSearchParams("deleted=3"), []),
+    }),
+  );
   const menus = [
     ...page.matchAll(
       /<details class="menu"><summary>(\w+)<\/summary>([\s\S]*?)<\/details>/g,
     ),
-  ].map(([, name, items]) => [
+  ].map(([, name, items = ""]) => [
     name,
     [...items.matchAll(/<a href="([^"]*)">([^<]*)</g)].map(
       ([, href, label]) => [href, label],

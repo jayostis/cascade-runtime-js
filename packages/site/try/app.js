@@ -12,14 +12,15 @@ import {
   searchDirectory,
   TEST_DIRECTORY,
 } from "cascade-runtime";
+import { render as renderToString } from "preact-render-to-string";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   connectionDialog,
   didNote,
-  escaped,
   frame,
   hospitalName,
   hospitalsPage,
+  html,
   newPodDialog,
   noPods,
   patientName,
@@ -101,7 +102,7 @@ function closeDialog() {
  */
 function render(title, body, state = "ready") {
   const samples = SAMPLES.filter((name) => !pods.includes(name));
-  const html = frame({
+  const page = frame({
     title,
     body,
     pods,
@@ -128,7 +129,10 @@ function render(title, body, state = "ready") {
             },
     }),
   });
-  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const parsed = new DOMParser().parseFromString(
+    renderToString(page),
+    "text/html",
+  );
   document.title = parsed.title;
   if (document.head.querySelector("style") === null)
     document.head.append(parsed.head.querySelector("style"));
@@ -143,7 +147,7 @@ function render(title, body, state = "ready") {
 const personOf = (name) => people.find((each) => slug(each.name) === name);
 
 const signInButton = (fhirBase, label) =>
-  postButton("sign-in", { fhirBase }, escaped(label));
+  postButton("sign-in", { fhirBase }, label);
 
 /** The pod's page; `from` names the hospital a record was just brought in from, `box` is a connection's box over it. */
 async function showPod(from, box) {
@@ -189,7 +193,7 @@ function showHospitals(text) {
  * that, the box's contents replaced in place, the box itself kept so that it stays the page's target.
  */
 async function showConnection(view, state) {
-  const html = connectionDialog({
+  const dialog = connectionDialog({
     id: BOX,
     pod: current,
     hospital: connection.row.name,
@@ -200,11 +204,14 @@ async function showConnection(view, state) {
   });
   const box = document.getElementById(BOX);
   if (box === null) {
-    await showPod(undefined, html);
+    await showPod(undefined, dialog);
     history.replaceState(null, "", podHref(current));
     location.replace(`#${BOX}`);
   } else {
-    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const parsed = new DOMParser().parseFromString(
+      renderToString(dialog),
+      "text/html",
+    );
     box.replaceChildren(...parsed.getElementById(BOX).childNodes);
   }
   document.body.dataset.state = state;
@@ -333,7 +340,8 @@ async function make(person) {
     closeDialog();
     return render(
       "No pod made",
-      "<h1>No pod made</h1>\n<p>Give a name with at least one letter from a to z, or a digit.</p>",
+      html`<h1>No pod made</h1>
+<p>Give a name with at least one letter from a to z, or a digit.</p>`,
     );
   }
   if (!pods.includes(name))
@@ -427,7 +435,8 @@ async function busy(step) {
     closeDialog();
     render(
       "Something went wrong",
-      `<h1>Something went wrong</h1>\n<p>${escaped(error?.message ?? error)}</p>`,
+      html`<h1>Something went wrong</h1>
+<p>${error?.message ?? String(error)}</p>`,
       "error",
     );
   }
@@ -479,7 +488,8 @@ busy(async () => {
   if (asked !== null && !pods.includes(asked))
     return render(
       "Not found",
-      `<h1>Not found</h1>\n<p>This browser keeps no pod named ${escaped(asked)}.</p>`,
+      html`<h1>Not found</h1>
+<p>This browser keeps no pod named ${asked}.</p>`,
     );
   current = asked ?? pods[0];
   if (asked === null) history.replaceState(null, "", podHref(current));
