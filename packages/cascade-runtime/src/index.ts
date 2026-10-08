@@ -23,8 +23,10 @@ export type {
   Searched,
   Watched,
 } from "./tables.js";
+export type { TablesSettings } from "@cascade-runtime/runtime";
 export * from "./connect/index.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
+export { configureTables } from "./node/resolved.js";
 
 const beside = new Map<string, Promise<Tables>>();
 

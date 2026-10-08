@@ -16,10 +16,13 @@ import {
   repositoryName,
   type RuntimeConfig,
   type Source,
+  type TablesSettings as ConfigSettings,
+  tablesSettings,
   treeIri,
   type VocabularyBuild,
   vocabularyBuild,
   WasmBridge,
+  withTables,
 } from "@cascade-runtime/runtime";
 import {
   compiledBridge,
@@ -119,10 +122,18 @@ interface Read {
   carried(followed: Followed): Source;
 }
 
-const reading = once(async (): Promise<Read> => {
+const reading = once((): Promise<Read> => {
+  tablesMade = true;
+  return read().catch((error: unknown) => {
+    tablesMade = false;
+    throw error;
+  });
+});
+
+async function read(): Promise<Read> {
   const [config, packed, entry] = await Promise.all([
     fetched("cascade-runtime.json").then(async (r) =>
-      parseConfig(await r.text()),
+      withTables(parseConfig(await r.text()), configuredTables),
     ),
     fetched("packed.json").then((r) => r.json() as Promise<Packed>),
     fetched(import.meta.url).then(
@@ -175,25 +186,39 @@ const reading = once(async (): Promise<Read> => {
     tables: await tablesOf(config, vocabulary),
     carried,
   };
-});
+}
 
 let configured: TablesSettings = {};
+let configuredTables: ConfigSettings = {};
 let tablesMade = false;
 
-export interface TablesSettings {
+export interface TablesSettings extends Omit<ConfigSettings, "builders"> {
   /** What reads the feeds; the page's own `fetch` otherwise. */
   readonly fetch?: typeof fetch;
   /** What the tables' database is named after, `<name>:cascade-tables`: the page's folder otherwise. */
   readonly name?: string;
 }
 
-/** Sets how the tables are read and kept, before the first pod is opened. */
+/** Sets how the tables are read and kept, before the first pod is opened; the feeds and the rest replace the package's. */
 export function configureTables(settings: TablesSettings): void {
   if (tablesMade)
     throw new Error(
       "configureTables comes before the first pod opens: the tables are already made",
     );
-  configured = settings;
+  const {
+    fetch: fetching,
+    name,
+    ...tables
+  } = settings as TablesSettings & {
+    readonly builders?: unknown;
+  };
+  if (tables.builders !== undefined)
+    throw new Error("a builder runs only in Node, never in a browser");
+  configuredTables = tablesSettings(tables, "configureTables");
+  configured = {
+    ...(fetching === undefined ? {} : { fetch: fetching }),
+    ...(name === undefined ? {} : { name }),
+  };
 }
 
 /** The tables in this site's database for the app. */
@@ -201,7 +226,8 @@ async function tablesOf(
   config: RuntimeConfig,
   vocabulary: FetchedFiles,
 ): Promise<Tables> {
-  tablesMade = true;
+  if (config.tables.builders.length > 0)
+    throw new Error("a builder runs only in Node, never in a browser");
   const name =
     configured.name ?? new URL(".", globalThis.location.href).pathname;
   const database = `${name}:${TABLES_DATABASE}`;
@@ -210,6 +236,7 @@ async function tablesOf(
     feeds: config.tables.feeds,
     vocabulary,
     newStore: () => new OxigraphStore(),
+    preference: config.tables.preference,
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
   });
 }

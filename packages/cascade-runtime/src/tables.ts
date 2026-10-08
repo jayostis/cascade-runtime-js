@@ -173,6 +173,20 @@ export interface TablesOptions {
   /** The package's starter copies, a store an empty one starts from. */
   readonly starter?: Files;
   readonly fetch?: typeof fetch;
+  /** For each table kind's IRI, the series a person reads it from, first first. */
+  readonly preference?: Readonly<Record<string, readonly string[]>>;
+  /** The builders run locally, whose feeds are read after `feeds`. */
+  readonly builds?: LocalBuilds;
+}
+
+/** Builders run on this machine, each writing a feed of its own. */
+export interface LocalBuilds {
+  /** Each builder's feed, in the order the builders are named. */
+  readonly feeds: readonly string[];
+  /** Runs every builder; what kept one from building, by its feed. */
+  run(
+    init: RequestInit,
+  ): Promise<ReadonlyMap<string, Omit<Checked, "feed" | "kept">>>;
 }
 
 /** A version's name (N12): over its series, the version it revises and its rows. */
@@ -277,6 +291,35 @@ function watchedIn(bytes: Uint8Array): Record<string, Watched> | undefined {
   }
 }
 
+/** The check of a builder's feed with what kept the builder from building, if anything did. */
+function withBuilt(
+  checked: Checked,
+  built: ReadonlyMap<string, Omit<Checked, "feed" | "kept">>,
+): Checked {
+  const run = built.get(checked.feed);
+  if (run === undefined) return checked;
+  const later = run.later ?? checked.later;
+  return {
+    ...checked,
+    ...(later === undefined ? {} : { later }),
+    refused: [...run.refused, ...checked.refused],
+  };
+}
+
+/** Whether the line of `prov:wasRevisionOf` the catalog gives from `version` reaches `held`. */
+function descends(catalog: Graph, version: Term, held: string): boolean {
+  const seen = new Set<string>();
+  for (
+    let at: Term | undefined = version;
+    at !== undefined && !seen.has(at.value);
+    at = catalog.objects(at, REVISION_OF)[0]
+  ) {
+    if (at.value === held) return true;
+    seen.add(at.value);
+  }
+  return false;
+}
+
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
 class TablesFiles implements Files {
   readonly iri: string;
@@ -324,14 +367,77 @@ export class Tables {
     this.#options = options;
   }
 
-  /** Reads each feed and keeps each current version it does not hold that verifies. */
+  /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */
   check(init: RequestInit = {}): Promise<Checked[]> {
     return this.#next(async () => {
+      const { feeds, builds } = this.#options;
+      const built = (await builds?.run(init)) ?? new Map();
       const checked: Checked[] = [];
-      for (const feed of this.#options.feeds)
-        checked.push(await this.#checkFeed(feed, init));
+      for (const feed of [...feeds, ...(builds?.feeds ?? [])])
+        checked.push(withBuilt(await this.#checkFeed(feed, init), built));
       return checked;
     });
+  }
+
+  /** What the tables say of each code: its name and status, from the first held series of each kind in the order of preference that holds it. */
+  async about(codes: readonly string[]): Promise<Map<string, About>> {
+    const references = await this.references();
+    const terms = await tableTerms(
+      this.#options.vocabulary,
+      this.#options.newStore,
+    );
+    const found = new Map<string, { -readonly [K in keyof About]: About[K] }>();
+    const fill = async <K extends keyof About>(
+      kind: string,
+      key: K,
+      read: (rows: Graph, code: Term, origin: string) => About[K],
+    ): Promise<void> => {
+      for (const series of this.#preferred(references, kind)) {
+        const left = codes.filter(
+          (code) => found.get(code)?.[key] === undefined,
+        );
+        if (left.length === 0) return;
+        const origin = references.fallback(series);
+        const rows = new Graph(
+          await references.rows(origin, { codes: new Set(left), terms }),
+        );
+        for (const code of left) {
+          const value = read(rows, iri(code), origin);
+          if (value === undefined) continue;
+          const entry = found.get(code) ?? {};
+          entry[key] = value;
+          found.set(code, entry);
+        }
+      }
+    };
+    const values = (rows: Graph, code: Term, predicate: string) =>
+      rows.objects(code, predicate).map(({ value }) => value);
+    await fill(`${REC}CodeNames`, "name", (rows, code, origin) => {
+      const [label] = values(rows, code, `${SKOS}prefLabel`);
+      return label === undefined
+        ? undefined
+        : { label, altLabels: values(rows, code, `${SKOS}altLabel`), origin };
+    });
+    await fill(`${REC}CodeStatus`, "status", (rows, code, origin) => {
+      const [deprecated] = values(rows, code, `${OWL}deprecated`);
+      return deprecated === undefined
+        ? undefined
+        : {
+            deprecated: deprecated === "true",
+            replacedBy: values(rows, code, `${DCT}isReplacedBy`),
+            origin,
+          };
+    });
+    return found;
+  }
+
+  /** The held series of the kind: those the order of preference names first, in its order, then the others. */
+  #preferred(references: References, kind: string): string[] {
+    const held = references.seriesOfKind(kind);
+    const named = (this.#options.preference?.[kind] ?? []).filter((series) =>
+      held.includes(series),
+    );
+    return [...named, ...held.filter((series) => !named.includes(series))];
   }
 
   /** The tables a pod is given now. */
@@ -511,48 +617,6 @@ export class Tables {
     };
   }
 
-  /** What the names and status series the app holds say of each code, from the first series that holds it. */
-  async about(codes: readonly string[]): Promise<Map<string, About>> {
-    const [index, held] = await Promise.all([this.#index(), this.#held()]);
-    const found = new Map<string, About>();
-    for (const series of this.#ordered(index, held)) {
-      const kind = index.objects(series, `${REC}tableKind`)[0]?.value;
-      const origin = index.objects(series, SHIPS_WITH)[0]?.value;
-      if (
-        origin === undefined ||
-        (kind !== `${REC}CodeNames` && kind !== `${REC}CodeStatus`)
-      )
-        continue;
-      const rows = new Graph(await this.#rowsOf(origin));
-      for (const code of codes) {
-        const said = found.get(code) ?? {};
-        const values = (predicate: string): string[] =>
-          rows.objects(iri(code), predicate).map((term) => term.value);
-        const [label] = values(`${SKOS}prefLabel`);
-        if (kind === `${REC}CodeNames` && said.name === undefined && label)
-          found.set(code, {
-            ...said,
-            name: { label, altLabels: values(`${SKOS}altLabel`), origin },
-          });
-        const deprecated = values(`${OWL}deprecated`);
-        if (
-          kind === `${REC}CodeStatus` &&
-          said.status === undefined &&
-          deprecated.length > 0
-        )
-          found.set(code, {
-            ...said,
-            status: {
-              deprecated: deprecated.includes("true"),
-              replacedBy: values(`${DCT}isReplacedBy`),
-              origin,
-            },
-          });
-      }
-    }
-    return found;
-  }
-
   /** The series the store holds, in the order of the feeds that describe them, and then by label. */
   #ordered(index: Graph, held: Held): Term[] {
     const { feeds } = this.#options;
@@ -674,6 +738,14 @@ export class Tables {
         index.match(version, SPECIALIZATION_OF).length > 0
       )
         continue;
+      const [held] = index.objects(series, `${REC}shipsWith`);
+      if (held !== undefined && !descends(catalog, version, held.value)) {
+        refused.push({
+          version: version.value,
+          reason: `it does not descend from ${held.value}, the version of its series held`,
+        });
+        continue;
+      }
       const [distribution] = catalog.objects(version, `${DCAT}distribution`);
       const [url] =
         distribution === undefined
