@@ -19,6 +19,7 @@ import {
   FILES_JSON,
   type Followed,
   kitsOf,
+  packFolder,
   repositoryName,
   WasmBridge,
 } from "@cascade-runtime/runtime";
@@ -37,6 +38,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
+import { TABLES } from "../src/pod.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -198,12 +200,23 @@ async function packComponents(): Promise<{
     bridge: { release: bridge.release, commit: bridge.commit },
   };
   await writeJson(join(COMPONENTS, PACKED), record);
-  for (const component of resolved) await writeFilesJson(treeOf(component));
+  for (const component of resolved) await writeListed(treeOf(component));
   return { resolved, bridge: record.bridge, bridgeFolder: bridge.folder };
 }
 
-/** Lists every file under the folder, as a browser reads it over HTTP. */
-async function writeFilesJson(folder: string): Promise<void> {
+/** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`, other than the matcher's tables. */
+function read(path: string): boolean {
+  return (
+    path.startsWith(TABLES) ||
+    !["conformance/", "fixtures/"].some((folder) => path.startsWith(folder))
+  );
+}
+
+/**
+ * Lists every file under the folder, as a browser reads it over HTTP, and packs those a pod reads into one file beside
+ * it, `<folder>.json`, so a browser fetches them at once.
+ */
+async function writeListed(folder: string): Promise<void> {
   const paths = (
     await readdir(folder, { recursive: true, withFileTypes: true })
   )
@@ -214,6 +227,10 @@ async function writeFilesJson(folder: string): Promise<void> {
     .filter((path) => path !== FILES_JSON)
     .sort();
   await writeJson(join(folder, FILES_JSON), paths);
+  const files = new Map<string, Uint8Array>();
+  for (const path of paths.filter(read))
+    files.set(path, await readFile(join(folder, ...path.split("/"))));
+  await writeFile(`${folder}.json`, JSON.stringify(packFolder(paths, files)));
 }
 
 /** The browser entry and the Bridge's worker as modules, with Oxigraph's web build and the Bridge's beside them. */

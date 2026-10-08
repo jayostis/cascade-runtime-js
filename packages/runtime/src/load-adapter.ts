@@ -42,12 +42,14 @@ async function read(
   files: Files,
   paths: Iterable<string>,
 ): Promise<Map<string, Uint8Array>> {
-  const map = new Map<string, Uint8Array>();
-  for (const path of paths) {
-    const bytes = await files.read(path);
-    if (bytes !== undefined) map.set(path, bytes);
-  }
-  return map;
+  const read = await Promise.all(
+    [...paths].map(async (path) => [path, await files.read(path)] as const),
+  );
+  return new Map(
+    read.flatMap(([path, bytes]) =>
+      bytes === undefined ? [] : [[path, bytes] as const],
+    ),
+  );
 }
 
 async function everyFile(files: Files): Promise<string[]> {
@@ -57,9 +59,9 @@ async function everyFile(files: Files): Promise<string[]> {
 }
 
 /**
- * Loads an adapter as library.md has a host do it: describe it from its metadata alone, give it the files the
- * description lists (all its files, where it is `whole`) and the vocabulary files it lists, and, whenever a call fails
- * for a file missing from a map, fetch that file and load it again.
+ * Loads an adapter as library.md has a host do it, when a call first needs it: describe it from its metadata alone,
+ * give it the files the description lists (all its files, where it is `whole`) and the vocabulary files it lists, and,
+ * whenever a call fails for a file missing from a map, fetch that file and load it again.
  */
 export async function loadAdapter(
   bridge: Bridge,
@@ -70,24 +72,37 @@ export async function loadAdapter(
   if (metadata === undefined)
     throw new Error(`${source.iri} has no ${METADATA}`);
   const description = await bridge.describe(source.iri, metadata);
-  const adapter: Named = {
-    iri: source.iri,
-    files: await read(
-      source.files,
-      source.whole ? await everyFile(source.files) : description.loadFiles,
-    ),
-  };
   const listed = description.vocabulary?.files ?? [];
   const vocabularySource =
     listed.length === 0
       ? undefined
       : await vocabularyAt(description.vocabulary?.repository);
-  const vocabulary: Named | undefined = vocabularySource && {
-    iri: vocabularySource.iri,
-    files: await read(vocabularySource.files, listed),
-  };
 
-  const maps = { adapter, vocabulary };
+  type Maps = { adapter: Named; vocabulary?: Named };
+  const reading = async (): Promise<Maps> => {
+    const [adapter, vocabulary] = await Promise.all([
+      source.whole
+        ? everyFile(source.files).then((paths) => read(source.files, paths))
+        : read(source.files, description.loadFiles),
+      vocabularySource && read(vocabularySource.files, listed),
+    ]);
+    return {
+      adapter: { iri: source.iri, files: adapter },
+      ...(vocabularySource &&
+        vocabulary && {
+          vocabulary: { iri: vocabularySource.iri, files: vocabulary },
+        }),
+    };
+  };
+  let maps: Promise<Maps> | undefined;
+  /** The files the first load is given, read when it needs them, and again when reading them failed. */
+  const given = (): Promise<Maps> => {
+    maps ??= reading().catch((error: unknown) => {
+      maps = undefined;
+      throw error;
+    });
+    return maps;
+  };
   const sources = { adapter: source, vocabulary: vocabularySource };
   /** Adds the file a failure says is missing; false when it cannot. */
   const fetched = async (error: unknown): Promise<boolean> => {
@@ -96,7 +111,7 @@ export async function loadAdapter(
       map?: "adapter" | "vocabulary";
       path?: string;
     };
-    const named = map && maps[map];
+    const named = map && (await given())[map];
     const from = map && sources[map];
     if (named === undefined || from === undefined || path === undefined)
       return false;
@@ -107,9 +122,10 @@ export async function loadAdapter(
     return true;
   };
   const loading = async (): Promise<LoadedAdapter> => {
+    const { adapter, vocabulary } = await given();
     for (;;) {
       try {
-        return await bridge.load(maps.adapter, maps.vocabulary);
+        return await bridge.load(adapter, vocabulary);
       } catch (error) {
         if (!(await fetched(error))) throw error;
       }
@@ -128,7 +144,6 @@ export async function loadAdapter(
     }
     return loaded;
   };
-  await current();
   const envelopeOf = (document: BridgeDocument): BridgeDocument =>
     document.envelope === undefined
       ? document
@@ -171,8 +186,10 @@ export async function loadAdapter(
 }
 
 /**
- * Each adapter followed, loaded in order from the source `at` gives it, with the vocabulary its description names from
- * the source `at` gives that repository; if one fails, those already loaded are freed.
+ * Each adapter followed, described in order from the source `at` gives it, with the vocabulary its description names
+ * from the source `at` gives that repository; if one fails, those already described are freed. None is loaded here: an
+ * adapter loads when its first `accepts` or `convert` needs it, a load that fails rejects that call with a plain error,
+ * and the next call tries the load again.
  */
 export async function loadAdapters(
   bridge: Bridge,

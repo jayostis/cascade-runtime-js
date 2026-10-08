@@ -601,7 +601,7 @@ async function shownAfter(
   };
 }
 
-test("in the browser, look and import read the files a person picks as Node reads them by path, the Bridge in a Web Worker started by the first import", async () => {
+test("in the browser, look and import read the files a person picks as Node reads them by path, the Bridge in a Web Worker started by the first import, each import loading only the adapter of its documents", async () => {
   const components = join(PAGES, "try", "cascade-runtime", "components");
   const config = parseConfig(
     await readFile(join(components, CONFIG_FILE), "utf8"),
@@ -708,6 +708,12 @@ test("in the browser, look and import read the files a person picks as Node read
     (globalThis as unknown as { pod: Pod }).pod = await openPod();
   });
 
+  const adapters = config.adapters.map(
+    ({ repository }) =>
+      carried.find((iri) => iri.startsWith(`${repository}/tree/`)) ?? "",
+  );
+  /** The adapters loaded into the Bridge by the end of each import. */
+  const loadedAfter: Set<string>[] = [];
   for (const [at, id] of ["pick-folder", "pick-file"].entries()) {
     const want = expected[at];
     assert.ok(want);
@@ -744,15 +750,23 @@ test("in the browser, look and import read the files a person picks as Node read
       { questions: QUESTIONS, source: shownAfter.toString() },
     );
     assert.deepEqual(got, want.after, id);
+    loadedAfter.push(
+      new Set(
+        (
+          await page.evaluate(
+            () =>
+              (globalThis as unknown as { bridgeLoads: string[] }).bridgeLoads,
+          )
+        ).filter((iri) => adapters.includes(iri)),
+      ),
+    );
   }
   assert.ok(workers > 0, "no import started a worker");
   const loads = await page.evaluate(
     () => (globalThis as unknown as { bridgeLoads: string[] }).bridgeLoads,
   );
-  const adapters = config.adapters.map(
-    ({ repository }) =>
-      carried.find((iri) => iri.startsWith(`${repository}/tree/`)) ?? "",
-  );
-  for (const adapter of adapters) assert.ok(loads.includes(adapter), adapter);
+  const [first, both] = loadedAfter;
+  assert.equal(first?.size, 1, `the first import loaded ${[...(first ?? [])]}`);
+  assert.deepEqual(both, new Set(adapters));
   for (const iri of loads) assert.ok(carried.includes(iri), iri);
 });

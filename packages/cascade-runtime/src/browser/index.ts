@@ -90,6 +90,12 @@ async function resolve(): Promise<Parts> {
       files: new FetchedFiles(
         new URL(`${repositoryName(followed)}/${commit}/`, COMPONENTS).href,
         iri,
+        {
+          pack: new URL(
+            `${repositoryName(followed)}/${commit}.json`,
+            COMPONENTS,
+          ).href,
+        },
       ),
     };
     sources.set(followed.repository, source);
