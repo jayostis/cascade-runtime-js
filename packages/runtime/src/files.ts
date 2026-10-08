@@ -8,7 +8,10 @@ export interface Files {
   /** The file's bytes, or undefined when there is no such file. */
   read(pathOrIri: string): Promise<Uint8Array | undefined>;
   write(pathOrIri: string, bytes: Uint8Array): Promise<void>;
-  /** Writes every file, or, when one fails, none: where the host has transactions, one of them. */
+  /**
+   * Writes every file, or, when one fails, none: where the host has transactions, one of them. Files without it are
+   * written one by one, and a failure leaves those before it written.
+   */
   writeAll?(files: Iterable<readonly [string, Uint8Array]>): Promise<void>;
   /** The path of every file under the folder, the whole root when it is "", sorted. */
   list(folder: string): Promise<string[]>;

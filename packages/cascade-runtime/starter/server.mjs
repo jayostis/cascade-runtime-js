@@ -286,6 +286,7 @@ async function bring(response, name, connection) {
   if (files === undefined) return redirect(response, box);
   if (connection.imported === undefined) {
     connection.failed = undefined;
+    connection.bringing = { part: "loading the adapter" };
     connection.imported = (await podNamed(name))
       .import(files, {
         aboutSubject: true,

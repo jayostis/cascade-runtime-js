@@ -205,10 +205,20 @@ test("an import without the claim only files and names its unclaimed profile; an
 });
 
 test("an import with the claim records an About for each unclaimed profile and is matched at once, saying each part as it begins", async () => {
+  await assert.rejects(
+    pod.import(exported("x-e4"), {
+      onProgress: async () => {
+        throw new Error("not told");
+      },
+    }),
+    /not told/,
+  );
   const told: ImportProgress[] = [];
   const imported = await pod.import(exported("x-e4"), {
     aboutSubject: true,
-    onProgress: (progress) => told.push(progress),
+    onProgress: (progress) => {
+      told.push(progress);
+    },
   });
   assert.deepEqual(
     told
@@ -223,7 +233,13 @@ test("an import with the claim records an About for each unclaimed profile and i
         done < of && done > (converting[index - 1]?.done ?? -1),
     ),
   );
-  assert.deepEqual(told.at(-1), { part: "judging", done: 1, of: 2 });
+  assert.deepEqual(
+    told.filter(({ part }) => part === "judging"),
+    [
+      { part: "judging", done: 0, of: 2 },
+      { part: "judging", done: 1, of: 2 },
+    ],
+  );
   assert.deepEqual(
     imported.claimed.map(({ profile }) => profile),
     [await profileOf("J2")],

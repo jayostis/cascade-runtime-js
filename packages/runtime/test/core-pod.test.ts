@@ -108,3 +108,26 @@ test("a step writes its files in one batch and the build its files in a second; 
   assert.ok((await pod.refuse("no reason")).refused);
   assert.deepEqual(batches, [[laidOut.manifest]]);
 });
+
+test("a step whose files are written one by one and fail part way reads the pod as the files left it", async () => {
+  const laidOut = await layout();
+  const files = new MemoryFiles(ADDRESS);
+  let writes = 0;
+  const failing: Files = {
+    iri: ADDRESS,
+    read: (path) => files.read(path),
+    list: (folder) => files.list(folder),
+    write: (path, bytes) =>
+      ++writes === 2
+        ? Promise.reject(new Error("the second write fails"))
+        : files.write(path, bytes),
+  };
+  const state = { now: "2026-02-01T08:00:00Z" };
+  const pod = new CorePod(options(failing, laidOut, state));
+
+  await assert.rejects(pod.create(), /the second write fails/);
+  assert.equal(
+    await pod.revision(),
+    await new CorePod(options(files, laidOut, state)).revision(),
+  );
+});

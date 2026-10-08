@@ -119,7 +119,10 @@ class HeldFiles implements Files {
     return this.writeAll([[pathOrIri, bytes]]);
   }
 
-  /** Writes, in one `writeAll` on the pod, each file it does not hold with the same bytes; held once all are written. */
+  /**
+   * Writes, in one `writeAll` on the pod, each file it does not hold with the same bytes; held once all are written.
+   * When the write fails, what is held is dropped and read from the pod again, which may hold some of them.
+   */
   async writeAll(
     files: Iterable<readonly [string, Uint8Array]>,
   ): Promise<void> {
@@ -132,7 +135,13 @@ class HeldFiles implements Files {
     }
     if (changed.length === 0) return;
     const listed = await this.#listed();
-    await writeAll(this.#pod, changed);
+    try {
+      await writeAll(this.#pod, changed);
+    } catch (error) {
+      this.#paths = undefined;
+      this.#bytes.clear();
+      throw error;
+    }
     for (const [path, bytes] of changed) {
       this.#bytes.set(path, bytes);
       listed.add(path);
