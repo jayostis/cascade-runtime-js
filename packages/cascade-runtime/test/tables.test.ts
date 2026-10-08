@@ -260,7 +260,7 @@ async function withBytes(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one; and opened after the rule list is revised, it is opened with that", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
   const store = new MemoryFiles("urn:test:tables/");
   const before = tablesOver(first, store);
   const [kept] = await before.check();
@@ -353,6 +353,10 @@ ${shots.join("\n")}`);
   assert.ok(revised.opened);
   assert.equal(revised.opened.refused, undefined);
   await revised.close();
+
+  const inMemory = await openPodWith({ ...parts, tables: after }, undefined);
+  assert.equal(await after.openedWith(inMemory.address), undefined);
+  await inMemory.close();
 });
 
 test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {

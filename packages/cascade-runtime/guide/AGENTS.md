@@ -106,6 +106,13 @@ A browser has no path, so `look` and `import` take the files the person picked,
 each by its path: `new Map([...input.files].map((file) => [file.webkitRelativePath || file.name, file]))`
 from an `<input type="file">`, with `webkitdirectory` for an export's folder.
 Node takes such a map too. The first `import` loads the Bridge, about 4.5 MB.
+A browser keeps its tables in one IndexedDB database for the app,
+`<name>:cascade-tables`, `name` the page's folder unless
+`configureTables({ name, fetch })` says otherwise before the first pod opens.
+It reads the feeds once the engine loads, and `checkTables()` is "Check now".
+A pod copied with `from` is taken as published: its first open records the
+tables the browser then holds without adopting them, and a later open adopts
+only tables newer than those.
 
 ## Bring in an export
 
@@ -529,7 +536,7 @@ await her.close();
 ## What it cannot do yet
 
 - The feed is a draft: until it publishes a series, a rule reading its kind
-  joins nothing. In a browser, tables are not yet kept or adopted.
+  joins nothing.
 - Alex's story runs into 2027: a record entered today orders before hers.
 - Node 22 or later, the pod in a folder or in memory; each call rebuilds its views.
 - Sign-in reaches only the test directory: the demo hospitals and the SMART

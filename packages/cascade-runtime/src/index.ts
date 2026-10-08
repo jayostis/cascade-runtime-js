@@ -1,7 +1,7 @@
 import { dirname, join, resolve as absolute } from "node:path";
 import { resolved } from "./node/resolved.js";
 import { openPodWith, type Pod } from "./pod.js";
-import type { Tables } from "./tables.js";
+import { CHECK_ON_OPEN_MS, type Tables } from "./tables.js";
 
 export type {
   Done,
@@ -19,9 +19,6 @@ export * from "./connect/index.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
 
 const beside = new Map<string, Promise<Tables>>();
-
-/** How long the check an open waits on may take: a network that stalls must not hold a local pod closed. */
-const CHECK_ON_OPEN_MS = 10_000;
 
 /**
  * The tables an app keeps for the pods in the folder: `.tables/` in it, beside `.answers/`, checked against the feeds

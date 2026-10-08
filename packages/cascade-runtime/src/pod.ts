@@ -850,7 +850,8 @@ export async function openPodWith(
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
     await answers?.describe({ address, subject, title });
-    await parts.tables.opened(address, shipped(references));
+    if (folder !== undefined)
+      await parts.tables.opened(address, shipped(references));
     return new OpenPod(parts, core, address, subject, tables, answers);
   }
   const store = parts.newStore();
@@ -908,6 +909,10 @@ async function openedWithTables(
 ): Promise<Opened | undefined> {
   const current = shipped(references);
   const before = await tables.openedWith(address);
+  if (before === null) {
+    await tables.opened(address, current);
+    return undefined;
+  }
   if (
     before !== undefined &&
     before.length === current.length &&

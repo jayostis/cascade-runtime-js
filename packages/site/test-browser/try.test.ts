@@ -26,11 +26,15 @@ import { demoFetch, hospitalId } from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
   FILES_JSON,
+  iri,
+  ntriples,
+  OxigraphStore,
   parseConfig,
   repositoryName,
   treeIri,
 } from "@cascade-runtime/runtime";
 import {
+  checkouts,
   CONFIG_FILE,
   findRoot,
   PACKED,
@@ -42,6 +46,8 @@ import { inPlace, newPod, settled, tiles, watched } from "./shown.js";
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PAGES = join(ROOT, "build", "pages");
 const ALEX = "alex-rivera";
+const DCAT = "http://www.w3.org/ns/dcat#";
+const PROV = "http://www.w3.org/ns/prov#";
 /** Oxigraph's module, the engine a pod computes with. */
 const ENGINE = /\/web_bg\.wasm$/;
 
@@ -849,4 +855,158 @@ test("in the browser, look and import read the files a person picks as Node read
   assert.equal(first?.size, 1, `the first import loaded ${[...(first ?? [])]}`);
   assert.deepEqual(both, new Set(adapters));
   for (const iri of loads) assert.ok(carried.includes(iri), iri);
+});
+
+test("in the browser, a check keeps the test feed's planted newer version in the app's own database, and a pod opened after it adopts it: the version is recorded, the Same it newly joins is filed and the one that used the replaced version filed again", async () => {
+  const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
+  const [feedUrl] = config.tables.feeds;
+  assert.ok(feedUrl);
+  const { folder } = await (
+    await checkouts(ROOT)
+  ).resolve(config.tables.repository);
+  const valid = join(folder, "fixtures", "feeds", "valid");
+  const catalog = await new OxigraphStore().parse(
+    await readFile(join(valid, "feed.ttl")),
+    feedUrl,
+  );
+  const of = (subject: string, predicate: string): string | undefined =>
+    catalog.find(([s, p]) => s.value === subject && p.value === predicate)?.[2]
+      .value;
+  const series =
+    catalog.find(([, , o]) => o.value.endsWith("#VaccineGroups"))?.[0].value ??
+    "";
+  const second = of(series, `${DCAT}hasCurrentVersion`) ?? "";
+  const first = of(second, `${PROV}wasRevisionOf`) ?? "";
+  assert.ok(first);
+  const bodies = new Map<string, Buffer>();
+  for (const [, predicate, url] of catalog)
+    if (predicate.value === `${DCAT}downloadURL`)
+      bodies.set(
+        url.value,
+        await readFile(
+          join(valid, ...new URL(url.value).pathname.split("/").slice(-2)),
+        ),
+      );
+  const feedOf = (current: (version: string) => string): string =>
+    new TextDecoder().decode(
+      ntriples(
+        catalog.map(([s, p, o]) =>
+          p.value === `${DCAT}hasCurrentVersion`
+            ? [s, p, iri(current(o.value))]
+            : [s, p, o],
+        ),
+      ),
+    );
+  let feed = feedOf(
+    (version) => of(version, `${PROV}wasRevisionOf`) ?? version,
+  );
+  const context = await browser.newContext();
+  try {
+    await context.route(
+      (url) => url.href === feedUrl || bodies.has(url.href),
+      (route) => {
+        const url = route.request().url();
+        return route.fulfill(
+          url === feedUrl
+            ? { body: feed, contentType: "text/turtle" }
+            : { body: bodies.get(url) ?? "" },
+        );
+      },
+    );
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    interface Runtime {
+      checkTables(): Promise<{ kept: string[]; refused: unknown[] }[]>;
+      openPod(name: string): Promise<{
+        subject: string;
+        owner: string;
+        opened?: { refused?: string; unheld: string[] };
+        enter(turtle: string): Promise<{ refused?: string }>;
+        ask(question: { query: string }): Promise<Record<string, string>[]>;
+        close(): Promise<void>;
+      }>;
+    }
+    const entered = await page.evaluate(async () => {
+      const runtime = (await import("cascade-runtime" as string)) as Runtime;
+      await runtime.checkTables();
+      const pod = await runtime.openPod("tables-proof");
+      const shots = [
+        ["141", "2025-10-01"],
+        ["150", "2025-10-01"],
+        ["140", "2024-10-01"],
+        ["141", "2024-10-01"],
+      ].map(
+        (
+          [code, date],
+          index,
+        ) => `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/health/v1#ImmunizationRecord> .
+<urn:cascade:output-${index}-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-${index}> ;
+  <https://ns.cascadeprotocol.org/health/v1#vaccineCode> "${code}" ;
+  <https://ns.cascadeprotocol.org/health/v1#administrationDate> "${date}"^^<http://www.w3.org/2001/XMLSchema#date> ;
+  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .`,
+      );
+      const done =
+        await pod.enter(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> ;
+  <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${pod.owner}> ;
+    <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/judgments/v1-draft#patient> ] .
+${shots.join("\n")}`);
+      await pod.close();
+      return done;
+    });
+    assert.equal(entered.refused, undefined);
+
+    feed = feedOf((version) => version);
+    const after = await page.evaluate(
+      async ({ series, first, second }) => {
+        const runtime = (await import("cascade-runtime" as string)) as Runtime;
+        const checked = await runtime.checkTables();
+        const pod = await runtime.openPod("tables-proof");
+        try {
+          const current = await pod.ask({
+            query: `SELECT ?version WHERE { <${series}> <http://purl.org/pav/hasCurrentVersion> ?version }`,
+          });
+          const sames = await pod.ask({
+            query: `SELECT ?used (GROUP_CONCAT(?code; separator=" ") AS ?codes) WHERE {
+              ?judgment <https://ns.cascadeprotocol.org/judgments/v1-draft#justification> <https://ns.cascadeprotocol.org/judgments/v1-draft#SameMappedCodeAndDate> ;
+                <http://www.w3.org/ns/prov#used> ?used ; <http://www.w3.org/ns/prov#hadMember> ?record .
+              VALUES ?used { <${first}> <${second}> }
+              ?record <http://purl.org/pav/hasCurrentVersion>/<https://ns.cascadeprotocol.org/health/v1#vaccineCode> ?code
+            } GROUP BY ?judgment ?used`,
+          });
+          return {
+            kept: checked.flatMap(({ kept }) => kept),
+            opened: pod.opened,
+            current,
+            sames,
+            databases: (await indexedDB.databases()).map(
+              ({ name }) => name ?? "",
+            ),
+          };
+        } finally {
+          await pod.close();
+        }
+      },
+      { series, first, second },
+    );
+    assert.ok(after.kept.includes(second));
+    assert.equal(after.opened?.refused, undefined);
+    assert.deepEqual(after.opened?.unheld, []);
+    assert.deepEqual(after.current, [{ version: second }]);
+    assert.deepEqual(
+      after.sames
+        .map(
+          ({ used = "", codes = "" }) =>
+            `${used === first ? "first" : "second"}: ${codes.split(" ").sort().join(" ")}`,
+        )
+        .sort(),
+      ["first: 141 150", "second: 140 141", "second: 141 150"],
+    );
+    assert.ok(
+      after.databases.some((name) => name.endsWith(":cascade-tables")),
+      `no tables database among ${after.databases.join(", ")}`,
+    );
+  } finally {
+    await context.close();
+  }
 });

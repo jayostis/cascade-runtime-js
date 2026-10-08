@@ -11,7 +11,7 @@ import {
   OxigraphStore,
   parseConfig,
   type Placed,
-  MemoryFiles,
+  podStated,
   readText,
   repositoryName,
   type RuntimeConfig,
@@ -36,13 +36,14 @@ import {
   type Imported,
   type ImportOptions,
   type KeptPod,
+  type Opened,
   keptPod,
   openPodWith,
   type Parts,
   type Pod,
   type Row,
 } from "../pod.js";
-import { Tables } from "../tables.js";
+import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
   Done,
@@ -51,16 +52,20 @@ export type {
   Imported,
   ImportOptions,
   ImportProgress,
+  Opened,
   Pod,
   Row,
 } from "../pod.js";
 export * from "../connect/index.js";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
+export type { Checked, Tables } from "../tables.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
 const DATABASE = "cascade-pod:";
 /** What names the IndexedDB database a pod's answers are kept in, before the pod's name. */
 const ANSWERS_DATABASE = "cascade-answers:";
+/** What names the tables' IndexedDB database, after the app's name. */
+const TABLES_DATABASE = "cascade-tables";
 const COMPONENTS = new URL("../../components/", import.meta.url);
 
 interface Packed {
@@ -159,15 +164,68 @@ const reading = once(async (): Promise<Read> => {
     vocabulary,
     layout,
     build: await vocabularyBuild(vocabulary, layout),
-    tables: new Tables({
-      files: new MemoryFiles("urn:cascade:tables/"),
-      feeds: config.tables.feeds,
-      vocabulary,
-      newStore: () => new OxigraphStore(),
-    }),
+    tables: await tablesOf(config, vocabulary),
     carried,
   };
 });
+
+let configured: TablesSettings = {};
+let tablesMade = false;
+
+export interface TablesSettings {
+  /** What reads the feeds; the page's own `fetch` otherwise. */
+  readonly fetch?: typeof fetch;
+  /** What the tables' database is named after, `<name>:cascade-tables`: the page's folder otherwise. */
+  readonly name?: string;
+}
+
+/** Sets how the tables are read and kept, before the first pod is opened. */
+export function configureTables(settings: TablesSettings): void {
+  if (tablesMade)
+    throw new Error(
+      "configureTables comes before the first pod opens: the tables are already made",
+    );
+  configured = settings;
+}
+
+/** The tables in this site's database for the app. */
+async function tablesOf(
+  config: RuntimeConfig,
+  vocabulary: FetchedFiles,
+): Promise<Tables> {
+  tablesMade = true;
+  const name =
+    configured.name ?? new URL(".", globalThis.location.href).pathname;
+  const database = `${name}:${TABLES_DATABASE}`;
+  return new Tables({
+    files: await IndexedDbFiles.open(database, "urn:cascade:tables/"),
+    feeds: config.tables.feeds,
+    vocabulary,
+    newStore: () => new OxigraphStore(),
+    ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
+  });
+}
+
+/** A check, asking the browser to keep the site's storage once it has kept a version. */
+async function checkedAndKept(
+  tables: Tables,
+  init: RequestInit,
+): Promise<Checked[]> {
+  const checked = await tables.check(init);
+  if (checked.some(({ kept }) => kept.length > 0))
+    await globalThis.navigator?.storage?.persist?.().catch(() => false);
+  return checked;
+}
+
+/** "Check now": reads every feed past any cache and keeps what verifies. */
+export async function checkTables(): Promise<Checked[]> {
+  return checkedAndKept((await resolved()).tables, { cache: "no-cache" });
+}
+
+/** The app's tables, as this site keeps them. */
+export async function appTables(): Promise<Tables> {
+  return (await reading()).tables;
+}
 
 /** The parts, and the runtime's version: everything a pod reads with, and the engine. */
 type Resolved = Parts & { readonly runtime: string };
@@ -179,6 +237,10 @@ const resolved = once(async (): Promise<Resolved> => {
   ]);
   const { config, vocabulary, carried } = read;
   const newStore = () => new OxigraphStore();
+  if (config.tables.checkOnOpen)
+    void checkedAndKept(read.tables, {
+      signal: AbortSignal.timeout(CHECK_ON_OPEN_MS),
+    }).catch(() => undefined);
   return {
     vocabulary,
     layout: read.layout,
@@ -269,6 +331,11 @@ class BrowserPod implements Pod {
     if (this.#closed || this.#opened === undefined)
       throw new Error(`the pod at ${this.address} is closed`);
     return this.#opened;
+  }
+
+  /** The open that gave the pod newer tables, once the engine opened it; until then, none. */
+  get opened(): Opened | undefined {
+    return this.#opened?.opened;
   }
 
   #known(): Pod | KeptPod {
@@ -463,6 +530,13 @@ export async function openPod(
     answers = kept;
     const carried = (await published) ?? [];
     if (carried.length > 0) await kept.writeAll(carried).catch(() => undefined);
+    if (published !== undefined) {
+      const address =
+        (await new Answers(kept, read.runtime).described())?.address ??
+        (await podStated(database, read.layout, (await resolved()).newStore()))
+          .address;
+      await read.tables.opened(address, null);
+    }
     const open = async () =>
       openPodWith(
         {
@@ -474,7 +548,7 @@ export async function openPod(
           answers: { runtime: read.runtime, at: () => kept },
         },
         name,
-        { ...rest, adopt: false },
+        rest,
       );
     const databases = [database, kept];
     const pod =
