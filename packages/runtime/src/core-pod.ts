@@ -149,7 +149,7 @@ export class CorePod {
   /** What is built of the pod as it stands, by what it is; a step drops it all. */
   #kept = new Map<string, Promise<unknown>>();
 
-  /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the build lens's dataset. */
+  /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
     if (opened !== undefined) this.#kept.set(OPENED, Promise.resolve(opened));
@@ -167,25 +167,22 @@ export class CorePod {
     return this.#held(`${DATASET}${lens}`, async () => {
       const { pod, layout, address, title, newStore, time, build } =
         this.#options;
-      const opened =
-        lens === build?.lens
-          ? (this.#kept.get(OPENED) as Promise<Union> | undefined)
-          : undefined;
+      const opened = this.#kept.get(OPENED) as Promise<Union> | undefined;
       this.#kept.delete(OPENED);
       const union = (await opened) ?? new Union(newStore());
       if (opened === undefined) await podFiles(pod, layout, address, union);
-      const at = (await podStated(pod, layout, newStore())).at ?? time.now();
-      await built(
-        pod,
-        layout,
-        address,
-        [],
-        at,
-        title,
-        lens,
-        union,
-        build?.derive,
-      );
+      if (build === undefined) {
+        for (const path of layout.rebuilt.filter((path) =>
+          layout.isRdf(path),
+        )) {
+          const bytes = await pod.read(path);
+          if (bytes !== undefined)
+            await union.loadTurtle(bytes, address + path);
+        }
+      } else {
+        const at = (await podStated(pod, layout, union.store)).at ?? time.now();
+        await build.derive(union, lens, { address, at, title });
+      }
       await addLayout(union, layout, address);
       return union;
     });

@@ -13,6 +13,7 @@ test("what an ask reads and the revision change with every step, a refused one t
   const address = "https://pod.example/";
   const laidOut = await layout();
   let now = "2026-02-01T08:00:00Z";
+  let failing = false;
   const options: CorePodOptions = {
     pod: new MemoryFiles(address),
     address,
@@ -27,6 +28,7 @@ test("what an ask reads and the revision change with every step, a refused one t
     build: {
       lens: "everyday",
       derive: async (union, _lens, { at }) => {
+        if (failing) throw new Error("the build fails");
         const manifest = address + laidOut.manifest;
         const triples: Triple[] = [
           [iri(manifest), iri(CREATED), literal(at, `${XSD}dateTime`)],
@@ -56,4 +58,14 @@ test("what an ask reads and the revision change with every step, a refused one t
   const again = new CorePod(options);
   assert.equal(await again.revision(), await pod.revision());
   assert.deepEqual(await created(again), ["2026-02-02T08:00:00Z"]);
+  assert.deepEqual(
+    await created(new CorePod({ ...options, build: undefined })),
+    ["2026-02-02T08:00:00Z"],
+  );
+
+  pod.close();
+  failing = true;
+  await assert.rejects(created(pod), /the build fails/);
+  failing = false;
+  assert.deepEqual(await created(pod), ["2026-02-02T08:00:00Z"]);
 });

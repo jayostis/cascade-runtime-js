@@ -11,6 +11,8 @@ export const STEP = "urn:cascade:step:";
 const GENERATED = "http://www.w3.org/ns/prov#generated";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const DCT = "http://purl.org/dc/terms/";
+/** The files `podFiles` reads at once: a pod of many revisions read all at once runs out of file descriptors. */
+const READ_AT_ONCE = 32;
 
 /** The layout read with each pod's address as its base, as N-Triples, once per address. */
 const writtenLayouts = new WeakMap<Layout, Map<string, Promise<Uint8Array>>>();
@@ -174,7 +176,13 @@ export async function podFiles(
   const paths = listed.filter(
     (path) => layout.isRdf(path) && !rebuilt.has(path),
   );
-  const read = await Promise.all(paths.map((path) => pod.read(path)));
+  const read: (Uint8Array | undefined)[] = [];
+  for (let start = 0; start < paths.length; start += READ_AT_ONCE)
+    read.push(
+      ...(await Promise.all(
+        paths.slice(start, start + READ_AT_ONCE).map((path) => pod.read(path)),
+      )),
+    );
   for (const [index, path] of paths.entries()) {
     const bytes = read[index];
     if (bytes === undefined) throw new Error(`${pod.iri}${path} is gone`);

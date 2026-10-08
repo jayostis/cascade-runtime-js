@@ -26,7 +26,10 @@ export interface StepContext {
   readonly layout: Layout;
   /** The vocabulary, whose queries the matcher runs. */
   readonly vocabulary: Files;
-  /** The pod as the matcher reads it before the step, built once for the pod as it stands. */
+  /**
+   * The pod as the matcher reads it before the step, built once for the pod as it stands. The step owns it and may add
+   * to it: the pod drops it when the step ends.
+   */
   matcherView(): Promise<Union>;
 }
 
