@@ -12,6 +12,7 @@ import {
   MemoryFiles,
   ntriples,
   OxigraphStore,
+  RDF,
   tableTerms,
   tablesSettings,
   type Triple,
@@ -31,7 +32,7 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { type Checked, RULE_LIST, Tables } from "../src/tables.js";
+import { type Checked, RULE_LIST, Tables, versionName } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
@@ -274,11 +275,95 @@ async function withBytes(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm/";
+const INGREDIENTS = "urn:uuid:3f1d9b7e-2c4a-4e8f-a6d5-9b0c1e2f3a4b";
+
+/**
+ * The feed with a product ingredients series added, its line of versions each holding the RxNorm rows given as
+ * `[product, ingredient]` and the last current, and the names of those versions.
+ */
+async function withIngredients(
+  served: Served,
+  line: readonly (readonly (readonly [string, string])[])[],
+): Promise<{ served: Served; versions: string[] }> {
+  const files = new Map(served.files);
+  const versions: string[] = [];
+  let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
+@prefix rdfs: <${RDFS}> . @prefix rec: <${REC}> . @prefix spdx: <${SPDX}> .
+<${INGREDIENTS}> a rec:ReferenceSeries ; rdfs:label "Product ingredients" ; rec:tableKind rec:ProductIngredients .
+`;
+  for (const [index, pairs] of line.entries()) {
+    const rows = pairs.flatMap(([product, ingredient]) => {
+      const subject = iri(`urn:test:ingredient-row:${product}-${ingredient}`);
+      return [
+        [
+          subject,
+          iri(`${RDF}type`),
+          iri("http://www.w3.org/2002/07/owl#Axiom"),
+        ],
+        [
+          subject,
+          iri("http://www.w3.org/2002/07/owl#annotatedSource"),
+          iri(RXNORM + product),
+        ],
+        [
+          subject,
+          iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
+          iri("http://www.w3.org/2004/02/skos/core#broadMatch"),
+        ],
+        [
+          subject,
+          iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
+          iri(RXNORM + ingredient),
+        ],
+        [
+          subject,
+          iri("https://w3id.org/sssom/mapping_justification"),
+          iri(
+            `https://w3id.org/semapv/vocab/${product === ingredient ? "ManualMappingCuration" : "MappingChaining"}`,
+          ),
+        ],
+      ] as Triple[];
+    });
+    const previous = versions.at(-1);
+    const version = await versionName(INGREDIENTS, previous, rows);
+    const bytes = await gzipped(
+      new TextDecoder()
+        .decode(ntriples(rows))
+        .split("\n")
+        .filter((nt) => nt.trim() !== "")
+        .map((nt) => `${nt.replace(/\s*\.\s*$/, "")} <${version}> .`)
+        .join("\n"),
+    );
+    const url = `https://tables.example/rows/ingredients-${index}.nq.gz`;
+    files.set(url, bytes);
+    turtle += `<${version}> prov:specializationOf <${INGREDIENTS}> ; pav:version "${index + 1}" ;
+  ${previous === undefined ? "" : `prov:wasRevisionOf <${previous}> ;`}
+  dcat:distribution [ dcat:downloadURL <${url}> ; spdx:checksum [ spdx:checksumValue "${await hex(bytes)}" ] ] .
+`;
+    versions.push(version);
+  }
+  turtle += `<${INGREDIENTS}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
+  const added = await new OxigraphStore().parse(turtle, FEED);
+  return {
+    served: { ...served, files, catalog: [...served.catalog, ...added] },
+    versions,
+  };
+}
+
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+  const advil: [string, string] = ["153010", "5640"];
+  const ibuprofen: [string, string] = ["5640", "5640"];
+  const ingredientsFirst = await withIngredients(first, [[advil, ibuprofen]]);
+  const ingredientsLater = await withIngredients(feed, [
+    [advil, ibuprofen],
+    // A row the first lacks, so the later is a version of its own.
+    [advil, ibuprofen, ["723", "723"]],
+  ]);
   const store = new MemoryFiles("urn:test:tables/");
-  const before = tablesOver(first, store);
+  const before = tablesOver(ingredientsFirst.served, store);
   const [kept] = await before.check();
-  assert.equal(kept?.kept.length, 3);
+  assert.equal(kept?.kept.length, 4);
   assert.ok((await before.current()).includes(groups.first));
 
   const folder = join(scratch, "pods", "hana");
@@ -286,11 +371,12 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
   const relabelled = "Vaccine groups, relabelled";
   const after = tablesOver(
     {
-      ...feed,
-      catalog: feed.catalog.map(([subject, predicate, object]) =>
-        subject.value === groups.series && predicate.value === `${RDFS}label`
-          ? [subject, predicate, literal(relabelled)]
-          : [subject, predicate, object],
+      ...ingredientsLater.served,
+      catalog: ingredientsLater.served.catalog.map(
+        ([subject, predicate, object]) =>
+          subject.value === groups.series && predicate.value === `${RDFS}label`
+            ? [subject, predicate, literal(relabelled)]
+            : [subject, predicate, object],
       ),
     },
     store,
@@ -305,24 +391,29 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
       .map(([, , label]) => label.value),
     [relabelled],
   );
-  const shots = [
-    ["141", "2025-10-01"],
-    ["150", "2025-10-01"],
-    ["140", "2024-10-01"],
-    ["141", "2024-10-01"],
+  const records = [
+    ...[
+      ["141", "2025-10-01"],
+      ["150", "2025-10-01"],
+      ["140", "2024-10-01"],
+      ["141", "2024-10-01"],
+    ].map(([code, date]) => [
+      "health:ImmunizationRecord",
+      `health:vaccineCode "${code}" ; health:administrationDate "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+    ]),
+    ...["153010", "5640"].map((code) => [
+      "health:AllergyRecord",
+      `health:allergenCode <${RXNORM}${code}>`,
+    ]),
   ].map(
-    (
-      [code, date],
-      index,
-    ) => `<urn:cascade:output-${index}> a health:ImmunizationRecord .
+    ([type, fields], index) => `<urn:cascade:output-${index}> a ${type} .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  health:vaccineCode "${code}" ; health:administrationDate "${date}"^^<http://www.w3.org/2001/XMLSchema#date> ;
-  rec:patient <${pod.subject}> .`,
+  ${fields} ; rec:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
-${shots.join("\n")}`);
+${records.join("\n")}`);
   assert.equal(entered.refused, undefined);
   assert.equal(entered.matched?.refused, undefined);
   await pod.close();
@@ -350,6 +441,21 @@ ${shots.join("\n")}`);
       "first: 141 150",
       "second: 140 141",
       "second: 141 150",
+    ]);
+    const [held] = ingredientsFirst.versions;
+    const [, adopted] = ingredientsLater.versions;
+    const brands = await pod.ask({
+      query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
+        ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+        VALUES ?used { <${held}> <${adopted}> }
+        ?record pav:hasCurrentVersion/health:allergenCode ?code
+      } GROUP BY ?judgment ?used`,
+    });
+    const allergens = ({ used = "", codes = "" }) =>
+      `${used === held ? "held" : "adopted"}: ${codes.replaceAll(RXNORM, "").split(" ").sort().join(" ")}`;
+    assert.deepEqual(brands.map(allergens).sort(), [
+      "adopted: 153010 5640",
+      "held: 153010 5640",
     ]);
   } finally {
     await pod.close();
