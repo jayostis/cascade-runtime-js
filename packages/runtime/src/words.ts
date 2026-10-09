@@ -33,6 +33,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same mapped code and date": `${JDG}SameMappedCodeAndDate`,
   "same medication code": `${JDG}SameMedicationCode`,
   "same result": `${JDG}SameResult`,
+  "same converted code": `${JDG}SameConvertedCode`,
 };
 
 const CODES: Readonly<Record<string, (code: string) => string>> = {
@@ -40,6 +41,8 @@ const CODES: Readonly<Record<string, (code: string) => string>> = {
     `{ ?version ?coded <http://snomed.info/sct/${code}> } UNION { ?version <${CLINICAL}snomedCode> ${JSON.stringify(code)} }`,
   RxNorm: (code) =>
     `?version ?coded <http://www.nlm.nih.gov/research/umls/rxnorm/${code}>`,
+  "ICD-10-CM": (code) =>
+    `?version ?coded <http://hl7.org/fhir/sid/icd-10-cm/${code}>`,
   LOINC: (code) => `?version ?coded <http://loinc.org/rdf/${code}>`,
   CVX: (code) => `?version <${HEALTH}vaccineCode> ${JSON.stringify(code)}`,
 };
