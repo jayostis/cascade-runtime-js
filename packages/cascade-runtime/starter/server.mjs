@@ -5,7 +5,7 @@
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import process, { env, exit, stdout } from "node:process";
+import process, { env, exit, stderr, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
@@ -78,6 +78,22 @@ const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 const tables = () => tablesBeside(PODS);
 const tablePath = (series) =>
   `/tables/${encodeURIComponent(tableId(series.iri))}/`;
+
+let unnamedSaid = false;
+
+/** What the tables say of the codes `answers` hold; nothing when they cannot say, which the console is told once. */
+function aboutCodes(answers) {
+  return tables()
+    .then((kept) => kept.about(codesOf(answers)))
+    .catch((error) => {
+      if (!unnamedSaid)
+        stderr.write(
+          `Records are shown by their own names: ${error.message}\n`,
+        );
+      unnamedSaid = true;
+      return undefined;
+    });
+}
 /** What the last Check now did, which the page it goes to says. */
 let lastCheck;
 
@@ -278,9 +294,7 @@ async function showPod(response, name, query, names) {
     findHospital: `${podPath(name)}hospitals`,
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
-    about: await tables()
-      .then((kept) => kept.about(codesOf(answers)))
-      .catch(() => undefined),
+    about: await aboutCodes(answers),
   });
   send(
     response,

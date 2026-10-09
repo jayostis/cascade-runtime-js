@@ -158,7 +158,8 @@ export function codesOf(answers) {
 
 /**
  * The sections' rows in `answers`, each named by the first of its codes `about` (the tables' `about`) names, else by
- * the record's own text, and, when one of its codes is retired, `retired` saying so.
+ * the record's own text, and `retired` saying so when the code that named it, or with none the first of its codes with
+ * a status, is retired.
  */
 export function named(answers, about) {
   const renamed = { ...answers };
@@ -166,14 +167,15 @@ export function named(answers, about) {
     if (answers[section.question] === undefined) continue;
     renamed[section.question] = answers[section.question].map((row) => {
       const said = section.codes.map((column) => about.get(row[column]));
-      const label = said.find((each) => each?.name !== undefined)?.name.label;
-      const retired = said.find((each) => each?.status?.deprecated === true);
+      const naming = said.find((each) => each?.name !== undefined);
+      const retired = statusOf(
+        naming ?? said.find((each) => each?.status !== undefined),
+        "Retired code",
+      );
       return {
         ...row,
-        ...(label !== undefined && { [section.field]: label }),
-        ...(retired !== undefined && {
-          retired: statusOf(retired, "Retired code"),
-        }),
+        ...(naming !== undefined && { [section.field]: naming.name.label }),
+        ...(retired !== "" && { retired }),
       };
     });
   }
@@ -330,23 +332,23 @@ function fromLabel(label = "") {
  * each of `QUESTIONS`, by question.
  */
 export function noticed(answers) {
-  const named = new Map();
+  const entries = new Map();
   for (const section of SECTIONS)
     for (const row of answers[section.question] ?? [])
-      named.set(row.entry, {
+      entries.set(row.entry, {
         name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
   const seen = new Map();
   for (const row of answers[SEEN] ?? []) {
-    if (!named.has(row.entry)) continue;
+    if (!entries.has(row.entry)) continue;
     if (!seen.has(row.entry))
       seen.set(row.entry, { places: new Set(), across: Number(row.places) });
     if (row.place !== undefined)
       seen.get(row.entry).places.add(placeName(row.place));
   }
   const joined = [...seen].map(([entry, { places, across }]) => {
-    const { name, one } = named.get(entry);
+    const { name, one } = entries.get(entry);
     return across > 1
       ? `${name} was recorded ${where([...places])}. Cascade keeps it as one ${one}.`
       : `${name} arrived more than once${places.size === 0 ? "" : ` from ${[...places][0]}`}. Cascade keeps it as one ${one}.`;
@@ -354,7 +356,7 @@ export function noticed(answers) {
   const more = joined.length - 3;
   const review = new Map();
   for (const row of answers[REVIEW] ?? []) {
-    const item = named.get(row.entry) ?? fromLabel(row.entryLabel);
+    const item = entries.get(row.entry) ?? fromLabel(row.entryLabel);
     review.set(
       JSON.stringify([row.entry, row.needs]),
       (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item),
@@ -439,8 +441,10 @@ function Table({ section, rows }) {
     }${index === 0 && row.retired !== undefined && html` <span class="tag">${row.retired}</span>`}</td>`;
   };
   const body = sorted.map((row) => {
-    const hidden = !section.columns
-      .map((column) => shown(column, row))
+    const hidden = ![
+      ...section.columns.map((column) => shown(column, row)),
+      row.retired ?? "",
+    ]
       .join("")
       .toLowerCase()
       .includes(wanted);

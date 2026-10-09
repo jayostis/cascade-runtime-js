@@ -433,7 +433,8 @@ async function signIn(fhirBase, popup) {
   }
   const shown = { row, step: "signing in", requests: 0 };
   state.connection = shown;
-  state.page = { answers: await answered(), about: state.page?.about };
+  const answers = await answered();
+  state.page = { answers, about: await aboutCodes(answers) };
   const now = (said = {}, doing = "busy") => {
     if (state.connection === shown) showConnection(said, doing);
   };
@@ -709,9 +710,13 @@ busy(async () => {
     async () => {
       document.body.dataset.engine = "ready";
       await readTables().catch(() => undefined);
-      const shown = state.page;
-      if (shown?.answers !== undefined)
-        shown.about = await aboutCodes(shown.answers);
+      // Each page is named from its own answers, until the page shown is one that was named.
+      for (
+        let shown = state.page;
+        shown?.answers !== undefined && shown.about === undefined;
+        shown = state.page
+      )
+        shown.about = (await aboutCodes(shown.answers)) ?? new Map();
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";
     },

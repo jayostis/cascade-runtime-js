@@ -226,7 +226,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     [`${CVX}141`, name("flu, split")],
     [`${CVX}57`, { ...name("hantavirus"), ...retired() }],
     [`${CVX}15`, retired(`${CVX}141`, `${CVX}150`)],
-    [`${SCT}195967001`, name("Asthma (disorder)")],
+    [`${SCT}195967001`, { ...name("Asthma (disorder)"), ...retired() }],
     [`${ICD}J45.909`, name("Unspecified asthma, uncomplicated")],
   ]);
   assert.deepEqual(
@@ -261,6 +261,11 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     assert.ok(named.includes(shown), shown);
   for (const hidden of ["Fluarix", "Hantavax", "Asthma (disorder)"])
     assert.ok(!named.includes(hidden), hidden);
+  assert.equal(
+    named.filter((line: string) => line.startsWith("Retired code")).length,
+    2,
+    "only the codes that named a row, or with none the first with a status, mark it",
+  );
   const unnamed = words();
   for (const shown of ["Fluarix", "Hantavax", "Asthma"])
     assert.ok(unnamed.includes(shown), shown);

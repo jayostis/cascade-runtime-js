@@ -1047,7 +1047,7 @@ ${shots.join("\n")}`);
               string,
               {
                 name?: { label: string };
-                status?: { deprecated: boolean };
+                status?: { deprecated: boolean; replacedBy: string[] };
               }
             >
           >;
@@ -1075,6 +1075,9 @@ ${shots.join("\n")}`);
         return codes.map((code) => ({
           label: about.get(code)?.name?.label ?? "",
           retired: about.get(code)?.status?.deprecated === true,
+          replacedBy: (about.get(code)?.status?.replacedBy ?? []).map(
+            (replacement) => replacement.replace(/^.*[/#]/, ""),
+          ),
         }));
       } finally {
         await pod.close();
@@ -1100,8 +1103,12 @@ ${shots.join("\n")}`);
           .allTextContents()
       ).sort(),
       said
-        .map(({ label, retired }) =>
-          retired ? `${label} Retired code` : label,
+        .map(({ label, retired, replacedBy }) =>
+          !retired
+            ? label
+            : replacedBy.length === 0
+              ? `${label} Retired code`
+              : `${label} Retired code, replaced by ${[replacedBy.slice(0, -1).join(", "), replacedBy.at(-1)].filter(Boolean).join(" and ")}`,
         )
         .sort(),
     );
