@@ -55,6 +55,8 @@ jobs:
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # The counterparts the start step checked out, a pull request named on Depends-On among them.
+          CASCADE_PACK_SIBLINGS: ${{ github.workspace }}
       - name: Build every kit's pod and site, and the front page above them
         if: ${{ !cancelled() }}
         run: npm run build:pages

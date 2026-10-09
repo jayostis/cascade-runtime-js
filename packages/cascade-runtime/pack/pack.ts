@@ -111,9 +111,18 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** The head of the component's default branch, read once for the whole pack and fetched: never a sibling or a folder handed in. */
+/**
+ * The component read once for the whole pack: the sibling checkout in `CASCADE_PACK_SIBLINGS` when CI names that
+ * folder, so that the package carries the counterparts its run proves together; else the head of its default branch,
+ * fetched, never a sibling on this machine.
+ */
 function headOf(component: Followed): Promise<Resolved> {
-  return resolve(component, { siblingsIn: [], cache: CACHE, log });
+  const siblings = process.env.CASCADE_PACK_SIBLINGS;
+  return resolve(component, {
+    siblingsIn: siblings === undefined ? [] : [siblings],
+    cache: CACHE,
+    log,
+  });
 }
 
 function treeOf(resolved: Resolved): string {
