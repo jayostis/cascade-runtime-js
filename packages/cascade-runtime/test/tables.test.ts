@@ -293,7 +293,7 @@ async function withIngredients(
 <${INGREDIENTS}> a rec:ReferenceSeries ; rdfs:label "Product ingredients" ; rec:tableKind rec:ProductIngredients .
 `;
   for (const [index, pairs] of line.entries()) {
-    const rows = pairs.flatMap(([product, ingredient], row) => {
+    const rows = pairs.flatMap(([product, ingredient]) => {
       const subject = iri(`urn:test:ingredient-row:${product}-${ingredient}`);
       return [
         [
@@ -320,7 +320,7 @@ async function withIngredients(
           subject,
           iri("https://w3id.org/sssom/mapping_justification"),
           iri(
-            `https://w3id.org/semapv/vocab/${row === 0 ? "MappingChaining" : "ManualMappingCuration"}`,
+            `https://w3id.org/semapv/vocab/${product === ingredient ? "ManualMappingCuration" : "MappingChaining"}`,
           ),
         ],
       ] as Triple[];
@@ -357,6 +357,7 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
   const ingredientsFirst = await withIngredients(first, [[advil, ibuprofen]]);
   const ingredientsLater = await withIngredients(feed, [
     [advil, ibuprofen],
+    // A row the first lacks, so the later is a version of its own.
     [advil, ibuprofen, ["723", "723"]],
   ]);
   const store = new MemoryFiles("urn:test:tables/");
@@ -390,32 +391,29 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
       .map(([, , label]) => label.value),
     [relabelled],
   );
-  const shots = [
-    ["141", "2025-10-01"],
-    ["150", "2025-10-01"],
-    ["140", "2024-10-01"],
-    ["141", "2024-10-01"],
+  const records = [
+    ...[
+      ["141", "2025-10-01"],
+      ["150", "2025-10-01"],
+      ["140", "2024-10-01"],
+      ["141", "2024-10-01"],
+    ].map(([code, date]) => [
+      "health:ImmunizationRecord",
+      `health:vaccineCode "${code}" ; health:administrationDate "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+    ]),
+    ...["153010", "5640"].map((code) => [
+      "health:AllergyRecord",
+      `health:allergenCode <${RXNORM}${code}>`,
+    ]),
   ].map(
-    (
-      [code, date],
-      index,
-    ) => `<urn:cascade:output-${index}> a health:ImmunizationRecord .
+    ([type, fields], index) => `<urn:cascade:output-${index}> a ${type} .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  health:vaccineCode "${code}" ; health:administrationDate "${date}"^^<http://www.w3.org/2001/XMLSchema#date> ;
-  rec:patient <${pod.subject}> .`,
-  );
-  const allergies = ["153010", "5640"].map(
-    (
-      code,
-      index,
-    ) => `<urn:cascade:output-${shots.length + index}> a health:AllergyRecord .
-<urn:cascade:output-${shots.length + index}-version> prov:specializationOf <urn:cascade:output-${shots.length + index}> ;
-  health:allergenCode <${RXNORM}${code}> ; rec:patient <${pod.subject}> .`,
+  ${fields} ; rec:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
-${[...shots, ...allergies].join("\n")}`);
+${records.join("\n")}`);
   assert.equal(entered.refused, undefined);
   assert.equal(entered.matched?.refused, undefined);
   await pod.close();
@@ -444,7 +442,8 @@ ${[...shots, ...allergies].join("\n")}`);
       "second: 140 141",
       "second: 141 150",
     ]);
-    const [held, adopted] = ingredientsLater.versions;
+    const [held] = ingredientsFirst.versions;
+    const [, adopted] = ingredientsLater.versions;
     const brands = await pod.ask({
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
         ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
