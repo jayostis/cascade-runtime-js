@@ -161,15 +161,25 @@ function tablesOver(
   });
 }
 
-/** The vocabulary as a package shipping a revision of its rule list would carry it: the same rules, a new version. */
-async function ruleListRevised(): Promise<Files> {
-  const { vocabulary } = parts;
+/** The vocabulary's rule list index, the revision it ships and that revision's series. */
+async function ruleList(): Promise<{
+  index: string;
+  shipped: string;
+  series: string;
+}> {
   const index = new TextDecoder().decode(
-    await vocabulary.read(`${RULE_LIST}references.ttl`),
+    await parts.vocabulary.read(`${RULE_LIST}references.ttl`),
   );
   const [, shipped] = /rec:shipsWith <([^>]+)>/.exec(index) ?? [];
   const [, series] = /<([^>]+)> a rec:ReferenceSeries/.exec(index) ?? [];
   assert.ok(shipped !== undefined && series !== undefined);
+  return { index, shipped, series };
+}
+
+/** The vocabulary as a package shipping a revision of its rule list would carry it: the same rules, a new version. */
+async function ruleListRevised(): Promise<Files> {
+  const { vocabulary } = parts;
+  const { index, shipped, series } = await ruleList();
   const next = "urn:uuid:0b8f3c1e-6d2a-4e5b-9c7f-1a2b3c4d5e6f";
   const rows = await vocabulary.read(`${RULE_LIST}${fileStem(shipped)}.ttl`);
   assert.ok(rows);
@@ -292,8 +302,8 @@ interface Mapping {
   readonly kind: string;
   readonly system: string;
   readonly predicate: string;
-  /** Whether a row from one code to another was reached over several relationships. */
-  readonly chained: boolean;
+  /** How the row from `source` to `target` was reached. */
+  readonly justification: (source: string, target: string) => string;
 }
 
 const INGREDIENTS: Mapping = {
@@ -302,7 +312,8 @@ const INGREDIENTS: Mapping = {
   kind: "ProductIngredients",
   system: RXNORM,
   predicate: "broadMatch",
-  chained: true,
+  justification: (source, target) =>
+    source === target ? "ManualMappingCuration" : "MappingChaining",
 };
 
 const CONVERSIONS: Mapping = {
@@ -311,7 +322,7 @@ const CONVERSIONS: Mapping = {
   kind: "CodeConversions",
   system: ICD10CM,
   predicate: "exactMatch",
-  chained: false,
+  justification: () => "ManualMappingCuration",
 };
 
 /**
@@ -330,10 +341,8 @@ async function withMappings(
 <${mapping.series}> a rec:ReferenceSeries ; rdfs:label "${mapping.label}" ; rec:tableKind rec:${mapping.kind} .
 `;
   for (const [index, pairs] of line.entries()) {
-    const rows = pairs.flatMap(([product, ingredient]) => {
-      const subject = iri(
-        `urn:test:${mapping.kind}-row:${product}-${ingredient}`,
-      );
+    const rows = pairs.flatMap(([source, target]) => {
+      const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
       return [
         [
           subject,
@@ -343,7 +352,7 @@ async function withMappings(
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedSource"),
-          iri(mapping.system + product),
+          iri(mapping.system + source),
         ],
         [
           subject,
@@ -353,13 +362,13 @@ async function withMappings(
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
-          iri(mapping.system + ingredient),
+          iri(mapping.system + target),
         ],
         [
           subject,
           iri("https://w3id.org/sssom/mapping_justification"),
           iri(
-            `https://w3id.org/semapv/vocab/${mapping.chained && product !== ingredient ? "MappingChaining" : "ManualMappingCuration"}`,
+            `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
           ),
         ],
       ] as Triple[];
@@ -506,10 +515,10 @@ ${records.join("\n")}`);
       "held: 153010 5640",
     ]);
     const [converted] = later.versions;
+    const { shipped } = await ruleList();
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment jdg:justification jdg:SameConvertedCode ; prov:used <${converted}> , ?rules ; prov:hadMember ?record .
-        ?rules prov:specializationOf <urn:uuid:f4e24578-cf10-48f7-b62b-6732550927a4> ; pav:version "3" .
+        ?judgment jdg:justification jdg:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
         ?record pav:hasCurrentVersion/health:icd10Code ?code
       } GROUP BY ?judgment`,
     });
