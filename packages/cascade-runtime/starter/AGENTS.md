@@ -29,6 +29,9 @@ Under the pods, the sidebar lists the reference tables the pods are matched
 with, from `tablesBeside` (`held()`); `/tables/<id>/` shows one with its
 source, licence, freshness, a search (`search()`) and which pods use which
 version (`uses()`), and Check now posts to `/tables/check`.
+A pod's page names each record by its code's name in those tables
+(`about(codesOf(answers))`), else by the record's own text, and marks a
+retired code.
 Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.
