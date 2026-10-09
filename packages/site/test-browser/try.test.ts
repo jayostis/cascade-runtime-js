@@ -926,7 +926,9 @@ test("in the browser, a check keeps the test feed's planted newer version in the
         owner: string;
         opened?: { refused?: string; unheld: string[] };
         enter(turtle: string): Promise<{ refused?: string }>;
-        ask(question: { query: string }): Promise<Record<string, string>[]>;
+        ask(
+          question: string | { query: string },
+        ): Promise<Record<string, string>[]>;
         close(): Promise<void>;
       }>;
     }
@@ -1035,6 +1037,73 @@ ${shots.join("\n")}`);
     assert.match(
       await page.locator("p.note").innerText(),
       /^Checked the feeds: nothing new\.$/,
+    );
+
+    const said = await page.evaluate(async () => {
+      const runtime = (await import("cascade-runtime" as string)) as Runtime & {
+        appTables(): Promise<{
+          about(codes: string[]): Promise<
+            Map<
+              string,
+              {
+                name?: { label: string };
+                status?: { deprecated: boolean };
+              }
+            >
+          >;
+        }>;
+      };
+      const pod = await runtime.openPod("tables-proof");
+      try {
+        const shots = ["57", "03"].map(
+          (
+            code,
+          ) => `<urn:cascade:output-${code}> a <https://ns.cascadeprotocol.org/health/v1#ImmunizationRecord> .
+<urn:cascade:output-${code}-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-${code}> ;
+  <https://ns.cascadeprotocol.org/health/v1#vaccineCode> "${code}" ;
+  <https://ns.cascadeprotocol.org/health/v1#administrationDate> "2020-01-01"^^<http://www.w3.org/2001/XMLSchema#date> ;
+  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .`,
+        );
+        await pod.enter(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> ;
+  <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${pod.owner}> ;
+    <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/judgments/v1-draft#patient> ] .
+${shots.join("\n")}`);
+        const codes = (await pod.ask("pod/My immunizations")).map(
+          ({ code = "" }) => code,
+        );
+        const about = await (await runtime.appTables()).about(codes);
+        return codes.map((code) => ({
+          label: about.get(code)?.name?.label ?? "",
+          retired: about.get(code)?.status?.deprecated === true,
+        }));
+      } finally {
+        await pod.close();
+      }
+    });
+    assert.ok(
+      said.some(({ label }) => label !== ""),
+      "the names series names no shot",
+    );
+    assert.ok(
+      said.some(({ retired }) => retired),
+      "the status series retires no shot",
+    );
+    await page.goto(
+      `${served.url}try/index.html?pod=tables-proof#see-immunizations`,
+    );
+    await settled(page);
+    await page.waitForSelector('body[data-tables="ready"]');
+    assert.deepEqual(
+      (
+        await page
+          .locator("#see-immunizations tbody td:first-child")
+          .allTextContents()
+      ).sort(),
+      said
+        .map(({ label, retired }) =>
+          retired ? `${label} Retired code` : label,
+        )
+        .sort(),
     );
   } finally {
     await context.close();

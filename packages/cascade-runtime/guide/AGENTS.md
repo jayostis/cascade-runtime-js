@@ -96,6 +96,10 @@ source, licence, credit, versions and how fresh its feed is; `uses()`, the
 pods last opened with each version, by name; `search(series, text)`, the codes
 of its current version that are `text` or whose name holds it, each with what
 `about(codes)` says of it (its name and status) and the codes it maps to.
+A pod's own page names a record by its code's name, else by the record's own
+text: the code columns of `pod/My immunizations`, `pod/My active medications`,
+`pod/My active conditions` (`snomed`, `icd10`) and `pod/My procedures` hold
+each code's IRI in its system, which `about` takes as it is.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with

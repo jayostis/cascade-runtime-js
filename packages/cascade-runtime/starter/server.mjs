@@ -27,6 +27,7 @@ import {
 } from "./pods.mjs";
 import {
   checkedNote,
+  codesOf,
   connectionDialog,
   demoPeople,
   didNote,
@@ -277,6 +278,9 @@ async function showPod(response, name, query, names) {
     findHospital: `${podPath(name)}hospitals`,
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
+    about: await tables()
+      .then((kept) => kept.about(codesOf(answers)))
+      .catch(() => undefined),
   });
   send(
     response,

@@ -31,15 +31,17 @@ const number = (head, of) => ({
 const SEVERITY = { high: "High severity", low: "Low severity" };
 
 /**
- * One tile for each of these questions, in this order: its title, what one of its rows is called, the row's name, the
- * table's columns, the column the table opens sorted by, and whether it opens with the newest first.
+ * One tile for each of these questions, in this order: its title, what one of its rows is called, the column of the
+ * record's own name for it, the columns holding its codes in the order a name is taken from them, the table's columns,
+ * the column the table opens sorted by, and whether it opens with the newest first.
  */
 export const SECTIONS = [
   {
     title: "Allergies",
     one: "allergy",
     question: "pod/My active allergies",
-    name: (row) => row.allergen,
+    field: "allergen",
+    codes: ["code"],
     columns: [
       text("Allergen", (row) => row.allergen),
       {
@@ -66,7 +68,8 @@ export const SECTIONS = [
     title: "Medications",
     one: "medication",
     question: "pod/My active medications",
-    name: (row) => row.medication,
+    field: "medication",
+    codes: ["code"],
     columns: [
       text("Medication", (row) => row.medication),
       date("Since", (row) => row.started),
@@ -77,7 +80,8 @@ export const SECTIONS = [
     title: "Conditions",
     one: "condition",
     question: "pod/My active conditions",
-    name: (row) => row.condition,
+    field: "condition",
+    codes: ["icd10", "snomed"],
     columns: [
       text("Condition", (row) => row.condition),
       date("Since", (row) => row.onset),
@@ -88,7 +92,8 @@ export const SECTIONS = [
     title: "Lab results",
     one: "lab result",
     question: "pod/My lab results",
-    name: (row) => row.test,
+    field: "test",
+    codes: ["code"],
     columns: [
       text("Test", (row) => row.test),
       number("Value", (row) => row.value),
@@ -102,7 +107,8 @@ export const SECTIONS = [
     title: "Immunizations",
     one: "immunization",
     question: "pod/My immunizations",
-    name: (row) => row.vaccine,
+    field: "vaccine",
+    codes: ["code"],
     columns: [
       text("Vaccine", (row) => row.vaccine),
       date("Date", (row) => row.given),
@@ -114,7 +120,8 @@ export const SECTIONS = [
     title: "Procedures",
     one: "procedure",
     question: "pod/My procedures",
-    name: (row) => row.procedure,
+    field: "procedure",
+    codes: ["snomed"],
     columns: [
       text("Procedure", (row) => row.procedure),
       date("Date", (row) => row.performed),
@@ -136,6 +143,42 @@ export const QUESTIONS = [
   REVIEW,
   ...SECTIONS.map(({ question }) => question),
 ];
+
+/** The codes the sections' rows in `answers` hold, each once: what to ask the tables' `about` of. */
+export function codesOf(answers) {
+  const codes = SECTIONS.flatMap((section) =>
+    (answers[section.question] ?? []).flatMap((row) =>
+      section.codes.map((column) => row[column]),
+    ),
+  );
+  return [
+    ...new Set(codes.filter((code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? ""))),
+  ];
+}
+
+/**
+ * The sections' rows in `answers`, each named by the first of its codes `about` (the tables' `about`) names, else by
+ * the record's own text, and, when one of its codes is retired, `retired` saying so.
+ */
+export function named(answers, about) {
+  const renamed = { ...answers };
+  for (const section of SECTIONS) {
+    if (answers[section.question] === undefined) continue;
+    renamed[section.question] = answers[section.question].map((row) => {
+      const said = section.codes.map((column) => about.get(row[column]));
+      const label = said.find((each) => each?.name !== undefined)?.name.label;
+      const retired = said.find((each) => each?.status?.deprecated === true);
+      return {
+        ...row,
+        ...(label !== undefined && { [section.field]: label }),
+        ...(retired !== undefined && {
+          retired: statusOf(retired, "Retired code"),
+        }),
+      };
+    });
+  }
+  return renamed;
+}
 
 /** A measurement to three significant figures, as a lab report gives it: `60.967166` is `61`, `4.7055` is `4.71`. */
 export function rounded(value) {
@@ -291,7 +334,7 @@ export function noticed(answers) {
   for (const section of SECTIONS)
     for (const row of answers[section.question] ?? [])
       named.set(row.entry, {
-        name: section.name(row) || fromLabel(row.entryLabel).name,
+        name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
   const seen = new Map();
@@ -387,13 +430,13 @@ function Table({ section, rows }) {
     const click = () => setSort({ at: index, up: by !== "ascending" });
     return html`<th aria-sort=${by}><button type="button" data-type=${column.type} onClick=${click}>${column.head}</button></th>`;
   });
-  const cell = (column, row) => {
+  const cell = (column, row, index) => {
     const text = shown(column, row);
     return html`<td data-key=${column.key(row) ?? ""}>${
       column.tag && text !== ""
         ? html`<span class="tag${column.warm(row) ? " warm" : ""}">${text}</span>`
         : text
-    }</td>`;
+    }${index === 0 && row.retired !== undefined && html` <span class="tag">${row.retired}</span>`}</td>`;
   };
   const body = sorted.map((row) => {
     const hidden = !section.columns
@@ -401,7 +444,7 @@ function Table({ section, rows }) {
       .join("")
       .toLowerCase()
       .includes(wanted);
-    return html`<tr hidden=${hidden || undefined}>${section.columns.map((column) => cell(column, row))}</tr>`;
+    return html`<tr hidden=${hidden || undefined}>${section.columns.map((column, index) => cell(column, row, index))}</tr>`;
   });
   const filter = (event) =>
     setWanted(event.currentTarget.value.trim().toLowerCase());
@@ -418,7 +461,7 @@ ${body}
 export function tile(section, rows) {
   const id = `see-${slug(section.title)}`;
   const opened = opening(section, rows);
-  const names = opened.map((row) => section.name(row) ?? "").join(", ");
+  const names = opened.map((row) => row[section.field] ?? "").join(", ");
   return {
     tile: html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
     dialog: box(
@@ -441,12 +484,24 @@ export function tile(section, rows) {
  * - `signIn(hospital)`: a button that signs the pod's person in at one of `person`'s hospitals;
  * - `findHospital`: the address of the page that finds a hospital;
  * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined;
- * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them.
+ * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
+ * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
+ *   the rows by.
  */
 export function podPage(
-  answers,
-  { pod, person, from, signIn, findHospital, connection, unheld = [] },
+  asked,
+  {
+    pod,
+    person,
+    from,
+    signIn,
+    findHospital,
+    connection,
+    unheld = [],
+    about = new Map(),
+  },
 ) {
+  const answers = named(asked, about);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
@@ -880,13 +935,13 @@ function codeShown(code) {
   return code.replace(/^.*[/#]/, "");
 }
 
-/** What a found code's `about` says of its status: `Retired`, `Retired, replaced by 141`, or nothing. */
-function statusOf(about) {
+/** What a code's `about` says of its status, in words starting `said`: `Retired`, `Retired, replaced by 141`, or nothing. */
+function statusOf(about, said = "Retired") {
   const status = about?.status;
   if (status?.deprecated !== true) return "";
   return status.replacedBy.length === 0
-    ? "Retired"
-    : `Retired, replaced by ${listed(status.replacedBy.map(codeShown))}`;
+    ? said
+    : `${said}, replaced by ${listed(status.replacedBy.map(codeShown))}`;
 }
 
 /**

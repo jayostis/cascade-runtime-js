@@ -26,6 +26,7 @@ import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   checkedNote,
   closing,
+  codesOf,
   connectionDialog,
   didNote,
   doing,
@@ -82,7 +83,8 @@ hospitalsReady.catch(() => undefined);
 
 /**
  * What the page shows: the pods here and the demo people; the pod shown, by name; `page`, the pod's page as its
- * `answers` and the hospital a record was just brought in `from`, or another page's `title` and `body`; the
+ * `answers`, what the tables say of their codes (`about`, once the engine is ready) and the hospital a record was just
+ * brought in `from`, or another page's `title` and `body`; the
  * `connection` under way or done, with its row, step, requests answered, once pulled the files to import, and what its
  * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; what the page
  * is doing (`doing`), in `data-state` on the body, and while it is busy, what it says it is doing (`saying`); the
@@ -165,7 +167,7 @@ const signInButton = (fhirBase, label) =>
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, from, title, body } = state.page;
+  const { answers, about, from, title, body } = state.page;
   if (answers === undefined) return { title, body };
   const { current, connection } = state;
   return {
@@ -192,6 +194,7 @@ function pageShown() {
         ),
       findHospital: `${podHref(current)}&hospitals`,
       unheld: pod?.opened?.unheld,
+      about,
     }),
   };
 }
@@ -271,9 +274,20 @@ async function answered() {
   );
 }
 
+/** What the tables say of the codes `answers` hold; nothing before the engine is ready, or when they cannot say. */
+async function aboutCodes(answers) {
+  if (document.body.dataset.engine !== "ready") return undefined;
+  try {
+    return await (await appTables()).about(codesOf(answers));
+  } catch {
+    return undefined;
+  }
+}
+
 /** The pod's page; `from` names the hospital a record was just brought in from. */
 async function showPod(from) {
-  state.page = { answers: await answered(), from };
+  const answers = await answered();
+  state.page = { answers, about: await aboutCodes(answers), from };
   state.doing = "ready";
   redraw();
 }
@@ -419,7 +433,7 @@ async function signIn(fhirBase, popup) {
   }
   const shown = { row, step: "signing in", requests: 0 };
   state.connection = shown;
-  state.page = { answers: await answered() };
+  state.page = { answers: await answered(), about: state.page?.about };
   const now = (said = {}, doing = "busy") => {
     if (state.connection === shown) showConnection(said, doing);
   };
@@ -695,6 +709,9 @@ busy(async () => {
     async () => {
       document.body.dataset.engine = "ready";
       await readTables().catch(() => undefined);
+      const shown = state.page;
+      if (shown?.answers !== undefined)
+        shown.about = await aboutCodes(shown.answers);
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";
     },

@@ -193,6 +193,80 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
   }
 });
 
+test("a pod's page names a row by the first of its codes the tables name, else by the record's own text, and says when a code is retired", () => {
+  const CVX = "http://hl7.org/fhir/sid/cvx/";
+  const ICD = "http://hl7.org/fhir/sid/icd-10-cm/";
+  const SCT = "http://snomed.info/sct/";
+  const name = (label: string) => ({
+    name: { label, altLabels: [], origin: "urn:x:names" },
+  });
+  const retired = (...replacedBy: string[]) => ({
+    status: { deprecated: true, replacedBy, origin: "urn:x:status" },
+  });
+  const answers = {
+    "pod/My immunizations": [
+      { entry: "i1", vaccine: "Fluarix", code: `${CVX}141` },
+      { entry: "i2", vaccine: "Hantavax", code: `${CVX}57` },
+      { entry: "i3", vaccine: "Old flu", code: `${CVX}15` },
+      { entry: "i4", vaccine: "Unlisted", code: `${CVX}999` },
+    ],
+    [CONDITIONS]: [
+      {
+        entry: "c1",
+        condition: "Asthma",
+        snomed: `${SCT}195967001`,
+        icd10: `${ICD}J45.909`,
+      },
+    ],
+    [SEEN]: [
+      { entry: "i1", place: "Cascade North", records: "2", places: "1" },
+    ],
+  };
+  const about = new Map<string, object>([
+    [`${CVX}141`, name("flu, split")],
+    [`${CVX}57`, { ...name("hantavirus"), ...retired() }],
+    [`${CVX}15`, retired(`${CVX}141`, `${CVX}150`)],
+    [`${SCT}195967001`, name("Asthma (disorder)")],
+    [`${ICD}J45.909`, name("Unspecified asthma, uncomplicated")],
+  ]);
+  assert.deepEqual(
+    view.codesOf(answers).sort(),
+    [
+      `${CVX}141`,
+      `${CVX}15`,
+      `${CVX}57`,
+      `${CVX}999`,
+      `${SCT}195967001`,
+      `${ICD}J45.909`,
+    ].sort(),
+  );
+  const props = { pod: "alex-rivera", signIn: () => "", findHospital: "" };
+  const words = (about?: Map<string, object>) =>
+    render(view.podPage(answers, { ...props, about }))
+      .replace(/<[^>]*>/g, "\n")
+      .split("\n")
+      .map((line: string) => line.trim())
+      .filter(Boolean);
+  const named = words(about);
+  for (const shown of [
+    "flu, split, hantavirus, Old flu, Unlisted",
+    "hantavirus",
+    "Retired code",
+    "Old flu",
+    "Retired code, replaced by 141 and 150",
+    "Unlisted",
+    "Unspecified asthma, uncomplicated",
+    "Flu, split arrived more than once from Cascade North. Cascade keeps it as one immunization.",
+  ])
+    assert.ok(named.includes(shown), shown);
+  for (const hidden of ["Fluarix", "Hantavax", "Asthma (disorder)"])
+    assert.ok(!named.includes(hidden), hidden);
+  const unnamed = words();
+  for (const shown of ["Fluarix", "Hantavax", "Asthma"])
+    assert.ok(unnamed.includes(shown), shown);
+  assert.ok(!unnamed.some((line: string) => line.startsWith("Retired")));
+});
+
 test("the frame's title bar has File, whose two items open boxes that confirm with one button posting to the host's action, and Help, whose About names the app, its version and cascade-runtime's", () => {
   const page = render(
     view.frame({
