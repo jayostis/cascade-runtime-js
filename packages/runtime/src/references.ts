@@ -66,7 +66,11 @@ async function readTableTerms(
 
 /** The index of a version's rows by each code they are found by, built for these properties; none for none. */
 export function rowsByCode(
-  rows: readonly Triple[],
+  rows: readonly (readonly [
+    { readonly value: string },
+    { readonly value: string },
+    { readonly value: string },
+  ])[],
   foundBy: readonly string[],
 ): Uint8Array | undefined {
   if (foundBy.length === 0) return undefined;
@@ -231,6 +235,7 @@ export class References {
       `${RDF}type`,
       iri(`${REC}ReferenceSeries`),
     )) {
+      if (this.kindOf(series.value) !== undefined) continue;
       for (const version of this.index.subjects(SPECIALIZATION_OF, series)) {
         const rows = new Graph(await this.rows(version.value));
         if (rows.subjects(`${RDF}type`, iri(`${REC}MatcherRule`)).length > 0) {

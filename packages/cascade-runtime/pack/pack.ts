@@ -40,7 +40,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
-import { Tables } from "../src/tables.js";
+import { writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -225,22 +225,22 @@ async function packComponents(): Promise<{
   return { resolved, bridge: record.bridge, bridgeFolder: bridge.folder };
 }
 
-/** The starter copies: each series' current version in the feeds as they are now, kept as an app keeps them. */
+/** The starter copies: the feeds as they are now, with the rows of each version an app keeps, as published. */
 async function packStarterTables(
   feeds: readonly string[],
   vocabulary: string,
 ): Promise<void> {
   const folder = join(COMPONENTS, TABLES_FOLDER);
   await mkdir(folder, { recursive: true });
-  const tables = new Tables({
-    files: new FolderFiles(folder),
-    feeds,
-    vocabulary: new FolderFiles(vocabulary),
-    newStore: () => new OxigraphStore(),
-  });
-  for (const { feed, kept, later, refused } of await tables.check({
-    cache: "no-cache",
-  })) {
+  const written = new FolderFiles(folder);
+  for (const { feed, kept, later, refused } of await writeStarterCopies(
+    {
+      feeds,
+      vocabulary: new FolderFiles(vocabulary),
+      newStore: () => new OxigraphStore(),
+    },
+    (path, bytes) => written.write(path, bytes),
+  )) {
     if (later !== undefined || refused.length > 0)
       throw new Error(
         `${feed} gave no starter copies: ${later ?? refused.map(({ version, reason }) => `${version}: ${reason}`).join("; ")}`,

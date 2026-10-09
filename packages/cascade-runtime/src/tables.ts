@@ -1,10 +1,12 @@
 import {
+  canonical,
   CODES,
-  contentName,
+  documentName,
   type Files,
   fileStem,
   Graph,
   iri,
+  MemoryFiles,
   ntriples,
   RDF,
   References,
@@ -189,19 +191,47 @@ export interface LocalBuilds {
   ): Promise<ReadonlyMap<string, Omit<Checked, "feed" | "kept">>>;
 }
 
+/**
+ * A version's name (N12) from its rows' canonical N-Triples lines, in order: over its series, the version it revises
+ * and its rows, each of those two lines put in its place among them.
+ */
+function nameOver(
+  lines: readonly string[],
+  series: string,
+  previous: string | undefined,
+): Promise<string> {
+  const named = [...lines];
+  for (const line of [
+    `<${THIS_VERSION}> <${SPECIALIZATION_OF}> <${series}> .`,
+    ...(previous === undefined
+      ? []
+      : [`<${THIS_VERSION}> <${REVISION_OF}> <${previous}> .`]),
+  ]) {
+    let [low, high] = [0, named.length];
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (named[middle]! < line) low = middle + 1;
+      else high = middle;
+    }
+    named.splice(low, 0, line);
+  }
+  return documentName(new TextEncoder().encode(`${named.join("\n")}\n`));
+}
+
 /** A version's name (N12): over its series, the version it revises and its rows. */
-export function versionName(
+export async function versionName(
   series: string,
   previous: string | undefined,
   rows: readonly Triple[],
 ): Promise<string> {
-  return contentName([
-    [iri(THIS_VERSION), iri(SPECIALIZATION_OF), iri(series)],
-    ...(previous === undefined
-      ? []
-      : [[iri(THIS_VERSION), iri(REVISION_OF), iri(previous)] as const]),
-    ...rows,
-  ]);
+  if (rows.some((triple) => triple.some((t) => t.termType === "BlankNode")))
+    throw new Error("content to be named holds a blank node");
+  const text = await canonical(rows);
+  return nameOver(
+    text.split("\n").filter((line) => line !== ""),
+    series,
+    previous,
+  );
 }
 
 async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
@@ -225,27 +255,62 @@ async function gunzipped(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   }
 }
 
-/** The N-Quads' triples, each of which must be in the graph named by the version. */
+/** A row's subject, predicate and object, the object's value empty when it is a literal. */
+type RowTerms = readonly [
+  { readonly value: string },
+  { readonly value: string },
+  { readonly value: string },
+];
+
+/** An absolute IRI as N-Triples writes one, without its angle brackets. */
+const IRI = String.raw`[A-Za-z][A-Za-z\d+.-]*:(?:[^\p{Cc} <>"{}|^\x60\\%]|%[\dA-Fa-f]{2})*`;
+const LITERAL = String.raw`"(?:[^"\\\n\r]|\\[tbnrf"'\\]|\\u[\dA-Fa-f]{4}|\\U[\dA-Fa-f]{8})*"(?:\^\^<${IRI}>|@[A-Za-z]+(?:-[A-Za-z\d]+)*)?`;
+/** A row as an N-Triples line: two IRIs, then an IRI or a literal; each IRI is captured. */
+const ROW_LINE = new RegExp(
+  `^<(${IRI})> <(${IRI})> (?:<(${IRI})>|${LITERAL}) \\.$`,
+  "u",
+);
+
+/**
+ * A version's rows as its published N-Quads give them, read line by line and never into a store: a version of hundreds
+ * of thousands of rows parsed whole holds gigabytes. Every line must be in the version's graph, sort after the one
+ * before, so the file is canonical N-Quads (N12), and be a row of N-Triples, so a store reads them later; the rows
+ * must then give the version's name. Their text is the version's N-Triples, a line each.
+ */
 async function rowsOf(
   nquads: string,
   version: string,
-  newStore: StoreFactory,
-): Promise<Triple[]> {
+  series: string,
+  previous: string | undefined,
+): Promise<{ text: string; terms: RowTerms[] }> {
+  const graph = ` <${version}> .`;
   const lines: string[] = [];
+  const terms: RowTerms[] = [];
+  let last = "";
   for (const line of nquads.split("\n")) {
-    if (line.trim() === "") continue;
-    const quad = /^(.*)\s<([^<>"\s]*)>\s*\.\s*$/.exec(line);
-    if (quad?.[2] !== version)
+    if (line === "") continue;
+    if (!line.endsWith(graph))
       throw new Unverified(`a row is outside the graph named ${version}`);
-    lines.push(`${quad[1]} .`);
+    if (line <= last)
+      throw new Unverified("its rows are not in canonical order, each once");
+    last = line;
+    const triple = `${line.slice(0, -graph.length)} .`;
+    const found = ROW_LINE.exec(triple);
+    if (found === null)
+      throw new Unverified(
+        `its rows are not N-Quads of IRIs and literals: ${triple}`,
+      );
+    lines.push(triple);
+    terms.push([
+      { value: found[1]! },
+      { value: found[2]! },
+      { value: found[3] ?? "" },
+    ]);
   }
-  try {
-    return await newStore().parse(lines.join("\n"), version);
-  } catch (error) {
-    throw new Unverified(
-      `its rows are not N-Quads: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  const text = lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+  if ((await nameOver(lines, series, previous)) !== version)
+    throw new Unverified("its rows and line do not give its name");
+  return { text, terms };
 }
 
 function only(graph: Graph, subject: Term, kept: readonly string[]): Triple[] {
@@ -263,6 +328,16 @@ export function shipped(references: References): string[] {
     .match(undefined, `${REC}shipsWith`)
     .map(([, , version]) => version.value)
     .sort();
+}
+
+/** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
+export const PUBLISHED_ROWS = ".nq.gz";
+
+/** A version's N-Triples from its published rows: each line's graph dropped. */
+async function fromPublished(bytes: Uint8Array): Promise<Uint8Array> {
+  return new TextEncoder().encode(
+    (await gunzipped(new Uint8Array(bytes))).replace(/ <[^<>]*> \.$/gm, " ."),
+  );
 }
 
 /** The feed that last described the series. */
@@ -362,9 +437,34 @@ export class Tables {
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
   readonly #rows = new Map<string, Promise<Triple[]>>();
+  #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
     this.#options = options;
+  }
+
+  /**
+   * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and names and status,
+   * which views read. A series of any other kind is neither kept nor packed.
+   */
+  #kindsRead(): Promise<ReadonlySet<string>> {
+    this.#kinds ??= (async () => {
+      const { vocabulary, newStore } = this.#options;
+      const kinds = new Set([`${REC}CodeNames`, `${REC}CodeStatus`]);
+      for (const path of await vocabulary.list(RULE_LIST)) {
+        const bytes = path.endsWith(".ttl")
+          ? await vocabulary.read(path)
+          : undefined;
+        if (bytes === undefined) continue;
+        for (const [, predicate, object] of await newStore().parse(
+          bytes,
+          vocabulary.iri + path,
+        ))
+          if (predicate.value === `${REC}tableKind`) kinds.add(object.value);
+      }
+      return kinds;
+    })();
+    return this.#kinds;
   }
 
   /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */
@@ -652,7 +752,11 @@ export class Tables {
     return next;
   }
 
-  /** An empty store starts from the starter copies, and again whenever it is emptied, as removing an app's pods does. */
+  /**
+   * An empty store starts from the starter copies, and again whenever it is emptied, as removing an app's pods does.
+   * A version's rows come as published and are written as its N-Triples, with no engine, so a first visit draws
+   * before one loads; what is held is written last, so a start cut short starts again.
+   */
   #start(): Promise<void> {
     this.#started ??= (async () => {
       const { files, starter } = this.#options;
@@ -664,7 +768,13 @@ export class Tables {
         ...paths.filter((path) => path === HELD),
       ]) {
         const bytes = await starter.read(path);
-        if (bytes !== undefined) await files.write(path, bytes);
+        if (bytes === undefined) continue;
+        if (path.endsWith(PUBLISHED_ROWS))
+          await files.write(
+            `${path.slice(0, -PUBLISHED_ROWS.length)}.ttl`,
+            await fromPublished(bytes),
+          );
+        else await files.write(path, bytes);
       }
     })().finally(() => {
       this.#started = undefined;
@@ -733,9 +843,11 @@ export class Tables {
       iri(`${REC}ReferenceSeries`),
     )) {
       const [version] = catalog.objects(series, `${DCAT}hasCurrentVersion`);
+      const kind = catalog.objects(series, `${REC}tableKind`)[0]?.value ?? "";
       if (
         version?.termType !== "NamedNode" ||
-        index.match(version, SPECIALIZATION_OF).length > 0
+        index.match(version, SPECIALIZATION_OF).length > 0 ||
+        !(await this.#kindsRead()).has(kind)
       )
         continue;
       const [held] = index.objects(series, `${REC}shipsWith`);
@@ -770,7 +882,7 @@ export class Tables {
         continue;
       }
       const previous = catalog.objects(version, REVISION_OF)[0]?.value;
-      let rows: Triple[];
+      let rows: Awaited<ReturnType<typeof rowsOf>>;
       try {
         if ((await sha256(bytes)) !== checksum.value)
           throw new Unverified(
@@ -779,24 +891,25 @@ export class Tables {
         rows = await rowsOf(
           await gunzipped(bytes),
           version.value,
-          this.#options.newStore,
+          series.value,
+          previous,
         );
-        if ((await versionName(series.value, previous, rows)) !== version.value)
-          throw new Unverified("its rows and line do not give its name");
       } catch (error) {
         if (!(error instanceof Unverified)) throw error;
         refused.push({ version: version.value, reason: error.message });
         continue;
       }
-      const kind = catalog.objects(series, `${REC}tableKind`)[0]?.value ?? "";
       const codes = rowsByCode(
-        rows,
+        rows.terms,
         (
           await tableTerms(this.#options.vocabulary, this.#options.newStore)
         ).foundBy.get(kind) ?? [],
       );
       const stem = fileStem(version.value);
-      await this.#options.files.write(`${stem}.ttl`, ntriples(rows));
+      await this.#options.files.write(
+        `${stem}.ttl`,
+        new TextEncoder().encode(rows.text),
+      );
       if (codes !== undefined)
         await this.#options.files.write(stem + CODES, codes);
       index = new Graph([
@@ -861,4 +974,42 @@ export class Tables {
     });
     return { feed, kept, ...(later === undefined ? {} : { later }), refused };
   }
+}
+
+/**
+ * The starter copies: the store a check of the feeds keeps now, each version's rows in it as the feed published them
+ * (`PUBLISHED_ROWS`) in place of its N-Triples, so they are carried at their published size.
+ */
+export async function writeStarterCopies(
+  options: Pick<TablesOptions, "feeds" | "vocabulary" | "newStore"> & {
+    readonly fetch?: typeof fetch;
+  },
+  write: (path: string, bytes: Uint8Array) => Promise<void>,
+): Promise<Checked[]> {
+  const published = new Map<string, Uint8Array>();
+  const fetching = options.fetch ?? fetch;
+  const store = new MemoryFiles("urn:cascade:starter-tables/");
+  const checked = await new Tables({
+    ...options,
+    files: store,
+    fetch: async (input, init) => {
+      const response = await fetching(input, init);
+      if (!response.ok) return response;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+        const nquads = await gunzipped(bytes).catch(() => "");
+        const [, version] = / <([^<>]*)> \.$/m.exec(nquads) ?? [];
+        if (version !== undefined)
+          published.set(`${fileStem(version)}.ttl`, bytes);
+      }
+      return new Response(bytes, { status: response.status });
+    },
+  }).check({ cache: "no-cache" });
+  for (const path of await store.list("")) {
+    const rows = published.get(path);
+    if (rows !== undefined)
+      await write(`${path.slice(0, -".ttl".length)}${PUBLISHED_ROWS}`, rows);
+    else await write(path, (await store.read(path))!);
+  }
+  return checked;
 }

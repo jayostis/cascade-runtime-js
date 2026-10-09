@@ -32,7 +32,14 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { type Checked, RULE_LIST, Tables, versionName } from "../src/tables.js";
+import {
+  type Checked,
+  RULE_LIST,
+  PUBLISHED_ROWS,
+  Tables,
+  versionName,
+  writeStarterCopies,
+} from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
@@ -333,6 +340,7 @@ async function withIngredients(
         .split("\n")
         .filter((nt) => nt.trim() !== "")
         .map((nt) => `${nt.replace(/\s*\.\s*$/, "")} <${version}> .`)
+        .sort()
         .join("\n"),
     );
     const url = `https://tables.example/rows/ingredients-${index}.nq.gz`;
@@ -556,9 +564,21 @@ test("the app tells what it holds: each series with its versions, credit and how
     );
 });
 
-test("a store emptied while the app runs, as Reset all data empties it, starts again from the starter copies", async () => {
+test("the starter copies carry each version's rows as published, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
   const starter = new MemoryFiles("urn:test:starter/");
-  await tablesOver(first, starter).check();
+  await writeStarterCopies(
+    {
+      feeds: [FEED],
+      vocabulary: parts.vocabulary,
+      newStore: parts.newStore,
+      fetch: fetchOf(first),
+    },
+    (path, bytes) => starter.write(path, bytes),
+  );
+  const carried = await starter.list("");
+  const stem = fileStem(groups.first);
+  assert.ok(carried.includes(`${stem}${PUBLISHED_ROWS}`));
+  assert.ok(!carried.includes(`${stem}.ttl`));
   const app = join(scratch, "reset");
   const tables = new Tables({
     files: new FolderFiles(join(app, ".tables")),
@@ -569,8 +589,66 @@ test("a store emptied while the app runs, as Reset all data empties it, starts a
   });
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
+  const checked = tablesOver(first);
+  await checked.check();
+  const rows = async (from: Tables) =>
+    (await (await from.references()).rows(groups.first))
+      .map((triple) => triple.map(({ value }) => value).join(" "))
+      .sort();
+  assert.deepEqual(await rows(tables), await rows(checked));
   await rm(app, { recursive: true, force: true });
   assert.deepEqual(await tables.current(), shipped);
+});
+
+test("a series of a kind nothing the app runs reads is neither kept nor carried as a starter copy, until a rule list names its kind", async () => {
+  const unread = `${REC}BrandGenerics`;
+  const served: Served = {
+    ...first,
+    catalog: first.catalog.map(([subject, predicate, object]) =>
+      subject.value === groups.series && predicate.value === `${REC}tableKind`
+        ? [subject, predicate, iri(unread)]
+        : [subject, predicate, object],
+    ),
+  };
+  const starter = new MemoryFiles("urn:test:starter/");
+  await writeStarterCopies(
+    {
+      feeds: [FEED],
+      vocabulary: parts.vocabulary,
+      newStore: parts.newStore,
+      fetch: fetchOf(served),
+    },
+    (path, bytes) => starter.write(path, bytes),
+  );
+  assert.ok(
+    !(await starter.list("")).some((path) =>
+      path.startsWith(fileStem(groups.first)),
+    ),
+  );
+  const [unkept] = await tablesOver(served).check();
+  assert.ok(!unkept?.kept.includes(groups.first));
+  const { vocabulary } = parts;
+  const naming: Files = {
+    iri: vocabulary.iri,
+    read: async (path) => {
+      const bytes = await vocabulary.read(path);
+      return bytes === undefined || !path.startsWith(RULE_LIST)
+        ? bytes
+        : new TextEncoder().encode(
+            new TextDecoder()
+              .decode(bytes)
+              .replace("rec:VaccineGroups", "rec:BrandGenerics"),
+          );
+    },
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
+  const [kept] = await tablesOver(
+    served,
+    new MemoryFiles("urn:test:tables/"),
+    naming,
+  ).check();
+  assert.ok(kept?.kept.includes(groups.first));
 });
 
 test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {
@@ -728,6 +806,57 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
             feed,
             groups.second,
             (nquads) => `${nquads}not a quad <${groups.second}> .\n`,
+          ),
+        /not N-Quads/,
+        "refused",
+      ],
+      [
+        "rows out of their canonical order",
+        () =>
+          withRows(feed, groups.second, (nquads) => {
+            const lines = nquads.trimEnd().split("\n");
+            return `${[lines.at(-1), ...lines.slice(0, -1)].join("\n")}\n`;
+          }),
+        /canonical order/,
+        "refused",
+      ],
+      [
+        "a row given twice",
+        () =>
+          withRows(
+            feed,
+            groups.second,
+            (nquads) => `${nquads}${nquads.trimEnd().split("\n").at(-1)!}\n`,
+          ),
+        /canonical order/,
+        "refused",
+      ],
+      [
+        "a row not written canonically",
+        () =>
+          withRows(feed, groups.second, (nquads) =>
+            nquads.replace("> <", ">  <"),
+          ),
+        /not N-Quads/,
+        "refused",
+      ],
+      [
+        "a row with a term after its literal",
+        () =>
+          withRows(feed, groups.second, (nquads) =>
+            nquads.replace(
+              "<http://www.w3.org/2004/02/skos/core#broadMatch>",
+              '"broad" <urn:example:extra>',
+            ),
+          ),
+        /not N-Quads/,
+        "refused",
+      ],
+      [
+        "a row whose IRI holds a space",
+        () =>
+          withRows(feed, groups.second, (nquads) =>
+            nquads.replace("core#broadMatch>", "core#broad match>"),
           ),
         /not N-Quads/,
         "refused",
