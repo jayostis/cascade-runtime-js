@@ -12,9 +12,17 @@ import { URL, URLSearchParams } from "node:url";
 import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { featureStory, OxigraphStore } from "@cascade-runtime/runtime";
-import { packed, vocabularyOf } from "@cascade-runtime/runtime/node";
+import {
+  FolderFiles,
+  packed,
+  vocabularyOf,
+} from "@cascade-runtime/runtime/node";
 import { tarballAddress } from "../dist/pack/address.js";
 import { agentPrompt, KITS, startLine } from "../dist/src/create.js";
+import { Tables } from "../dist/src/tables.js";
+
+/** What the tables the app holds now name each code, set once the app is installed. */
+let heldNames = async () => new Map();
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
@@ -274,8 +282,13 @@ async function pageShows(server, pod, person) {
       `the ${kind} tile of ${pod}`,
     );
   }
-  for (const { allergen } of rows[ALLERGIES])
-    assert.ok(text.includes(allergen), `no ${allergen} on ${pod}`);
+  const named = await heldNames(
+    rows[ALLERGIES].flatMap(({ code }) => (code === undefined ? [] : [code])),
+  );
+  for (const { allergen, code } of rows[ALLERGIES]) {
+    const shown = named.get(code)?.name?.label ?? allergen;
+    assert.ok(text.includes(shown), `no ${shown} on ${pod}`);
+  }
   return { html, rows };
 }
 
@@ -401,6 +414,14 @@ await behaviour("the command makes the app", async () => {
   }
   const components = join(app, "node_modules", "cascade-runtime", "components");
   const vocabulary = await vocabularyOf(await packed(components));
+  const heldTables = new Tables({
+    files: new FolderFiles(join(app, "pods", ".tables")),
+    feeds: [],
+    vocabulary: vocabulary.files,
+    newStore: () => new OxigraphStore(),
+    preference: vocabulary.config.tables.preference,
+  });
+  heldNames = (codes) => heldTables.about(codes);
   const kit = (through) =>
     featureStory(
       vocabulary.files,
