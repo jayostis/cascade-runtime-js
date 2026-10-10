@@ -281,9 +281,14 @@ test("an import with the claim records an About for each unclaimed profile and i
         expected
           // Alex's penicillin is joined by his kit's R3, SNOMED CT to RxNorm; the app's R3 reads product ingredients.
           .filter(({ justification }) => justification !== "same mapped code")
+          // Its conditions are joined by R1; the app's rule list gives conditions R8, by code and period.
           .map(async ({ justification = "", members = "" }) =>
             joined(
-              JUSTIFICATIONS[justification] ?? justification,
+              JUSTIFICATIONS[
+                justification === "same code" && members.includes("-CON-")
+                  ? "same code and period"
+                  : justification
+              ] ?? justification,
               await Promise.all(members.split(", ").map(named)),
             ),
           ),

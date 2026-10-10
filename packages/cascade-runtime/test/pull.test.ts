@@ -157,7 +157,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     across,
     [
       [
-        `${JDG}SameCode`,
+        `${JDG}SameCodeAndPeriod`,
         coded(north, "Condition", "59621000"),
         coded(south, "Condition", "59621000"),
       ],

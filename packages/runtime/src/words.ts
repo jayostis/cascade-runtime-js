@@ -34,6 +34,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same medication code": `${JDG}SameMedicationCode`,
   "same result": `${JDG}SameResult`,
   "same converted code": `${JDG}SameConvertedCode`,
+  "same code and period": `${JDG}SameCodeAndPeriod`,
 };
 
 const CODES: Readonly<Record<string, (code: string) => string>> = {

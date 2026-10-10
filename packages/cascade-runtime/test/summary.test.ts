@@ -50,6 +50,7 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       },
       { entry: "e6", needs: "members disagree on criticality" },
       { entry: "e10", needs: "judged different, still joined" },
+      { entry: "e4", needs: "same code, dates cannot tell" },
     ],
   };
   assert.deepEqual(view.noticed(answers), [
@@ -63,6 +64,7 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     "Latex was marked as different, but is still shown as one allergy.",
     "Sources disagree on how severe an unnamed allergy is.",
     "An entry was marked as different, but is still shown as one entry.",
+    "Migraine was recorded more than once at different times, and may be one condition or several.",
   ]);
 });
 
