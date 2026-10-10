@@ -298,3 +298,27 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
     names,
   };
 }
+
+/** What reads a version's rows whole, which a browser does in a Web Worker. */
+export interface RowsWork {
+  verified(rows: RowsToVerify): Promise<Verified>;
+  /** A version's N-Triples from its published rows: each line's graph dropped. */
+  published(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>>;
+  /** A version's listing, as JSON, from its N-Triples. */
+  listed(
+    text: Uint8Array<ArrayBuffer>,
+    uriSpaces: readonly string[],
+  ): Promise<Uint8Array<ArrayBuffer>>;
+}
+
+export const IN_THIS_THREAD: RowsWork = {
+  verified,
+  published: async (bytes) =>
+    new TextEncoder().encode(
+      (await gunzipped(bytes)).replace(/ <[^<>]*> \.$/gm, " ."),
+    ),
+  listed: async (text, uriSpaces) =>
+    new TextEncoder().encode(
+      JSON.stringify(listing(new TextDecoder().decode(text), uriSpaces)),
+    ),
+};

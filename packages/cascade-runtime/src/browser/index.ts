@@ -46,7 +46,8 @@ import {
   type Pod,
   type Row,
 } from "../pod.js";
-import { type RowsToVerify, type Verified, verified } from "../rows.js";
+import { IN_THIS_THREAD, type RowsWork } from "../rows.js";
+import type { RowsCall } from "./tables-worker.js";
 import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
@@ -246,27 +247,35 @@ async function tablesOf(
       { pack: new URL(`${STARTER_TABLES}.json`, COMPONENTS).href },
     ),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
-    verify: verifiedInWorker,
+    work: IN_A_WORKER,
   });
 }
 
 /**
- * Verifies a version's published rows in a Web Worker of its own, so a page stays responsive while it does; in this
- * thread when the worker cannot start or its answer cannot be read.
+ * Each call in a Web Worker of its own, so a page stays responsive while it reads a version's rows; in this thread
+ * when the worker cannot start or its answer cannot be read.
  */
-function verifiedInWorker(rows: RowsToVerify): Promise<Verified> {
+function inWorker<T>(call: keyof RowsWork, args: unknown[]): Promise<T> {
+  const here = () =>
+    (IN_THIS_THREAD[call] as (...args: unknown[]) => Promise<T>)(...args);
   const worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
     type: "module",
   });
-  return new Promise<Verified>((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     worker.onmessage = ({
       data,
-    }: MessageEvent<Verified | { failed: string }>) =>
-      "failed" in data ? reject(new Error(data.failed)) : resolve(data);
-    worker.onerror = worker.onmessageerror = () => resolve(verified(rows));
-    worker.postMessage(rows);
+    }: MessageEvent<{ answer: T } | { failed: string }>) =>
+      "failed" in data ? reject(new Error(data.failed)) : resolve(data.answer);
+    worker.onerror = worker.onmessageerror = () => resolve(here());
+    worker.postMessage({ call, args } satisfies RowsCall);
   }).finally(() => worker.terminate());
 }
+
+const IN_A_WORKER: RowsWork = {
+  verified: (rows) => inWorker("verified", [rows]),
+  published: (bytes) => inWorker("published", [bytes]),
+  listed: (text, uriSpaces) => inWorker("listed", [text, uriSpaces]),
+};
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
 async function checkedAndKept(

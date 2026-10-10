@@ -18,8 +18,8 @@ import {
 } from "@cascade-runtime/runtime";
 import {
   gunzipped,
+  IN_THIS_THREAD,
   type Listed,
-  listing,
   nameOver,
   notation,
   OWL,
@@ -27,12 +27,10 @@ import {
   REVISION_OF,
   rowsAbout,
   type Row,
-  type RowsToVerify,
+  type RowsWork,
   SKOS,
   SPECIALIZATION_OF,
   values,
-  type Verified,
-  verified,
 } from "./rows.js";
 
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
@@ -195,8 +193,8 @@ export interface TablesOptions {
   readonly preference?: Readonly<Record<string, readonly string[]>>;
   /** The builders run locally, whose feeds are read after `feeds`. */
   readonly builds?: LocalBuilds;
-  /** What verifies a version's published rows; `verified`, in this thread, otherwise. */
-  readonly verify?: (rows: RowsToVerify) => Promise<Verified>;
+  /** What reads a version's rows whole; in this thread, otherwise. */
+  readonly work?: RowsWork;
 }
 
 /** Builders run on this machine, each writing a feed of its own. */
@@ -244,13 +242,6 @@ export function shipped(references: References): string[] {
 
 /** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
 export const PUBLISHED_ROWS = ".nq.gz";
-
-/** A version's N-Triples from its published rows: each line's graph dropped. */
-async function fromPublished(bytes: Uint8Array): Promise<Uint8Array> {
-  return new TextEncoder().encode(
-    (await gunzipped(new Uint8Array(bytes))).replace(/ <[^<>]*> \.$/gm, " ."),
-  );
-}
 
 /** The feed that last described the series. */
 function feedOf(held: Held, series: string): string | undefined {
@@ -628,15 +619,20 @@ export class Tables {
 
   /** A held version's N-Triples, read once: a version's rows never change. */
   #text(version: string): Promise<string> {
-    return once(this.#texts, version, async () => {
-      const bytes = await new TablesFiles(
-        this.#options.files,
-        this.#options.vocabulary,
-      ).read(`${stemOf(version)}.ttl`);
-      if (bytes === undefined)
-        throw new Refusal(`the tables hold no rows for ${version}`);
-      return new TextDecoder().decode(bytes);
-    });
+    return once(this.#texts, version, async () =>
+      new TextDecoder().decode(await this.#rows(version)),
+    );
+  }
+
+  /** A held version's N-Triples as they are kept. */
+  async #rows(version: string): Promise<Uint8Array<ArrayBuffer>> {
+    const bytes = await new TablesFiles(
+      this.#options.files,
+      this.#options.vocabulary,
+    ).read(`${stemOf(version)}.ttl`);
+    if (bytes === undefined)
+      throw new Refusal(`the tables hold no rows for ${version}`);
+    return new Uint8Array(bytes);
   }
 
   /**
@@ -663,13 +659,13 @@ export class Tables {
       } catch {
         // listed again below
       }
-      const listed = listing(
-        await this.#text(version),
+      const listed = await (this.#options.work ?? IN_THIS_THREAD).listed(
+        await this.#rows(version),
         (await tableTerms(this.#options.vocabulary, this.#options.newStore))
           .uriSpaces,
       );
-      await files.write(path, new TextEncoder().encode(JSON.stringify(listed)));
-      return listed;
+      await files.write(path, listed);
+      return JSON.parse(new TextDecoder().decode(listed)) as Listed;
     });
   }
 
@@ -728,7 +724,9 @@ export class Tables {
         if (path.endsWith(PUBLISHED_ROWS))
           await files.write(
             `${path.slice(0, -PUBLISHED_ROWS.length)}.ttl`,
-            await fromPublished(bytes),
+            await (this.#options.work ?? IN_THIS_THREAD).published(
+              new Uint8Array(bytes),
+            ),
           );
         else await files.write(path, bytes);
       }
@@ -841,7 +839,7 @@ export class Tables {
         this.#options.vocabulary,
         this.#options.newStore,
       );
-      const rows = await (this.#options.verify ?? verified)({
+      const rows = await (this.#options.work ?? IN_THIS_THREAD).verified({
         bytes,
         checksum: checksum.value,
         version: version.value,
