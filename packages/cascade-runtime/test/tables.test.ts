@@ -161,15 +161,25 @@ function tablesOver(
   });
 }
 
-/** The vocabulary as a package shipping a revision of its rule list would carry it: the same rules, a new version. */
-async function ruleListRevised(): Promise<Files> {
-  const { vocabulary } = parts;
+/** The vocabulary's rule list index, the revision it ships and that revision's series. */
+async function ruleList(): Promise<{
+  index: string;
+  shipped: string;
+  series: string;
+}> {
   const index = new TextDecoder().decode(
-    await vocabulary.read(`${RULE_LIST}references.ttl`),
+    await parts.vocabulary.read(`${RULE_LIST}references.ttl`),
   );
   const [, shipped] = /rec:shipsWith <([^>]+)>/.exec(index) ?? [];
   const [, series] = /<([^>]+)> a rec:ReferenceSeries/.exec(index) ?? [];
   assert.ok(shipped !== undefined && series !== undefined);
+  return { index, shipped, series };
+}
+
+/** The vocabulary as a package shipping a revision of its rule list would carry it: the same rules, a new version. */
+async function ruleListRevised(): Promise<Files> {
+  const { vocabulary } = parts;
+  const { index, shipped, series } = await ruleList();
   const next = "urn:uuid:0b8f3c1e-6d2a-4e5b-9c7f-1a2b3c4d5e6f";
   const rows = await vocabulary.read(`${RULE_LIST}${fileStem(shipped)}.ttl`);
   assert.ok(rows);
@@ -283,25 +293,56 @@ async function withBytes(
 }
 
 const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm/";
-const INGREDIENTS = "urn:uuid:3f1d9b7e-2c4a-4e8f-a6d5-9b0c1e2f3a4b";
+const ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm/";
+
+/** A mapping series of the test feed: its kind, the code system its rows' codes are in, and their predicate. */
+interface Mapping {
+  readonly series: string;
+  readonly label: string;
+  readonly kind: string;
+  readonly system: string;
+  readonly predicate: string;
+  /** How the row from `source` to `target` was reached. */
+  readonly justification: (source: string, target: string) => string;
+}
+
+const INGREDIENTS: Mapping = {
+  series: "urn:uuid:3f1d9b7e-2c4a-4e8f-a6d5-9b0c1e2f3a4b",
+  label: "Product ingredients",
+  kind: "ProductIngredients",
+  system: RXNORM,
+  predicate: "broadMatch",
+  justification: (source, target) =>
+    source === target ? "ManualMappingCuration" : "MappingChaining",
+};
+
+const CONVERSIONS: Mapping = {
+  series: "urn:uuid:6b1e0c3a-9f4d-4e27-8a5b-2d7c9e1f4a60",
+  label: "Code conversions",
+  kind: "CodeConversions",
+  system: ICD10CM,
+  predicate: "exactMatch",
+  justification: () => "ManualMappingCuration",
+};
 
 /**
- * The feed with a product ingredients series added, its line of versions each holding the RxNorm rows given as
- * `[product, ingredient]` and the last current, and the names of those versions.
+ * The feed with a mapping series added, its line of versions each holding the rows given as `[source, target]` and
+ * the last current, and the names of those versions.
  */
-async function withIngredients(
+async function withMappings(
   served: Served,
+  mapping: Mapping,
   line: readonly (readonly (readonly [string, string])[])[],
 ): Promise<{ served: Served; versions: string[] }> {
   const files = new Map(served.files);
   const versions: string[] = [];
   let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
 @prefix rdfs: <${RDFS}> . @prefix rec: <${REC}> . @prefix spdx: <${SPDX}> .
-<${INGREDIENTS}> a rec:ReferenceSeries ; rdfs:label "Product ingredients" ; rec:tableKind rec:ProductIngredients .
+<${mapping.series}> a rec:ReferenceSeries ; rdfs:label "${mapping.label}" ; rec:tableKind rec:${mapping.kind} .
 `;
   for (const [index, pairs] of line.entries()) {
-    const rows = pairs.flatMap(([product, ingredient]) => {
-      const subject = iri(`urn:test:ingredient-row:${product}-${ingredient}`);
+    const rows = pairs.flatMap(([source, target]) => {
+      const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
       return [
         [
           subject,
@@ -311,29 +352,29 @@ async function withIngredients(
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedSource"),
-          iri(RXNORM + product),
+          iri(mapping.system + source),
         ],
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
-          iri("http://www.w3.org/2004/02/skos/core#broadMatch"),
+          iri(`http://www.w3.org/2004/02/skos/core#${mapping.predicate}`),
         ],
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
-          iri(RXNORM + ingredient),
+          iri(mapping.system + target),
         ],
         [
           subject,
           iri("https://w3id.org/sssom/mapping_justification"),
           iri(
-            `https://w3id.org/semapv/vocab/${product === ingredient ? "ManualMappingCuration" : "MappingChaining"}`,
+            `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
           ),
         ],
       ] as Triple[];
     });
     const previous = versions.at(-1);
-    const version = await versionName(INGREDIENTS, previous, rows);
+    const version = await versionName(mapping.series, previous, rows);
     const bytes = await gzipped(
       new TextDecoder()
         .decode(ntriples(rows))
@@ -343,15 +384,15 @@ async function withIngredients(
         .sort()
         .join("\n"),
     );
-    const url = `https://tables.example/rows/ingredients-${index}.nq.gz`;
+    const url = `https://tables.example/rows/${mapping.kind}-${index}.nq.gz`;
     files.set(url, bytes);
-    turtle += `<${version}> prov:specializationOf <${INGREDIENTS}> ; pav:version "${index + 1}" ;
+    turtle += `<${version}> prov:specializationOf <${mapping.series}> ; pav:version "${index + 1}" ;
   ${previous === undefined ? "" : `prov:wasRevisionOf <${previous}> ;`}
   dcat:distribution [ dcat:downloadURL <${url}> ; spdx:checksum [ spdx:checksumValue "${await hex(bytes)}" ] ] .
 `;
     versions.push(version);
   }
-  turtle += `<${INGREDIENTS}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
+  turtle += `<${mapping.series}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
   const added = await new OxigraphStore().parse(turtle, FEED);
   return {
     served: { ...served, files, catalog: [...served.catalog, ...added] },
@@ -359,14 +400,19 @@ async function withIngredients(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
   const advil: [string, string] = ["153010", "5640"];
   const ibuprofen: [string, string] = ["5640", "5640"];
-  const ingredientsFirst = await withIngredients(first, [[advil, ibuprofen]]);
-  const ingredientsLater = await withIngredients(feed, [
+  const ingredientsFirst = await withMappings(first, INGREDIENTS, [
+    [advil, ibuprofen],
+  ]);
+  const ingredientsLater = await withMappings(feed, INGREDIENTS, [
     [advil, ibuprofen],
     // A row the first lacks, so the later is a version of its own.
     [advil, ibuprofen, ["723", "723"]],
+  ]);
+  const later = await withMappings(ingredientsLater.served, CONVERSIONS, [
+    [["C88.0", "C88.00"]],
   ]);
   const store = new MemoryFiles("urn:test:tables/");
   const before = tablesOver(ingredientsFirst.served, store);
@@ -379,12 +425,11 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
   const relabelled = "Vaccine groups, relabelled";
   const after = tablesOver(
     {
-      ...ingredientsLater.served,
-      catalog: ingredientsLater.served.catalog.map(
-        ([subject, predicate, object]) =>
-          subject.value === groups.series && predicate.value === `${RDFS}label`
-            ? [subject, predicate, literal(relabelled)]
-            : [subject, predicate, object],
+      ...later.served,
+      catalog: later.served.catalog.map(([subject, predicate, object]) =>
+        subject.value === groups.series && predicate.value === `${RDFS}label`
+          ? [subject, predicate, literal(relabelled)]
+          : [subject, predicate, object],
       ),
     },
     store,
@@ -412,6 +457,10 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
     ...["153010", "5640"].map((code) => [
       "health:AllergyRecord",
       `health:allergenCode <${RXNORM}${code}>`,
+    ]),
+    ...["C88.0", "C88.00"].map((code) => [
+      "health:ConditionRecord",
+      `health:icd10Code <${ICD10CM}${code}>`,
     ]),
   ].map(
     ([type, fields], index) => `<urn:cascade:output-${index}> a ${type} .
@@ -465,6 +514,20 @@ ${records.join("\n")}`);
       "adopted: 153010 5640",
       "held: 153010 5640",
     ]);
+    const [converted] = later.versions;
+    const { shipped } = await ruleList();
+    const conversions = await pod.ask({
+      query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
+        ?judgment jdg:justification jdg:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
+        ?record pav:hasCurrentVersion/health:icd10Code ?code
+      } GROUP BY ?judgment`,
+    });
+    assert.deepEqual(
+      conversions.map(({ codes = "" }) =>
+        codes.replaceAll(ICD10CM, "").split(" ").sort().join(" "),
+      ),
+      ["C88.0 C88.00"],
+    );
   } finally {
     await pod.close();
   }
