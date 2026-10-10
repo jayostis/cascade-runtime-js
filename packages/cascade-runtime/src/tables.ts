@@ -706,15 +706,17 @@ export class Tables {
     return undefined;
   }
 
-  /** What every held series says of the code, from its current version. */
-  async facts(code: string): Promise<Facts> {
+  /** What every held series says of the code, or each of `among`, from its current version. */
+  async facts(code: string, among?: readonly string[]): Promise<Facts> {
     const [references, index, { uriSpaces }] = await Promise.all([
       this.references(),
       this.#index(),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
     ]);
     const current = (series: string): string | undefined =>
-      index.objects(iri(series), SHIPS_WITH)[0]?.value;
+      among !== undefined && !among.includes(series)
+        ? undefined
+        : index.objects(iri(series), SHIPS_WITH)[0]?.value;
     const held = (kind: string): Fact[] =>
       this.#preferred(references, kind).flatMap((series) => {
         const version = current(series);

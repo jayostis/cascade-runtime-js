@@ -327,7 +327,7 @@ async function showTable(id, text, shown, code) {
   state.current = undefined;
   const sources = sourcesOf(state.tables);
   const series =
-    id === ""
+    id === "" || code !== null
       ? undefined
       : state.tables.find((each) => tableId(each.iri) === id);
   const source =
@@ -364,6 +364,7 @@ async function showTable(id, text, shown, code) {
       tablePage({
         ...searchedHere,
         series,
+        codeHref,
         searched: await tables.search(series.iri, text, shown),
         uses: await tables.uses(),
         pods: state.pods,
@@ -378,7 +379,7 @@ async function showTable(id, text, shown, code) {
     );
     if (found === undefined)
       return notFound(`${source.label} holds no code ${code}.`);
-    const facts = await tables.facts(found);
+    const facts = await tables.facts(found, all);
     return render(
       `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim(),
       codePage({

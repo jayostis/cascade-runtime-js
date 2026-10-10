@@ -146,7 +146,7 @@ async function showTable(response, id, query) {
   const held = await kept.held();
   const sources = sourcesOf(held);
   const series =
-    id === undefined
+    id === undefined || query.has("code")
       ? undefined
       : held.find((each) => tableId(each.iri) === id);
   const source =
@@ -195,6 +195,7 @@ async function showTable(response, id, query) {
     body = tablePage({
       ...searchedHere,
       series,
+      codeHref,
       searched: await kept.search(series.iri, text, shown),
       uses: await kept.uses(),
       pods: names,
@@ -208,7 +209,10 @@ async function showTable(response, id, query) {
     );
     if (code === undefined)
       return notFound(`${source.label} holds no code ${written}.`);
-    const facts = await kept.facts(code);
+    const facts = await kept.facts(
+      code,
+      source.series.map(({ iri }) => iri),
+    );
     title = `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim();
     body = codePage({
       source,

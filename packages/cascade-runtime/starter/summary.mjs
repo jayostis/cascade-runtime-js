@@ -1048,8 +1048,9 @@ function namesOf(about) {
 /**
  * A reference table's page: `series` as `held()` gives it, its source, licence, version and how fresh it is at `now`;
  * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer), page
- * `page` of them, with links to the pages before and after it at `pageHref(page)`; and each version held with the pods
- * among `pods` that `uses` (`uses()`'s answer) says were opened with it, each a link to `href(pod)`.
+ * `page` of them, each a link to `codeHref(notation)` when given, with links to the pages before and after it at
+ * `pageHref(page)`; and each version held with the pods among `pods` that `uses` (`uses()`'s answer) says were opened
+ * with it, each a link to `href(pod)`.
  */
 export function tablePage({
   series,
@@ -1058,6 +1059,7 @@ export function tablePage({
   search,
   page = 1,
   pageHref,
+  codeHref,
   uses,
   pods,
   href,
@@ -1078,7 +1080,7 @@ ${codesFound({
   pageHref,
   heads: ["Code", "Name", "Status", ...(maps ? ["Maps to"] : [])],
   row: ({ notation, about, mapsTo }) =>
-    html`<td>${notation}</td><td>${namesOf(about)}</td><td>${statusOf(about)}</td>${
+    html`<td>${codeHref === undefined ? notation : html`<a href=${codeHref(notation)}>${notation}</a>`}</td><td>${namesOf(about)}</td><td>${statusOf(about)}</td>${
       maps && html`<td>${mapsTo.map(named).join(", ")}</td>`
     }`,
 })}
