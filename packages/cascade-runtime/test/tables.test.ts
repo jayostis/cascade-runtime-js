@@ -315,6 +315,8 @@ interface Mapping {
   readonly predicate: string;
   /** How the row from `source` to `target` was reached. */
   readonly justification: (source: string, target: string) => string;
+  /** The row's SSSOM cardinality, when its kind gives one. */
+  readonly cardinality?: (source: string, target: string) => string;
 }
 
 const INGREDIENTS: Mapping = {
@@ -322,7 +324,7 @@ const INGREDIENTS: Mapping = {
   label: "Product ingredients",
   kind: "ProductIngredients",
   system: RXNORM,
-  predicate: "broadMatch",
+  predicate: "http://www.w3.org/2004/02/skos/core#broadMatch",
   justification: (source, target) =>
     source === target ? "ManualMappingCuration" : "MappingChaining",
 };
@@ -332,8 +334,9 @@ const CONVERSIONS: Mapping = {
   label: "Code conversions",
   kind: "CodeConversions",
   system: ICD10CM,
-  predicate: "exactMatch",
+  predicate: "http://purl.org/dc/terms/isReplacedBy",
   justification: () => "ManualMappingCuration",
+  cardinality: () => "1:1",
 };
 
 /**
@@ -368,7 +371,7 @@ async function withMappings(
         [
           subject,
           iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
-          iri(`http://www.w3.org/2004/02/skos/core#${mapping.predicate}`),
+          iri(mapping.predicate),
         ],
         [
           subject,
@@ -382,6 +385,15 @@ async function withMappings(
             `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
           ),
         ],
+        ...(mapping.cardinality === undefined
+          ? []
+          : [
+              [
+                subject,
+                iri("https://w3id.org/sssom/mapping_cardinality"),
+                literal(mapping.cardinality(source, target)),
+              ] as Triple,
+            ]),
       ] as Triple[];
     });
     const previous = versions.at(-1);
