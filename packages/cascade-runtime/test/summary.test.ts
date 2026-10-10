@@ -65,8 +65,23 @@ test("what Cascade noticed: things seen at two places first, three at most, then
         entry: "e6",
         needs: "joined before, apart under newer tables or rules",
       },
-      { entry: "e8", needs: "possibly the same medication" },
-      { entry: "e11", needs: "possibly the same medication" },
+      {
+        entry: "e8",
+        needs: "possibly the same medication",
+        otherRecord: "r1",
+        otherRecordLabel: "Medication · Zestril · own entry",
+      },
+      {
+        entry: "e8",
+        needs: "possibly the same medication",
+        otherRecord: "r2",
+        otherRecordLabel: "Medication · no name · own entry",
+      },
+      {
+        entry: "e11",
+        needs: "possibly the same medication",
+        otherRecord: "r3",
+      },
     ],
   };
   assert.deepEqual(view.noticed(answers), [
@@ -83,8 +98,9 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
     "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
     "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
-    "Lisinopril 10 MG Oral Tablet shares a code with another medication that Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
-    "An unnamed medication shares a code with another medication that Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
+    "Lisinopril 10 MG Oral Tablet shares a code with Zestril, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
+    "Lisinopril 10 MG Oral Tablet shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
+    "An unnamed medication shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
   ]);
 });
 

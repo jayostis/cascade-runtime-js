@@ -303,9 +303,15 @@ const SAID = {
     `${name} was recorded more than once, and its dates cannot tell whether it is one ${one} or several.`,
   "joined before, apart under newer tables or rules": ({ name, one }) =>
     `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.`,
-  "possibly the same medication": ({ name, one }) =>
-    `${name === UNNAMED ? `An unnamed ${one}` : name} shares a code with another ${one} that Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.`,
+  "possibly the same medication": ({ name, one }, { otherRecordLabel }) =>
+    `${name === UNNAMED ? `An unnamed ${one}` : name} shares a code with ${otherNamed(otherRecordLabel, one)}, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.`,
 };
+
+/** The other record of a pair, named from its label `Medication · Name · …`, or `another medication` when it has no name. */
+function otherNamed(label, one) {
+  const name = label?.split(" · ")[1];
+  return name === undefined || name === "no name" ? `another ${one}` : name;
+}
 
 /** `at A and B`, `at A and in Alex's own entries`: records are at a hospital, but in a person's own entries. */
 function where(places) {
@@ -369,8 +375,12 @@ export function noticed(answers, about = new Map()) {
   for (const row of answers[REVIEW] ?? []) {
     const item = entries.get(row.entry) ?? fromLabel(row.entryLabel);
     review.set(
-      JSON.stringify([row.entry, row.needs]),
-      (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item),
+      JSON.stringify([
+        row.entry,
+        row.needs,
+        row.needs === "possibly the same medication" ? row.otherRecord : null,
+      ]),
+      (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item, row),
     );
   }
   return [
