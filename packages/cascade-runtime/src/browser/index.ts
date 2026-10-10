@@ -11,7 +11,6 @@ import {
   OxigraphStore,
   parseConfig,
   type Placed,
-  podStated,
   readText,
   repositoryName,
   type RuntimeConfig,
@@ -618,11 +617,9 @@ export async function openPod(
     const carried = (await published) ?? [];
     if (carried.length > 0) await kept.writeAll(carried).catch(() => undefined);
     if (published !== undefined) {
-      const address =
-        (await new Answers(kept, read.runtime).described())?.address ??
-        (await podStated(database, read.layout, (await resolved()).newStore()))
-          .address;
-      await read.tables.opened(address, null, name);
+      const described = await new Answers(kept, read.runtime).described();
+      if (described?.tables !== undefined)
+        await read.tables.opened(described.address, described.tables, name);
     }
     const open = async () =>
       openPodWith(

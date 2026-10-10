@@ -17,6 +17,8 @@ import { ROOT } from "./vocabulary.js";
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const FIRST_EXPORT =
   "conformance/alex-rivera/scripted-input/alex/downloads/x-e2/apple_health_export";
+const PRIYA_DOWNLOADS =
+  "conformance/priya-natarajan/scripted-input/priya/downloads";
 const QUESTION = "pod/My active allergies";
 /** A folder cascade-runtime's tarball is installed in, beside a copy of the script, to run the installed package. */
 const APP =
@@ -84,15 +86,19 @@ function multiset(rows: readonly Record<string, unknown>[]): string[] {
     .sort();
 }
 
+/** The vocabulary the kits are in: the checkout's, or the installed package's. */
+async function kits() {
+  return APP === undefined
+    ? localVocabulary(ROOT)
+    : vocabularyOf(
+        await packed(
+          join(APP, "node_modules", "cascade-runtime", "components"),
+        ),
+      );
+}
+
 test("the developer story prints Alex's active allergies as the replay through J1 answers them", async (t) => {
-  const vocabulary =
-    APP === undefined
-      ? await localVocabulary(ROOT)
-      : await vocabularyOf(
-          await packed(
-            join(APP, "node_modules", "cascade-runtime", "components"),
-          ),
-        );
+  const vocabulary = await kits();
   const replayed = await featurePod(
     vocabulary,
     ALEX,
@@ -133,11 +139,12 @@ test("the developer story prints Alex's active allergies as the replay through J
 });
 
 test("the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry", async (t) => {
+  const { files } = await kits();
   const printed = await story(
     "medications.mjs",
     "priya-pod",
-    join(STORY, "priya-natarajan", "apple_health_export"),
-    join(STORY, "priya-natarajan", "kestrel-harbor-health-summary.xml"),
+    join(files.folder, PRIYA_DOWNLOADS, "x-e2", "apple_health_export"),
+    join(files.folder, PRIYA_DOWNLOADS, "kestrel-harbor-health-summary.xml"),
   );
   for (const row of printed) t.diagnostic(JSON.stringify(row));
   assert.ok(

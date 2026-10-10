@@ -14,6 +14,7 @@ import { after, before, test } from "node:test";
 import {
   JUSTIFICATIONS,
   Layout,
+  MATCHER,
   MemoryFiles,
   OxigraphStore,
   type Placed,
@@ -26,11 +27,13 @@ import {
   FolderFiles,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { shipped } from "../src/tables.js";
 import {
   type Exported,
   type ImportProgress,
   openPod,
   type Pod,
+  tablesBeside,
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
@@ -43,6 +46,7 @@ const ALEX = `${KIT}/scripted-input/alex`;
 const QUESTION = "pod/My active allergies";
 const PREFIXES = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
 PREFIX pav: <http://purl.org/pav/>
 PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
 PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
@@ -348,9 +352,7 @@ test("the look reads an export's or a download's index and writes nothing: a FHI
     );
   }
 
-  const download = join(
-    findRoot(dirname(fileURLToPath(import.meta.url))),
-    "developer-story",
+  const download = await kitDownload(
     "priya-natarajan",
     "kestrel-harbor-health-summary.xml",
   );
@@ -618,7 +620,7 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
 test("a kit's story replayed through a step is a pod openPod continues", async () => {
   const at = await mkdtemp(join(tmpdir(), "cascade-runtime-kit-"));
   try {
-    const steps = await replayKit("alex-rivera", at, { through: "J1" });
+    const steps = await replayKit("alex-rivera", at, { through: "E9" });
     assert.deepEqual(
       steps.map(({ step, kind }) => [step, kind]),
       [
@@ -626,9 +628,24 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
         ["E2", "import"],
         ["M5", "matcher"],
         ["J1", "judgment"],
+        ["E3", "entry"],
+        ["M6", "matcher"],
+        ["E4", "import"],
+        ["J2", "judgment"],
+        ["E5", "matcher"],
+        ["E6", "import"],
+        ["M7", "matcher"],
+        ["E7", "import"],
+        ["J8", "judgment"],
+        ["J9", "judgment"],
+        ["J10", "judgment"],
       ],
     );
     assert.ok((steps[1]?.wrote.length ?? 0) > 0);
+    assert.ok(
+      (steps.find(({ step }) => step === "E5")?.wrote.length ?? 0) > 0,
+      "E5 files no Same",
+    );
     const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
     const replayed = await openPod(at);
     try {
@@ -640,6 +657,19 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
             o.value === replayed.address,
         ),
       );
+      assert.equal(replayed.opened, undefined);
+      const used = await replayed.ask({
+        query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
+          ?judgment prov:wasAttributedTo <${MATCHER}> ; prov:used ?version .
+          ?version prov:specializationOf/a rec:ReferenceSeries }`,
+      });
+      const cited = used.map(({ version }) => version ?? "");
+      const held = shipped(
+        await (await tablesBeside(dirname(at))).references(),
+      );
+      assert.ok(cited.length > 0, "the matcher cites no reference");
+      for (const version of cited)
+        assert.ok(held.includes(version), `${version} is not the app's`);
       assert.equal((await allergens(replayed)).length, 4);
     } finally {
       await replayed.close();
@@ -653,6 +683,23 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
     );
   } finally {
     await rm(at, { recursive: true, force: true });
+  }
+});
+
+test("a pod a browser copied before its versions were kept, saved as null, adopts like any pod", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cascade-runtime-held-"));
+  try {
+    const pod = "https://example.org/pod/";
+    const first = (await resolved()).tablesIn(dir);
+    await first.opened(pod, ["https://example.org/v1"]);
+    const saved = JSON.parse(await readFile(join(dir, "tables.json"), "utf8"));
+    saved.pods[pod] = null;
+    await writeFile(join(dir, "tables.json"), JSON.stringify(saved));
+    const again = (await resolved()).tablesIn(dir);
+    assert.equal(await again.openedWith(pod), undefined);
+    assert.deepEqual(await again.uses(), {});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
@@ -680,13 +727,18 @@ test("a published pod's answers, as the site computes them, are read back withou
   }
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const answers = new MemoryFiles("urn:test:answers/");
+  const publishing = await partsOf(await checkouts(root));
   for (const [path, bytes] of await publishedAnswers(
-    await partsOf(await checkouts(root)),
+    publishing,
     "pod",
     published,
     "published",
   ))
     await answers.write(path, bytes);
+  assert.deepEqual(
+    (await new Answers(answers, "published").described())?.tables,
+    shipped(await publishing.tables.references()),
+  );
   const { vocabulary, build, lens, layout, tables } = kept;
   const read = await keptPod(
     {

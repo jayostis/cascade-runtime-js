@@ -171,6 +171,8 @@ export interface ReplayOptions {
   readonly newStore: StoreFactory;
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
+  /** The tables the pod is given, instead of the story's own `references/`. */
+  readonly references?: () => Promise<References>;
   /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
   readonly build?: { readonly lens: string; readonly derive: Derive };
 }
@@ -227,12 +229,14 @@ export class Replay {
         newStore: options.newStore,
         time: this.#time,
         importers: options.importers ?? [],
-        references: () =>
-          References.of(
-            options.source,
-            inStory(options.folder, "references/"),
-            options.newStore,
-          ),
+        references:
+          options.references ??
+          (() =>
+            References.of(
+              options.source,
+              inStory(options.folder, "references/"),
+              options.newStore,
+            )),
         ...(options.build === undefined ? {} : { build: options.build }),
       });
     const steps = standing?.steps ?? [];

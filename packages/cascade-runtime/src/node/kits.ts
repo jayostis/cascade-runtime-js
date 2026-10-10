@@ -1,7 +1,9 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve as absolute } from "node:path";
+import { basename, dirname, join, resolve as absolute } from "node:path";
 import { featureStory, kitsOf, OxigraphStore } from "@cascade-runtime/runtime";
 import { featurePod, FolderFiles } from "@cascade-runtime/runtime/node";
+import { tablesBeside } from "../index.js";
+import { shipped, type Tables } from "../tables.js";
 import { resolved } from "./resolved.js";
 
 const KITS = "conformance/";
@@ -81,13 +83,15 @@ export async function kitDownload(
 }
 
 /**
- * A kit's story replayed into a missing or empty folder with the kit's saved Bridge output and own tables, through the
- * step named or to the end: the pod keeps the story's address and subject.
+ * A kit's story replayed into a missing or empty folder with the kit's saved Bridge output, through the step named or
+ * to the end: the pod keeps the story's address and subject. It is given the tables it is told, by default those of
+ * the app beside the folder, which `openPod` gives it there, and is recorded as opened with them; the story's own
+ * `reference` and `open` steps, which name the kit's own versions, are not performed.
  */
 export async function replayKit(
   kit: string,
   folder: string,
-  options: { through?: string } = {},
+  options: { through?: string; tables?: Tables } = {},
 ): Promise<readonly KitStep[]> {
   const local = await kitVocabulary(kit);
   const target = absolute(folder);
@@ -102,12 +106,15 @@ export async function replayKit(
     () => new OxigraphStore(),
     through,
   );
+  const tables = options.tables ?? (await tablesBeside(dirname(target)));
+  const references = await tables.references();
   const { steps } = await featurePod(
     local,
     path,
     new FolderFiles(target, person.address),
-    through,
+    { ...through, tables: () => Promise.resolve(references) },
   );
+  await tables.opened(person.address, shipped(references), basename(target));
   return steps.map(({ step, wrote, refused }) => ({
     step: step.name,
     kind: step.happened.kind,

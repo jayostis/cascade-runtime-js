@@ -98,7 +98,7 @@ interface Held {
   /** The version of each held series a pod opened now is given, sorted. */
   readonly current: readonly string[];
   /** The versions each pod was last opened with, the rule list's among them, by the pod's naming base. */
-  readonly pods: Record<string, readonly string[] | null>;
+  readonly pods: Record<string, readonly string[]>;
   /** The name the app opened each pod by, by the pod's naming base. */
   readonly names?: Record<string, string>;
 }
@@ -535,18 +535,17 @@ export class Tables {
     return (await this.#held()).current;
   }
 
-  /** The versions the pod was last opened with; none if it never was, and null if it is to be taken as it is. */
-  async openedWith(pod: string): Promise<readonly string[] | null | undefined> {
+  /** The versions the pod was last opened with; none if it never was. */
+  async openedWith(pod: string): Promise<readonly string[] | undefined> {
     return (await this.#held()).pods[pod];
   }
 
   /**
-   * Records that the pod was opened with the versions, or, with null, that its next open takes it as it is; and,
-   * given, the name the app opened it by.
+   * Records that the pod was opened with the versions and, given, the name the app opened it by.
    */
   opened(
     pod: string,
-    versions: readonly string[] | null,
+    versions: readonly string[],
     name?: string,
   ): Promise<void> {
     return this.#next(async () => {
@@ -622,7 +621,7 @@ export class Tables {
     const using: Record<string, string[]> = {};
     for (const [pod, versions] of Object.entries(pods)) {
       const name = names[pod];
-      if (name === undefined || versions === null) continue;
+      if (name === undefined) continue;
       for (const version of versions) (using[version] ??= []).push(name);
     }
     for (const named of Object.values(using)) named.sort();
@@ -1012,9 +1011,16 @@ export class Tables {
   async #held(): Promise<Held> {
     await this.#start();
     const bytes = await this.#options.files.read(HELD);
-    return bytes === undefined
-      ? NOTHING_HELD
-      : (JSON.parse(new TextDecoder().decode(bytes)) as Held);
+    if (bytes === undefined) return NOTHING_HELD;
+    const held = JSON.parse(new TextDecoder().decode(bytes)) as Held;
+    return {
+      ...held,
+      pods: Object.fromEntries(
+        Object.entries(held.pods).filter(([, versions]) =>
+          Array.isArray(versions),
+        ),
+      ),
+    };
   }
 
   #write(held: Held): Promise<void> {

@@ -448,7 +448,9 @@ await behaviour("the command makes the app", async () => {
     vocabulary: vocabulary.files.folder,
     e15: whole.steps[e15].when,
     through,
-    throughSteps: (await kit(through)).steps.map(({ name }) => name),
+    throughSteps: (await kit(through)).steps
+      .filter(({ happened }) => !["reference", "open"].includes(happened.kind))
+      .map(({ name }) => name),
     activeAllergens: triples
       .filter(([s, p]) => active.has(s.value) && p.value === ALLERGEN)
       .map(([, , o]) => o.value)

@@ -51,8 +51,8 @@ keeping the package and the pods, under `pods/<name>/`. It is made with two,
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
   exports, and `priya-natarajan` Priya Natarajan's, from exports and C-CDA
-  files together. `--through J1` stops Alex's after her first export, leaving
-  the rest to `import`.
+  files together, on the app's tables like any pod it creates. `--through J1`
+  stops Alex's after her first export, leaving the rest to `import`.
 - `npm run pod:new <name>` makes an empty pod.
 - `npm run pod:reset <name>` removes a pod.
 - `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
@@ -545,7 +545,8 @@ After the yes, `import` with `{ match: false }` only files, and without
 `unclaimed` one with an About, then `match` the import's `activity`; `match()`
 rechecks the pod. Then offer each counting join of the matcher's, a pair at a
 time, filing a Different over a pair the person says no to. `replayKit`, behind
-`npm run pod:load`, fills an empty folder with a kit's story, for tests only.
+`npm run pod:load`, fills an empty folder with a kit's story on the tables of the
+folder it is in, for tests only.
 
 ```js
 const fileOnly = { aboutSubject: false, match: false };

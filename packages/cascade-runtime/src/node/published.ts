@@ -1,6 +1,7 @@
 import { MemoryFiles, questions } from "@cascade-runtime/runtime";
-import { ANSWERS, DESCRIBED } from "../answers.js";
+import { ANSWERS, DESCRIBED, type Described } from "../answers.js";
 import { openPodWith, type Parts } from "../pod.js";
+import { shipped } from "../tables.js";
 
 export { entryVersion } from "../answers.js";
 export { partsOf } from "./resolved.js";
@@ -8,7 +9,7 @@ export { partsOf } from "./resolved.js";
 /**
  * The answers a browser keeps for a published pod, `name`, whose files are given, so that a copy of it reads without
  * the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
- * `runtime`, the version of the browser entry that copies it.
+ * `runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed with.
  */
 export async function publishedAnswers(
   parts: Parts,
@@ -43,5 +44,13 @@ export async function publishedAnswers(
     if (bytes === undefined) throw new Error(`${name} kept no ${path}`);
     answers.set(path, bytes);
   }
+  const described = JSON.parse(
+    new TextDecoder().decode(answers.get(DESCRIBED)),
+  ) as Described;
+  const tables = shipped(await parts.tables.references());
+  answers.set(
+    DESCRIBED,
+    new TextEncoder().encode(JSON.stringify({ ...described, tables })),
+  );
   return answers;
 }
