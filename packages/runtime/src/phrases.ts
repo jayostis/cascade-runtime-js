@@ -1251,6 +1251,20 @@ const DEFINITIONS: Definition[] = [
         },
     ),
   ),
+  ...[true, false].map((lapsed) =>
+    then(
+      `{judgment} has ${lapsed ? "lapsed" : "not lapsed"}`,
+      ([words]) =>
+        async (reading) => {
+          const judgment = await reading.words.judgment(words as string);
+          const has = await reading.store.ask(
+            `ASK { <${judgment}> <${REC}lapsed> true }`,
+          );
+          if (has === lapsed) return undefined;
+          return has ? "it has lapsed" : "it has not lapsed";
+        },
+    ),
+  ),
   then("the {view} view holds these entries:", ([view], stated) => {
     const rows = table(stated, ["members"]);
     return async (reading) => {
