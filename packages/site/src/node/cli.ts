@@ -34,6 +34,7 @@ import {
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
+import { replayKit } from "cascade-runtime/fixtures";
 import {
   entryVersion,
   partsOf,
@@ -240,7 +241,7 @@ async function stagedPackage(): Promise<{
   };
 }
 
-/** Builds every kit's pod and site with build-example, and writes them under build/pages beneath the newcomer's page and the examples' page. */
+/** Builds every kit's pod, replayed on the package's starter copies, and its site, and writes them under build/pages beneath the newcomer's page and the examples' page. */
 async function buildPages(): Promise<number> {
   const staged = await stagedPackage();
   const vocabulary = await localVocabulary(ROOT, log);
@@ -253,7 +254,14 @@ async function buildPages(): Promise<number> {
   const examples: Example[] = [];
   for (const kit of await kitsOf(vocabulary.files)) {
     const name = kit.slice(KIT.length);
-    const built = await buildExample([name]);
+    const pod = join(ROOT, "build", name, "pod");
+    await rm(pod, { recursive: true, force: true });
+    for (const { step, refused } of await replayKit(name, pod, {
+      tables: parts.tables,
+    }))
+      if (refused !== undefined)
+        console.error(`step ${step} of ${name} was refused: ${refused}`);
+    const built = await buildExampleSite([name]);
     if (built !== 0) return built;
     const folder = new FolderFiles(join(ROOT, "build", name, "site"));
     const site = new Map<string, Uint8Array>();

@@ -916,10 +916,6 @@ async function openedWithTables(
 ): Promise<Opened | undefined> {
   const current = shipped(references);
   const before = await tables.openedWith(address);
-  if (before === null) {
-    await tables.opened(address, current, name);
-    return undefined;
-  }
   if (
     before !== undefined &&
     before.length === current.length &&

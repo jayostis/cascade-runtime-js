@@ -11,6 +11,9 @@ import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
+import { type Importer } from "../src/importer.js";
+import { importersNamed } from "../src/importers.js";
+import { kitsOf } from "../src/kit.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
@@ -49,27 +52,37 @@ let components: Components;
 const bridges: WasmBridge[] = [];
 const adapters: LoadedAdapter[] = [];
 let inWorkerAdapter: LoadedAdapter;
+let everyAdapter: LoadedAdapter[];
 let envelope: string;
 
-async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
+async function loadedAll(spawn: Spawn): Promise<LoadedAdapter[]> {
   const bridge = new WasmBridge(spawn);
   bridges.push(bridge);
-  const [fhir] = await loadConfiguredAdapters(
+  const configured = await loadConfiguredAdapters(
     bridge,
     components.config.adapters,
     components,
   );
+  const [fhir] = configured;
   if (fhir === undefined)
     throw new Error("cascade-runtime.json names no adapter");
-  adapters.push(fhir.adapter);
   envelope = `${fhir.resolved.iri}ro-crate-metadata.json#envelope-resource`;
-  return fhir.adapter;
+  const each = configured.map(({ adapter }) => adapter);
+  adapters.push(...each);
+  return each;
+}
+
+async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
+  const [fhir] = await loadedAll(spawn);
+  if (fhir === undefined) throw new Error("no adapter was loaded");
+  return fhir;
 }
 
 before(async () => {
   components = await checkouts(ROOT);
   compiled = await compiledBridge((await components.bridge()).folder);
-  inWorkerAdapter = await loaded(inWorker(compiled));
+  everyAdapter = await loadedAll(inWorker(compiled));
+  [inWorkerAdapter] = everyAdapter as [LoadedAdapter];
 });
 
 after(async () => {
@@ -144,14 +157,106 @@ async function standIn(
   return { ...document, iri: await documentName(bytes), bytes };
 }
 
-test("Alex's documents convert, in a worker, to graphs isomorphic to the saved ones, with the same findings", async () => {
-  for (const [step, stem] of [
-    ["e2", "AllergyIntolerance-alg-pcn-1"],
-    ["e6", "Immunization-imm-tdap-2026"],
-  ] as const) {
-    const expected = await saved(step, stem);
-    same(expected, await inWorkerAdapter.convert(expected.document));
+/**
+ * What differs, by kit, step and stem, between the Bridge output a kit saved for each document its importers find in
+ * an import step's download and what the configured adapters make of it: the first to accept it converts it, and
+ * where the kit saved that no adapter accepts it, none does.
+ */
+async function differences(): Promise<{
+  readonly differ: string[];
+  readonly converted: number;
+  readonly unaccepted: number;
+}> {
+  const files = await vocabulary();
+  const importers = importersNamed(components.config.importers);
+  const stemOf = (path: string): string => {
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? name.slice(0, dot) : name;
+  };
+  const differ: string[] = [];
+  let converted = 0;
+  let unaccepted = 0;
+  for (const kit of await kitsOf(files)) {
+    const { story, folder } = await storyFrom(
+      `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
+    );
+    for (const step of story.steps) {
+      const { happened } = step;
+      if (happened.kind !== "import") continue;
+      const downloaded = `${folder}/${happened.export}`;
+      let documents: Awaited<ReturnType<Importer["documents"]>>;
+      try {
+        for (const importer of importers)
+          if ((documents = await importer.documents(files, downloaded))) break;
+      } catch {
+        continue;
+      }
+      for (const document of documents ?? []) {
+        const stem = stemOf(document.path);
+        const at = `${folder}/${happened.converted}/${stem}/`;
+        const named = `${kit} ${step.name} ${stem}`;
+        const [graph, findings, refused] = await Promise.all([
+          files.read(`${at}graph.ttl`),
+          files.read(`${at}findings.ttl`),
+          files.read(`${at}unaccepted.txt`),
+        ]);
+        const iriOf = await documentName(document.bytes);
+        const offered: BridgeDocument = {
+          iri: iriOf,
+          bytes: document.bytes,
+          envelope: document.envelope,
+          facts: {
+            iri: `${iriOf}#facts`,
+            bytes: document.facts(step.when),
+          },
+        };
+        let accepting: LoadedAdapter | undefined;
+        for (const adapter of everyAdapter)
+          if (await adapter.accepts(offered).catch(() => false)) {
+            accepting = adapter;
+            break;
+          }
+        if (refused !== undefined) {
+          unaccepted++;
+          if (accepting !== undefined)
+            differ.push(
+              `${named}: saved as unaccepted, but an adapter accepts it`,
+            );
+          continue;
+        }
+        if (graph === undefined) continue;
+        converted++;
+        if (accepting === undefined) {
+          differ.push(`${named}: no adapter accepts it`);
+          continue;
+        }
+        const made = await accepting.convert(offered);
+        const path = `${files.iri}${document.path}`;
+        const expectedFindings =
+          findings === undefined
+            ? []
+            : triples(findings, `${files.iri}${at}findings.ttl`).map(
+                ([s, p, o]): Triple =>
+                  o.termType === "NamedNode" && o.value === path
+                    ? [s, p, iri(iriOf)]
+                    : [s, p, o],
+              );
+        const why =
+          notIsomorphic(triples(graph), triples(made.graph)) ??
+          notIsomorphic(expectedFindings, triples(made.findings));
+        if (why !== undefined) differ.push(`${named}: ${why}`);
+      }
+    }
   }
+  return { differ, converted, unaccepted };
+}
+
+test("every kit's saved conversions are the Bridge's own: each document converts, in a worker, to a graph isomorphic to the saved one with the same findings, and a document saved as unaccepted is accepted by no adapter", async () => {
+  const { differ, converted, unaccepted } = await differences();
+  assert.deepEqual(differ, []);
+  assert.ok(converted > 0, "no conversion was checked");
+  assert.ok(unaccepted > 0, "no unaccepted document was checked");
 });
 
 test("a document the adapter cannot read fails with kind document, and the loaded adapter converts the next", async () => {

@@ -6,6 +6,8 @@ export interface Described {
   readonly address: string;
   readonly subject: string;
   readonly title: string;
+  /** The versions of the tables the pod was published with, sorted. */
+  readonly tables?: readonly string[];
 }
 
 /** Where a pod's answers are kept, beside the pod and never in it. */
@@ -96,7 +98,15 @@ export class Answers {
       return typeof found?.address === "string" &&
         typeof found.subject === "string" &&
         typeof found.title === "string"
-        ? { address: found.address, subject: found.subject, title: found.title }
+        ? {
+            address: found.address,
+            subject: found.subject,
+            title: found.title,
+            ...(Array.isArray(found.tables) &&
+            found.tables.every((version) => typeof version === "string")
+              ? { tables: found.tables as readonly string[] }
+              : {}),
+          }
         : undefined;
     });
     return this.#described;

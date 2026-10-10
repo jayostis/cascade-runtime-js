@@ -14,9 +14,11 @@ import { after, before, test } from "node:test";
 import {
   JUSTIFICATIONS,
   Layout,
+  MATCHER,
   MemoryFiles,
   OxigraphStore,
   type Placed,
+  References,
   questions,
   recordName,
 } from "@cascade-runtime/runtime";
@@ -26,11 +28,13 @@ import {
   FolderFiles,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { shipped } from "../src/tables.js";
 import {
   type Exported,
   type ImportProgress,
   openPod,
   type Pod,
+  tablesBeside,
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
@@ -348,9 +352,7 @@ test("the look reads an export's or a download's index and writes nothing: a FHI
     );
   }
 
-  const download = join(
-    findRoot(dirname(fileURLToPath(import.meta.url))),
-    "developer-story",
+  const download = await kitDownload(
     "priya-natarajan",
     "kestrel-harbor-health-summary.xml",
   );
@@ -618,7 +620,7 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
 test("a kit's story replayed through a step is a pod openPod continues", async () => {
   const at = await mkdtemp(join(tmpdir(), "cascade-runtime-kit-"));
   try {
-    const steps = await replayKit("alex-rivera", at, { through: "J1" });
+    const steps = await replayKit("alex-rivera", at, { through: "E5" });
     assert.deepEqual(
       steps.map(({ step, kind }) => [step, kind]),
       [
@@ -626,9 +628,15 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
         ["E2", "import"],
         ["M5", "matcher"],
         ["J1", "judgment"],
+        ["E3", "entry"],
+        ["M6", "matcher"],
+        ["E4", "import"],
+        ["J2", "judgment"],
+        ["E5", "matcher"],
       ],
     );
     assert.ok((steps[1]?.wrote.length ?? 0) > 0);
+    assert.ok((steps.at(-1)?.wrote.length ?? 0) > 0, "E5 files no Same");
     const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
     const replayed = await openPod(at);
     try {
@@ -640,7 +648,30 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
             o.value === replayed.address,
         ),
       );
-      assert.equal((await allergens(replayed)).length, 4);
+      assert.equal(replayed.opened, undefined);
+      const used = await replayed.ask({
+        query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
+          ?judgment prov:wasAttributedTo <${MATCHER}> ; prov:used ?version }`,
+      });
+      const cited = used.map(({ version }) => version ?? "");
+      const held = shipped(
+        await (await tablesBeside(dirname(at))).references(),
+      );
+      assert.ok(
+        cited.some((version) => held.includes(version)),
+        "the matcher cites none of the app's tables",
+      );
+      const own = shipped(
+        await References.of(
+          new FolderFiles(kit),
+          `${ALEX}/references/`,
+          () => new OxigraphStore(),
+        ),
+      );
+      assert.ok(own.length > 0);
+      for (const version of own)
+        assert.ok(!cited.includes(version), `${version} is the kit's own`);
+      assert.equal((await allergens(replayed)).length, 5);
     } finally {
       await replayed.close();
     }
@@ -680,13 +711,18 @@ test("a published pod's answers, as the site computes them, are read back withou
   }
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const answers = new MemoryFiles("urn:test:answers/");
+  const publishing = await partsOf(await checkouts(root));
   for (const [path, bytes] of await publishedAnswers(
-    await partsOf(await checkouts(root)),
+    publishing,
     "pod",
     published,
     "published",
   ))
     await answers.write(path, bytes);
+  assert.deepEqual(
+    (await new Answers(answers, "published").described())?.tables,
+    shipped(await publishing.tables.references()),
+  );
   const { vocabulary, build, lens, layout, tables } = kept;
   const read = await keptPod(
     {

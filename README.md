@@ -133,7 +133,10 @@ npm run build:pages                      # every kit's pod and site, under the n
 
 Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
 `conformance/alex-rivera/` replayed with the Bridge's saved output, so it needs
-only Node. The site is built from any pod folder: `--pod <folder>` reads
+only Node, and with the kit's own tables, which `npm run conformance` and
+`npm run build:example` need. `npm run build:pages` replays each kit on the
+package's starter copies instead, as a made app's `replayKit` does, so that a
+published pod cites only the tables a pod the app creates is given. The site is built from any pod folder: `--pod <folder>` reads
 another, `--out <folder>` writes elsewhere and `--lens <lens>` builds it under
 another lens. Every question on the site says how to ask it yourself:
 
@@ -175,8 +178,8 @@ compares its rows with the replay of her story through `J1`.
 `developer-story/medications.mjs` is the developer story of
 [#70](https://github.com/jayostis/cascade-runtime-js/issues/70) and its
 acceptance test. Priya Natarajan's first Apple Health export and first C-CDA
-download from Kestrel Harbor Hospital, synthetic, are under
-`developer-story/priya-natarajan/`. The script looks at each and imports it as
+download from Kestrel Harbor Hospital, synthetic, are in her kit's
+`scripted-input/priya/downloads/` in the vocabulary. The script looks at each and imports it as
 hers, then prints her active medications: lisinopril, which both formats carry,
 as one entry, and amlodipine, which only the C-CDA has. The same test file runs
 it and checks those rows.
