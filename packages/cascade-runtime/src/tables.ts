@@ -405,6 +405,12 @@ export class Tables {
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
+      // Listed now, so a version the starter copies brought is quick on its first view too.
+      for (const [, , version] of (await this.#index()).match(
+        undefined,
+        SHIPS_WITH,
+      ))
+        this.#listed(version.value).catch(() => undefined);
       return checked;
     });
   }
