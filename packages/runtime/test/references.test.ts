@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { MemoryFiles, readText } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { iri } from "../src/rdf.js";
+import { iri, type Triple } from "../src/rdf.js";
 import { References, tableTerms } from "../src/references.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
@@ -26,6 +26,38 @@ test("a version whose name names no file refuses the step rather than aborting t
   ]) {
     await assert.rejects(references.rows(version), Refusal, version);
   }
+});
+
+test("a folder without a file for a version of the vocabulary's rule list reads it from the vocabulary, and a file of the folder's own is read instead", async () => {
+  const files = await vocabulary();
+  const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
+  const folder = "runtime/scripted-input/hana/tables/app/";
+  const story = new MemoryFiles(files.iri);
+  await story.write(
+    `${folder}references.ttl`,
+    (await files.read(`${folder}references.ttl`)) ?? new Uint8Array(),
+  );
+  const ruleCount = async (rows: Promise<Triple[]>) =>
+    new Graph(await rows).subjects(
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+      iri(`${REC}MatcherRule`),
+    ).length;
+  const references = () =>
+    References.of(story, folder, () => new OxigraphStore(), files);
+
+  const shared = await ruleCount(
+    (await references()).rows(`urn:uuid:${rules}`),
+  );
+  assert.ok(shared > 0);
+  await assert.rejects(
+    (await references()).rows(`urn:uuid:${rules.replace("f", "e")}`),
+    Refusal,
+  );
+  await story.write(`${folder}${rules}.ttl`, new TextEncoder().encode(""));
+  assert.equal(
+    await ruleCount((await references()).rows(`urn:uuid:${rules}`)),
+    0,
+  );
 });
 
 test("the table terms hold one code system for each the vocabulary's records file registers, with its label and its URI space", async () => {

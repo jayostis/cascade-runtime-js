@@ -375,6 +375,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
       importSaved(pod, step, {
         source: files,
         folder,
+        vocabulary: files,
         activities: new Map(),
         time,
         newStore,
