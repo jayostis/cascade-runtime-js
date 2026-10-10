@@ -667,10 +667,7 @@ class Matcher {
     for (const judged of this.pod.judgments) {
       if (!judged.used.some((thing) => this.pod.revised.has(thing))) continue;
       const rule = byJustification.get(judged.justification);
-      if (rule === undefined)
-        throw new Refusal(
-          `the rule list has no rule for ${judged.justification}, which ${judged.name} gives`,
-        );
+      if (rule === undefined) continue;
       const series =
         rule.kind === undefined
           ? undefined
