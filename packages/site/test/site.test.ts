@@ -10,6 +10,7 @@ import {
   MemoryFiles,
   OxigraphStore,
   questions,
+  tableTerms,
   titleOf,
   unpackFolder,
   written,
@@ -30,7 +31,7 @@ import {
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
-import { shown } from "../src/terms.js";
+import { code, shown } from "../src/terms.js";
 import { startFunctions, startOf } from "../src/node/start.js";
 import { type Page, readPage } from "./page.js";
 
@@ -275,6 +276,19 @@ test("a time is shown in UTC to the minute whatever its offset, and only an xsd:
   assert.equal(time("2027-01-01T09:00:00"), "2027-01-01 09:00 UTC");
   assert.equal(shown(literal("2027-01-01", `${XSD}date`)), "2027-01-01");
   assert.equal(shown(literal("2027-01-01T09:00:00Z")), "2027-01-01T09:00:00Z");
+});
+
+test("a code is shown by the label of the code system whose registered URI space its IRI starts with, and an IRI in none is not", async () => {
+  const { codeSystems } = await tableTerms(vocabulary.files, options.newStore);
+  assert.deepEqual(site.codeSystems, codeSystems);
+  assert.ok(codeSystems.length > 0);
+  for (const { label, uriSpace } of site.codeSystems)
+    assert.deepEqual(
+      code(`${uriSpace}373270004`, site.codeSystems),
+      [label, "373270004"],
+      label,
+    );
+  assert.equal(code("http://example.org/x/1", site.codeSystems), undefined);
 });
 
 test("a site built under a lens other than the one `ask` and GraphDB use names that lens in every command it prints", async () => {

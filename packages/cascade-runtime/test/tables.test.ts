@@ -69,8 +69,10 @@ interface Served {
   readonly broken?: string;
 }
 
-let components: Components;
-let parts: ResolvedParts;
+const components: Components = await checkouts(
+  findRoot(dirname(fileURLToPath(import.meta.url))),
+);
+const parts: ResolvedParts = await partsOf(components);
 let feed: Served;
 /** The test feed with each series' first version current. */
 let first: Served;
@@ -79,9 +81,6 @@ let groups: { series: string; first: string; second: string };
 let scratch: string;
 
 before(async () => {
-  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
-  components = await checkouts(root);
-  parts = await partsOf(components);
   const { folder } = await components.resolve(
     components.config.tables.repository,
   );
@@ -296,8 +295,16 @@ async function withBytes(
   };
 }
 
-const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm/";
-const ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm/";
+const SYSTEMS = (await tableTerms(parts.vocabulary, parts.newStore))
+  .codeSystems;
+/** The URI space the vocabulary registers for the code system of this label. */
+const spaceOf = (label: string): string => {
+  const found = SYSTEMS.find((system) => system.label === label);
+  assert.ok(found, `the vocabulary registers no code system ${label}`);
+  return found.uriSpace;
+};
+const RXNORM = spaceOf("RxNorm");
+const ICD10CM = spaceOf("ICD-10-CM");
 
 /** A mapping series of the test feed: its kind, the code system its rows' codes are in, and their predicate. */
 interface Mapping {

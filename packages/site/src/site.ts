@@ -1,4 +1,5 @@
 import {
+  type CodeSystem,
   DERIVED,
   documentName,
   type Files,
@@ -12,6 +13,7 @@ import {
   questions,
   readText,
   type StoreFactory,
+  tableTerms,
   type Term,
   type Triple,
   Union,
@@ -85,6 +87,8 @@ export class Site {
     readonly pipeline: ReadonlyMap<string, readonly PipelineStep[]>,
     /** Each term of the vocabulary's own, labelled. */
     readonly labels: ReadonlyMap<string, string>,
+    /** The code systems the vocabulary registers, which label a code. */
+    readonly codeSystems: readonly CodeSystem[],
     things: ReadonlyMap<string, readonly Term[]>,
     pages: ReadonlyMap<string, string>,
     storedBytes: ReadonlyMap<string, string>,
@@ -217,6 +221,7 @@ export class Site {
       answers,
       pipeline,
       await vocabularyLabels(vocabulary, options.newStore, asked.get(CALLED)),
+      (await tableTerms(vocabulary, options.newStore)).codeSystems,
       things,
       pages,
       storedBytes,

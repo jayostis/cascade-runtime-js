@@ -196,9 +196,9 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
 });
 
 test("a pod's page names a row by the first of its codes the tables name, else by the record's own text, and says when a code is retired", () => {
-  const CVX = "http://hl7.org/fhir/sid/cvx/";
-  const ICD = "http://hl7.org/fhir/sid/icd-10-cm/";
-  const SCT = "http://snomed.info/sct/";
+  const CVX = "urn:test:cvx/";
+  const ICD = "urn:test:icd/";
+  const SCT = "urn:test:sct/";
   const name = (label: string) => ({
     name: { label, altLabels: [], origin: "urn:x:names" },
   });
