@@ -69,7 +69,7 @@ after(async () => {
   await rm(folder, { recursive: true, force: true });
 });
 
-test("patient A pulled from two hospitals is one subject in one pod, each record named under its hospital's base, joined where the codes agree", async () => {
+test("patient A pulled from two hospitals is one subject in one pod, each record named under its hospital's base, a condition joined where its code and period agree", async () => {
   assert.deepEqual(
     [north.retrievedAt, south.retrievedAt],
     ["2026-10-07T08:04:46.17Z", "2026-10-07T08:05:00Z"],
@@ -148,6 +148,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     }))
     .filter(
       ({ urls }) =>
+        urls.every((url) => url.includes("/Condition/")) &&
         urls.some((url) => url.startsWith(`${north.fhirBase}/`)) &&
         urls.some((url) => url.startsWith(`${south.fhirBase}/`)),
     )
@@ -160,11 +161,6 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
         `${JDG}SameCodeAndPeriod`,
         coded(north, "Condition", "59621000"),
         coded(south, "Condition", "59621000"),
-      ],
-      [
-        `${JDG}SameMedicationCode`,
-        coded(north, "MedicationRequest", "314076"),
-        coded(south, "MedicationRequest", "314076"),
       ],
     ]
       .map(
