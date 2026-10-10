@@ -79,7 +79,7 @@ test("what Cascade noticed: things seen at two places first, three at most, then
   ]);
 });
 
-test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section, and one entry's rows or a medication with no code give nothing", () => {
+test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows or a medication with no code give nothing", () => {
   const MEDICATIONS = "pod/My active medications";
   const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
   const ingredients = (...codes: string[]) => ({
@@ -90,6 +90,12 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
     [RXNORM + "212550", ingredients("17767")],
     [RXNORM + "308135", ingredients("17767", "5640")],
     [RXNORM + "1", ingredients("5640")],
+    [RXNORM + "9", ingredients("777")],
+    [RXNORM + "10", ingredients("777")],
+    [
+      RXNORM + "777",
+      { name: { label: "hydrochlorothiazide / lisinopril", altLabels: [] } },
+    ],
     [RXNORM + "17767", { name: { label: "amlodipine", altLabels: [] } }],
   ]);
   const answers = (...rows: Record<string, string>[]) => ({
@@ -111,6 +117,8 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
         { entry: "e3", medication: "Aspirin" },
         { entry: "e4", medication: "Pain relief", code: RXNORM + "1" },
         { entry: "e5", medication: "Combined", code: RXNORM + "308135" },
+        { entry: "e6", medication: "Zestoretic", code: RXNORM + "9" },
+        { entry: "e7", medication: "Prinzide", code: RXNORM + "10" },
       ),
       about,
     ),
@@ -119,6 +127,7 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
       "Amlodipine 5 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
       "Norvasc 10 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
       "Pain relief and Combined share an ingredient, 5640, and are shown apart. Worth a look.",
+      "Zestoretic and Prinzide share the combination, hydrochlorothiazide / lisinopril, and are shown apart. Worth a look.",
     ],
   );
   assert.deepEqual(
@@ -129,6 +138,7 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
           medication: "amlodipine 5 MG Oral Tablet",
           code: RXNORM + "197361",
         },
+        { entry: "e2", medication: "Bmlodipine", code: RXNORM + "212550" },
         {
           entry: "e1",
           medication: "Norvasc 10 MG Oral Tablet",
@@ -137,7 +147,9 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
       ),
       about,
     ),
-    [],
+    [
+      "Amlodipine 5 MG Oral Tablet and Bmlodipine share an ingredient, amlodipine, and are shown apart. Worth a look.",
+    ],
   );
 });
 

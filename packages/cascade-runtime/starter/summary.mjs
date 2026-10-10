@@ -337,7 +337,8 @@ function fromLabel(label = "") {
  * the rows of each of `QUESTIONS`, by question.
  *
  * The pair is a hint the starter gives, not something the pod knows: a pod's questions never read the tables' rows.
- * A combination maps to its single ingredient (MIN), so lisinopril and lisinopril with hydrochlorothiazide share none.
+ * A combination maps to its own multiple-ingredient concept (MIN), never to each of its ingredients, so lisinopril and
+ * lisinopril with hydrochlorothiazide share none; two drugs that map to the same MIN share the combination.
  */
 export function noticed(answers, about = new Map()) {
   const entries = new Map();
@@ -394,7 +395,7 @@ function sharedIngredients(answers, about) {
   const sentences = [];
   for (const [at, one] of rows.entries())
     for (const other of rows.slice(at + 1)) {
-      const pair = JSON.stringify([one.entry, other.entry]);
+      const pair = JSON.stringify([one.entry, other.entry].sort());
       const shared = one.ingredients.find((each) =>
         other.ingredients.includes(each),
       );
@@ -402,8 +403,9 @@ function sharedIngredients(answers, about) {
         continue;
       said.add(pair);
       const name = about.get(shared)?.name?.label ?? shared.split("/").at(-1);
+      const what = name.includes(" / ") ? "the combination" : "an ingredient";
       sentences.push(
-        `${one.name} and ${other.name} share an ingredient, ${name}, and are shown apart. Worth a look.`,
+        `${one.name} and ${other.name} share ${what}, ${name}, and are shown apart. Worth a look.`,
       );
     }
   return sentences;

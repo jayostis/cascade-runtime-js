@@ -26,7 +26,8 @@ async function wordsOver(records: string): Promise<Words> {
 <urn:test:literal> a health:AllergyRecord . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; clinical:snomedCode "1234" .
 <urn:test:brand> a clinical:Medication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${REC}ndcCode> <urn:test:ndc/00378520905> .
 <urn:test:generic> a clinical:Medication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${REC}ndcCode> <urn:test:ndc/00093101301> .
-<urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .`,
+<urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .
+<urn:test:product> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameProductCode> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .`,
     "urn:test:pod",
   );
   const person = {
@@ -66,6 +67,12 @@ test("a medication is found by its NDC through the space the vocabulary register
       "the matcher's same brand generic of medication NDC 00378520905 and medication NDC 00093101301",
     ),
     "urn:test:said",
+  );
+  assert.equal(
+    await words.judgment(
+      "the matcher's same product code of medication NDC 00378520905 and medication NDC 00093101301",
+    ),
+    "urn:test:product",
   );
 });
 

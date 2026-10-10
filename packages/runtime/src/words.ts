@@ -36,6 +36,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same converted code": `${JDG}SameConvertedCode`,
   "same code and period": `${JDG}SameCodeAndPeriod`,
   "same brand generic": `${JDG}SameBrandGeneric`,
+  "same product code": `${JDG}SameProductCode`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */

@@ -109,8 +109,9 @@ and `pod/My immunizations`; `icd10`, then `snomed`, of
 code's IRI in its system, which `about` takes as it is. Its "What Cascade
 noticed" also says when two medications in two entries have an ingredient in
 common. That is a hint from the tables, not a review item of the pod, which
-cannot read them: a combination maps to its single ingredient, so lisinopril and
-lisinopril with hydrochlorothiazide share none.
+cannot read them: a combination maps to its own multiple-ingredient concept (RxNorm's MIN),
+never to each of its ingredients, so lisinopril and lisinopril with
+hydrochlorothiazide share none.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with
