@@ -79,6 +79,68 @@ test("what Cascade noticed: things seen at two places first, three at most, then
   ]);
 });
 
+test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section, and one entry's rows or a medication with no code give nothing", () => {
+  const MEDICATIONS = "pod/My active medications";
+  const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
+  const ingredients = (...codes: string[]) => ({
+    ingredients: { codes: codes.map((code) => RXNORM + code), origin: "urn:v" },
+  });
+  const about = new Map<string, unknown>([
+    [RXNORM + "197361", ingredients("17767")],
+    [RXNORM + "212550", ingredients("17767")],
+    [RXNORM + "308135", ingredients("17767", "5640")],
+    [RXNORM + "1", ingredients("5640")],
+    [RXNORM + "17767", { name: { label: "amlodipine", altLabels: [] } }],
+  ]);
+  const answers = (...rows: Record<string, string>[]) => ({
+    [MEDICATIONS]: rows,
+  });
+  assert.deepEqual(
+    view.noticed(
+      answers(
+        {
+          entry: "e1",
+          medication: "amlodipine 5 MG Oral Tablet",
+          code: RXNORM + "197361",
+        },
+        {
+          entry: "e2",
+          medication: "Norvasc 10 MG Oral Tablet",
+          code: RXNORM + "212550",
+        },
+        { entry: "e3", medication: "Aspirin" },
+        { entry: "e4", medication: "Pain relief", code: RXNORM + "1" },
+        { entry: "e5", medication: "Combined", code: RXNORM + "308135" },
+      ),
+      about,
+    ),
+    [
+      "Amlodipine 5 MG Oral Tablet and Norvasc 10 MG Oral Tablet share an ingredient, amlodipine, and are shown apart. Worth a look.",
+      "Amlodipine 5 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
+      "Norvasc 10 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
+      "Pain relief and Combined share an ingredient, 5640, and are shown apart. Worth a look.",
+    ],
+  );
+  assert.deepEqual(
+    view.noticed(
+      answers(
+        {
+          entry: "e1",
+          medication: "amlodipine 5 MG Oral Tablet",
+          code: RXNORM + "197361",
+        },
+        {
+          entry: "e1",
+          medication: "Norvasc 10 MG Oral Tablet",
+          code: RXNORM + "212550",
+        },
+      ),
+      about,
+    ),
+    [],
+  );
+});
+
 test("a row's place, as a person says it", () => {
   for (const [row, place] of [
     [

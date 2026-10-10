@@ -35,6 +35,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same result": `${JDG}SameResult`,
   "same converted code": `${JDG}SameConvertedCode`,
   "same code and period": `${JDG}SameCodeAndPeriod`,
+  "same brand generic": `${JDG}SameBrandGeneric`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
@@ -45,6 +46,7 @@ const CODES: Readonly<
   RxNorm: { system: `${REC}RxNorm` },
   "ICD-10-CM": { system: `${REC}ICD10CM` },
   LOINC: { system: `${REC}LOINC` },
+  NDC: { system: `${REC}NDC` },
   CVX: { literal: `${HEALTH}vaccineCode` },
 };
 
