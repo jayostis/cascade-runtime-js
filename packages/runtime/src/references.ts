@@ -26,7 +26,6 @@ export interface CodeSystem {
 /** What the vocabulary says of tables: each code system, and the properties each kind's rows are found by. */
 export interface TableTerms {
   readonly codeSystems: readonly CodeSystem[];
-  /** Each code system's `uriSpace`. */
   readonly uriSpaces: readonly string[];
   /** By kind; `rec:RowSubject` for a row found by its own subject. */
   readonly foundBy: ReadonlyMap<string, readonly string[]>;

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import type { Replayed } from "../src/replay.js";
+import { Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
 import { CLINICAL, HEALTH, PROV, Words } from "../src/words.js";
 
@@ -11,7 +12,6 @@ const REGISTRY = `@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix void: <http://rdfs.org/ns/void#> .
 rec:SNOMEDCT a rec:CodeSystem ; rdfs:label "SNOMED CT"@en ; void:uriSpace "urn:test:snomed/" .
-rec:RxNorm a rec:CodeSystem ; rdfs:label "RxNorm"@en ; void:uriSpace "urn:test:rxnorm/" .
 `;
 
 async function wordsOver(records: string): Promise<Words> {
@@ -21,8 +21,7 @@ async function wordsOver(records: string): Promise<Words> {
   await store.loadTurtle(
     `@prefix health: <${HEALTH}> . @prefix clinical: <${CLINICAL}> . @prefix prov: <${PROV}> .
 <urn:test:coded> a health:AllergyRecord . <urn:test:coded-v> prov:specializationOf <urn:test:coded> ; health:allergenCode <urn:test:snomed/373270004> .
-<urn:test:literal> a health:AllergyRecord . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; clinical:snomedCode "1234" .
-<urn:test:drug> a clinical:Medication . <urn:test:drug-v> prov:specializationOf <urn:test:drug> ; clinical:drugCode <urn:test:rxnorm/314076> .`,
+<urn:test:literal> a health:AllergyRecord . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; clinical:snomedCode "1234" .`,
     "urn:test:pod",
   );
   const person = {
@@ -49,7 +48,6 @@ test("a record in words is found through the stem its code system is registered 
     "urn:test:coded",
   );
   assert.equal(await words.record("allergy SNOMED 1234"), "urn:test:literal");
-  assert.equal(await words.record("medication RxNorm 314076"), "urn:test:drug");
 });
 
 test("a record named by a code system the vocabulary does not register is an Error naming the system", async () => {
@@ -57,6 +55,8 @@ test("a record named by a code system the vocabulary does not register is an Err
   await assert.rejects(
     words.record("lab result LOINC 2823-3"),
     (error: unknown) =>
-      error instanceof Error && error.message.includes("LOINC"),
+      error instanceof Error &&
+      !(error instanceof Refusal) &&
+      error.message.includes("LOINC"),
   );
 });

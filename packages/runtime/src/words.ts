@@ -305,7 +305,7 @@ export class Words {
 
   /** The patterns a version holding the code of the named code system matches, the IRI the vocabulary registers or a literal. */
   async #coded(system: string, code: string): Promise<string> {
-    const { system: registered, literal } = CODES[system] ?? {};
+    const { system: registered, literal } = CODES[system]!;
     const alternatives: string[] = [];
     if (registered !== undefined) {
       const found = (
@@ -319,9 +319,7 @@ export class Words {
     }
     if (literal !== undefined)
       alternatives.push(`?version <${literal}> ${JSON.stringify(code)}`);
-    return alternatives.length === 1
-      ? (alternatives[0] ?? "")
-      : alternatives.map((each) => `{ ${each} }`).join(" UNION ");
+    return alternatives.map((each) => `{ ${each} }`).join(" UNION ");
   }
 
   /** A record in words: a handle, or its kind with its code, its name or both, and `from <source>` where needed. */

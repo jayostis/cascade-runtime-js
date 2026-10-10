@@ -7,10 +7,10 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { ROOT, vocabulary } from "./vocabulary.js";
 
 const STEMS = [
-  "snomed.info/",
+  "snomed.info/sct/",
   "loinc.org/",
   "umls/rxnorm",
-  "hl7.org/fhir/sid/",
+  "hl7.org/fhir/sid/ndc/",
   "ns.cascadeprotocol.org/codes/",
 ];
 
