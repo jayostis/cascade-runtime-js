@@ -332,10 +332,15 @@ function fromLabel(label = "") {
 
 /**
  * What Cascade noticed, as sentences: each thing recorded at more than one place, then each that arrived more than
- * once from one place, three at most and how many more; then each entry that needs review. `answers` holds the rows of
- * each of `QUESTIONS`, by question.
+ * once from one place, three at most and how many more; then each entry that needs review; then each pair of
+ * medications in two entries whose codes have an ingredient in common, which the tables' `about` gives. `answers` holds
+ * the rows of each of `QUESTIONS`, by question.
+ *
+ * The pair is a hint the starter gives, not something the pod knows: a pod's questions never read the tables' rows.
+ * A combination maps to its own multiple-ingredient concept (MIN), never to each of its ingredients, so lisinopril and
+ * lisinopril with hydrochlorothiazide share none; two drugs that map to the same MIN share the combination.
  */
-export function noticed(answers) {
+export function noticed(answers, about = new Map()) {
   const entries = new Map();
   for (const section of SECTIONS)
     for (const row of answers[section.question] ?? [])
@@ -374,7 +379,36 @@ export function noticed(answers) {
         ]
       : []),
     ...review.values(),
+    ...sharedIngredients(answers, about),
   ].map((sentence) => sentence[0].toUpperCase() + sentence.slice(1));
+}
+
+/** A sentence for each pair of medications in two entries whose codes share an ingredient, in the order of the section. */
+function sharedIngredients(answers, about) {
+  const medications = SECTIONS.find(({ one }) => one === "medication");
+  const rows = (answers[medications.question] ?? []).map((row) => ({
+    entry: row.entry,
+    name: row.medication || fromLabel(row.entryLabel).name,
+    ingredients: about.get(row.code)?.ingredients?.codes ?? [],
+  }));
+  const said = new Set();
+  const sentences = [];
+  for (const [at, one] of rows.entries())
+    for (const other of rows.slice(at + 1)) {
+      const pair = JSON.stringify([one.entry, other.entry].sort());
+      const shared = one.ingredients.find((each) =>
+        other.ingredients.includes(each),
+      );
+      if (one.entry === other.entry || shared === undefined || said.has(pair))
+        continue;
+      said.add(pair);
+      const name = about.get(shared)?.name?.label ?? shared.split("/").at(-1);
+      const what = name.includes(" / ") ? "the combination" : "an ingredient";
+      sentences.push(
+        `${one.name} and ${other.name} share ${what}, ${name}, and are shown apart. Worth a look.`,
+      );
+    }
+  return sentences;
 }
 
 /** The section's rows in the order its table opens in, a row with nothing to sort by last either way. */
@@ -513,7 +547,7 @@ export function podPage(
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const sentences = noticed(answers);
+  const sentences = noticed(answers, about);
   const tiles = SECTIONS.filter(
     (section) => (answers[section.question] ?? []).length > 0,
   ).map((section) => tile(section, answers[section.question]));

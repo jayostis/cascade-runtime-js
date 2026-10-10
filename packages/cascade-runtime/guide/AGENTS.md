@@ -96,8 +96,9 @@ source, licence, credit, versions and how fresh its feed is; `uses()`, the
 pods last opened with each version, by name; `search(series, text, page)`, the
 codes of its current version, or of several series' (a source's), that are
 `text` or whose name holds it, 50 a page (`total` of them, the page after
-`offset`), each with what `about(codes)` says of it (its name and status) and
-the codes it maps to; `codeNamed(series, notation)`, the code written so that
+`offset`), each with what `about(codes)` says of it (its name, status and
+`ingredients`: the codes it maps to in the first product ingredients table that
+maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
 they list or map to, from the first series that holds one; and `facts(code)`,
 what every held table says of a code, each fact with its series and version.
 A pod's own page names a record by its code's name, else by the record's own
@@ -105,7 +106,12 @@ text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
 and `pod/My immunizations`; `icd10`, then `snomed`, of
 `pod/My active conditions`; `snomed` of `pod/My procedures`. Each holds a
-code's IRI in its system, which `about` takes as it is.
+code's IRI in its system, which `about` takes as it is. Its "What Cascade
+noticed" also says when two medications in two entries have an ingredient in
+common. That is a hint from the tables, not a review item of the pod, which
+cannot read them: a combination maps to its own multiple-ingredient concept (RxNorm's MIN),
+never to each of its ingredients, so lisinopril and lisinopril with
+hydrochlorothiazide share none.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with
@@ -114,7 +120,8 @@ the package's, and code wins over the file. `feeds` lists every feed the app
 reads, the package's among them if it keeps it; `preference` gives each table
 kind's IRI the series a person reads it from, first first; `checkOnOpen: false`
 leaves only "Check now". `(await tablesBeside("pods")).about([codeIri])` gives
-each code's name and status from the first series in that order that holds it.
+each code's name, status and ingredients from the first series in that order
+that holds it.
 In Node only, `builders` names sources whose builders run on this machine in
 each check, a name under cascade-reference-tables' `builders/` or a path from
 the file; what one builds is kept as a feed's versions are, from

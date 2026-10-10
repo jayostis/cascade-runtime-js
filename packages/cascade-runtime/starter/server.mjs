@@ -85,10 +85,32 @@ const tablePath = (series) =>
 
 let unnamedSaid = false;
 
-/** What the tables say of the codes `answers` hold; nothing when they cannot say, which the console is told once. */
+function sayUnnamed(error) {
+  if (!unnamedSaid)
+    stderr.write(`Records are shown by their own names: ${error.message}
+`);
+  unnamedSaid = true;
+}
+
+/** What the tables say of the codes `answers` hold and of their ingredients; nothing when they cannot say, which the console is told once. */
 function aboutCodes(answers) {
   return tables()
-    .then((kept) => kept.about(codesOf(answers)))
+    .then(async (kept) => {
+      const about = await kept.about(codesOf(answers));
+      // The ingredients a code maps to, named too, for the sentences that say two medications share one.
+      const ingredients = new Set(
+        [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
+      );
+      try {
+        for (const [code, said] of await kept.about(
+          [...ingredients].filter((code) => !about.has(code)),
+        ))
+          about.set(code, said);
+      } catch (error) {
+        sayUnnamed(error);
+      }
+      return about;
+    })
     .catch((error) => {
       if (!unnamedSaid)
         stderr.write(

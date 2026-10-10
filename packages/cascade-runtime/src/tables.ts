@@ -135,7 +135,7 @@ export interface HeldSeries {
   readonly source?: string;
 }
 
-/** What a names or status series says of a code, from the first series in the order of preference that holds it. */
+/** What a names, status or product ingredients series says of a code, from the first series in the order of preference that holds it. */
 export interface About {
   readonly name?: {
     readonly label: string;
@@ -145,6 +145,14 @@ export interface About {
   readonly status?: {
     readonly deprecated: boolean;
     readonly replacedBy: readonly string[];
+    readonly origin: string;
+  };
+  /**
+   * The codes the code maps to in a product ingredients series. A combination maps to its MIN, so two products
+   * share an ingredient here only when each maps to the same code, not when one holds the other's ingredient.
+   */
+  readonly ingredients?: {
+    readonly codes: readonly string[];
     readonly origin: string;
   };
 }
@@ -469,24 +477,26 @@ export class Tables {
     });
   }
 
-  /** What the tables say of each code: its name and status, from the first held series of each kind in the order of preference that holds it. */
+  /**
+   * What the tables say of each code: its name, status and ingredients, from the first held series of each kind in the
+   * order of preference that holds it.
+   */
   async about(codes: readonly string[]): Promise<Map<string, About>> {
     const references = await this.references();
     const found = new Map<string, { -readonly [K in keyof About]: About[K] }>();
     const fill = async <K extends keyof About>(
       kind: string,
       key: K,
-      read: (rows: Row[], origin: string) => About[K],
+      reading: (origin: string) => Promise<(code: string) => About[K]>,
     ): Promise<void> => {
       for (const series of this.#preferred(references, kind)) {
         const left = codes.filter(
           (code) => found.get(code)?.[key] === undefined,
         );
         if (left.length === 0) return;
-        const origin = references.fallback(series);
-        const text = await this.#text(origin);
+        const read = await reading(references.fallback(series));
         for (const code of left) {
-          const value = read(rowsAbout(text, code), origin);
+          const value = read(code);
           if (value === undefined) continue;
           const entry = found.get(code) ?? {};
           entry[key] = value;
@@ -494,21 +504,45 @@ export class Tables {
         }
       }
     };
-    await fill(`${REC}CodeNames`, "name", (rows, origin) => {
-      const [label] = values(rows, `${SKOS}prefLabel`);
-      return label === undefined
-        ? undefined
-        : { label, altLabels: values(rows, `${SKOS}altLabel`), origin };
-    });
-    await fill(`${REC}CodeStatus`, "status", (rows, origin) => {
-      const [deprecated] = values(rows, `${OWL}deprecated`);
-      return deprecated === undefined
-        ? undefined
-        : {
-            deprecated: deprecated === "true",
-            replacedBy: values(rows, `${DCT}isReplacedBy`),
-            origin,
-          };
+    const fromRows =
+      <K extends keyof About>(
+        read: (rows: Row[], origin: string) => About[K],
+      ) =>
+      async (origin: string) => {
+        const text = await this.#text(origin);
+        return (code: string) => read(rowsAbout(text, code), origin);
+      };
+    await fill(
+      `${REC}CodeNames`,
+      "name",
+      fromRows<"name">((rows, origin) => {
+        const [label] = values(rows, `${SKOS}prefLabel`);
+        return label === undefined
+          ? undefined
+          : { label, altLabels: values(rows, `${SKOS}altLabel`), origin };
+      }),
+    );
+    await fill(
+      `${REC}CodeStatus`,
+      "status",
+      fromRows<"status">((rows, origin) => {
+        const [deprecated] = values(rows, `${OWL}deprecated`);
+        return deprecated === undefined
+          ? undefined
+          : {
+              deprecated: deprecated === "true",
+              replacedBy: values(rows, `${DCT}isReplacedBy`),
+              origin,
+            };
+      }),
+    );
+    // A mapping row is named by a urn:uuid, so the rows about a code are found in the version's listing.
+    await fill(`${REC}ProductIngredients`, "ingredients", async (origin) => {
+      const { mapsTo } = await this.#listed(origin);
+      return (code) =>
+        Object.hasOwn(mapsTo, code) && mapsTo[code]!.length > 0
+          ? { codes: mapsTo[code]!, origin }
+          : undefined;
     });
     return found;
   }

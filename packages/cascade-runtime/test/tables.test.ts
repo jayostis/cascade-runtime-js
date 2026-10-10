@@ -862,7 +862,22 @@ test("the starter copies carry each version's rows as published, and a store emp
 });
 
 test("a series of a kind nothing the app runs reads is neither kept nor carried as a starter copy, until a rule list names its kind", async () => {
-  const unread = `${REC}BrandGenerics`;
+  const unread = `${REC}SubstanceIngredients`;
+  for (const path of await parts.vocabulary.list(RULE_LIST)) {
+    const bytes = path.endsWith(".ttl")
+      ? await parts.vocabulary.read(path)
+      : undefined;
+    if (bytes === undefined) continue;
+    const named = (await parts.newStore().parse(bytes, FEED)).filter(
+      ([, predicate, object]) =>
+        predicate.value === `${REC}tableKind` && object.value === unread,
+    );
+    assert.deepEqual(
+      named,
+      [],
+      `${path} now names ${unread}: this test needs a kind no rule list reads`,
+    );
+  }
   const served: Served = {
     ...first,
     catalog: first.catalog.map(([subject, predicate, object]) =>
@@ -898,7 +913,7 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
         : new TextEncoder().encode(
             new TextDecoder()
               .decode(bytes)
-              .replace("rec:VaccineGroups", "rec:BrandGenerics"),
+              .replace("rec:VaccineGroups", "rec:SubstanceIngredients"),
           );
     },
     write: (path, bytes) => vocabulary.write(path, bytes),
@@ -1293,6 +1308,32 @@ test("a code's name and status come from the first series of their kinds, in the
     }
     assert.equal(about.has(unknown), false);
   }
+});
+
+test("a code's ingredients are the targets of the first held product ingredients series that maps it, named by the version that says so; a code no row maps has none", async () => {
+  const { served, versions } = await withMappings(feed, INGREDIENTS, [
+    [
+      ["153010", "5640"],
+      ["153010", "7052"],
+      ["5640", "5640"],
+    ],
+  ]);
+  const tables = tablesOver(served);
+  await tables.check();
+  const [brand, ibuprofen, unmapped] = ["153010", "5640", "999999"].map(
+    (code) => RXNORM + code,
+  );
+  const about = await tables.about([brand!, ibuprofen!, unmapped!]);
+  const ingredients = about.get(brand!)?.ingredients;
+  assert.deepEqual([...(ingredients?.codes ?? [])].sort(), [
+    RXNORM + "5640",
+    RXNORM + "7052",
+  ]);
+  assert.equal(ingredients?.origin, versions[0]);
+  assert.deepEqual(about.get(ibuprofen!)?.ingredients?.codes, [
+    RXNORM + "5640",
+  ]);
+  assert.equal(about.get(unmapped!)?.ingredients, undefined);
 });
 
 test("an app's tables are the package's with each field of its own file, then of its code, in their place; and what an app cannot set is refused", async () => {
