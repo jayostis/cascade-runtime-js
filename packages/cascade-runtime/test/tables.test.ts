@@ -33,7 +33,7 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { listing } from "../src/rows.js";
+import { listing, merged } from "../src/rows.js";
 import {
   type Checked,
   LISTED,
@@ -667,12 +667,26 @@ test("a code's facts hold what each held kind says of it, each with its series a
     new Set(listed.flat()),
   );
   assert.equal(all.total, new Set(listed.flat()).size);
+  // Two codes whose notations collate equal, listed in either order.
+  const [a, b] = ["urn:test:a:7", "urn:test:b:07"];
+  assert.deepEqual(
+    [
+      ...merged(
+        [
+          [b, a],
+          [a, b],
+        ],
+        ["urn:test:a:", "urn:test:b:"],
+      ),
+    ].sort(),
+    [a, b],
+  );
 });
 
-test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to", async () => {
+test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to; a code they map to is found by its notation", async () => {
   const count = PAGE_SIZE * 2 + 3;
   const { served } = await withMappings(feed, INGREDIENTS, [
-    Array.from({ length: count }, (_, at) => [`${at + 1}`, "1"] as const),
+    Array.from({ length: count }, (_, at) => [`${at + 1}`, "0"] as const),
   ]);
   const tables = tablesOver(served);
   await tables.check();
@@ -691,7 +705,7 @@ test("a search pages through a series of more codes than a page, in the order of
     assert.equal(searched.offset, (page - 1) * PAGE_SIZE);
     assert.deepEqual(
       new Set(asked),
-      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}1`])),
+      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}0`])),
     );
     pages.push(searched.found.map(({ notation }) => notation));
   }
@@ -703,6 +717,7 @@ test("a search pages through a series of more codes than a page, in the order of
     pages.flat(),
     Array.from({ length: count }, (_, at) => `${at + 1}`),
   );
+  assert.equal(await tables.codeNamed(INGREDIENTS.series, "0"), `${RXNORM}0`);
 });
 
 test("a search lists a version again when the listing kept beside it is not one, or was listed in another shape or by other code systems", async () => {

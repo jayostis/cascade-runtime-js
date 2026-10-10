@@ -372,13 +372,22 @@ async function showTable(id, text, shown, code) {
     );
   const all = source.series.map(({ iri }) => iri);
   if (code !== null) {
-    const found = await tables.codeNamed(all, code);
+    const found = await tables.codeNamed(
+      [...new Set([...all, ...state.tables.map(({ iri }) => iri)])],
+      code,
+    );
     if (found === undefined)
       return notFound(`${source.label} holds no code ${code}.`);
     const facts = await tables.facts(found);
     return render(
       `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim(),
-      codePage({ source, facts, codeHref, back: tableHref(source) }),
+      codePage({
+        source,
+        held: state.tables,
+        facts,
+        codeHref,
+        back: tableHref(source),
+      }),
     );
   }
   render(

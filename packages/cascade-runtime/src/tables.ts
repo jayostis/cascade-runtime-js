@@ -415,6 +415,7 @@ export class Tables {
   readonly #texts = new Map<string, Promise<string>>();
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
+  readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
   readonly #inverses = new Map<
     string,
     Promise<ReadonlyMap<string, readonly string[]>>
@@ -690,16 +691,19 @@ export class Tables {
     };
   }
 
-  /** The code written so in the current versions of the series; none when they hold none. */
+  /**
+   * The code written so in the current versions of the series, a code they list or one they map to, from the first
+   * series that holds one; none when they hold none.
+   */
   async codeNamed(
     series: string | readonly string[],
     written: string,
   ): Promise<string | undefined> {
-    const [codes, { uriSpaces }] = await Promise.all([
-      this.#codes(await this.#versionsOf(series)),
-      tableTerms(this.#options.vocabulary, this.#options.newStore),
-    ]);
-    return codes.find((code) => notation(uriSpaces, code) === written);
+    for (const version of await this.#versionsOf(series)) {
+      const code = (await this.#notationsIn(version)).get(written);
+      if (code !== undefined) return code;
+    }
+    return undefined;
   }
 
   /** What every held series says of the code, from its current version. */
@@ -716,45 +720,18 @@ export class Tables {
         const version = current(series);
         return version === undefined ? [] : [{ series, version }];
       });
-    const names: Facts["names"][number][] = [];
-    for (const fact of held(`${REC}CodeNames`)) {
-      const rows = rowsAbout(await this.#text(fact.version), code);
-      const [label] = values(rows, `${SKOS}prefLabel`);
-      if (label !== undefined)
-        names.push({
-          ...fact,
-          label,
-          altLabels: values(rows, `${SKOS}altLabel`),
-        });
-    }
-    const status: (Fact & { deprecated: boolean; replacedBy: string[] })[] = [];
-    for (const fact of held(`${REC}CodeStatus`)) {
-      const rows = rowsAbout(await this.#text(fact.version), code);
-      const [deprecated] = values(rows, `${OWL}deprecated`);
-      if (deprecated !== undefined)
-        status.push({
-          ...fact,
-          deprecated: deprecated === "true",
-          replacedBy: values(rows, `${DCT}isReplacedBy`),
-        });
-    }
+    const rowsOf = (kind: string) =>
+      Promise.all(
+        held(kind).map(async (fact) => ({
+          fact,
+          rows: rowsAbout(await this.#text(fact.version), code),
+        })),
+      );
     const page = (codes: readonly string[]) => ({
       total: codes.length,
       codes: codes.slice(0, PAGE_SIZE),
     });
-    const mappings: (Fact & {
-      mapsTo: { code: string; alongside: { total: number; codes: string[] } }[];
-      mappedFrom: { total: number; codes: string[] };
-    })[] = [];
-    for (const series of index.subjects(SHIPS_WITH).map(({ value }) => value)) {
-      const kind = references.kindOf(series);
-      const version = current(series);
-      if (
-        version === undefined ||
-        kind === `${REC}CodeNames` ||
-        kind === `${REC}CodeStatus`
-      )
-        continue;
+    const mapped = async ({ series, version }: Fact) => {
       const [{ mapsTo }, from] = await Promise.all([
         this.#listed(version),
         this.#mappedFrom(version),
@@ -764,17 +741,58 @@ export class Tables {
       const targets = Object.hasOwn(mapsTo, code) ? mapsTo[code]! : [];
       // A code that maps to itself lists the codes mapped to it beside itself, once.
       const sources = targets.includes(code) ? [] : others(code);
-      if (targets.length === 0 && sources.length === 0) continue;
-      mappings.push({
-        series,
-        version,
-        mapsTo: targets.map((target) => ({
-          code: target,
-          alongside: page(others(target).filter((each) => each !== target)),
-        })),
-        mappedFrom: page(sources),
-      });
-    }
+      return targets.length === 0 && sources.length === 0
+        ? []
+        : [
+            {
+              series,
+              version,
+              mapsTo: targets.map((target) => ({
+                code: target,
+                alongside: page(
+                  others(target).filter((each) => each !== target),
+                ),
+              })),
+              mappedFrom: page(sources),
+            },
+          ];
+    };
+    const [named, statuses, mappings] = await Promise.all([
+      rowsOf(`${REC}CodeNames`),
+      rowsOf(`${REC}CodeStatus`),
+      Promise.all(
+        index
+          .subjects(SHIPS_WITH)
+          .map(({ value }) => value)
+          .filter(
+            (series) =>
+              references.kindOf(series) !== `${REC}CodeNames` &&
+              references.kindOf(series) !== `${REC}CodeStatus`,
+          )
+          .flatMap((series) => {
+            const version = current(series);
+            return version === undefined ? [] : [mapped({ series, version })];
+          }),
+      ).then((each) => each.flat()),
+    ]);
+    const names = named.flatMap(({ fact, rows }) => {
+      const [label] = values(rows, `${SKOS}prefLabel`);
+      return label === undefined
+        ? []
+        : [{ ...fact, label, altLabels: values(rows, `${SKOS}altLabel`) }];
+    });
+    const status = statuses.flatMap(({ fact, rows }) => {
+      const [deprecated] = values(rows, `${OWL}deprecated`);
+      return deprecated === undefined
+        ? []
+        : [
+            {
+              ...fact,
+              deprecated: deprecated === "true",
+              replacedBy: values(rows, `${DCT}isReplacedBy`),
+            },
+          ];
+    });
     const about = await this.about([
       code,
       ...status.flatMap(({ replacedBy }) => replacedBy),
@@ -829,6 +847,22 @@ export class Tables {
         listings.map(({ codes }) => codes),
         uriSpaces,
       );
+    });
+  }
+
+  /** In a version, each code it lists or maps to, by its notation, the first listed for a notation; made once. */
+  #notationsIn(version: string): Promise<ReadonlyMap<string, string>> {
+    return once(this.#notations, version, async () => {
+      const [{ codes, mapsTo }, { uriSpaces }] = await Promise.all([
+        this.#listed(version),
+        tableTerms(this.#options.vocabulary, this.#options.newStore),
+      ]);
+      const named = new Map<string, string>();
+      for (const code of [...codes, ...Object.values(mapsTo).flat()]) {
+        const written = notation(uriSpaces, code);
+        if (!named.has(written)) named.set(written, code);
+      }
+      return named;
     });
   }
 
@@ -1118,6 +1152,7 @@ export class Tables {
         this.#texts.delete(held.value);
         this.#listings.delete(held.value);
         this.#inverses.delete(held.value);
+        this.#notations.delete(held.value);
         for (const key of this.#merges.keys())
           if (key.split(" ").includes(held.value)) this.#merges.delete(key);
       }

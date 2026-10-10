@@ -987,9 +987,9 @@ export function sourcesOf(held) {
   }));
 }
 
-/** Who publishes `series`, the credit it asks for, its licence and how fresh it is at `now`, as a card. */
-function published(series, now) {
-  return html`<div class="card"><dl class="facts">
+/** Who publishes `series`, the credit it asks for, its licence and how fresh it is at `now`, as a card headed `heading`. */
+function published(series, now, heading) {
+  return html`<div class="card">${heading && html`<h2>${heading}</h2>`}<dl class="facts">
 <dt>Source</dt><dd>${series.publisher !== undefined && linked(series.publisher, series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1"))}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
 <dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : linked(series.licence, LICENCES[series.licence] ?? series.licence)}</dd>
 <dt>Fresh</dt><dd>${freshness(series, now)}</dd>
@@ -1098,7 +1098,8 @@ ${series.versions.map((version) => {
 }
 
 /**
- * A source's page: `source` as `sourcesOf` gives it, who publishes it and how fresh it is at `now`; a search box
+ * A source's page: `source` as `sourcesOf` gives it, who publishes it, its licence and how fresh it is at `now`, a card
+ * for each set of its tables these differ for, headed with their labels when there are several; a search box
  * sending `q` to `search`, with `text` in it, over the codes of all its tables; the codes `searched` found, page `page`
  * of them, each a link to `codeHref(notation)`, with links to the pages around it at `pageHref(page)`; and what the
  * source publishes, each table a link to `tableHref(series)`.
@@ -1114,9 +1115,25 @@ export function sourcePage({
   tableHref,
   now,
 }) {
-  const [first] = source.series;
+  const alike = new Map();
+  for (const series of source.series) {
+    const said = JSON.stringify([
+      series.publisher,
+      series.credit,
+      series.licence,
+      freshness(series, now),
+    ]);
+    alike.set(said, [...(alike.get(said) ?? []), series]);
+  }
+  const cards = [...alike.values()];
   return html`<h1>${source.label}</h1>
-${published(first, now)}
+${cards.map((series) =>
+  published(
+    series[0],
+    now,
+    cards.length > 1 && series.map(({ label }) => label).join(", "),
+  ),
+)}
 ${searchBox(search, text)}
 ${codesFound({
   searched,
@@ -1135,12 +1152,14 @@ ${source.series.map(
 }
 
 /**
- * A code's page: everything `facts` (`facts()`'s answer) says of it, each fact naming the table of `source` and the
- * version it came from, each code a link to `codeHref(notation)`; and a link back to the source at `back`.
+ * A code's page: everything `facts` (`facts()`'s answer) says of it, each fact naming the table among `held` (as
+ * `held()` gives them) and the version it came from, each code a link to `codeHref(notation)`; and a link back to
+ * `source` at `back`.
  */
-export function codePage({ source, facts, codeHref, back }) {
+export function codePage({ source, held, facts, codeHref, back }) {
+  const tableOf = (series) => held.find(({ iri }) => iri === series);
   const from = ({ series, version }) => {
-    const table = source.series.find(({ iri }) => iri === series);
+    const table = tableOf(series);
     const held = table?.versions.find(({ iri }) => iri === version);
     return html`<p class="muted">From ${table?.label ?? series}, ${held === undefined ? version : versionName(held)}.</p>`;
   };
@@ -1166,7 +1185,7 @@ ${status.map(
 ${from(said)}</div>`,
 )}
 ${mappings.map((mapping) => {
-  const table = source.series.find(({ iri }) => iri === mapping.series);
+  const table = tableOf(mapping.series);
   return html`<div class="card"><h2>${table?.label ?? mapping.series}</h2>
 ${mapping.mapsTo.map(
   (target) =>

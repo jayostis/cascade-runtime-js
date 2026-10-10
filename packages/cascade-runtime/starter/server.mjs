@@ -203,14 +203,20 @@ async function showTable(response, id, query) {
   } else if (query.has("code")) {
     const written = query.get("code") ?? "";
     const code = await kept.codeNamed(
-      source.series.map(({ iri }) => iri),
+      [...new Set([...source.series, ...held].map(({ iri }) => iri))],
       written,
     );
     if (code === undefined)
       return notFound(`${source.label} holds no code ${written}.`);
     const facts = await kept.facts(code);
     title = `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim();
-    body = codePage({ source, facts, codeHref, back: tablePath(source) });
+    body = codePage({
+      source,
+      held,
+      facts,
+      codeHref,
+      back: tablePath(source),
+    });
   } else
     body = sourcePage({
       ...searchedHere,

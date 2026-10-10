@@ -265,28 +265,25 @@ export function merged(
   uriSpaces: readonly string[],
 ): readonly string[] {
   const [first = [], ...others] = lists;
-  return others.reduce((one: readonly string[], other) => {
+  if (others.length === 0) return first;
+  const all = others.reduce((one: readonly string[], other) => {
     const both: string[] = [];
     let [at, to] = [0, 0];
-    while (at < one.length || to < other.length) {
-      const order =
-        at === one.length
-          ? 1
-          : to === other.length
-            ? -1
-            : one[at] === other[to]
-              ? 0
-              : ORDER.compare(
-                  notation(uriSpaces, one[at]!),
-                  notation(uriSpaces, other[to]!),
-                ) ||
-                (one[at]! < other[to]! ? -1 : one[at]! > other[to]! ? 1 : 0);
-      if (order <= 0) both.push(one[at++]!);
-      if (order >= 0) both.push(other[to++]!);
-      if (order === 0) both.pop();
-    }
+    while (at < one.length || to < other.length)
+      both.push(
+        to === other.length ||
+          (at < one.length &&
+            ORDER.compare(
+              notation(uriSpaces, one[at]!),
+              notation(uriSpaces, other[to]!),
+            ) <= 0)
+          ? one[at++]!
+          : other[to++]!,
+      );
     return both;
   }, first);
+  // Codes whose notations collate equal need not meet head to head, so a repeat is dropped wherever it falls.
+  return [...new Set(all)];
 }
 
 /** A version's listing, by the lines of its N-Triples, a subject's lines read together. */

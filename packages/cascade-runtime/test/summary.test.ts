@@ -599,6 +599,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
     ...GROUPS,
     iri: "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0",
     label: "Example CVX names",
+    licence: "http://creativecommons.org/publicdomain/mark/1.0/",
     source: SOURCE,
   };
   const groups = {
@@ -655,7 +656,8 @@ test("tables are browsed by source: a source is named by the words its tables sh
     }),
   );
   assert.match(page, /<a href="\/tables\/s\/\?code=141">141<\/a>/);
-  assert.ok(textOf(page).includes("What this source publishes"));
+  for (const said of ["What this source publishes", "Public domain", "CC0 1.0"])
+    assert.ok(textOf(page).includes(said), said);
   for (const series of source.series)
     assert.ok(page.includes(`href="/tables/${view.tableId(series.iri)}/"`));
 
@@ -669,6 +671,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
     render(
       view.codePage({
         source,
+        held: [NAMES, groups, alone],
         facts: {
           ...coded("141", "flu, split"),
           names: [
@@ -683,6 +686,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
           mappings: [
             {
               ...fact,
+              series: alone.iri,
               mapsTo: [
                 {
                   ...coded("88", "flu, NOS"),
@@ -703,7 +707,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
     "influenza, split",
     "From Example CVX names, version 2, Oct 8, 2026.",
     "Maps to 88 flu, NOS, as do 15 flu, whole and 1 more.",
-    "From Example CVX vaccine groups, version 2, Oct 8, 2026.",
+    "From Lone table, version 2, Oct 8, 2026.",
   ])
     assert.ok(code.includes(said), `${said} in ${code}`);
 });
