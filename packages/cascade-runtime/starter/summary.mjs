@@ -972,7 +972,7 @@ export function tablePage({
   href,
   now,
 }) {
-  const { found, total, offset = 0 } = searched;
+  const { found, total, offset = 0, size } = searched;
   const counted = (count) =>
     `${count.toLocaleString("en")} ${count === 1 ? "code" : "codes"}`;
   const shown =
@@ -981,9 +981,9 @@ export function tablePage({
       : offset === 0 && found.length === total
         ? `${counted(total)}.`
         : `${(offset + 1).toLocaleString("en")}–${(offset + found.length).toLocaleString("en")} of ${counted(total)}.`;
-  // A page past the last steps back to the last; `offset` is `page - 1` pages.
+  // A page past the last steps back to the last.
   const previous =
-    found.length === 0 ? Math.ceil((total * (page - 1)) / offset) : page - 1;
+    found.length === 0 ? Math.max(1, Math.ceil(total / size)) : page - 1;
   const pages = [
     offset > 0 && html`<a href=${pageHref(previous)} rel="prev">Previous</a>`,
     offset + found.length < total &&

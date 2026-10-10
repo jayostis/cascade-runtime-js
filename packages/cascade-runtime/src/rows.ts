@@ -32,13 +32,19 @@ export type Verified =
     }
   | { readonly refused: string };
 
+/** The shape of a listing; a kept listing of another is listed again. */
+export const LISTING_FORMAT = 1;
+
 /** A version's codes as a search lists them, and what it reads of them. */
 export interface Listed {
+  readonly format: typeof LISTING_FORMAT;
+  /** The code systems' URI spaces it was listed by; a kept listing by others is listed again. */
+  readonly uriSpaces: readonly string[];
   /** Its rows' subjects in a code system and the sources of its mappings, in the order of their notations. */
   readonly codes: readonly string[];
   /** In a mapping series, the codes each code maps to. */
   readonly mapsTo: Readonly<Record<string, readonly string[]>>;
-  /** In a names series, each code's names, lowercased, each after a line break. */
+  /** In a names series, each code it gives a preferred name, with its names, lowercased, each after a line break. */
   readonly names: Readonly<Record<string, string>>;
 }
 
@@ -257,6 +263,7 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
   const sources = new Map<string, string>();
   const targets = new Map<string, string[]>();
   const names: Record<string, string> = {};
+  const preferred = new Set<string>();
   let [subject, prefix] = ["", ""];
   for (let at = 0; at < text.length;) {
     const found = text.indexOf("\n", at);
@@ -269,10 +276,11 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
     }
     const predicate = at + prefix.length;
     const label = LABELS.find((each) => text.startsWith(each, predicate));
-    if (label !== undefined)
+    if (label !== undefined) {
       names[subject] =
         `${names[subject] ?? ""}\n${valueOf(text.slice(predicate + label.length, end - 2)).toLowerCase()}`;
-    else if (text.startsWith(SOURCE, predicate)) {
+      if (label === LABELS[0]) preferred.add(subject);
+    } else if (text.startsWith(SOURCE, predicate)) {
       const code = text.slice(predicate + SOURCE.length, end - 3);
       codes.add(code);
       sources.set(subject, code);
@@ -288,8 +296,12 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
     for (const target of targets.get(axiom) ?? [])
       if (!(mapsTo[code] ??= []).includes(target)) mapsTo[code].push(target);
   for (const each of Object.values(mapsTo)) each.sort();
+  for (const code of Object.keys(names))
+    if (!preferred.has(code)) delete names[code];
   const collator = new Intl.Collator("en", { numeric: true });
   return {
+    format: LISTING_FORMAT,
+    uriSpaces,
     codes: [...codes]
       .map((code) => [notation(uriSpaces, code), code] as const)
       .sort(([a], [b]) => collator.compare(a, b))

@@ -572,7 +572,7 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
   const past = render(
     view.tablePage({
       series: GROUPS,
-      searched: { total: 103, offset: 450, found: [] },
+      searched: { total: 103, offset: 450, size: 50, found: [] },
       text: "",
       search: "/tables/c1a6678c/",
       page: 10,

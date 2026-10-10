@@ -667,18 +667,25 @@ test("a search pages through a series of more codes than a page, in the order of
   );
 });
 
-test("a search lists a version again when the listing kept beside it is not one", async () => {
+test("a search lists a version again when the listing kept beside it is not one, or was listed in another shape or by other code systems", async () => {
+  const path = `${fileStem(groups.second)}${LISTED}`;
+  const checked = new MemoryFiles("urn:test:tables/");
+  await tablesOver(feed, checked).check();
+  const valid = JSON.parse(
+    new TextDecoder().decode(await checked.read(path)),
+  ) as Record<string, unknown>;
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
   for (const kept of [
     "{",
-    `{"codes":["http://hl7.org/fhir/sid/cvx/141"],"mapsTo":null,"names":{}}`,
-    `{"codes":[],"mapsTo":{},"names":null}`,
+    JSON.stringify({ ...valid, mapsTo: null }),
+    JSON.stringify({ ...valid, codes: [], names: null }),
+    JSON.stringify({ ...valid, names: { [cvx141]: 141 } }),
+    JSON.stringify({ ...valid, codes: [], format: 0 }),
+    JSON.stringify({ ...valid, codes: [], uriSpaces: ["urn:test:other:"] }),
   ]) {
     const files = new MemoryFiles("urn:test:tables/");
     await tablesOver(feed, files).check();
-    await files.write(
-      `${fileStem(groups.second)}${LISTED}`,
-      new TextEncoder().encode(kept),
-    );
+    await files.write(path, new TextEncoder().encode(kept));
     const { found } = await tablesOver(feed, files).search(
       groups.series,
       "141",
@@ -691,14 +698,15 @@ test("a search lists a version again when the listing kept beside it is not one"
   }
 });
 
-test("a version's listing names every code its rows label, in a code system's URI space or not", () => {
+test("a version's listing names every code its rows give a preferred name, in a code system's URI space or not, as what the tables say of a code does", () => {
   const space = "http://hl7.org/fhir/sid/cvx/";
   const outside = "urn:test:outside:1";
   const label = "http://www.w3.org/2004/02/skos/core#prefLabel";
+  const other = "http://www.w3.org/2004/02/skos/core#altLabel";
   assert.deepEqual(
     Object.keys(
       listing(
-        `<${space}141> <${label}> "Flu" .\n<${outside}> <${label}> "Other" .\n`,
+        `<${space}141> <${label}> "Flu" .\n<${space}88> <${other}> "Flu, any" .\n<${outside}> <${label}> "Other" .\n`,
         [space],
       ).names,
     ).sort(),

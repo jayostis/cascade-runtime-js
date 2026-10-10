@@ -19,6 +19,7 @@ import {
 import {
   gunzipped,
   IN_THIS_THREAD,
+  LISTING_FORMAT,
   type Listed,
   nameOver,
   notation,
@@ -163,6 +164,8 @@ export interface Searched {
   readonly total: number;
   /** How many matched codes come before the page. */
   readonly offset: number;
+  /** How many codes a page holds. */
+  readonly size: number;
   readonly found: readonly Found[];
 }
 
@@ -406,11 +409,13 @@ export class Tables {
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
       // Listed now, so a version the starter copies brought is quick on its first view too.
+      const kept = new Set(await this.#options.files.list(""));
       for (const [, , version] of (await this.#index()).match(
         undefined,
         SHIPS_WITH,
       ))
-        this.#listed(version.value).catch(() => undefined);
+        if (!kept.has(`${stemOf(version.value)}${LISTED}`))
+          this.#listed(version.value).catch(() => undefined);
       return checked;
     });
   }
@@ -581,7 +586,8 @@ export class Tables {
   async search(series: string, text: string, page = 1): Promise<Searched> {
     const version = (await this.#index()).objects(iri(series), SHIPS_WITH)[0]
       ?.value;
-    if (version === undefined) return { total: 0, offset: 0, found: [] };
+    if (version === undefined)
+      return { total: 0, offset: 0, size: PAGE_SIZE, found: [] };
     const [listed, { uriSpaces }] = await Promise.all([
       this.#listed(version),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
@@ -610,6 +616,7 @@ export class Tables {
       version,
       total: matched.length,
       offset,
+      size: PAGE_SIZE,
       found: shown.map((code) => ({
         code,
         notation: notation(uriSpaces, code),
@@ -649,17 +656,23 @@ export class Tables {
     return once(this.#listings, version, async () => {
       const { files } = this.#options;
       const path = `${stemOf(version)}${LISTED}`;
-      const bytes = await files.read(path);
+      const [bytes, { uriSpaces }] = await Promise.all([
+        files.read(path),
+        tableTerms(this.#options.vocabulary, this.#options.newStore),
+      ]);
       try {
         const kept = JSON.parse(
           new TextDecoder().decode(bytes),
         ) as Partial<Listed> | null;
         if (
-          Array.isArray(kept?.codes) &&
+          kept?.format === LISTING_FORMAT &&
+          JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
+          Array.isArray(kept.codes) &&
           typeof kept.mapsTo === "object" &&
           kept.mapsTo !== null &&
           typeof kept.names === "object" &&
-          kept.names !== null
+          kept.names !== null &&
+          Object.values(kept.names).every((names) => typeof names === "string")
         )
           return kept as Listed;
       } catch {
@@ -667,8 +680,7 @@ export class Tables {
       }
       const listed = await (this.#options.work ?? IN_THIS_THREAD).listed(
         await this.#rows(version),
-        (await tableTerms(this.#options.vocabulary, this.#options.newStore))
-          .uriSpaces,
+        uriSpaces,
       );
       await files.write(path, listed);
       return JSON.parse(new TextDecoder().decode(listed)) as Listed;

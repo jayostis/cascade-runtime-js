@@ -253,28 +253,40 @@ async function tablesOf(
 
 /**
  * Each call in a Web Worker of its own, so a page stays responsive while it reads a version's rows; in this thread
- * when the worker cannot start or its answer cannot be read.
+ * when no worker can start. The bytes go to the worker, never copied: the callers' are their own and not read again.
  */
-function inWorker<T>(call: keyof RowsWork, args: unknown[]): Promise<T> {
-  const here = () =>
-    (IN_THIS_THREAD[call] as (...args: unknown[]) => Promise<T>)(...args);
-  const worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
-    type: "module",
-  });
+function inWorker<T>(
+  call: keyof RowsWork,
+  args: unknown[],
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<T> {
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
+      type: "module",
+    });
+  } catch {
+    return (IN_THIS_THREAD[call] as (...args: unknown[]) => Promise<T>)(
+      ...args,
+    );
+  }
   return new Promise<T>((resolve, reject) => {
     worker.onmessage = ({
       data,
     }: MessageEvent<{ answer: T } | { failed: string }>) =>
       "failed" in data ? reject(new Error(data.failed)) : resolve(data.answer);
-    worker.onerror = worker.onmessageerror = () => resolve(here());
-    worker.postMessage({ call, args } satisfies RowsCall);
+    worker.onerror = (event) =>
+      reject(new Error(`the tables' worker failed: ${event.message}`));
+    worker.onmessageerror = () =>
+      reject(new Error("the tables' worker answered what cannot be read"));
+    worker.postMessage({ call, args } satisfies RowsCall, [bytes.buffer]);
   }).finally(() => worker.terminate());
 }
 
 const IN_A_WORKER: RowsWork = {
-  verified: (rows) => inWorker("verified", [rows]),
-  published: (bytes) => inWorker("published", [bytes]),
-  listed: (text, uriSpaces) => inWorker("listed", [text, uriSpaces]),
+  verified: (rows) => inWorker("verified", [rows], rows.bytes),
+  published: (bytes) => inWorker("published", [bytes], bytes),
+  listed: (text, uriSpaces) => inWorker("listed", [text, uriSpaces], text),
 };
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
