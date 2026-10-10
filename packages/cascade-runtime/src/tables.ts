@@ -1011,9 +1011,16 @@ export class Tables {
   async #held(): Promise<Held> {
     await this.#start();
     const bytes = await this.#options.files.read(HELD);
-    return bytes === undefined
-      ? NOTHING_HELD
-      : (JSON.parse(new TextDecoder().decode(bytes)) as Held);
+    if (bytes === undefined) return NOTHING_HELD;
+    const held = JSON.parse(new TextDecoder().decode(bytes)) as Held;
+    return {
+      ...held,
+      pods: Object.fromEntries(
+        Object.entries(held.pods).filter(([, versions]) =>
+          Array.isArray(versions),
+        ),
+      ),
+    };
   }
 
   #write(held: Held): Promise<void> {

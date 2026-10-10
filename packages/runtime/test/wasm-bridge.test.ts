@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import {
+  type AdaptersOf,
   type BridgeDocument,
   type Conversion,
   isBridgeError,
@@ -11,6 +12,7 @@ import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
+import { ofMediaType } from "../src/load-adapter.js";
 import { type Importer } from "../src/importer.js";
 import { importersNamed } from "../src/importers.js";
 import { kitsOf } from "../src/kit.js";
@@ -52,10 +54,11 @@ let components: Components;
 const bridges: WasmBridge[] = [];
 const adapters: LoadedAdapter[] = [];
 let inWorkerAdapter: LoadedAdapter;
+let adaptersOf: AdaptersOf;
 let everyAdapter: LoadedAdapter[];
 let envelope: string;
 
-async function loadedAll(spawn: Spawn): Promise<LoadedAdapter[]> {
+async function configuredAll(spawn: Spawn) {
   const bridge = new WasmBridge(spawn);
   bridges.push(bridge);
   const configured = await loadConfiguredAdapters(
@@ -67,9 +70,12 @@ async function loadedAll(spawn: Spawn): Promise<LoadedAdapter[]> {
   if (fhir === undefined)
     throw new Error("cascade-runtime.json names no adapter");
   envelope = `${fhir.resolved.iri}ro-crate-metadata.json#envelope-resource`;
-  const each = configured.map(({ adapter }) => adapter);
-  adapters.push(...each);
-  return each;
+  adapters.push(...configured.map(({ adapter }) => adapter));
+  return configured;
+}
+
+async function loadedAll(spawn: Spawn): Promise<LoadedAdapter[]> {
+  return (await configuredAll(spawn)).map(({ adapter }) => adapter);
 }
 
 async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
@@ -81,7 +87,9 @@ async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
 before(async () => {
   components = await checkouts(ROOT);
   compiled = await compiledBridge((await components.bridge()).folder);
-  everyAdapter = await loadedAll(inWorker(compiled));
+  const configured = await configuredAll(inWorker(compiled));
+  adaptersOf = ofMediaType(configured);
+  everyAdapter = configured.map(({ adapter }) => adapter);
   [inWorkerAdapter] = everyAdapter as [LoadedAdapter];
 });
 
@@ -164,6 +172,7 @@ async function standIn(
  */
 async function differences(): Promise<{
   readonly differ: string[];
+  readonly skipped: string[];
   readonly converted: number;
   readonly unaccepted: number;
 }> {
@@ -175,6 +184,8 @@ async function differences(): Promise<{
     return dot > 0 ? name.slice(0, dot) : name;
   };
   const differ: string[] = [];
+  const skipped: string[] = [];
+  const seen = new Set<string>();
   let converted = 0;
   let unaccepted = 0;
   for (const kit of await kitsOf(files)) {
@@ -189,7 +200,14 @@ async function differences(): Promise<{
       try {
         for (const importer of importers)
           if ((documents = await importer.documents(files, downloaded))) break;
-      } catch {
+      } catch (error) {
+        const saved = (await files.list(`${folder}/${happened.converted}/`))
+          .length;
+        if (saved > 0)
+          differ.push(
+            `${kit} ${step.name}: its importer failed (${String(error)}), but ${saved} files are saved`,
+          );
+        else skipped.push(`${kit} ${step.name}`);
         continue;
       }
       for (const document of documents ?? []) {
@@ -212,12 +230,14 @@ async function differences(): Promise<{
           },
         };
         let accepting: LoadedAdapter | undefined;
-        for (const adapter of everyAdapter)
-          if (await adapter.accepts(offered).catch(() => false)) {
+        for (const adapter of adaptersOf(document.mediaType))
+          if (await adapter.accepts(offered)) {
             accepting = adapter;
             break;
           }
+        const known = `${kit} ${iriOf}`;
         if (refused !== undefined) {
+          seen.add(known);
           unaccepted++;
           if (accepting !== undefined)
             differ.push(
@@ -225,7 +245,12 @@ async function differences(): Promise<{
             );
           continue;
         }
-        if (graph === undefined) continue;
+        if (graph === undefined) {
+          if (!seen.has(known))
+            differ.push(`${named}: nothing is saved for it`);
+          continue;
+        }
+        seen.add(known);
         converted++;
         if (accepting === undefined) {
           differ.push(`${named}: no adapter accepts it`);
@@ -249,14 +274,15 @@ async function differences(): Promise<{
       }
     }
   }
-  return { differ, converted, unaccepted };
+  return { differ, skipped, converted, unaccepted };
 }
 
 test("every kit's saved conversions are the Bridge's own: each document converts, in a worker, to a graph isomorphic to the saved one with the same findings, and a document saved as unaccepted is accepted by no adapter", async () => {
-  const { differ, converted, unaccepted } = await differences();
+  const { differ, skipped, converted, unaccepted } = await differences();
   assert.deepEqual(differ, []);
-  assert.ok(converted > 0, "no conversion was checked");
-  assert.ok(unaccepted > 0, "no unaccepted document was checked");
+  assert.deepEqual(skipped, ["conformance/priya-natarajan E11"]);
+  assert.equal(converted, 48);
+  assert.equal(unaccepted, 1);
 });
 
 test("a document the adapter cannot read fails with kind document, and the loaded adapter converts the next", async () => {
