@@ -15,6 +15,7 @@ interface StorySide {
   /** The story's own files, which its steps name relative to `folder`. */
   readonly source: Files;
   readonly folder: string;
+  readonly vocabulary: Files;
   /** The import or entry session each step before this one made, by the step's name. */
   readonly activities: ReadonlyMap<string, string>;
   /** The time the pod's steps are performed at, which a performer begins at its step's. */
@@ -133,6 +134,7 @@ export const PERFORMERS: Performers = {
             story.source,
             inStory(story.folder, happened.tables),
             story.newStore,
+            story.vocabulary,
           ),
         ),
     );
@@ -266,6 +268,7 @@ export class Replay {
       performed = await perform(this.#pod, step, {
         source: options.source,
         folder: options.folder,
+        vocabulary: options.vocabulary,
         activities: this.#activities,
         time: this.#time,
         newStore: options.newStore,

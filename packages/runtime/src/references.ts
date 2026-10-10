@@ -15,6 +15,8 @@ const REVISION_OF = `${PROV}wasRevisionOf`;
 /** What follows a version's file stem in the name of the index of its rows by code. */
 export const CODES = ".codes.json";
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
+/** Where the vocabulary keeps the versions of its rule list, which a folder of tables may leave to it. */
+export const RULE_LIST = "runtime/rule-list/";
 
 /** A code system the vocabulary registers: its codes are IRIs, its `uriSpace` followed by the code. */
 export interface CodeSystem {
@@ -141,26 +143,33 @@ function indexed(
 export class References {
   readonly #source: Files;
   readonly #folder: string;
+  readonly #vocabulary: Files | undefined;
   readonly #parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>;
   readonly index: Graph;
 
   private constructor(
     source: Files,
     folder: string,
+    vocabulary: Files | undefined,
     parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>,
     index: Graph,
   ) {
     this.#source = source;
     this.#folder = folder;
+    this.#vocabulary = vocabulary;
     this.#parse = parse;
     this.index = index;
   }
 
-  /** The tables in `folder` of the files, which ends in a slash or is empty. */
+  /**
+   * The tables in `folder` of the files, which ends in a slash or is empty. Given the vocabulary, a version the
+   * folder holds no file for is read from the vocabulary's rule list, if that holds one.
+   */
   static async of(
     files: Files,
     folder: string,
     newStore: StoreFactory,
+    vocabulary?: Files,
   ): Promise<References> {
     const path = `${folder}references.ttl`;
     const parse = (bytes: Uint8Array, base: string): Promise<Triple[]> =>
@@ -169,6 +178,7 @@ export class References {
     return new References(
       files,
       folder,
+      vocabulary,
       parse,
       new Graph(await parse(turtle, files.iri + path)),
     );
@@ -218,6 +228,12 @@ export class References {
     }
     const path = `${this.#folder}${stem}.ttl`;
     const bytes = await this.#source.read(path);
+    if (bytes === undefined && this.#vocabulary !== undefined) {
+      const shared = `${RULE_LIST}${stem}.ttl`;
+      const rules = await this.#vocabulary.read(shared);
+      if (rules !== undefined)
+        return this.#parse(rules, this.#vocabulary.iri + shared);
+    }
     if (bytes === undefined)
       throw new Refusal(`${this.#folder} holds no rows for ${version}`);
     const found =

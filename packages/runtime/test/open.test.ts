@@ -84,17 +84,20 @@ test("an open whose tables list another version of the pod's rule list matches n
       const source = new MemoryFiles(files.iri);
       for (const path of await files.list(`${folder}/`)) {
         const bytes = (await files.read(path)) ?? new Uint8Array();
-        if (!path.startsWith(`${folder}/tables/app-later/`))
-          await source.write(path, bytes);
-        else if (path.endsWith("/references.ttl"))
-          await source.write(
-            path,
-            new TextEncoder().encode(
-              new TextDecoder().decode(bytes).replaceAll(rules, other),
-            ),
-          );
-        else await source.write(path.replace(rules, other), bytes);
+        await source.write(
+          path,
+          path === `${folder}/tables/app-later/references.ttl`
+            ? new TextEncoder().encode(
+                new TextDecoder().decode(bytes).replaceAll(rules, other),
+              )
+            : bytes,
+        );
       }
+      await source.write(
+        `${folder}/tables/app-later/${other}.ttl`,
+        (await files.read(`runtime/rule-list/${rules}.ttl`)) ??
+          new Uint8Array(),
+      );
       return source;
     },
   );
@@ -120,7 +123,7 @@ test("an open on a clock that moves between judgments files each Same once when 
     layout: await layout(),
   });
   const tables = (name: string) =>
-    References.of(files, `${folder}/tables/${name}/`, newStore);
+    References.of(files, `${folder}/tables/${name}/`, newStore, files);
   let tick = Date.parse("2026-07-03T09:00:00Z");
   const reopened = new CorePod({
     pod,
@@ -155,7 +158,12 @@ test("a refused open leaves the pod matching with the tables it had", async () =
     FEATURE,
     "opening again with the same tables writes nothing",
   );
-  const app = await References.of(files, `${folder}/tables/app/`, newStore);
+  const app = await References.of(
+    files,
+    `${folder}/tables/app/`,
+    newStore,
+    files,
+  );
   const empty = new MemoryFiles("https://tables.example/");
   await empty.write("references.ttl", new Uint8Array());
   const pod = new CorePod({

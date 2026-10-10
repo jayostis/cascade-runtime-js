@@ -10,6 +10,7 @@ import {
   RDF,
   References,
   Refusal,
+  RULE_LIST,
   relative,
   type StoreFactory,
   tableTerms,
@@ -48,8 +49,6 @@ const WATCHED = "checked.json";
 export const PAGE_SIZE = 50;
 /** What follows a version's file stem in the name of its listing, which a search reads. */
 export const LISTED = ".listed.json";
-/** The vocabulary's rule list, which reaches an app with the package. */
-export const RULE_LIST = "runtime/rule-list/";
 const INDEX = "references.ttl";
 /** What the store holds that is not RDF: each feed's last check, the current versions, and each pod's. */
 export const HELD = "tables.json";
