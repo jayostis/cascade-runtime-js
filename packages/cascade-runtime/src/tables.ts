@@ -1,7 +1,6 @@
 import {
   canonical,
   CODES,
-  documentName,
   type Files,
   fileStem,
   Graph,
@@ -10,30 +9,44 @@ import {
   ntriples,
   RDF,
   References,
+  Refusal,
   relative,
   type StoreFactory,
-  rowsByCode,
   tableTerms,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
+import {
+  gunzipped,
+  IN_THIS_THREAD,
+  LISTING_FORMAT,
+  type Listed,
+  nameOver,
+  notation,
+  OWL,
+  PROV,
+  REVISION_OF,
+  rowsAbout,
+  type Row,
+  type RowsWork,
+  SKOS,
+  SPECIALIZATION_OF,
+  values,
+} from "./rows.js";
 
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const DCT = "http://purl.org/dc/terms/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPDX = "http://spdx.org/rdf/terms#";
-const SKOS = "http://www.w3.org/2004/02/skos/core#";
-const OWL = "http://www.w3.org/2002/07/owl#";
 const SHIPS_WITH = `${REC}shipsWith`;
 /** Beside a feed, when its watcher last checked each source. */
 const WATCHED = "checked.json";
-const SEARCHED_AT_MOST = 50;
-const SPECIALIZATION_OF = `${PROV}specializationOf`;
-const REVISION_OF = `${PROV}wasRevisionOf`;
-const THIS_VERSION = "urn:cascade:this-version";
+/** How many codes a page of a search shows. */
+export const PAGE_SIZE = 50;
+/** What follows a version's file stem in the name of its listing, which a search reads. */
+export const LISTED = ".listed.json";
 /** The vocabulary's rule list, which reaches an app with the package. */
 export const RULE_LIST = "runtime/rule-list/";
 const INDEX = "references.ttl";
@@ -147,8 +160,12 @@ export interface Found {
 export interface Searched {
   /** The version searched; none when the series is not held. */
   readonly version?: string;
-  /** How many codes matched, of which `found` holds the first. */
+  /** How many codes matched, of which `found` holds a page. */
   readonly total: number;
+  /** How many matched codes come before the page. */
+  readonly offset: number;
+  /** How many codes a page holds. */
+  readonly size: number;
   readonly found: readonly Found[];
 }
 
@@ -179,6 +196,8 @@ export interface TablesOptions {
   readonly preference?: Readonly<Record<string, readonly string[]>>;
   /** The builders run locally, whose feeds are read after `feeds`. */
   readonly builds?: LocalBuilds;
+  /** What reads a version's rows whole; in this thread, otherwise. */
+  readonly work?: RowsWork;
 }
 
 /** Builders run on this machine, each writing a feed of its own. */
@@ -189,33 +208,6 @@ export interface LocalBuilds {
   run(
     init: RequestInit,
   ): Promise<ReadonlyMap<string, Omit<Checked, "feed" | "kept">>>;
-}
-
-/**
- * A version's name (N12) from its rows' canonical N-Triples lines, in order: over its series, the version it revises
- * and its rows, each of those two lines put in its place among them.
- */
-function nameOver(
-  lines: readonly string[],
-  series: string,
-  previous: string | undefined,
-): Promise<string> {
-  const named = [...lines];
-  for (const line of [
-    `<${THIS_VERSION}> <${SPECIALIZATION_OF}> <${series}> .`,
-    ...(previous === undefined
-      ? []
-      : [`<${THIS_VERSION}> <${REVISION_OF}> <${previous}> .`]),
-  ]) {
-    let [low, high] = [0, named.length];
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (named[middle]! < line) low = middle + 1;
-      else high = middle;
-    }
-    named.splice(low, 0, line);
-  }
-  return documentName(new TextEncoder().encode(`${named.join("\n")}\n`));
 }
 
 /** A version's name (N12): over its series, the version it revises and its rows. */
@@ -232,85 +224,6 @@ export async function versionName(
     series,
     previous,
   );
-}
-
-async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-class Unverified extends Error {}
-
-async function gunzipped(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const stream = new Blob([bytes])
-    .stream()
-    .pipeThrough(new DecompressionStream("gzip"));
-  try {
-    return await new Response(stream).text();
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    throw new Unverified(`its rows are not gzip: ${error.message}`);
-  }
-}
-
-/** A row's subject, predicate and object, the object's value empty when it is a literal. */
-type RowTerms = readonly [
-  { readonly value: string },
-  { readonly value: string },
-  { readonly value: string },
-];
-
-/** An absolute IRI as N-Triples writes one, without its angle brackets. */
-const IRI = String.raw`[A-Za-z][A-Za-z\d+.-]*:(?:[^\p{Cc} <>"{}|^\x60\\%]|%[\dA-Fa-f]{2})*`;
-const LITERAL = String.raw`"(?:[^"\\\n\r]|\\[tbnrf"'\\]|\\u[\dA-Fa-f]{4}|\\U[\dA-Fa-f]{8})*"(?:\^\^<${IRI}>|@[A-Za-z]+(?:-[A-Za-z\d]+)*)?`;
-/** A row as an N-Triples line: two IRIs, then an IRI or a literal; each IRI is captured. */
-const ROW_LINE = new RegExp(
-  `^<(${IRI})> <(${IRI})> (?:<(${IRI})>|${LITERAL}) \\.$`,
-  "u",
-);
-
-/**
- * A version's rows as its published N-Quads give them, read line by line and never into a store: a version of hundreds
- * of thousands of rows parsed whole holds gigabytes. Every line must be in the version's graph, sort after the one
- * before, so the file is canonical N-Quads (N12), and be a row of N-Triples, so a store reads them later; the rows
- * must then give the version's name. Their text is the version's N-Triples, a line each.
- */
-async function rowsOf(
-  nquads: string,
-  version: string,
-  series: string,
-  previous: string | undefined,
-): Promise<{ text: string; terms: RowTerms[] }> {
-  const graph = ` <${version}> .`;
-  const lines: string[] = [];
-  const terms: RowTerms[] = [];
-  let last = "";
-  for (const line of nquads.split("\n")) {
-    if (line === "") continue;
-    if (!line.endsWith(graph))
-      throw new Unverified(`a row is outside the graph named ${version}`);
-    if (line <= last)
-      throw new Unverified("its rows are not in canonical order, each once");
-    last = line;
-    const triple = `${line.slice(0, -graph.length)} .`;
-    const found = ROW_LINE.exec(triple);
-    if (found === null)
-      throw new Unverified(
-        `its rows are not N-Quads of IRIs and literals: ${triple}`,
-      );
-    lines.push(triple);
-    terms.push([
-      { value: found[1]! },
-      { value: found[2]! },
-      { value: found[3] ?? "" },
-    ]);
-  }
-  const text = lines.length === 0 ? "" : `${lines.join("\n")}\n`;
-  if ((await nameOver(lines, series, previous)) !== version)
-    throw new Unverified("its rows and line do not give its name");
-  return { text, terms };
 }
 
 function only(graph: Graph, subject: Term, kept: readonly string[]): Triple[] {
@@ -332,13 +245,6 @@ export function shipped(references: References): string[] {
 
 /** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
 export const PUBLISHED_ROWS = ".nq.gz";
-
-/** A version's N-Triples from its published rows: each line's graph dropped. */
-async function fromPublished(bytes: Uint8Array): Promise<Uint8Array> {
-  return new TextEncoder().encode(
-    (await gunzipped(new Uint8Array(bytes))).replace(/ <[^<>]*> \.$/gm, " ."),
-  );
-}
 
 /** The feed that last described the series. */
 function feedOf(held: Held, series: string): string | undefined {
@@ -395,6 +301,32 @@ function descends(catalog: Graph, version: Term, held: string): boolean {
   return false;
 }
 
+/** What `make` gives for the key, made at the first call and kept; one that fails is made again at the next. */
+function once<T>(
+  made: Map<string, Promise<T>>,
+  key: string,
+  make: () => Promise<T>,
+): Promise<T> {
+  let found = made.get(key);
+  if (found === undefined) {
+    found = make();
+    found.catch(() => made.delete(key));
+    made.set(key, found);
+  }
+  return found;
+}
+
+/** The stem of a held version's files; a version named by no file is refused. */
+function stemOf(version: string): string {
+  try {
+    return fileStem(version);
+  } catch (error) {
+    throw new Refusal(
+      `the tables hold ${version}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
 class TablesFiles implements Files {
   readonly iri: string;
@@ -436,7 +368,8 @@ export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
-  readonly #rows = new Map<string, Promise<Triple[]>>();
+  readonly #texts = new Map<string, Promise<string>>();
+  readonly #listings = new Map<string, Promise<Listed>>();
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
@@ -475,6 +408,14 @@ export class Tables {
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
+      // Listed now, so a version the starter copies brought is quick on its first view too.
+      const kept = new Set(await this.#options.files.list(""));
+      for (const [, , version] of (await this.#index()).match(
+        undefined,
+        SHIPS_WITH,
+      ))
+        if (!kept.has(`${stemOf(version.value)}${LISTED}`))
+          this.#listed(version.value).catch(() => undefined);
       return checked;
     });
   }
@@ -482,15 +423,11 @@ export class Tables {
   /** What the tables say of each code: its name and status, from the first held series of each kind in the order of preference that holds it. */
   async about(codes: readonly string[]): Promise<Map<string, About>> {
     const references = await this.references();
-    const terms = await tableTerms(
-      this.#options.vocabulary,
-      this.#options.newStore,
-    );
     const found = new Map<string, { -readonly [K in keyof About]: About[K] }>();
     const fill = async <K extends keyof About>(
       kind: string,
       key: K,
-      read: (rows: Graph, code: Term, origin: string) => About[K],
+      read: (rows: Row[], origin: string) => About[K],
     ): Promise<void> => {
       for (const series of this.#preferred(references, kind)) {
         const left = codes.filter(
@@ -498,11 +435,9 @@ export class Tables {
         );
         if (left.length === 0) return;
         const origin = references.fallback(series);
-        const rows = new Graph(
-          await references.rows(origin, { codes: new Set(left), terms }),
-        );
+        const text = await this.#text(origin);
         for (const code of left) {
-          const value = read(rows, iri(code), origin);
+          const value = read(rowsAbout(text, code), origin);
           if (value === undefined) continue;
           const entry = found.get(code) ?? {};
           entry[key] = value;
@@ -510,21 +445,19 @@ export class Tables {
         }
       }
     };
-    const values = (rows: Graph, code: Term, predicate: string) =>
-      rows.objects(code, predicate).map(({ value }) => value);
-    await fill(`${REC}CodeNames`, "name", (rows, code, origin) => {
-      const [label] = values(rows, code, `${SKOS}prefLabel`);
+    await fill(`${REC}CodeNames`, "name", (rows, origin) => {
+      const [label] = values(rows, `${SKOS}prefLabel`);
       return label === undefined
         ? undefined
-        : { label, altLabels: values(rows, code, `${SKOS}altLabel`), origin };
+        : { label, altLabels: values(rows, `${SKOS}altLabel`), origin };
     });
-    await fill(`${REC}CodeStatus`, "status", (rows, code, origin) => {
-      const [deprecated] = values(rows, code, `${OWL}deprecated`);
+    await fill(`${REC}CodeStatus`, "status", (rows, origin) => {
+      const [deprecated] = values(rows, `${OWL}deprecated`);
       return deprecated === undefined
         ? undefined
         : {
             deprecated: deprecated === "true",
-            replacedBy: values(rows, code, `${DCT}isReplacedBy`),
+            replacedBy: values(rows, `${DCT}isReplacedBy`),
             origin,
           };
     });
@@ -647,74 +580,122 @@ export class Tables {
 
   /**
    * The codes in the series' current version that are `text`, as written or as an IRI, or whose name holds it,
-   * ignoring case; every code for no text. At most `limit`, in the order of their codes, each with what names and
-   * status say of it and, in a mapping series, the codes it maps to.
+   * ignoring case; every code for no text. In the order of their codes, `PAGE_SIZE` a page, the page numbered `page`
+   * from 1, each with what names and status say of it and, in a mapping series, the codes it maps to.
    */
-  async search(
-    series: string,
-    text: string,
-    limit = SEARCHED_AT_MOST,
-  ): Promise<Searched> {
+  async search(series: string, text: string, page = 1): Promise<Searched> {
     const version = (await this.#index()).objects(iri(series), SHIPS_WITH)[0]
       ?.value;
-    if (version === undefined) return { total: 0, found: [] };
-    const [rows, { uriSpaces }] = await Promise.all([
-      this.#rowsOf(version),
+    if (version === undefined)
+      return { total: 0, offset: 0, size: PAGE_SIZE, found: [] };
+    const [listed, { uriSpaces }] = await Promise.all([
+      this.#listed(version),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
     ]);
-    const notation = (code: string): string =>
-      code.slice(uriSpaces.find((space) => code.startsWith(space))?.length);
-    const codes = new Set<string>();
-    for (const [subject] of rows)
-      if (uriSpaces.some((space) => subject.value.startsWith(space)))
-        codes.add(subject.value);
-    const mapped = new Map<string, Set<string>>();
-    const targets = new Set<string>();
-    const axioms = new Graph(rows);
-    for (const [axiom, , source] of axioms.match(
-      undefined,
-      `${OWL}annotatedSource`,
-    )) {
-      codes.add(source.value);
-      for (const target of axioms.objects(axiom, `${OWL}annotatedTarget`)) {
-        targets.add(target.value);
-        mapped.set(
-          source.value,
-          (mapped.get(source.value) ?? new Set()).add(target.value),
-        );
-      }
-    }
-    const about = await this.about([...codes, ...targets]);
     const wanted = text.trim().toLowerCase();
-    const named = (code: string): string[] => {
-      const name = about.get(code)?.name;
-      return name === undefined ? [] : [name.label, ...name.altLabels];
-    };
-    const matched = [...codes]
-      .filter(
-        (code) =>
-          wanted === "" ||
-          code.toLowerCase() === wanted ||
-          notation(code).toLowerCase() === wanted ||
-          named(code).some((label) => label.toLowerCase().includes(wanted)),
-      )
-      .sort((a, b) =>
-        notation(a).localeCompare(notation(b), "en", { numeric: true }),
-      );
+    const names = wanted === "" ? undefined : await this.#names();
+    const matched =
+      names === undefined
+        ? listed.codes
+        : listed.codes.filter(
+            (code) =>
+              names
+                .find((each) => Object.hasOwn(each, code))
+                ?.[code]?.includes(wanted) === true ||
+              (code.slice(-wanted.length).toLowerCase() === wanted &&
+                (code.toLowerCase() === wanted ||
+                  notation(uriSpaces, code).toLowerCase() === wanted)),
+          );
+    const offset =
+      Number.isInteger(page) && page > 1 ? (page - 1) * PAGE_SIZE : 0;
+    const shown = matched.slice(offset, offset + PAGE_SIZE);
+    const mapsTo = (code: string): readonly string[] =>
+      Object.hasOwn(listed.mapsTo, code) ? listed.mapsTo[code]! : [];
+    const about = await this.about([...shown, ...shown.flatMap(mapsTo)]);
     return {
       version,
       total: matched.length,
-      found: matched.slice(0, limit).map((code) => ({
+      offset,
+      size: PAGE_SIZE,
+      found: shown.map((code) => ({
         code,
-        notation: notation(code),
+        notation: notation(uriSpaces, code),
         about: about.get(code),
-        mapsTo: [...(mapped.get(code) ?? [])].sort().map((target) => ({
+        mapsTo: mapsTo(code).map((target) => ({
           code: target,
-          notation: notation(target),
+          notation: notation(uriSpaces, target),
           about: about.get(target),
         })),
       })),
     };
+  }
+
+  /** A held version's N-Triples, read once: a version's rows never change. */
+  #text(version: string): Promise<string> {
+    return once(this.#texts, version, async () =>
+      new TextDecoder().decode(await this.#rows(version)),
+    );
+  }
+
+  /** A held version's N-Triples as they are kept. */
+  async #rows(version: string): Promise<Uint8Array<ArrayBuffer>> {
+    const bytes = await new TablesFiles(
+      this.#options.files,
+      this.#options.vocabulary,
+    ).read(`${stemOf(version)}.ttl`);
+    if (bytes === undefined)
+      throw new Refusal(`the tables hold no rows for ${version}`);
+    return new Uint8Array(bytes);
+  }
+
+  /**
+   * A held version's listing, read once: as a check kept it beside the version, or, when it did not, as listed from
+   * its rows and then kept there.
+   */
+  #listed(version: string): Promise<Listed> {
+    return once(this.#listings, version, async () => {
+      const { files } = this.#options;
+      const path = `${stemOf(version)}${LISTED}`;
+      const [bytes, { uriSpaces }] = await Promise.all([
+        files.read(path),
+        tableTerms(this.#options.vocabulary, this.#options.newStore),
+      ]);
+      try {
+        const kept = JSON.parse(
+          new TextDecoder().decode(bytes),
+        ) as Partial<Listed> | null;
+        if (
+          kept?.format === LISTING_FORMAT &&
+          JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
+          Array.isArray(kept.codes) &&
+          typeof kept.mapsTo === "object" &&
+          kept.mapsTo !== null &&
+          typeof kept.names === "object" &&
+          kept.names !== null &&
+          Object.values(kept.names).every((names) => typeof names === "string")
+        )
+          return kept as Listed;
+      } catch {
+        // listed again below
+      }
+      const listed = await (this.#options.work ?? IN_THIS_THREAD).listed(
+        await this.#rows(version),
+        uriSpaces,
+      );
+      await files.write(path, listed);
+      return JSON.parse(new TextDecoder().decode(listed)) as Listed;
+    });
+  }
+
+  /** Each names series' listing of its codes' names, in the order of preference. */
+  async #names(): Promise<Listed["names"][]> {
+    const references = await this.references();
+    return Promise.all(
+      this.#preferred(references, `${REC}CodeNames`).map(
+        async (series) =>
+          (await this.#listed(references.fallback(series))).names,
+      ),
+    );
   }
 
   /** The series the store holds, in the order of the feeds that describe them, and then by label. */
@@ -729,17 +710,6 @@ export class Tables {
     return index
       .subjects(SHIPS_WITH)
       .sort((a, b) => place(a) - place(b) || label(a).localeCompare(label(b)));
-  }
-
-  /** A held version's rows, read once: a version's rows never change. */
-  #rowsOf(version: string): Promise<Triple[]> {
-    let rows = this.#rows.get(version);
-    if (rows === undefined) {
-      rows = this.references().then((references) => references.rows(version));
-      rows.catch(() => this.#rows.delete(version));
-      this.#rows.set(version, rows);
-    }
-    return rows;
   }
 
   #next<T>(call: () => Promise<T>): Promise<T> {
@@ -772,7 +742,9 @@ export class Tables {
         if (path.endsWith(PUBLISHED_ROWS))
           await files.write(
             `${path.slice(0, -PUBLISHED_ROWS.length)}.ttl`,
-            await fromPublished(bytes),
+            await (this.#options.work ?? IN_THIS_THREAD).published(
+              new Uint8Array(bytes),
+            ),
           );
         else await files.write(path, bytes);
       }
@@ -881,37 +853,28 @@ export class Tables {
         later = bytes;
         continue;
       }
-      const previous = catalog.objects(version, REVISION_OF)[0]?.value;
-      let rows: Awaited<ReturnType<typeof rowsOf>>;
-      try {
-        if ((await sha256(bytes)) !== checksum.value)
-          throw new Unverified(
-            `its rows do not have the checksum the feed gives`,
-          );
-        rows = await rowsOf(
-          await gunzipped(bytes),
-          version.value,
-          series.value,
-          previous,
-        );
-      } catch (error) {
-        if (!(error instanceof Unverified)) throw error;
-        refused.push({ version: version.value, reason: error.message });
+      const terms = await tableTerms(
+        this.#options.vocabulary,
+        this.#options.newStore,
+      );
+      const rows = await (this.#options.work ?? IN_THIS_THREAD).verified({
+        bytes,
+        checksum: checksum.value,
+        version: version.value,
+        series: series.value,
+        previous: catalog.objects(version, REVISION_OF)[0]?.value,
+        foundBy: terms.foundBy.get(kind) ?? [],
+        uriSpaces: terms.uriSpaces,
+      });
+      if ("refused" in rows) {
+        refused.push({ version: version.value, reason: rows.refused });
         continue;
       }
-      const codes = rowsByCode(
-        rows.terms,
-        (
-          await tableTerms(this.#options.vocabulary, this.#options.newStore)
-        ).foundBy.get(kind) ?? [],
-      );
       const stem = fileStem(version.value);
-      await this.#options.files.write(
-        `${stem}.ttl`,
-        new TextEncoder().encode(rows.text),
-      );
-      if (codes !== undefined)
-        await this.#options.files.write(stem + CODES, codes);
+      await this.#options.files.write(`${stem}.ttl`, rows.text);
+      if (rows.codes !== undefined)
+        await this.#options.files.write(stem + CODES, rows.codes);
+      await this.#options.files.write(stem + LISTED, rows.listed);
       index = new Graph([
         ...index.triples.filter(
           ([subject, predicate]) =>
@@ -932,6 +895,10 @@ export class Tables {
           ),
       ]);
       await this.#options.files.write(INDEX, ntriples(index.triples));
+      if (held !== undefined) {
+        this.#texts.delete(held.value);
+        this.#listings.delete(held.value);
+      }
       kept.push(version.value);
     }
     const watched = await answer(new URL(WATCHED, feed).href);
@@ -1006,6 +973,7 @@ export async function writeStarterCopies(
     },
   }).check({ cache: "no-cache" });
   for (const path of await store.list("")) {
+    if (path.endsWith(LISTED)) continue;
     const rows = published.get(path);
     if (rows !== undefined)
       await write(`${path.slice(0, -".ttl".length)}${PUBLISHED_ROWS}`, rows);

@@ -767,11 +767,16 @@ test("in the browser, look and import read the files a person picks as Node read
     };
   });
   let workers = 0;
-  page.on("worker", () => {
-    workers += 1;
+  page.on("worker", (worker) => {
+    if (worker.url().endsWith("/wasm-worker.js")) workers += 1;
+  });
+  const tablesWorker = page.waitForEvent("worker", {
+    predicate: (worker) => worker.url().endsWith("/tables-worker.js"),
+    timeout: 120_000,
   });
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
+  await tablesWorker;
   await page.evaluate(() => {
     for (const [id, folder] of [
       ["pick-folder", true],

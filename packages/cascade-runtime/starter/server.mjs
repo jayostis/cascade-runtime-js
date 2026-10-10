@@ -38,6 +38,7 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  pageNumber,
   patientName,
   personName,
   podPage,
@@ -133,8 +134,8 @@ async function page(
 }
 
 /**
- * A reference table, by its id, or the first with none; `query`'s `q` is what to search it for, and `checked` that
- * the page says what the last Check now did.
+ * A reference table, by its id, or the first with none; `query`'s `q` is what to search it for, `page` the page of
+ * what it finds, and `checked` that the page says what the last Check now did.
  */
 async function showTable(response, id, query) {
   const kept = await tables();
@@ -159,12 +160,16 @@ async function showTable(response, id, query) {
           ),
         );
   const text = query.get("q") ?? "";
+  const shown = pageNumber(query.get("page"));
   const names = await podNames();
   const body = tablePage({
     series,
-    searched: await kept.search(series.iri, text),
+    searched: await kept.search(series.iri, text, shown),
     text,
     search: tablePath(series),
+    page: shown,
+    pageHref: (page) =>
+      `${tablePath(series)}?${new URLSearchParams({ q: text, page })}`,
     uses: await kept.uses(),
     pods: names,
     href: podPath,

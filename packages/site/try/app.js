@@ -37,6 +37,7 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  pageNumber,
   patientName,
   personName,
   podPage,
@@ -313,8 +314,8 @@ async function readTables() {
   state.tables = await (await appTables()).held();
 }
 
-/** The reference table `id` names, or the first with none, searched for `text`. */
-async function showTable(id, text) {
+/** The reference table `id` names, or the first with none, searched for `text`, page `shown` of what it finds. */
+async function showTable(id, text, shown) {
   const tables = await appTables();
   await readTables();
   state.current = undefined;
@@ -335,9 +336,12 @@ async function showTable(id, text) {
     series.label,
     tablePage({
       series,
-      searched: await tables.search(series.iri, text),
+      searched: await tables.search(series.iri, text, shown),
       text,
       search: tableHref(series),
+      page: shown,
+      pageHref: (page) =>
+        `${tableHref(series)}&${new URLSearchParams({ q: text, page })}`,
       uses: await tables.uses(),
       pods: state.pods,
       href: podHref,
@@ -376,7 +380,11 @@ async function route() {
   }
   state.table = undefined;
   if (query.has("table"))
-    return showTable(query.get("table") ?? "", query.get("q") ?? "");
+    return showTable(
+      query.get("table") ?? "",
+      query.get("q") ?? "",
+      pageNumber(query.get("page")),
+    );
   const asked = query.get("pod");
   state.current = asked ?? undefined;
   if (asked === null && state.pods.length === 0) {

@@ -27,8 +27,9 @@ The title bar's File menu posts to `/delete-all` and `/reset-all`, which call
 About says the app's name and version and the `cascade-runtime` it runs on.
 Under the pods, the sidebar lists the reference tables the pods are matched
 with, from `tablesBeside` (`held()`); `/tables/<id>/` shows one with its
-source, licence, freshness, a search (`search()`) and which pods use which
-version (`uses()`), and Check now posts to `/tables/check`.
+source, licence, freshness, a search (`search()`, `?q=&page=`, 50 codes a
+page) and which pods use which version (`uses()`), and Check now posts to
+`/tables/check`.
 A pod's page names each record by its code's name in those tables
 (`about(codesOf(answers))`), else by the record's own text, and marks a
 retired code.

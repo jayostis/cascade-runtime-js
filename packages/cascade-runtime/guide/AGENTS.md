@@ -93,9 +93,10 @@ gets the package's starter copies.
 What a page shows of the tables, the same `Tables` answers, in Node and in a
 browser (`appTables()`), as plain values: `held()`, each series with its
 source, licence, credit, versions and how fresh its feed is; `uses()`, the
-pods last opened with each version, by name; `search(series, text)`, the codes
-of its current version that are `text` or whose name holds it, each with what
-`about(codes)` says of it (its name and status) and the codes it maps to.
+pods last opened with each version, by name; `search(series, text, page)`, the
+codes of its current version that are `text` or whose name holds it, 50 a page
+(`total` of them, the page after `offset`), each with what `about(codes)` says
+of it (its name and status) and the codes it maps to.
 A pod's own page names a record by its code's name, else by the record's own
 text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
