@@ -46,6 +46,8 @@ import {
   type Pod,
   type Row,
 } from "../pod.js";
+import { IN_THIS_THREAD, type RowsWork } from "../rows.js";
+import type { RowsCall } from "./tables-worker.js";
 import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
@@ -64,6 +66,10 @@ export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {
   About,
+  Coded,
+  Codes,
+  Fact,
+  Facts,
   Found,
   HeldSeries,
   HeldVersion,
@@ -245,8 +251,47 @@ async function tablesOf(
       { pack: new URL(`${STARTER_TABLES}.json`, COMPONENTS).href },
     ),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
+    work: IN_A_WORKER,
   });
 }
+
+/**
+ * Each call in a Web Worker of its own, so a page stays responsive while it reads a version's rows; in this thread
+ * when no worker can start. The bytes go to the worker, never copied: the callers' are their own and not read again.
+ */
+function inWorker<T>(
+  call: keyof RowsWork,
+  args: unknown[],
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<T> {
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
+      type: "module",
+    });
+  } catch {
+    return (IN_THIS_THREAD[call] as (...args: unknown[]) => Promise<T>)(
+      ...args,
+    );
+  }
+  return new Promise<T>((resolve, reject) => {
+    worker.onmessage = ({
+      data,
+    }: MessageEvent<{ answer: T } | { failed: string }>) =>
+      "failed" in data ? reject(new Error(data.failed)) : resolve(data.answer);
+    worker.onerror = (event) =>
+      reject(new Error(`the tables' worker failed: ${event.message}`));
+    worker.onmessageerror = () =>
+      reject(new Error("the tables' worker answered what cannot be read"));
+    worker.postMessage({ call, args } satisfies RowsCall, [bytes.buffer]);
+  }).finally(() => worker.terminate());
+}
+
+const IN_A_WORKER: RowsWork = {
+  verified: (rows) => inWorker("verified", [rows], rows.bytes),
+  published: (bytes) => inWorker("published", [bytes], bytes),
+  listed: (text, uriSpaces) => inWorker("listed", [text, uriSpaces], text),
+};
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
 async function checkedAndKept(

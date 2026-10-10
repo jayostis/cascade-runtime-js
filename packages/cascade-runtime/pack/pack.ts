@@ -278,12 +278,22 @@ async function writeListed(folder: string): Promise<void> {
   await writeFile(`${folder}.json`, JSON.stringify(packFolder(paths, files)));
 }
 
-/** The browser entry and the Bridge's worker as modules, with Oxigraph's web build and the Bridge's beside them. */
+/**
+ * The browser entry, the Bridge's worker and the tables' as modules, with Oxigraph's web build and the Bridge's beside
+ * them.
+ */
 async function bundleBrowser(bridgeFolder: string): Promise<void> {
   await rm(BROWSER, { recursive: true, force: true });
   await build({
     entryPoints: {
       index: join(WORKSPACE, "dist", "src", "browser", "index.js"),
+      "tables-worker": join(
+        WORKSPACE,
+        "dist",
+        "src",
+        "browser",
+        "tables-worker.js",
+      ),
       "wasm-worker": join(
         ROOT,
         "packages",

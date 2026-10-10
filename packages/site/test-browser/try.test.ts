@@ -767,11 +767,16 @@ test("in the browser, look and import read the files a person picks as Node read
     };
   });
   let workers = 0;
-  page.on("worker", () => {
-    workers += 1;
+  page.on("worker", (worker) => {
+    if (worker.url().endsWith("/wasm-worker.js")) workers += 1;
+  });
+  const tablesWorker = page.waitForEvent("worker", {
+    predicate: (worker) => worker.url().endsWith("/tables-worker.js"),
+    timeout: 120_000,
   });
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
+  await tablesWorker;
   await page.evaluate(() => {
     for (const [id, folder] of [
       ["pick-folder", true],
@@ -1018,8 +1023,11 @@ ${shots.join("\n")}`);
     await settled(page);
     const label = of(series, "http://www.w3.org/2000/01/rdf-schema#label");
     assert.ok(label);
-    assert.ok(
-      (await page.locator("aside section.tables").innerText()).includes(label),
+    assert.equal(await page.locator("main h1").innerText(), label);
+    assert.equal(
+      await page.locator("aside section.tables a[aria-current]").count(),
+      1,
+      "the table's source is not marked in the sidebar",
     );
     const shown = await page.locator("main").innerText();
     assert.ok(

@@ -13,6 +13,7 @@ import {
   ntriples,
   OxigraphStore,
   RDF,
+  Refusal,
   tableTerms,
   tablesSettings,
   type Triple,
@@ -32,9 +33,12 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
+import { listing, merged } from "../src/rows.js";
 import {
   type Checked,
+  LISTED,
   RULE_LIST,
+  PAGE_SIZE,
   PUBLISHED_ROWS,
   Tables,
   versionName,
@@ -646,6 +650,160 @@ test("the app tells what it holds: each series with its versions, credit and how
         (text) => text.toLowerCase().includes("split virus"),
       ),
     );
+});
+
+test("a code's facts hold what each held kind says of it, each with its series and current version; a search over several series lists their codes once each", async () => {
+  const tables = tablesOver(feed);
+  await tables.check();
+  const held = await tables.held();
+  const listed = await Promise.all(
+    held.map(async (series) =>
+      (await tables.search(series.iri, "")).found.map(({ code }) => code),
+    ),
+  );
+  const [code] = listed.reduce((both, codes) =>
+    both.filter((each) => codes.includes(each)),
+  );
+  assert.ok(code, "no code is in every series of the test feed");
+  const facts = await tables.facts(code);
+  const fact = (kind: string) => {
+    const series = held.find((each) => each.kind?.endsWith(`#${kind}`));
+    assert.ok(series, kind);
+    return { series: series.iri, version: series.current.iri };
+  };
+  const from = ({ series, version }: { series: string; version: string }) => ({
+    series,
+    version,
+  });
+  assert.deepEqual(facts.names.map(from), [fact("CodeNames")]);
+  assert.deepEqual(facts.status.map(from), [fact("CodeStatus")]);
+  assert.deepEqual(facts.mappings.map(from), [fact("VaccineGroups")]);
+
+  const all = await tables.search(
+    held.map(({ iri }) => iri),
+    "",
+  );
+  assert.deepEqual(
+    new Set(all.found.map(({ code }) => code)),
+    new Set(listed.flat()),
+  );
+  assert.equal(all.total, new Set(listed.flat()).size);
+  // Two codes whose notations collate equal, listed in either order.
+  const [a, b] = ["urn:test:a:7", "urn:test:b:07"];
+  assert.deepEqual(
+    [
+      ...merged(
+        [
+          [b, a],
+          [a, b],
+        ],
+        ["urn:test:a:", "urn:test:b:"],
+      ),
+    ].sort(),
+    [a, b],
+  );
+});
+
+test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to; a code they map to is found by its notation", async () => {
+  const count = PAGE_SIZE * 2 + 3;
+  const { served } = await withMappings(feed, INGREDIENTS, [
+    Array.from({ length: count }, (_, at) => [`${at + 1}`, "0"] as const),
+  ]);
+  const tables = tablesOver(served);
+  await tables.check();
+  const asked: string[] = [];
+  const about = tables.about.bind(tables);
+  tables.about = (codes) => {
+    asked.push(...codes);
+    return about(codes);
+  };
+
+  const pages = [];
+  for (const page of [1, 2, 3, 4]) {
+    asked.length = 0;
+    const searched = await tables.search(INGREDIENTS.series, "", page);
+    assert.equal(searched.total, count);
+    assert.equal(searched.offset, (page - 1) * PAGE_SIZE);
+    assert.deepEqual(
+      new Set(asked),
+      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}0`])),
+    );
+    pages.push(searched.found.map(({ notation }) => notation));
+  }
+  assert.deepEqual(
+    pages.map((page) => page.length),
+    [PAGE_SIZE, PAGE_SIZE, 3, 0],
+  );
+  assert.deepEqual(
+    pages.flat(),
+    Array.from({ length: count }, (_, at) => `${at + 1}`),
+  );
+  assert.equal(await tables.codeNamed(INGREDIENTS.series, "0"), `${RXNORM}0`);
+});
+
+test("a search lists a version again when the listing kept beside it is not one, or was listed in another shape or by other code systems", async () => {
+  const path = `${fileStem(groups.second)}${LISTED}`;
+  const checked = new MemoryFiles("urn:test:tables/");
+  await tablesOver(feed, checked).check();
+  const valid = JSON.parse(
+    new TextDecoder().decode(await checked.read(path)),
+  ) as Record<string, unknown>;
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  for (const kept of [
+    "{",
+    JSON.stringify({ ...valid, mapsTo: null }),
+    JSON.stringify({ ...valid, codes: [], names: null }),
+    JSON.stringify({ ...valid, names: { [cvx141]: 141 } }),
+    JSON.stringify({ ...valid, codes: [], format: 0 }),
+    JSON.stringify({ ...valid, codes: [], uriSpaces: ["urn:test:other:"] }),
+  ]) {
+    const files = new MemoryFiles("urn:test:tables/");
+    await tablesOver(feed, files).check();
+    await files.write(path, new TextEncoder().encode(kept));
+    const { found } = await tablesOver(feed, files).search(
+      groups.series,
+      "141",
+    );
+    assert.deepEqual(
+      found.map(({ notation }) => notation),
+      ["141"],
+      kept,
+    );
+  }
+});
+
+test("a version's listing names every code its rows give a preferred name, in a code system's URI space or not, as what the tables say of a code does", () => {
+  const space = "http://hl7.org/fhir/sid/cvx/";
+  const outside = "urn:test:outside:1";
+  const label = "http://www.w3.org/2004/02/skos/core#prefLabel";
+  const other = "http://www.w3.org/2004/02/skos/core#altLabel";
+  assert.deepEqual(
+    Object.keys(
+      listing(
+        `<${space}141> <${label}> "Flu" .\n<${space}88> <${other}> "Flu, any" .\n<${outside}> <${label}> "Other" .\n`,
+        [space],
+      ).names,
+    ).sort(),
+    [`${space}141`, outside].sort(),
+  );
+});
+
+test("a version the tables name by no file is refused, by a search and by what the tables say of a code", async () => {
+  const series = "urn:test:series";
+  const version = "urn:test:no-file";
+  const files = new MemoryFiles("urn:test:tables/");
+  await files.write(
+    "references.ttl",
+    new TextEncoder().encode(
+      `<${series}> <${REC}tableKind> <${REC}CodeNames> .
+<${series}> <${REC}shipsWith> <${version}> .
+<${version}> <${PROV}specializationOf> <${series}> .
+`,
+    ),
+  );
+  const tables = tablesOver(feed, files);
+  await assert.rejects(tables.search(series, ""), Refusal);
+  await assert.rejects(tables.about(["urn:test:code"]), Refusal);
 });
 
 test("the starter copies carry each version's rows as published, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {

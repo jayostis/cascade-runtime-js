@@ -915,8 +915,8 @@ function versionName({ label, issued }) {
 }
 
 /**
- * The sidebar's reference tables, under the pods: `series` the series the app holds, as `held()` gives them, each a
- * link to `href(series)`, the one whose IRI is `current` marked; and a Check now button posting to `check`.
+ * The sidebar's reference tables, under the pods: `series` the sources the app holds, as `sourcesOf` gives them, each a
+ * link to `href(source)`, the one whose IRI is `current` marked; and a Check now button posting to `check`.
  */
 export function tablesNav({ series, current, href, check }) {
   return html`<section class="tables" aria-label="Reference tables"><h2>Reference tables</h2>
@@ -950,56 +950,142 @@ function statusOf(about, said = "Retired") {
     : `${said}, replaced by ${listed(status.replacedBy.map(codeShown))}`;
 }
 
+/** The page a query's `page` asks for: a whole number from 1, else 1. */
+export function pageNumber(asked) {
+  const page = Number(asked);
+  return Number.isSafeInteger(page) && page > 1 ? page : 1;
+}
+
+/** The words every label starts with, or, when they share none or there is one, the first label. */
+function shared(labels) {
+  const [first = "", ...others] = labels;
+  const words = first.split(" ");
+  let length = words.length;
+  for (const other of others) {
+    const theirs = other.split(" ");
+    let same = 0;
+    while (same < length && words[same] === theirs[same]) same += 1;
+    length = same;
+  }
+  return length === 0 || others.length === 0
+    ? first
+    : words.slice(0, length).join(" ");
+}
+
+/**
+ * The sources of the series `held` gives, in its order: each the feed's `source` of its series, or a series with none
+ * its own; named by the words its series' labels share.
+ */
+export function sourcesOf(held) {
+  const sources = new Map();
+  for (const series of held) {
+    const iri = series.source ?? series.iri;
+    sources.set(iri, [...(sources.get(iri) ?? []), series]);
+  }
+  return [...sources].map(([iri, series]) => ({
+    iri,
+    label: shared(series.map(({ label }) => label)),
+    series,
+  }));
+}
+
+/** Who publishes `series`, the credit it asks for, its licence and how fresh it is at `now`, as a card headed `heading`. */
+function published(series, now, heading) {
+  return html`<div class="card">${heading && html`<h2>${heading}</h2>`}<dl class="facts">
+<dt>Source</dt><dd>${series.publisher !== undefined && linked(series.publisher, series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1"))}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
+<dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : linked(series.licence, LICENCES[series.licence] ?? series.licence)}</dd>
+<dt>Fresh</dt><dd>${freshness(series, now)}</dd>
+</dl></div>`;
+}
+
+/** A search box sending `q` to `search`, with `text` in it. */
+function searchBox(search, text) {
+  return html`<form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by code or name" aria-label="Search by code or name" /><button>Search</button></form>`;
+}
+
+/**
+ * The codes `searched` found (`search()`'s answer), page `page` of them, as a table headed `heads` with a row of cells
+ * `row(found)` each, and links to the pages before and after it at `pageHref(page)`.
+ */
+function codesFound({ searched, page, pageHref, heads, row }) {
+  const { found, total, offset = 0, size } = searched;
+  if (total === 0) return html`<p class="muted">No code matches.</p>`;
+  const counted = (count) =>
+    `${count.toLocaleString("en")} ${count === 1 ? "code" : "codes"}`;
+  const shown =
+    found.length === 0
+      ? `None on page ${page} of ${counted(total)}.`
+      : offset === 0 && found.length === total
+        ? `${counted(total)}.`
+        : `${(offset + 1).toLocaleString("en")}–${(offset + found.length).toLocaleString("en")} of ${counted(total)}.`;
+  // A page past the last steps back to the last.
+  const previous =
+    found.length === 0 ? Math.max(1, Math.ceil(total / size)) : page - 1;
+  const pages = [
+    offset > 0 && html`<a href=${pageHref(previous)} rel="prev">Previous</a>`,
+    offset + found.length < total &&
+      html`<a href=${pageHref(page + 1)} rel="next">Next</a>`,
+  ].filter(Boolean);
+  return html`<p class="muted">${shown}</p>
+${
+  found.length > 0 &&
+  html`<div class="scroll"><table class="codes">
+<thead><tr>${heads.map((head) => html`<th>${head}</th>`)}</tr></thead>
+<tbody>
+${found.map((each) => html`<tr>${row(each)}</tr>`)}
+</tbody>
+</table></div>`
+}
+${pages.length > 0 && html`<p class="pages">${pages}</p>`}`;
+}
+
+/** A code's name, with its other names after it. */
+function namesOf(about) {
+  return html`${about?.name?.label}${
+    (about?.name?.altLabels.length ?? 0) > 0 &&
+    html` <span class="muted">${about.name.altLabels.join("; ")}</span>`
+  }`;
+}
+
 /**
  * A reference table's page: `series` as `held()` gives it, its source, licence, version and how fresh it is at `now`;
- * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer); and each
- * version held with the pods among `pods` that `uses` (`uses()`'s answer) says were opened with it, each a link to
- * `href(pod)`.
+ * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer), page
+ * `page` of them, each a link to `codeHref(notation)` when given, with links to the pages before and after it at
+ * `pageHref(page)`; and each version held with the pods among `pods` that `uses` (`uses()`'s answer) says were opened
+ * with it, each a link to `href(pod)`.
  */
 export function tablePage({
   series,
   searched,
   text,
   search,
+  page = 1,
+  pageHref,
+  codeHref,
   uses,
   pods,
   href,
   now,
 }) {
-  const { found, total } = searched;
-  const maps = found.some((each) => each.mapsTo.length > 0);
+  const maps = searched.found.some((each) => each.mapsTo.length > 0);
   const named = ({ notation, about }) =>
     about?.name === undefined ? notation : `${notation} ${about.name.label}`;
-  const rows = found.map(
-    ({ notation, about, mapsTo }) =>
-      html`<tr><td>${notation}</td><td>${about?.name?.label}${
-        (about?.name?.altLabels.length ?? 0) > 0 &&
-        html` <span class="muted">${about.name.altLabels.join("; ")}</span>`
-      }</td><td>${statusOf(about)}</td>${
-        maps && html`<td>${mapsTo.map(named).join(", ")}</td>`
-      }</tr>`,
-  );
   const using = (version) =>
     (uses[version.iri] ?? []).filter((pod) => pods.includes(pod));
   return html`<h1>${series.label}</h1>
 <p class="lead">Using ${versionName(series.current)}</p>
-<div class="card"><dl class="facts">
-<dt>Source</dt><dd>${series.publisher !== undefined && linked(series.publisher, series.publisherName ?? series.publisher.replace(/^[a-z]+:\/\/([^/]+).*$/, "$1"))}${series.credit !== undefined && html` <span class="muted">${series.credit}</span>`}</dd>
-<dt>Licence</dt><dd>${series.licence === undefined ? "Not stated" : linked(series.licence, LICENCES[series.licence] ?? series.licence)}</dd>
-<dt>Fresh</dt><dd>${freshness(series, now)}</dd>
-</dl></div>
-<form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by code or name" aria-label="Search by code or name" /><button>Search</button></form>
-${
-  total === 0
-    ? html`<p class="muted">No code matches.</p>`
-    : html`<p class="muted">${total > found.length ? `The first ${found.length} of ${total} codes.` : `${total} ${total === 1 ? "code" : "codes"}.`}</p>
-<div class="scroll"><table class="codes">
-<thead><tr><th>Code</th><th>Name</th><th>Status</th>${maps && html`<th>Maps to</th>`}</tr></thead>
-<tbody>
-${rows}
-</tbody>
-</table></div>`
-}
+${published(series, now)}
+${searchBox(search, text)}
+${codesFound({
+  searched,
+  page,
+  pageHref,
+  heads: ["Code", "Name", "Status", ...(maps ? ["Maps to"] : [])],
+  row: ({ notation, about, mapsTo }) =>
+    html`<td>${codeHref === undefined ? notation : html`<a href=${codeHref(notation)}>${notation}</a>`}</td><td>${namesOf(about)}</td><td>${statusOf(about)}</td>${
+      maps && html`<td>${mapsTo.map(named).join(", ")}</td>`
+    }`,
+})}
 <div class="card versions"><h2>Which pods use which version</h2><ul>
 ${series.versions.map((version) => {
   const pods = using(version);
@@ -1013,6 +1099,106 @@ ${series.versions.map((version) => {
   }</li>`;
 })}
 </ul></div>`;
+}
+
+/**
+ * A source's page: `source` as `sourcesOf` gives it, who publishes it, its licence and how fresh it is at `now`, a card
+ * for each set of its tables these differ for, headed with their labels when there are several; a search box
+ * sending `q` to `search`, with `text` in it, over the codes of all its tables; the codes `searched` found, page `page`
+ * of them, each a link to `codeHref(notation)`, with links to the pages around it at `pageHref(page)`; and what the
+ * source publishes, each table a link to `tableHref(series)`.
+ */
+export function sourcePage({
+  source,
+  searched,
+  text,
+  search,
+  page = 1,
+  pageHref,
+  codeHref,
+  tableHref,
+  now,
+}) {
+  const alike = new Map();
+  for (const series of source.series) {
+    const said = JSON.stringify([
+      series.publisher,
+      series.credit,
+      series.licence,
+      freshness(series, now),
+    ]);
+    alike.set(said, [...(alike.get(said) ?? []), series]);
+  }
+  const cards = [...alike.values()];
+  return html`<h1>${source.label}</h1>
+${cards.map((series) =>
+  published(
+    series[0],
+    now,
+    cards.length > 1 && series.map(({ label }) => label).join(", "),
+  ),
+)}
+${searchBox(search, text)}
+${codesFound({
+  searched,
+  page,
+  pageHref,
+  heads: ["Code", "Name", "Status"],
+  row: ({ notation, about }) =>
+    html`<td><a href=${codeHref(notation)}>${notation}</a></td><td>${namesOf(about)}</td><td>${statusOf(about)}</td>`,
+})}
+<div class="card versions"><h2>What this source publishes</h2><ul>
+${source.series.map(
+  (series) =>
+    html`<li><a href=${tableHref(series)}>${series.label}</a>: ${versionName(series.current)}</li>`,
+)}
+</ul></div>`;
+}
+
+/**
+ * A code's page: everything `facts` (`facts()`'s answer) says of it, each fact naming the table among `held` (as
+ * `held()` gives them) and the version it came from, each code a link to `codeHref(notation)`; and a link back to
+ * `source` at `back`.
+ */
+export function codePage({ source, held, facts, codeHref, back }) {
+  const tableOf = (series) => held.find(({ iri }) => iri === series);
+  const from = ({ series, version }) => {
+    const table = tableOf(series);
+    const held = table?.versions.find(({ iri }) => iri === version);
+    return html`<p class="muted">From ${table?.label ?? series}, ${held === undefined ? version : versionName(held)}.</p>`;
+  };
+  const code = ({ notation, about }) =>
+    html`<a href=${codeHref(notation)}>${notation}</a>${about?.name !== undefined && ` ${about.name.label}`}`;
+  const codes = ({ total, codes: shown }) =>
+    html`${shown.map((each, index) => html`${index > 0 && ", "}${code(each)}`)}${
+      total > shown.length &&
+      ` and ${(total - shown.length).toLocaleString("en")} more`
+    }`;
+  const { notation, about, names, status, mappings } = facts;
+  return html`<p><a href=${back}>${source.label}</a></p>
+<h1>${notation}${about?.name !== undefined && ` ${about.name.label}`}</h1>
+${names.map(
+  (name) => html`<div class="card"><h2>Names</h2>
+<p><strong>${name.label}</strong></p>
+${name.altLabels.length > 0 && html`<ul>${name.altLabels.map((label) => html`<li>${label}</li>`)}</ul>`}
+${from(name)}</div>`,
+)}
+${status.map(
+  (said) => html`<div class="card"><h2>Status</h2>
+<p>${said.deprecated ? "Retired" : "In use"}${said.replacedBy.length > 0 && html`, replaced by ${said.replacedBy.map((each, index) => html`${index > 0 && ", "}${code(each)}`)}`}.</p>
+${from(said)}</div>`,
+)}
+${mappings.map((mapping) => {
+  const table = tableOf(mapping.series);
+  return html`<div class="card"><h2>${table?.label ?? mapping.series}</h2>
+${mapping.mapsTo.map(
+  (target) =>
+    html`<p>Maps to ${code(target)}${target.alongside.total > 0 && html`, as do ${codes(target.alongside)}`}.</p>`,
+)}
+${mapping.mappedFrom.total > 0 && html`<p>Mapped to it: ${codes(mapping.mappedFrom)}.</p>`}
+${from(mapping)}</div>`;
+})}
+${names.length + status.length + mappings.length === 0 && html`<p class="muted">No table this app holds says anything of this code.</p>`}`;
 }
 
 /** The page of reference tables when the app holds none. */
@@ -1159,6 +1345,7 @@ nav a[aria-current], .tables li a[aria-current] { background: var(--tint); color
 .facts dd { margin: 0; }
 .versions ul { margin: 0; padding-left: 1.2rem; }
 .versions li { margin: 0.3rem 0; }
+.pages { display: flex; gap: 1rem; margin: 0.6rem 0 1.25rem; }
 h1 { font-size: 1.75rem; margin: 0 0 0.2rem; }
 h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
 a { color: var(--accent); }

@@ -26,6 +26,7 @@ import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   checkedNote,
   closing,
+  codePage,
   codesOf,
   connectionDialog,
   didNote,
@@ -37,12 +38,15 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  pageNumber,
   patientName,
   personName,
   podPage,
   postButton,
   QUESTIONS,
   slug,
+  sourcePage,
+  sourcesOf,
   STYLE,
   tableId,
   tablePage,
@@ -216,7 +220,7 @@ function redraw() {
       menu: MENU,
       note,
       tables: {
-        series: state.tables,
+        series: sourcesOf(state.tables),
         current: state.table,
         href: tableHref,
         check: CHECK,
@@ -313,35 +317,88 @@ async function readTables() {
   state.tables = await (await appTables()).held();
 }
 
-/** The reference table `id` names, or the first with none, searched for `text`. */
-async function showTable(id, text) {
+/**
+ * The reference source or table `id` names, or the first source with none. A source's page searches all its tables
+ * for `text`, page `shown` of what it finds, or with `code` shows that code's page; a table's page searches it alone.
+ */
+async function showTable(id, text, shown, code) {
   const tables = await appTables();
   await readTables();
   state.current = undefined;
+  const sources = sourcesOf(state.tables);
   const series =
-    id === ""
-      ? state.tables[0]
+    id === "" || code !== null
+      ? undefined
       : state.tables.find((each) => tableId(each.iri) === id);
-  if (series === undefined)
+  const source =
+    series !== undefined
+      ? sources.find((each) => each.series.includes(series))
+      : id === ""
+        ? sources[0]
+        : sources.find((each) => tableId(each.iri) === id);
+  const notFound = (said) =>
+    render(
+      "Not found",
+      html`<h1>Not found</h1>
+<p>${said}</p>`,
+    );
+  if (source === undefined)
     return id === ""
       ? render("Reference tables", noTables())
-      : render(
-          "Not found",
-          html`<h1>Not found</h1>
-<p>This browser holds no reference table ${id}.</p>`,
-        );
-  state.table = series.iri;
+      : notFound(`This browser holds no reference table ${id}.`);
+  state.table = source.iri;
+  const at = series ?? source;
+  const searchedHere = {
+    text,
+    search: tableHref(at),
+    page: shown,
+    pageHref: (page) =>
+      `${tableHref(at)}&${new URLSearchParams({ q: text, page })}`,
+    now: Date.now(),
+  };
+  const codeHref = (written) =>
+    `${tableHref(source)}&${new URLSearchParams({ code: written })}`;
+  if (series !== undefined)
+    return render(
+      series.label,
+      tablePage({
+        ...searchedHere,
+        series,
+        codeHref,
+        searched: await tables.search(series.iri, text, shown),
+        uses: await tables.uses(),
+        pods: state.pods,
+        href: podHref,
+      }),
+    );
+  const all = source.series.map(({ iri }) => iri);
+  if (code !== null) {
+    const found = await tables.codeNamed(
+      [...new Set([...all, ...state.tables.map(({ iri }) => iri)])],
+      code,
+    );
+    if (found === undefined)
+      return notFound(`${source.label} holds no code ${code}.`);
+    const facts = await tables.facts(found, all);
+    return render(
+      `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim(),
+      codePage({
+        source,
+        held: state.tables,
+        facts,
+        codeHref,
+        back: tableHref(source),
+      }),
+    );
+  }
   render(
-    series.label,
-    tablePage({
-      series,
-      searched: await tables.search(series.iri, text),
-      text,
-      search: tableHref(series),
-      uses: await tables.uses(),
-      pods: state.pods,
-      href: podHref,
-      now: Date.now(),
+    source.label,
+    sourcePage({
+      ...searchedHere,
+      source,
+      searched: await tables.search(all, text, shown),
+      codeHref,
+      tableHref,
     }),
   );
 }
@@ -376,7 +433,12 @@ async function route() {
   }
   state.table = undefined;
   if (query.has("table"))
-    return showTable(query.get("table") ?? "", query.get("q") ?? "");
+    return showTable(
+      query.get("table") ?? "",
+      query.get("q") ?? "",
+      pageNumber(query.get("page")),
+      query.get("code"),
+    );
   const asked = query.get("pod");
   state.current = asked ?? undefined;
   if (asked === null && state.pods.length === 0) {
