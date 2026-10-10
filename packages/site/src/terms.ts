@@ -1,4 +1,5 @@
 import {
+  type CodeSystem,
   inUtc,
   type Literal,
   RDF,
@@ -34,13 +35,6 @@ const PREFIXES: Readonly<Record<string, string>> = {
 };
 const LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
 
-const CODE_SYSTEMS: Readonly<Record<string, string>> = {
-  "http://snomed.info/sct/": "SNOMED CT",
-  "http://www.nlm.nih.gov/research/umls/rxnorm/": "RxNorm",
-  "http://hl7.org/fhir/sid/cvx/": "CVX",
-  "http://hl7.org/fhir/sid/icd-10-cm/": "ICD-10-CM",
-};
-
 /** The IRI as prefix:name, or undefined. */
 export function prefixed(iri: string): string | undefined {
   for (const [prefix, namespace] of Object.entries(PREFIXES)) {
@@ -51,12 +45,13 @@ export function prefixed(iri: string): string | undefined {
   return undefined;
 }
 
-/** The code system and the code an IRI names, or undefined. */
-export function code(iri: string): [system: string, code: string] | undefined {
-  for (const [namespace, system] of Object.entries(CODE_SYSTEMS)) {
-    if (iri.startsWith(namespace)) return [system, iri.slice(namespace.length)];
-  }
-  return undefined;
+/** The label of the first registered code system whose URI space the IRI starts with, and the code after it, or undefined. */
+export function code(
+  iri: string,
+  codeSystems: readonly CodeSystem[],
+): [system: string, code: string] | undefined {
+  const found = codeSystems.find(({ uriSpace }) => iri.startsWith(uriSpace));
+  return found && [found.label, iri.slice(found.uriSpace.length)];
 }
 
 /** A literal as the site shows it: a time in UTC to the minute, anything else as written. */

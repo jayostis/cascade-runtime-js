@@ -21,7 +21,7 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
   const data = (inner: Content): Html =>
     markup`<data value="${written(value)}">${inner}</data>`;
   if (value.termType === "Literal") return data(shown(value));
-  const coded = code(value.value);
+  const coded = code(value.value, site.codeSystems);
   if (coded !== undefined)
     return data(markup`<a href="${value.value}">${coded[0]} ${coded[1]}</a>`);
   const address = site.pod.address;

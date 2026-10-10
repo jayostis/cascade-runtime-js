@@ -8,6 +8,7 @@ import type { StoreFactory } from "./store.js";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const SHIPS_WITH = `${REC}shipsWith`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
@@ -15,8 +16,16 @@ const REVISION_OF = `${PROV}wasRevisionOf`;
 export const CODES = ".codes.json";
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
 
-/** What the vocabulary says of tables: each code system's URI space, and the properties each kind's rows are found by. */
+/** A code system the vocabulary registers: its codes are IRIs, its `uriSpace` followed by the code. */
+export interface CodeSystem {
+  readonly iri: string;
+  readonly label: string;
+  readonly uriSpace: string;
+}
+
+/** What the vocabulary says of tables: each code system, and the properties each kind's rows are found by. */
 export interface TableTerms {
+  readonly codeSystems: readonly CodeSystem[];
   readonly uriSpaces: readonly string[];
   /** By kind; `rec:RowSubject` for a row found by its own subject. */
   readonly foundBy: ReadonlyMap<string, readonly string[]>;
@@ -53,13 +62,20 @@ async function readTableTerms(
       ...(foundBy.get(kind.value) ?? []),
       property.value,
     ]);
+  const codeSystems = graph
+    .subjects(`${RDF}type`, iri(`${REC}CodeSystem`))
+    .map((system): CodeSystem => {
+      const label = graph.objects(system, `${RDFS}label`)[0];
+      const space = graph.objects(system, `${VOID}uriSpace`)[0];
+      if (label === undefined || space === undefined)
+        throw new Error(
+          `${system.value} is a code system with no ${label === undefined ? "label" : "URI space"}`,
+        );
+      return { iri: system.value, label: label.value, uriSpace: space.value };
+    });
   return {
-    uriSpaces: graph
-      .subjects(`${RDF}type`, iri(`${REC}CodeSystem`))
-      .flatMap((system) =>
-        graph.objects(system, "http://rdfs.org/ns/void#uriSpace"),
-      )
-      .map(({ value }) => value),
+    codeSystems,
+    uriSpaces: codeSystems.map(({ uriSpace }) => uriSpace),
     foundBy,
   };
 }

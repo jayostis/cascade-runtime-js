@@ -3,7 +3,7 @@ import { Graph } from "./graph.js";
 import { ccdaRecordName, documentName, inUtc, recordName } from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { iri, RDF, written } from "./rdf.js";
-import { referenceIndex, versionsNumbered } from "./references.js";
+import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { REC } from "./step.js";
 import { selected, type Dataset, type StoreFactory } from "./store.js";
@@ -37,15 +37,15 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same code and period": `${JDG}SameCodeAndPeriod`,
 };
 
-const CODES: Readonly<Record<string, (code: string) => string>> = {
-  SNOMED: (code) =>
-    `{ ?version ?coded <http://snomed.info/sct/${code}> } UNION { ?version <${CLINICAL}snomedCode> ${JSON.stringify(code)} }`,
-  RxNorm: (code) =>
-    `?version ?coded <http://www.nlm.nih.gov/research/umls/rxnorm/${code}>`,
-  "ICD-10-CM": (code) =>
-    `?version ?coded <http://hl7.org/fhir/sid/icd-10-cm/${code}>`,
-  LOINC: (code) => `?version ?coded <http://loinc.org/rdf/${code}>`,
-  CVX: (code) => `?version <${HEALTH}vaccineCode> ${JSON.stringify(code)}`,
+/** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
+const CODES: Readonly<
+  Record<string, { readonly system?: string; readonly literal?: string }>
+> = {
+  SNOMED: { system: `${REC}SNOMEDCT`, literal: `${CLINICAL}snomedCode` },
+  RxNorm: { system: `${REC}RxNorm` },
+  "ICD-10-CM": { system: `${REC}ICD10CM` },
+  LOINC: { system: `${REC}LOINC` },
+  CVX: { literal: `${HEALTH}vaccineCode` },
 };
 
 const either = (words: readonly string[]): string =>
@@ -303,6 +303,25 @@ export class Words {
     return documentName(bytes);
   }
 
+  /** The patterns a version holding the code of the named code system matches, the IRI the vocabulary registers or a literal. */
+  async #coded(system: string, code: string): Promise<string> {
+    const { system: registered, literal } = CODES[system]!;
+    const alternatives: string[] = [];
+    if (registered !== undefined) {
+      const found = (
+        await tableTerms(this.#vocabulary, this.#newStore)
+      ).codeSystems.find(({ iri }) => iri === registered);
+      if (found === undefined)
+        throw new Error(
+          `${system} is the code system ${registered}, which the vocabulary does not register`,
+        );
+      alternatives.push(`?version ?coded <${found.uriSpace}${code}>`);
+    }
+    if (literal !== undefined)
+      alternatives.push(`?version <${literal}> ${JSON.stringify(code)}`);
+    return alternatives.map((each) => `{ ${each} }`).join(" UNION ");
+  }
+
   /** A record in words: a handle, or its kind with its code, its name or both, and `from <source>` where needed. */
   async record(words: string): Promise<string> {
     const handled = await this.#handle(words);
@@ -313,9 +332,7 @@ export class Words {
     const [, kind, system, code, name, source] = said;
     const type = KINDS[kind ?? ""] ?? "";
     const coded =
-      system === undefined
-        ? ""
-        : `${(CODES[system] as (code: string) => string)(code ?? "")} .`;
+      system === undefined ? "" : `${await this.#coded(system, code ?? "")} .`;
     const named =
       name === undefined
         ? ""
