@@ -299,6 +299,8 @@ const SAID = {
     `${name} was matched in two different ways. Worth a look.`,
   "judged different, still joined": ({ name, one }) =>
     `${name} was marked as different, but is still shown as one ${one}.`,
+  "same code, dates cannot tell": ({ name, one }) =>
+    `${name} was recorded more than once, and its dates cannot tell whether it is one ${one} or several.`,
 };
 
 /** `at A and B`, `at A and in Alex's own entries`: records are at a hospital, but in a person's own entries. */

@@ -404,7 +404,7 @@ async function withMappings(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
   const advil: [string, string] = ["153010", "5640"];
   const ibuprofen: [string, string] = ["5640", "5640"];
   const ingredientsFirst = await withMappings(first, INGREDIENTS, [
@@ -465,6 +465,17 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
     ...["C88.0", "C88.00"].map((code) => [
       "health:ConditionRecord",
       `health:icd10Code <${ICD10CM}${code}>`,
+    ]),
+    ...[
+      [
+        "2019-01-05",
+        `<https://ns.cascadeprotocol.org/clinical/v1#abatementDate> "2019-02-01"^^<http://www.w3.org/2001/XMLSchema#date> ; health:status "resolved"`,
+      ],
+      ["2019-01-07", `health:status "resolved"`],
+      ["2024-03-01", `health:status "active"`],
+    ].map(([onset, rest]) => [
+      "health:ConditionRecord",
+      `health:icd10Code <${ICD10CM}J18.9> ; health:onsetDate "${onset}"^^<http://www.w3.org/2001/XMLSchema#date> ; ${rest}`,
     ]),
   ].map(
     ([type, fields], index) => `<urn:cascade:output-${index}> a ${type} .
@@ -531,6 +542,16 @@ ${records.join("\n")}`);
         codes.replaceAll(ICD10CM, "").split(" ").sort().join(" "),
       ),
       ["C88.0 C88.00"],
+    );
+    const episodes = await pod.ask({
+      query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?onset); separator=" ") AS ?onsets) WHERE {
+        ?judgment jdg:justification jdg:SameCodeAndPeriod ; prov:used <${shipped}> ; prov:hadMember ?record .
+        ?record pav:hasCurrentVersion/health:onsetDate ?onset
+      } GROUP BY ?judgment`,
+    });
+    assert.deepEqual(
+      episodes.map(({ onsets = "" }) => onsets.split(" ").sort().join(" ")),
+      ["2019-01-05 2019-01-07"],
     );
   } finally {
     await pod.close();

@@ -281,12 +281,25 @@ test("an import with the claim records an About for each unclaimed profile and i
         expected
           // Alex's penicillin is joined by his kit's R3, SNOMED CT to RxNorm; the app's R3 reads product ingredients.
           .filter(({ justification }) => justification !== "same mapped code")
-          .map(async ({ justification = "", members = "" }) =>
-            joined(
-              JUSTIFICATIONS[justification] ?? justification,
-              await Promise.all(members.split(", ").map(named)),
-            ),
-          ),
+          // Its conditions are joined by R1; the app's rule list gives conditions R8, by code and period.
+          .map(async ({ justification = "", members = "" }) => {
+            const records = await Promise.all(members.split(", ").map(named));
+            const kinds = await pod.ask({
+              query: `SELECT DISTINCT ?kind WHERE {
+                VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
+                ?record <https://ns.cascadeprotocol.org/records/v1-draft#kind> ?kind }`,
+            });
+            const conditions =
+              kinds.length === 1 && kinds[0]?.kind === "Condition";
+            return joined(
+              JUSTIFICATIONS[
+                justification === "same code" && conditions
+                  ? "same code and period"
+                  : justification
+              ] ?? justification,
+              records,
+            );
+          }),
       )
     ).sort(),
   );
