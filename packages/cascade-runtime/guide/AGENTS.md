@@ -94,9 +94,12 @@ What a page shows of the tables, the same `Tables` answers, in Node and in a
 browser (`appTables()`), as plain values: `held()`, each series with its
 source, licence, credit, versions and how fresh its feed is; `uses()`, the
 pods last opened with each version, by name; `search(series, text, page)`, the
-codes of its current version that are `text` or whose name holds it, 50 a page
-(`total` of them, the page after `offset`), each with what `about(codes)` says
-of it (its name and status) and the codes it maps to.
+codes of its current version, or of several series' (a source's), that are
+`text` or whose name holds it, 50 a page (`total` of them, the page after
+`offset`), each with what `about(codes)` says of it (its name and status) and
+the codes it maps to; `codeNamed(series, notation)`, the code written so; and
+`facts(code)`, what every held table says of a code, each fact with its series
+and version.
 A pod's own page names a record by its code's name, else by the record's own
 text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`

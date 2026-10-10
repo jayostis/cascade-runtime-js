@@ -631,6 +631,44 @@ test("the app tells what it holds: each series with its versions, credit and how
     );
 });
 
+test("a code's facts hold what each held kind says of it, each with its series and current version; a search over several series lists their codes once each", async () => {
+  const tables = tablesOver(feed);
+  await tables.check();
+  const held = await tables.held();
+  const listed = await Promise.all(
+    held.map(async (series) =>
+      (await tables.search(series.iri, "")).found.map(({ code }) => code),
+    ),
+  );
+  const [code] = listed.reduce((both, codes) =>
+    both.filter((each) => codes.includes(each)),
+  );
+  assert.ok(code, "no code is in every series of the test feed");
+  const facts = await tables.facts(code);
+  const fact = (kind: string) => {
+    const series = held.find((each) => each.kind?.endsWith(`#${kind}`));
+    assert.ok(series, kind);
+    return { series: series.iri, version: series.current.iri };
+  };
+  const from = ({ series, version }: { series: string; version: string }) => ({
+    series,
+    version,
+  });
+  assert.deepEqual(facts.names.map(from), [fact("CodeNames")]);
+  assert.deepEqual(facts.status.map(from), [fact("CodeStatus")]);
+  assert.deepEqual(facts.mappings.map(from), [fact("VaccineGroups")]);
+
+  const all = await tables.search(
+    held.map(({ iri }) => iri),
+    "",
+  );
+  assert.deepEqual(
+    new Set(all.found.map(({ code }) => code)),
+    new Set(listed.flat()),
+  );
+  assert.equal(all.total, new Set(listed.flat()).size);
+});
+
 test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to", async () => {
   const count = PAGE_SIZE * 2 + 3;
   const { served } = await withMappings(feed, INGREDIENTS, [

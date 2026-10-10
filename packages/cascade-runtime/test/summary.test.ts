@@ -593,6 +593,121 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
   );
 });
 
+test("tables are browsed by source: a source is named by the words its tables share, its page searches them all and lists them, and a code's page says what each table says of it and where from", () => {
+  const SOURCE = "urn:uuid:17cec5a9-071a-4179-9403-5c1e3886fb7d";
+  const NAMES = {
+    ...GROUPS,
+    iri: "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0",
+    label: "Example CVX names",
+    source: SOURCE,
+  };
+  const groups = {
+    ...GROUPS,
+    label: "Example CVX vaccine groups",
+    source: SOURCE,
+  };
+  const alone = { ...GROUPS, iri: "urn:uuid:0e2b", label: "Lone table" };
+  const sources = view.sourcesOf([NAMES, groups, alone]);
+  assert.deepEqual(
+    sources.map(
+      ({
+        iri,
+        label,
+        series,
+      }: {
+        iri: string;
+        label: string;
+        series: { iri: string }[];
+      }) => [iri, label, series.length],
+    ),
+    [
+      [SOURCE, "Example CVX", 2],
+      ["urn:uuid:0e2b", "Lone table", 1],
+    ],
+  );
+  const [source] = sources;
+  const codeHref = (code: string) => `/tables/s/?code=${code}`;
+  const page = render(
+    view.sourcePage({
+      source,
+      searched: {
+        total: 1,
+        offset: 0,
+        size: 50,
+        found: [
+          {
+            code: "http://hl7.org/fhir/sid/cvx/141",
+            notation: "141",
+            about: {
+              name: { label: "flu, split", altLabels: [], origin: "n" },
+            },
+            mapsTo: [],
+          },
+        ],
+      },
+      text: "",
+      search: "/tables/s/",
+      page: 1,
+      pageHref: (page: number) => `/tables/s/?page=${page}`,
+      codeHref,
+      tableHref: ({ iri }: { iri: string }) => `/tables/${view.tableId(iri)}/`,
+      now: NOW,
+    }),
+  );
+  assert.match(page, /<a href="\/tables\/s\/\?code=141">141<\/a>/);
+  assert.ok(textOf(page).includes("What this source publishes"));
+  for (const series of source.series)
+    assert.ok(page.includes(`href="/tables/${view.tableId(series.iri)}/"`));
+
+  const fact = { series: groups.iri, version: "ni:///v2" };
+  const coded = (notation: string, label: string) => ({
+    code: `http://hl7.org/fhir/sid/cvx/${notation}`,
+    notation,
+    about: { name: { label, altLabels: [], origin: "n" } },
+  });
+  const code = textOf(
+    render(
+      view.codePage({
+        source,
+        facts: {
+          ...coded("141", "flu, split"),
+          names: [
+            {
+              ...fact,
+              series: NAMES.iri,
+              label: "flu, split",
+              altLabels: ["influenza, split"],
+            },
+          ],
+          status: [],
+          mappings: [
+            {
+              ...fact,
+              mapsTo: [
+                {
+                  ...coded("88", "flu, NOS"),
+                  alongside: { total: 2, codes: [coded("15", "flu, whole")] },
+                },
+              ],
+              mappedFrom: { total: 0, codes: [] },
+            },
+          ],
+        },
+        codeHref,
+        back: "/tables/s/",
+      }),
+    ),
+  );
+  for (const said of [
+    "141 flu, split",
+    "influenza, split",
+    "From Example CVX names, version 2, Oct 8, 2026.",
+    "Maps to 88 flu, NOS, as do 15 flu, whole and 1 more.",
+    "From Example CVX vaccine groups, version 2, Oct 8, 2026.",
+  ])
+    assert.ok(code.includes(said), `${said} in ${code}`);
+});
+
 test("what a check did, in one note", () => {
   const checked = (fields: object) => ({
     feed: "https://f.example/feed.ttl",

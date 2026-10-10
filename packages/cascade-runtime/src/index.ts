@@ -17,6 +17,10 @@ export type {
 export type { Checked, Tables } from "./tables.js";
 export type {
   About,
+  Coded,
+  Codes,
+  Fact,
+  Facts,
   Found,
   HeldSeries,
   HeldVersion,

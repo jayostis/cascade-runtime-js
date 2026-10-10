@@ -25,10 +25,12 @@ which goes back to the pod's page with the connection in a box over it
 The title bar's File menu posts to `/delete-all` and `/reset-all`, which call
 `deleteAll` and `resetAll` in `pods.mjs`, as `npm run reset` does; Help,
 About says the app's name and version and the `cascade-runtime` it runs on.
-Under the pods, the sidebar lists the reference tables the pods are matched
-with, from `tablesBeside` (`held()`); `/tables/<id>/` shows one with its
-source, licence, freshness, a search (`search()`, `?q=&page=`, 50 codes a
-page) and which pods use which version (`uses()`), and Check now posts to
+Under the pods, the sidebar lists the sources of the reference tables the pods
+are matched with (`sourcesOf(held())`, from `tablesBeside`). `/tables/<id>/`
+shows a source: its publisher, licence and freshness, a search over all its
+tables (`search()`, `?q=&page=`, 50 codes a page) and the tables it publishes;
+with `?code=<code>`, a code's page (`facts()`). For a table's id it shows that
+table alone, with which pods use which version (`uses()`). Check now posts to
 `/tables/check`.
 A pod's page names each record by its code's name in those tables
 (`about(codesOf(answers))`), else by the record's own text, and marks a

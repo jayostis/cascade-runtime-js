@@ -20,6 +20,7 @@ import {
   gunzipped,
   IN_THIS_THREAD,
   LISTING_FORMAT,
+  merged,
   type Listed,
   nameOver,
   notation,
@@ -131,6 +132,8 @@ export interface HeldSeries {
   readonly checked?: string;
   /** The watcher's last check of the series' source; none when the feed does not say. */
   readonly watched?: Watched;
+  /** The source the feed says it is built from. */
+  readonly source?: string;
 }
 
 /** What a names or status series says of a code, from the first series in the order of preference that holds it. */
@@ -157,8 +160,49 @@ export interface Found {
   readonly mapsTo: readonly { code: string; notation: string; about?: About }[];
 }
 
+/** A code, as written, with what names and status say of it. */
+export interface Coded {
+  readonly code: string;
+  readonly notation: string;
+  readonly about?: About;
+}
+
+/** Codes, at most a page of them, and how many there are. */
+export interface Codes {
+  readonly total: number;
+  readonly codes: readonly Coded[];
+}
+
+/** Where a fact about a code comes from: a held series and its version. */
+export interface Fact {
+  readonly series: string;
+  readonly version: string;
+}
+
+/** Everything the held tables say of a code, each fact with its series and version. */
+export interface Facts extends Coded {
+  /** From each names series that names it, in the order of preference. */
+  readonly names: readonly (Fact & {
+    readonly label: string;
+    readonly altLabels: readonly string[];
+  })[];
+  /** From each status series that holds it, in the order of preference. */
+  readonly status: readonly (Fact & {
+    readonly deprecated: boolean;
+    readonly replacedBy: readonly Coded[];
+  })[];
+  /**
+   * From each mapping series that maps it or maps to it: the codes it maps to, each with the other codes mapped to
+   * that one, and the codes mapped to it.
+   */
+  readonly mappings: readonly (Fact & {
+    readonly mapsTo: readonly (Coded & { readonly alongside: Codes })[];
+    readonly mappedFrom: Codes;
+  })[];
+}
+
 export interface Searched {
-  /** The version searched; none when the series is not held. */
+  /** The version searched, when one series is; none when the series is not held. */
   readonly version?: string;
   /** How many codes matched, of which `found` holds a page. */
   readonly total: number;
@@ -370,6 +414,11 @@ export class Tables {
   #started: Promise<void> | undefined;
   readonly #texts = new Map<string, Promise<string>>();
   readonly #listings = new Map<string, Promise<Listed>>();
+  readonly #merges = new Map<string, Promise<readonly string[]>>();
+  readonly #inverses = new Map<
+    string,
+    Promise<ReadonlyMap<string, readonly string[]>>
+  >();
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
@@ -561,6 +610,7 @@ export class Tables {
           source === undefined || source === null
             ? undefined
             : checked?.watched?.[source],
+        source: source ?? undefined,
       };
     });
   }
@@ -579,25 +629,30 @@ export class Tables {
   }
 
   /**
-   * The codes in the series' current version that are `text`, as written or as an IRI, or whose name holds it,
-   * ignoring case; every code for no text. In the order of their codes, `PAGE_SIZE` a page, the page numbered `page`
-   * from 1, each with what names and status say of it and, in a mapping series, the codes it maps to.
+   * The codes in the current version of the series, or of each of several, that are `text`, as written or as an IRI,
+   * or whose name holds it, ignoring case; every code for no text. In the order of their codes, `PAGE_SIZE` a page,
+   * the page numbered `page` from 1, each with what names and status say of it and, in a mapping series, the codes it
+   * maps to.
    */
-  async search(series: string, text: string, page = 1): Promise<Searched> {
-    const version = (await this.#index()).objects(iri(series), SHIPS_WITH)[0]
-      ?.value;
-    if (version === undefined)
+  async search(
+    series: string | readonly string[],
+    text: string,
+    page = 1,
+  ): Promise<Searched> {
+    const versions = await this.#versionsOf(series);
+    if (versions.length === 0)
       return { total: 0, offset: 0, size: PAGE_SIZE, found: [] };
-    const [listed, { uriSpaces }] = await Promise.all([
-      this.#listed(version),
+    const [listings, codes, { uriSpaces }] = await Promise.all([
+      Promise.all(versions.map((version) => this.#listed(version))),
+      this.#codes(versions),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
     ]);
     const wanted = text.trim().toLowerCase();
     const names = wanted === "" ? undefined : await this.#names();
     const matched =
       names === undefined
-        ? listed.codes
-        : listed.codes.filter(
+        ? codes
+        : codes.filter(
             (code) =>
               names
                 .find((each) => Object.hasOwn(each, code))
@@ -609,11 +664,16 @@ export class Tables {
     const offset =
       Number.isInteger(page) && page > 1 ? (page - 1) * PAGE_SIZE : 0;
     const shown = matched.slice(offset, offset + PAGE_SIZE);
-    const mapsTo = (code: string): readonly string[] =>
-      Object.hasOwn(listed.mapsTo, code) ? listed.mapsTo[code]! : [];
+    const mapsTo = (code: string): readonly string[] => [
+      ...new Set(
+        listings.flatMap(({ mapsTo }) =>
+          Object.hasOwn(mapsTo, code) ? mapsTo[code]! : [],
+        ),
+      ),
+    ];
     const about = await this.about([...shown, ...shown.flatMap(mapsTo)]);
     return {
-      version,
+      ...(versions.length === 1 ? { version: versions[0] } : {}),
       total: matched.length,
       offset,
       size: PAGE_SIZE,
@@ -628,6 +688,165 @@ export class Tables {
         })),
       })),
     };
+  }
+
+  /** The code written so in the current versions of the series; none when they hold none. */
+  async codeNamed(
+    series: string | readonly string[],
+    written: string,
+  ): Promise<string | undefined> {
+    const [codes, { uriSpaces }] = await Promise.all([
+      this.#codes(await this.#versionsOf(series)),
+      tableTerms(this.#options.vocabulary, this.#options.newStore),
+    ]);
+    return codes.find((code) => notation(uriSpaces, code) === written);
+  }
+
+  /** What every held series says of the code, from its current version. */
+  async facts(code: string): Promise<Facts> {
+    const [references, index, { uriSpaces }] = await Promise.all([
+      this.references(),
+      this.#index(),
+      tableTerms(this.#options.vocabulary, this.#options.newStore),
+    ]);
+    const current = (series: string): string | undefined =>
+      index.objects(iri(series), SHIPS_WITH)[0]?.value;
+    const held = (kind: string): Fact[] =>
+      this.#preferred(references, kind).flatMap((series) => {
+        const version = current(series);
+        return version === undefined ? [] : [{ series, version }];
+      });
+    const names: Facts["names"][number][] = [];
+    for (const fact of held(`${REC}CodeNames`)) {
+      const rows = rowsAbout(await this.#text(fact.version), code);
+      const [label] = values(rows, `${SKOS}prefLabel`);
+      if (label !== undefined)
+        names.push({
+          ...fact,
+          label,
+          altLabels: values(rows, `${SKOS}altLabel`),
+        });
+    }
+    const status: (Fact & { deprecated: boolean; replacedBy: string[] })[] = [];
+    for (const fact of held(`${REC}CodeStatus`)) {
+      const rows = rowsAbout(await this.#text(fact.version), code);
+      const [deprecated] = values(rows, `${OWL}deprecated`);
+      if (deprecated !== undefined)
+        status.push({
+          ...fact,
+          deprecated: deprecated === "true",
+          replacedBy: values(rows, `${DCT}isReplacedBy`),
+        });
+    }
+    const page = (codes: readonly string[]) => ({
+      total: codes.length,
+      codes: codes.slice(0, PAGE_SIZE),
+    });
+    const mappings: (Fact & {
+      mapsTo: { code: string; alongside: { total: number; codes: string[] } }[];
+      mappedFrom: { total: number; codes: string[] };
+    })[] = [];
+    for (const series of index.subjects(SHIPS_WITH).map(({ value }) => value)) {
+      const kind = references.kindOf(series);
+      const version = current(series);
+      if (
+        version === undefined ||
+        kind === `${REC}CodeNames` ||
+        kind === `${REC}CodeStatus`
+      )
+        continue;
+      const [{ mapsTo }, from] = await Promise.all([
+        this.#listed(version),
+        this.#mappedFrom(version),
+      ]);
+      const others = (target: string): string[] =>
+        (from.get(target) ?? []).filter((each) => each !== code);
+      const targets = Object.hasOwn(mapsTo, code) ? mapsTo[code]! : [];
+      // A code that maps to itself lists the codes mapped to it beside itself, once.
+      const sources = targets.includes(code) ? [] : others(code);
+      if (targets.length === 0 && sources.length === 0) continue;
+      mappings.push({
+        series,
+        version,
+        mapsTo: targets.map((target) => ({
+          code: target,
+          alongside: page(others(target).filter((each) => each !== target)),
+        })),
+        mappedFrom: page(sources),
+      });
+    }
+    const about = await this.about([
+      code,
+      ...status.flatMap(({ replacedBy }) => replacedBy),
+      ...mappings.flatMap(({ mapsTo, mappedFrom }) => [
+        ...mapsTo.flatMap((target) => [target.code, ...target.alongside.codes]),
+        ...mappedFrom.codes,
+      ]),
+    ]);
+    const coded = (each: string): Coded => ({
+      code: each,
+      notation: notation(uriSpaces, each),
+      about: about.get(each),
+    });
+    const codes = ({ total, codes }: { total: number; codes: string[] }) => ({
+      total,
+      codes: codes.map(coded),
+    });
+    return {
+      ...coded(code),
+      names,
+      status: status.map((fact) => ({
+        ...fact,
+        replacedBy: fact.replacedBy.map(coded),
+      })),
+      mappings: mappings.map((fact) => ({
+        ...fact,
+        mapsTo: fact.mapsTo.map((target) => ({
+          ...coded(target.code),
+          alongside: codes(target.alongside),
+        })),
+        mappedFrom: codes(fact.mappedFrom),
+      })),
+    };
+  }
+
+  /** The current version of each series given that the app holds. */
+  async #versionsOf(series: string | readonly string[]): Promise<string[]> {
+    const index = await this.#index();
+    return (typeof series === "string" ? [series] : series).flatMap(
+      (each) => index.objects(iri(each), SHIPS_WITH)[0]?.value ?? [],
+    );
+  }
+
+  /** The codes the versions list, as one list in the order of their notations; made once for the versions. */
+  #codes(versions: readonly string[]): Promise<readonly string[]> {
+    return once(this.#merges, versions.join(" "), async () => {
+      const [listings, { uriSpaces }] = await Promise.all([
+        Promise.all(versions.map((version) => this.#listed(version))),
+        tableTerms(this.#options.vocabulary, this.#options.newStore),
+      ]);
+      return merged(
+        listings.map(({ codes }) => codes),
+        uriSpaces,
+      );
+    });
+  }
+
+  /** In a mapping version, the codes mapped to each code; made once. */
+  #mappedFrom(
+    version: string,
+  ): Promise<ReadonlyMap<string, readonly string[]>> {
+    return once(this.#inverses, version, async () => {
+      const from = new Map<string, string[]>();
+      const { codes, mapsTo } = await this.#listed(version);
+      for (const code of codes)
+        for (const target of Object.hasOwn(mapsTo, code) ? mapsTo[code]! : []) {
+          const sources = from.get(target) ?? [];
+          sources.push(code);
+          from.set(target, sources);
+        }
+      return from;
+    });
   }
 
   /** A held version's N-Triples, read once: a version's rows never change. */
@@ -898,6 +1117,9 @@ export class Tables {
       if (held !== undefined) {
         this.#texts.delete(held.value);
         this.#listings.delete(held.value);
+        this.#inverses.delete(held.value);
+        for (const key of this.#merges.keys())
+          if (key.split(" ").includes(held.value)) this.#merges.delete(key);
       }
       kept.push(version.value);
     }

@@ -1023,8 +1023,11 @@ ${shots.join("\n")}`);
     await settled(page);
     const label = of(series, "http://www.w3.org/2000/01/rdf-schema#label");
     assert.ok(label);
-    assert.ok(
-      (await page.locator("aside section.tables").innerText()).includes(label),
+    assert.equal(await page.locator("main h1").innerText(), label);
+    assert.equal(
+      await page.locator("aside section.tables a[aria-current]").count(),
+      1,
+      "the table's source is not marked in the sidebar",
     );
     const shown = await page.locator("main").innerText();
     assert.ok(
