@@ -57,7 +57,7 @@ test("what Cascade noticed: things seen at two places first, three at most, then
         needs: "joined before, apart under newer tables or rules",
       },
       {
-        entry: "e10",
+        entry: "e6",
         needs: "joined before, apart under newer tables or rules",
       },
     ],
@@ -74,8 +74,8 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     "Sources disagree on how severe an unnamed allergy is.",
     "An entry was marked as different, but is still shown as one entry.",
     "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
-    "Acute viral pharyngitis was kept as one condition with another before, and newer reference tables or rules no longer match them. Worth a look.",
-    "An unnamed entry was kept as one entry with another before, and newer reference tables or rules no longer match them. Worth a look.",
+    "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
+    "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
   ]);
 });
 

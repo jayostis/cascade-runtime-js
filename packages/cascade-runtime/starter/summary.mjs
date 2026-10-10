@@ -302,7 +302,7 @@ const SAID = {
   "same code, dates cannot tell": ({ name, one }) =>
     `${name} was recorded more than once, and its dates cannot tell whether it is one ${one} or several.`,
   "joined before, apart under newer tables or rules": ({ name, one }) =>
-    `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before, and newer reference tables or rules no longer match them. Worth a look.`,
+    `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.`,
 };
 
 /** `at A and B`, `at A and in Alex's own entries`: records are at a hospital, but in a person's own entries. */
