@@ -29,6 +29,7 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       { entry: "e2", condition: "Asthma" },
       { entry: "e3", condition: "Eczema" },
       { entry: "e4", condition: "Migraine" },
+      { entry: "e7", condition: "Acute viral pharyngitis" },
     ],
     [SEEN]: [
       at("e1", "Meridian Health System", 3),
@@ -51,6 +52,14 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       { entry: "e6", needs: "members disagree on criticality" },
       { entry: "e10", needs: "judged different, still joined" },
       { entry: "e4", needs: "same code, dates cannot tell" },
+      {
+        entry: "e7",
+        needs: "joined before, apart under newer tables or rules",
+      },
+      {
+        entry: "e6",
+        needs: "joined before, apart under newer tables or rules",
+      },
     ],
   };
   assert.deepEqual(view.noticed(answers), [
@@ -65,6 +74,8 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     "Sources disagree on how severe an unnamed allergy is.",
     "An entry was marked as different, but is still shown as one entry.",
     "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
+    "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
+    "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
   ]);
 });
 
