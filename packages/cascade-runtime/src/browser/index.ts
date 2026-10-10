@@ -66,6 +66,10 @@ export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {
   About,
+  Coded,
+  Codes,
+  Fact,
+  Facts,
   Found,
   HeldSeries,
   HeldVersion,

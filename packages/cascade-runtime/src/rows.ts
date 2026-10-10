@@ -257,6 +257,35 @@ export function notation(uriSpaces: readonly string[], code: string): string {
   return code.slice(uriSpaces.find((space) => code.startsWith(space))?.length);
 }
 
+const ORDER = new Intl.Collator("en", { numeric: true });
+
+/** Codes listed in the order of their notations, each list already in it, as one list in that order, each code once. */
+export function merged(
+  lists: readonly (readonly string[])[],
+  uriSpaces: readonly string[],
+): readonly string[] {
+  const [first = [], ...others] = lists;
+  if (others.length === 0) return first;
+  const all = others.reduce((one: readonly string[], other) => {
+    const both: string[] = [];
+    let [at, to] = [0, 0];
+    while (at < one.length || to < other.length)
+      both.push(
+        to === other.length ||
+          (at < one.length &&
+            ORDER.compare(
+              notation(uriSpaces, one[at]!),
+              notation(uriSpaces, other[to]!),
+            ) <= 0)
+          ? one[at++]!
+          : other[to++]!,
+      );
+    return both;
+  }, first);
+  // Codes whose notations collate equal need not meet head to head, so a repeat is dropped wherever it falls.
+  return [...new Set(all)];
+}
+
 /** A version's listing, by the lines of its N-Triples, a subject's lines read together. */
 export function listing(text: string, uriSpaces: readonly string[]): Listed {
   const codes = new Set<string>();
@@ -298,13 +327,12 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
   for (const each of Object.values(mapsTo)) each.sort();
   for (const code of Object.keys(names))
     if (!preferred.has(code)) delete names[code];
-  const collator = new Intl.Collator("en", { numeric: true });
   return {
     format: LISTING_FORMAT,
     uriSpaces,
     codes: [...codes]
       .map((code) => [notation(uriSpaces, code), code] as const)
-      .sort(([a], [b]) => collator.compare(a, b))
+      .sort(([a], [b]) => ORDER.compare(a, b))
       .map(([, code]) => code),
     mapsTo,
     names,

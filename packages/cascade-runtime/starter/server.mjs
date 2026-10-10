@@ -27,6 +27,7 @@ import {
 } from "./pods.mjs";
 import {
   checkedNote,
+  codePage,
   codesOf,
   connectionDialog,
   demoPeople,
@@ -45,6 +46,8 @@ import {
   postButton,
   QUESTIONS,
   slug,
+  sourcePage,
+  sourcesOf,
   tableId,
   tablePage,
 } from "./summary.mjs";
@@ -124,7 +127,7 @@ async function page(
       note,
       refresh,
       tables: {
-        series: held,
+        series: sourcesOf(held),
         current: table,
         href: tablePath,
         check: "/tables/check",
@@ -134,51 +137,106 @@ async function page(
 }
 
 /**
- * A reference table, by its id, or the first with none; `query`'s `q` is what to search it for, `page` the page of
- * what it finds, and `checked` that the page says what the last Check now did.
+ * A reference source or table, by its id, or the first source with none. A source's page searches all its tables,
+ * `query`'s `q` for what and `page` for which page, or with `code` shows that code's page; a table's page searches it
+ * alone. `checked` says the page tells what the last Check now did.
  */
 async function showTable(response, id, query) {
   const kept = await tables();
   const held = await kept.held();
+  const sources = sourcesOf(held);
   const series =
-    id === undefined ? held[0] : held.find((each) => tableId(each.iri) === id);
+    id === undefined || query.has("code")
+      ? undefined
+      : held.find((each) => tableId(each.iri) === id);
+  const source =
+    series !== undefined
+      ? sources.find((each) => each.series.includes(series))
+      : id === undefined
+        ? sources[0]
+        : sources.find((each) => tableId(each.iri) === id);
   const note = query.has("checked") ? lastCheck : undefined;
-  if (series === undefined)
+  const notFound = async (said) =>
+    send(
+      response,
+      404,
+      await page(
+        "Not found",
+        html`<h1>Not found</h1>
+<p>${said}</p>`,
+      ),
+    );
+  if (source === undefined)
     return id === undefined
       ? send(
           response,
           200,
           await page("Reference tables", noTables(), { note }),
         )
-      : send(
-          response,
-          404,
-          await page(
-            "Not found",
-            html`<h1>Not found</h1>
-<p>This app holds no reference table ${id}.</p>`,
-          ),
-        );
+      : notFound(`This app holds no reference table ${id}.`);
   const text = query.get("q") ?? "";
   const shown = pageNumber(query.get("page"));
   const names = await podNames();
-  const body = tablePage({
-    series,
-    searched: await kept.search(series.iri, text, shown),
+  const at = series ?? source;
+  const searchedHere = {
     text,
-    search: tablePath(series),
+    search: tablePath(at),
     page: shown,
     pageHref: (page) =>
-      `${tablePath(series)}?${new URLSearchParams({ q: text, page })}`,
-    uses: await kept.uses(),
-    pods: names,
-    href: podPath,
+      `${tablePath(at)}?${new URLSearchParams({ q: text, page })}`,
     now: Date.now(),
-  });
+  };
+  const codeHref = (code) =>
+    `${tablePath(source)}?${new URLSearchParams({ code })}`;
+  let title = source.label;
+  let body;
+  if (series !== undefined) {
+    title = series.label;
+    body = tablePage({
+      ...searchedHere,
+      series,
+      codeHref,
+      searched: await kept.search(series.iri, text, shown),
+      uses: await kept.uses(),
+      pods: names,
+      href: podPath,
+    });
+  } else if (query.has("code")) {
+    const written = query.get("code") ?? "";
+    const code = await kept.codeNamed(
+      [...new Set([...source.series, ...held].map(({ iri }) => iri))],
+      written,
+    );
+    if (code === undefined)
+      return notFound(`${source.label} holds no code ${written}.`);
+    const facts = await kept.facts(
+      code,
+      source.series.map(({ iri }) => iri),
+    );
+    title = `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim();
+    body = codePage({
+      source,
+      held,
+      facts,
+      codeHref,
+      back: tablePath(source),
+    });
+  } else
+    body = sourcePage({
+      ...searchedHere,
+      source,
+      searched: await kept.search(
+        source.series.map(({ iri }) => iri),
+        text,
+        shown,
+      ),
+      codeHref,
+      tableHref: tablePath,
+    });
   send(
     response,
     200,
-    await page(series.label, body, { names, table: series.iri, note }),
+    await page(title, body, { names, table: source.iri, note }),
   );
 }
 

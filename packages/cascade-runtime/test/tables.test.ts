@@ -33,7 +33,7 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { listing } from "../src/rows.js";
+import { listing, merged } from "../src/rows.js";
 import {
   type Checked,
   LISTED,
@@ -631,10 +631,62 @@ test("the app tells what it holds: each series with its versions, credit and how
     );
 });
 
-test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to", async () => {
+test("a code's facts hold what each held kind says of it, each with its series and current version; a search over several series lists their codes once each", async () => {
+  const tables = tablesOver(feed);
+  await tables.check();
+  const held = await tables.held();
+  const listed = await Promise.all(
+    held.map(async (series) =>
+      (await tables.search(series.iri, "")).found.map(({ code }) => code),
+    ),
+  );
+  const [code] = listed.reduce((both, codes) =>
+    both.filter((each) => codes.includes(each)),
+  );
+  assert.ok(code, "no code is in every series of the test feed");
+  const facts = await tables.facts(code);
+  const fact = (kind: string) => {
+    const series = held.find((each) => each.kind?.endsWith(`#${kind}`));
+    assert.ok(series, kind);
+    return { series: series.iri, version: series.current.iri };
+  };
+  const from = ({ series, version }: { series: string; version: string }) => ({
+    series,
+    version,
+  });
+  assert.deepEqual(facts.names.map(from), [fact("CodeNames")]);
+  assert.deepEqual(facts.status.map(from), [fact("CodeStatus")]);
+  assert.deepEqual(facts.mappings.map(from), [fact("VaccineGroups")]);
+
+  const all = await tables.search(
+    held.map(({ iri }) => iri),
+    "",
+  );
+  assert.deepEqual(
+    new Set(all.found.map(({ code }) => code)),
+    new Set(listed.flat()),
+  );
+  assert.equal(all.total, new Set(listed.flat()).size);
+  // Two codes whose notations collate equal, listed in either order.
+  const [a, b] = ["urn:test:a:7", "urn:test:b:07"];
+  assert.deepEqual(
+    [
+      ...merged(
+        [
+          [b, a],
+          [a, b],
+        ],
+        ["urn:test:a:", "urn:test:b:"],
+      ),
+    ].sort(),
+    [a, b],
+  );
+});
+
+test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to; a code they map to is found by its notation", async () => {
   const count = PAGE_SIZE * 2 + 3;
   const { served } = await withMappings(feed, INGREDIENTS, [
-    Array.from({ length: count }, (_, at) => [`${at + 1}`, "1"] as const),
+    Array.from({ length: count }, (_, at) => [`${at + 1}`, "0"] as const),
   ]);
   const tables = tablesOver(served);
   await tables.check();
@@ -653,7 +705,7 @@ test("a search pages through a series of more codes than a page, in the order of
     assert.equal(searched.offset, (page - 1) * PAGE_SIZE);
     assert.deepEqual(
       new Set(asked),
-      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}1`])),
+      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}0`])),
     );
     pages.push(searched.found.map(({ notation }) => notation));
   }
@@ -665,6 +717,7 @@ test("a search pages through a series of more codes than a page, in the order of
     pages.flat(),
     Array.from({ length: count }, (_, at) => `${at + 1}`),
   );
+  assert.equal(await tables.codeNamed(INGREDIENTS.series, "0"), `${RXNORM}0`);
 });
 
 test("a search lists a version again when the listing kept beside it is not one, or was listed in another shape or by other code systems", async () => {
