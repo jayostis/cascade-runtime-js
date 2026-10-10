@@ -303,7 +303,15 @@ const SAID = {
     `${name} was recorded more than once, and its dates cannot tell whether it is one ${one} or several.`,
   "joined before, apart under newer tables or rules": ({ name, one }) =>
     `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.`,
+  "possibly the same medication": ({ name, one }, { otherRecordLabel }) =>
+    `${name === UNNAMED ? `An unnamed ${one}` : name} shares a code with ${otherNamed(otherRecordLabel, one)}, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.`,
 };
+
+/** The other record of a pair, named from its label `Medication · Name · …`, or `another medication` when it has no name. */
+function otherNamed(label, one) {
+  const name = label?.split(" · ")[1];
+  return name === undefined || name === "no name" ? `another ${one}` : name;
+}
 
 /** `at A and B`, `at A and in Alex's own entries`: records are at a hospital, but in a person's own entries. */
 function where(places) {
@@ -367,8 +375,12 @@ export function noticed(answers, about = new Map()) {
   for (const row of answers[REVIEW] ?? []) {
     const item = entries.get(row.entry) ?? fromLabel(row.entryLabel);
     review.set(
-      JSON.stringify([row.entry, row.needs]),
-      (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item),
+      JSON.stringify([
+        row.entry,
+        row.needs,
+        row.needs === "possibly the same medication" ? row.otherRecord : null,
+      ]),
+      (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item, row),
     );
   }
   return [
@@ -383,15 +395,28 @@ export function noticed(answers, about = new Map()) {
   ].map((sentence) => sentence[0].toUpperCase() + sentence.slice(1));
 }
 
-/** A sentence for each pair of medications in two entries whose codes share an ingredient, in the order of the section. */
+/**
+ * A sentence for each pair of medications in two entries whose codes share an ingredient, in the order of the section,
+ * once for the pair of entries whatever codes their rows show, and none for a pair whose rows share a code, which What
+ * needs review lists.
+ */
 function sharedIngredients(answers, about) {
   const medications = SECTIONS.find(({ one }) => one === "medication");
   const rows = (answers[medications.question] ?? []).map((row) => ({
     entry: row.entry,
     name: row.medication || fromLabel(row.entryLabel).name,
+    code: row.code,
     ingredients: about.get(row.code)?.ingredients?.codes ?? [],
   }));
-  const said = new Set();
+  const same = new Set(
+    rows.flatMap((one, at) =>
+      rows
+        .slice(at + 1)
+        .filter((other) => other.code !== undefined && other.code === one.code)
+        .map((other) => JSON.stringify([one.entry, other.entry].sort())),
+    ),
+  );
+  const said = new Set(same);
   const sentences = [];
   for (const [at, one] of rows.entries())
     for (const other of rows.slice(at + 1)) {

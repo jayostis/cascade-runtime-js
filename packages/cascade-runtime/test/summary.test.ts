@@ -9,6 +9,7 @@ const view = await import(
 const ALLERGIES = "pod/My active allergies";
 const CONDITIONS = "pod/My active conditions";
 const LABS = "pod/My lab results";
+const MEDICATIONS = "pod/My active medications";
 const SEEN = "pod/What was seen more than once";
 const REVIEW = "entry/What needs review";
 
@@ -30,6 +31,10 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       { entry: "e3", condition: "Eczema" },
       { entry: "e4", condition: "Migraine" },
       { entry: "e7", condition: "Acute viral pharyngitis" },
+    ],
+    [MEDICATIONS]: [
+      { entry: "e8", medication: "Lisinopril 10 MG Oral Tablet" },
+      { entry: "e11" },
     ],
     [SEEN]: [
       at("e1", "Meridian Health System", 3),
@@ -60,6 +65,23 @@ test("what Cascade noticed: things seen at two places first, three at most, then
         entry: "e6",
         needs: "joined before, apart under newer tables or rules",
       },
+      {
+        entry: "e8",
+        needs: "possibly the same medication",
+        otherRecord: "r1",
+        otherRecordLabel: "Medication · Zestril · own entry",
+      },
+      {
+        entry: "e8",
+        needs: "possibly the same medication",
+        otherRecord: "r2",
+        otherRecordLabel: "Medication · no name · own entry",
+      },
+      {
+        entry: "e11",
+        needs: "possibly the same medication",
+        otherRecord: "r3",
+      },
     ],
   };
   assert.deepEqual(view.noticed(answers), [
@@ -76,11 +98,13 @@ test("what Cascade noticed: things seen at two places first, three at most, then
     "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
     "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
     "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
+    "Lisinopril 10 MG Oral Tablet shares a code with Zestril, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
+    "Lisinopril 10 MG Oral Tablet shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
+    "An unnamed medication shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
   ]);
 });
 
-test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows or a medication with no code give nothing", () => {
-  const MEDICATIONS = "pod/My active medications";
+test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows, a medication with no code or two entries that share a code give nothing, since What needs review lists those", () => {
   const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
   const ingredients = (...codes: string[]) => ({
     ingredients: { codes: codes.map((code) => RXNORM + code), origin: "urn:v" },
@@ -92,6 +116,8 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
     [RXNORM + "1", ingredients("5640")],
     [RXNORM + "9", ingredients("777")],
     [RXNORM + "10", ingredients("777")],
+    [RXNORM + "20", ingredients("888")],
+    [RXNORM + "21", ingredients("888")],
     [
       RXNORM + "777",
       { name: { label: "hydrochlorothiazide / lisinopril", altLabels: [] } },
@@ -119,6 +145,9 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
         { entry: "e5", medication: "Combined", code: RXNORM + "308135" },
         { entry: "e6", medication: "Zestoretic", code: RXNORM + "9" },
         { entry: "e7", medication: "Prinzide", code: RXNORM + "10" },
+        { entry: "e8", medication: "Metformin", code: RXNORM + "20" },
+        { entry: "e9", medication: "Glucophage XR", code: RXNORM + "21" },
+        { entry: "e9", medication: "Glucophage", code: RXNORM + "20" },
       ),
       about,
     ),
@@ -142,7 +171,7 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
         {
           entry: "e1",
           medication: "Norvasc 10 MG Oral Tablet",
-          code: RXNORM + "212550",
+          code: RXNORM + "308135",
         },
       ),
       about,

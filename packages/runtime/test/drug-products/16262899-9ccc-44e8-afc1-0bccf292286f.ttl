@@ -1,0 +1,2 @@
+<http://www.nlm.nih.gov/research/umls/rxnorm/314076> <https://ns.cascadeprotocol.org/records/v1-draft#termType> "SCD" .
+<http://www.nlm.nih.gov/research/umls/rxnorm/197361> <https://ns.cascadeprotocol.org/records/v1-draft#termType> "SCD" .

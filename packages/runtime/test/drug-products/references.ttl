@@ -1,0 +1,7 @@
+<urn:uuid:6c0e3835-f0cb-4d65-bfd2-b85b31b06ba2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/records/v1-draft#ReferenceSeries> .
+<urn:uuid:6c0e3835-f0cb-4d65-bfd2-b85b31b06ba2> <http://www.w3.org/2000/01/rdf-schema#label> "Drug products (test fixture)" .
+<urn:uuid:6c0e3835-f0cb-4d65-bfd2-b85b31b06ba2> <https://ns.cascadeprotocol.org/records/v1-draft#tableKind> <https://ns.cascadeprotocol.org/records/v1-draft#DrugProducts> .
+<urn:uuid:6c0e3835-f0cb-4d65-bfd2-b85b31b06ba2> <https://ns.cascadeprotocol.org/records/v1-draft#shipsWith> <urn:uuid:16262899-9ccc-44e8-afc1-0bccf292286f> .
+<urn:uuid:16262899-9ccc-44e8-afc1-0bccf292286f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Entity> .
+<urn:uuid:16262899-9ccc-44e8-afc1-0bccf292286f> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:6c0e3835-f0cb-4d65-bfd2-b85b31b06ba2> .
+<urn:uuid:16262899-9ccc-44e8-afc1-0bccf292286f> <http://purl.org/pav/version> "1" .

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -29,13 +29,28 @@ const APP =
 /** The folder the developer story's scripts and downloads are in: the repository's, or the app's copy of it. */
 const STORY = APP ?? join(ROOT, "developer-story");
 
-/** Each row the script printed, run from a fresh folder, or the app's, on the arguments; its pod is removed after. */
+/** A tables store holding one version of a drug products series, so a fresh folder reads it without the feed. */
+const DRUG_PRODUCTS = join(
+  ROOT,
+  "packages",
+  "runtime",
+  "test",
+  "drug-products",
+);
+
+/**
+ * Each row the script printed, run from a fresh folder, or the app's, on the arguments; its pod is removed after. A
+ * fresh folder starts with `tables` as its `.tables/`; the app brings its own.
+ */
 async function story(
   script: string,
   pod: string,
-  ...downloads: string[]
+  downloads: readonly string[],
+  tables?: string,
 ): Promise<Record<string, string>[]> {
   const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
+  if (APP === undefined && tables !== undefined)
+    await cp(tables, join(folder, ".tables"), { recursive: true });
   const permissions =
     APP === undefined
       ? []
@@ -129,11 +144,9 @@ test("the developer story prints Alex's active allergies as the replay through J
     Object.fromEntries([...row].map(([column, term]) => [column, term.value])),
   );
 
-  const printed = await story(
-    "allergies.mjs",
-    "alex-pod",
+  const printed = await story("allergies.mjs", "alex-pod", [
     join(vocabulary.files.folder, FIRST_EXPORT),
-  );
+  ]);
   for (const row of printed) t.diagnostic(JSON.stringify(row));
   assert.deepEqual(multiset(printed), multiset(expected));
 });
@@ -143,8 +156,11 @@ test("the second developer story prints Priya's active medications, the lisinopr
   const printed = await story(
     "medications.mjs",
     "priya-pod",
-    join(files.folder, PRIYA_DOWNLOADS, "x-e2", "apple_health_export"),
-    join(files.folder, PRIYA_DOWNLOADS, "kestrel-harbor-health-summary.xml"),
+    [
+      join(files.folder, PRIYA_DOWNLOADS, "x-e2", "apple_health_export"),
+      join(files.folder, PRIYA_DOWNLOADS, "kestrel-harbor-health-summary.xml"),
+    ],
+    DRUG_PRODUCTS,
   );
   for (const row of printed) t.diagnostic(JSON.stringify(row));
   assert.ok(
