@@ -519,7 +519,8 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
     view.tablePage({
       series: GROUPS,
       searched: {
-        total: 1,
+        total: 1201,
+        offset: 50,
         found: [
           {
             code: "http://hl7.org/fhir/sid/cvx/141",
@@ -542,6 +543,8 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
       },
       text: "141",
       search: "/tables/c1a6678c/",
+      page: 2,
+      pageHref: (page: number) => `/tables/c1a6678c/?page=${page}`,
       uses: { "ni:///v1": ["alex-rivera", "gone"], "ni:///v2": [] },
       pods: ["alex-rivera"],
       href: (pod: string) => `/pods/${pod}/`,
@@ -555,11 +558,14 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
     "CC0 1.0",
     "The watcher checked the publisher 2 hours ago: nothing new. This app last read the feed 5 minutes ago.",
     "141 flu, split Retired 88 flu, NOS",
+    "51–51 of 1,201 codes.",
     "version 2, Oct 8, 2026 current : no pod",
     "version 1, Oct 1, 2026 : Alex Rivera",
   ])
     assert.ok(text.includes(said), said);
   assert.match(shown, /<form method="get" action="\/tables\/c1a6678c\/"/);
+  assert.match(shown, /<a href="\/tables\/c1a6678c\/\?page=1" rel="prev">/);
+  assert.match(shown, /<a href="\/tables\/c1a6678c\/\?page=3" rel="next">/);
   assert.match(shown, /<a href="\/pods\/alex-rivera\/">Alex Rivera<\/a>/);
   assert.ok(!text.includes("Gone"));
 });

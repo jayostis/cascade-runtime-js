@@ -35,6 +35,7 @@ import { openPodWith } from "../src/pod.js";
 import {
   type Checked,
   RULE_LIST,
+  PAGE_SIZE,
   PUBLISHED_ROWS,
   Tables,
   versionName,
@@ -625,6 +626,42 @@ test("the app tells what it holds: each series with its versions, credit and how
         (text) => text.toLowerCase().includes("split virus"),
       ),
     );
+});
+
+test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to", async () => {
+  const count = PAGE_SIZE * 2 + 3;
+  const { served } = await withMappings(feed, INGREDIENTS, [
+    Array.from({ length: count }, (_, at) => [`${at + 1}`, "1"] as const),
+  ]);
+  const tables = tablesOver(served);
+  await tables.check();
+  const asked: string[] = [];
+  const about = tables.about.bind(tables);
+  tables.about = (codes) => {
+    asked.push(...codes);
+    return about(codes);
+  };
+
+  const pages = [];
+  for (const page of [1, 2, 3, 4]) {
+    asked.length = 0;
+    const searched = await tables.search(INGREDIENTS.series, "", page);
+    assert.equal(searched.total, count);
+    assert.equal(searched.offset, (page - 1) * PAGE_SIZE);
+    assert.deepEqual(
+      new Set(asked),
+      new Set(searched.found.flatMap(({ code }) => [code, `${RXNORM}1`])),
+    );
+    pages.push(searched.found.map(({ notation }) => notation));
+  }
+  assert.deepEqual(
+    pages.map((page) => page.length),
+    [PAGE_SIZE, PAGE_SIZE, 3, 0],
+  );
+  assert.deepEqual(
+    pages.flat(),
+    Array.from({ length: count }, (_, at) => `${at + 1}`),
+  );
 });
 
 test("the starter copies carry each version's rows as published, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {

@@ -950,21 +950,37 @@ function statusOf(about, said = "Retired") {
 
 /**
  * A reference table's page: `series` as `held()` gives it, its source, licence, version and how fresh it is at `now`;
- * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer); and each
- * version held with the pods among `pods` that `uses` (`uses()`'s answer) says were opened with it, each a link to
- * `href(pod)`.
+ * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer), page
+ * `page` of them, with links to the pages before and after it at `pageHref(page)`; and each version held with the pods
+ * among `pods` that `uses` (`uses()`'s answer) says were opened with it, each a link to `href(pod)`.
  */
 export function tablePage({
   series,
   searched,
   text,
   search,
+  page = 1,
+  pageHref,
   uses,
   pods,
   href,
   now,
 }) {
-  const { found, total } = searched;
+  const { found, total, offset = 0 } = searched;
+  const counted = (count) =>
+    `${count.toLocaleString("en")} ${count === 1 ? "code" : "codes"}`;
+  const shown =
+    found.length === 0
+      ? `None on page ${page} of ${counted(total)}.`
+      : offset === 0 && found.length === total
+        ? `${counted(total)}.`
+        : `${(offset + 1).toLocaleString("en")}–${(offset + found.length).toLocaleString("en")} of ${counted(total)}.`;
+  const pages = [
+    offset > 0 &&
+      html`<a href=${pageHref(Math.max(1, page - 1))} rel="prev">Previous</a>`,
+    offset + found.length < total &&
+      html`<a href=${pageHref(page + 1)} rel="next">Next</a>`,
+  ].filter(Boolean);
   const maps = found.some((each) => each.mapsTo.length > 0);
   const named = ({ notation, about }) =>
     about?.name === undefined ? notation : `${notation} ${about.name.label}`;
@@ -990,13 +1006,17 @@ export function tablePage({
 ${
   total === 0
     ? html`<p class="muted">No code matches.</p>`
-    : html`<p class="muted">${total > found.length ? `The first ${found.length} of ${total} codes.` : `${total} ${total === 1 ? "code" : "codes"}.`}</p>
-<div class="scroll"><table class="codes">
+    : html`<p class="muted">${shown}</p>
+${
+  found.length > 0 &&
+  html`<div class="scroll"><table class="codes">
 <thead><tr><th>Code</th><th>Name</th><th>Status</th>${maps && html`<th>Maps to</th>`}</tr></thead>
 <tbody>
 ${rows}
 </tbody>
 </table></div>`
+}
+${pages.length > 0 && html`<p class="pages">${pages}</p>`}`
 }
 <div class="card versions"><h2>Which pods use which version</h2><ul>
 ${series.versions.map((version) => {
@@ -1157,6 +1177,7 @@ nav a[aria-current], .tables li a[aria-current] { background: var(--tint); color
 .facts dd { margin: 0; }
 .versions ul { margin: 0; padding-left: 1.2rem; }
 .versions li { margin: 0.3rem 0; }
+.pages { display: flex; gap: 1rem; margin: 0.6rem 0 1.25rem; }
 h1 { font-size: 1.75rem; margin: 0 0 0.2rem; }
 h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
 a { color: var(--accent); }

@@ -46,6 +46,7 @@ import {
   type Pod,
   type Row,
 } from "../pod.js";
+import type { RowsToVerify, Verified } from "../rows.js";
 import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
@@ -245,7 +246,23 @@ async function tablesOf(
       { pack: new URL(`${STARTER_TABLES}.json`, COMPONENTS).href },
     ),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
+    verify: verifiedInWorker,
   });
+}
+
+/** Verifies a version's published rows in a Web Worker of its own, so a page stays responsive while it does. */
+function verifiedInWorker(rows: RowsToVerify): Promise<Verified> {
+  const worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
+    type: "module",
+  });
+  return new Promise<Verified>((resolve, reject) => {
+    worker.onmessage = ({
+      data,
+    }: MessageEvent<Verified | { failed: string }>) =>
+      "failed" in data ? reject(new Error(data.failed)) : resolve(data);
+    worker.onerror = (event) => reject(new Error(event.message));
+    worker.postMessage(rows, [rows.bytes.buffer]);
+  }).finally(() => worker.terminate());
 }
 
 /** A check, asking the browser to keep the site's storage once it has kept a version. */
