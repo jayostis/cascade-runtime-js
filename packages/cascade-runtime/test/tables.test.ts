@@ -18,6 +18,7 @@ import {
   tablesSettings,
   type Triple,
   withTables,
+  RULE_LIST,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -37,7 +38,6 @@ import { listing, merged } from "../src/rows.js";
 import {
   type Checked,
   LISTED,
-  RULE_LIST,
   PAGE_SIZE,
   PUBLISHED_ROWS,
   Tables,

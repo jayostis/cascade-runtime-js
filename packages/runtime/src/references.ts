@@ -16,7 +16,7 @@ const REVISION_OF = `${PROV}wasRevisionOf`;
 export const CODES = ".codes.json";
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
 /** Where the vocabulary keeps the versions of its rule list, which a folder of tables may leave to it. */
-const RULE_LIST = "runtime/rule-list/";
+export const RULE_LIST = "runtime/rule-list/";
 
 /** A code system the vocabulary registers: its codes are IRIs, its `uriSpace` followed by the code. */
 export interface CodeSystem {

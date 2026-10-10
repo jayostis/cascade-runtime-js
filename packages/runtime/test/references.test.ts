@@ -20,11 +20,35 @@ test("a version whose name names no file refuses the step rather than aborting t
     "references/",
     () => new OxigraphStore(),
   );
-  for (const version of [
-    "https://example.org/tables/v2",
-    "ni:///sha-256;not*base64",
-  ]) {
-    await assert.rejects(references.rows(version), Refusal, version);
+  const files = await vocabulary();
+  const folder = "runtime/scripted-input/hana/tables/app/";
+  const tables = new MemoryFiles(files.iri);
+  await tables.write(
+    `${folder}references.ttl`,
+    (await files.read(`${folder}references.ttl`)) ?? new Uint8Array(),
+  );
+  const shared = await References.of(
+    tables,
+    folder,
+    () => new OxigraphStore(),
+    files,
+  );
+  const rules = "f32ebeea-4ed7-4da7-b08c-031dc619538e";
+  const refused: [References, string, RegExp][] = [
+    [references, "https://example.org/tables/v2", /./],
+    [references, "ni:///sha-256;not*base64", /./],
+    [
+      shared,
+      `urn:uuid:${rules.replace("f", "e")}`,
+      /runtime\/scripted-input\/hana\/tables\/app\/ holds no rows for/,
+    ],
+  ];
+  for (const [from, version, message] of refused) {
+    await assert.rejects(
+      from.rows(version),
+      (error) => error instanceof Refusal && message.test(error.message),
+      version,
+    );
   }
 });
 
@@ -49,10 +73,6 @@ test("a folder without a file for a version of the vocabulary's rule list reads 
     (await references()).rows(`urn:uuid:${rules}`),
   );
   assert.ok(shared > 0);
-  await assert.rejects(
-    (await references()).rows(`urn:uuid:${rules.replace("f", "e")}`),
-    Refusal,
-  );
   await story.write(`${folder}${rules}.ttl`, new TextEncoder().encode(""));
   assert.equal(
     await ruleCount((await references()).rows(`urn:uuid:${rules}`)),

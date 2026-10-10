@@ -84,16 +84,14 @@ test("an open whose tables list another version of the pod's rule list matches n
       const source = new MemoryFiles(files.iri);
       for (const path of await files.list(`${folder}/`)) {
         const bytes = (await files.read(path)) ?? new Uint8Array();
-        if (!path.startsWith(`${folder}/tables/app-later/`))
-          await source.write(path, bytes);
-        else if (path.endsWith("/references.ttl"))
-          await source.write(
-            path,
-            new TextEncoder().encode(
-              new TextDecoder().decode(bytes).replaceAll(rules, other),
-            ),
-          );
-        else await source.write(path, bytes);
+        await source.write(
+          path,
+          path === `${folder}/tables/app-later/references.ttl`
+            ? new TextEncoder().encode(
+                new TextDecoder().decode(bytes).replaceAll(rules, other),
+              )
+            : bytes,
+        );
       }
       await source.write(
         `${folder}/tables/app-later/${other}.ttl`,
