@@ -948,6 +948,12 @@ function statusOf(about, said = "Retired") {
     : `${said}, replaced by ${listed(status.replacedBy.map(codeShown))}`;
 }
 
+/** The page a query's `page` asks for: a whole number from 1, else 1. */
+export function pageNumber(asked) {
+  const page = Number(asked);
+  return Number.isSafeInteger(page) && page > 1 ? page : 1;
+}
+
 /**
  * A reference table's page: `series` as `held()` gives it, its source, licence, version and how fresh it is at `now`;
  * a search box sending `q` to `search`, with `text` in it; the codes `searched` found (`search()`'s answer), page
@@ -975,9 +981,11 @@ export function tablePage({
       : offset === 0 && found.length === total
         ? `${counted(total)}.`
         : `${(offset + 1).toLocaleString("en")}–${(offset + found.length).toLocaleString("en")} of ${counted(total)}.`;
+  // A page past the last steps back to the last; `offset` is `page - 1` pages.
+  const previous =
+    found.length === 0 ? Math.ceil((total * (page - 1)) / offset) : page - 1;
   const pages = [
-    offset > 0 &&
-      html`<a href=${pageHref(Math.max(1, page - 1))} rel="prev">Previous</a>`,
+    offset > 0 && html`<a href=${pageHref(previous)} rel="prev">Previous</a>`,
     offset + found.length < total &&
       html`<a href=${pageHref(page + 1)} rel="next">Next</a>`,
   ].filter(Boolean);

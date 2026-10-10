@@ -22,23 +22,25 @@ import {
   listing,
   nameOver,
   notation,
+  OWL,
+  PROV,
+  REVISION_OF,
   rowsAbout,
   type Row,
   type RowsToVerify,
+  SKOS,
+  SPECIALIZATION_OF,
   values,
   type Verified,
   verified,
 } from "./rows.js";
 
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const DCT = "http://purl.org/dc/terms/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPDX = "http://spdx.org/rdf/terms#";
-const SKOS = "http://www.w3.org/2004/02/skos/core#";
-const OWL = "http://www.w3.org/2002/07/owl#";
 const SHIPS_WITH = `${REC}shipsWith`;
 /** Beside a feed, when its watcher last checked each source. */
 const WATCHED = "checked.json";
@@ -46,8 +48,6 @@ const WATCHED = "checked.json";
 export const PAGE_SIZE = 50;
 /** What follows a version's file stem in the name of its listing, which a search reads. */
 export const LISTED = ".listed.json";
-const SPECIALIZATION_OF = `${PROV}specializationOf`;
-const REVISION_OF = `${PROV}wasRevisionOf`;
 /** The vocabulary's rule list, which reaches an app with the package. */
 export const RULE_LIST = "runtime/rule-list/";
 const INDEX = "references.ttl";
@@ -322,6 +322,17 @@ function once<T>(
   return found;
 }
 
+/** The stem of a held version's files; a version named by no file is refused. */
+function stemOf(version: string): string {
+  try {
+    return fileStem(version);
+  } catch (error) {
+    throw new Refusal(
+      `the tables hold ${version}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 /** One file of the rule list and the store as one folder, as `References` reads it: the store first. */
 class TablesFiles implements Files {
   readonly iri: string;
@@ -365,10 +376,6 @@ export class Tables {
   #started: Promise<void> | undefined;
   readonly #texts = new Map<string, Promise<string>>();
   readonly #listings = new Map<string, Promise<Listed>>();
-  readonly #nameIndexes = new Map<
-    string,
-    Promise<ReadonlyMap<string, string>>
-  >();
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
@@ -589,7 +596,9 @@ export class Tables {
         ? listed.codes
         : listed.codes.filter(
             (code) =>
-              names.get(code)?.includes(wanted) === true ||
+              names
+                .find((each) => Object.hasOwn(each, code))
+                ?.[code]?.includes(wanted) === true ||
               (code.slice(-wanted.length).toLowerCase() === wanted &&
                 (code.toLowerCase() === wanted ||
                   notation(uriSpaces, code).toLowerCase() === wanted)),
@@ -623,7 +632,7 @@ export class Tables {
       const bytes = await new TablesFiles(
         this.#options.files,
         this.#options.vocabulary,
-      ).read(`${fileStem(version)}.ttl`);
+      ).read(`${stemOf(version)}.ttl`);
       if (bytes === undefined)
         throw new Refusal(`the tables hold no rows for ${version}`);
       return new TextDecoder().decode(bytes);
@@ -637,7 +646,7 @@ export class Tables {
   #listed(version: string): Promise<Listed> {
     return once(this.#listings, version, async () => {
       const { files } = this.#options;
-      const path = `${fileStem(version)}${LISTED}`;
+      const path = `${stemOf(version)}${LISTED}`;
       const bytes = await files.read(path);
       try {
         const kept = JSON.parse(
@@ -646,7 +655,9 @@ export class Tables {
         if (
           Array.isArray(kept?.codes) &&
           typeof kept.mapsTo === "object" &&
-          typeof kept.names === "object"
+          kept.mapsTo !== null &&
+          typeof kept.names === "object" &&
+          kept.names !== null
         )
           return kept as Listed;
       } catch {
@@ -662,21 +673,15 @@ export class Tables {
     });
   }
 
-  /** Each code's names, as the first names series in the order of preference that names it lists them. */
-  async #names(): Promise<ReadonlyMap<string, string>> {
+  /** Each names series' listing of its codes' names, in the order of preference. */
+  async #names(): Promise<Listed["names"][]> {
     const references = await this.references();
-    const versions = this.#preferred(references, `${REC}CodeNames`).map(
-      (series) => references.fallback(series),
+    return Promise.all(
+      this.#preferred(references, `${REC}CodeNames`).map(
+        async (series) =>
+          (await this.#listed(references.fallback(series))).names,
+      ),
     );
-    return once(this.#nameIndexes, versions.join(" "), async () => {
-      const names = new Map<string, string>();
-      for (const version of versions)
-        for (const [code, named] of Object.entries(
-          (await this.#listed(version)).names,
-        ))
-          if (!names.has(code)) names.set(code, named);
-      return names;
-    });
   }
 
   /** The series the store holds, in the order of the feeds that describe them, and then by label. */
@@ -874,6 +879,10 @@ export class Tables {
           ),
       ]);
       await this.#options.files.write(INDEX, ntriples(index.triples));
+      if (held !== undefined) {
+        this.#texts.delete(held.value);
+        this.#listings.delete(held.value);
+      }
       kept.push(version.value);
     }
     const watched = await answer(new URL(WATCHED, feed).href);

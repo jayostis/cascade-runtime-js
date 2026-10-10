@@ -568,6 +568,29 @@ test("the sidebar lists the pods, then the reference tables and Check now; a tab
   assert.match(shown, /<a href="\/tables\/c1a6678c\/\?page=3" rel="next">/);
   assert.match(shown, /<a href="\/pods\/alex-rivera\/">Alex Rivera<\/a>/);
   assert.ok(!text.includes("Gone"));
+
+  const past = render(
+    view.tablePage({
+      series: GROUPS,
+      searched: { total: 103, offset: 450, found: [] },
+      text: "",
+      search: "/tables/c1a6678c/",
+      page: 10,
+      pageHref: (page: number) => `/tables/c1a6678c/?page=${page}`,
+      uses: {},
+      pods: [],
+      href: (pod: string) => `/pods/${pod}/`,
+      now: NOW,
+    }),
+  );
+  assert.match(past, /<a href="\/tables\/c1a6678c\/\?page=3" rel="prev">/);
+  assert.ok(!past.includes('rel="next"'));
+  assert.deepEqual(
+    ["3", "", null, "0", "-2", "2.5", "x", "Infinity", "1e400", "1e20"].map(
+      view.pageNumber,
+    ),
+    [3, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  );
 });
 
 test("what a check did, in one note", () => {

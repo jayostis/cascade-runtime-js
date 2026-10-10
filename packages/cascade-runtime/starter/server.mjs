@@ -38,6 +38,7 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  pageNumber,
   patientName,
   personName,
   podPage,
@@ -159,7 +160,7 @@ async function showTable(response, id, query) {
           ),
         );
   const text = query.get("q") ?? "";
-  const shown = Math.max(1, Math.trunc(Number(query.get("page")))) || 1;
+  const shown = pageNumber(query.get("page"));
   const names = await podNames();
   const body = tablePage({
     series,

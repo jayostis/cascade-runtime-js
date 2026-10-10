@@ -37,6 +37,7 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  pageNumber,
   patientName,
   personName,
   podPage,
@@ -382,7 +383,7 @@ async function route() {
     return showTable(
       query.get("table") ?? "",
       query.get("q") ?? "",
-      Math.max(1, Math.trunc(Number(query.get("page")))) || 1,
+      pageNumber(query.get("page")),
     );
   const asked = query.get("pod");
   state.current = asked ?? undefined;

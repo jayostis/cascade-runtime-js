@@ -1,8 +1,10 @@
 import { documentName, rowsByCode } from "@cascade-runtime/runtime";
 
-const PROV = "http://www.w3.org/ns/prov#";
-const SPECIALIZATION_OF = `${PROV}specializationOf`;
-const REVISION_OF = `${PROV}wasRevisionOf`;
+export const PROV = "http://www.w3.org/ns/prov#";
+export const SPECIALIZATION_OF = `${PROV}specializationOf`;
+export const REVISION_OF = `${PROV}wasRevisionOf`;
+export const OWL = "http://www.w3.org/2002/07/owl#";
+export const SKOS = "http://www.w3.org/2004/02/skos/core#";
 const THIS_VERSION = "urn:cascade:this-version";
 
 /** A version's rows as a feed published them, with what they must verify against. */
@@ -240,8 +242,6 @@ export function values(rows: readonly Row[], predicate: string): string[] {
     .map((row) => valueOf(row.object));
 }
 
-const OWL = "http://www.w3.org/2002/07/owl#";
-const SKOS = "http://www.w3.org/2004/02/skos/core#";
 const SOURCE = `<${OWL}annotatedSource> <`;
 const TARGET = `<${OWL}annotatedTarget> <`;
 const LABELS = [`<${SKOS}prefLabel> `, `<${SKOS}altLabel> `];
@@ -257,23 +257,22 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
   const sources = new Map<string, string>();
   const targets = new Map<string, string[]>();
   const names: Record<string, string> = {};
-  let [subject, prefix, isCode] = ["", "", false];
+  let [subject, prefix] = ["", ""];
   for (let at = 0; at < text.length;) {
     const found = text.indexOf("\n", at);
     const end = found < 0 ? text.length : found;
     if (prefix === "" || !text.startsWith(prefix, at)) {
       subject = text.slice(at + 1, text.indexOf("> ", at));
       prefix = `<${subject}> `;
-      isCode = uriSpaces.some((space) => subject.startsWith(space));
-      if (isCode) codes.add(subject);
+      if (uriSpaces.some((space) => subject.startsWith(space)))
+        codes.add(subject);
     }
     const predicate = at + prefix.length;
-    if (isCode) {
-      const label = LABELS.find((each) => text.startsWith(each, predicate));
-      if (label !== undefined)
-        names[subject] =
-          `${names[subject] ?? ""}\n${valueOf(text.slice(predicate + label.length, end - 2)).toLowerCase()}`;
-    } else if (text.startsWith(SOURCE, predicate)) {
+    const label = LABELS.find((each) => text.startsWith(each, predicate));
+    if (label !== undefined)
+      names[subject] =
+        `${names[subject] ?? ""}\n${valueOf(text.slice(predicate + label.length, end - 2)).toLowerCase()}`;
+    else if (text.startsWith(SOURCE, predicate)) {
       const code = text.slice(predicate + SOURCE.length, end - 3);
       codes.add(code);
       sources.set(subject, code);

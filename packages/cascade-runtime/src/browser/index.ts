@@ -46,7 +46,7 @@ import {
   type Pod,
   type Row,
 } from "../pod.js";
-import type { RowsToVerify, Verified } from "../rows.js";
+import { type RowsToVerify, type Verified, verified } from "../rows.js";
 import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
@@ -250,7 +250,10 @@ async function tablesOf(
   });
 }
 
-/** Verifies a version's published rows in a Web Worker of its own, so a page stays responsive while it does. */
+/**
+ * Verifies a version's published rows in a Web Worker of its own, so a page stays responsive while it does; in this
+ * thread when the worker cannot start or its answer cannot be read.
+ */
 function verifiedInWorker(rows: RowsToVerify): Promise<Verified> {
   const worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
     type: "module",
@@ -260,8 +263,8 @@ function verifiedInWorker(rows: RowsToVerify): Promise<Verified> {
       data,
     }: MessageEvent<Verified | { failed: string }>) =>
       "failed" in data ? reject(new Error(data.failed)) : resolve(data);
-    worker.onerror = (event) => reject(new Error(event.message));
-    worker.postMessage(rows, [rows.bytes.buffer]);
+    worker.onerror = worker.onmessageerror = () => resolve(verified(rows));
+    worker.postMessage(rows);
   }).finally(() => worker.terminate());
 }
 

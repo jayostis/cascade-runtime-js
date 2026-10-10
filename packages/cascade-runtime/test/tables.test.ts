@@ -13,6 +13,7 @@ import {
   ntriples,
   OxigraphStore,
   RDF,
+  Refusal,
   tableTerms,
   tablesSettings,
   type Triple,
@@ -32,8 +33,10 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
+import { listing } from "../src/rows.js";
 import {
   type Checked,
+  LISTED,
   RULE_LIST,
   PAGE_SIZE,
   PUBLISHED_ROWS,
@@ -662,6 +665,63 @@ test("a search pages through a series of more codes than a page, in the order of
     pages.flat(),
     Array.from({ length: count }, (_, at) => `${at + 1}`),
   );
+});
+
+test("a search lists a version again when the listing kept beside it is not one", async () => {
+  for (const kept of [
+    "{",
+    `{"codes":["http://hl7.org/fhir/sid/cvx/141"],"mapsTo":null,"names":{}}`,
+    `{"codes":[],"mapsTo":{},"names":null}`,
+  ]) {
+    const files = new MemoryFiles("urn:test:tables/");
+    await tablesOver(feed, files).check();
+    await files.write(
+      `${fileStem(groups.second)}${LISTED}`,
+      new TextEncoder().encode(kept),
+    );
+    const { found } = await tablesOver(feed, files).search(
+      groups.series,
+      "141",
+    );
+    assert.deepEqual(
+      found.map(({ notation }) => notation),
+      ["141"],
+      kept,
+    );
+  }
+});
+
+test("a version's listing names every code its rows label, in a code system's URI space or not", () => {
+  const space = "http://hl7.org/fhir/sid/cvx/";
+  const outside = "urn:test:outside:1";
+  const label = "http://www.w3.org/2004/02/skos/core#prefLabel";
+  assert.deepEqual(
+    Object.keys(
+      listing(
+        `<${space}141> <${label}> "Flu" .\n<${outside}> <${label}> "Other" .\n`,
+        [space],
+      ).names,
+    ).sort(),
+    [`${space}141`, outside].sort(),
+  );
+});
+
+test("a version the tables name by no file is refused, by a search and by what the tables say of a code", async () => {
+  const series = "urn:test:series";
+  const version = "urn:test:no-file";
+  const files = new MemoryFiles("urn:test:tables/");
+  await files.write(
+    "references.ttl",
+    new TextEncoder().encode(
+      `<${series}> <${REC}tableKind> <${REC}CodeNames> .
+<${series}> <${REC}shipsWith> <${version}> .
+<${version}> <${PROV}specializationOf> <${series}> .
+`,
+    ),
+  );
+  const tables = tablesOver(feed, files);
+  await assert.rejects(tables.search(series, ""), Refusal);
+  await assert.rejects(tables.about(["urn:test:code"]), Refusal);
 });
 
 test("the starter copies carry each version's rows as published, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
