@@ -306,100 +306,25 @@ jobs:
             build/release-notes.md
           if-no-files-found: error
 
-  # The developer stories' scripts and downloads, copied into the folder the package is installed in, run there on the installed package and can neither read nor write outside it.
-  package-install:
-    name: package-install (${{ matrix.os }})
+  # The package installed and used as a person would, on the systems `release` waits for.
+  linux:
     needs: package
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/download-artifact@v7
-        with:
-          name: package
-          path: ${{ runner.temp }}/package
-      - name: Install the tarball into an empty folder
-        working-directory: ${{ runner.temp }}/package
-        env:
-          CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
-        run: |
-          tarball=$(node -p "require('node:path').resolve(process.argv[1])" cascade-runtime-*.tgz)
-          mkdir "$CASCADE_RUNTIME_APP"
-          cd "$CASCADE_RUNTIME_APP"
-          npm install "$tarball"
-      - name: The developer stories on the installed package
-        env:
-          CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
-        run: |
-          cp -R developer-story/. "$CASCADE_RUNTIME_APP/"
-          node --test packages/runtime/dist/test/developer-story.test.js
-      - name: Everything installed is the package, bundled in it, or from npm's registry
-        working-directory: ${{ runner.temp }}/app
-        run: |
-          node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const { packages } = JSON.parse(readFileSync("package-lock.json", "utf8"));
-            const elsewhere = Object.entries(packages).filter(
-              ([path, entry]) =>
-                path !== "" &&
-                path !== "node_modules/cascade-runtime" &&
-                entry.inBundle !== true &&
-                !entry.resolved?.startsWith("https://registry.npmjs.org/"),
-            );
-            for (const [path, entry] of elsewhere) console.error(`${path} came from ${entry.resolved}`);
-            if (elsewhere.length > 0) process.exit(1);
-            console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
-          '
+    uses: ./.github/workflows/installed.yml
+    with:
+      systems: '["ubuntu-latest"]'
 
-  # The starter made by the command from the same tarball, and used as a person would, on each system.
-  starter:
-    name: starter (${{ matrix.os }})
+  # The same jobs on the systems that finish last: nothing needs them, so a release does not wait, and a failure still fails the run.
+  other-systems:
     needs: package
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/download-artifact@v7
-        with:
-          name: package
-          path: ${{ runner.temp }}/package
-      - name: The starter's check, against the tarball
-        working-directory: ${{ runner.temp }}
-        run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" package/cascade-runtime-*.tgz
+    uses: ./.github/workflows/installed.yml
+    with:
+      systems: '["windows-latest", "macos-latest"]'
 
   # The tested tarball, as the pre-release build-<commit>, never the latest.
   release:
     name: release
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [package-install, starter]
+    needs: linux
     runs-on: ubuntu-latest
     permissions:
       contents: write
