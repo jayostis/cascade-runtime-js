@@ -43,7 +43,7 @@ jobs:
       - run: npm ci
       # Checks the vocabulary and the adapters out beside this repository, and runs the conformance command on them once.
       - id: start
-        uses: jayostis/cascade-bridge-spec/.github/actions/start@feat/132-checkout-only
+        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - name: The report the conformance command wrote
         if: ${{ !cancelled() }}
         shell: bash
@@ -87,7 +87,7 @@ jobs:
           cache-dependency-path: cascade-runtime-js/package-lock.json
       - run: npm ci
       # Checks the vocabulary and the adapters out beside this repository; the package and the pages read those.
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@feat/132-checkout-only
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
       - name: Pack the package, whose browser build try/ serves
