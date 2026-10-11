@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 
@@ -23,6 +23,14 @@ for (const name of packages) {
       join("packages", name, "dist", "test", entry.slice(0, -3) + ".js"),
     );
   }
+}
+
+const missing = compiled.filter((path) => !existsSync(path));
+if (missing.length > 0) {
+  console.error(
+    `No compiled test for ${missing.length} listed source(s):\n${missing.join("\n")}`,
+  );
+  process.exit(1);
 }
 
 const run = spawnSync(
