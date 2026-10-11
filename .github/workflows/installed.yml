@@ -1,7 +1,7 @@
 name: installed
 
 # The package check.yml packed, installed and used on each system it is given. Called from check.yml, whose run holds the
-# `package` artifact; this file sets no permissions and no concurrency of its own.
+# `package` artifact; its jobs take the caller's permissions and are cancelled with the caller's run.
 on:
   workflow_call:
     inputs:

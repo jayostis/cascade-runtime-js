@@ -306,7 +306,7 @@ jobs:
             build/release-notes.md
           if-no-files-found: error
 
-  # The package installed and used as a person would, on the systems `release` waits for. installed.yml holds the jobs.
+  # The package installed and used as a person would, on the systems `release` waits for.
   linux:
     needs: package
     uses: ./.github/workflows/installed.yml
