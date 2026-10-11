@@ -42,18 +42,20 @@ jobs:
       # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
       - run: npm ci
       # Checks the vocabulary and the adapters out beside this repository, and runs the conformance command on them once.
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - id: start
+        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - name: The report the conformance command wrote
         if: ${{ !cancelled() }}
         shell: bash
+        env:
+          REPORT: ${{ steps.start.outputs.report }}
         run: |
           set -euo pipefail
-          reports=("$RUNNER_TEMP"/compatibility-compatibility/earl/conformance-on-host-*.ttl)
-          if [ "${#reports[@]}" -ne 1 ] || [ ! -f "${reports[0]}" ]; then
-            echo "::error::expected one conformance report, found: ${reports[*]}"
+          if [ -z "$REPORT" ] || [ ! -f "$REPORT" ]; then
+            echo "::error::the start step named no conformance report: '$REPORT'"
             exit 1
           fi
-          echo "CASCADE_CONFORMANCE_REPORT=${reports[0]}" >> "$GITHUB_ENV"
+          echo "CASCADE_CONFORMANCE_REPORT=$REPORT" >> "$GITHUB_ENV"
       - if: ${{ !cancelled() }}
         run: npm run typecheck
       - if: ${{ !cancelled() }}
@@ -86,6 +88,8 @@ jobs:
       - run: npm ci
       # Checks the vocabulary and the adapters out beside this repository; the package and the pages read those.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: "true"
       - name: Pack the package, whose browser build try/ serves
         if: ${{ !cancelled() }}
         run: npm run build:package
