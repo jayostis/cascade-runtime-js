@@ -27,8 +27,8 @@ for (const name of packages) {
 
 const missing = compiled.filter((path) => !existsSync(path));
 if (missing.length > 0) {
-  console.error(
-    `No compiled test for ${missing.length} listed source(s):\n${missing.join("\n")}`,
+  process.stderr.write(
+    `No compiled test for ${missing.length} listed source(s):\n${missing.join("\n")}\n`,
   );
   process.exit(1);
 }
