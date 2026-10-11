@@ -66,13 +66,20 @@ jobs:
       - id: playwright
         if: ${{ !cancelled() }}
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - id: browsers
+        uses: actions/cache/restore@v6
         if: ${{ !cancelled() }}
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - if: ${{ !cancelled() }}
         run: npx playwright install --with-deps --only-shell chromium
+      # Saved here, not after the job: a job that fails at the tests saves nothing.
+      - uses: actions/cache/save@v6
+        if: ${{ !cancelled() && steps.browsers.outputs.cache-hit != 'true' }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - name: try/ in Chromium, served from build/pages
         if: ${{ !cancelled() }}
         run: npm run test:browser
@@ -173,11 +180,17 @@ jobs:
       # A push to main saves this cache where a pull request can read it.
       - id: playwright
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - id: browsers
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - run: npx playwright install --with-deps --only-shell chromium
+      - uses: actions/cache/save@v6
+        if: ${{ steps.browsers.outputs.cache-hit != 'true' }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - run: npm run test:live
         env:
           PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
