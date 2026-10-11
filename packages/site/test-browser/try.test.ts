@@ -107,6 +107,16 @@ const hasLines = (
       `What ${view.hospitalName(hospital)} has: ${view.counted(source.records) || "nothing"}.`,
   );
 
+/** A Node pod over the starter tables the page ships, as the page opens its own. */
+const pageTablesPod = async () =>
+  openPodWith(
+    await partsOf(await checkouts(ROOT), {
+      starter: new FolderFiles(
+        join(PAGES, "try", "cascade-runtime", "components", "tables"),
+      ),
+    }),
+  );
+
 /** What Node pulls of the demo person at each of their hospitals, and the pod both pulls make. */
 async function nodeJoin(): Promise<typeof joined> {
   const demo = await loadHospitals();
@@ -114,13 +124,7 @@ async function nodeJoin(): Promise<typeof joined> {
   assert.ok(person, "no demo person is at two hospitals");
   const patients = new Map<string, string>();
   const has = new Map<string, string[]>();
-  const pod = await openPodWith(
-    await partsOf(await checkouts(ROOT), {
-      starter: new FolderFiles(
-        join(PAGES, "try", "cascade-runtime", "components", "tables"),
-      ),
-    }),
-  );
+  const pod = await pageTablesPod();
   try {
     for (const hospital of person.at) {
       const loaded = demo.find(
@@ -727,7 +731,7 @@ test("in the browser, look and import read the files a person picks as Node read
     ),
   ];
 
-  const node = await openPod();
+  const node = await pageTablesPod();
   const expected: { look: unknown; after: After }[] = [];
   try {
     for (const path of picked)
