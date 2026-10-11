@@ -17,9 +17,10 @@ permissions:
   contents: read
 
 jobs:
-  # Before a merge and nightly: a pair of pull requests is proven together before either merges.
-  compatibility:
-    name: compatibility
+  # Before a merge and nightly: a pair of pull requests is proven together before either merges. Two jobs side by side,
+  # whose result `compatibility`, the required check, reports.
+  tests:
+    name: tests and conformance
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -40,8 +41,19 @@ jobs:
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
       - run: npm ci
-      # Checks the vocabulary and the adapters out beside this repository; every step after it reads those.
+      # Checks the vocabulary and the adapters out beside this repository, and runs the conformance command on them once.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - name: The report the conformance command wrote
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          reports=("$RUNNER_TEMP"/compatibility-compatibility/earl/conformance-on-host-*.ttl)
+          if [ "${#reports[@]}" -ne 1 ] || [ ! -f "${reports[0]}" ]; then
+            echo "::error::expected one conformance report, found: ${reports[*]}"
+            exit 1
+          fi
+          echo "CASCADE_CONFORMANCE_REPORT=${reports[0]}" >> "$GITHUB_ENV"
       - if: ${{ !cancelled() }}
         run: npm run typecheck
       - if: ${{ !cancelled() }}
@@ -50,6 +62,30 @@ jobs:
         run: npm test
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+  browser:
+    name: browser
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    # The start action's comment on the pull request is the tests job's to post.
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      - run: npm ci
+      # Checks the vocabulary and the adapters out beside this repository; the package and the pages read those.
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - name: Pack the package, whose browser build try/ serves
         if: ${{ !cancelled() }}
         run: npm run build:package
@@ -106,6 +142,21 @@ jobs:
             cascade-runtime-js/build/priya-natarajan/pod
             cascade-runtime-js/build/priya-natarajan/site
           if-no-files-found: error
+
+  # The name branch protection requires. A part that was skipped is no pass: nothing but both succeeding reports success.
+  compatibility:
+    name: compatibility
+    needs: [tests, browser]
+    if: ${{ !cancelled() && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          TESTS: ${{ needs.tests.result }}
+          BROWSER: ${{ needs.browser.result }}
+        run: |
+          echo "tests and conformance: ${TESTS}; browser: ${BROWSER}"
+          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ]
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
   build-pages:

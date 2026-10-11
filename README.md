@@ -167,6 +167,10 @@ and a failed example's report names its rule and the step that failed.
 `--folder <repository>=<folder>` hands in a folder for a repository, and
 `--feature <path>` runs only that feature file of the vocabulary.
 
+`npm test` runs the command once and asserts on its report. With
+`CASCADE_CONFORMANCE_REPORT=<report>` it asserts on that report instead and
+does not run the command; CI hands it the report its compatibility check wrote.
+
 ### The developer story
 
 There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package
@@ -236,6 +240,8 @@ CI runs the compatibility check on every pull request and nightly, never on a
 push to `main`. `compatibility.json` declares this repository to it as a
 runtime: it checks the vocabulary and the adapters out beside this repository,
 picked as any counterpart is, and runs `npm run conformance` on them. The tests
-and the pod build then read those checkouts. CI publishes each kit's pod and site,
+and the pod build then read those checkouts. The check is two jobs side by side,
+the tests with conformance and the browser, and `compatibility` is the job that
+reports once both have. CI publishes each kit's pod and site,
 Alex's and Priya's, as an artifact, and on a push to `main` builds the pages from the head of every
 default branch and deploys them.
