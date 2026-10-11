@@ -37,9 +37,11 @@ import {
   checkouts,
   CONFIG_FILE,
   findRoot,
+  FolderFiles,
   PACKED,
   type Packed,
 } from "@cascade-runtime/runtime/node";
+import { openPodWith, partsOf } from "cascade-runtime/published";
 import { type Served, servePages } from "../src/node/serve.js";
 import { inPlace, newPod, settled, tiles, watched } from "./shown.js";
 
@@ -112,7 +114,13 @@ async function nodeJoin(): Promise<typeof joined> {
   assert.ok(person, "no demo person is at two hospitals");
   const patients = new Map<string, string>();
   const has = new Map<string, string[]>();
-  const pod = await openPod();
+  const pod = await openPodWith(
+    await partsOf(await checkouts(ROOT), {
+      starter: new FolderFiles(
+        join(PAGES, "try", "cascade-runtime", "components", "tables"),
+      ),
+    }),
+  );
   try {
     for (const hospital of person.at) {
       const loaded = demo.find(
