@@ -318,7 +318,7 @@ jobs:
     needs: package
     uses: ./.github/workflows/installed.yml
     with:
-      systems: '["windows-latest", "macos-latest"]'
+      systems: ${{ github.event_name == 'pull_request' && '["windows-latest"]' || '["windows-latest", "macos-latest"]' }}
 
   # The tested tarball, as the pre-release build-<commit>, never the latest.
   release:
