@@ -4,6 +4,7 @@ import { openPodWith, type Parts } from "../pod.js";
 import { shipped } from "../tables.js";
 
 export { entryVersion } from "../answers.js";
+export { openPodWith } from "../pod.js";
 export { partsOf } from "./resolved.js";
 
 /**
