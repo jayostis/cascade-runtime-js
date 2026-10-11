@@ -33,10 +33,10 @@ interface Outcome {
   readonly why?: string;
 }
 
-async function report(): Promise<{
-  found: Map<string, Outcome[]>;
-  requires: Map<string, string>;
-}> {
+/** The report of the conformance command, run here unless CASCADE_CONFORMANCE_REPORT names one a run already wrote. */
+async function reportFile(): Promise<string> {
+  const written = process.env.CASCADE_CONFORMANCE_REPORT;
+  if (written) return written;
   const file = join(await mkdtemp(join(tmpdir(), "conformance-")), "earl.nt");
   await promisify(execFile)(process.execPath, [
     CLI,
@@ -44,6 +44,14 @@ async function report(): Promise<{
     "--report",
     file,
   ]);
+  return file;
+}
+
+async function report(): Promise<{
+  found: Map<string, Outcome[]>;
+  requires: Map<string, string>;
+}> {
+  const file = await reportFile();
   const store = new Union(new OxigraphStore());
   await store.loadTurtle(await readFile(file), "urn:report");
   const { rows } = await store.select(`PREFIX earl: <${EARL}>
