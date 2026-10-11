@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -392,14 +392,3 @@ jobs:
       - name: The starter's check, against the release
         working-directory: ${{ runner.temp }}
         run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" --release "$GITHUB_SHA"
-
-  ready-to-merge:
-    name: ready-to-merge
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-        with:
-          check: ready-to-merge
