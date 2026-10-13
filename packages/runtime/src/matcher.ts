@@ -292,7 +292,7 @@ interface Pod {
  * Every code a current version of the pod's records may join a table by: each IRI it states under a code system's URI
  * space, and each literal it states as the IRI of that code in each URI space.
  */
-async function podCodes(
+export async function podCodes(
   union: Dataset,
   { uriSpaces }: TableTerms,
 ): Promise<Set<string>> {

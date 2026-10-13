@@ -135,12 +135,16 @@ const SOURCES = "entry/Where it came from";
 const REVIEW = "entry/What needs review";
 
 const SEEN = "pod/What was seen more than once";
+const VARIANTS = "pod/My genetic variants";
+const REPORTS = "pod/What each report says of a variant";
 
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
   SOURCES,
   SEEN,
   REVIEW,
+  VARIANTS,
+  REPORTS,
   ...SECTIONS.map(({ question }) => question),
 ];
 
@@ -356,6 +360,8 @@ export function noticed(answers, about = new Map()) {
         name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
+  for (const [variant, asked] of variantsAsked(answers))
+    entries.set(variant, { name: variantName(asked), one: "variant" });
   const seen = new Map();
   for (const row of answers[SEEN] ?? []) {
     if (!entries.has(row.entry)) continue;
@@ -434,6 +440,287 @@ function sharedIngredients(answers, about) {
       );
     }
   return sentences;
+}
+
+const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
+const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+/** The five ACMG values, in the order a classification names them. */
+const ACMG = [
+  "Pathogenic",
+  "LikelyPathogenic",
+  "VUS",
+  "LikelyBenign",
+  "Benign",
+].map((name) => GENOMICS + name);
+const LABS_DISAGREE = ["ClinVarConflicting", "ClinVarConflictingData"].map(
+  (name) => REC + name,
+);
+const COMBINATION_ONLY = `${REC}ClinVarCombinationOnly`;
+const DIFFERS = "Differs from ClinVar today";
+const COUNSELLOR =
+  "Your clinician or a genetic counsellor can explain what this means for you.";
+const DIGITS = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+];
+
+/**
+ * Each variant entry in `answers`, by its IRI, as the tables' `variantClassification` is asked of it: its distinct HGVS
+ * expressions and ClinVar IDs, and its gene when its rows give one symbol, none when they give none or two.
+ */
+export function variantsAsked(answers) {
+  const asked = new Map();
+  const genes = new Map();
+  for (const row of answers[VARIANTS] ?? []) {
+    const variant = asked.get(row.variant) ?? { hgvs: [], variations: [] };
+    asked.set(row.variant, variant);
+    if (row.hgvs !== undefined && !variant.hgvs.includes(row.hgvs))
+      variant.hgvs.push(row.hgvs);
+    if (
+      row.variation !== undefined &&
+      !variant.variations.includes(row.variation)
+    )
+      variant.variations.push(row.variation);
+    if (row.gene !== undefined)
+      genes.set(
+        row.variant,
+        new Set([...(genes.get(row.variant) ?? []), row.gene]),
+      );
+  }
+  for (const [variant, symbols] of genes)
+    if (symbols.size === 1) asked.get(variant).gene = [...symbols][0];
+  return asked;
+}
+
+/** A variant as the page names it: its gene and first expression, else its ClinVar ID. */
+function variantName({ gene, hgvs, variations }) {
+  const named = [gene, hgvs[0]].filter(Boolean).join(" ");
+  return named !== ""
+    ? named
+    : variations.length > 0
+      ? `ClinVar ${variations[0]}`
+      : UNNAMED;
+}
+
+/** A concept's label as a sentence holds it: its first letter lower-case unless the second is upper-case. */
+function lowered(label) {
+  return /^.[A-Z]/.test(label)
+    ? label
+    : label.slice(0, 1).toLowerCase() + label.slice(1);
+}
+
+/** A concept's last part of its IRI, in words, for a label nobody has given. */
+function wordsOf(concept) {
+  return concept
+    .replace(/^.*[/#]/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .map((word) => (/^[A-Z]{2,}$/.test(word) ? word : word.toLowerCase()))
+    .join(" ");
+}
+
+/** How many submitters a row counts, in words. */
+function counting({ contributingSubmitters: contributing, submitters }) {
+  const number = (n) => (n < 10 ? DIGITS[n] : String(n));
+  if (contributing !== undefined)
+    return `${number(contributing)} contributing ${contributing === 1 ? "submitter" : "submitters"}`;
+  if (submitters === undefined) return undefined;
+  return submitters === 1
+    ? "one submitter"
+    : `${submitters === 0 ? "no" : submitters} submitters`;
+}
+
+/** What a variant classifications row says, as the sentence ClinVar's page and a code's page give it. */
+export function rowSaid(row) {
+  const iris = new Set(row.classification.map(({ iri }) => iri));
+  const said = [
+    ACMG.filter((acmg) => iris.has(acmg))
+      .map((acmg) =>
+        lowered(row.classification.find(({ iri }) => iri === acmg).label),
+      )
+      .join("/"),
+    ...row.classification
+      .filter(({ iri }) => !ACMG.includes(iri))
+      .map(({ iri, label }) =>
+        LABS_DISAGREE.includes(iri)
+          ? "labs that submit to ClinVar disagree"
+          : iri === COMBINATION_ONLY
+            ? "classified only as part of a combination"
+            : lowered(label),
+      ),
+  ].filter((each) => each !== "");
+  const status =
+    row.reviewStatus === undefined
+      ? ""
+      : `: ${lowered(row.reviewStatus.label)}`;
+  const count = counting(row);
+  const lead =
+    said.length === 0
+      ? "ClinVar today gives no classification"
+      : `ClinVar today says ${said.join("; ")}`;
+  return `${lead}${status}${count === undefined ? "" : `, ${count}`}.`;
+}
+
+/**
+ * What ClinVar says of one variant, as `variantClassification` answers (`says`): one sentence, none while it is not
+ * known. `gene` is the variant's, for a gene the series does not cover.
+ */
+function clinvarSaid(says, gene) {
+  if (says === undefined) return undefined;
+  switch (says.found) {
+    case "rows":
+      return rowSaid(says.rows[0]);
+    case "not found":
+      return "ClinVar, as this app holds it, has no row for this variant.";
+    case "not covered":
+      return `ClinVar, as this app holds it, covers ${listed(says.genes)}, not ${gene}.`;
+    default:
+      return "This app holds no ClinVar table.";
+  }
+}
+
+/** The year a report is named by, or its day when another report of the variant is of the same year. */
+function whenOf(date, dates) {
+  if (date === undefined) return undefined;
+  const year = String(date).slice(0, 4);
+  return dates.filter((each) => String(each).slice(0, 4) === year).length > 1
+    ? day(date)
+    : year;
+}
+
+/**
+ * What a variant's page says: a sentence for each of its `reports` (rows of "What each report says of a variant"),
+ * oldest first, each with a tag when `verdicts` (`Pod.agreement()`'s rows) say it differs from the row `says` read; and
+ * what ClinVar says today. A report's classification is named by `labels` (`Tables.labels`' answer). `variant` is as
+ * `variantsAsked` gives it.
+ */
+export function variantSaid({
+  variant,
+  reports,
+  says,
+  verdicts = [],
+  labels = new Map(),
+}) {
+  const row = says?.found === "rows" ? says.rows[0] : undefined;
+  const dates = reports.flatMap((report) => report.date ?? []);
+  const ordered = [...reports].sort((a, b) =>
+    a.date === undefined || b.date === undefined
+      ? Number(a.date === undefined) - Number(b.date === undefined)
+      : a.date.localeCompare(b.date),
+  );
+  return {
+    reports: ordered.map((report) => {
+      const when = whenOf(report.date, dates);
+      const head =
+        when === undefined ? "An undated report" : `Your ${when} report`;
+      const sentence =
+        report.classification === undefined
+          ? `${head} gives no ACMG classification.`
+          : `${head} said ${lowered(labels.get(report.classification) ?? wordsOf(report.classification))}.`;
+      const differs =
+        row !== undefined &&
+        verdicts.some(
+          (each) =>
+            each.report === report.report &&
+            each.row === row.variation &&
+            each.origin === says.version &&
+            each.verdict === "differs",
+        );
+      return differs ? { sentence, tag: DIFFERS } : { sentence };
+    }),
+    clinvar: clinvarSaid(says, variant?.gene),
+  };
+}
+
+/**
+ * Everything the page says of variants that needs the tables: for each variant entry in `answers` what the tables'
+ * `variantClassification` says of it, `pod.agreement()`'s verdicts only when the pod has a report, the labels of the
+ * reports' classifications, and the credit of each series an answer read.
+ */
+export async function variantsSaid(answers, { tables, pod }) {
+  const asked = variantsAsked(answers);
+  const reports = answers[REPORTS] ?? [];
+  if (asked.size === 0 && reports.length === 0) return undefined;
+  const says = new Map(
+    await Promise.all(
+      [...asked].map(async ([variant, each]) => [
+        variant,
+        await tables.variantClassification(each),
+      ]),
+    ),
+  );
+  const [verdicts, labels, held] = await Promise.all([
+    reports.length === 0 ? [] : pod.agreement(),
+    tables.labels([
+      ...new Set(reports.flatMap(({ classification }) => classification ?? [])),
+    ]),
+    tables.held(),
+  ]);
+  const credits = new Set(
+    [...says.values()].flatMap((each) =>
+      each.series === undefined
+        ? []
+        : (held.find(({ iri }) => iri === each.series)?.credit ?? []),
+    ),
+  );
+  return { says, verdicts, labels, credits: [...credits] };
+}
+
+/**
+ * The part of a pod's page that holds its variants, none when it has none: each variant entry with a sentence for each
+ * of its reports and one for what ClinVar says today, the reports of no variant entry last, and under them the sentence
+ * that sends a person to someone who can explain, and the credit of each series read. `said` is `variantsSaid`'s answer,
+ * none until the tables can say.
+ */
+function variantsPart(answers, said) {
+  const asked = variantsAsked(answers);
+  const reports = new Map();
+  for (const report of answers[REPORTS] ?? [])
+    reports.set(report.variant, [
+      ...(reports.get(report.variant) ?? []),
+      report,
+    ]);
+  if (asked.size === 0 && reports.size === 0) return undefined;
+  const lines = ({ reports, clinvar }) =>
+    html`${reports.map(({ sentence, tag }) => html`<li>${sentence}${tag !== undefined && html` <span class="tag warm">${tag}</span>`}</li>`)}${clinvar !== undefined && html`<li>${clinvar}</li>`}`;
+  const read = (entry, variant, own) =>
+    variantSaid({
+      variant,
+      reports: own,
+      says: said?.says.get(entry),
+      verdicts: said?.verdicts,
+      labels: said?.labels,
+    });
+  const variants = [...asked].map(([entry, each]) => {
+    const title = [
+      each.gene,
+      ...each.hgvs,
+      ...each.variations.map((id) => `ClinVar ${id}`),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return html`<div class="variant" key=${entry}><h3>${title || UNNAMED}</h3>
+<ul>${lines(read(entry, each, reports.get(entry) ?? []))}</ul></div>`;
+  });
+  const others = [...reports]
+    .filter(([entry]) => !asked.has(entry))
+    .flatMap(
+      ([entry, own]) => read(entry, { hgvs: [], variations: [] }, own).reports,
+    );
+  return html`<div class="card variants"><h2>Genetic variants</h2>
+${variants}
+${others.length > 0 && html`<ul>${lines({ reports: others })}</ul>`}
+<p>${COUNSELLOR}</p>
+${(said?.credits ?? []).map((credit) => html`<p class="muted">${credit}</p>`)}
+</div>`;
 }
 
 /** The section's rows in the order its table opens in, a row with nothing to sort by last either way. */
@@ -553,7 +840,8 @@ export function tile(section, rows) {
  * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined;
  * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
- *   the rows by.
+ *   the rows by;
+ * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say.
  */
 export function podPage(
   asked,
@@ -566,6 +854,7 @@ export function podPage(
     connection,
     unheld = [],
     about = new Map(),
+    said,
   },
 ) {
   const answers = named(asked, about);
@@ -587,6 +876,7 @@ ${from !== undefined && html`<p class="note">Brought in the record from ${hospit
 ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.length === 1 ? "a reference table version" : `${unheld.length} reference table versions`} this app does not hold, and is matched without ${unheld.length === 1 ? "it" : "them"}.</p>`}
 ${sentences.length > 0 && html`<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => html`<li>${sentence}</li>`)}</ul></div>`}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
+${variantsPart(answers, said)}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
@@ -1217,7 +1507,7 @@ ${source.series.map(
 }
 
 /**
- * A code's page: everything `facts` (`facts()`'s answer) says of it, each fact naming the table among `held` (as
+ * A code's page: everything `facts` (`facts()`'s answer) says of it, a variation's classification as the ClinVar sentence, each fact naming the table among `held` (as
  * `held()` gives them) and the version it came from, each code a link to `codeHref(notation)`; and a link back to
  * `source` at `back`.
  */
@@ -1235,7 +1525,14 @@ export function codePage({ source, held, facts, codeHref, back }) {
       total > shown.length &&
       ` and ${(total - shown.length).toLocaleString("en")} more`
     }`;
-  const { notation, about, names, status, mappings } = facts;
+  const {
+    notation,
+    about,
+    names,
+    status,
+    mappings,
+    classifications = [],
+  } = facts;
   return html`<p><a href=${back}>${source.label}</a></p>
 <h1>${notation}${about?.name !== undefined && ` ${about.name.label}`}</h1>
 ${names.map(
@@ -1259,7 +1556,15 @@ ${mapping.mapsTo.map(
 ${mapping.mappedFrom.total > 0 && html`<p>Mapped to it: ${codes(mapping.mappedFrom)}.</p>`}
 ${from(mapping)}</div>`;
 })}
-${names.length + status.length + mappings.length === 0 && html`<p class="muted">No table this app holds says anything of this code.</p>`}`;
+${classifications.map(
+  (
+    row,
+  ) => html`<div class="card"><h2>${tableOf(row.series)?.label ?? row.series}</h2>
+<p>${rowSaid(row)}</p>
+${tableOf(row.series)?.credit !== undefined && html`<p class="muted">${tableOf(row.series).credit}</p>`}
+${from(row)}</div>`,
+)}
+${names.length + status.length + mappings.length + classifications.length === 0 && html`<p class="muted">No table this app holds says anything of this code.</p>`}`;
 }
 
 /** The page of reference tables when the app holds none. */

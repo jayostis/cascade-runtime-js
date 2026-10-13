@@ -7,11 +7,11 @@ import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
-import { matcherView, openPod, runMatcher } from "./matcher.js";
+import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import { documentName } from "./names.js";
 import { same, StepWrites } from "./pod.js";
 import { ntriples } from "./rdf.js";
-import type { References } from "./references.js";
+import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import {
   type OnProgress,
@@ -215,27 +215,28 @@ export class CorePod {
    */
   dataset(lens: string): Promise<Union> {
     return this.#held(`${DATASET}${lens}`, async () => {
-      const { pod, layout, address, title, newStore, time, build } =
-        this.#options;
       const opened = this.#kept.get(OPENED) as Promise<Union> | undefined;
       this.#kept.delete(OPENED);
-      const union = (await opened) ?? new Union(newStore());
-      if (opened === undefined) await podFiles(pod, layout, address, union);
-      if (build === undefined) {
-        for (const path of layout.rebuilt.filter((path) =>
-          layout.isRdf(path),
-        )) {
-          const bytes = await pod.read(path);
-          if (bytes !== undefined)
-            await union.loadTurtle(bytes, address + path);
-        }
-      } else {
-        const at = (await podStated(pod, layout, union.store)).at ?? time.now();
-        await build.derive(union, lens, { address, at, title });
-      }
-      await addLayout(union, layout, address);
-      return union;
+      const union = (await opened) ?? new Union(this.#options.newStore());
+      return this.#filled(union, lens, opened === undefined);
     });
+  }
+
+  /** The union with the pod's files (unless `loaded`), the lens's derived state, the files the build writes and the layout. */
+  async #filled(union: Union, lens: string, load: boolean): Promise<Union> {
+    const { pod, layout, address, title, time, build } = this.#options;
+    if (load) await podFiles(pod, layout, address, union);
+    if (build === undefined) {
+      for (const path of layout.rebuilt.filter((path) => layout.isRdf(path))) {
+        const bytes = await pod.read(path);
+        if (bytes !== undefined) await union.loadTurtle(bytes, address + path);
+      }
+    } else {
+      const at = (await podStated(pod, layout, union.store)).at ?? time.now();
+      await build.derive(union, lens, { address, at, title });
+    }
+    await addLayout(union, layout, address);
+    return union;
   }
 
   /**
@@ -343,6 +344,31 @@ export class CorePod {
   /** The query's rows over the pod as the matcher reads it: its RDF files but those the build writes, and the everyday lens's derived state. */
   async select(query: string): Promise<Rows> {
     return (await this.#matcherView()).select(query);
+  }
+
+  /**
+   * The query's rows over a dataset of its own, built as `dataset` builds one (the pod's views among it, which the
+   * matcher's view lacks), with the current version of each series of the kind added as the matcher adds it: the rows
+   * the pod's codes find and the descriptions. It writes nothing, and no row reaches a held dataset, a question's
+   * dataset or an answer.
+   */
+  async selectWithRows(query: string, kind: string): Promise<Rows> {
+    const { vocabulary, newStore, build } = this.#options;
+    const [union, references, terms] = await Promise.all([
+      this.#filled(new Union(newStore()), build?.lens ?? "", true),
+      this.#tables(),
+      tableTerms(vocabulary, newStore),
+    ]);
+    const find = { codes: await podCodes(union, terms), terms };
+    for (const series of references.seriesOfKind(kind)) {
+      const version = references.fallback(series);
+      await union.add(await references.rows(version, find), version);
+      await union.add(
+        [...references.description(version), ...references.description(series)],
+        "urn:cascade:references",
+      );
+    }
+    return union.select(query);
   }
 
   #matcherView(): Promise<Union> {

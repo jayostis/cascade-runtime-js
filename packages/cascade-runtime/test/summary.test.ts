@@ -861,3 +861,388 @@ test("what a check did, in one note", () => {
   ] as const)
     assert.equal(view.checkedNote(did, [GROUPS]), said);
 });
+
+const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
+const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const VARIANTS = "pod/My genetic variants";
+const REPORTS = "pod/What each report says of a variant";
+const CONCEPTS: Record<string, string> = {
+  [`${GENOMICS}Pathogenic`]: "Pathogenic",
+  [`${GENOMICS}LikelyPathogenic`]: "Likely pathogenic",
+  [`${GENOMICS}VUS`]: "Uncertain significance",
+  [`${GENOMICS}LikelyBenign`]: "Likely benign",
+  [`${GENOMICS}Benign`]: "Benign",
+  [`${REC}ClinVarConflicting`]: "Conflicting classifications of pathogenicity",
+  [`${REC}ClinVarConflictingData`]: "conflicting data from submitters",
+  [`${REC}ClinVarCombinationOnly`]: "-",
+  [`${REC}ClinVarVusHigh`]: "VUS-high",
+  [`${REC}ClinVarRiskFactor`]: "risk factor",
+  [`${REC}ClinVarMultipleSubmittersNoConflicts`]:
+    "criteria provided, multiple submitters, no conflicts",
+  [`${REC}ClinVarSingleSubmitter`]: "criteria provided, single submitter",
+  [`${REC}ClinVarNoAssertionCriteria`]: "no assertion criteria provided",
+};
+const concept = (name: string) => {
+  const iri = [GENOMICS, REC]
+    .map((space) => space + name)
+    .find((each) => each in CONCEPTS);
+  assert.ok(iri, name);
+  return { iri, label: CONCEPTS[iri] };
+};
+const LABELS = new Map(
+  Object.entries(CONCEPTS).filter(([iri]) => iri.startsWith(GENOMICS)),
+);
+const VERSION = "ni:///clinvar-1";
+const ROW = "http://www.ncbi.nlm.nih.gov/clinvar/90011";
+const rows = (fields: Record<string, unknown>) => ({
+  found: "rows",
+  series: "urn:test:clinvar",
+  version: VERSION,
+  rows: [{ variation: ROW, classification: [], ...fields }],
+});
+const report = (
+  id: string,
+  classification: string | undefined,
+  date: string | undefined,
+) => ({
+  report: id,
+  variant: "v1",
+  ...(classification === undefined
+    ? {}
+    : { classification: `${GENOMICS}${classification}` }),
+  ...(date === undefined ? {} : { date }),
+});
+const verdict = (reportId: string, said: string, extra = {}) => ({
+  report: reportId,
+  row: ROW,
+  origin: VERSION,
+  verdict: said,
+  ...extra,
+});
+
+test("what a variant's page says: a sentence for each report, oldest first, tagged when it differs from the row ClinVar holds today, and one for what ClinVar says, in every state of its answer", () => {
+  const martin = rows({
+    classification: [concept("LikelyPathogenic"), concept("Pathogenic")],
+    reviewStatus: concept("ClinVarMultipleSubmittersNoConflicts"),
+    lastEvaluated: "2024-12-11",
+    contributingSubmitters: 5,
+  });
+  const cases: [
+    string,
+    {
+      reports?: unknown[];
+      says?: unknown;
+      verdicts?: unknown[];
+      gene?: string;
+      labels?: Map<string, string>;
+    },
+    { sentence: string; tag?: string }[],
+    string | undefined,
+  ][] = [
+    [
+      "Martin's page, in #138's words",
+      {
+        reports: [
+          report("r2", "LikelyPathogenic", "2024-03-21"),
+          report("r1", "VUS", "2022-05-01"),
+        ],
+        says: martin,
+        verdicts: [verdict("r1", "differs"), verdict("r2", "agrees")],
+      },
+      [
+        {
+          sentence: "Your 2022 report said uncertain significance.",
+          tag: "Differs from ClinVar today",
+        },
+        { sentence: "Your 2024 report said likely pathogenic." },
+      ],
+      "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
+    ],
+    [
+      "a benign row both reports agree with, one contributing submitter",
+      {
+        reports: [
+          report("r1", "Benign", "2023-01-01"),
+          report("r2", "LikelyBenign", "2024-01-01"),
+        ],
+        says: rows({
+          classification: [concept("Benign"), concept("LikelyBenign")],
+          reviewStatus: concept("ClinVarSingleSubmitter"),
+          contributingSubmitters: 1,
+        }),
+        verdicts: [verdict("r1", "agrees"), verdict("r2", "agrees")],
+      },
+      [
+        { sentence: "Your 2023 report said benign." },
+        { sentence: "Your 2024 report said likely benign." },
+      ],
+      "ClinVar today says likely benign/benign: criteria provided, single submitter, one contributing submitter.",
+    ],
+    [
+      "two reports of one year are named by their day, an undated one last, one with no classification says so",
+      {
+        reports: [
+          report("r1", undefined, "2020-01-01"),
+          report("r2", "Benign", undefined),
+          report("r3", "VUS", "2024-11-02"),
+          report("r4", "Pathogenic", "2024-03-21"),
+        ],
+        says: {
+          found: "not found",
+          series: "urn:test:clinvar",
+          version: VERSION,
+        },
+      },
+      [
+        { sentence: "Your 2020 report gives no ACMG classification." },
+        { sentence: "Your Mar 21, 2024 report said pathogenic." },
+        { sentence: "Your Nov 2, 2024 report said uncertain significance." },
+        { sentence: "An undated report said benign." },
+      ],
+      "ClinVar, as this app holds it, has no row for this variant.",
+    ],
+    [
+      "a verdict of another row or version, and every verdict but differs, adds no tag",
+      {
+        reports: [
+          report("r1", "VUS", "2021-01-01"),
+          report("r2", "VUS", "2022-01-01"),
+          report("r3", "VUS", "2023-01-01"),
+          report("r4", "VUS", "2024-01-01"),
+        ],
+        says: martin,
+        verdicts: [
+          verdict("r1", "differs", { origin: "ni:///clinvar-0" }),
+          verdict("r2", "differs", { row: "urn:test:other" }),
+          verdict("r3", "labs disagree"),
+          verdict("r4", "as ClinVar writes it"),
+        ],
+      },
+      [2021, 2022, 2023, 2024].map((year) => ({
+        sentence: `Your ${year} report said uncertain significance.`,
+      })),
+      "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
+    ],
+    [
+      "a gene the series does not cover",
+      {
+        gene: "BRCA2",
+        says: {
+          found: "not covered",
+          series: "urn:test:clinvar",
+          version: VERSION,
+          genes: ["EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"],
+        },
+      },
+      [],
+      "ClinVar, as this app holds it, covers EPCAM, MLH1, MSH2, MSH6 and PMS2, not BRCA2.",
+    ],
+    [
+      "no table held",
+      { says: { found: "no series" } },
+      [],
+      "This app holds no ClinVar table.",
+    ],
+    [
+      "the tables cannot say yet",
+      { reports: [report("r1", "VUS", "2022-01-01")] },
+      [{ sentence: "Your 2022 report said uncertain significance." }],
+      undefined,
+    ],
+    [
+      "a report named by its concept's words when no label is known",
+      {
+        reports: [report("r1", "LikelyPathogenic", "2024-03-21")],
+        labels: new Map(),
+      },
+      [{ sentence: "Your 2024 report said likely pathogenic." }],
+      undefined,
+    ],
+    [
+      "labs that disagree, with another word after it, and a count of twelve",
+      {
+        says: rows({
+          classification: [
+            concept("ClinVarConflicting"),
+            concept("ClinVarRiskFactor"),
+          ],
+          reviewStatus: concept("ClinVarNoAssertionCriteria"),
+          contributingSubmitters: 12,
+        }),
+      },
+      [],
+      "ClinVar today says labs that submit to ClinVar disagree; risk factor: no assertion criteria provided, 12 contributing submitters.",
+    ],
+    [
+      "a sub-tier after the ACMG value, and no contributing submitters",
+      {
+        says: rows({
+          classification: [concept("ClinVarVusHigh"), concept("VUS")],
+          contributingSubmitters: 0,
+        }),
+      },
+      [],
+      "ClinVar today says uncertain significance; VUS-high, no contributing submitters.",
+    ],
+    [
+      "a classification only as part of a combination, and two submitters in words",
+      {
+        says: rows({
+          classification: [concept("ClinVarCombinationOnly")],
+          contributingSubmitters: 2,
+        }),
+      },
+      [],
+      "ClinVar today says classified only as part of a combination, two contributing submitters.",
+    ],
+    [
+      "a row that counts submitters, not contributing ones",
+      {
+        says: rows({ classification: [concept("VUS")], submitters: 3 }),
+      },
+      [],
+      "ClinVar today says uncertain significance, 3 submitters.",
+    ],
+    [
+      "one submitter, and a row with no classification",
+      {
+        says: rows({
+          reviewStatus: concept("ClinVarNoAssertionCriteria"),
+          submitters: 1,
+        }),
+      },
+      [],
+      "ClinVar today gives no classification: no assertion criteria provided, one submitter.",
+    ],
+  ];
+  for (const [name, input, reports, clinvar] of cases) {
+    const said = view.variantSaid({
+      variant: { gene: input.gene, hgvs: [], variations: [] },
+      reports: input.reports ?? [],
+      says: input.says,
+      verdicts: input.verdicts ?? [],
+      labels: input.labels ?? LABELS,
+    });
+    assert.deepEqual(said, { reports, clinvar }, name);
+  }
+});
+
+test("a pod's page shows its variants after the tiles, each with its reports and what ClinVar says, then the counsellor sentence and the series' credit; a pod with none shows no such part, and a variant seen at two places is named by its gene and expression", () => {
+  const answers = {
+    [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
+    [VARIANTS]: [
+      { variant: "v1", gene: "MLH1", hgvs: "NM_000249.3:c.2042C>T" },
+      { variant: "v1", gene: "MLH1", hgvs: "NM_000249.4:c.2042C>T" },
+      { variant: "v1", gene: "MLH1", variation: "90011" },
+    ],
+    [REPORTS]: [
+      report("r1", "VUS", "2022-05-01"),
+      { ...report("r2", "Benign", "2023-01-01"), variant: "orphan" },
+    ],
+    [SEEN]: [
+      {
+        entry: "v1",
+        place: "Meridian Health System",
+        records: "1",
+        places: "2",
+      },
+      {
+        entry: "v1",
+        place: "Larkspur Valley Health",
+        records: "1",
+        places: "2",
+      },
+    ],
+  };
+  assert.deepEqual(
+    [...view.variantsAsked(answers)],
+    [
+      [
+        "v1",
+        {
+          gene: "MLH1",
+          hgvs: ["NM_000249.3:c.2042C>T", "NM_000249.4:c.2042C>T"],
+          variations: ["90011"],
+        },
+      ],
+    ],
+  );
+  const credit =
+    "ClinVar, NCBI. Not intended for direct diagnostic use or medical decision-making without review by a genetics professional.";
+  const shown = render(
+    view.podPage(answers, {
+      pod: "martin",
+      signIn: () => "",
+      said: {
+        says: new Map([
+          ["v1", rows({ classification: [concept("Pathogenic")] })],
+        ]),
+        verdicts: [verdict("r1", "differs")],
+        labels: LABELS,
+        credits: [credit],
+      },
+    }),
+  );
+  const words = shown.replace(/<[^>]*>/g, "");
+  for (const sentence of [
+    "Genetic variants",
+    "MLH1 · NM_000249.3:c.2042C>T · NM_000249.4:c.2042C>T · ClinVar 90011",
+    "Your 2022 report said uncertain significance.",
+    "Differs from ClinVar today",
+    "ClinVar today says pathogenic.",
+    "Your 2023 report said benign.",
+    "Your clinician or a genetic counsellor can explain what this means for you.",
+    "Not intended for direct diagnostic use or medical decision-making without review by a genetics professional",
+    "MLH1 NM_000249.3:c.2042C>T was recorded at Meridian Health System and Larkspur Valley Health. Cascade keeps it as one variant.",
+  ])
+    assert.ok(words.includes(sentence), sentence);
+  assert.ok(shown.indexOf("Genetic variants") > shown.indexOf('class="tiles"'));
+  assert.ok(
+    shown.indexOf("Your 2023 report") > shown.indexOf("ClinVar today says"),
+    "a report of no variant entry is listed last",
+  );
+  const bare = render(
+    view.podPage(
+      { [ALLERGIES]: answers[ALLERGIES] },
+      { pod: "martin", signIn: () => "" },
+    ),
+  );
+  assert.ok(!bare.includes("Genetic variants") && !bare.includes("counsellor"));
+});
+
+test("a code's page gives a variation's classification as ClinVar's sentence with the table's credit", () => {
+  const facts = {
+    code: ROW,
+    notation: "90011",
+    names: [],
+    status: [],
+    mappings: [],
+    classifications: [
+      {
+        series: "urn:test:clinvar",
+        version: VERSION,
+        variation: ROW,
+        classification: [concept("VUS")],
+      },
+    ],
+  };
+  const page = render(
+    view.codePage({
+      source: { label: "ClinVar" },
+      held: [
+        {
+          iri: "urn:test:clinvar",
+          label: "ClinVar variant classifications",
+          credit: "ClinVar, NCBI.",
+          versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
+        },
+      ],
+      facts,
+      codeHref: () => "#",
+      back: "#",
+    }),
+  ).replace(/<[^>]*>/g, "");
+  assert.ok(page.includes("ClinVar today says uncertain significance."));
+  assert.ok(page.includes("ClinVar, NCBI."));
+  assert.ok(!page.includes("No table this app holds says anything"));
+});

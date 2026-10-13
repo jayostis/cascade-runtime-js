@@ -103,8 +103,19 @@ codes of its current version, or of several series' (a source's), that are
 `ingredients`: the codes it maps to in the first product ingredients table that
 maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
 they list or map to, from the first series that holds one; and `facts(code)`,
-what every held table says of a code, each fact with its series and version.
-A pod's own page names a record by its code's name, else by the record's own
+what every held table says of a code, each fact with its series and version,
+a variation's classification among them (`classifications`); and
+`variantClassification({ gene, hgvs, variations })`, what the app's current
+version of the first held variant classifications series that covers the gene
+says of a variant: `rows` with its one row (found by its ClinVar IDs when it has
+any, by its HGVS expressions only when it has none), `not found`, `not covered`
+with the genes the series covers, or `no series`; and `labels(concepts)`, each
+concept's name in the vocabulary. `pod.agreement()` says how each report of a
+variant stands to that row (`report`, `row`, `origin`, `verdict`: `agrees`,
+`differs`, `labs disagree` or `as ClinVar writes it`; no row for a report with
+none), over the app's current version of the series; it writes nothing to the
+pod. A pod's page shows each variant's reports beside what ClinVar says today,
+from these, and the series' credit. A pod's own page names a record by its code's name, else by the record's own
 text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
 and `pod/My immunizations`; `icd10`, then `snomed`, of
