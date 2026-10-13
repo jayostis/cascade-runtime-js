@@ -675,6 +675,8 @@ export class Tables {
 
   /** Each series the app holds, in the order of its feeds and then by label. */
   async held(): Promise<HeldSeries[]> {
+    // The store starts from the starter copies before its index is read.
+    await this.#start();
     const [index, held] = await Promise.all([this.#index(), this.#held()]);
     return this.#ordered(index, held).map((series) => {
       const one = (subject: Term, predicate: string): string | undefined =>
