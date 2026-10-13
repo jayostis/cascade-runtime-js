@@ -216,6 +216,8 @@ export interface Facts extends Coded {
   })[];
   /** From each variant classifications series whose current version holds it as a row's subject, in the order of preference. */
   readonly classifications: readonly (Fact & ClassificationRow)[];
+  /** The code's own page at its code system's publisher, from the vocabulary's page template; none when the code system has none. */
+  readonly page?: { readonly href: string; readonly system: string };
 }
 
 /** A variant as a page asks about it: an entry's codes, as `pod/My genetic variants` gives them. */
@@ -933,8 +935,19 @@ export class Tables {
       total,
       codes: codes.map(coded),
     });
+    const system = codeSystems.find(({ uriSpace }) =>
+      code.startsWith(uriSpace),
+    );
     return {
       ...coded(code),
+      ...(system?.pageTemplate !== undefined && {
+        page: {
+          href: system.pageTemplate.replace("{code}", () =>
+            code.slice(system.uriSpace.length),
+          ),
+          system: system.label,
+        },
+      }),
       names,
       status: status.map((fact) => ({
         ...fact,

@@ -30,7 +30,8 @@ Under the pods, the sidebar lists the sources of the reference tables the pods
 are matched with (`sourcesOf(held())`, from `tablesBeside`). `/tables/<id>/`
 shows a source: its publisher, licence and freshness, a search over all its
 tables (`search()`, `?q=&page=`, 50 codes a page) and the tables it publishes;
-with `?code=<code>`, a code's page (`facts()`). For a table's id it shows that
+with `?code=<code>`, a code's page (`facts()`), which links to the code's own
+page at its publisher where its code system has one. For a table's id it shows that
 table alone, with which pods use which version (`uses()`). Check now posts to
 `/tables/check`.
 A pod's page names each record by its code's name in those tables
