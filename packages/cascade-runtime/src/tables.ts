@@ -145,6 +145,8 @@ export interface HeldSeries {
 
 /** What a names, status or product ingredients series says of a code, from the first series in the order of preference that holds it. */
 export interface About {
+  /** The code as written, without its code system's IRI. */
+  readonly notation: string;
   readonly name?: {
     readonly label: string;
     readonly altLabels: readonly string[];
@@ -549,13 +551,19 @@ export class Tables {
   }
 
   /**
-   * What the tables say of each code: its name, status and ingredients, from the first held series of each kind in the
-   * order of preference that holds it.
+   * What the tables say of each code: how it is written, and its name, status and ingredients from the first held
+   * series of each kind in the order of preference that holds it. Every code asked is answered, with the rest absent
+   * when no table says it.
    */
   async about(codes: readonly string[]): Promise<Map<string, About>> {
-    const references = await this.references();
-    const found = new Map<string, { -readonly [K in keyof About]: About[K] }>();
-    const fill = async <K extends keyof About>(
+    const [references, { uriSpaces }] = await Promise.all([
+      this.references(),
+      tableTerms(this.#options.vocabulary, this.#options.newStore),
+    ]);
+    const found = new Map<string, { -readonly [K in keyof About]: About[K] }>(
+      codes.map((code) => [code, { notation: notation(uriSpaces, code) }]),
+    );
+    const fill = async <K extends Exclude<keyof About, "notation">>(
       kind: string,
       key: K,
       reading: (origin: string) => Promise<(code: string) => About[K]>,
@@ -569,14 +577,12 @@ export class Tables {
         for (const code of left) {
           const value = read(code);
           if (value === undefined) continue;
-          const entry = found.get(code) ?? {};
-          entry[key] = value;
-          found.set(code, entry);
+          found.get(code)![key] = value;
         }
       }
     };
     const fromRows =
-      <K extends keyof About>(
+      <K extends Exclude<keyof About, "notation">>(
         read: (rows: Row[], origin: string) => About[K],
       ) =>
       async (origin: string) => {
