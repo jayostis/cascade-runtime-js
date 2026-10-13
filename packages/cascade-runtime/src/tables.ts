@@ -457,10 +457,11 @@ export class Tables {
       }
       return kinds;
     })();
-    this.#kinds.catch(() => {
-      this.#kinds = undefined;
+    const p = this.#kinds;
+    p.catch(() => {
+      if (this.#kinds === p) this.#kinds = undefined;
     });
-    return this.#kinds;
+    return p;
   }
 
   /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */
