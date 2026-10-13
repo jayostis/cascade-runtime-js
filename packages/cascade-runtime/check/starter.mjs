@@ -255,6 +255,12 @@ function items(html) {
   );
 }
 
+/** Reports oldest first, an undated one after the dated, as the page orders them. */
+const undatedLast = (a, b) =>
+  a.date === undefined || b.date === undefined
+    ? Number(a.date === undefined) - Number(b.date === undefined)
+    : a.date.localeCompare(b.date);
+
 /** Each line of the page's Worth a look, as the address it links to, its sentence and its tag. */
 function worthOf(html) {
   const part = /<div class="card worth">([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? "";
@@ -1093,9 +1099,9 @@ if (release === undefined) {
           /^(Your .+|An undated) report\b/.test(line),
         );
         const sentences = [...group]
-          .sort((a, b) => a.date.localeCompare(b.date))
+          .sort(undatedLast)
           .map(({ report, classification, date }) => ({
-            sentence: `Your ${date.slice(0, 4)} report${labOf(report)} said ${label(classification)}.`,
+            sentence: `${date === undefined ? "An undated" : `Your ${date.slice(0, 4)}`} report${labOf(report)} said ${label(classification)}.`,
             differs: id !== undefined && !rowOf(id).includes(classification),
           }));
         assert.equal(reports.length, sentences.length, `${title}: ${reports}`);
@@ -1124,16 +1130,18 @@ if (release === undefined) {
             .filter(
               ({ href, tag }) => href === entryPath(variant) && tag === DIFFERS,
             )
-            .map(({ sentence }) => sentence.replace(/^.*?: (?=your )/, "")),
+            .map(({ sentence }) =>
+              sentence.replace(/^.*?: (?=(?:your|an undated) )/, ""),
+            ),
           [...group]
-            .sort((a, b) => a.date.localeCompare(b.date))
+            .sort(undatedLast)
             .filter(
               ({ classification }) =>
                 id !== undefined && !rowOf(id).includes(classification),
             )
             .map(
               ({ report, date }) =>
-                `your ${date.slice(0, 4)} report${labOf(report)} differs from ClinVar today.`,
+                `${date === undefined ? "an undated" : `your ${date.slice(0, 4)}`} report${labOf(report)} differs from ClinVar today.`,
             ),
           `${title}: Worth a look on Martin's page`,
         );

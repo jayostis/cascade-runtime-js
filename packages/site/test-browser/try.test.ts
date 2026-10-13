@@ -100,6 +100,9 @@ let joined: {
   patients: Map<string, string>;
   has: Map<string, string[]>;
   worth: string[];
+  worthLinks: string[];
+  /** The entry both hospitals recorded; its IRI comes from the records, so Node and the browser name it alike. */
+  seenAtBoth: string | undefined;
 };
 
 /** A Worth a look line as the page's text reads it: its sentence, then its tag. */
@@ -179,11 +182,22 @@ async function nodeJoin(): Promise<typeof joined> {
       assert.equal(imported.refused, undefined);
     }
     const answers = await answersOf(pod);
+    const both = person.at.map(({ name }) => view.hospitalName(name));
+    const seenAtBoth = [...view.seenAt(answers)].find(([, { places }]) =>
+      both.every((name) => places.includes(name)),
+    )?.[0];
     return {
+      seenAtBoth,
       person,
       patients,
       has,
       worth: view.worthALook(answers).map(worthText),
+      worthLinks: view
+        .worthALook(answers)
+        .map(
+          ({ entry }) =>
+            `?pod=${view.slug(person.name)}&entry=${encodeURIComponent(view.entryId(entry))}`,
+        ),
     };
   } finally {
     await pod.close();
@@ -443,6 +457,12 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     );
 
   assert.deepEqual(await texts(page, ".worth li"), joined.worth);
+  assert.deepEqual(
+    await page.$$eval(".worth li a", (found) =>
+      found.map((each) => each.getAttribute("href")),
+    ),
+    joined.worthLinks,
+  );
   assert.ok(secrets.size >= 2, "the test saw no token or no code");
   const shown = await page.content();
   for (const secret of secrets) {
@@ -455,30 +475,10 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
 
   const both = [north, south].map(view.hospitalName);
   const pod = view.slug(person.name);
-  const SEEN = "pod/What was seen more than once";
-  const seen = await page.evaluate(
-    async ([name, question]) => {
-      const runtime = (await import("cascade-runtime" as string)) as {
-        openPod(name: string): Promise<{
-          ask(question: string): Promise<Record<string, string>[]>;
-          close(): Promise<void>;
-        }>;
-      };
-      const opened = await runtime.openPod(name as string);
-      try {
-        return await opened.ask(question as string);
-      } finally {
-        await opened.close();
-      }
-    },
-    [pod, SEEN],
-  );
-  const atBoth = [...view.seenAt({ [SEEN]: seen })].find(([, { places }]) =>
-    both.every((name) => places.includes(name)),
-  );
+  const atBoth = joined.seenAtBoth;
   assert.ok(atBoth, `no entry was seen at both ${both.join(" and ")}`);
   await page.goto(
-    `${served.url}try/index.html?pod=${pod}&entry=${encodeURIComponent(view.entryId(atBoth[0]))}`,
+    `${served.url}try/index.html?pod=${pod}&entry=${encodeURIComponent(view.entryId(atBoth))}`,
   );
   await settled(page);
   const recorded = await page
