@@ -47,10 +47,12 @@ text, and marks a retired code. A row of a tile's table opens its entry at
 document its records were derived from) and what else is known, which is what
 Cascade did with it and what the tables say of its codes, each claim naming its
 table and version. The page finds the entry by the last part of its IRI
-(`entryId`); it never builds an IRI from an address. It shows each variant's reports beside what ClinVar says today
-(`variantClassification()`, `pod.agreement()` and `labels()`, gathered by
-`variantsSaid`), read from the app's current version of the series, with its
-credit; it records nothing in the pod.
+(`entryId`); it never builds an IRI from an address. A genetic variant is a tile
+and an entry like any other: its entry shows each of its reports, with the lab
+it came from, beside what ClinVar says today (`variantClassification()`,
+`pod.agreement()` and `labels()`, gathered by `variantsSaid`), read from the
+app's current version of the series, with its credit; it records nothing in the
+pod.
 Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.

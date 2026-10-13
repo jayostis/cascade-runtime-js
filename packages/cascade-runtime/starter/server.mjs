@@ -407,11 +407,14 @@ async function showEntry(response, name, id, names) {
     answers = await answered(await podNamed(name));
     lastShown.set(name, answers);
   }
-  const about = await aboutCodes(answers);
-  const held = await tables()
-    .then((kept) => kept.held())
-    .catch(() => []);
-  const entry = entryOf(answers, id, { about, held });
+  const [about, held, said] = await Promise.all([
+    aboutCodes(answers),
+    tables()
+      .then((kept) => kept.held())
+      .catch(() => []),
+    podNamed(name).then((pod) => variantsOf(answers, pod)),
+  ]);
+  const entry = entryOf(answers, id, { about, said, held });
   const sources = sourcesOf(held);
   const body = entryPage({
     entry,
