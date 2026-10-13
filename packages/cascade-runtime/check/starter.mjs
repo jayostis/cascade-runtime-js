@@ -358,6 +358,95 @@ async function settled(server, path) {
   }
 }
 
+/** Each `<a href>` of the page as written, and each `id` an element of it has. Forms are not links. */
+function linksOf(html) {
+  return {
+    hrefs: [...html.matchAll(/<a\b[^>]*?\shref="([^"]*)"/g)].map(([, href]) =>
+      textOf(href),
+    ),
+    ids: new Set([...html.matchAll(/\sid="([^"]*)"/g)].map(([, id]) => id)),
+  };
+}
+
+/** `work` on each of `items`, at most `limit` at once, in the order of `items`. */
+async function eachAtOnce(items, limit, work) {
+  const results = [];
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const at = next++;
+        results[at] = await work(items[at]);
+      }
+    }),
+  );
+  return results;
+}
+
+/**
+ * Every same-origin link reached from the pages at `roots`, fetched once by its address without the fragment, four at
+ * a time. A page under a root's path has its own links followed; any other page is fetched and not read. A link is dead
+ * when it does not answer 200 after its redirects, or names a fragment no element of its page has as an id.
+ */
+async function crawled(server, roots) {
+  const origin = new URL(server.address).origin;
+  const under = roots.map((root) => new URL(root, origin).pathname);
+  const pages = new Map();
+  const links = [];
+  let frontier = roots.map((root) => new URL(root, origin).href);
+  while (frontier.length > 0) {
+    const fetchedNow = frontier;
+    await eachAtOnce(fetchedNow, 4, async (address) => {
+      try {
+        const answer = await fetch(address);
+        const html = await answer.text();
+        pages.set(address, {
+          status: answer.status,
+          final: new URL(answer.url),
+          html,
+          ids: linksOf(html).ids,
+        });
+      } catch (error) {
+        pages.set(address, { status: String(error), html: "", ids: new Set() });
+      }
+    });
+    frontier = [];
+    for (const address of fetchedNow) {
+      const page = pages.get(address);
+      if (!under.some((root) => new URL(address).pathname.startsWith(root)))
+        continue;
+      for (const href of linksOf(page.html).hrefs) {
+        if (href === "#") continue;
+        const to = new URL(href, page.final);
+        if (to.origin !== origin) continue;
+        const fragment = decodeURIComponent(to.hash.slice(1));
+        to.hash = "";
+        links.push({ on: address, href, target: to.href, fragment });
+        if (!pages.has(to.href) && !frontier.includes(to.href))
+          frontier.push(to.href);
+      }
+    }
+  }
+  const dead = links.flatMap(({ on, href, target, fragment }) => {
+    const reached = pages.get(target);
+    if (reached.status !== 200)
+      return [`${on} links ${href}, which answered ${reached.status}`];
+    return fragment === "" || reached.ids.has(fragment)
+      ? []
+      : [`${on} links ${href}, whose page has no element #${fragment}`];
+  });
+  return { pages, dead, links: links.length };
+}
+
+/** Each box a pod's page holds for a tile, by its id, as the HTML from its start to the next box's. */
+function tileBoxes(html) {
+  const starts = [...html.matchAll(/<div class="dialog" id="(see-[^"]*)"/g)];
+  return starts.map(([, id], at) => ({
+    id,
+    html: html.slice(starts[at].index, starts[at + 1]?.index),
+  }));
+}
+
 /** The steps `pod:load` printed, by name, in order. */
 function loadedSteps(out) {
   return out
@@ -675,22 +764,6 @@ const server = await (async () => {
       "Sulfamethoxazole's row does not carry Needs review",
     );
 
-    let codeShown;
-    for (const href of new Set(opens)) {
-      const link = /<a href="(\/tables\/[^"]*\?code=[^"]+)"/.exec(
-        await served(server, href),
-      );
-      if (link === null) continue;
-      const to = textOf(link[1]);
-      codeShown = new URL(to, server.address).searchParams.get("code");
-      assert.ok(
-        readable(await served(server, to)).includes(codeShown),
-        `${to} does not show the code ${codeShown}`,
-      );
-      break;
-    }
-    assert.ok(codeShown !== undefined, "no entry links a code's page");
-
     const missing = await fetched(new URL(entryAt("0"), server.address));
     assert.equal(missing.status, 404);
     assert.ok(
@@ -705,6 +778,51 @@ const server = await (async () => {
 })();
 
 try {
+  await behaviour(
+    "every link on each kit's pod page and its entries opens",
+    async () => {
+      const roots = KITS.map((kit) => `/pods/${kit}/`);
+      const began = Date.now();
+      const { pages, dead, links } = await crawled(server, roots);
+      stdout.write(
+        `followed ${links} links over ${pages.size} pages in ${Date.now() - began} ms\n`,
+      );
+      assert.deepEqual(dead, [], `dead links:\n${dead.join("\n")}`);
+      for (const root of roots) {
+        const page = pages.get(new URL(root, server.address).href);
+        const boxes = tileBoxes(page.html);
+        assert.equal(
+          boxes.length,
+          Object.keys(tilesOf(page.html)).length,
+          `${root} holds a box for each tile`,
+        );
+        for (const { id, html } of boxes)
+          assert.ok(
+            linksOf(html).hrefs.some((href) => href.includes("/entries/")),
+            `${root} opens no entry from its ${id} box`,
+          );
+      }
+      const addresses = [...pages.keys()].map((address) => new URL(address));
+      const codePage = addresses.find(
+        ({ pathname, searchParams }) =>
+          pathname.startsWith("/tables/") && searchParams.has("code"),
+      );
+      assert.ok(codePage !== undefined, "the crawl reached no code's page");
+      assert.ok(
+        readable(pages.get(codePage.href).html).includes(
+          codePage.searchParams.get("code"),
+        ),
+        `${codePage.pathname + codePage.search} does not show its code`,
+      );
+      assert.ok(
+        addresses.some(
+          ({ pathname, searchParams }) =>
+            pathname.startsWith("/tables/") && !searchParams.has("code"),
+        ),
+        "the crawl reached no table's page",
+      );
+    },
+  );
   if (release === undefined)
     await behaviour("a pod loaded through a step stops there", async () => {
       const pod = `alex-rivera-${story.through.toLowerCase()}`;
