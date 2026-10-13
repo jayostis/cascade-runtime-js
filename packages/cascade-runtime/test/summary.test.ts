@@ -1226,23 +1226,34 @@ test("a code's page gives a variation's classification as ClinVar's sentence wit
       },
     ],
   };
-  const page = render(
-    view.codePage({
-      source: { label: "ClinVar" },
-      held: [
-        {
-          iri: "urn:test:clinvar",
-          label: "ClinVar variant classifications",
-          credit: "ClinVar, NCBI.",
-          versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
-        },
-      ],
-      facts,
-      codeHref: () => "#",
-      back: "#",
-    }),
-  ).replace(/<[^>]*>/g, "");
+  const shown = (said: object) =>
+    render(
+      view.codePage({
+        source: { label: "ClinVar" },
+        held: [
+          {
+            iri: "urn:test:clinvar",
+            label: "ClinVar variant classifications",
+            credit: "ClinVar, NCBI.",
+            versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
+          },
+        ],
+        facts: said,
+        codeHref: () => "#",
+        back: "#",
+      }),
+    );
+  const raw = shown(facts);
+  const page = raw.replace(/<[^>]*>/g, "");
   assert.ok(page.includes("ClinVar today says uncertain significance."));
   assert.ok(page.includes("ClinVar, NCBI."));
   assert.ok(!page.includes("No table this app holds says anything"));
+  assert.ok(!raw.includes('rel="external"'), "no page, no outside link");
+  const outside = "https://example.org/variation/90011/";
+  const linked = shown({
+    ...facts,
+    page: { href: outside, system: "ClinVar" },
+  });
+  const link = linked.match(/<a href="([^"]*)" rel="external">([^<]*)<\/a>/);
+  assert.deepEqual(link?.slice(1), [outside, "ClinVar's page for 90011"]);
 });

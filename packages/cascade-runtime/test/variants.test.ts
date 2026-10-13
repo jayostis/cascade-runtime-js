@@ -336,6 +336,15 @@ test("the labels are the vocabulary's, and a classification is a variation's fac
     [[A, a, 5]],
   );
   assert.deepEqual((await app.facts(`${CLINVAR}1`)).classifications, []);
+  assert.deepEqual(facts.page, {
+    href: "https://www.ncbi.nlm.nih.gov/clinvar/variation/90011/",
+    system: "ClinVar",
+  });
+  assert.equal(
+    (await app.facts("http://varnomen.hgvs.org/NM_000249.3%3Ac.2042C%3ET"))
+      .page,
+    undefined,
+  );
 });
 
 test("an index of rows by code that is missing or was built for other properties is made again from the version's rows and kept beside it", async () => {

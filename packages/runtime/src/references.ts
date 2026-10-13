@@ -23,6 +23,8 @@ export interface CodeSystem {
   readonly iri: string;
   readonly label: string;
   readonly uriSpace: string;
+  /** Where a code's own page is at the publisher: an address with `{code}` for the code after the `uriSpace`. */
+  readonly pageTemplate?: string;
 }
 
 /** What the vocabulary says of tables: each code system, and the properties each kind's rows are found by. */
@@ -75,7 +77,17 @@ async function readTableTerms(
         throw new Error(
           `${system.value} is a code system with no ${label === undefined ? "label" : "URI space"}`,
         );
-      return { iri: system.value, label: label.value, uriSpace: space.value };
+      const template = graph.objects(system, `${REC}pageTemplate`)[0];
+      if (template !== undefined && !template.value.includes("{code}"))
+        throw new Error(
+          `${system.value} is a code system whose page template has no {code}`,
+        );
+      return {
+        iri: system.value,
+        label: label.value,
+        uriSpace: space.value,
+        ...(template && { pageTemplate: template.value }),
+      };
     });
   return {
     codeSystems,
