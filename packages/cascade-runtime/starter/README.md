@@ -85,8 +85,9 @@ machine, or leave that pod out.
 **Claude Desktop.** Open Settings, Developer, Edit Config, and add the server
 to `claude_desktop_config.json` (on Windows `%APPDATA%\Claude\`, on macOS
 `~/Library/Application Support/Claude/`), with this app's folder in the path
-(forward slashes work on Windows too), then quit Claude Desktop and start it
-again:
+(`args` must use an absolute path, as Claude Desktop starts the server from
+another folder; forward slashes work on Windows too), then quit Claude Desktop
+and start it again:
 
 ```json
 {

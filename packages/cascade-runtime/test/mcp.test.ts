@@ -116,7 +116,10 @@ test("find_changes on the statin story patient's pod gives the LDL finding with 
       })
     ).text,
   ) as { total: number; rows: unknown[] };
-  assert.equal(asked.total, 6);
+  assert.equal(
+    asked.total,
+    (await pods.get(STATIN)!.ask("pod/My lab results")).length,
+  );
   assert.equal(asked.rows.length, 2);
 });
 
@@ -145,4 +148,27 @@ test("input the rules refuse is a tool error that says why, never a crash: a que
     assert.ok(error, `${name} ${JSON.stringify(args)}`);
     assert.match(text, reason, `${name} ${JSON.stringify(args)}`);
   }
+});
+
+test("an error that is not a refusal is logged and reaches the client as a fixed message, never its own, so a path in it does not leave", async (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  const broken = podServer({
+    names: async () => ["broken"],
+    open: async () => {
+      throw new Error("ENOENT: open 'C:/private/path'");
+    },
+  });
+  const [toServer, toClient] = InMemoryTransport.createLinkedPair();
+  await broken.build().connect(toServer);
+  const other = new Client({ name: "test", version: "0.0.0" });
+  await other.connect(toClient);
+  const result = await other.callTool({
+    name: "find_changes",
+    arguments: { pod: "broken" },
+  });
+  const [first] = result.content as { text: string }[];
+  assert.equal(result.isError, true);
+  assert.doesNotMatch(first!.text, /private/);
+  assert.equal(logged.mock.callCount(), 1);
+  await other.close();
 });

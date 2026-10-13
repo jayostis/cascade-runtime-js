@@ -1,6 +1,7 @@
 // The MCP server over the app's pods: what `mcp.mjs` serves on stdio. A client such as Claude Desktop or VS Code lists
 // the pods, asks the curated questions and runs the analytics of `cascade-runtime` (`changeTools`).
 import { readFile } from "node:fs/promises";
+import console from "node:console";
 import { URL } from "node:url";
 import { fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 import { changeTools, Refusal } from "cascade-runtime";
@@ -132,7 +133,8 @@ export function podServer(pods) {
       return text(JSON.stringify(await run()));
     } catch (error) {
       if (error instanceof Refusal) return text(error.message, true);
-      throw error;
+      console.error(error);
+      return text("the server failed; its log says why", true);
     }
   }
 
@@ -175,7 +177,7 @@ export function podServer(pods) {
   async function close() {
     const closing = [...opened.values()];
     opened.clear();
-    await Promise.all(closing.map(async (each) => (await each).close()));
+    await Promise.allSettled(closing.map(async (each) => (await each).close()));
   }
 
   return { build, close };
