@@ -64,7 +64,6 @@ agent.
 | [cascade-bridge-js](https://github.com/jayostis/cascade-bridge-js)                           | The Cascade Bridge for JavaScript. Draft.                                                                                                        |
 | [cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4) | The adapter for FHIR R4 JSON, alone or in a Bundle. Import-only.                                                                                 |
 | [cascade-bridge-adapter-ccda](https://github.com/jayostis/cascade-bridge-adapter-ccda)       | The adapter for C-CDA R2.1 XML, as a patient portal hands it out. Import-only.                                                                   |
-| [cascade-bridge-adapter-clinvar](https://github.com/jayostis/cascade-bridge-adapter-clinvar) | The adapter for NCBI ClinVar VCV XML. Import-only; the pilot adapter.                                                                            |
 | cascade-runtime-js (this repository)                                                         | The reference runtime.                                                                                                                           |
 
 ## How it fits together
