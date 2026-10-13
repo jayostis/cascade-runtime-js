@@ -273,7 +273,7 @@ function recordDraws(): void {
         );
       }),
     clinvar: () =>
-      /ClinVar today says|ClinVar, as this app holds it/.test(
+      /ClinVar today (says|gives no classification)|ClinVar, as this app holds it|This app holds no ClinVar table/.test(
         document.querySelector("main")?.textContent ?? "",
       ),
   };
@@ -294,11 +294,17 @@ function recordDraws(): void {
 
 /** When `what` was first drawn in the page, ms since its navigation started or, after a click, since the click. */
 async function drawnAt(page: Page, what: string): Promise<number> {
-  await page.waitForFunction(
-    (what) => (globalThis as unknown as Drawn).drawn[what] !== undefined,
-    what,
-    { timeout: 60_000 },
-  );
+  try {
+    await page.waitForFunction(
+      (what) => (globalThis as unknown as Drawn).drawn[what] !== undefined,
+      what,
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    throw new Error(`"${what}" was never drawn on ${page.url()} in 20 s`, {
+      cause: error,
+    });
+  }
   return page.evaluate((what) => {
     const here = globalThis as unknown as Drawn;
     return (here.drawn[what] ?? 0) - (here.clicked ?? 0);

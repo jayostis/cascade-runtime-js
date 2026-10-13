@@ -383,6 +383,8 @@ async function eachAtOnce(items, limit, work) {
   return results;
 }
 
+const MOST_PAGES = 2000;
+
 /**
  * Every same-origin link reached from the pages at `roots`, fetched once by its address without the fragment, four at
  * a time. A page under a root's path has its own links followed; any other page is fetched and not read. A link is dead
@@ -393,6 +395,7 @@ async function crawled(server, roots) {
   const under = roots.map((root) => new URL(root, origin).pathname);
   const pages = new Map();
   const links = [];
+  let lastToAdd = roots[0];
   let frontier = roots.map((root) => new URL(root, origin).href);
   while (frontier.length > 0) {
     const fetchedNow = frontier;
@@ -413,7 +416,11 @@ async function crawled(server, roots) {
     frontier = [];
     for (const address of fetchedNow) {
       const page = pages.get(address);
-      if (!under.some((root) => new URL(address).pathname.startsWith(root)))
+      const answered = page.final?.pathname;
+      if (
+        answered === undefined ||
+        !under.some((root) => answered.startsWith(root))
+      )
         continue;
       for (const href of linksOf(page.html).hrefs) {
         if (href === "#") continue;
@@ -422,10 +429,16 @@ async function crawled(server, roots) {
         const fragment = decodeURIComponent(to.hash.slice(1));
         to.hash = "";
         links.push({ on: address, href, target: to.href, fragment });
-        if (!pages.has(to.href) && !frontier.includes(to.href))
+        if (!pages.has(to.href) && !frontier.includes(to.href)) {
           frontier.push(to.href);
+          lastToAdd = address;
+        }
       }
     }
+    if (pages.size + frontier.length > MOST_PAGES)
+      throw new Error(
+        `The crawl passed ${MOST_PAGES} pages and is not ending; the last page to add a new address was ${lastToAdd}`,
+      );
   }
   const dead = links.flatMap(({ on, href, target, fragment }) => {
     const reached = pages.get(target);
