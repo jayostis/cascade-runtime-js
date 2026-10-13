@@ -62,6 +62,9 @@ keeping the package and the pods, under `pods/<name>/`. It is made with three,
 - `npm run pod:reset <name>` removes a pod.
 - `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
 - `npm run console -- [--pod <name>]` opens a REPL with the pod as `pod`.
+- `npm run mcp` is an MCP server on stdio over every pod, for a client such as
+  Claude Desktop to start (the starter's README says how). A hosted client
+  sends what the tools return to its provider.
 - `npm run kit:export -- <kit> <download>` copies a download into the app, for
   `look`: `alex-rivera x-e12` as `apple_health_export`, and
   `priya-natarajan kestrel-harbor-health-summary.xml` as that file.
