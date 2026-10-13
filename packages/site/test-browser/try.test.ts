@@ -68,7 +68,12 @@ interface View {
   readonly QUESTIONS: readonly string[];
   readonly SECTIONS: readonly Section[];
   sectionRows(section: Section, answers: Answers): Row[];
-  noticed(answers: Answers): string[];
+  worthALook(
+    answers: Answers,
+    about?: Map<string, unknown>,
+    said?: unknown,
+  ): { sentence: string; entry: string; tag?: string }[];
+  seenAt(answers: Answers): Map<string, { places: string[]; across: number }>;
   entryId(entry: string): string;
   placeOf(row: Row): string;
   counted(records: Readonly<Record<string, number>>): string;
@@ -94,8 +99,12 @@ let joined: {
   person: Person;
   patients: Map<string, string>;
   has: Map<string, string[]>;
-  noticed: string[];
+  worth: string[];
 };
+
+/** A Worth a look line as the page's text reads it: its sentence, then its tag. */
+const worthText = ({ sentence, tag }: { sentence: string; tag?: string }) =>
+  tag === undefined ? sentence : `${sentence} ${tag}`;
 
 async function answersOf(pod: Pod): Promise<Answers> {
   const answers: Answers = {};
@@ -169,11 +178,12 @@ async function nodeJoin(): Promise<typeof joined> {
       const imported = await pod.import(files, { aboutSubject: true });
       assert.equal(imported.refused, undefined);
     }
+    const answers = await answersOf(pod);
     return {
       person,
       patients,
       has,
-      noticed: view.noticed(await answersOf(pod)),
+      worth: view.worthALook(answers).map(worthText),
     };
   } finally {
     await pod.close();
@@ -218,7 +228,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
+test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -244,11 +254,22 @@ test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, w
       ...new Set((alex["entry/Where it came from"] ?? []).map(view.placeOf)),
     ].sort(),
   );
-  const noticed = await texts(page, ".noticed li");
-  assert.deepEqual(noticed, view.noticed(alex));
+  const worth = await texts(page, ".worth li");
+  const lines = view.worthALook(alex);
+  assert.deepEqual(worth, lines.map(worthText));
+  assert.ok(lines.length > 0, "Alex's record has nothing worth a look");
   assert.ok(
-    noticed.some((sentence) => /^Penicillin was recorded at /.test(sentence)),
-    noticed.join("\n"),
+    !worth.some((sentence) => /was recorded at /.test(sentence)),
+    worth.join("\n"),
+  );
+  assert.deepEqual(
+    await page.$$eval(".worth li a", (found) =>
+      found.map((each) => each.getAttribute("href")),
+    ),
+    lines.map(
+      ({ entry }) =>
+        `?pod=${ALEX}&entry=${encodeURIComponent(view.entryId(entry))}`,
+    ),
   );
   assert.deepEqual(
     await tiles(page),
@@ -421,18 +442,7 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       `the filter did not survive the import: ${String(text)}`,
     );
 
-  const noticed = await texts(page, ".noticed li");
-  assert.deepEqual(noticed, joined.noticed);
-  const both = [north, south].map(view.hospitalName);
-  assert.ok(
-    noticed.some(
-      (sentence) =>
-        sentence.includes(" was recorded at ") &&
-        both.every((name) => sentence.includes(name)),
-    ),
-    noticed.join("\n"),
-  );
-
+  assert.deepEqual(await texts(page, ".worth li"), joined.worth);
   assert.ok(secrets.size >= 2, "the test saw no token or no code");
   const shown = await page.content();
   for (const secret of secrets) {
@@ -442,6 +452,40 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       "the console shows a token or a code",
     );
   }
+
+  const both = [north, south].map(view.hospitalName);
+  const pod = view.slug(person.name);
+  const SEEN = "pod/What was seen more than once";
+  const seen = await page.evaluate(
+    async ([name, question]) => {
+      const runtime = (await import("cascade-runtime" as string)) as {
+        openPod(name: string): Promise<{
+          ask(question: string): Promise<Record<string, string>[]>;
+          close(): Promise<void>;
+        }>;
+      };
+      const opened = await runtime.openPod(name as string);
+      try {
+        return await opened.ask(question as string);
+      } finally {
+        await opened.close();
+      }
+    },
+    [pod, SEEN],
+  );
+  const atBoth = [...view.seenAt({ [SEEN]: seen })].find(([, { places }]) =>
+    both.every((name) => places.includes(name)),
+  );
+  assert.ok(atBoth, `no entry was seen at both ${both.join(" and ")}`);
+  await page.goto(
+    `${served.url}try/index.html?pod=${pod}&entry=${encodeURIComponent(view.entryId(atBoth[0]))}`,
+  );
+  await settled(page);
+  const recorded = await page
+    .locator("main li", { hasText: "Cascade recorded it at" })
+    .innerText({ timeout: 60_000 });
+  for (const name of both)
+    assert.ok(recorded.includes(name), `${name} is not in: ${recorded}`);
 });
 
 /** The `data-key` of each row the lab results' table shows, in the column headed `head`. */
@@ -1107,16 +1151,17 @@ ${shots.join("\n")}`);
   <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${pod.owner}> ;
     <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/judgments/v1-draft#patient> ] .
 ${shots.join("\n")}`);
-        const codes = (await pod.ask("pod/My immunizations")).map(
-          ({ code = "" }) => code,
+        const given = await pod.ask("pod/My immunizations");
+        const reviewed = new Set(
+          (await pod.ask("entry/What needs review")).map(({ entry }) => entry),
         );
-        const about = await (await runtime.appTables()).about(codes);
-        return codes.map((code) => ({
+        const about = await (
+          await runtime.appTables()
+        ).about(given.map(({ code = "" }) => code));
+        return given.map(({ code = "", entry = "" }) => ({
           label: about.get(code)?.name?.label ?? "",
           retired: about.get(code)?.status?.deprecated === true,
-          replacedBy: (about.get(code)?.status?.replacedBy ?? []).map(
-            (replacement) => replacement.replace(/^.*[/#]/, ""),
-          ),
+          review: reviewed.has(entry),
         }));
       } finally {
         await pod.close();
@@ -1142,12 +1187,9 @@ ${shots.join("\n")}`);
           .allTextContents()
       ).sort(),
       said
-        .map(({ label, retired, replacedBy }) =>
-          !retired
-            ? label
-            : replacedBy.length === 0
-              ? `${label} Retired code`
-              : `${label} Retired code, replaced by ${[replacedBy.slice(0, -1).join(", "), replacedBy.at(-1)].filter(Boolean).join(" and ")}`,
+        .map(
+          ({ label, retired, review }) =>
+            `${label}${review ? " Needs review" : ""}${retired ? " Retired code" : ""}`,
         )
         .sort(),
     );
@@ -1173,9 +1215,10 @@ ${shots.join("\n")}`);
       await opened(retired.label);
     });
     assert.ok(new URL(page.url()).searchParams.has("entry"));
-    assert.match(
-      await page.locator("main h1 .tag").innerText(),
-      /^Retired code/,
+    assert.ok(
+      (await page.locator("main h1 .tag").allInnerTexts()).includes(
+        "Retired code",
+      ),
       "the entry's heading does not tag the retired code",
     );
     const code = page.locator('main a[href*="code="]').first();
@@ -1232,8 +1275,24 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
     const mlh1 = rows.filter({ hasText: "NM_000249.3" });
     assert.match(
       await mlh1.innerText(),
-      /Differs from ClinVar today/,
+      /Differs/,
       "the MLH1 row is not tagged",
+    );
+    const mlh1Href = await mlh1
+      .locator("td:first-child a")
+      .getAttribute("href");
+    const worth = page
+      .locator(".worth li")
+      .filter({ hasText: "your 2022 report from Harbourline Genetics" });
+    assert.equal(await worth.count(), 1, "Worth a look has no line for MLH1");
+    assert.equal(
+      await worth.locator("a").getAttribute("href"),
+      mlh1Href,
+      "the line does not link to the entry the MLH1 row opens",
+    );
+    assert.match(
+      await worth.innerText(),
+      /differs from ClinVar today\.\s*Differs$/,
     );
     const body = async (): Promise<string> =>
       ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
@@ -1264,7 +1323,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
         .locator("main li")
         .filter({ hasText: "Your 2022 report" })
         .innerText(),
-      /Differs from ClinVar today/,
+      /Differs/,
     );
     assert.match(
       entry,

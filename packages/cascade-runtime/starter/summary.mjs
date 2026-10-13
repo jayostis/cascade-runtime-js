@@ -1,4 +1,4 @@
-// A pod as a person reads it: who it is for, where its records came from, what Cascade noticed, and a tile for each
+// A pod as a person reads it: who it is for, where its records came from, what is worth a look, and a tile for each
 // kind of record. Preact components written with `htm`: functions from a pod's question rows to the page's elements,
 // which `server.mjs` renders to HTML and a page in a browser can render too, keeping a table's sort and filter in its
 // state. It imports only `preact`, `preact/hooks` and `htm`, with no build step. Rewrite it freely: it is only this
@@ -138,14 +138,6 @@ export const SECTIONS = [
     columns: [
       text("Variant", (row) => row.variant),
       number("Reports", (row) => row.reports),
-      {
-        head: "ClinVar today",
-        type: "text",
-        key: (row) => (row.differs ? DIFFERS : ""),
-        show: (row) => (row.differs ? DIFFERS : ""),
-        warm: () => true,
-        tag: true,
-      },
     ],
     sortBy: 0,
   },
@@ -153,6 +145,35 @@ export const SECTIONS = [
 
 const SOURCES = "entry/Where it came from";
 const REVIEW = "entry/What needs review";
+
+const DIFFERS = "Differs";
+const NEEDS_REVIEW = "Needs review";
+const RETIRED = "Retired code";
+
+/** The one set of tags a line, a row and an entry share, in the order they are drawn, and whether each is warm. */
+const TAGS = [
+  { tag: DIFFERS, warm: true },
+  { tag: NEEDS_REVIEW, warm: true },
+  { tag: RETIRED, warm: false },
+];
+
+/** The tags that hold, in `TAGS` order. */
+function tagsOf({ differs = false, review = false, retired = false }) {
+  const holds = {
+    [DIFFERS]: differs,
+    [NEEDS_REVIEW]: review,
+    [RETIRED]: retired,
+  };
+  return TAGS.filter(({ tag }) => holds[tag]).map(({ tag }) => tag);
+}
+
+/** The entries `answers` say need review. */
+const reviewed = (answers) =>
+  new Set((answers[REVIEW] ?? []).map((row) => row.entry));
+
+/** A tag as it is drawn, after a line, a row's name or an entry's heading. */
+const tagged = (tag) =>
+  html` <span class="tag${TAGS.find((each) => each.tag === tag)?.warm ? " warm" : ""}">${tag}</span>`;
 
 const SEEN = "pod/What was seen more than once";
 const VARIANTS = "pod/My genetic variants";
@@ -192,28 +213,27 @@ export function codesOf(answers) {
 
 /**
  * What the tables' `about` makes of a row of `section`: `label`, the name of the first of its codes `about` names,
- * and `retired` saying so when the code that named it, or with none the first of its codes with a status, is retired,
- * else an empty string.
+ * and `retired`, whether the code that named it, or with none the first of its codes with a status, is retired.
  */
 function namingOf(section, row, about) {
   const said = section.codes.map((column) => about.get(row[column]));
   const naming = said.find((each) => each?.name !== undefined);
   return {
     label: naming?.name.label,
-    retired: statusOf(
-      naming ?? said.find((each) => each?.status !== undefined),
-      "Retired code",
-    ),
+    retired:
+      statusOf(naming ?? said.find((each) => each?.status !== undefined)) !==
+      "",
   };
 }
 
 /**
  * The sections' rows in `answers`, each named by the first of its codes `about` (the tables' `about`) names, else by
- * the record's own text, and `retired` saying so when the code that named it, or with none the first of its codes with
- * a status, is retired.
+ * the record's own text, and `tags` when it has any: `Retired code` when the code that named it, or with none the first
+ * of its codes with a status, is retired, and `Needs review` when What needs review names its entry.
  */
 export function named(answers, about) {
   const renamed = { ...answers };
+  const review = reviewed(answers);
   for (const section of SECTIONS) {
     if (
       section.question === undefined ||
@@ -222,10 +242,11 @@ export function named(answers, about) {
       continue;
     renamed[section.question] = sectionRows(section, answers).map((row) => {
       const { label, retired } = namingOf(section, row, about);
+      const tags = tagsOf({ retired, review: review.has(row.entry) });
       return {
         ...row,
         ...(label !== undefined && { [section.field]: label }),
-        ...(retired !== "" && { retired }),
+        ...(tags.length > 0 && { tags }),
       };
     });
   }
@@ -365,15 +386,15 @@ const SAID = {
   "members disagree on criticality": ({ name, one }) =>
     `Sources disagree on how severe ${name === UNNAMED ? `an unnamed ${one}` : `the ${name} ${one}`} is.`,
   "joined through two kinds of machine sameness": ({ name }) =>
-    `${name} was matched in two different ways. Worth a look.`,
+    `${name} was matched in two different ways.`,
   "judged different, still joined": ({ name, one }) =>
     `${name} was marked as different, but is still shown as one ${one}.`,
   "same code, dates cannot tell": ({ name, one }) =>
     `${name} was recorded more than once, and its dates cannot tell whether it is one ${one} or several.`,
   "joined before, apart under newer tables or rules": ({ name, one }) =>
-    `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.`,
+    `${name === UNNAMED ? `An unnamed ${one}` : name} was kept as one ${one} with another before; newer reference tables or rules no longer match them, so they are shown apart.`,
   "possibly the same medication": ({ name, one }, { otherRecordLabel }) =>
-    `${name === UNNAMED ? `An unnamed ${one}` : name} shares a code with ${otherNamed(otherRecordLabel, one)}, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.`,
+    `${name === UNNAMED ? `An unnamed ${one}` : name} shares a code with ${otherNamed(otherRecordLabel, one)}, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same.`,
 };
 
 /** The other record of a pair, named from its label `Medication · Name · …`, or `another medication` when it has no name. */
@@ -424,16 +445,18 @@ function fromLabel(label = "") {
 }
 
 /**
- * What Cascade noticed, as sentences: each thing recorded at more than one place, then each that arrived more than
- * once from one place, three at most and how many more; then each entry that needs review; then each pair of
- * medications in two entries whose codes have an ingredient in common, which the tables' `about` gives. `answers` holds
- * the rows of each of `QUESTIONS`, by question.
+ * What is worth a look, as `{ sentence, entry, tag }` lines, `entry` the entry each is about and `tag` as `TAGS`
+ * holds it, none for a shared ingredient: each entry that needs review; then each report that differs from ClinVar
+ * today, which `said` (`variantsSaid`'s answer, none until the tables can say) gives; then each pair of medications in
+ * two entries whose codes have an ingredient in common, which the tables' `about` gives. A line that needs the tables
+ * comes after those that do not, so the part only grows when they load. `answers` holds the rows of each of
+ * `QUESTIONS`, by question.
  *
  * The pair is a hint the starter gives, not something the pod knows: a pod's questions never read the tables' rows.
  * A combination maps to its own multiple-ingredient concept (MIN), never to each of its ingredients, so lisinopril and
  * lisinopril with hydrochlorothiazide share none; two drugs that map to the same MIN share the combination.
  */
-export function noticed(answers, about = new Map()) {
+export function worthALook(answers, about = new Map(), said) {
   const entries = new Map();
   for (const section of SECTIONS)
     for (const row of sectionRows(section, answers))
@@ -441,31 +464,46 @@ export function noticed(answers, about = new Map()) {
         name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
-  const joined = [...seenAt(answers)]
-    .filter(([entry]) => entries.has(entry))
-    .map(([entry, { places, across }]) => {
-      const { name, one } = entries.get(entry);
-      return across > 1
-        ? `${name} was recorded ${where(places)}. Cascade keeps it as one ${one}.`
-        : `${name} arrived more than once${places.length === 0 ? "" : ` from ${places[0]}`}. Cascade keeps it as one ${one}.`;
-    });
-  const more = joined.length - 3;
   const review = new Map();
   for (const row of answers[REVIEW] ?? [])
-    review.set(
-      reviewKey(row),
-      reviewSaid(row, entries.get(row.entry) ?? fromLabel(row.entryLabel)),
-    );
+    review.set(reviewKey(row), {
+      sentence: reviewSaid(
+        row,
+        entries.get(row.entry) ?? fromLabel(row.entryLabel),
+      ),
+      entry: row.entry,
+      tag: NEEDS_REVIEW,
+    });
+  const differing = [...variantReports(answers, said)].flatMap(
+    ([entry, { name, reports }]) =>
+      reports
+        .filter(({ tag }) => tag === DIFFERS)
+        .map(({ when, place }) => ({
+          sentence: `${name}: ${when === undefined ? "an undated" : `your ${when}`} report${place === undefined ? "" : ` from ${place}`} differs from ClinVar today.`,
+          entry,
+          tag: DIFFERS,
+        })),
+  );
   return [
-    ...joined.slice(0, 3),
-    ...(more > 0
-      ? [
-          `${more} more ${more === 1 ? "thing was" : "things were"} seen more than once and kept as one.`,
-        ]
-      : []),
     ...review.values(),
-    ...sharedIngredients(answers, about),
-  ].map(capitalised);
+    ...differing,
+    ...sharedIngredients(answers, about).map(({ sentence, entries }) => ({
+      sentence,
+      entry: entries[0].entry,
+    })),
+  ].map((line) => ({ ...line, sentence: capitalised(line.sentence) }));
+}
+
+/**
+ * The part of a pod's page that lists `lines`, as `worthALook` gives them: each line's sentence a link to
+ * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line.
+ */
+export function worthPart(lines, entryHref) {
+  if (lines.length === 0) return undefined;
+  return html`<div class="card worth"><h2>Worth a look</h2><ul>${lines.map(
+    ({ sentence, entry, tag }) =>
+      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}</li>`,
+  )}</ul></div>`;
 }
 
 /** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
@@ -483,9 +521,10 @@ function reviewSaid(row, item) {
 }
 
 /**
- * A sentence for each pair of medications in two entries whose codes share an ingredient, in the order of the section,
- * once for the pair of entries whatever codes their rows show, and none for a pair whose rows share a code, which What
- * needs review lists.
+ * A `{ sentence, entries }` for each pair of medications in two entries whose codes share an ingredient, in the order of
+ * the section, once for the pair of entries whatever codes their rows show, and none for a pair whose rows share a
+ * code, which What needs review lists. `entries` are the pair's `{ entry, origin }`, the first the sentence's subject and
+ * `origin` the table version its code's ingredients were read from.
  */
 function sharedIngredients(answers, about) {
   const medications = SECTIONS.find(({ one }) => one === "medication");
@@ -516,9 +555,13 @@ function sharedIngredients(answers, about) {
       said.add(pair);
       const name = about.get(shared)?.name?.label ?? shared.split("/").at(-1);
       const what = name.includes(" / ") ? "the combination" : "an ingredient";
-      sentences.push(
-        `${one.name} and ${other.name} share ${what}, ${name}, and are shown apart. Worth a look.`,
-      );
+      sentences.push({
+        sentence: `${one.name} and ${other.name} share ${what}, ${name}, and are shown apart.`,
+        entries: [one, other].map(({ entry, code }) => ({
+          entry,
+          origin: about.get(code)?.ingredients?.origin,
+        })),
+      });
     }
   return sentences;
 }
@@ -537,7 +580,6 @@ const LABS_DISAGREE = ["ClinVarConflicting", "ClinVarConflictingData"].map(
   (name) => REC + name,
 );
 const COMBINATION_ONLY = `${REC}ClinVarCombinationOnly`;
-const DIFFERS = "Differs from ClinVar today";
 const COUNSELLOR =
   "Your clinician or a genetic counsellor can explain what this means for you.";
 const DIGITS = [
@@ -811,15 +853,25 @@ export function variantReports(answers, said, held = []) {
   );
 }
 
-/** The Genetic variants section's rows: `{ entry, variant, reports, differs }` for each variant `variantReports` gives. */
+/**
+ * The Genetic variants section's rows: `{ entry, variant, reports, tags }` for each variant `variantReports` gives,
+ * `tags` only when it has any.
+ */
 function variantRows(answers, said) {
+  const review = reviewed(answers);
   return [...variantReports(answers, said)].map(
-    ([entry, { name, reports }]) => ({
-      entry,
-      variant: name,
-      reports: reports.length,
-      differs: reports.some(({ tag }) => tag === DIFFERS),
-    }),
+    ([entry, { name, reports }]) => {
+      const tags = tagsOf({
+        differs: reports.some(({ tag }) => tag === DIFFERS),
+        review: review.has(entry),
+      });
+      return {
+        entry,
+        variant: name,
+        reports: reports.length,
+        ...(tags.length > 0 && { tags }),
+      };
+    },
   );
 }
 
@@ -892,12 +944,12 @@ function Table({ section, rows, entryHref }) {
       index === 0 && entryHref !== undefined
         ? html`<a href=${entryHref(row.entry)}>${cell}</a>`
         : cell
-    }${index === 0 && row.retired !== undefined && html` <span class="tag">${row.retired}</span>`}</td>`;
+    }${index === 0 && (row.tags ?? []).map(tagged)}</td>`;
   };
   const body = sorted.map((row) => {
     const hidden = ![
       ...section.columns.map((column) => shown(column, row)),
-      row.retired ?? "",
+      ...(row.tags ?? []),
     ]
       .join("")
       .toLowerCase()
@@ -936,7 +988,7 @@ export function tile(section, rows, entryHref) {
 
 /**
  * A pod's page, as a person reads it: the person's name, how many records from how many places, a note when a record
- * was just brought in, what Cascade noticed, a tile per kind with rows, each with its dialog, and a way to bring in
+ * was just brought in, what is worth a look, a tile per kind with rows, each with its dialog, and a way to bring in
  * more. `answers` holds the rows of each of `QUESTIONS`, by question. The rest names what the host gives:
  *
  * - `pod`: the pod's name;
@@ -949,8 +1001,8 @@ export function tile(section, rows, entryHref) {
  * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
  *   the rows by;
- * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; the
- *   Genetic variants tile's `ClinVar today` column is empty until it does.
+ * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; no report
+ *   is tagged `Differs`, on a row or in what is worth a look, until it does.
  */
 export function podPage(
   asked,
@@ -971,7 +1023,7 @@ export function podPage(
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const sentences = noticed(answers, about);
+  const worth = worthPart(worthALook(answers, about, said), entryHref);
   const tiles = SECTIONS.map((section) => [
     section,
     sectionRows(section, answers, said),
@@ -987,7 +1039,7 @@ export function podPage(
 ${places.length > 0 && html`<ul class="chips">${places.map((place) => html`<li>${place}</li>`)}</ul>`}
 ${from !== undefined && html`<p class="note">Brought in the record from ${hospitalName(from)}.</p>`}
 ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.length === 1 ? "a reference table version" : `${unheld.length} reference table versions`} this app does not hold, and is matched without ${unheld.length === 1 ? "it" : "them"}.</p>`}
-${sentences.length > 0 && html`<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => html`<li>${sentence}</li>`)}</ul></div>`}
+${worth}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
@@ -1150,6 +1202,7 @@ function variantFacts(answers, entry, said, held) {
       ...(series !== undefined && { series }),
     })),
     issued,
+    differs: reports.some(({ tag }) => tag === DIFFERS),
     known: [
       ...reports.map(({ sentence, tag }) => ({
         sentence,
@@ -1168,20 +1221,22 @@ function variantFacts(answers, entry, said, held) {
  * came from" has it. `answers` holds the rows of each of `QUESTIONS`, by question; `about` is `codesSaid`'s answer, and
  * `held` the tables' `held()`, both empty until the tables can say.
  *
- * - `entry`, `name`, `kind` (`allergy`) and `tags`;
+ * - `entry`, `name`, `kind` (`allergy`) and `tags`, as a row of its section has them: `Retired code`, `Needs review`
+ *   when What needs review names it (an entry no section shows too), and `Differs` when a report of a variant does;
  * - `what`: the section's columns after the name, as `{ head, text }`; `recorded`, the record's own name when the tables
  *   named it otherwise; and `codes`, each `{ notation, series }`, the series that names it when one is held;
  * - `where`: a line for each document the entry's records came from, a record with none its own, the oldest arrival
  *   first, each `{ place, issued, retrieved, arrived, importLabel, records }`; `importLabel` only when a hospital is the place, `issued` only on a variant's line a report also came from;
- * - `known`: what Cascade did, then what the tables say of each code, as `{ sentence, tag, from }`, a table's claim
- *   with `from`, the `{ series, version }` among `held` it came from; and `credits`, each cited series' once.
+ * - `known`: what Cascade did, each review line tagged `Needs review`, each pair of medications that share an ingredient
+ *   the entry is one of, then what the tables say of each code, as `{ sentence, tag, from }`, a table's claim with
+ *   `from`, the `{ series, version }` among `held` it came from; and `credits`, each cited series' once.
  *
  * An entry no section shows is named and kinded from its label, and has no columns or codes.
  *
  * A variant (the Genetic variants section's) has instead, by `variantFacts`: its genes and expressions for `what`, its
  * ClinVar IDs for `codes`, the date of each report on the `where` line of its document as `issued`, and `known` lines
  * for each report, ClinVar today and the counsellor sentence; `said` is `variantsSaid`'s answer, none until the tables
- * can say. `tags` holds `DIFFERS` when a report differs.
+ * can say.
  */
 export function entryOf(
   answers,
@@ -1214,7 +1269,6 @@ export function entryOf(
   const given = namings.find((each) => each.label !== undefined)?.label;
   const own = rows.map((row) => row[section.field]).find(Boolean);
   const title = given ?? (own || labelled.name);
-  const retired = namings.map((each) => each.retired).find(Boolean);
 
   const codes = [
     ...new Set(
@@ -1233,7 +1287,17 @@ export function entryOf(
       reviewKey(row),
       capitalised(reviewSaid(row, { name: title, one: kind })),
     );
-  for (const sentence of reviews.values()) known.push({ sentence });
+  for (const sentence of reviews.values())
+    known.push({ sentence, tag: NEEDS_REVIEW });
+  for (const { sentence, entries } of sharedIngredients(
+    named(answers, about),
+    about,
+  )) {
+    const origin = entries.find((each) => each.entry === entry)?.origin;
+    const from = origin === undefined ? undefined : heldAt(origin, held);
+    if (from !== undefined)
+      known.push({ sentence: capitalised(sentence), from });
+  }
   known.push(...claimsOf(codes, about, held));
   if (variant !== undefined) known.push(...variant.known);
 
@@ -1241,10 +1305,11 @@ export function entryOf(
     entry,
     name: title === UNNAMED ? `An unnamed ${kind}` : title,
     kind,
-    tags: [
-      ...(retired === undefined ? [] : [retired]),
-      ...(rows.some((row) => row.differs) ? [DIFFERS] : []),
-    ],
+    tags: tagsOf({
+      differs: variant?.differs === true,
+      review: reviews.size > 0,
+      retired: namings.some((each) => each.retired),
+    }),
     what:
       variant !== undefined
         ? variant.what
@@ -1303,7 +1368,7 @@ export function entryPage({ entry, pod, back, codeHref, tableHref }) {
   const shown = (code, at) =>
     html`${at > 0 && ", "}${code.series === undefined ? code.notation : html`<a href=${codeHref(code.series, code.notation)}>${code.notation}</a>`}`;
   return html`${backLink}
-<h1>${name}${tags.map((tag) => html` <span class="tag">${tag}</span>`)}</h1>
+<h1>${name}${tags.map(tagged)}</h1>
 <p class="lead">${capitalised(kind)}</p>
 ${
   (facts.length > 0 || codes.length > 0) &&
@@ -1331,7 +1396,7 @@ ${
   html`<div class="card entry"><h2>What else is known</h2><ul>
 ${known.map(
   ({ sentence, tag, from }) =>
-    html`<li>${sentence}${tag !== undefined && html` <span class="tag warm">${tag}</span>`}${from !== undefined && html` <span class="muted from">From ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
+    html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">From ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
 )}
 </ul>${credits.map((credit) => html`<p class="muted">${credit}</p>`)}</div>`
 }`;
@@ -2163,9 +2228,11 @@ a { color: var(--accent); }
 .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1.5rem; padding: 0; list-style: none; }
 .chips li { font-size: 0.82rem; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.25rem; margin: 0 0 1.25rem; }
-.noticed { background: var(--tint); border-color: transparent; }
-.noticed ul { margin: 0; padding-left: 1.2rem; }
-.noticed li { margin: 0.3rem 0; }
+.worth { background: var(--tint); border-color: transparent; }
+.worth ul { margin: 0; padding-left: 1.2rem; }
+.worth li { margin: 0.3rem 0; }
+.worth a { color: var(--text); }
+.worth a:hover { color: var(--accent); }
 .entry ul { margin: 0; padding-left: 1.2rem; }
 .entry li { margin: 0.3rem 0; }
 .entry .from { display: block; }

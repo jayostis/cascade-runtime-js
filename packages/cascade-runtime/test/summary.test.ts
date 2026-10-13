@@ -13,7 +13,7 @@ const MEDICATIONS = "pod/My active medications";
 const SEEN = "pod/What was seen more than once";
 const REVIEW = "entry/What needs review";
 
-test("what Cascade noticed: things seen at two places first, three at most, then what needs review", () => {
+test("worth a look: each thing that needs review, with its entry and the Needs review tag, and nothing for what was seen more than once", () => {
   const at = (entry: string, place: string, places: number) => ({
     entry,
     place,
@@ -84,27 +84,83 @@ test("what Cascade noticed: things seen at two places first, three at most, then
       },
     ],
   };
-  assert.deepEqual(view.noticed(answers), [
-    "Penicillin was recorded at Meridian Health System, Larkspur Valley Health and in Alex's own entries. Cascade keeps it as one allergy.",
-    "Asthma arrived more than once from Cascade North. Cascade keeps it as one condition.",
-    "Eczema arrived more than once from Larkspur Valley Health. Cascade keeps it as one condition.",
-    "1 more thing was seen more than once and kept as one.",
-    "Sources disagree on how severe the Sulfamethoxazole allergy is.",
-    "Asthma was matched in two different ways. Worth a look.",
-    "Eczema was marked as different, but is still shown as one condition.",
-    "Latex was marked as different, but is still shown as one allergy.",
-    "Sources disagree on how severe an unnamed allergy is.",
-    "An entry was marked as different, but is still shown as one entry.",
-    "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
-    "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
-    "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart. Worth a look.",
-    "Lisinopril 10 MG Oral Tablet shares a code with Zestril, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
-    "Lisinopril 10 MG Oral Tablet shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
-    "An unnamed medication shares a code with another medication, which Cascade keeps apart. Cascade cannot confirm that the shared code names one product, so they may or may not be the same. Worth a look.",
-  ]);
+  const shared =
+    "Cascade cannot confirm that the shared code names one product, so they may or may not be the same.";
+  assert.deepEqual(
+    view
+      .worthALook(answers)
+      .map(({ entry, sentence, tag }: Record<string, string>) => [
+        entry,
+        sentence,
+        tag,
+      ]),
+    [
+      [
+        "e5",
+        "Sources disagree on how severe the Sulfamethoxazole allergy is.",
+        "Needs review",
+      ],
+      ["e2", "Asthma was matched in two different ways.", "Needs review"],
+      [
+        "e3",
+        "Eczema was marked as different, but is still shown as one condition.",
+        "Needs review",
+      ],
+      [
+        "e9",
+        "Latex was marked as different, but is still shown as one allergy.",
+        "Needs review",
+      ],
+      [
+        "e6",
+        "Sources disagree on how severe an unnamed allergy is.",
+        "Needs review",
+      ],
+      [
+        "e10",
+        "An entry was marked as different, but is still shown as one entry.",
+        "Needs review",
+      ],
+      [
+        "e4",
+        "Migraine was recorded more than once, and its dates cannot tell whether it is one condition or several.",
+        "Needs review",
+      ],
+      [
+        "e7",
+        "Acute viral pharyngitis was kept as one condition with another before; newer reference tables or rules no longer match them, so they are shown apart.",
+        "Needs review",
+      ],
+      [
+        "e6",
+        "An unnamed allergy was kept as one allergy with another before; newer reference tables or rules no longer match them, so they are shown apart.",
+        "Needs review",
+      ],
+      [
+        "e8",
+        `Lisinopril 10 MG Oral Tablet shares a code with Zestril, which Cascade keeps apart. ${shared}`,
+        "Needs review",
+      ],
+      [
+        "e8",
+        `Lisinopril 10 MG Oral Tablet shares a code with another medication, which Cascade keeps apart. ${shared}`,
+        "Needs review",
+      ],
+      [
+        "e11",
+        `An unnamed medication shares a code with another medication, which Cascade keeps apart. ${shared}`,
+        "Needs review",
+      ],
+    ],
+  );
+  const part = (href?: (entry: string) => string) =>
+    render(view.worthPart(view.worthALook(answers), href));
+  assert.ok(part((entry) => `/e/${entry}`).includes('<a href="/e/e5">'));
+  assert.ok(!part().includes("<a "), "plain text with no address to link");
+  assert.equal(view.worthPart([]), undefined);
 });
 
-test("what Cascade noticed: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows, a medication with no code or two entries that share a code give nothing, since What needs review lists those", () => {
+test("worth a look: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows, a medication with no code or two entries that share a code give nothing, since What needs review lists those", () => {
   const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
   const ingredients = (...codes: string[]) => ({
     ingredients: { codes: codes.map((code) => RXNORM + code), origin: "urn:v" },
@@ -127,40 +183,103 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
   const answers = (...rows: Record<string, string>[]) => ({
     [MEDICATIONS]: rows,
   });
-  assert.deepEqual(
-    view.noticed(
-      answers(
-        {
-          entry: "e1",
-          medication: "amlodipine 5 MG Oral Tablet",
-          code: RXNORM + "197361",
-        },
-        {
-          entry: "e2",
-          medication: "Norvasc 10 MG Oral Tablet",
-          code: RXNORM + "212550",
-        },
-        { entry: "e3", medication: "Aspirin" },
-        { entry: "e4", medication: "Pain relief", code: RXNORM + "1" },
-        { entry: "e5", medication: "Combined", code: RXNORM + "308135" },
-        { entry: "e6", medication: "Zestoretic", code: RXNORM + "9" },
-        { entry: "e7", medication: "Prinzide", code: RXNORM + "10" },
-        { entry: "e8", medication: "Metformin", code: RXNORM + "20" },
-        { entry: "e9", medication: "Glucophage XR", code: RXNORM + "21" },
-        { entry: "e9", medication: "Glucophage", code: RXNORM + "20" },
-      ),
-      about,
-    ),
+  const lines = (rows: object) =>
+    view
+      .worthALook(rows, about)
+      .map(({ entry, sentence, tag }: Record<string, string>) => [
+        entry,
+        sentence,
+        tag,
+      ]);
+  const all = answers(
+    {
+      entry: "e1",
+      medication: "amlodipine 5 MG Oral Tablet",
+      code: RXNORM + "197361",
+    },
+    {
+      entry: "e2",
+      medication: "Norvasc 10 MG Oral Tablet",
+      code: RXNORM + "212550",
+    },
+    { entry: "e3", medication: "Aspirin" },
+    { entry: "e4", medication: "Pain relief", code: RXNORM + "1" },
+    { entry: "e5", medication: "Combined", code: RXNORM + "308135" },
+    { entry: "e6", medication: "Zestoretic", code: RXNORM + "9" },
+    { entry: "e7", medication: "Prinzide", code: RXNORM + "10" },
+    { entry: "e8", medication: "Metformin", code: RXNORM + "20" },
+    { entry: "e9", medication: "Glucophage XR", code: RXNORM + "21" },
+    { entry: "e9", medication: "Glucophage", code: RXNORM + "20" },
+  );
+  assert.deepEqual(lines(all), [
     [
-      "Amlodipine 5 MG Oral Tablet and Norvasc 10 MG Oral Tablet share an ingredient, amlodipine, and are shown apart. Worth a look.",
-      "Amlodipine 5 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
-      "Norvasc 10 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart. Worth a look.",
-      "Pain relief and Combined share an ingredient, 5640, and are shown apart. Worth a look.",
-      "Zestoretic and Prinzide share the combination, hydrochlorothiazide / lisinopril, and are shown apart. Worth a look.",
+      "e1",
+      "Amlodipine 5 MG Oral Tablet and Norvasc 10 MG Oral Tablet share an ingredient, amlodipine, and are shown apart.",
+      undefined,
     ],
+    [
+      "e1",
+      "Amlodipine 5 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart.",
+      undefined,
+    ],
+    [
+      "e2",
+      "Norvasc 10 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart.",
+      undefined,
+    ],
+    [
+      "e4",
+      "Pain relief and Combined share an ingredient, 5640, and are shown apart.",
+      undefined,
+    ],
+    [
+      "e6",
+      "Zestoretic and Prinzide share the combination, hydrochlorothiazide / lisinopril, and are shown apart.",
+      undefined,
+    ],
+  ]);
+
+  const series = {
+    iri: "urn:test:rxnorm",
+    label: "RxNorm",
+    credit: "RxNorm, NLM.",
+    versions: [{ iri: "urn:v", label: "1", issued: "2026-10-01" }],
+  };
+  const sourced = {
+    ...all,
+    "entry/Where it came from": all[MEDICATIONS].map((row) => ({
+      ...row,
+      record: `r-${row.entry}`,
+    })),
+  };
+  const sentenceOf = (id: string, held: object[]) =>
+    view
+      .entryOf(sourced, id, { about, held })
+      .known.map(({ sentence, from }: { sentence: string; from?: object }) => [
+        sentence,
+        from === undefined ? undefined : "from a table",
+      ])
+      .filter(([sentence]: string[]) => sentence?.includes("share an"));
+  assert.deepEqual(
+    sentenceOf("e2", [series]).map(([sentence]: string[]) => sentence),
+    [
+      "Amlodipine 5 MG Oral Tablet and Norvasc 10 MG Oral Tablet share an ingredient, amlodipine, and are shown apart.",
+      "Norvasc 10 MG Oral Tablet and Combined share an ingredient, amlodipine, and are shown apart.",
+    ],
+    "the second medication of a pair says it too, and so does the first of the next",
   );
   assert.deepEqual(
-    view.noticed(
+    sentenceOf("e2", [series]).map(([, from]: string[]) => from),
+    ["from a table", "from a table"],
+  );
+  assert.deepEqual(
+    sentenceOf("e2", []),
+    [],
+    "a line from a table that is not held is not said",
+  );
+  assert.deepEqual(sentenceOf("e3", [series]), []);
+  assert.deepEqual(
+    lines(
       answers(
         {
           entry: "e1",
@@ -174,10 +293,13 @@ test("what Cascade noticed: two medications in two entries whose codes share an 
           code: RXNORM + "308135",
         },
       ),
-      about,
     ),
     [
-      "Amlodipine 5 MG Oral Tablet and Bmlodipine share an ingredient, amlodipine, and are shown apart. Worth a look.",
+      [
+        "e1",
+        "Amlodipine 5 MG Oral Tablet and Bmlodipine share an ingredient, amlodipine, and are shown apart.",
+        undefined,
+      ],
     ],
   );
 });
@@ -323,7 +445,7 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
   }
 });
 
-test("a pod's page names a row by the first of its codes the tables name, else by the record's own text, and says when a code is retired", () => {
+test("a pod's page names a row by the first of its codes the tables name, else by the record's own text, and tags a retired code and an entry that needs review", () => {
   const CVX = "urn:test:cvx/";
   const ICD = "urn:test:icd/";
   const SCT = "urn:test:sct/";
@@ -348,9 +470,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
         icd10: `${ICD}J45.909`,
       },
     ],
-    [SEEN]: [
-      { entry: "i1", place: "Cascade North", records: "2", places: "1" },
-    ],
+    [REVIEW]: [{ entry: "i3", needs: "judged different, still joined" }],
   };
   const about = new Map<string, object>([
     [`${CVX}141`, name("flu, split")],
@@ -383,12 +503,24 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     "hantavirus",
     "Retired code",
     "Old flu",
-    "Retired code, replaced by 141 and 150",
     "Unlisted",
     "Unspecified asthma, uncomplicated",
-    "Flu, split arrived more than once from Cascade North. Cascade keeps it as one immunization.",
   ])
     assert.ok(named.includes(shown), shown);
+  assert.ok(
+    !named.some((line: string) => line.includes("replaced by")),
+    "what replaces a retired code is said on its entry, not in the tag",
+  );
+  assert.equal(
+    named.filter((line: string) => line === "Needs review").length,
+    2,
+    "the row of an entry that needs review carries the tag, and so does its line in Worth a look",
+  );
+  assert.ok(
+    named.some((line: string) =>
+      line.startsWith("Old flu was marked as different"),
+    ),
+  );
   for (const hidden of ["Fluarix", "Hantavax", "Asthma (disorder)"])
     assert.ok(!named.includes(hidden), hidden);
   assert.equal(
@@ -975,7 +1107,7 @@ test("what a variant's page says: a sentence for each report, oldest first, tagg
         {
           sentence:
             "Your 2022 report from Harbourline Genetics said uncertain significance.",
-          tag: "Differs from ClinVar today",
+          tag: "Differs",
         },
         { sentence: "Your 2023 report said benign." },
         {
@@ -1001,7 +1133,7 @@ test("what a variant's page says: a sentence for each report, oldest first, tagg
       [
         {
           sentence: "Your 2022 report said uncertain significance.",
-          tag: "Differs from ClinVar today",
+          tag: "Differs",
         },
         { sentence: "Your 2024 report said likely pathogenic." },
       ],
@@ -1337,7 +1469,7 @@ test("an entry's page says what it is, where each document it came from put it, 
   assert.equal(entry.name, "Asthma (disorder)");
   assert.equal(entry.recorded, "Asthma");
   assert.equal(entry.kind, "condition");
-  assert.deepEqual(entry.tags, ["Retired code, replaced by 195967002"]);
+  assert.deepEqual(entry.tags, ["Retired code"]);
   assert.deepEqual(entry.codes, [{ notation: "195967001", series: NAMES }]);
   assert.deepEqual(
     entry.where.map(({ place }: { place: string }) => place),
@@ -1366,7 +1498,7 @@ test("an entry's page says what it is, where each document it came from put it, 
   );
   const words = textOf(page).replace(/ \./g, ".");
   for (const shown of [
-    "Asthma (disorder) Retired code, replaced by 195967002",
+    "Asthma (disorder) Retired code",
     "Recorded as Asthma",
     "Since Mar 2, 2019",
     "Code 195967001",
@@ -1414,10 +1546,12 @@ test("an entry no section shows is named and kinded from its label and says what
       records: 1,
     },
   ]);
+  assert.deepEqual(entry.tags, ["Needs review"]);
   assert.deepEqual(entry.known, [
     {
       sentence:
         "Latex was marked as different, but is still shown as one allergy.",
+      tag: "Needs review",
     },
   ]);
 
@@ -1461,7 +1595,7 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
   assert.equal(about.get(`${RX}29046`).name.label, "lisinopril");
 });
 
-const DIFFERS = "Differs from ClinVar today";
+const DIFFERS = "Differs";
 const COUNSELLOR =
   "Your clinician or a genetic counsellor can explain what this means for you.";
 const HARBOURLINE = "Harbourline Genetics";
@@ -1543,7 +1677,7 @@ const VARIANTS_SAID = {
   labels: LABELS,
 };
 
-test("a pod's page has a Genetic variants tile beside the others, a row for each variant entry that opens it, naming its gene and expression, counting its reports and tagged only once the tables say a report differs; the page has no variants card, and the sentences about it are as before", () => {
+test("a pod's page has a Genetic variants tile beside the others, a row for each variant entry that opens it, naming its gene and expression, counting its reports and tagged only once the tables say a report differs; the page has no variants card and no column of its own for ClinVar today, and Worth a look says which report differs and links to the variant's entry", () => {
   const page = (said?: object) =>
     render(
       view.podPage(VARIANT_ANSWERS, {
@@ -1571,15 +1705,23 @@ test("a pod's page has a Genetic variants tile beside the others, a row for each
     rowsOf(page(VARIANTS_SAID))
       .filter(ofVariants)
       .map(({ text }) => text),
-    [`MLH1 ${NAME} 2 Differs from ClinVar today`, "NM_000500.1:c.1A>G 1"],
+    [`MLH1 ${NAME} Differs 2`, "NM_000500.1:c.1A>G 1"],
   );
+  assert.ok(!textOf(before).includes("ClinVar today"), "no column of its own");
   assert.ok(!before.includes('class="card variants"'));
   assert.ok(!textOf(before).includes("counsellor"));
-  assert.ok(
-    textOf(before).includes(
-      `MLH1 ${NAME} was recorded at ${HARBOURLINE} and ${COLUMBA}. Cascade keeps it as one variant.`,
-    ),
-  );
+  assert.ok(!before.includes("card worth"), "nothing needs a look yet");
+  assert.ok(!textOf(before).includes("Cascade keeps it as one variant"));
+  const differing = `MLH1 ${NAME}: your 2022 report from ${HARBOURLINE} differs from ClinVar today.`;
+  assert.deepEqual(view.worthALook(VARIANT_ANSWERS), []);
+  assert.deepEqual(view.worthALook(VARIANT_ANSWERS, new Map(), VARIANTS_SAID), [
+    { sentence: differing, entry: "v1", tag: DIFFERS },
+  ]);
+  const worth = /<div class="card worth">([\s\S]*?)<\/div>/.exec(
+    page(VARIANTS_SAID),
+  )?.[1];
+  assert.equal(textOf(worth ?? ""), `Worth a look ${differing} ${DIFFERS}`);
+  assert.ok(worth?.includes('<a href="/entries/v1">'), "it opens the entry");
   assert.deepEqual(
     view.named(VARIANT_ANSWERS, new Map())[VARIANTS],
     VARIANT_ANSWERS[VARIANTS],

@@ -123,10 +123,14 @@ text, from its question's code columns in this order: `code` of
 `pod/My active allergies`, `pod/My active medications`, `pod/My lab results`
 and `pod/My immunizations`; `icd10`, then `snomed`, of
 `pod/My active conditions`; `snomed` of `pod/My procedures`. Each holds a
-code's IRI in its system, which `about` takes as it is. Its "What Cascade
-noticed" also says when two medications in two entries have an ingredient in
-common. That is a hint from the tables, not a review item of the pod, which
-cannot read them: a combination maps to its own multiple-ingredient concept (RxNorm's MIN),
+code's IRI in its system, which `about` takes as it is. Its "Worth a look"
+lists each entry that needs review, each report that differs from ClinVar today
+and each pair of medications in two entries that have an ingredient in common,
+every line linking to its entry, with one tag (`Needs review`, `Differs`,
+`Retired code`) shared by a line, a row and an entry. Both medications of a pair
+say it on their entries, with the table and version it came from. The pair is a
+hint from the tables, not a review item of the pod, which cannot read them: a
+combination maps to its own multiple-ingredient concept (RxNorm's MIN),
 never to each of its ingredients, so lisinopril and lisinopril with
 hydrochlorothiazide share none.
 
