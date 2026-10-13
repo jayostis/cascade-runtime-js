@@ -3,7 +3,15 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
 import { documentName, inUtc, recordName } from "./names.js";
-import { iri, literal, ntriples, RDF, type Triple, XSD } from "./rdf.js";
+import {
+  codeIri,
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  type Triple,
+  XSD,
+} from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
@@ -282,7 +290,7 @@ interface Pod {
 
 /**
  * Every code a current version of the pod's records may join a table by: each IRI it states under a code system's URI
- * space, and each literal it states written after each URI space.
+ * space, and each literal it states as the IRI of that code in each URI space.
  */
 async function podCodes(
   union: Dataset,
@@ -295,7 +303,7 @@ async function podCodes(
   for (const row of rows) {
     const value = row.get("value");
     if (value?.termType === "Literal")
-      for (const space of uriSpaces) codes.add(space + value.value);
+      for (const space of uriSpaces) codes.add(codeIri(space, value.value));
     else if (
       value?.termType === "NamedNode" &&
       uriSpaces.some((space) => value.value.startsWith(space))

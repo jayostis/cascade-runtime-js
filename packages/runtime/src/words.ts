@@ -2,7 +2,7 @@ import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import { ccdaRecordName, documentName, inUtc, recordName } from "./names.js";
 import { MATCHER } from "./matcher.js";
-import { iri, RDF, written } from "./rdf.js";
+import { codeIri, iri, RDF, written } from "./rdf.js";
 import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { REC } from "./step.js";
@@ -13,6 +13,7 @@ export const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 export const HEALTH = "https://ns.cascadeprotocol.org/health/v1#";
 export const CLINICAL = "https://ns.cascadeprotocol.org/clinical/v1#";
 export const PAV = "http://purl.org/pav/";
+export const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
@@ -24,6 +25,8 @@ export const KINDS: Readonly<Record<string, string>> = {
   procedure: `${CLINICAL}Procedure`,
   medication: `${CLINICAL}Medication`,
   "lab result": `${HEALTH}LabResultRecord`,
+  variant: `${GENOMICS}Variant`,
+  "variant interpretation": `${GENOMICS}VariantInterpretation`,
 };
 
 export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
@@ -37,6 +40,8 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same code and period": `${JDG}SameCodeAndPeriod`,
   "same brand generic": `${JDG}SameBrandGeneric`,
   "same product code": `${JDG}SameProductCode`,
+  "same variation": `${JDG}SameVariation`,
+  "same variation through the table": `${JDG}SameVariationThroughTable`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
@@ -49,13 +54,20 @@ const CODES: Readonly<
   LOINC: { system: `${REC}LOINC` },
   NDC: { system: `${REC}NDC` },
   CVX: { literal: `${HEALTH}vaccineCode` },
+  HGVS: { literal: `${GENOMICS}hgvsCDot` },
+  ClinVar: { literal: `${GENOMICS}clinvarVariationId` },
 };
 
 const either = (words: readonly string[]): string =>
   words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 
+/** An interpretation has neither a code nor a name, so no step names one: a step names the variant it interprets. */
+const NAMED_KINDS = Object.keys(KINDS).filter(
+  (kind) => kind !== "variant interpretation",
+);
+
 const SAID = new RegExp(
-  `^(${either(Object.keys(KINDS))})(?: (${either(Object.keys(CODES))}) (\\S+))?(?: "([^"]*)")?(?: from (\\S+))?$`,
+  `^(${either(NAMED_KINDS)})(?: (${either(Object.keys(CODES))}) (\\S+))?(?: "([^"]*)")?(?: from (\\S+))?$`,
 );
 
 const NAMES = [
@@ -65,6 +77,7 @@ const NAMES = [
   `${CLINICAL}procedureName`,
   `${CLINICAL}drugName`,
   `${HEALTH}testName`,
+  `${GENOMICS}hgvsCDot`,
 ];
 
 /** A person `people.ttl` names: the pod's subject, its address, and the folder of their scripted input. */
@@ -318,7 +331,7 @@ export class Words {
         throw new Error(
           `${system} is the code system ${registered}, which the vocabulary does not register`,
         );
-      alternatives.push(`?version ?coded <${found.uriSpace}${code}>`);
+      alternatives.push(`?version ?coded <${codeIri(found.uriSpace, code)}>`);
     }
     if (literal !== undefined)
       alternatives.push(`?version <${literal}> ${JSON.stringify(code)}`);

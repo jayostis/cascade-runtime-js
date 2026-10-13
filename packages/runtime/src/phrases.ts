@@ -159,9 +159,11 @@ parameter(
   /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile/,
 );
 parameter("lens", /[a-z]+/);
-parameter("record", /[^:]+/);
-parameter("records", /[^:]+/);
-parameter("judgment", /[^:]+/);
+/** Words, in which a colon is part of an HGVS expression when a non-space follows it, and the colon ending a step is not. */
+const WORDS = /(?:[^:]|:(?=\S))+/;
+parameter("record", WORDS);
+parameter("records", WORDS);
+parameter("judgment", WORDS);
 
 /**
  * The steps a `{step}` or `{steps}` names among those taken: `that step` the last of them, `that import` or
