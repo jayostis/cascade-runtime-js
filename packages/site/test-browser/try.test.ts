@@ -1170,10 +1170,19 @@ test("in try/, Martin's pod, copied on a first visit, shows once the engine is r
       /\s+/g,
       " ",
     );
+    const mlh1 = (
+      await page
+        .locator("main .variant")
+        .filter({ hasText: "ClinVar 90011" })
+        .innerText()
+    ).replace(/\s+/g, " ");
     for (const sentence of [
       "Your 2022 report said uncertain significance.",
       "Your 2024 report said likely pathogenic.",
       "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
+    ])
+      assert.ok(mlh1.includes(sentence), `${sentence} is not in ${mlh1}`);
+    for (const sentence of [
       "ClinVar, as this app holds it, has no row for this variant.",
       "Your clinician or a genetic counsellor can explain what this means for you.",
     ])

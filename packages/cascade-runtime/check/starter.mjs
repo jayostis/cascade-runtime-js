@@ -36,12 +36,25 @@ const PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
 const COUNSELLOR =
   "Your clinician or a genetic counsellor can explain what this means for you.";
 const DIFFERS = "Differs from ClinVar today";
-/** What the page says ClinVar says today of each ClinVar ID in Martin's kit, as jayostis/cascade-vocabulary#138 words it. */
-const SAID_OF = {
-  90011:
-    "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
-  8931: "ClinVar today says benign: reviewed by expert panel, one contributing submitter.",
-};
+const ACMG = [
+  "Pathogenic",
+  "LikelyPathogenic",
+  "VUS",
+  "LikelyBenign",
+  "Benign",
+];
+const DIGITS = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+];
 const MEDICATIONS = "pod/My active medications";
 const DRUG_NAME = "https://ns.cascadeprotocol.org/clinical/v1#drugName";
 const ALLERGIES = "pod/My active allergies";
@@ -766,6 +779,37 @@ if (release === undefined) {
         const [text] = objectsOf(labels, concept, PREF_LABEL);
         return text.slice(0, 1).toLowerCase() + text.slice(1);
       };
+      // The page reads the app's copy of the published ClinVar series; this check reads the kit's subset of it. They agree
+      // because the subset is the published rows, so the sentence is built here from the kit's own row.
+      const saidOf = (id) => {
+        const row = `http://www.ncbi.nlm.nih.gov/clinvar/${id}`;
+        const classifications = rowOf(id);
+        const [status] = objectsOf(held, row, `${REC}clinvarReviewStatus`);
+        const [submitters] = objectsOf(
+          held,
+          row,
+          `${REC}contributingSubmitters`,
+        );
+        const count = Number(submitters);
+        assert.ok(
+          classifications.length > 0 && status && count < 10,
+          `${id}: the kit's row`,
+        );
+        const said = ACMG.map((name) => GENOMICS + name)
+          .filter((iri) => classifications.includes(iri))
+          .map(label)
+          .join("/");
+        const counted = `${DIGITS[count]} contributing ${count === 1 ? "submitter" : "submitters"}`;
+        return `ClinVar today says ${said}: ${label(status)}, ${counted}.`;
+      };
+      assert.deepEqual(
+        kitVariants.flatMap(({ variations }) => variations).sort(),
+        held
+          .filter(([, p]) => p.value === `${REC}clinvarClassification`)
+          .map(([row]) => row.value.split("/").at(-1))
+          .sort(),
+        "the kit's ClinVar IDs are not the rows its story's table holds",
+      );
       const kitReports = await triplesOf(
         `${MARTIN}/expected/variant-interpretations.ttl`,
       );
@@ -873,7 +917,7 @@ if (release === undefined) {
         });
         const clinvar = lines.at(-1);
         if (id !== undefined)
-          assert.equal(clinvar, SAID_OF[id], `${title}: ${clinvar}`);
+          assert.equal(clinvar, saidOf(id), `${title}: ${clinvar}`);
         else if (covered.includes(gene))
           assert.equal(
             clinvar,
