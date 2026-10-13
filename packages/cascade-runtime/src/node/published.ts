@@ -3,6 +3,8 @@ import { ANSWERS, DESCRIBED, type Described } from "../answers.js";
 import { openPodWith, type Parts } from "../pod.js";
 import { shipped } from "../tables.js";
 
+const REPORTS = "pod/What each report says of a variant";
+
 export { entryVersion } from "../answers.js";
 export { openPodWith } from "../pod.js";
 export { partsOf } from "./resolved.js";
@@ -34,8 +36,10 @@ export async function publishedAnswers(
     { adopt: false },
   );
   try {
-    for (const question of (await questions(parts.vocabulary)).keys())
-      await opened.ask(question);
+    for (const question of (await questions(parts.vocabulary)).keys()) {
+      const rows = await opened.ask(question);
+      if (question === REPORTS && rows.length > 0) await opened.agreement();
+    }
   } finally {
     await opened.close();
   }

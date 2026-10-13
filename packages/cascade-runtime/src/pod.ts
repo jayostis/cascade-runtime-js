@@ -11,6 +11,7 @@ import {
   lenses,
   literal,
   type Loaded,
+  QUERIES,
   ofMediaType,
   type WasmBridge,
   type AdaptersOf,
@@ -103,6 +104,12 @@ export interface Pod {
     question: string | { query: string },
     options?: { lens?: string },
   ): Promise<Row[]>;
+  /**
+   * How each report of a variant stands to the row of the variant classifications table the app holds that the variant
+   * finds (`tables/agreement.rq`): the report's entry (`report`), the row (`row`), the version (`origin`) and the
+   * `verdict`. It is answered over the app's current version of the table, kept as an answer is, and writes nothing.
+   */
+  agreement(): Promise<Row[]>;
   close(): Promise<void>;
 }
 
@@ -269,6 +276,23 @@ function askable(vocabulary: Files) {
 
 type Askable = Awaited<ReturnType<typeof askable>>;
 
+/** What the verdicts are kept under, among a pod's answers: not a question of the vocabulary's, a query beside them. */
+export const AGREEMENT = "tables/agreement";
+const AGREEMENT_QUERY = `${QUERIES}${AGREEMENT}.rq`;
+
+const agreements = new WeakMap<Files, Promise<string>>();
+
+/** The text of the vocabulary's agreement query, read once. */
+function agreementText(vocabulary: Files): Promise<string> {
+  let found = agreements.get(vocabulary);
+  if (found === undefined) {
+    found = readText(vocabulary, AGREEMENT_QUERY);
+    agreements.set(vocabulary, found);
+    found.catch(() => agreements.delete(vocabulary));
+  }
+  return found;
+}
+
 function offeredLens(offered: Askable, lens: string): void {
   if (!offered.lenses.includes(lens))
     throw new Error(`no lens ${lens}; there are ${offered.lenses.join(", ")}`);
@@ -327,6 +351,8 @@ export interface KeptPod extends Described {
    * question or lens the vocabulary does not offer throws, as the pod opened with the engine would.
    */
   rows(question: string, lens?: string): Promise<Row[] | undefined>;
+  /** The rows kept for `agreement()` under the lens for the pod as it stands; none when none were. */
+  agreement(): Promise<Row[] | undefined>;
 }
 
 /** The pod in `pod`, as its answers kept in `answers` read it: what `pod.json` says it is; none when it says nothing. */
@@ -357,6 +383,23 @@ export async function keptPod(
           question,
           text,
           lens,
+          revision: await revision,
+          tables: await tables,
+        }),
+      );
+    },
+    agreement: async () => {
+      const offered = await askable(vocabulary);
+      revision ??= podRevision(pod, layout, described.address);
+      tables ??= reading.tables.current();
+      return answers.rows(
+        reading.lens,
+        AGREEMENT,
+        await keyOf(build, offered.layout, {
+          runtime: answers.runtime,
+          question: AGREEMENT,
+          text: await agreementText(vocabulary),
+          lens: reading.lens,
           revision: await revision,
           tables: await tables,
         }),
@@ -459,6 +502,10 @@ class OpenPod implements Pod {
     options: { lens?: string } = {},
   ): Promise<Row[]> {
     return this.#next(() => this.#ask(question, options));
+  }
+
+  agreement(): Promise<Row[]> {
+    return this.#next(() => this.#agreement());
   }
 
   close(): Promise<void> {
@@ -740,6 +787,38 @@ class OpenPod implements Pod {
           : [[record.value, version.value] as const];
       }),
     );
+  }
+
+  async #agreement(): Promise<Row[]> {
+    const { vocabulary, build, lens } = this.#parts;
+    const [offered, text] = await Promise.all([
+      askable(vocabulary),
+      agreementText(vocabulary),
+    ]);
+    const answers = this.#answers;
+    let key: string | undefined;
+    if (answers !== undefined) {
+      key = await keyOf(build, offered.layout, {
+        runtime: answers.runtime,
+        question: AGREEMENT,
+        text,
+        lens,
+        revision: await this.#core.revision(),
+        tables: this.#tables,
+      });
+      const kept = await answers.rows(lens, AGREEMENT, key);
+      if (kept !== undefined) return kept;
+    }
+    const { rows } = await this.#core.selectWithRows(
+      text,
+      `${REC}VariantClassifications`,
+    );
+    const verdicts = rows.map((row) =>
+      Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+    );
+    if (answers !== undefined && key !== undefined)
+      await answers.keep(lens, AGREEMENT, key, verdicts);
+    return verdicts;
   }
 
   async #ask(

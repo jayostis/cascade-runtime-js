@@ -34,7 +34,10 @@ table alone, with which pods use which version (`uses()`). Check now posts to
 `/tables/check`.
 A pod's page names each record by its code's name in those tables
 (`about(codesOf(answers))`), else by the record's own text, and marks a
-retired code.
+retired code. It shows each variant's reports beside what ClinVar says today
+(`variantClassification()`, `pod.agreement()` and `labels()`, gathered by
+`variantsSaid`), read from the app's current version of the series, with its
+credit; it records nothing in the pod.
 Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.

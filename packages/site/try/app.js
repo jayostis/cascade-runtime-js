@@ -50,6 +50,7 @@ import {
   STYLE,
   tableId,
   tablePage,
+  variantsSaid,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -171,7 +172,7 @@ const signInButton = (fhirBase, label) =>
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, about, from, title, body } = state.page;
+  const { answers, about, said, from, title, body } = state.page;
   if (answers === undefined) return { title, body };
   const { current, connection } = state;
   return {
@@ -199,6 +200,7 @@ function pageShown() {
       findHospital: `${podHref(current)}&hospitals`,
       unheld: pod?.opened?.unheld,
       about,
+      said,
     }),
   };
 }
@@ -288,10 +290,25 @@ async function aboutCodes(answers) {
   }
 }
 
+/** What the tables say of the variants `answers` hold; nothing before the engine is ready, or when they cannot say. */
+async function variantsOf(answers) {
+  if (document.body.dataset.engine !== "ready") return undefined;
+  try {
+    return await variantsSaid(answers, { tables: await appTables(), pod });
+  } catch {
+    return undefined;
+  }
+}
+
 /** The pod's page; `from` names the hospital a record was just brought in from. */
 async function showPod(from) {
   const answers = await answered();
-  state.page = { answers, about: await aboutCodes(answers), from };
+  state.page = {
+    answers,
+    about: await aboutCodes(answers),
+    said: await variantsOf(answers),
+    from,
+  };
   state.doing = "ready";
   redraw();
 }
@@ -496,7 +513,11 @@ async function signIn(fhirBase, popup) {
   const shown = { row, step: "signing in", requests: 0 };
   state.connection = shown;
   const answers = await answered();
-  state.page = { answers, about: await aboutCodes(answers) };
+  state.page = {
+    answers,
+    about: await aboutCodes(answers),
+    said: await variantsOf(answers),
+  };
   const now = (said = {}, doing = "busy") => {
     if (state.connection === shown) showConnection(said, doing);
   };
@@ -777,8 +798,10 @@ busy(async () => {
         let shown = state.page;
         shown?.answers !== undefined && shown.about === undefined;
         shown = state.page
-      )
+      ) {
         shown.about = (await aboutCodes(shown.answers)) ?? new Map();
+        shown.said = await variantsOf(shown.answers);
+      }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";
     },

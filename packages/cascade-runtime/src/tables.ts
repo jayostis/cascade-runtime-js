@@ -1,6 +1,7 @@
 import {
   canonical,
   CODES,
+  codeIri,
   type Files,
   fileStem,
   Graph,
@@ -8,10 +9,12 @@ import {
   MemoryFiles,
   ntriples,
   RDF,
+  readText,
   References,
   Refusal,
   RULE_LIST,
   relative,
+  rowsByCode,
   type StoreFactory,
   tableTerms,
   type Term,
@@ -19,6 +22,7 @@ import {
 } from "@cascade-runtime/runtime";
 import {
   gunzipped,
+  indexedRows,
   IN_THIS_THREAD,
   LISTING_FORMAT,
   merged,
@@ -33,10 +37,13 @@ import {
   type RowsWork,
   SKOS,
   SPECIALIZATION_OF,
+  termsOfRows,
   values,
 } from "./rows.js";
 
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const RECORDS = "ontologies/records/v1-draft/records.ttl";
+const CLASSIFICATIONS = `${REC}VariantClassifications`;
 const PAV = "http://purl.org/pav/";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const DCT = "http://purl.org/dc/terms/";
@@ -207,7 +214,59 @@ export interface Facts extends Coded {
     readonly mapsTo: readonly (Coded & { readonly alongside: Codes })[];
     readonly mappedFrom: Codes;
   })[];
+  /** From each variant classifications series whose current version holds it as a row's subject, in the order of preference. */
+  readonly classifications: readonly (Fact & ClassificationRow)[];
 }
+
+/** A variant as a page asks about it: an entry's codes, as `pod/My genetic variants` gives them. */
+export interface VariantAsked {
+  /** `genomics:geneSymbol`. */
+  readonly gene?: string;
+  /** The `genomics:hgvsCDot` literals. */
+  readonly hgvs: readonly string[];
+  /** The `genomics:clinvarVariationId` literals. */
+  readonly variations: readonly string[];
+}
+
+/** A concept and the words a person reads it by. */
+export interface Concept {
+  readonly iri: string;
+  readonly label: string;
+}
+
+/** What a variant classifications row says of a variation. */
+export interface ClassificationRow {
+  /** The row's subject. */
+  readonly variation: string;
+  readonly classification: readonly Concept[];
+  readonly reviewStatus?: Concept;
+  /** An `xsd:date`. */
+  readonly lastEvaluated?: string;
+  readonly contributingSubmitters?: number;
+  readonly submitters?: number;
+}
+
+/** What the app's current version of a held variant classifications series says of a variant. */
+export type WhatClinVarSays =
+  | { readonly found: "no series" }
+  | {
+      readonly found: "not covered";
+      readonly series: string;
+      readonly version: string;
+      readonly genes: readonly string[];
+    }
+  | {
+      readonly found: "not found";
+      readonly series: string;
+      readonly version: string;
+    }
+  | {
+      readonly found: "rows";
+      readonly series: string;
+      readonly version: string;
+      /** Exactly one row. */
+      readonly rows: readonly ClassificationRow[];
+    };
 
 export interface Searched {
   /** The version searched, when one series is; none when the series is not held. */
@@ -428,6 +487,11 @@ export class Tables {
     string,
     Promise<ReadonlyMap<string, readonly string[]>>
   >();
+  readonly #byCode = new Map<
+    string,
+    Promise<Readonly<Record<string, readonly string[]>>>
+  >();
+  #concepts: Promise<ReadonlyMap<string, string>> | undefined;
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
@@ -611,6 +675,8 @@ export class Tables {
 
   /** Each series the app holds, in the order of its feeds and then by label. */
   async held(): Promise<HeldSeries[]> {
+    // The store starts from the starter copies before its index is read.
+    await this.#start();
     const [index, held] = await Promise.all([this.#index(), this.#held()]);
     return this.#ordered(index, held).map((series) => {
       const one = (subject: Term, predicate: string): string | undefined =>
@@ -747,8 +813,9 @@ export class Tables {
 
   /** What every held series says of the code, or each of `among`, from its current version. */
   async facts(code: string, among?: readonly string[]): Promise<Facts> {
-    const [references, index, { uriSpaces }] = await Promise.all([
-      this.references(),
+    // The store starts from the starter copies before its index is read.
+    const references = await this.references();
+    const [index, { uriSpaces, foundBy, codeSystems }] = await Promise.all([
       this.#index(),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
     ]);
@@ -805,10 +872,10 @@ export class Tables {
         index
           .subjects(SHIPS_WITH)
           .map(({ value }) => value)
-          .filter(
-            (series) =>
-              references.kindOf(series) !== `${REC}CodeNames` &&
-              references.kindOf(series) !== `${REC}CodeStatus`,
+          .filter((series) =>
+            foundBy
+              .get(references.kindOf(series) ?? "")
+              ?.includes(`${OWL}annotatedSource`),
           )
           .flatMap((series) => {
             const version = current(series);
@@ -816,6 +883,21 @@ export class Tables {
           }),
       ).then((each) => each.flat()),
     ]);
+    // Only a variation is a row's subject; a version's rows are not read for any other code.
+    const clinvar = codeSystems.find(({ iri }) => iri === `${REC}ClinVar`);
+    const classifications = (
+      await Promise.all(
+        (clinvar !== undefined && code.startsWith(clinvar.uriSpace)
+          ? held(CLASSIFICATIONS)
+          : []
+        ).map(async (fact) => {
+          const rows = rowsAbout(await this.#text(fact.version), code);
+          return rows.length === 0
+            ? []
+            : [{ ...fact, ...(await this.#classification(code, rows)) }];
+        }),
+      )
+    ).flat();
     const names = named.flatMap(({ fact, rows }) => {
       const [label] = values(rows, `${SKOS}prefLabel`);
       return label === undefined
@@ -866,7 +948,187 @@ export class Tables {
         })),
         mappedFrom: codes(fact.mappedFrom),
       })),
+      classifications,
     };
+  }
+
+  /**
+   * What the app's current version of the first held variant classifications series that covers the variant's gene says
+   * of the variant. The row is found as rule R13 finds it: through the variant's ClinVar IDs when it has any, through
+   * its HGVS expressions only when it has none; one row answers, none or several are "not found".
+   */
+  async variantClassification(variant: VariantAsked): Promise<WhatClinVarSays> {
+    const [references, { codeSystems }] = await Promise.all([
+      this.references(),
+      tableTerms(this.#options.vocabulary, this.#options.newStore),
+    ]);
+    const held = this.#preferred(references, CLASSIFICATIONS).map((series) => {
+      const version = references.fallback(series);
+      return {
+        series,
+        version,
+        genes: references.index
+          .objects(iri(version), `${REC}coversGene`)
+          .map(({ value }) => value),
+      };
+    });
+    const [first] = held;
+    if (first === undefined) return { found: "no series" };
+    const stem = (system: string): string => {
+      const found = codeSystems.find((each) => each.iri === `${REC}${system}`);
+      if (found === undefined)
+        throw new Error(
+          `the vocabulary registers no code system rec:${system}`,
+        );
+      return found.uriSpace;
+    };
+    const codes =
+      variant.variations.length > 0
+        ? variant.variations.map((each) => codeIri(stem("ClinVar"), each))
+        : variant.hgvs.map((each) => codeIri(stem("HGVS"), each));
+    const answer = async (
+      one: (typeof held)[number],
+    ): Promise<WhatClinVarSays> => {
+      const index = await this.#codesIn(one.version);
+      const subjects = new Set(
+        codes.flatMap((code) =>
+          Object.hasOwn(index, code) ? index[code]! : [],
+        ),
+      );
+      const [subject, ...others] = subjects;
+      const { series, version } = one;
+      if (subject === undefined || others.length > 0)
+        return { found: "not found", series, version };
+      return {
+        found: "rows",
+        series,
+        version,
+        rows: [
+          await this.#classification(
+            subject,
+            rowsAbout(await this.#text(version), subject),
+          ),
+        ],
+      };
+    };
+    const read = async (
+      among: readonly (typeof held)[number][],
+    ): Promise<WhatClinVarSays | undefined> => {
+      for (const one of among) {
+        const answered = await answer(one);
+        if (answered.found === "rows") return answered;
+      }
+      return undefined;
+    };
+    if (variant.gene === undefined)
+      return (
+        (await read(held)) ?? {
+          found: "not found",
+          series: first.series,
+          version: first.version,
+        }
+      );
+    const covering = held.find(({ genes }) => genes.includes(variant.gene!));
+    if (covering !== undefined) return answer(covering);
+    const unnamed = await read(held.filter(({ genes }) => genes.length === 0));
+    if (unnamed !== undefined) return unnamed;
+    const stating = held.find(({ genes }) => genes.length > 0);
+    return stating === undefined
+      ? { found: "not found", series: first.series, version: first.version }
+      : {
+          found: "not covered",
+          series: stating.series,
+          version: stating.version,
+          genes: [...stating.genes].sort(),
+        };
+  }
+
+  /** Each concept's `skos:prefLabel`, else `rdfs:label`, in the vocabulary's records ontology; a concept with neither is left out. */
+  async labels(concepts: readonly string[]): Promise<Map<string, string>> {
+    const known = await this.#labelled();
+    return new Map(
+      concepts.flatMap((concept) => {
+        const label = known.get(concept);
+        return label === undefined ? [] : [[concept, label] as const];
+      }),
+    );
+  }
+
+  #labelled(): Promise<ReadonlyMap<string, string>> {
+    this.#concepts ??= (async () => {
+      const { vocabulary, newStore } = this.#options;
+      const graph = new Graph(
+        await newStore().parse(
+          await readText(vocabulary, RECORDS),
+          vocabulary.iri + RECORDS,
+        ),
+      );
+      const labels = new Map<string, string>();
+      for (const predicate of [`${SKOS}prefLabel`, `${RDFS}label`])
+        for (const [subject, , label] of graph.match(undefined, predicate))
+          if (!labels.has(subject.value))
+            labels.set(subject.value, label.value);
+      return labels;
+    })();
+    const p = this.#concepts;
+    p.catch(() => {
+      if (this.#concepts === p) this.#concepts = undefined;
+    });
+    return p;
+  }
+
+  /** A variant classifications row, read from the lines of its subject. */
+  async #classification(
+    variation: string,
+    rows: readonly Row[],
+  ): Promise<ClassificationRow> {
+    const classes = values(rows, `${REC}clinvarClassification`);
+    const [status] = values(rows, `${REC}clinvarReviewStatus`);
+    const [evaluated] = values(rows, `${REC}lastEvaluated`);
+    const [contributing] = values(rows, `${REC}contributingSubmitters`);
+    const [submitters] = values(rows, `${REC}submitters`);
+    const named = await this.labels([...classes, ...(status ? [status] : [])]);
+    const concept = (each: string): Concept => ({
+      iri: each,
+      label: named.get(each) ?? each,
+    });
+    return {
+      variation,
+      classification: classes.map(concept),
+      ...(status === undefined ? {} : { reviewStatus: concept(status) }),
+      ...(evaluated === undefined ? {} : { lastEvaluated: evaluated }),
+      ...(contributing === undefined
+        ? {}
+        : { contributingSubmitters: Number(contributing) }),
+      ...(submitters === undefined ? {} : { submitters: Number(submitters) }),
+    };
+  }
+
+  /**
+   * In a version, the row subjects each code finds, as the index `rowsByCode` wrote beside it; when that is missing or
+   * was built for other properties, made from its lines and kept beside it, as a listing is. Made once.
+   */
+  #codesIn(
+    version: string,
+  ): Promise<Readonly<Record<string, readonly string[]>>> {
+    return once(this.#byCode, version, async () => {
+      const { files, vocabulary, newStore } = this.#options;
+      const [references, { foundBy }] = await Promise.all([
+        this.references(),
+        tableTerms(vocabulary, newStore),
+      ]);
+      const by =
+        foundBy.get(
+          references.kindOf(references.seriesOf(version) ?? "") ?? "",
+        ) ?? [];
+      const path = `${stemOf(version)}${CODES}`;
+      const kept = indexedRows(await files.read(path), by);
+      if (kept !== undefined) return kept;
+      const made = rowsByCode(termsOfRows(await this.#text(version)), by);
+      if (made === undefined) return {};
+      await files.write(path, made);
+      return indexedRows(made, by) ?? {};
+    });
   }
 
   /** The current version of each series given that the app holds. */
@@ -1201,6 +1463,7 @@ export class Tables {
         this.#listings.delete(held.value);
         this.#inverses.delete(held.value);
         this.#notations.delete(held.value);
+        this.#byCode.delete(held.value);
         for (const key of this.#merges.keys())
           if (key.split(" ").includes(held.value)) this.#merges.delete(key);
       }

@@ -65,15 +65,19 @@ export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {
   About,
+  ClassificationRow,
   Coded,
   Codes,
+  Concept,
   Fact,
   Facts,
   Found,
   HeldSeries,
   HeldVersion,
   Searched,
+  VariantAsked,
   Watched,
+  WhatClinVarSays,
 } from "../tables.js";
 
 /** What names a pod's IndexedDB database, before the pod's name. */
@@ -489,6 +493,15 @@ class BrowserPod implements Pod {
       if (rows !== undefined) return rows;
     }
     return (await this.#pod()).ask(question, options);
+  }
+
+  async agreement(): Promise<Row[]> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    if (this.#opened === undefined) {
+      const rows = await this.#kept?.agreement();
+      if (rows !== undefined) return rows;
+    }
+    return (await this.#pod()).agreement();
   }
 
   async close(): Promise<void> {

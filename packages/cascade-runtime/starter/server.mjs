@@ -50,6 +50,7 @@ import {
   sourcesOf,
   tableId,
   tablePage,
+  variantsSaid,
 } from "./summary.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
@@ -120,6 +121,20 @@ function aboutCodes(answers) {
       return undefined;
     });
 }
+let variantsUnsaid = false;
+
+/** What the tables say of the variants `answers` hold; nothing when they cannot say, which the console is told once. */
+async function variantsOf(answers, pod) {
+  try {
+    return await variantsSaid(answers, { tables: await tables(), pod });
+  } catch (error) {
+    if (!variantsUnsaid)
+      stderr.write(`What ClinVar says is not shown: ${error.message}\n`);
+    variantsUnsaid = true;
+    return undefined;
+  }
+}
+
 /** What the last Check now did, which the page it goes to says. */
 let lastCheck;
 
@@ -380,6 +395,7 @@ async function showPod(response, name, query, names) {
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
     about: await aboutCodes(answers),
+    said: await variantsOf(answers, await podNamed(name)),
   });
   send(
     response,

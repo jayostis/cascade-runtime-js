@@ -1137,6 +1137,87 @@ ${shots.join("\n")}`);
   }
 });
 
+test("in try/, a pod with a variant and a report shows, once the engine is ready, what the report said and what ClinVar says today from the starter copy, a gene the series does not cover says so, and the counsellor sentence and ClinVar's disclaimer follow", async () => {
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 60_000,
+    });
+    const refused = await page.evaluate(async () => {
+      const runtime = (await import("cascade-runtime" as string)) as {
+        openPod(name: string): Promise<{
+          subject: string;
+          owner: string;
+          enter(turtle: string): Promise<{ refused?: string }>;
+          close(): Promise<void>;
+        }>;
+      };
+      const pod = await runtime.openPod("martin-variant");
+      try {
+        const genomics = "https://ns.cascadeprotocol.org/genomics/v1#";
+        const records = `<urn:cascade:output-0> a <${genomics}Variant> .
+<urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+  <${genomics}geneSymbol> "MLH1" ; <${genomics}hgvsCDot> "NM_000249.4:c.2042C>T" ; <${genomics}clinvarVariationId> "90011" ;
+  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .
+<urn:cascade:output-1> a <${genomics}VariantInterpretation> .
+<urn:cascade:output-1-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-1> ;
+  <${genomics}variantInterpreted> <urn:cascade:output-0> ; <${genomics}acmgClassification> <${genomics}LikelyPathogenic> ;
+  <${genomics}interpretedDate> "2024-03-21"^^<http://www.w3.org/2001/XMLSchema#date> ;
+  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .
+<urn:cascade:output-2> a <${genomics}Variant> .
+<urn:cascade:output-2-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-2> ;
+  <${genomics}geneSymbol> "BRCA2" ; <${genomics}hgvsCDot> "NM_000059.4:c.1A>G" ;
+  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .`;
+        return (
+          await pod.enter(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> ;
+  <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${pod.owner}> ;
+    <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/judgments/v1-draft#patient> ] .
+${records}`)
+        ).refused;
+      } finally {
+        await pod.close();
+      }
+    });
+    assert.equal(refused, undefined);
+
+    await page.goto(`${served.url}try/index.html?pod=martin-variant`);
+    await settled(page);
+    await page.waitForFunction(
+      () => document.body.textContent?.includes("ClinVar today says "),
+      undefined,
+      { timeout: 120_000 },
+    );
+    const shown = (await page.locator("main .variants").innerText()).replace(
+      /\s+/g,
+      " ",
+    );
+    assert.ok(
+      shown.includes("Your 2024 report said likely pathogenic."),
+      shown,
+    );
+    assert.match(shown, /ClinVar today says [a-z]/);
+    assert.match(
+      shown,
+      /ClinVar, as this app holds it, covers .*, not BRCA2\./,
+    );
+    assert.ok(
+      shown.includes(
+        "Your clinician or a genetic counsellor can explain what this means for you.",
+      ),
+      shown,
+    );
+    assert.match(
+      shown,
+      /not intended for direct diagnostic use or medical decision-making without review by a genetics professional/i,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 test("try/ ships the starter tables its published answers were computed with: after a check that finds nothing new, a visit draws a copied pod from its kept answers, the engine held back", async () => {
   const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
   const [feedUrl] = config.tables.feeds;

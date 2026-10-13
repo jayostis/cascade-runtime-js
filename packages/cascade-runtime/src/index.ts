@@ -17,15 +17,19 @@ export type {
 export type { Checked, Tables } from "./tables.js";
 export type {
   About,
+  ClassificationRow,
   Coded,
   Codes,
+  Concept,
   Fact,
   Facts,
   Found,
   HeldSeries,
   HeldVersion,
   Searched,
+  VariantAsked,
   Watched,
+  WhatClinVarSays,
 } from "./tables.js";
 export type { TablesSettings } from "@cascade-runtime/runtime";
 export * from "./connect/index.js";
