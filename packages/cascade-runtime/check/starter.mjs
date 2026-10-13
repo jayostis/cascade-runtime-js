@@ -804,10 +804,13 @@ if (release === undefined) {
       };
       assert.deepEqual(
         kitVariants.flatMap(({ variations }) => variations).sort(),
-        held
-          .filter(([, p]) => p.value === `${REC}clinvarClassification`)
-          .map(([row]) => row.value.split("/").at(-1))
-          .sort(),
+        [
+          ...new Set(
+            held
+              .filter(([, p]) => p.value === `${REC}clinvarClassification`)
+              .map(([row]) => row.value.split("/").at(-1)),
+          ),
+        ].sort(),
         "the kit's ClinVar IDs are not the rows its story's table holds",
       );
       const kitReports = await triplesOf(
