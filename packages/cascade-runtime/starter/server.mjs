@@ -63,6 +63,7 @@ import {
   tablePage,
   trendInput,
   trendPage,
+  trendTitle,
   variantsSaid,
 } from "./summary.mjs";
 
@@ -467,6 +468,7 @@ async function showTrend(response, name, query, names) {
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
   }
+  const about = await aboutCodes({ [HISTORY]: medications, [LABS]: labs });
   const body = trendPage({
     pod: name,
     back: podPath(name),
@@ -476,14 +478,13 @@ async function showTrend(response, name, query, names) {
     test: input?.test,
     medication: input?.medication,
     trendHref: (trend) => trendPath(name, trend),
+    about,
   });
   send(
     response,
     series === undefined ? 404 : 200,
     await page(
-      series === undefined
-        ? "Not found"
-        : (series.test.name ?? series.test.notation ?? series.test.code),
+      series === undefined ? "Not found" : trendTitle(series, about),
       body,
       { current: name, names },
     ),

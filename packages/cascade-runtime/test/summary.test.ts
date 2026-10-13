@@ -2085,6 +2085,86 @@ test("nothing What changed or the trend draws, for any of the five stories, nor 
   }
 });
 
+test("the trend names its first date from the earliest result, and its test and medication by the tables where they name the code, else by the record's own text", () => {
+  const series = {
+    test: {
+      code: "http://loinc.org/18262-6",
+      notation: "18262-6",
+      name: "LDL",
+    },
+    results: [{ date: "2024-03-10", value: 98, unit: "mg/dL" }],
+    left: { unparsed: 0, undated: 0 },
+  };
+  const timeline = [
+    {
+      name: "Atorvastatin",
+      code: "http://www.nlm.nih.gov/research/umls/rxnorm/617310",
+      notation: "617310",
+      started: "2024-01-05",
+    },
+    { name: "Aspirin", notation: "1191", started: "2020-01-01" },
+  ];
+  const drawn = (about?: Map<string, unknown>) =>
+    render(
+      view.trendPage({
+        pod: "a-pod",
+        back: "/pods/a-pod/",
+        labs: [],
+        series,
+        timeline,
+        test: "18262-6",
+        medication: "617310",
+        trendHref: (trend: object) => trendPath("a-pod", trend),
+        ...(about ? { about } : {}),
+      }),
+    );
+
+  const own = drawn();
+  assert.match(
+    own,
+    /<desc id="trend-chart-desc">1 result from Mar 10, 2024 to Mar 10, 2024/,
+  );
+  assert.match(own, /Atorvastatin started Jan 5, 2024./);
+  assert.match(text(own), /LDL/);
+  assert.match(text(own), /Atorvastatin/);
+
+  const named = drawn(
+    new Map([
+      [series.test.code, { name: { label: "LDL cholesterol" } }],
+      [timeline[0]!.code!, { name: { label: "Atorvastatin calcium" } }],
+    ]),
+  );
+  assert.match(named, /<h1>LDL cholesterol[<]/);
+  assert.match(named, /Atorvastatin calcium started/);
+  assert.match(text(named), /Aspirin/);
+});
+
+test("the trend states that the chart leaves out a result in another unit, while its table still lists it", () => {
+  const series = {
+    test: { code: "http://loinc.org/18262-6", notation: "18262-6" },
+    results: [
+      { date: "2024-03-10", value: 98, unit: "mg/dL" },
+      { date: "2024-04-10", value: 98, unit: "mg/dL" },
+      { date: "2024-05-10", value: 2.5, unit: "mmol/L" },
+    ],
+    left: { unparsed: 0, undated: 0 },
+  };
+  const page = render(
+    view.trendPage({
+      pod: "a-pod",
+      back: "/pods/a-pod/",
+      labs: [],
+      series,
+      timeline: [],
+      test: "18262-6",
+      trendHref: (trend: object) => trendPath("a-pod", trend),
+    }),
+  );
+  assert.match(text(page), /The chart leaves out 1 result in another unit/);
+  assert.doesNotMatch(text(page), /Left out/);
+  assert.equal(count(page, "<tr><td>"), 3);
+});
+
 test("the trend round-trips through its address: the state read from it draws the same test and medication, a marker for each result, the medication's start marked, the test named and the results in a table; a test the pod lacks says so", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const href = trendPath("ines-calloway", {
@@ -2117,7 +2197,10 @@ test("the trend round-trips through its address: the state read from it draws th
     [name, story.changes[0]!.medication.name],
   );
 
-  assert.equal(trendOf("ines-calloway", story, {}), page);
+  assert.deepEqual(
+    view.trendInput({ changes: story.changes, labs: story.answers[LABS]! }, {}),
+    asked,
+  );
   const none = trendOf("ines-calloway", story, { test: "18262-6" });
   assert.equal(count(none, 'class="mark start"'), 0);
   assert.equal(count(none, 'class="marker"'), 6);

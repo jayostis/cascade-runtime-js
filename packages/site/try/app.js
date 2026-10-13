@@ -64,6 +64,7 @@ import {
   tablePage,
   trendInput,
   trendPage,
+  trendTitle,
   variantsSaid,
 } from "./summary.js";
 
@@ -450,10 +451,9 @@ async function showTrend(query) {
     if (!(error instanceof Refusal)) throw error;
   }
   const { current } = state;
+  const about = await aboutCodes({ [HISTORY]: medications, [LABS]: labs });
   render(
-    series === undefined
-      ? "Not found"
-      : (series.test.name ?? series.test.notation ?? series.test.code),
+    series === undefined ? "Not found" : trendTitle(series, about),
     trendPage({
       pod: current,
       back: podHref(current),
@@ -463,6 +463,7 @@ async function showTrend(query) {
       test: input?.test,
       medication: input?.medication,
       trendHref: (trend) => trendHref(current, trend),
+      about,
       register,
     }),
   );

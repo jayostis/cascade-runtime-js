@@ -1189,7 +1189,7 @@ export function trendInput({ changes = [], labs = [] }, { test, medication }) {
 }
 
 /** The medications of `timeline` (`timelineIn`'s answer) as the therapies `changesIn` takes them for: a drug once, from its earliest start to its latest end. */
-function therapiesOf(timeline) {
+function therapiesOf(timeline, about = new Map()) {
   const drugs = new Map();
   for (const entry of timeline) {
     const key = entry.notation ?? entry.name;
@@ -1197,7 +1197,11 @@ function therapiesOf(timeline) {
     if (kept === undefined) {
       drugs.set(key, {
         key,
-        name: entry.name || entry.notation || "Unnamed medication",
+        name: labelled(
+          about,
+          entry.code,
+          entry.name || entry.notation || "Unnamed medication",
+        ),
         code: entry.code,
         started: entry.started,
         ended: entry.ended,
@@ -1340,6 +1344,7 @@ function Trend({
   test,
   medication,
   trendHref,
+  about = new Map(),
   register,
 }) {
   useView(register, TREND_VIEW);
@@ -1348,8 +1353,8 @@ function Trend({
     return html`${backLink}
 <h1>Not found</h1>
 <p>${test === undefined ? "This pod holds no lab results to show a trend of." : `This pod holds no results for the test ${test}.`}</p>`;
-  const name = series.test.name ?? series.test.notation ?? series.test.code;
-  const drugs = therapiesOf(timeline);
+  const name = trendTitle(series, about);
+  const drugs = therapiesOf(timeline, about);
   const wanted = medication?.toLowerCase();
   const chosen =
     medication === undefined
@@ -1387,15 +1392,13 @@ function Trend({
       ...(chosen ? { medication: chosen.key } : {}),
       ...given,
     });
-  const left = leftSaid({
-    ...series.left,
-    otherUnit: series.results.length - drawn.length,
-  });
+  const left = leftSaid(series.left);
+  const unplotted = series.results.length - drawn.length;
   let chart;
   if (points.length > 0) {
     const plot = plotOf({ points, marks, size: LARGE });
     const values = points.map(({ value }) => value);
-    const described = `${resultsSaid(points.length)} from ${dayAt(plot.from)} to ${dayAt(Math.max(...points.map(({ time }) => time)))}, from ${rounded(Math.min(...values))} to ${rounded(Math.max(...values))} ${unit}.${marks.map(({ time, text }) => ` ${text} ${dayAt(time)}.`).join("")}`;
+    const described = `${resultsSaid(points.length)} from ${dayAt(Math.min(...points.map(({ time }) => time)))} to ${dayAt(Math.max(...points.map(({ time }) => time)))}, from ${rounded(Math.min(...values))} to ${rounded(Math.max(...values))} ${unit}.${marks.map(({ time, text }) => ` ${text} ${dayAt(time)}.`).join("")}`;
     chart = html`<${Chart} id="trend-chart" plot=${plot} points=${points} marks=${marks} unit=${unit} title=${name} desc=${described} axes />
 <${Lane} id="trend-lane" plot=${plot} drugs=${drugs} chosen=${chosen} title="Medications" desc=${drugs.length === 0 ? "No medication." : drugs.map((drug) => `${drug.name}${drug.started ? ` from ${dayAt(timeOf(drug.started))}` : ", start not known"}${drug.ended ? ` to ${dayAt(timeOf(drug.ended))}` : ", not stopped"}.`).join(" ")} />`;
   }
@@ -1404,7 +1407,7 @@ function Trend({
 <h1>${name}</h1>
 <p class="lead">${series.results.length === 0 ? "No result of this test is a number." : `${resultsSaid(series.results.length)}${unit === "" ? "" : `, in ${unit}`}`}</p>
 ${medication !== undefined && chosen === undefined && html`<p class="note">This pod holds no medication ${medication}.</p>`}
-${chart && html`<div class="card trend">${chart}</div>`}
+${chart && html`<div class="card trend">${chart}${unplotted > 0 && html`<p class="muted">The chart leaves out ${resultsSaid(unplotted)} in another unit; the table lists ${unplotted === 1 ? "it" : "them"}.</p>`}</div>`}
 <div class="card"><h2>Results</h2>
 ${left && html`<p class="muted">${left}</p>`}
 <div class="scroll"><table>
@@ -1434,10 +1437,18 @@ ${drugs.map((drug) => html`<li><a href=${link({ medication: drug.key })} aria-cu
  * - `test`, `medication`: as asked; `medication` is a bare RxNorm code, or a name, and none is marked when it names
  *   none the pod holds;
  * - `trendHref({ test, medication })`: the address of a trend, which the links of the picker go to;
+ * - `about`: what the tables say of the codes of the pod's lab results and medication history, as the card names them;
+ *   the page names the test and the medications by it where it names the code, else by the record's own text;
  * - `register(view)`: as `podPage` takes it.
  */
 export function trendPage(props) {
   return html`<${Trend} ...${props} />`;
+}
+
+/** The name a trend page and its tab give the test: the tables' where they name its code, else the record's own text. */
+export function trendTitle(series, about = new Map()) {
+  const { code, name, notation } = series.test;
+  return labelled(about, code, name ?? notation ?? code);
 }
 
 /** One finding as a card: what changed, the means, what was left out, a small chart and the links to its results and trend. */
