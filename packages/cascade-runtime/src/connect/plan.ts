@@ -32,6 +32,7 @@ export const DEMO_PLAN: QueryPlan = {
     { type: "Condition" },
     { type: "AllergyIntolerance" },
     { type: "MedicationRequest" },
+    { type: "MedicationStatement" },
     { type: "Immunization" },
     { type: "Procedure" },
     { type: "Encounter" },
