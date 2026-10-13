@@ -143,7 +143,7 @@ export interface HeldSeries {
   readonly source?: string;
 }
 
-/** What a names, status or product ingredients series says of a code, from the first series in the order of preference that holds it. */
+/** A code as written, and what a names, status or product ingredients series says of it, from the first series in the order of preference that holds it. */
 export interface About {
   /** The code as written, without its code system's IRI. */
   readonly notation: string;
