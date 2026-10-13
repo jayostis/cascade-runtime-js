@@ -8,7 +8,18 @@ import {
   loadStories,
   STORIES,
 } from "@cascade-runtime/demo-hospital/node";
-import { openPod, type Pod, type Pull, pullFiles } from "cascade-runtime";
+import {
+  changeTools,
+  checkInput,
+  findChanges,
+  type InputSchema,
+  openPod,
+  type Pod,
+  type Pull,
+  pullFiles,
+  Refusal,
+  type Row,
+} from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 
 const PREFIXES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
@@ -172,4 +183,132 @@ ${PREFIXES}SELECT ?entry (COUNT(?record) AS ?records) WHERE {
   } finally {
     await pod.close();
   }
+});
+
+test("each story patient's pod gives the finding its answer names, field by field, and nothing else", async () => {
+  for (const story of stories) {
+    const found = await findChanges(pods.get(story.patient)!, { limit: 20 });
+    assert.equal(found.length, story.findings.length, story.patient);
+    for (const gold of story.findings) {
+      const key = `${gold.kind === "after start" ? "start" : "stop"}:${gold.medication}:${gold.test}`;
+      const finding = found.find((each) => each.key === key);
+      assert.ok(finding, `${story.patient}: ${key}`);
+      assert.equal(finding.kind, gold.kind);
+      assert.equal(finding.medication.notation, gold.medication);
+      assert.equal(finding.medication.date, gold.date);
+      assert.equal(finding.test.notation, gold.test);
+      assert.equal(finding.direction, gold.direction);
+      assert.equal(finding.unit, gold.unit);
+      for (const side of ["before", "after"] as const) {
+        const values = gold[side].map(({ value }) => value);
+        assert.deepEqual(
+          finding.rows[side].map((row) => ({
+            date: day(row.performed),
+            value: Number(row.value),
+          })),
+          gold[side],
+          `${story.patient} ${side}`,
+        );
+        assert.equal(finding[side].count, values.length);
+        assert.equal(finding[side].min, Math.min(...values));
+        assert.equal(finding[side].max, Math.max(...values));
+      }
+      assert.deepEqual(finding.left, {
+        unparsed: 0,
+        otherUnit: 0,
+        undated: 0,
+      });
+      assert.equal(
+        finding.score === 0,
+        gold.direction === "not enough results",
+      );
+    }
+  }
+});
+
+test("the tools give a story's findings, their rows, a test's series and the timeline, and refuse bad input with Refusal", async () => {
+  const tools = new Map(
+    changeTools(pods.get("story-statin")!).map((each) => [each.name, each]),
+  );
+  assert.deepEqual(
+    [...tools.keys()],
+    ["find_changes", "finding_rows", "lab_series", "timeline"],
+  );
+
+  const KEYWORDS = new Set([
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "enum",
+    "minimum",
+    "maximum",
+    "description",
+  ]);
+  const keywords = (schema: InputSchema): string[] => [
+    ...Object.keys(schema),
+    ...Object.values(schema.properties ?? {}).flatMap(keywords),
+  ];
+  for (const { name, inputSchema } of tools.values())
+    for (const keyword of keywords(inputSchema))
+      assert.ok(KEYWORDS.has(keyword), `${name}: ${keyword}`);
+
+  const [change] = (await tools.get("find_changes")!.execute({})) as {
+    key: string;
+    medication: Record<string, unknown>;
+  }[];
+  assert.equal(change!.key, "start:617310:18262-6");
+  assert.equal("entry" in change!.medication, false);
+  assert.equal("rows" in change!, false);
+
+  const rows = (await tools
+    .get("finding_rows")!
+    .execute({ key: change!.key })) as { before: Row[]; after: Row[] };
+  assert.deepEqual([rows.before.length, rows.after.length], [3, 3]);
+
+  const labs = (await tools
+    .get("lab_series")!
+    .execute({ test: "18262-6" })) as {
+    results: { date: string; value: number; unit: string }[];
+    left: { unparsed: number };
+  };
+  assert.equal(labs.results.length, 6);
+  assert.equal(labs.left.unparsed, 0);
+
+  const [medication] = (await tools.get("timeline")!.execute({})) as {
+    notation: string;
+    started: string;
+  }[];
+  assert.deepEqual(
+    [medication!.notation, medication!.started],
+    ["617310", "2024-03-04"],
+  );
+
+  const refused: [string, unknown, RegExp][] = [
+    ["find_changes", { colour: "red" }, /not a property/],
+    ["find_changes", { toString: 1 }, /not a property/],
+    ["find_changes", { medication: 7 }, /must be a string/],
+    ["find_changes", { limit: 1.5 }, /must be an integer/],
+    ["find_changes", { limit: 0 }, /at least 1/],
+    ["find_changes", { limit: 21 }, /at most 20/],
+    ["find_changes", "all", /must be an object/],
+    ["find_changes", { medication: "no such drug" }, /no medication/],
+    ["find_changes", { test: "0000-0" }, /no test/],
+    ["finding_rows", {}, /key is required/],
+    ["finding_rows", { key: "start:0:0" }, /no finding/],
+    ["lab_series", { test: "0000-0" }, /no test/],
+    ["timeline", { extra: true }, /not a property/],
+  ];
+  for (const [name, input, reason] of refused)
+    await assert.rejects(
+      tools.get(name)!.execute(input),
+      (error: unknown) =>
+        error instanceof Refusal && reason.test(error.message),
+      `${name} ${JSON.stringify(input)}`,
+    );
+
+  assert.throws(
+    () => checkInput({ type: "string", enum: ["a"] }, "b"),
+    Refusal,
+  );
 });
