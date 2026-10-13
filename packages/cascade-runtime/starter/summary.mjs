@@ -818,7 +818,7 @@ function variantRows(answers, said) {
       entry,
       variant: name,
       reports: reports.length,
-      differs: reports.some(({ tag }) => tag !== undefined),
+      differs: reports.some(({ tag }) => tag === DIFFERS),
     }),
   );
 }

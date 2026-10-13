@@ -61,6 +61,7 @@ const ALLERGIES = "pod/My active allergies";
 const REVIEW = "entry/What needs review";
 const SOURCES = "entry/Where it came from";
 const ROWAN = "Rowan Ellery Marsh";
+const idOf = (entry) => entry.split(":").at(-1);
 /** The question each tile of a pod's page counts, by the tile's title. */
 const TILES = {
   Allergies: ALLERGIES,
@@ -558,7 +559,6 @@ const server = await (async () => {
       "no entry where the hospitals disagree on Sulfamethoxazole's criticality",
     );
 
-    const idOf = (entry) => entry.split(":").at(-1);
     const entryAt = (id) =>
       `/pods/alex-rivera/entries/${encodeURIComponent(id)}`;
     const opens = [
@@ -957,7 +957,6 @@ if (release === undefined) {
         "the pod's reports are not the kit's, grouped by variant",
       );
 
-      const idOf = (entry) => entry.split(":").at(-1);
       const entryPath = (variant) =>
         `/pods/martin-okafor/entries/${encodeURIComponent(idOf(variant))}`;
       const sources = await asked(SOURCES, "martin-okafor");

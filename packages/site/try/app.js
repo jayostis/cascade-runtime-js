@@ -355,12 +355,11 @@ function reopenBox() {
 /** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
 async function showEntry(id) {
   const answers = await answered();
-  state.page = {
-    answers,
-    entry: id,
-    about: await aboutCodes(answers),
-    said: await variantsOf(answers),
-  };
+  const [about, said] = await Promise.all([
+    aboutCodes(answers),
+    variantsOf(answers),
+  ]);
+  state.page = { answers, entry: id, about, said };
   state.doing = "ready";
   redraw();
 }

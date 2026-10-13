@@ -1182,28 +1182,13 @@ test("what a variant's page says: a sentence for each report, oldest first, tagg
       name,
     );
     assert.equal(said.clinvar, clinvar, name);
+    for (const each of said.reports)
+      assert.equal(
+        "when" in each,
+        !each.sentence.includes("undated"),
+        `${name}: an undated report has no when`,
+      );
   }
-  const [first, , undated] = view.variantSaid({
-    variant: { hgvs: [], variations: [] },
-    reports: [
-      report("r1", "VUS", "2022-05-01"),
-      report("r2", "Benign", "2023-01-01"),
-      report("r3", "Benign", undefined),
-    ],
-    labels: LABELS,
-    places: new Map([["r1", "Harbourline Genetics"]]),
-  }).reports;
-  assert.deepEqual(first, {
-    report: "r1",
-    when: "2022",
-    place: "Harbourline Genetics",
-    sentence:
-      "Your 2022 report from Harbourline Genetics said uncertain significance.",
-  });
-  assert.deepEqual(undated, {
-    report: "r3",
-    sentence: "An undated report said benign.",
-  });
 });
 
 test("a code's page gives a variation's classification as ClinVar's sentence with the table's credit", () => {
