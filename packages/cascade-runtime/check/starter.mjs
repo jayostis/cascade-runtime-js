@@ -259,6 +259,17 @@ function heading(html) {
   return textOf(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? "");
 }
 
+/** The count on each tile of the page, by the tile's title. */
+function tilesOf(html) {
+  return Object.fromEntries(
+    [
+      ...html.matchAll(
+        /<span class="kind">([^<]*)<\/span><span class="count">(\d+)<\/span>/g,
+      ),
+    ].map(([, kind, count]) => [kind, Number(count)]),
+  );
+}
+
 /** The connection's box over the pod's page, as HTML: from its start to the end of the element it starts. */
 function connectionBox(html) {
   const start = html.indexOf('<div class="dialog" id="connection"');
@@ -295,13 +306,7 @@ async function pageShows(server, pod, person) {
   const text = readable(html);
   for (const scheme of ["urn:", "ni:", "http://", "https://"])
     assert.ok(!text.includes(scheme), `the page of ${pod} shows ${scheme}`);
-  const tiles = Object.fromEntries(
-    [
-      ...html.matchAll(
-        /<span class="kind">([^<]*)<\/span><span class="count">(\d+)<\/span>/g,
-      ),
-    ].map(([, kind, count]) => [kind, Number(count)]),
-  );
+  const tiles = tilesOf(html);
   const rows = {};
   for (const [kind, question] of Object.entries(TILES)) {
     rows[question] = await asked(question, pod);
@@ -863,6 +868,26 @@ if (release === undefined) {
         await shown.stop();
       }
       assert.equal(heading(html), "Martin Okafor");
+      const tiles = tilesOf(html);
+      let kitTiles = 0;
+      for (const [kind, question] of Object.entries(TILES)) {
+        const view = `${MARTIN}/expected/${kind.toLowerCase().replaceAll(" ", "-")}.ttl`;
+        if (!existsSync(join(story.vocabulary, view))) continue;
+        const kitRows = entriesOf(await triplesOf(view)).length;
+        if (kitRows === 0) continue;
+        kitTiles++;
+        assert.notEqual(
+          tiles[kind],
+          undefined,
+          `Martin's page has no ${kind} tile, though his kit's ${view} holds ${kitRows} rows`,
+        );
+        assert.equal(
+          tiles[kind],
+          (await asked(question, "martin-okafor")).length,
+          `the ${kind} tile of Martin's page`,
+        );
+      }
+      assert.ok(kitTiles > 0, "Martin's kit holds rows for no kind of tile");
       const text = readable(html);
       assert.ok(
         text.includes(COUNSELLOR),
