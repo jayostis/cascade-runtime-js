@@ -1723,6 +1723,9 @@ a { color: var(--accent); }
 .noticed { background: var(--tint); border-color: transparent; }
 .noticed ul { margin: 0; padding-left: 1.2rem; }
 .noticed li { margin: 0.3rem 0; }
+.variants h3 { font-size: 0.95rem; margin: 0.9rem 0 0.2rem; }
+.variants ul { margin: 0; padding-left: 1.2rem; }
+.variants li { margin: 0.3rem 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 1rem; margin: 0 0 1.25rem; }
 .tile { display: block; padding: 1rem 1.1rem; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; }
 .tile:hover { border-color: var(--accent); background: var(--tint); }
