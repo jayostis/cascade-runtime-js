@@ -20,8 +20,9 @@ npm start
 
 then open <http://127.0.0.1:3000/>. The pods are on the left, named as their
 people. A pod's page reads as that person's health record: how many records,
-from which places; what Cascade noticed, such as the same allergy recorded at
-two hospitals, or two hospitals disagreeing on how severe it is; and a tile for
+from which places; what is worth a look, such as two hospitals disagreeing on
+how severe an allergy is, or a genetic report that differs from ClinVar today,
+each linking to its entry; and a tile for
 each kind of record, which opens a table you can sort by a heading and filter.
 "+ New pod" makes a pod for anyone by name, or for one of the demo hospitals'
 made-up patients in one click.

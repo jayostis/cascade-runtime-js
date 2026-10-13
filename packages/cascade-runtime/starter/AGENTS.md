@@ -42,7 +42,11 @@ table alone, with which pods use which version (`uses()`). Check now posts to
 `/tables/check`.
 A pod's page names each record by its code's name in those tables
 (`about(codesOf(answers))`, gathered by `codesSaid`), else by the record's own
-text, and marks a retired code. A row of a tile's table opens its entry at
+text, and tags a retired code. Above the tiles, "Worth a look" (`worthALook`,
+drawn by `worthPart`) lists what needs review, each report that differs from
+ClinVar today and each pair of medications that share an ingredient, each line
+linking to its entry; a line, a row and an entry carry the same tag (`TAGS`).
+A row of a tile's table opens its entry at
 `/pods/<name>/entries/<id>`: what it is, where it came from (a line for each
 document its records were derived from) and what else is known, which is what
 Cascade did with it and what the tables say of its codes, each claim naming its

@@ -35,7 +35,7 @@ const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
 const COUNSELLOR =
   "Your clinician or a genetic counsellor can explain what this means for you.";
-const DIFFERS = "Differs from ClinVar today";
+const DIFFERS = "Differs";
 const ACMG = [
   "Pathogenic",
   "LikelyPathogenic",
@@ -253,6 +253,24 @@ function items(html) {
   return [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, item]) =>
     textOf(item),
   );
+}
+
+/** Reports oldest first, an undated one after the dated, as the page orders them. */
+const undatedLast = (a, b) =>
+  a.date === undefined || b.date === undefined
+    ? Number(a.date === undefined) - Number(b.date === undefined)
+    : a.date.localeCompare(b.date);
+
+/** Each line of the page's Worth a look, as the address it links to, its sentence and its tag. */
+function worthOf(html) {
+  const part = /<div class="card worth">([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? "";
+  return [...part.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, item]) => ({
+    href: textOf(/<a href="([^"]*)"/.exec(item)?.[1] ?? ""),
+    sentence: textOf(/<a\b[^>]*>([\s\S]*?)<\/a>/.exec(item)?.[1] ?? item),
+    tag: textOf(
+      /<span class="tag[^"]*">([\s\S]*?)<\/span>/.exec(item)?.[1] ?? "",
+    ),
+  }));
 }
 
 /** The page's heading, as its text. */
@@ -542,12 +560,10 @@ const server = await (async () => {
     );
     assert.ok(penicillin.size > 1, "Alex's penicillin is from one place");
     assert.ok(
-      said.some(
-        (sentence) =>
-          sentence.startsWith("Penicillin was recorded at") &&
-          [...penicillin].every((hospital) => sentence.includes(hospital)),
+      !said.some((sentence) =>
+        sentence.startsWith("Penicillin was recorded at"),
       ),
-      "no sentence that penicillin was recorded at each of its places",
+      "the pod's page still says where penicillin was recorded",
     );
     const review = await asked(REVIEW, "alex-rivera");
     assert.ok(
@@ -621,12 +637,42 @@ const server = await (async () => {
         !penicillinText.includes(scheme),
         `penicillin's entry shows ${scheme}`,
       );
+    const sulfa = "Allergy entry · Sulfamethoxazole";
+    const sulfaPage = await entryOf(sulfa);
     assert.ok(
-      items(await entryOf("Allergy entry · Sulfamethoxazole")).some(
-        (sentence) =>
-          /^Sources disagree on how severe the .* allergy is\.$/.test(sentence),
+      items(sulfaPage).some((sentence) =>
+        /^Sources disagree on how severe the .* allergy is\. Needs review$/.test(
+          sentence,
+        ),
       ),
       "Sulfamethoxazole's entry does not say the sources disagree",
+    );
+    assert.ok(
+      heading(sulfaPage).endsWith("Needs review"),
+      "Sulfamethoxazole's entry is not tagged Needs review",
+    );
+    const sulfaHref = entryAt(
+      idOf(sources.find((row) => row.entryLabel === sulfa).entry),
+    );
+    assert.ok(
+      worthOf(shown.html).some(
+        ({ href, sentence, tag }) =>
+          href === sulfaHref &&
+          /^Sources disagree on how severe the .* allergy is\.$/.test(
+            sentence,
+          ) &&
+          tag === "Needs review",
+      ),
+      "Worth a look has no line for Sulfamethoxazole linking to its entry, tagged Needs review",
+    );
+    assert.ok(
+      textOf(
+        shown.html
+          .split("<tr")
+          .slice(1)
+          .find((part) => part.includes(`href="${sulfaHref}"`)) ?? "",
+      ).includes("Needs review"),
+      "Sulfamethoxazole's row does not carry Needs review",
     );
 
     let codeShown;
@@ -1053,9 +1099,9 @@ if (release === undefined) {
           /^(Your .+|An undated) report\b/.test(line),
         );
         const sentences = [...group]
-          .sort((a, b) => a.date.localeCompare(b.date))
+          .sort(undatedLast)
           .map(({ report, classification, date }) => ({
-            sentence: `Your ${date.slice(0, 4)} report${labOf(report)} said ${label(classification)}.`,
+            sentence: `${date === undefined ? "An undated" : `Your ${date.slice(0, 4)}`} report${labOf(report)} said ${label(classification)}.`,
             differs: id !== undefined && !rowOf(id).includes(classification),
           }));
         assert.equal(reports.length, sentences.length, `${title}: ${reports}`);
@@ -1072,22 +1118,50 @@ if (release === undefined) {
         });
         const row = html
           .split("<tr")
+          .slice(1)
           .find((part) => part.includes(`href="${entryPath(variant)}"`));
         assert.equal(
           textOf(row).includes(DIFFERS),
           sentences.some(({ differs }) => differs),
           `${title}: the tile's row`,
         );
+        assert.deepEqual(
+          worthOf(html)
+            .filter(
+              ({ href, tag }) => href === entryPath(variant) && tag === DIFFERS,
+            )
+            .map(({ sentence }) =>
+              sentence.replace(/^.*?: (?=(?:your|an undated) )/, ""),
+            ),
+          [...group]
+            .sort(undatedLast)
+            .filter(
+              ({ classification }) =>
+                id !== undefined && !rowOf(id).includes(classification),
+            )
+            .map(
+              ({ report, date }) =>
+                `${date === undefined ? "an undated" : `your ${date.slice(0, 4)}`} report${labOf(report)} differs from ClinVar today.`,
+            ),
+          `${title}: Worth a look on Martin's page`,
+        );
         assert.equal(
           heading(page).includes(DIFFERS),
           sentences.some(({ differs }) => differs),
           `${title}: the entry's heading`,
         );
-        if (gene === "MLH1" && id !== undefined)
+        if (gene === "MLH1" && id !== undefined) {
           assert.ok(
             heading(page).includes(DIFFERS),
             "the MLH1 variant does not differ",
           );
+          assert.ok(
+            worthOf(html).some(
+              ({ href, tag }) => href === entryPath(variant) && tag === DIFFERS,
+            ),
+            "Worth a look has no line that the MLH1 variant's report differs",
+          );
+        }
         const clinvar = lines.find((line) => /^ClinVar(,| today)/.test(line));
         assert.ok(clinvar, `${title}: no sentence of what ClinVar says`);
         if (id !== undefined) {
@@ -1344,14 +1418,35 @@ if (release === undefined) {
             );
           }
           assert.ok(
-            items(shown).some(
+            !items(shown).some((sentence) =>
+              /hypertension was recorded at/i.test(sentence),
+            ),
+            "the pod's page still says where hypertension was recorded",
+          );
+          const hypertension = shown
+            .split("<tr")
+            .slice(1)
+            .filter((row) => /hypertension/i.test(textOf(row)))
+            .flatMap((row) =>
+              textOf(
+                /<a href="(\/pods\/[^"]*\/entries\/[^"]+)"/.exec(row)?.[1] ??
+                  "",
+              ),
+            )
+            .filter(Boolean);
+          assert.ok(hypertension.length > 0, "no row for hypertension");
+          let recorded = false;
+          for (const href of hypertension)
+            recorded ||= items(await served(server, href)).some(
               (sentence) =>
-                /hypertension was recorded at/i.test(sentence) &&
+                sentence.startsWith("Cascade recorded it at") &&
                 expected.rowan.every(({ hospital }) =>
                   names(sentence, hospital),
                 ),
-            ),
-            "no sentence that hypertension was recorded at both hospitals",
+            );
+          assert.ok(
+            recorded,
+            "no entry of hypertension says it was recorded at both hospitals",
           );
           assert.ok(
             !forms(shown).some(({ person }) => person === ROWAN),
