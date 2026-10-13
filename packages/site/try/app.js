@@ -846,14 +846,16 @@ busy(async () => {
     async () => {
       document.body.dataset.engine = "ready";
       await readTables().catch(() => undefined);
-      // Each page is named from its own answers, until the page shown is one that was named.
+      // Each page is named from its own answers, until the page shown is one that was named. What ClinVar says of a
+      // variant is what a person waits for and needs none of the names, so it is drawn as soon as it is known.
       for (
         let shown = state.page;
         shown?.answers !== undefined && shown.about === undefined;
         shown = state.page
       ) {
-        shown.about = (await aboutCodes(shown.answers)) ?? new Map();
         shown.said = await variantsOf(shown.answers);
+        if (state.page === shown) redraw();
+        shown.about = (await aboutCodes(shown.answers)) ?? new Map();
       }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";

@@ -236,6 +236,90 @@ after(async () => {
 const texts = (page: Page, selector: string): Promise<string[]> =>
   page.$$eval(selector, (found) => found.map((each) => each.textContent ?? ""));
 
+/**
+ * What a person waits for on Martin's pages, in ms with the tables kept and the HTTP cache warm, each median at most
+ * twice its budget. CI's runners vary by more than a budget's margin; twice still fails a regression of the size that
+ * matters.
+ */
+const BUDGET_MS = {
+  "Martin's pod page, a new load, until the MLH1 Differs line": 1250,
+  "Martin's pod page, a reload, until the MLH1 Differs line": 610,
+  "the MLH1 entry, a new load, until the ClinVar sentence": 1250,
+  "the MLH1 entry, a reload, until the ClinVar sentence": 610,
+  "a click on a Genetic variants row, until the ClinVar sentence": 610,
+};
+const SAMPLES = 3;
+
+interface Drawn {
+  drawn: Record<string, number>;
+  clicked?: number;
+}
+
+/**
+ * Records, in every page of the context, `performance.now()` when the line Worth a look has for MLH1's report, tagged
+ * Differs (`differs`), and the entry's ClinVar sentence (`clinvar`), are first drawn; a click starts the count again.
+ * Playwright's waits and the test's round trips are not in the number.
+ */
+function recordDraws(): void {
+  const here = globalThis as unknown as Drawn;
+  here.drawn = {};
+  const sees: Record<string, () => boolean> = {
+    differs: () =>
+      [...document.querySelectorAll(".worth li")].some((line) => {
+        const text = line.textContent ?? "";
+        return (
+          text.includes("your 2022 report from Harbourline Genetics") &&
+          text.includes("Differs")
+        );
+      }),
+    clinvar: () =>
+      /ClinVar today (says|gives no classification)|ClinVar, as this app holds it|This app holds no ClinVar table/.test(
+        document.querySelector("main")?.textContent ?? "",
+      ),
+  };
+  new MutationObserver(() => {
+    for (const [what, seen] of Object.entries(sees))
+      if (here.drawn[what] === undefined && seen())
+        here.drawn[what] = performance.now();
+  }).observe(document, { childList: true, subtree: true, characterData: true });
+  document.addEventListener(
+    "click",
+    () => {
+      here.clicked = performance.now();
+      here.drawn = {};
+    },
+    true,
+  );
+}
+
+/** When `what` was first drawn in the page, ms since its navigation started or, after a click, since the click. */
+async function drawnAt(page: Page, what: string): Promise<number> {
+  try {
+    await page.waitForFunction(
+      (what) => (globalThis as unknown as Drawn).drawn[what] !== undefined,
+      what,
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    throw new Error(`"${what}" was never drawn on ${page.url()} in 20 s`, {
+      cause: error,
+    });
+  }
+  return page.evaluate((what) => {
+    const here = globalThis as unknown as Drawn;
+    return (here.drawn[what] ?? 0) - (here.clicked ?? 0);
+  }, what);
+}
+
+const median = (values: readonly number[]): number =>
+  [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
+
+/** The query names of an address a page links, joined: the shape of the address. */
+const shapeOf = (href: string): string =>
+  [...new URL(href, "http://x/try/index.html").searchParams.keys()]
+    .sort()
+    .join(",");
+
 /** The samples the new-pod box offers to load, by folder. */
 const loadable = (page: Page): Promise<string[]> =>
   page.$$eval('#new-pod input[name="pod"]', (found) =>
@@ -1245,8 +1329,9 @@ ${shots.join("\n")}`);
   }
 });
 
-test("in try/, Martin's pod, copied on a first visit, has a Genetic variants tile whose rows open each variant's entry once the engine is ready: the MLH1 variant's two reports with their labs and what ClinVar says today, a gene the series does not cover, and a variant it holds no row for, then the counsellor sentence and ClinVar's disclaimer", async () => {
+test("in try/, Martin's pod, copied on a first visit, has a Genetic variants tile whose rows open each variant's entry once the engine is ready: the MLH1 variant's two reports with their labs and what ClinVar says today, a gene the series does not cover, and a variant it holds no row for, then the counsellor sentence and ClinVar's disclaimer; a row opens its entry with no request, each address shape the pod's page and the entry link opens a page, and the pages reach their table-dependent line within twice their budgets", async () => {
   const context = await browser.newContext();
+  await context.addInitScript(recordDraws);
   try {
     const page = watched(await context.newPage());
     await page.goto(`${served.url}try/index.html`);
@@ -1296,9 +1381,21 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
     );
     const body = async (): Promise<string> =>
       ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
+    const clicks: number[] = [];
+    const requested: string[] = [];
+    page.on("request", (request) => {
+      if (/^https?:/.test(request.url())) requested.push(request.url());
+    });
     const opens = async (row: Locator): Promise<void> => {
+      requested.length = 0;
       await inPlace(page, () => row.locator("td:first-child a").click());
       assert.ok(new URL(page.url()).searchParams.has("entry"));
+      assert.deepEqual(
+        requested,
+        [],
+        "a click from a row to its entry asked for something",
+      );
+      clicks.push(await drawnAt(page, "clinvar"));
     };
     const back = async (): Promise<void> => {
       await inPlace(page, () => page.goBack());
@@ -1310,6 +1407,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
     };
 
     await opens(mlh1);
+    const entryUrl = page.url();
     const entry = await body();
     for (const sentence of [
       "Your 2022 report from Harbourline Genetics said uncertain significance.",
@@ -1344,6 +1442,96 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
         "ClinVar, as this app holds it, has no row for this variant.",
       ),
     );
+
+    const podUrl = `${served.url}try/index.html?pod=martin-okafor`;
+    const opened = async (fresh: Page, address: string): Promise<void> => {
+      await fresh.goto(address);
+      await settled(fresh);
+      await fresh.waitForSelector('body[data-tables="ready"]', {
+        timeout: 120_000,
+      });
+    };
+    const times: Record<keyof typeof BUDGET_MS, number[]> = {
+      "Martin's pod page, a new load, until the MLH1 Differs line": [],
+      "Martin's pod page, a reload, until the MLH1 Differs line": [],
+      "the MLH1 entry, a new load, until the ClinVar sentence": [],
+      "the MLH1 entry, a reload, until the ClinVar sentence": [],
+      "a click on a Genetic variants row, until the ClinVar sentence": clicks,
+    };
+    for (const [loads, reloads, address, what] of [
+      [
+        "Martin's pod page, a new load, until the MLH1 Differs line",
+        "Martin's pod page, a reload, until the MLH1 Differs line",
+        podUrl,
+        "differs",
+      ],
+      [
+        "the MLH1 entry, a new load, until the ClinVar sentence",
+        "the MLH1 entry, a reload, until the ClinVar sentence",
+        entryUrl,
+        "clinvar",
+      ],
+    ] as const) {
+      for (let at = 0; at < SAMPLES; at += 1) {
+        const fresh = watched(await context.newPage());
+        await opened(fresh, address);
+        times[loads].push(await drawnAt(fresh, what));
+        await fresh.close();
+      }
+      const fresh = watched(await context.newPage());
+      await opened(fresh, address);
+      for (let at = 0; at < SAMPLES; at += 1) {
+        await fresh.reload();
+        await settled(fresh);
+        times[reloads].push(await drawnAt(fresh, what));
+      }
+      await fresh.close();
+    }
+    for (const [what, budget] of Object.entries(BUDGET_MS)) {
+      const samples = times[what as keyof typeof BUDGET_MS];
+      for (const [at, ms] of samples.entries())
+        console.log(`# ${what} ${at + 1} ${Math.round(ms)} ms`);
+      console.log(
+        `# ${what}: median ${Math.round(median(samples))} ms, budget ${budget} ms`,
+      );
+      assert.ok(
+        median(samples) <= 2 * budget,
+        `${what}: median ${Math.round(median(samples))} ms is over twice its budget of ${budget} ms (${samples.map(Math.round).join(", ")})`,
+      );
+    }
+
+    const shapes = async (
+      fresh: Page,
+    ): Promise<{ shape: string; href: string }[]> => {
+      const found = new Map<string, string>();
+      for (const href of await fresh.$$eval('a[href^="?"]', (links) =>
+        links.map((link) => link.getAttribute("href") ?? ""),
+      ))
+        if (!found.has(shapeOf(href))) found.set(shapeOf(href), href);
+      return [...found].map(([shape, href]) => ({ shape, href }));
+    };
+    for (const address of [podUrl, entryUrl]) {
+      const fresh = watched(await context.newPage());
+      await opened(fresh, address);
+      const found = await shapes(fresh);
+      assert.ok(found.length > 1, `${address} links one shape of address`);
+      for (const { shape, href } of found) {
+        await opened(fresh, address);
+        await inPlace(fresh, () =>
+          fresh
+            .locator(`a[href="${href}"]`)
+            .first()
+            .evaluate((link) => (link as HTMLElement).click()),
+        );
+        assert.ok(
+          !["Not found", "Something went wrong"].includes(
+            (await fresh.textContent("main h1")) ?? "",
+          ),
+          `${address} links ${href} (${shape}), which draws a page that is not found`,
+        );
+      }
+      await fresh.close();
+    }
   } finally {
     await context.close();
   }
