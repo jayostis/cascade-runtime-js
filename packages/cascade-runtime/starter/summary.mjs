@@ -148,16 +148,38 @@ export const QUESTIONS = [
   ...SECTIONS.map(({ question }) => question),
 ];
 
+/** The rows of `section` in `answers`: the only way a section's rows are read. */
+export function sectionRows(section, answers) {
+  return answers[section.question] ?? [];
+}
+
+const isCode = (code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? "");
+
 /** The codes the sections' rows in `answers` hold, each once: what to ask the tables' `about` of. */
 export function codesOf(answers) {
   const codes = SECTIONS.flatMap((section) =>
-    (answers[section.question] ?? []).flatMap((row) =>
+    sectionRows(section, answers).flatMap((row) =>
       section.codes.map((column) => row[column]),
     ),
   );
-  return [
-    ...new Set(codes.filter((code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? ""))),
-  ];
+  return [...new Set(codes.filter(isCode))];
+}
+
+/**
+ * What the tables' `about` makes of a row of `section`: `label`, the name of the first of its codes `about` names,
+ * and `retired` saying so when the code that named it, or with none the first of its codes with a status, is retired,
+ * else an empty string.
+ */
+function namingOf(section, row, about) {
+  const said = section.codes.map((column) => about.get(row[column]));
+  const naming = said.find((each) => each?.name !== undefined);
+  return {
+    label: naming?.name.label,
+    retired: statusOf(
+      naming ?? said.find((each) => each?.status !== undefined),
+      "Retired code",
+    ),
+  };
 }
 
 /**
@@ -169,21 +191,37 @@ export function named(answers, about) {
   const renamed = { ...answers };
   for (const section of SECTIONS) {
     if (answers[section.question] === undefined) continue;
-    renamed[section.question] = answers[section.question].map((row) => {
-      const said = section.codes.map((column) => about.get(row[column]));
-      const naming = said.find((each) => each?.name !== undefined);
-      const retired = statusOf(
-        naming ?? said.find((each) => each?.status !== undefined),
-        "Retired code",
-      );
+    renamed[section.question] = sectionRows(section, answers).map((row) => {
+      const { label, retired } = namingOf(section, row, about);
       return {
         ...row,
-        ...(naming !== undefined && { [section.field]: naming.name.label }),
+        ...(label !== undefined && { [section.field]: label }),
         ...(retired !== "" && { retired }),
       };
     });
   }
   return renamed;
+}
+
+/**
+ * What the tables say of the codes `answers` hold, as the tables' `about` answers (`tables` is the tables), and of the
+ * ingredients those codes map to, which the sentences that name an ingredient need. An ingredient the tables cannot say
+ * is left unnamed; the codes' own answer failing throws.
+ */
+export async function codesSaid(answers, { tables }) {
+  const about = await tables.about(codesOf(answers));
+  const ingredients = new Set(
+    [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
+  );
+  try {
+    for (const [code, said] of await tables.about(
+      [...ingredients].filter((code) => !about.has(code)),
+    ))
+      about.set(code, said);
+  } catch {
+    // The ingredients stay as the end of their IRI.
+  }
+  return about;
 }
 
 /** A measurement to three significant figures, as a lab report gives it: `60.967166` is `61`, `4.7055` is `4.71`. */
@@ -296,6 +334,8 @@ export function counted(records) {
 
 const UNNAMED = "An entry";
 
+const capitalised = (sentence) => sentence[0].toUpperCase() + sentence.slice(1);
+
 const SAID = {
   "members disagree on criticality": ({ name, one }) =>
     `Sources disagree on how severe ${name === UNNAMED ? `an unnamed ${one}` : `the ${name} ${one}`} is.`,
@@ -333,6 +373,22 @@ function where(places) {
   );
 }
 
+/**
+ * Each entry `answers` say is seen more than once, by its IRI: the places its records came from, as a person says
+ * them, and `across`, from how many places (a record with no place counts in none).
+ */
+export function seenAt(answers) {
+  const seen = new Map();
+  for (const row of answers[SEEN] ?? []) {
+    if (!seen.has(row.entry))
+      seen.set(row.entry, { places: [], across: Number(row.places) });
+    const { places } = seen.get(row.entry);
+    const place = row.place === undefined ? undefined : placeName(row.place);
+    if (place !== undefined && !places.includes(place)) places.push(place);
+  }
+  return seen;
+}
+
 /** An entry the sections do not show, named from its label: `Allergy entry · Latex` is a latex allergy. */
 function fromLabel(label = "") {
   const [kind = "", name = label] = label.split(" · ");
@@ -355,40 +411,28 @@ function fromLabel(label = "") {
 export function noticed(answers, about = new Map()) {
   const entries = new Map();
   for (const section of SECTIONS)
-    for (const row of answers[section.question] ?? [])
+    for (const row of sectionRows(section, answers))
       entries.set(row.entry, {
         name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
   for (const [variant, asked] of variantsAsked(answers))
     entries.set(variant, { name: variantName(asked), one: "variant" });
-  const seen = new Map();
-  for (const row of answers[SEEN] ?? []) {
-    if (!entries.has(row.entry)) continue;
-    if (!seen.has(row.entry))
-      seen.set(row.entry, { places: new Set(), across: Number(row.places) });
-    if (row.place !== undefined)
-      seen.get(row.entry).places.add(placeName(row.place));
-  }
-  const joined = [...seen].map(([entry, { places, across }]) => {
-    const { name, one } = entries.get(entry);
-    return across > 1
-      ? `${name} was recorded ${where([...places])}. Cascade keeps it as one ${one}.`
-      : `${name} arrived more than once${places.size === 0 ? "" : ` from ${[...places][0]}`}. Cascade keeps it as one ${one}.`;
-  });
+  const joined = [...seenAt(answers)]
+    .filter(([entry]) => entries.has(entry))
+    .map(([entry, { places, across }]) => {
+      const { name, one } = entries.get(entry);
+      return across > 1
+        ? `${name} was recorded ${where(places)}. Cascade keeps it as one ${one}.`
+        : `${name} arrived more than once${places.length === 0 ? "" : ` from ${places[0]}`}. Cascade keeps it as one ${one}.`;
+    });
   const more = joined.length - 3;
   const review = new Map();
-  for (const row of answers[REVIEW] ?? []) {
-    const item = entries.get(row.entry) ?? fromLabel(row.entryLabel);
+  for (const row of answers[REVIEW] ?? [])
     review.set(
-      JSON.stringify([
-        row.entry,
-        row.needs,
-        row.needs === "possibly the same medication" ? row.otherRecord : null,
-      ]),
-      (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item, row),
+      reviewKey(row),
+      reviewSaid(row, entries.get(row.entry) ?? fromLabel(row.entryLabel)),
     );
-  }
   return [
     ...joined.slice(0, 3),
     ...(more > 0
@@ -398,7 +442,21 @@ export function noticed(answers, about = new Map()) {
       : []),
     ...review.values(),
     ...sharedIngredients(answers, about),
-  ].map((sentence) => sentence[0].toUpperCase() + sentence.slice(1));
+  ].map(capitalised);
+}
+
+/** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
+function reviewKey(row) {
+  return JSON.stringify([
+    row.entry,
+    row.needs,
+    row.needs === "possibly the same medication" ? row.otherRecord : null,
+  ]);
+}
+
+/** The sentence a row of "What needs review" is told in, of `item`, the entry's `name` and what `one` of its kind is called. */
+function reviewSaid(row, item) {
+  return (SAID[row.needs] ?? (() => `${item.name}: ${row.needs}.`))(item, row);
 }
 
 /**
@@ -408,7 +466,7 @@ export function noticed(answers, about = new Map()) {
  */
 function sharedIngredients(answers, about) {
   const medications = SECTIONS.find(({ one }) => one === "medication");
-  const rows = (answers[medications.question] ?? []).map((row) => ({
+  const rows = sectionRows(medications, answers).map((row) => ({
     entry: row.entry,
     name: row.medication || fromLabel(row.entryLabel).name,
     code: row.code,
@@ -761,7 +819,7 @@ ${body}
  * then the other, and the filter hides the rows without its text. Rendered to a string, it is the table as it opens,
  * and the page's script sorts and filters it.
  */
-function Table({ section, rows }) {
+function Table({ section, rows, entryHref }) {
   const [sort, setSort] = useState();
   const [wanted, setWanted] = useState("");
   const { at, up } = sort ?? {
@@ -784,10 +842,14 @@ function Table({ section, rows }) {
   });
   const cell = (column, row, index) => {
     const text = shown(column, row);
-    return html`<td data-key=${column.key(row) ?? ""}>${
+    const cell =
       column.tag && text !== ""
         ? html`<span class="tag${column.warm(row) ? " warm" : ""}">${text}</span>`
-        : text
+        : text;
+    return html`<td data-key=${column.key(row) ?? ""}>${
+      index === 0 && entryHref !== undefined
+        ? html`<a href=${entryHref(row.entry)}>${cell}</a>`
+        : cell
     }${index === 0 && row.retired !== undefined && html` <span class="tag">${row.retired}</span>`}</td>`;
   };
   const body = sorted.map((row) => {
@@ -811,8 +873,11 @@ ${body}
 </table></div>`;
 }
 
-/** The section's tile, a link that opens its dialog, and the dialog: its `Table`. */
-export function tile(section, rows) {
+/**
+ * The section's tile, a link that opens its dialog, and the dialog: its `Table`, whose rows each link to
+ * `entryHref(row.entry)` when given.
+ */
+export function tile(section, rows, entryHref) {
   const id = `see-${slug(section.title)}`;
   const opened = opening(section, rows);
   const names = opened.map((row) => row[section.field] ?? "").join(", ");
@@ -821,7 +886,7 @@ export function tile(section, rows) {
     dialog: box(
       id,
       html`${section.title} <span class="muted">${rows.length}</span>`,
-      html`<${Table} section=${section} rows=${opened} />`,
+      html`<${Table} section=${section} rows=${opened} entryHref=${entryHref} />`,
       { wide: true },
     ),
   };
@@ -839,6 +904,7 @@ export function tile(section, rows) {
  * - `findHospital`: the address of the page that finds a hospital;
  * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined;
  * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
+ * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
  *   the rows by;
  * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say.
@@ -853,6 +919,7 @@ export function podPage(
     findHospital,
     connection,
     unheld = [],
+    entryHref,
     about = new Map(),
     said,
   },
@@ -863,8 +930,8 @@ export function podPage(
   const places = [...new Set(sources.map(placeOf))];
   const sentences = noticed(answers, about);
   const tiles = SECTIONS.filter(
-    (section) => (answers[section.question] ?? []).length > 0,
-  ).map((section) => tile(section, answers[section.question]));
+    (section) => sectionRows(section, answers).length > 0,
+  ).map((section) => tile(section, sectionRows(section, answers), entryHref));
   const lead =
     records === 0
       ? "Nothing here yet."
@@ -894,6 +961,237 @@ function bringIn({ empty, person, signIn, findHospital }) {
 <p>${said}</p>
 <div class="row">${(person?.at ?? []).map(signIn)}<a class="button quiet" href=${findHospital}>Find a hospital</a></div>
 </div>`;
+}
+
+/** An entry's part in an address: the last `:`-separated part of its IRI, which a host never turns back into one. */
+export function entryId(entry) {
+  return entry.split(":").at(-1);
+}
+
+/** The held series that holds the version `origin`, with that version; none when no series does. */
+function heldAt(origin, held) {
+  const series = held.find(({ versions }) =>
+    versions.some(({ iri }) => iri === origin),
+  );
+  return series === undefined
+    ? undefined
+    : { series, version: series.versions.find(({ iri }) => iri === origin) };
+}
+
+/** What names a code's page: the series of the version its name, else its status, else its ingredients came from. */
+function seriesOf(said, held) {
+  for (const part of [said?.name, said?.status, said?.ingredients]) {
+    const found = part === undefined ? undefined : heldAt(part.origin, held);
+    if (found !== undefined) return found.series;
+  }
+  return undefined;
+}
+
+/** What Cascade did with an entry seen more than once, as `seenAt` gives it, in a sentence about the entry itself. */
+function seenSaid({ places, across }, one) {
+  return across > 1
+    ? `Cascade recorded it ${where(places)} and keeps it as one ${one}.`
+    : `It arrived more than once${places.length === 0 ? "" : ` from ${places[0]}`}. Cascade keeps it as one ${one}.`;
+}
+
+/**
+ * The entry whose address part is `id` (see `entryId`), as its page reads it, or undefined when no row of "Where it
+ * came from" has it. `answers` holds the rows of each of `QUESTIONS`, by question; `about` is `codesSaid`'s answer, and
+ * `held` the tables' `held()`, both empty until the tables can say.
+ *
+ * - `entry`, `name`, `kind` (`allergy`) and `tags`;
+ * - `what`: the section's columns after the name, as `{ head, text }`; `recorded`, the record's own name when the tables
+ *   named it otherwise; and `codes`, each `{ notation, series }`, the series that names it when one is held;
+ * - `where`: a line for each document the entry's records came from, a record with none its own, the oldest arrival
+ *   first, each `{ place, retrieved, arrived, importLabel, records }`; `importLabel` only when a hospital is the place;
+ * - `known`: what Cascade did, then what the tables say of each code, as `{ sentence, tag, from }`, a table's claim
+ *   with `from`, the `{ series, version }` among `held` it came from; and `credits`, each cited series' once.
+ *
+ * An entry no section shows is named and kinded from its label, and has no columns or codes.
+ */
+export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
+  const sources = answers[SOURCES] ?? [];
+  const entry = sources.find((row) => entryId(row.entry) === id)?.entry;
+  if (entry === undefined) return undefined;
+  const ofEntry = (rows) => rows.filter((row) => row.entry === entry);
+  const section = SECTIONS.find(
+    (each) => ofEntry(sectionRows(each, answers)).length > 0,
+  );
+  const rows =
+    section === undefined ? [] : ofEntry(sectionRows(section, answers));
+  const label = [
+    ...rows,
+    ...ofEntry(sources),
+    ...ofEntry(answers[REVIEW] ?? []),
+  ]
+    .map((row) => row.entryLabel)
+    .find((each) => each !== undefined);
+  const labelled = fromLabel(label);
+  const kind = section?.one ?? labelled.one;
+  const namings = rows.map((row) => namingOf(section, row, about));
+  const given = namings.find((each) => each.label !== undefined)?.label;
+  const own = rows.map((row) => row[section.field]).find(Boolean);
+  const title = given ?? (own || labelled.name);
+  const retired = namings.map((each) => each.retired).find(Boolean);
+
+  const codes = [
+    ...new Set(
+      rows
+        .flatMap((row) => section.codes.map((column) => row[column]))
+        .filter(isCode),
+    ),
+  ];
+
+  const lines = new Map();
+  for (const row of ofEntry(sources)) {
+    const at = lines.get(row.document ?? row.record);
+    if (at === undefined)
+      lines.set(row.document ?? row.record, {
+        place: placeOf(row),
+        ...(row.retrieved !== undefined && { retrieved: row.retrieved }),
+        arrived: row.arrived,
+        ...(row.hospital !== undefined &&
+          row.importLabel !== undefined && { importLabel: row.importLabel }),
+        records: new Set([row.record]),
+      });
+    else {
+      at.records.add(row.record);
+      if (compare("date", row.arrived ?? "", at.arrived ?? "") < 0)
+        at.arrived = row.arrived;
+    }
+  }
+
+  const known = [];
+  const seen = seenAt(answers).get(entry);
+  if (seen !== undefined) known.push({ sentence: seenSaid(seen, kind) });
+  const reviews = new Map();
+  for (const row of ofEntry(answers[REVIEW] ?? []))
+    reviews.set(
+      reviewKey(row),
+      capitalised(reviewSaid(row, { name: title, one: kind })),
+    );
+  for (const sentence of reviews.values()) known.push({ sentence });
+  for (const code of codes) {
+    const said = about.get(code);
+    if (said === undefined) continue;
+    const notation = said.notation ?? codeShown(code);
+    const claim = (part, sentence) => {
+      const from = heldAt(part.origin, held);
+      if (from !== undefined) known.push({ sentence, from });
+    };
+    if (said.name !== undefined)
+      claim(said.name, `${notation} is named "${said.name.label}".`);
+    if (said.status?.deprecated === true) {
+      const instead = said.status.replacedBy.map(
+        (each) => about.get(each)?.notation ?? codeShown(each),
+      );
+      claim(
+        said.status,
+        `${notation} is retired${instead.length === 0 ? "" : `, replaced by ${listed(instead)}`}.`,
+      );
+    }
+    if ((said.ingredients?.codes.length ?? 0) > 0) {
+      const names = said.ingredients.codes.map(
+        (each) => about.get(each)?.name?.label ?? codeShown(each),
+      );
+      claim(
+        said.ingredients,
+        `${notation} ${names.length === 1 ? "has the ingredient" : "has the ingredients"} ${listed(names)}.`,
+      );
+    }
+  }
+
+  return {
+    entry,
+    name: title === UNNAMED ? `An unnamed ${kind}` : title,
+    kind,
+    tags: retired === undefined ? [] : [retired],
+    what:
+      section === undefined
+        ? []
+        : section.columns.slice(1).flatMap((column) => {
+            const texts = [
+              ...new Set(
+                rows.map((row) => column.show(row) ?? "").filter(Boolean),
+              ),
+            ];
+            return texts.length === 0
+              ? []
+              : [{ head: column.head, text: texts.join(", ") }];
+          }),
+    ...(given !== undefined &&
+      own !== undefined &&
+      own !== given && { recorded: own }),
+    codes: codes.map((code) => {
+      const series = seriesOf(about.get(code), held);
+      return {
+        notation: about.get(code)?.notation ?? codeShown(code),
+        ...(series !== undefined && { series }),
+      };
+    }),
+    where: [...lines.values()]
+      .map((line) => ({ ...line, records: line.records.size }))
+      .sort((a, b) => compare("date", a.arrived ?? "", b.arrived ?? "")),
+    known,
+    credits: [
+      ...new Set(known.flatMap(({ from }) => from?.series.credit ?? [])),
+    ],
+  };
+}
+
+/**
+ * An entry's page, as a person reads it: its name and tags, what it is, where it came from and what else is known, each
+ * part absent when it has nothing to say but where it came from. `entry` is `entryOf`'s answer, none when the entry is
+ * not in the pod. `back` is the pod's address; a code with a series is a link to `codeHref(series, notation)`, and
+ * the version a table's claim comes from a link to `tableHref(series)`.
+ */
+export function entryPage({ entry, pod, back, codeHref, tableHref }) {
+  const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
+  if (entry === undefined)
+    return html`${backLink}
+<h1>Not found</h1>
+<p>This entry is no longer in this pod.</p>`;
+  const { name, kind, tags, what, recorded, codes, known, credits } = entry;
+  const facts = [
+    ...(recorded === undefined
+      ? []
+      : [{ head: "Recorded as", text: recorded }]),
+    ...what,
+  ];
+  const shown = (code, at) =>
+    html`${at > 0 && ", "}${code.series === undefined ? code.notation : html`<a href=${codeHref(code.series, code.notation)}>${code.notation}</a>`}`;
+  return html`${backLink}
+<h1>${name}${tags.map((tag) => html` <span class="tag">${tag}</span>`)}</h1>
+<p class="lead">${kind[0].toUpperCase() + kind.slice(1)}</p>
+${
+  (facts.length > 0 || codes.length > 0) &&
+  html`<div class="card entry"><h2>What it is</h2><dl class="facts">
+${facts.map(({ head, text }) => html`<dt>${head}</dt><dd>${text}</dd>`)}
+${codes.length > 0 && html`<dt>${codes.length === 1 ? "Code" : "Codes"}</dt><dd>${codes.map(shown)}</dd>`}
+</dl></div>`
+}
+<div class="card entry"><h2>Where it came from</h2><ul>
+${entry.where.map(
+  ({ place, retrieved, arrived, importLabel, records }) =>
+    html`<li><strong>${place}</strong> <span class="muted">${[
+      retrieved !== undefined && `retrieved ${day(retrieved)}`,
+      arrived !== undefined &&
+        `arrived ${day(arrived)}${importLabel === undefined ? "" : ` through ${importLabel}`}`,
+      records > 1 && `${records} records`,
+    ]
+      .filter(Boolean)
+      .join("; ")}</span></li>`,
+)}
+</ul></div>
+${
+  known.length > 0 &&
+  html`<div class="card entry"><h2>What else is known</h2><ul>
+${known.map(
+  ({ sentence, tag, from }) =>
+    html`<li>${sentence}${tag !== undefined && html` <span class="tag warm">${tag}</span>`}${from !== undefined && html` <span class="muted from">From ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
+)}
+</ul>${credits.map((credit) => html`<p class="muted">${credit}</p>`)}</div>`
+}`;
 }
 
 /** What an import is doing, as `pod.import`'s `onProgress` says it: `converting, 3 of 10 documents done`. */
@@ -1728,6 +2026,9 @@ a { color: var(--accent); }
 .variants h3 { font-size: 0.95rem; margin: 0.9rem 0 0.2rem; }
 .variants ul { margin: 0; padding-left: 1.2rem; }
 .variants li { margin: 0.3rem 0; }
+.entry ul { margin: 0; padding-left: 1.2rem; }
+.entry li { margin: 0.3rem 0; }
+.entry .from { display: block; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 1rem; margin: 0 0 1.25rem; }
 .tile { display: block; padding: 1rem 1.1rem; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; }
 .tile:hover { border-color: var(--accent); background: var(--tint); }
