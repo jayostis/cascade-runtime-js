@@ -12,7 +12,11 @@ const COMMAND = "create-cascade-app";
 const PROJECT_NAME = /^[a-z0-9][a-z0-9._-]*$/;
 const USAGE = `usage: ${COMMAND} <folder> [--tarball <address>]`;
 /** The kits whose pods a made app starts with, in the order they are loaded; the starter's `npm run reset` loads the same. */
-export const KITS = ["alex-rivera", "priya-natarajan"] as const;
+export const KITS = [
+  "alex-rivera",
+  "priya-natarajan",
+  "martin-okafor",
+] as const;
 
 export interface Terminal {
   readonly out: (text: string) => void;
@@ -177,7 +181,7 @@ export async function create(
   terminal.out(
     [
       "",
-      `Made ${target}${loaded.length === 0 ? "" : `, with ${loaded.length === 1 ? "the pod" : "the pods"} ${loaded.join(" and ")}`}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
+      `Made ${target}${loaded.length === 0 ? "" : `, with ${loaded.length === 1 ? "the pod" : "the pods"} ${[loaded.slice(0, -1).join(", "), loaded.at(-1)].filter(Boolean).join(" and ")}`}. Start your coding agent in ${dirname(target)}, the folder holding it, and give it this, with your idea in its last line:`,
       "",
       agentPrompt(name),
       "",

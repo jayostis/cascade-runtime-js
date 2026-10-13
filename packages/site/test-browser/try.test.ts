@@ -211,7 +211,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
+test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what Cascade noticed, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -227,6 +227,7 @@ test("a first visit copies Alex's and Priya's pods and opens Alex's, which reads
   );
   assert.deepEqual(await texts(page, "nav a"), [
     "Alex Rivera",
+    "Martin Okafor",
     "Priya Natarajan",
   ]);
   assert.deepEqual(await loadable(page), []);
@@ -509,11 +510,16 @@ test("after a reload, the pods made in this browser are still on the left", asyn
   await settled(page);
   assert.deepEqual(
     (await texts(page, "nav a")).sort(),
-    ["Alex Rivera", "Priya Natarajan", joined.person.name].sort(),
+    [
+      "Alex Rivera",
+      "Martin Okafor",
+      "Priya Natarajan",
+      joined.person.name,
+    ].sort(),
   );
 });
 
-test("File, Delete all data empties the pods column, leaves no pod nor answers in the browser and says how many went, a later visit still has no pods, and Reset all data brings both samples back", async () => {
+test("File, Delete all data empties the pods column, leaves no pod nor answers in the browser and says how many went, a later visit still has no pods, and Reset all data brings the three samples back", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -548,11 +554,12 @@ test("File, Delete all data empties the pods column, leaves no pod nor answers i
     await fromFile("Reset all data");
     assert.deepEqual(await texts(page, "nav a"), [
       "Alex Rivera",
+      "Martin Okafor",
       "Priya Natarajan",
     ]);
     assert.equal(
       await page.textContent("main .note"),
-      "Reset: Alex Rivera and Priya Natarajan are back.",
+      "Reset: Alex Rivera, Martin Okafor and Priya Natarajan are back.",
     );
   } finally {
     await context.close();
@@ -563,7 +570,7 @@ test("a first visit where no sample copies leaves no database, says there are no
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    const samples = /\/(alex-rivera|priya-natarajan)\/pod[/.]/;
+    const samples = /\/(alex-rivera|martin-okafor|priya-natarajan)\/pod[/.]/;
     await page.route(samples, (route) => route.abort());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -577,7 +584,11 @@ test("a first visit where no sample copies leaves no database, says there are no
     );
     assert.equal(await page.textContent("main h1"), "No pods yet");
     assert.deepEqual(await texts(page, "nav a"), []);
-    assert.deepEqual(await loadable(page), [ALEX, "priya-natarajan"]);
+    assert.deepEqual(await loadable(page), [
+      ALEX,
+      "martin-okafor",
+      "priya-natarajan",
+    ]);
 
     await page.unroute(samples);
     await newPod(page, "Load Alex Rivera");
@@ -592,8 +603,9 @@ test("a failed copy whose database another connection holds open says so, and on
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    await page.route(/\/(alex-rivera|priya-natarajan)\/pod[/.]/, (route) =>
-      route.abort(),
+    await page.route(
+      /\/(alex-rivera|martin-okafor|priya-natarajan)\/pod[/.]/,
+      (route) => route.abort(),
     );
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -1137,7 +1149,7 @@ ${shots.join("\n")}`);
   }
 });
 
-test("in try/, a pod with a variant and a report shows, once the engine is ready, what the report said and what ClinVar says today from the starter copy, a gene the series does not cover says so, and the counsellor sentence and ClinVar's disclaimer follow", async () => {
+test("in try/, Martin's pod, copied on a first visit, shows once the engine is ready what each of his reports said and what ClinVar says today from the starter copy: the MLH1 variant's sentence, a gene the series does not cover, and a variant it holds no row for, then the counsellor sentence and ClinVar's disclaimer", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -1146,45 +1158,9 @@ test("in try/, a pod with a variant and a report shows, once the engine is ready
     await page.waitForSelector('body[data-tables="ready"]', {
       timeout: 60_000,
     });
-    const refused = await page.evaluate(async () => {
-      const runtime = (await import("cascade-runtime" as string)) as {
-        openPod(name: string): Promise<{
-          subject: string;
-          owner: string;
-          enter(turtle: string): Promise<{ refused?: string }>;
-          close(): Promise<void>;
-        }>;
-      };
-      const pod = await runtime.openPod("martin-variant");
-      try {
-        const genomics = "https://ns.cascadeprotocol.org/genomics/v1#";
-        const records = `<urn:cascade:output-0> a <${genomics}Variant> .
-<urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-  <${genomics}geneSymbol> "MLH1" ; <${genomics}hgvsCDot> "NM_000249.4:c.2042C>T" ; <${genomics}clinvarVariationId> "90011" ;
-  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .
-<urn:cascade:output-1> a <${genomics}VariantInterpretation> .
-<urn:cascade:output-1-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-1> ;
-  <${genomics}variantInterpreted> <urn:cascade:output-0> ; <${genomics}acmgClassification> <${genomics}LikelyPathogenic> ;
-  <${genomics}interpretedDate> "2024-03-21"^^<http://www.w3.org/2001/XMLSchema#date> ;
-  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .
-<urn:cascade:output-2> a <${genomics}Variant> .
-<urn:cascade:output-2-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-2> ;
-  <${genomics}geneSymbol> "BRCA2" ; <${genomics}hgvsCDot> "NM_000059.4:c.1A>G" ;
-  <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${pod.subject}> .`;
-        return (
-          await pod.enter(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> ;
-  <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${pod.owner}> ;
-    <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/judgments/v1-draft#patient> ] .
-${records}`)
-        ).refused;
-      } finally {
-        await pod.close();
-      }
-    });
-    assert.equal(refused, undefined);
-
-    await page.goto(`${served.url}try/index.html?pod=martin-variant`);
+    await page.goto(`${served.url}try/index.html?pod=martin-okafor`);
     await settled(page);
+    assert.equal(await page.textContent("main h1"), "Martin Okafor");
     await page.waitForFunction(
       () => document.body.textContent?.includes("ClinVar today says "),
       undefined,
@@ -1194,20 +1170,26 @@ ${records}`)
       /\s+/g,
       " ",
     );
-    assert.ok(
-      shown.includes("Your 2024 report said likely pathogenic."),
-      shown,
-    );
-    assert.match(shown, /ClinVar today says [a-z]/);
+    const mlh1 = (
+      await page
+        .locator("main .variant")
+        .filter({ hasText: "ClinVar 90011" })
+        .innerText()
+    ).replace(/\s+/g, " ");
+    for (const sentence of [
+      "Your 2022 report said uncertain significance.",
+      "Your 2024 report said likely pathogenic.",
+      "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
+    ])
+      assert.ok(mlh1.includes(sentence), `${sentence} is not in ${mlh1}`);
+    for (const sentence of [
+      "ClinVar, as this app holds it, has no row for this variant.",
+      "Your clinician or a genetic counsellor can explain what this means for you.",
+    ])
+      assert.ok(shown.includes(sentence), `${sentence} is not in ${shown}`);
     assert.match(
       shown,
       /ClinVar, as this app holds it, covers .*, not BRCA2\./,
-    );
-    assert.ok(
-      shown.includes(
-        "Your clinician or a genetic counsellor can explain what this means for you.",
-      ),
-      shown,
     );
     assert.match(
       shown,

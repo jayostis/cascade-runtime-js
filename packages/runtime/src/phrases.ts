@@ -156,7 +156,7 @@ parameter("count", /no file|1 file|\d+ files/, (text) =>
 );
 parameter(
   "view",
-  /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile/,
+  /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile|variants|variant-interpretations/,
 );
 parameter("lens", /[a-z]+/);
 /** Words, in which a colon is part of an HGVS expression when a non-space follows it, and the colon ending a step is not. */

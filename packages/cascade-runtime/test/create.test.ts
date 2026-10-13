@@ -82,8 +82,14 @@ test("given a folder, it makes the project and names it, with the view's package
     `install ${folder}`,
     `load alex-rivera into ${join(folder, "pods", "alex-rivera")}`,
     `load priya-natarajan into ${join(folder, "pods", "priya-natarajan")}`,
+    `load martin-okafor into ${join(folder, "pods", "martin-okafor")}`,
   ]);
-  for (const line of ["npm start", "npm run help", agentPrompt("my-app")])
+  for (const line of [
+    "with the pods alex-rivera, priya-natarajan and martin-okafor.",
+    "npm start",
+    "npm run help",
+    agentPrompt("my-app"),
+  ])
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
   for (const line of ["npx ", "pod:load"])
     assert.ok(!terminal.text().includes(line), `it printed ${line}`);
@@ -98,7 +104,10 @@ test("a pod that does not load leaves the app made, and says which", async () =>
     terminal.text(),
     /the pod priya-natarajan did not load: the kit is broken/,
   );
-  assert.match(terminal.text(), /with the pod alex-rivera\./);
+  assert.match(
+    terminal.text(),
+    /with the pods alex-rivera and martin-okafor\./,
+  );
 });
 
 test("it refuses a folder it cannot use and writes nothing", async () => {

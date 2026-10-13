@@ -259,13 +259,14 @@ export class Words {
     const inputs =
       this.#handles?.records?.[handle] ?? this.#handles?.profiles?.[handle];
     if (inputs === undefined) return undefined;
-    const { server, type, id, entry, position, download } = inputs;
+    const { server, type, id, fullUrl, entry, position, download } = inputs;
     if (
       typeof server === "string" &&
       typeof type === "string" &&
       typeof id === "string"
     )
       return recordName([server, type, id]);
+    if (typeof fullUrl === "string") return recordName([fullUrl]);
     if (typeof entry === "string" && typeof position === "number") {
       const file = entry.slice(entry.lastIndexOf("/entries/") + 1);
       const step = this.#replayed.steps.find(

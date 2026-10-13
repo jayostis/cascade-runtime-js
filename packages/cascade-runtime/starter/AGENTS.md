@@ -3,8 +3,9 @@
 This app was made from the Cascade starter. It is a demonstration, not a
 foundation: rebuild it in any framework. What carries over is
 `cascade-runtime`, which keeps the pods, and the pods under `pods/<name>/`. It
-starts with two, Alex Rivera's and Priya Natarajan's, loaded from the kits the
-package carries; `npm run reset` puts them back as they were made, and
+starts with three, Alex Rivera's, Priya Natarajan's and Martin Okafor's (two
+FHIR reports of one variant, beside what ClinVar says today), loaded from the
+kits the package carries; `npm run reset` puts them back as they were made, and
 `npm run help` lists every command. `npm start` serves the app, and
 `npm run dev` restarts it on every save.
 `npm run kit:export -- alex-rivera x-e12` copies one of Alex's downloads into

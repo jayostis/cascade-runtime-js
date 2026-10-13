@@ -26,6 +26,35 @@ let heldNames = async () => new Map();
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
+const MARTIN = "conformance/martin-okafor";
+const MY_VARIANTS = "pod/My genetic variants";
+const REPORTS = "pod/What each report says of a variant";
+const CORE = "https://ns.cascadeprotocol.org/core/v1#";
+const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
+const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
+const COUNSELLOR =
+  "Your clinician or a genetic counsellor can explain what this means for you.";
+const DIFFERS = "Differs from ClinVar today";
+const ACMG = [
+  "Pathogenic",
+  "LikelyPathogenic",
+  "VUS",
+  "LikelyBenign",
+  "Benign",
+];
+const DIGITS = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+];
 const MEDICATIONS = "pod/My active medications";
 const DRUG_NAME = "https://ns.cascadeprotocol.org/clinical/v1#drugName";
 const ALLERGIES = "pod/My active allergies";
@@ -391,7 +420,7 @@ await behaviour("the command makes the app", async () => {
       : await run(startLine(address, "my-app"), [], { cwd: work, shell: true });
   assert.equal(code, 0, "the command failed");
   assert.ok(out.includes(agentPrompt("my-app")), "no agent prompt");
-  assert.deepEqual(await podsOf(), KITS);
+  assert.deepEqual(await podsOf(), [...KITS].sort());
   const loads = [
     ...out.matchAll(/Loading the pod (\S+),[^\n]*? loaded in ([\d.]+) s/g),
   ];
@@ -677,6 +706,239 @@ if (release === undefined) {
     },
   );
 
+  await behaviour(
+    "Martin's pod is loaded, and its page puts what ClinVar says today beside what each of his reports said, in the four states of his variants",
+    async () => {
+      const triplesOf = async (path) =>
+        new OxigraphStore().parse(
+          await readFile(join(story.vocabulary, path)),
+          `file:///${path}`,
+        );
+      const objectsOf = (triples, subject, predicate) =>
+        triples
+          .filter(([s, p]) => s.value === subject && p.value === predicate)
+          .map(([, , o]) => o.value);
+      const entriesOf = (triples) =>
+        [
+          ...new Set(
+            triples
+              .filter(([, p]) => p.value === `${CORE}mergedFrom`)
+              .map(([s]) => s.value),
+          ),
+        ].map((entry) => ({
+          entry,
+          hgvs: objectsOf(triples, entry, `${GENOMICS}hgvsCDot`).sort(),
+          variations: objectsOf(
+            triples,
+            entry,
+            `${GENOMICS}clinvarVariationId`,
+          ),
+          genes: objectsOf(triples, entry, `${GENOMICS}geneSymbol`),
+        }));
+      const titleOf = ({ genes, hgvs, variations }) =>
+        [...genes, ...hgvs, ...variations.map((id) => `ClinVar ${id}`)].join(
+          " · ",
+        );
+      const kitVariants = entriesOf(
+        await triplesOf(`${MARTIN}/expected/variants.ttl`),
+      );
+      assert.ok(kitVariants.length > 0, "Martin's kit expects no variant");
+
+      const rows = await asked(MY_VARIANTS, "martin-okafor");
+      assert.equal(
+        new Set(rows.map(({ variant }) => variant)).size,
+        kitVariants.length,
+        "the pod's variants are not as many as the kit's entries",
+      );
+      assert.equal(
+        rows.length,
+        kitVariants.reduce(
+          (sum, { hgvs, variations }) =>
+            sum + Math.max(hgvs.length + variations.length, 1),
+          0,
+        ),
+        "the pod's rows are not one for each code of each entry of the kit",
+      );
+
+      const tables = `${MARTIN}/scripted-input/martin/tables/clinvar-story`;
+      const index = await triplesOf(`${tables}/references.ttl`);
+      const version = index.find(([, p]) => p.value === `${REC}coversGene`)[0]
+        .value;
+      const covered = objectsOf(index, version, `${REC}coversGene`).sort();
+      const held = await triplesOf(
+        `${tables}/${version.replace("urn:uuid:", "")}.ttl`,
+      );
+      const rowOf = (id) =>
+        objectsOf(
+          held,
+          `http://www.ncbi.nlm.nih.gov/clinvar/${id}`,
+          `${REC}clinvarClassification`,
+        );
+      const labels = await triplesOf("ontologies/records/v1-draft/records.ttl");
+      const label = (concept) => {
+        const [text] = objectsOf(labels, concept, PREF_LABEL);
+        return text.slice(0, 1).toLowerCase() + text.slice(1);
+      };
+      // The page reads the app's copy of the published ClinVar series; this check reads the kit's subset of it. They agree
+      // because the subset is the published rows, so the sentence is built here from the kit's own row.
+      const saidOf = (id) => {
+        const row = `http://www.ncbi.nlm.nih.gov/clinvar/${id}`;
+        const classifications = rowOf(id);
+        const [status] = objectsOf(held, row, `${REC}clinvarReviewStatus`);
+        const [submitters] = objectsOf(
+          held,
+          row,
+          `${REC}contributingSubmitters`,
+        );
+        const count = Number(submitters);
+        assert.ok(
+          classifications.length > 0 && status && count < 10,
+          `${id}: the kit's row`,
+        );
+        const said = ACMG.map((name) => GENOMICS + name)
+          .filter((iri) => classifications.includes(iri))
+          .map(label)
+          .join("/");
+        const counted = `${DIGITS[count]} contributing ${count === 1 ? "submitter" : "submitters"}`;
+        return `ClinVar today says ${said}: ${label(status)}, ${counted}.`;
+      };
+      assert.deepEqual(
+        kitVariants.flatMap(({ variations }) => variations).sort(),
+        [
+          ...new Set(
+            held
+              .filter(([, p]) => p.value === `${REC}clinvarClassification`)
+              .map(([row]) => row.value.split("/").at(-1)),
+          ),
+        ].sort(),
+        "the kit's ClinVar IDs are not the rows its story's table holds",
+      );
+      const kitReports = await triplesOf(
+        `${MARTIN}/expected/variant-interpretations.ttl`,
+      );
+      const signature = (reports) =>
+        JSON.stringify(
+          reports
+            .map(({ classification, date }) => `${classification} ${date}`)
+            .sort(),
+        );
+      const kitGroups = new Map();
+      for (const entry of new Set(
+        kitReports
+          .filter(([, p]) => p.value === `${CORE}mergedFrom`)
+          .map(([s]) => s.value),
+      )) {
+        const [about] = objectsOf(
+          kitReports,
+          entry,
+          `${GENOMICS}variantInterpreted`,
+        );
+        kitGroups.set(about, [
+          ...(kitGroups.get(about) ?? []),
+          {
+            classification: objectsOf(
+              kitReports,
+              entry,
+              `${GENOMICS}acmgClassification`,
+            )[0],
+            date: objectsOf(kitReports, entry, `${GENOMICS}interpretedDate`)[0],
+          },
+        ]);
+      }
+      const podReports = Map.groupBy(
+        await asked(REPORTS, "martin-okafor"),
+        ({ variant }) => variant,
+      );
+      assert.deepEqual(
+        [...podReports.values()].map(signature).sort(),
+        [...kitGroups.values()].map(signature).sort(),
+        "the pod's reports are not the kit's, grouped by variant",
+      );
+
+      const shown = await started();
+      let html;
+      try {
+        html = await settled(shown, "/pods/martin-okafor/");
+      } finally {
+        await shown.stop();
+      }
+      assert.equal(heading(html), "Martin Okafor");
+      const text = readable(html);
+      assert.ok(
+        text.includes(COUNSELLOR),
+        "no sentence sends him to a counsellor",
+      );
+      assert.ok(
+        text.includes(
+          "not intended for direct diagnostic use or medical decision-making without review by a genetics professional",
+        ),
+        "the page does not carry ClinVar's own caution",
+      );
+      const blocks = new Map(
+        html
+          .split('<div class="variant"')
+          .slice(1)
+          .map((block) => [
+            textOf(/<h3\b[^>]*>([\s\S]*?)<\/h3>/.exec(block)?.[1] ?? ""),
+            items(block.slice(0, block.indexOf("</ul>"))),
+          ]),
+      );
+      assert.equal(blocks.size, kitVariants.length, "the page's variants");
+      for (const [variant, group] of podReports) {
+        const rowsOfVariant = rows.filter((row) => row.variant === variant);
+        const title = titleOf({
+          genes: [...new Set(rowsOfVariant.flatMap(({ gene }) => gene ?? []))],
+          hgvs: [
+            ...new Set(rowsOfVariant.flatMap(({ hgvs }) => hgvs ?? [])),
+          ].sort(),
+          variations: [
+            ...new Set(
+              rowsOfVariant.flatMap(({ variation }) => variation ?? []),
+            ),
+          ],
+        });
+        const kitVariant = kitVariants.find((each) => titleOf(each) === title);
+        assert.ok(kitVariant, `${title} is no variant of the kit`);
+        const [id] = kitVariant.variations;
+        const [gene] = kitVariant.genes;
+        const lines = blocks.get(title);
+        assert.ok(lines, `the page has no part for ${title}`);
+        const sentences = [...group]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map(({ classification, date }) => ({
+            sentence: `Your ${date.slice(0, 4)} report said ${label(classification)}.`,
+            differs: id !== undefined && !rowOf(id).includes(classification),
+          }));
+        assert.equal(lines.length, sentences.length + 1, `${title}: ${lines}`);
+        sentences.forEach(({ sentence, differs }, at) => {
+          assert.ok(lines[at].startsWith(sentence), `${title}: ${lines[at]}`);
+          assert.equal(
+            lines[at].includes(DIFFERS),
+            differs,
+            `${title}: ${lines[at]}`,
+          );
+        });
+        const clinvar = lines.at(-1);
+        if (id !== undefined)
+          assert.equal(clinvar, saidOf(id), `${title}: ${clinvar}`);
+        else if (covered.includes(gene))
+          assert.equal(
+            clinvar,
+            "ClinVar, as this app holds it, has no row for this variant.",
+          );
+        else {
+          const [, listed] =
+            /^ClinVar, as this app holds it, covers (.+), not (.+)\.$/.exec(
+              clinvar,
+            ) ?? [];
+          assert.ok(listed, `${title}: ${clinvar}`);
+          assert.deepEqual(listed.split(/, | and /).sort(), covered);
+          assert.ok(clinvar.endsWith(`not ${gene}.`), clinvar);
+        }
+      }
+    },
+  );
+
   {
     assert.equal((await npm("run", "pod:new", "hospital")).code, 0);
     const expected = await expectedPull();
@@ -930,12 +1192,12 @@ if (release === undefined) {
           );
           const reset = await send("/reset-all", {});
           assert.equal(reset.status, 303);
-          assert.deepEqual(await podsOf(), KITS);
+          assert.deepEqual(await podsOf(), [...KITS].sort());
           const back = await served(server, reset.headers.get("location"));
           assert.equal(heading(back), "Alex Rivera");
           assert.ok(
             readable(back).includes(
-              "Reset: Alex Rivera and Priya Natarajan are back.",
+              "Reset: Alex Rivera, Priya Natarajan and Martin Okafor are back.",
             ),
             "the page does not say which pods are back",
           );
@@ -1000,7 +1262,7 @@ if (refused !== undefined) throw new Error(refused);
     assert.equal((await npm("run", "pod:new", "scratch")).code, 0);
     assert.ok((await podsOf()).length > KITS.length, "no pod was made");
     assert.equal((await npm("run", "reset")).code, 0, "npm run reset failed");
-    assert.deepEqual(await podsOf(), KITS);
+    assert.deepEqual(await podsOf(), [...KITS].sort());
     assert.equal(existsSync(join(app, "pods", ".answers")), false);
     assert.equal((await asked(IMPORTS, "alex-rivera")).length, fresh.imports);
     assert.deepEqual(
