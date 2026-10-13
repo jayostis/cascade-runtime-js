@@ -27,10 +27,13 @@ import {
   checkedNote,
   closing,
   codePage,
-  codesOf,
+  codesSaid,
   connectionDialog,
   didNote,
   doing,
+  entryId,
+  entryOf,
+  entryPage,
   hospitalName,
   hospitalsPage,
   html,
@@ -170,10 +173,34 @@ const personOf = (name) =>
 const signInButton = (fhirBase, label) =>
   postButton("sign-in", { fhirBase }, label, undefined, "Signing in…");
 
+/** An entry's address: the pod's, with the entry's part of its IRI. */
+const entryHref = (pod, entry) =>
+  `${podHref(pod)}&entry=${encodeURIComponent(entryId(entry))}`;
+
+/** The entry `state.page` names, as the pod's answers and what the tables say of its codes give it. */
+function entryShown() {
+  const { answers, about, entry } = state.page;
+  const { current } = state;
+  const found = entryOf(answers, entry, { about, held: state.tables });
+  const sources = sourcesOf(state.tables);
+  return {
+    title: found?.name ?? "Not found",
+    body: entryPage({
+      entry: found,
+      pod: current,
+      back: podHref(current),
+      codeHref: (series, notation) =>
+        `${tableHref(sources.find((each) => each.series.includes(series)))}&${new URLSearchParams({ code: notation })}`,
+      tableHref,
+    }),
+  };
+}
+
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, about, said, from, title, body } = state.page;
+  const { answers, about, said, from, title, body, entry } = state.page;
   if (answers === undefined) return { title, body };
+  if (entry !== undefined) return entryShown();
   const { current, connection } = state;
   return {
     title: personName(current),
@@ -198,6 +225,7 @@ function pageShown() {
           `Sign in at ${hospitalName(hospital.name)}`,
         ),
       findHospital: `${podHref(current)}&hospitals`,
+      entryHref: (entry) => entryHref(current, entry),
       unheld: pod?.opened?.unheld,
       about,
       said,
@@ -284,7 +312,7 @@ async function answered() {
 async function aboutCodes(answers) {
   if (document.body.dataset.engine !== "ready") return undefined;
   try {
-    return await (await appTables()).about(codesOf(answers));
+    return await codesSaid(answers, { tables: await appTables() });
   } catch {
     return undefined;
   }
@@ -309,6 +337,25 @@ async function showPod(from) {
     said: await variantsOf(answers),
     from,
   };
+  state.doing = "ready";
+  redraw();
+  reopenBox();
+}
+
+/**
+ * Opens the box the address's hash names once the page is drawn: the browser matches `:target` when it goes to an
+ * address, not for an element drawn after, as when Back returns to the pod's page from an entry opened from its box.
+ */
+function reopenBox() {
+  const { hash } = location;
+  if (hash.length > 1 && document.getElementById(hash.slice(1)))
+    location.replace(hash);
+}
+
+/** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
+async function showEntry(id) {
+  const answers = await answered();
+  state.page = { answers, entry: id, about: await aboutCodes(answers) };
   state.doing = "ready";
   redraw();
 }
@@ -474,17 +521,19 @@ async function route() {
   if (asked === null) replaceAddress(podHref(state.current));
   pod = await podNamed(state.current);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
+  if (query.has("entry")) return showEntry(query.get("entry") ?? "");
   await showPod();
 }
 
 /**
- * Goes to `href`, an address of this page, without leaving it: a box open by the hash is closed first. The address
+ * Goes to `href`, an address of this page, without leaving it: a box open by the hash is closed first, unless `keep`
+ * and the address is another, so that the history entry left still names the box and Back opens it again. The address
  * shown already is drawn again in place of its entry in the history, not after it.
  */
-function go(href) {
-  closeDialog();
-  if (new URL(href, location.href).search === location.search)
-    history.replaceState(null, "", href);
+function go(href, keep = false) {
+  const same = new URL(href, location.href).search === location.search;
+  if (!keep || same) closeDialog();
+  if (same) history.replaceState(null, "", href);
   else history.pushState(null, "", href);
   return route();
 }
@@ -752,7 +801,7 @@ document.addEventListener("click", (event) => {
   const to = new URL(href, location.href);
   if (href.startsWith("#") || to.pathname !== location.pathname) return;
   event.preventDefault();
-  busy(() => go(to.search), opening(to.search));
+  busy(() => go(to.search, true), opening(to.search));
 });
 document.addEventListener("submit", (event) => {
   const form = event.target;
@@ -800,7 +849,8 @@ busy(async () => {
         shown = state.page
       ) {
         shown.about = (await aboutCodes(shown.answers)) ?? new Map();
-        shown.said = await variantsOf(shown.answers);
+        if (shown.entry === undefined)
+          shown.said = await variantsOf(shown.answers);
       }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";

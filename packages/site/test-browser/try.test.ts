@@ -63,6 +63,7 @@ interface View {
   readonly QUESTIONS: readonly string[];
   readonly SECTIONS: readonly { title: string; question: string }[];
   noticed(answers: Answers): string[];
+  entryId(entry: string): string;
   placeOf(row: Row): string;
   counted(records: Readonly<Record<string, number>>): string;
   hospitalName(name: string): string;
@@ -1144,6 +1145,52 @@ ${shots.join("\n")}`);
         )
         .sort(),
     );
+
+    const retired = said.find((each) => each.retired);
+    assert.ok(retired);
+    const opened = (title: string): Promise<boolean> =>
+      page
+        .waitForFunction(
+          (expected) =>
+            document
+              .querySelector("main h1")
+              ?.textContent?.startsWith(expected),
+          title,
+        )
+        .then(() => true);
+    await inPlace(page, async () => {
+      await page
+        .locator("#see-immunizations tbody tr")
+        .filter({ hasText: retired.label })
+        .locator("td:first-child a")
+        .click();
+      await opened(retired.label);
+    });
+    assert.ok(new URL(page.url()).searchParams.has("entry"));
+    assert.match(
+      await page.locator("main h1 .tag").innerText(),
+      /^Retired code/,
+      "the entry's heading does not tag the retired code",
+    );
+    const code = page.locator('main a[href*="code="]').first();
+    const notation = (await code.innerText()).trim();
+    await inPlace(page, async () => {
+      await code.click();
+      await opened(notation);
+    });
+    const at = new URL(page.url()).searchParams;
+    assert.ok(at.has("table"));
+    assert.equal(at.get("code"), notation);
+    for (const expected of [retired.label, "Tables Proof"])
+      await inPlace(page, async () => {
+        await page.goBack();
+        await opened(expected);
+      });
+    assert.equal(new URL(page.url()).hash, "#see-immunizations");
+    assert.ok(
+      await page.locator("#see-immunizations").isVisible(),
+      "Back does not open the box the row was in",
+    );
   } finally {
     await context.close();
   }
@@ -1265,6 +1312,39 @@ test("try/ ships the starter tables its published answers were computed with: af
     await settled(page, 30_000);
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.ok((await tiles(page)).size > 0);
+    assert.equal(await page.getAttribute("body", "data-engine"), null);
+
+    const sources = alex["entry/Where it came from"] ?? [];
+    const penicillin = sources.filter(
+      ({ entryLabel }) => entryLabel === "Allergy entry · Penicillin",
+    );
+    assert.ok(penicillin.length > 1, "Alex's penicillin is from one place");
+    const row = (alex["pod/My active allergies"] ?? []).find(
+      ({ entry }) => entry === penicillin[0]?.entry,
+    );
+    assert.ok(row);
+    await page.click('a.tile[href="#see-allergies"]');
+    await inPlace(page, async () => {
+      await page
+        .locator("#see-allergies tbody tr")
+        .filter({ hasText: String(row.allergen) })
+        .locator("td:first-child a")
+        .first()
+        .click();
+      await page.waitForFunction(() =>
+        new URLSearchParams(location.search).has("entry"),
+      );
+    });
+    assert.equal(
+      new URL(page.url()).searchParams.get("entry"),
+      view.entryId(String(row.entry)),
+    );
+    assert.equal(await page.textContent("main h1"), row.allergen);
+    const came = await page
+      .locator("main .card", { hasText: "Where it came from" })
+      .innerText();
+    for (const place of new Set(penicillin.map(view.placeOf)))
+      assert.ok(came.includes(place), `${place} is not in ${came}`);
     assert.equal(await page.getAttribute("body", "data-engine"), null);
     await page.close();
   } finally {

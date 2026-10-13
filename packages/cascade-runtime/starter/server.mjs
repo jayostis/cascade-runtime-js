@@ -28,10 +28,13 @@ import {
 import {
   checkedNote,
   codePage,
-  codesOf,
+  codesSaid,
   connectionDialog,
   demoPeople,
   didNote,
+  entryId,
+  entryOf,
+  entryPage,
   frame,
   hospitalName,
   hospitalsPage,
@@ -78,6 +81,8 @@ async function answered(pod) {
 }
 
 const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
+const entryPath = (name, entry) =>
+  `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
 /** The reference tables the pods are matched with, kept in `pods/.tables/`. */
 const tables = () => tablesBeside(PODS);
@@ -96,28 +101,9 @@ function sayUnnamed(error) {
 /** What the tables say of the codes `answers` hold and of their ingredients; nothing when they cannot say, which the console is told once. */
 function aboutCodes(answers) {
   return tables()
-    .then(async (kept) => {
-      const about = await kept.about(codesOf(answers));
-      // The ingredients a code maps to, named too, for the sentences that say two medications share one.
-      const ingredients = new Set(
-        [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
-      );
-      try {
-        for (const [code, said] of await kept.about(
-          [...ingredients].filter((code) => !about.has(code)),
-        ))
-          about.set(code, said);
-      } catch (error) {
-        sayUnnamed(error);
-      }
-      return about;
-    })
+    .then((kept) => codesSaid(answers, { tables: kept }))
     .catch((error) => {
-      if (!unnamedSaid)
-        stderr.write(
-          `Records are shown by their own names: ${error.message}\n`,
-        );
-      unnamedSaid = true;
+      sayUnnamed(error);
       return undefined;
     });
 }
@@ -392,6 +378,7 @@ async function showPod(response, name, query, names) {
         `Sign in at ${hospitalName(hospital.name)}`,
       ),
     findHospital: `${podPath(name)}hospitals`,
+    entryHref: (entry) => entryPath(name, entry),
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
     about: await aboutCodes(answers),
@@ -406,6 +393,38 @@ async function showPod(response, name, query, names) {
       note: didNote(query, KITS),
       refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
     }),
+  );
+}
+
+/**
+ * The entry of the pod whose address part is `id`: what it is, where it came from and what else is known, from the
+ * answers the pod's page last showed when they hold it, else the pod's answers now. An entry the pod does not hold is
+ * 404.
+ */
+async function showEntry(response, name, id, names) {
+  let answers = lastShown.get(name);
+  if (answers === undefined || entryOf(answers, id) === undefined) {
+    answers = await answered(await podNamed(name));
+    lastShown.set(name, answers);
+  }
+  const about = await aboutCodes(answers);
+  const held = await tables()
+    .then((kept) => kept.held())
+    .catch(() => []);
+  const entry = entryOf(answers, id, { about, held });
+  const sources = sourcesOf(held);
+  const body = entryPage({
+    entry,
+    pod: name,
+    back: podPath(name),
+    codeHref: (series, notation) =>
+      `${tablePath(sources.find((each) => each.series.includes(series)))}?${new URLSearchParams({ code: notation })}`,
+    tableHref: tablePath,
+  });
+  send(
+    response,
+    entry === undefined ? 404 : 200,
+    await page(entry?.name ?? "Not found", body, { current: name, names }),
   );
 }
 
@@ -633,13 +652,21 @@ const server = createServer(async (request, response) => {
         ),
       );
     }
-    const at = /^\/pods\/([^/]+)\/(?:(hospitals)|connections\/(\d+))?$/.exec(
-      pathname,
-    );
+    const at =
+      /^\/pods\/([^/]+)\/(?:(hospitals)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
+        pathname,
+      );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
     const names = name === undefined ? undefined : await podNames();
     if (name !== undefined && names.includes(name)) {
-      const [, , isHospitals, n] = at;
+      const [, , isHospitals, n, entry] = at;
+      if (entry !== undefined && !post)
+        return await showEntry(
+          response,
+          name,
+          decodeURIComponent(entry),
+          names,
+        );
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,

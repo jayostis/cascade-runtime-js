@@ -557,6 +557,103 @@ const server = await (async () => {
       ),
       "no entry where the hospitals disagree on Sulfamethoxazole's criticality",
     );
+
+    const idOf = (entry) => entry.split(":").at(-1);
+    const entryAt = (id) =>
+      `/pods/alex-rivera/entries/${encodeURIComponent(id)}`;
+    const opens = [
+      ...shown.html.matchAll(
+        /<td data-key="[^"]*"><a href="(\/pods\/alex-rivera\/entries\/[^"]+)"/g,
+      ),
+    ].map(([, href]) => href);
+    assert.deepEqual(
+      [...new Set(opens)].sort(),
+      [
+        ...new Set(
+          Object.values(TILES).flatMap((question) =>
+            alex[question].map(({ entry }) => entryAt(idOf(entry))),
+          ),
+        ),
+      ].sort(),
+      "a tile row does not open its entry",
+    );
+    const entryOf = async (label) =>
+      served(
+        server,
+        entryAt(idOf(sources.find((row) => row.entryLabel === label).entry)),
+      );
+
+    const penicillinPage = await entryOf("Allergy entry · Penicillin");
+    const penicillinRow = alex[ALLERGIES].find(
+      ({ entry }) =>
+        entry ===
+        sources.find((row) => row.entryLabel === "Allergy entry · Penicillin")
+          .entry,
+    );
+    const penicillinName =
+      (
+        await heldNames(
+          penicillinRow.code === undefined ? [] : [penicillinRow.code],
+        )
+      ).get(penicillinRow.code)?.name?.label ?? penicillinRow.allergen;
+    assert.ok(
+      heading(penicillinPage).startsWith(penicillinName),
+      `penicillin's entry is headed ${heading(penicillinPage)}`,
+    );
+    const penicillinText = readable(penicillinPage);
+    for (const hospital of [...penicillin].filter(Boolean))
+      assert.ok(
+        penicillinText.includes(hospital),
+        `penicillin's entry omits ${hospital}`,
+      );
+    assert.ok(
+      items(penicillinPage).some(
+        (sentence) =>
+          sentence.startsWith("Cascade recorded it at") &&
+          [...penicillin]
+            .filter(Boolean)
+            .every((hospital) => sentence.includes(hospital)),
+      ),
+      "penicillin's entry does not say it was recorded at each of its places",
+    );
+    for (const scheme of ["urn:", "ni:", "http://", "https://"])
+      assert.ok(
+        !penicillinText.includes(scheme),
+        `penicillin's entry shows ${scheme}`,
+      );
+    assert.ok(
+      items(await entryOf("Allergy entry · Sulfamethoxazole")).some(
+        (sentence) =>
+          /^Sources disagree on how severe the .* allergy is\.$/.test(sentence),
+      ),
+      "Sulfamethoxazole's entry does not say the sources disagree",
+    );
+
+    let codeShown;
+    for (const href of new Set(opens)) {
+      const link = /<a href="(\/tables\/[^"]*\?code=[^"]+)"/.exec(
+        await served(server, href),
+      );
+      if (link === null) continue;
+      const to = textOf(link[1]);
+      codeShown = new URL(to, server.address).searchParams.get("code");
+      assert.ok(
+        readable(await served(server, to)).includes(codeShown),
+        `${to} does not show the code ${codeShown}`,
+      );
+      break;
+    }
+    assert.ok(codeShown !== undefined, "no entry links a code's page");
+
+    const missing = await fetched(new URL(entryAt("0"), server.address));
+    assert.equal(missing.status, 404);
+    assert.ok(
+      missing.body.includes(
+        '<a href="/pods/alex-rivera/">Back to Alex Rivera</a>',
+      ),
+      "an entry that is not in the pod does not link back",
+    );
+    assert.ok(readable(missing.body).includes("no longer in this pod"));
   });
   return server;
 })();
