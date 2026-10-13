@@ -1468,7 +1468,7 @@ test("an entry no section shows is named and kinded from its label and says what
   assert.ok(gone.includes("Back to Alex Rivera"));
 });
 
-test("what the tables say of the codes a pod holds includes the ingredients those codes map to, and an ingredient the tables cannot say is left as it is", async () => {
+test("what the tables say of the codes a pod holds includes the ingredients those codes map to", async () => {
   const RX = "urn:test:rxnorm/";
   const answers = {
     "pod/My active medications": [
@@ -1476,10 +1476,9 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
     ],
   };
   const asked: string[][] = [];
-  const tables = (fails: boolean) => ({
+  const tables = () => ({
     about: async (codes: string[]) => {
       asked.push(codes);
-      if (asked.length === 2 && fails) throw new Error("no ingredients");
       return new Map(
         codes.map((code) => [
           code,
@@ -1490,10 +1489,7 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
       );
     },
   });
-  const about = await view.codesSaid(answers, { tables: tables(false) });
+  const about = await view.codesSaid(answers, { tables: tables() });
   assert.deepEqual(asked, [[`${RX}314076`], [`${RX}29046`]]);
   assert.equal(about.get(`${RX}29046`).name.label, "lisinopril");
-  asked.length = 0;
-  const partial = await view.codesSaid(answers, { tables: tables(true) });
-  assert.deepEqual([...partial.keys()], [`${RX}314076`]);
 });

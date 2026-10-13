@@ -213,14 +213,10 @@ export async function codesSaid(answers, { tables }) {
   const ingredients = new Set(
     [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
   );
-  try {
-    for (const [code, said] of await tables.about(
-      [...ingredients].filter((code) => !about.has(code)),
-    ))
-      about.set(code, said);
-  } catch {
-    // The ingredients stay as the end of their IRI.
-  }
+  for (const [code, said] of await tables.about(
+    [...ingredients].filter((code) => !about.has(code)),
+  ))
+    about.set(code, said);
   return about;
 }
 
@@ -994,6 +990,66 @@ function seenSaid({ places, across }, one) {
     : `It arrived more than once${places.length === 0 ? "" : ` from ${places[0]}`}. Cascade keeps it as one ${one}.`;
 }
 
+/** A line for each document an entry's source rows came from, the oldest arrival first, as `entryOf`'s `where`. */
+function linesOf(rows) {
+  const lines = new Map();
+  for (const row of rows) {
+    const at = lines.get(row.document ?? row.record);
+    if (at === undefined)
+      lines.set(row.document ?? row.record, {
+        place: placeOf(row),
+        ...(row.retrieved !== undefined && { retrieved: row.retrieved }),
+        arrived: row.arrived,
+        ...(row.hospital !== undefined &&
+          row.importLabel !== undefined && { importLabel: row.importLabel }),
+        records: new Set([row.record]),
+      });
+    else {
+      at.records.add(row.record);
+      if (compare("date", row.arrived ?? "", at.arrived ?? "") < 0)
+        at.arrived = row.arrived;
+    }
+  }
+  return [...lines.values()]
+    .map((line) => ({ ...line, records: line.records.size }))
+    .sort((a, b) => compare("date", a.arrived ?? "", b.arrived ?? ""));
+}
+
+/** What the tables say of each of `codes`, as `entryOf`'s `known` lines: those of a table among `held` only. */
+function claimsOf(codes, about, held) {
+  const known = [];
+  for (const code of codes) {
+    const said = about.get(code);
+    if (said === undefined) continue;
+    const notation = said.notation ?? codeShown(code);
+    const claim = (part, sentence) => {
+      const from = heldAt(part.origin, held);
+      if (from !== undefined) known.push({ sentence, from });
+    };
+    if (said.name !== undefined)
+      claim(said.name, `${notation} is named "${said.name.label}".`);
+    if (said.status?.deprecated === true) {
+      const instead = said.status.replacedBy.map(
+        (each) => about.get(each)?.notation ?? codeShown(each),
+      );
+      claim(
+        said.status,
+        `${notation} is retired${instead.length === 0 ? "" : `, replaced by ${listed(instead)}`}.`,
+      );
+    }
+    if ((said.ingredients?.codes.length ?? 0) > 0) {
+      const names = said.ingredients.codes.map(
+        (each) => about.get(each)?.name?.label ?? codeShown(each),
+      );
+      claim(
+        said.ingredients,
+        `${notation} ${names.length === 1 ? "has the ingredient" : "has the ingredients"} ${listed(names)}.`,
+      );
+    }
+  }
+  return known;
+}
+
 /**
  * The entry whose address part is `id` (see `entryId`), as its page reads it, or undefined when no row of "Where it
  * came from" has it. `answers` holds the rows of each of `QUESTIONS`, by question; `about` is `codesSaid`'s answer, and
@@ -1042,25 +1098,6 @@ export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
     ),
   ];
 
-  const lines = new Map();
-  for (const row of ofEntry(sources)) {
-    const at = lines.get(row.document ?? row.record);
-    if (at === undefined)
-      lines.set(row.document ?? row.record, {
-        place: placeOf(row),
-        ...(row.retrieved !== undefined && { retrieved: row.retrieved }),
-        arrived: row.arrived,
-        ...(row.hospital !== undefined &&
-          row.importLabel !== undefined && { importLabel: row.importLabel }),
-        records: new Set([row.record]),
-      });
-    else {
-      at.records.add(row.record);
-      if (compare("date", row.arrived ?? "", at.arrived ?? "") < 0)
-        at.arrived = row.arrived;
-    }
-  }
-
   const known = [];
   const seen = seenAt(answers).get(entry);
   if (seen !== undefined) known.push({ sentence: seenSaid(seen, kind) });
@@ -1071,35 +1108,7 @@ export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
       capitalised(reviewSaid(row, { name: title, one: kind })),
     );
   for (const sentence of reviews.values()) known.push({ sentence });
-  for (const code of codes) {
-    const said = about.get(code);
-    if (said === undefined) continue;
-    const notation = said.notation ?? codeShown(code);
-    const claim = (part, sentence) => {
-      const from = heldAt(part.origin, held);
-      if (from !== undefined) known.push({ sentence, from });
-    };
-    if (said.name !== undefined)
-      claim(said.name, `${notation} is named "${said.name.label}".`);
-    if (said.status?.deprecated === true) {
-      const instead = said.status.replacedBy.map(
-        (each) => about.get(each)?.notation ?? codeShown(each),
-      );
-      claim(
-        said.status,
-        `${notation} is retired${instead.length === 0 ? "" : `, replaced by ${listed(instead)}`}.`,
-      );
-    }
-    if ((said.ingredients?.codes.length ?? 0) > 0) {
-      const names = said.ingredients.codes.map(
-        (each) => about.get(each)?.name?.label ?? codeShown(each),
-      );
-      claim(
-        said.ingredients,
-        `${notation} ${names.length === 1 ? "has the ingredient" : "has the ingredients"} ${listed(names)}.`,
-      );
-    }
-  }
+  known.push(...claimsOf(codes, about, held));
 
   return {
     entry,
@@ -1129,9 +1138,7 @@ export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
         ...(series !== undefined && { series }),
       };
     }),
-    where: [...lines.values()]
-      .map((line) => ({ ...line, records: line.records.size }))
-      .sort((a, b) => compare("date", a.arrived ?? "", b.arrived ?? "")),
+    where: linesOf(ofEntry(sources)),
     known,
     credits: [
       ...new Set(known.flatMap(({ from }) => from?.series.credit ?? [])),
@@ -1162,7 +1169,7 @@ export function entryPage({ entry, pod, back, codeHref, tableHref }) {
     html`${at > 0 && ", "}${code.series === undefined ? code.notation : html`<a href=${codeHref(code.series, code.notation)}>${code.notation}</a>`}`;
   return html`${backLink}
 <h1>${name}${tags.map((tag) => html` <span class="tag">${tag}</span>`)}</h1>
-<p class="lead">${kind[0].toUpperCase() + kind.slice(1)}</p>
+<p class="lead">${capitalised(kind)}</p>
 ${
   (facts.length > 0 || codes.length > 0) &&
   html`<div class="card entry"><h2>What it is</h2><dl class="facts">

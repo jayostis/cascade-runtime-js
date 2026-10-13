@@ -531,10 +531,9 @@ async function route() {
  * shown already is drawn again in place of its entry in the history, not after it.
  */
 function go(href, keep = false) {
-  if (!keep || new URL(href, location.href).search === location.search)
-    closeDialog();
-  if (new URL(href, location.href).search === location.search)
-    history.replaceState(null, "", href);
+  const same = new URL(href, location.href).search === location.search;
+  if (!keep || same) closeDialog();
+  if (same) history.replaceState(null, "", href);
   else history.pushState(null, "", href);
   return route();
 }
