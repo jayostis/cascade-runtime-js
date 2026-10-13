@@ -359,8 +359,9 @@ async function search(word) {
 - `pod/My immunizations`: immunizations, newest first.
 - `pod/My lab results`: lab results, newest first.
 - `pod/My medication history`: every medication whatever its status, with when
-  it started and when it ended (`?medication`, `?code`, `?status`, `?started`,
-  `?ended`).
+  it started (`?medication`, `?code`, `?status`, `?started`, `?ended`); `?ended`
+  is bound only when the source states a stop, and `?status` says whether the
+  medication is still taken.
 - `pod/My procedures`: procedures, newest first.
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.
