@@ -927,6 +927,68 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
   assert.ok(kept?.kept.includes(groups.first));
 });
 
+test("the kinds an app keeps are those a rule list names and those the vocabulary marks as read by pages, and a kept version carries the genes it covers where its series carries none", async () => {
+  const { readByPages } = await tableTerms(parts.vocabulary, parts.newStore);
+  const marked = `${REC}CodeNames`;
+  const published = `${REC}NdcDrugs`;
+  assert.ok(readByPages.has(marked) && !readByPages.has(published));
+  for (const path of await parts.vocabulary.list(RULE_LIST)) {
+    const bytes = path.endsWith(".ttl")
+      ? await parts.vocabulary.read(path)
+      : undefined;
+    if (bytes === undefined) continue;
+    assert.deepEqual(
+      (await parts.newStore().parse(bytes, FEED)).filter(
+        ([, predicate, object]) =>
+          predicate.value === `${REC}tableKind` &&
+          [marked, published].includes(object.value),
+      ),
+      [],
+      `${path} now names a kind this test needs no rule list to read`,
+    );
+  }
+  const covers = `${REC}coversGene`;
+  const servedAs = (kind: string, genes: readonly Triple[] = []): Served => ({
+    ...first,
+    catalog: [
+      ...first.catalog.map(([subject, predicate, object]): Triple =>
+        subject.value === groups.series && predicate.value === `${REC}tableKind`
+          ? [subject, predicate, iri(kind)]
+          : [subject, predicate, object],
+      ),
+      ...genes,
+    ],
+  });
+  const [unkept] = await tablesOver(servedAs(published)).check();
+  assert.ok(!unkept?.kept.includes(groups.first));
+
+  const files = new MemoryFiles("urn:test:tables/");
+  const [kept] = await tablesOver(
+    servedAs(marked, [
+      [iri(groups.first), iri(covers), literal("MLH1")],
+      [iri(groups.first), iri(covers), literal("MSH2")],
+      [iri(groups.series), iri(covers), literal("EPCAM")],
+    ]),
+    files,
+  ).check();
+  assert.ok(kept?.kept.includes(groups.first));
+  const index = await parts
+    .newStore()
+    .parse(
+      (await files.read("references.ttl")) ?? new Uint8Array(),
+      "urn:test:tables/references.ttl",
+    );
+  const genesOf = (subject: string): string[] =>
+    index
+      .filter(
+        ([s, predicate]) => s.value === subject && predicate.value === covers,
+      )
+      .map(([, , gene]) => gene.value)
+      .sort();
+  assert.deepEqual(genesOf(groups.first), ["MLH1", "MSH2"]);
+  assert.deepEqual(genesOf(groups.series), []);
+});
+
 test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {
   const tables = tablesOver(feed);
   await tables.check();

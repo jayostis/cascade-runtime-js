@@ -6,7 +6,15 @@ import type { Replayed } from "../src/replay.js";
 import { MATCHER } from "../src/matcher.js";
 import { REC, Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
-import { CLINICAL, HEALTH, JDG, PROV, Words } from "../src/words.js";
+import {
+  CLINICAL,
+  GENOMICS,
+  HEALTH,
+  JDG,
+  KINDS,
+  PROV,
+  Words,
+} from "../src/words.js";
 
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
 const REGISTRY = `@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#> .
@@ -26,6 +34,11 @@ async function wordsOver(records: string): Promise<Words> {
 <urn:test:literal> a health:AllergyRecord . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; clinical:snomedCode "1234" .
 <urn:test:brand> a clinical:Medication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${REC}ndcCode> <urn:test:ndc/00378520905> .
 <urn:test:generic> a clinical:Medication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${REC}ndcCode> <urn:test:ndc/00093101301> .
+<urn:test:martin> a <${GENOMICS}Variant> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${GENOMICS}hgvsCDot> "NM_000249.4:c.2042C>T" ; <${GENOMICS}clinvarVariationId> "90011" .
+<urn:test:panel> a <${GENOMICS}Variant> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${GENOMICS}hgvsCDot> "NM_000249.3:c.2042C>T" .
+<urn:test:report> a <${GENOMICS}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${GENOMICS}variantInterpreted> <urn:test:martin> .
+<urn:test:variation> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariation> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
+<urn:test:through> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariationThroughTable> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
 <urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .
 <urn:test:product> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameProductCode> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .`,
     "urn:test:pod",
@@ -84,5 +97,40 @@ test("a record named by a code system the vocabulary does not register is an Err
       error instanceof Error &&
       !(error instanceof Refusal) &&
       error.message.includes("LOINC"),
+  );
+});
+
+test("a variant is found by its HGVS expression, which holds a colon, or by its ClinVar ID, and the matcher's two joins of variants are named by their words", async () => {
+  const words = await wordsOver(REGISTRY);
+  const [hgvs, id, named] = await Promise.all([
+    words.record("variant HGVS NM_000249.4:c.2042C>T"),
+    words.record("variant ClinVar 90011"),
+    words.record('variant ClinVar 90011 "NM_000249.4:c.2042C>T"'),
+  ]);
+  assert.deepEqual([hgvs, id, named], Array(3).fill("urn:test:martin"));
+  const members =
+    "variant HGVS NM_000249.4:c.2042C>T and variant HGVS NM_000249.3:c.2042C>T";
+  assert.equal(
+    await words.judgment(`the matcher's same variation of ${members}`),
+    "urn:test:variation",
+  );
+  assert.equal(
+    await words.judgment(
+      `the matcher's same variation through the table of ${members}`,
+    ),
+    "urn:test:through",
+  );
+});
+
+test("a variant interpretation is a kind and no step names one: it has neither a code nor a name", async () => {
+  assert.equal(
+    KINDS["variant interpretation"],
+    `${GENOMICS}VariantInterpretation`,
+  );
+  const words = await wordsOver(REGISTRY);
+  await assert.rejects(
+    words.record("variant interpretation"),
+    (error: unknown) =>
+      error instanceof Error && error.message.includes("names no record"),
   );
 });

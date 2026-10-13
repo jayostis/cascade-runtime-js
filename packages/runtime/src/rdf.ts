@@ -32,6 +32,21 @@ export function iri(value: string): NamedNode {
   return { termType: "NamedNode", value };
 }
 
+/**
+ * The IRI of a code in a code system: its URI space followed by the code percent-encoded as SPARQL's ENCODE_FOR_URI
+ * does, every character but `A-Z a-z 0-9 - _ . ~` as `%` and two upper-case hexadecimal digits of its UTF-8.
+ */
+export function codeIri(uriSpace: string, code: string): string {
+  return (
+    uriSpace +
+    encodeURIComponent(code).replace(
+      /[!'()*]/g,
+      (character) =>
+        `%${(character.codePointAt(0) ?? 0).toString(16).toUpperCase()}`,
+    )
+  );
+}
+
 export function blank(value: string): BlankNode {
   return { termType: "BlankNode", value };
 }

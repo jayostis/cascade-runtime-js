@@ -31,6 +31,8 @@ export interface TableTerms {
   readonly uriSpaces: readonly string[];
   /** By kind; `rec:RowSubject` for a row found by its own subject. */
   readonly foundBy: ReadonlyMap<string, readonly string[]>;
+  /** The kinds the vocabulary marks `rec:readByPages true`: an app keeps their series though no rule reads the kind. */
+  readonly readByPages: ReadonlySet<string>;
 }
 
 const termsRead = new WeakMap<Files, Promise<TableTerms>>();
@@ -79,6 +81,12 @@ async function readTableTerms(
     codeSystems,
     uriSpaces: codeSystems.map(({ uriSpace }) => uriSpace),
     foundBy,
+    readByPages: new Set(
+      graph
+        .match(undefined, `${REC}readByPages`)
+        .filter(([, , marked]) => marked.value === "true")
+        .map(([kind]) => kind.value),
+    ),
   };
 }
 

@@ -14,6 +14,9 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Procedures**: name, the day done.
 - **Medications**: drug, RxNorm code, prescribed or on the person's list.
 - **Lab results**: test, LOINC code, value, unit, the time taken.
+- **Variants**: gene, HGVS expression, ClinVar variation ID.
+- **Variant interpretations**: a report's ACMG classification of a variant, and
+  the day it was issued.
 - **Patient profile**: how each hospital names the person.
 
 Nothing else: a daily measurement needs new terms in the vocabulary first, so
@@ -338,12 +341,16 @@ async function search(word) {
 - `pod/My active allergies`: allergies a hospital gave the status active.
 - `pod/My active conditions`: conditions whose status is active.
 - `pod/My active medications`: medications whose status is active.
+- `pod/My genetic variants`: variants, a row for each code an entry states
+  (`?variant`, `?gene`, `?hgvs`, `?variation`).
 - `pod/My immunizations`: immunizations, newest first.
 - `pod/My lab results`: lab results, newest first.
 - `pod/My procedures`: procedures, newest first.
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
+- `pod/What each report says of a variant`: each report's ACMG classification
+  of the variant it names (`?report`, `?variant`, `?classification`, `?date`).
 - `pod/What everything is called`: every label.
 - `pod/What was seen more than once`: entries with more than one record, by place.
 - `pod/Which file states each thing`: where each thing is stated.

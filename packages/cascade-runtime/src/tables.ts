@@ -71,6 +71,7 @@ const VERSION_KEPT = [
   `${PAV}version`,
   REVISION_OF,
   `${DCT}issued`,
+  `${REC}coversGene`,
 ];
 
 /** A watcher's last check of a source, as the feed's `checked.json` gives it. */
@@ -434,13 +435,15 @@ export class Tables {
   }
 
   /**
-   * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and names and status,
-   * which views read. A series of any other kind is neither kept nor packed.
+   * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and the kinds the
+   * vocabulary marks as read by pages. A series of any other kind is neither kept nor packed.
    */
   #kindsRead(): Promise<ReadonlySet<string>> {
     this.#kinds ??= (async () => {
       const { vocabulary, newStore } = this.#options;
-      const kinds = new Set([`${REC}CodeNames`, `${REC}CodeStatus`]);
+      const kinds = new Set(
+        (await tableTerms(vocabulary, newStore)).readByPages,
+      );
       for (const path of await vocabulary.list(RULE_LIST)) {
         const bytes = path.endsWith(".ttl")
           ? await vocabulary.read(path)
@@ -454,7 +457,11 @@ export class Tables {
       }
       return kinds;
     })();
-    return this.#kinds;
+    const p = this.#kinds;
+    p.catch(() => {
+      if (this.#kinds === p) this.#kinds = undefined;
+    });
+    return p;
   }
 
   /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */

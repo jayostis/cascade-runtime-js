@@ -12,6 +12,8 @@ const STEMS = [
   "umls/rxnorm",
   "hl7.org/fhir/sid/ndc/",
   "ns.cascadeprotocol.org/codes/",
+  "varnomen.hgvs.org/",
+  "ncbi.nlm.nih.gov/clinvar/",
 ];
 
 /** Every file under the folder whose name ends as given, by its path from the root. */
