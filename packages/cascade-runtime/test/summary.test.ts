@@ -241,13 +241,17 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
     render(
       view.podPage(
         {
-          [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
-          [LABS]: [{ entry: "e2", test: "Glucose" }],
+          [ALLERGIES]: [
+            { entry: "urn:cascade:entry:e1", allergen: "Penicillin" },
+          ],
+          [LABS]: [{ entry: "urn:cascade:entry:e2", test: "Glucose" }],
         },
         {
           pod: "alex-rivera",
           signIn: () => "",
           findHospital: "?hospitals",
+          entryHref: (entry: string) =>
+            `/pods/alex-rivera/entries/${view.entryId(entry)}`,
           connection: view.connectionDialog({
             id: "connection",
             pod: "alex-rivera",
@@ -292,6 +296,16 @@ test("a pod's page with a connection holds its tiles and the connection's box; e
   ])
     assert.ok(words.includes(sentence), sentence);
   assert.equal((page.match(/<a class="tile"/g) ?? []).length, 2);
+  for (const [entry, shown] of [
+    ["e1", "Penicillin"],
+    ["e2", "Glucose"],
+  ])
+    assert.ok(
+      page.includes(
+        `<td data-key="${shown}"><a href="/pods/alex-rivera/entries/${entry}">${shown}</a></td>`,
+      ),
+      `${shown}'s row does not open its entry`,
+    );
   const boxes = page.split('<div class="dialog"').slice(1);
   assert.equal(boxes.length, 5);
   const connection = boxes.find((box) => box.startsWith(' id="connection"'));
@@ -1226,23 +1240,256 @@ test("a code's page gives a variation's classification as ClinVar's sentence wit
       },
     ],
   };
-  const page = render(
-    view.codePage({
-      source: { label: "ClinVar" },
-      held: [
-        {
-          iri: "urn:test:clinvar",
-          label: "ClinVar variant classifications",
-          credit: "ClinVar, NCBI.",
-          versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
-        },
-      ],
-      facts,
-      codeHref: () => "#",
-      back: "#",
-    }),
-  ).replace(/<[^>]*>/g, "");
+  const shown = (said: object) =>
+    render(
+      view.codePage({
+        source: { label: "ClinVar" },
+        held: [
+          {
+            iri: "urn:test:clinvar",
+            label: "ClinVar variant classifications",
+            credit: "ClinVar, NCBI.",
+            versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
+          },
+        ],
+        facts: said,
+        codeHref: () => "#",
+        back: "#",
+      }),
+    );
+  const raw = shown(facts);
+  const page = raw.replace(/<[^>]*>/g, "");
   assert.ok(page.includes("ClinVar today says uncertain significance."));
   assert.ok(page.includes("ClinVar, NCBI."));
   assert.ok(!page.includes("No table this app holds says anything"));
+  assert.ok(!raw.includes('rel="external"'), "no page, no outside link");
+  const outside = "https://example.org/variation/90011/";
+  const linked = shown({
+    ...facts,
+    page: { href: outside, system: "ClinVar" },
+  });
+  const link = linked.match(/<a href="([^"]*)" rel="external">([^<]*)<\/a>/);
+  assert.deepEqual(link?.slice(1), [outside, "ClinVar's page for 90011"]);
+});
+
+const SOURCES = "entry/Where it came from";
+const SCT = "urn:test:sct/";
+const AT_MERIDIAN = "Meridian Health System";
+const AT_LARKSPUR = "Larkspur Valley Health";
+const ASTHMA = "urn:cascade:entry:aa11";
+const LATEX = "urn:cascade:entry:bb22";
+const record = (entry: string, at: string, extra: object) => ({
+  entry,
+  entryLabel: "Condition entry · Asthma",
+  record: `${entry}-${at}`,
+  document: `${entry}-${at}-document`,
+  ...extra,
+});
+
+/** Asthma at two hospitals, its SNOMED code named and retired by two series; and a latex allergy only a review line names. */
+const ENTRY_ANSWERS = {
+  [SOURCES]: [
+    record(ASTHMA, "meridian", {
+      arrived: "2026-09-10T10:00:00Z",
+      importLabel: "Apple Health export",
+      hospital: AT_MERIDIAN,
+      retrieved: "2026-09-01",
+    }),
+    record(ASTHMA, "larkspur", {
+      arrived: "2026-08-01T10:00:00Z",
+      importLabel: "FHIR pull",
+      hospital: AT_LARKSPUR,
+      retrieved: "2026-07-30",
+    }),
+    {
+      entry: LATEX,
+      entryLabel: "Allergy entry · Latex",
+      record: "r-latex",
+      arrived: "2026-09-12T10:00:00Z",
+      importLabel: "entered by Alex in the Cascade app",
+    },
+  ],
+  [CONDITIONS]: [
+    {
+      entry: ASTHMA,
+      entryLabel: "Condition entry · Asthma",
+      condition: "Asthma",
+      onset: "2019-03-02",
+      snomed: `${SCT}195967001`,
+    },
+  ],
+  [SEEN]: [AT_MERIDIAN, AT_LARKSPUR].map((place) => ({
+    entry: ASTHMA,
+    place,
+    records: "1",
+    places: "2",
+  })),
+  [REVIEW]: [
+    {
+      entry: LATEX,
+      entryLabel: "Allergy entry · Latex",
+      needs: "judged different, still joined",
+    },
+  ],
+};
+const NAMES = {
+  iri: "urn:test:names",
+  label: "Example names",
+  credit: "Names: an example publisher",
+  versions: [{ iri: "urn:test:names-2", label: "2", issued: "2026-10-01" }],
+};
+const STATUS = {
+  iri: "urn:test:status",
+  label: "Example status",
+  credit: "Status: another publisher",
+  versions: [{ iri: "urn:test:status-1", label: "1", issued: "2026-09-01" }],
+};
+
+test("an entry's page says what it is, where each document it came from put it, and what Cascade and the tables say of it, each claim from a table naming the table and version, the version a link, and each credit once", () => {
+  assert.equal(view.entryId(ASTHMA), "aa11");
+  const about = new Map([
+    [
+      `${SCT}195967001`,
+      {
+        notation: "195967001",
+        name: {
+          label: "Asthma (disorder)",
+          altLabels: [],
+          origin: "urn:test:names-2",
+        },
+        status: {
+          deprecated: true,
+          replacedBy: [`${SCT}195967002`],
+          origin: "urn:test:status-1",
+        },
+      },
+    ],
+  ]);
+  const held = [NAMES, STATUS];
+  const entry = view.entryOf(ENTRY_ANSWERS, "aa11", { about, held });
+  assert.equal(entry.name, "Asthma (disorder)");
+  assert.equal(entry.recorded, "Asthma");
+  assert.equal(entry.kind, "condition");
+  assert.deepEqual(entry.tags, ["Retired code, replaced by 195967002"]);
+  assert.deepEqual(entry.codes, [{ notation: "195967001", series: NAMES }]);
+  assert.deepEqual(
+    entry.where.map(({ place }: { place: string }) => place),
+    [AT_LARKSPUR, AT_MERIDIAN],
+    "oldest arrival first",
+  );
+  assert.deepEqual(
+    entry.known.map(({ sentence }: { sentence: string }) => sentence),
+    [
+      `Cascade recorded it at ${AT_MERIDIAN} and ${AT_LARKSPUR} and keeps it as one condition.`,
+      '195967001 is named "Asthma (disorder)".',
+      "195967001 is retired, replaced by 195967002.",
+    ],
+  );
+  assert.deepEqual(entry.credits, [NAMES.credit, STATUS.credit]);
+
+  const page = render(
+    view.entryPage({
+      entry,
+      pod: "alex-rivera",
+      back: "/pods/alex-rivera/",
+      codeHref: (series: { iri: string }, notation: string) =>
+        `/code/${series.iri}/${notation}`,
+      tableHref: (series: { iri: string }) => `/table/${series.iri}`,
+    }),
+  );
+  const words = textOf(page).replace(/ \./g, ".");
+  for (const shown of [
+    "Asthma (disorder) Retired code, replaced by 195967002",
+    "Recorded as Asthma",
+    "Since Mar 2, 2019",
+    "Code 195967001",
+    `${AT_LARKSPUR} retrieved Jul 30, 2026; arrived Aug 1, 2026 through FHIR pull`,
+    `${AT_MERIDIAN} retrieved Sep 1, 2026; arrived Sep 10, 2026 through Apple Health export`,
+    "195967001 is retired, replaced by 195967002. From Example status, version 1, Sep 1, 2026.",
+    "From Example names, version 2, Oct 1, 2026.",
+    "Back to Alex Rivera",
+  ])
+    assert.ok(words.includes(shown), `${shown} is not in ${words}`);
+  for (const link of [
+    '<a href="/code/urn:test:names/195967001">195967001</a>',
+    '<a href="/table/urn:test:status">version 1, Sep 1, 2026</a>',
+    '<a href="/pods/alex-rivera/">Back to Alex Rivera</a>',
+  ])
+    assert.ok(page.includes(link), link);
+  for (const credit of [NAMES.credit, STATUS.credit])
+    assert.equal(words.split(credit).length, 2, `${credit} is said once`);
+});
+
+test("before the tables can say, an entry shows the record's own name and each code as written, unlinked, with no claim from a table, and where it came from and what Cascade did unchanged", () => {
+  const entry = view.entryOf(ENTRY_ANSWERS, "aa11");
+  assert.equal(entry.name, "Asthma");
+  assert.equal(entry.recorded, undefined);
+  assert.deepEqual(entry.tags, []);
+  assert.deepEqual(entry.codes, [{ notation: "195967001" }]);
+  assert.equal(entry.where.length, 2);
+  assert.equal(entry.known.length, 1);
+  assert.deepEqual(entry.credits, []);
+  const page = render(view.entryPage({ entry, pod: "alex-rivera", back: "/" }));
+  assert.ok(textOf(page).includes("Code 195967001"));
+  assert.ok(!page.includes('<a href="/code'));
+});
+
+test("an entry no section shows is named and kinded from its label and says what a review line says; an address of no entry says so and links back", () => {
+  const entry = view.entryOf(ENTRY_ANSWERS, "bb22");
+  assert.equal(entry.name, "Latex");
+  assert.equal(entry.kind, "allergy");
+  assert.deepEqual(entry.what, []);
+  assert.deepEqual(entry.codes, []);
+  assert.deepEqual(entry.where, [
+    {
+      place: "Alex's own entries",
+      arrived: "2026-09-12T10:00:00Z",
+      records: 1,
+    },
+  ]);
+  assert.deepEqual(entry.known, [
+    {
+      sentence:
+        "Latex was marked as different, but is still shown as one allergy.",
+    },
+  ]);
+
+  assert.equal(view.entryOf(ENTRY_ANSWERS, "0"), undefined);
+  const gone = textOf(
+    render(
+      view.entryPage({
+        entry: undefined,
+        pod: "alex-rivera",
+        back: "/pods/alex-rivera/",
+      }),
+    ),
+  );
+  assert.ok(gone.includes("This entry is no longer in this pod."));
+  assert.ok(gone.includes("Back to Alex Rivera"));
+});
+
+test("what the tables say of the codes a pod holds includes the ingredients those codes map to", async () => {
+  const RX = "urn:test:rxnorm/";
+  const answers = {
+    "pod/My active medications": [
+      { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
+    ],
+  };
+  const asked: string[][] = [];
+  const tables = () => ({
+    about: async (codes: string[]) => {
+      asked.push(codes);
+      return new Map(
+        codes.map((code) => [
+          code,
+          code === `${RX}314076`
+            ? { ingredients: { codes: [`${RX}29046`], origin: "urn:v" } }
+            : { name: { label: "lisinopril", altLabels: [], origin: "urn:v" } },
+        ]),
+      );
+    },
+  });
+  const about = await view.codesSaid(answers, { tables: tables() });
+  assert.deepEqual(asked, [[`${RX}314076`], [`${RX}29046`]]);
+  assert.equal(about.get(`${RX}29046`).name.label, "lisinopril");
 });

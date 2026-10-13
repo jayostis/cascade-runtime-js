@@ -11,6 +11,7 @@ import { vocabulary } from "./vocabulary.js";
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const URI_SPACE = "http://rdfs.org/ns/void#uriSpace";
+const PAGE_TEMPLATE = `${REC}pageTemplate`;
 
 test("a version whose name names no file refuses the step rather than aborting the replay", async () => {
   const source = new MemoryFiles("https://story.example/");
@@ -93,11 +94,15 @@ test("the table terms hold one code system for each the vocabulary's records fil
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
       iri(`${REC}CodeSystem`),
     )
-    .map((system) => ({
-      iri: system.value,
-      label: registry.objects(system, RDFS_LABEL)[0]?.value,
-      uriSpace: registry.objects(system, URI_SPACE)[0]?.value,
-    }));
+    .map((system) => {
+      const template = registry.objects(system, PAGE_TEMPLATE)[0]?.value;
+      return {
+        iri: system.value,
+        label: registry.objects(system, RDFS_LABEL)[0]?.value,
+        uriSpace: registry.objects(system, URI_SPACE)[0]?.value,
+        ...(template && { pageTemplate: template }),
+      };
+    });
   const { codeSystems, uriSpaces } = await tableTerms(
     files,
     () => new OxigraphStore(),
@@ -113,15 +118,29 @@ test("the table terms hold one code system for each the vocabulary's records fil
   );
   for (const { iri: system, uriSpace } of codeSystems)
     assert.ok(uriSpace.endsWith("/"), system);
+  assert.match(
+    codeSystems.find(({ iri }) => iri === `${REC}ClinVar`)?.pageTemplate ?? "",
+    /\{code\}/,
+  );
+  assert.equal(
+    codeSystems.find(({ iri }) => iri === `${REC}HGVS`)?.pageTemplate,
+    undefined,
+  );
 });
 
-test("a code system registered without a label or without a URI space is a broken vocabulary, an Error and never a Refusal", async () => {
+test("a code system registered without a label, without a URI space or with a page template that has no {code} is a broken vocabulary, an Error and never a Refusal", async () => {
   const system = (what: string): string =>
     `@prefix rec: <${REC}> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix void: <http://rdfs.org/ns/void#> .
 rec:Broken a rec:CodeSystem ; ${what} .`;
   for (const [broken, why] of [
     [system('void:uriSpace "urn:test:broken/"'), "no label"],
     [system('rdfs:label "Broken"@en'), "no URI space"],
+    [
+      system(
+        'rdfs:label "Broken"@en ; void:uriSpace "urn:test:broken/" ; rec:pageTemplate "https://example.org/"',
+      ),
+      "a page template with no {code}",
+    ],
   ] as const) {
     const files = new MemoryFiles("urn:test:vocabulary/");
     await files.write(RECORDS, new TextEncoder().encode(broken));

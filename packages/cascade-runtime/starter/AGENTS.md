@@ -30,12 +30,18 @@ Under the pods, the sidebar lists the sources of the reference tables the pods
 are matched with (`sourcesOf(held())`, from `tablesBeside`). `/tables/<id>/`
 shows a source: its publisher, licence and freshness, a search over all its
 tables (`search()`, `?q=&page=`, 50 codes a page) and the tables it publishes;
-with `?code=<code>`, a code's page (`facts()`). For a table's id it shows that
+with `?code=<code>`, a code's page (`facts()`), which links to the code's own
+page at its publisher where its code system has one. For a table's id it shows that
 table alone, with which pods use which version (`uses()`). Check now posts to
 `/tables/check`.
 A pod's page names each record by its code's name in those tables
-(`about(codesOf(answers))`), else by the record's own text, and marks a
-retired code. It shows each variant's reports beside what ClinVar says today
+(`about(codesOf(answers))`, gathered by `codesSaid`), else by the record's own
+text, and marks a retired code. A row of a tile's table opens its entry at
+`/pods/<name>/entries/<id>`: what it is, where it came from (a line for each
+document its records were derived from) and what else is known, which is what
+Cascade did with it and what the tables say of its codes, each claim naming its
+table and version. The page finds the entry by the last part of its IRI
+(`entryId`); it never builds an IRI from an address. It shows each variant's reports beside what ClinVar says today
 (`variantClassification()`, `pod.agreement()` and `labels()`, gathered by
 `variantsSaid`), read from the app's current version of the series, with its
 credit; it records nothing in the pod.
