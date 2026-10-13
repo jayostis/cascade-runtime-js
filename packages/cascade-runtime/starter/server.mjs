@@ -411,7 +411,11 @@ async function showEntry(response, name, id, names) {
   const held = await tables()
     .then((kept) => kept.held())
     .catch(() => []);
-  const entry = entryOf(answers, id, { about, held });
+  const entry = entryOf(answers, id, {
+    about,
+    said: await variantsOf(answers, await podNamed(name)),
+    held,
+  });
   const sources = sourcesOf(held);
   const body = entryPage({
     entry,

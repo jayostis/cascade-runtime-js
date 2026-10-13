@@ -9,6 +9,7 @@ import {
   type Browser,
   type BrowserContext,
   chromium,
+  type Locator,
   type Page,
   type Route,
 } from "playwright";
@@ -58,10 +59,15 @@ interface Person {
   readonly name: string;
   readonly at: readonly { readonly name: string; readonly fhirBase: string }[];
 }
+interface Section {
+  readonly title: string;
+  readonly question?: string;
+}
 /** What the test reads of the starter's view, the module try/ renders. */
 interface View {
   readonly QUESTIONS: readonly string[];
-  readonly SECTIONS: readonly { title: string; question: string }[];
+  readonly SECTIONS: readonly Section[];
+  sectionRows(section: Section, answers: Answers): Row[];
   noticed(answers: Answers): string[];
   entryId(entry: string): string;
   placeOf(row: Row): string;
@@ -247,9 +253,9 @@ test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, w
   assert.deepEqual(
     await tiles(page),
     new Map(
-      view.SECTIONS.map(({ title, question }): [string, number] => [
-        title,
-        (alex[question] ?? []).length,
+      view.SECTIONS.map((section: Section): [string, number] => [
+        section.title,
+        view.sectionRows(section, alex).length,
       ]).filter(([, count]) => count > 0),
     ),
   );
@@ -1196,7 +1202,7 @@ ${shots.join("\n")}`);
   }
 });
 
-test("in try/, Martin's pod, copied on a first visit, shows once the engine is ready what each of his reports said and what ClinVar says today from the starter copy: the MLH1 variant's sentence, a gene the series does not cover, and a variant it holds no row for, then the counsellor sentence and ClinVar's disclaimer", async () => {
+test("in try/, Martin's pod, copied on a first visit, has a Genetic variants tile whose rows open each variant's entry once the engine is ready: the MLH1 variant's two reports with their labs and what ClinVar says today, a gene the series does not cover, and a variant it holds no row for, then the counsellor sentence and ClinVar's disclaimer", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -1205,42 +1211,79 @@ test("in try/, Martin's pod, copied on a first visit, shows once the engine is r
     await page.waitForSelector('body[data-tables="ready"]', {
       timeout: 60_000,
     });
-    await page.goto(`${served.url}try/index.html?pod=martin-okafor`);
+    await page.goto(
+      `${served.url}try/index.html?pod=martin-okafor#see-genetic-variants`,
+    );
     await settled(page);
     assert.equal(await page.textContent("main h1"), "Martin Okafor");
-    await page.waitForFunction(
-      () => document.body.textContent?.includes("ClinVar today says "),
-      undefined,
-      { timeout: 120_000 },
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 120_000,
+    });
+    const rows = page.locator("#see-genetic-variants tbody tr");
+    assert.equal(
+      (await tiles(page)).get("Genetic variants"),
+      await rows.count(),
+      "the tile counts its rows",
     );
-    const shown = (await page.locator("main .variants").innerText()).replace(
-      /\s+/g,
-      " ",
+    assert.equal(
+      await page.locator("main .variants, main .variant").count(),
+      0,
     );
-    const mlh1 = (
-      await page
-        .locator("main .variant")
-        .filter({ hasText: "ClinVar 90011" })
-        .innerText()
-    ).replace(/\s+/g, " ");
+    const mlh1 = rows.filter({ hasText: "MLH1" });
+    assert.match(
+      await mlh1.innerText(),
+      /Differs from ClinVar today/,
+      "the MLH1 row is not tagged",
+    );
+    const body = async (): Promise<string> =>
+      ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
+    const opens = async (row: Locator): Promise<void> => {
+      await inPlace(page, () => row.locator("td:first-child a").click());
+      assert.ok(new URL(page.url()).searchParams.has("entry"));
+    };
+    const back = async (): Promise<void> => {
+      await inPlace(page, () => page.goBack());
+      assert.equal(new URL(page.url()).hash, "#see-genetic-variants");
+      assert.ok(
+        await page.locator("#see-genetic-variants").isVisible(),
+        "Back does not open the box the row was in",
+      );
+    };
+
+    await opens(mlh1);
+    const entry = await body();
     for (const sentence of [
-      "Your 2022 report said uncertain significance.",
-      "Your 2024 report said likely pathogenic.",
+      "Your 2022 report from Harbourline Genetics said uncertain significance.",
+      "Your 2024 report from St Columba's Hospital said likely pathogenic.",
       "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
-    ])
-      assert.ok(mlh1.includes(sentence), `${sentence} is not in ${mlh1}`);
-    for (const sentence of [
-      "ClinVar, as this app holds it, has no row for this variant.",
       "Your clinician or a genetic counsellor can explain what this means for you.",
     ])
-      assert.ok(shown.includes(sentence), `${sentence} is not in ${shown}`);
+      assert.ok(entry.includes(sentence), `${sentence} is not in ${entry}`);
     assert.match(
-      shown,
-      /ClinVar, as this app holds it, covers .*, not BRCA2\./,
+      await page
+        .locator("main li")
+        .filter({ hasText: "Your 2022 report" })
+        .innerText(),
+      /Differs from ClinVar today/,
     );
     assert.match(
-      shown,
+      entry,
       /not intended for direct diagnostic use or medical decision-making without review by a genetics professional/i,
+    );
+    await back();
+
+    await opens(rows.filter({ hasText: "BRCA2" }));
+    assert.match(
+      await body(),
+      /ClinVar, as this app holds it, covers .*, not BRCA2\./,
+    );
+    await back();
+
+    await opens(rows.filter({ hasNotText: /MLH1|BRCA2/ }).first());
+    assert.ok(
+      (await body()).includes(
+        "ClinVar, as this app holds it, has no row for this variant.",
+      ),
     );
   } finally {
     await context.close();

@@ -179,9 +179,9 @@ const entryHref = (pod, entry) =>
 
 /** The entry `state.page` names, as the pod's answers and what the tables say of its codes give it. */
 function entryShown() {
-  const { answers, about, entry } = state.page;
+  const { answers, about, said, entry } = state.page;
   const { current } = state;
-  const found = entryOf(answers, entry, { about, held: state.tables });
+  const found = entryOf(answers, entry, { about, said, held: state.tables });
   const sources = sourcesOf(state.tables);
   return {
     title: found?.name ?? "Not found",
@@ -355,7 +355,12 @@ function reopenBox() {
 /** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
 async function showEntry(id) {
   const answers = await answered();
-  state.page = { answers, entry: id, about: await aboutCodes(answers) };
+  state.page = {
+    answers,
+    entry: id,
+    about: await aboutCodes(answers),
+    said: await variantsOf(answers),
+  };
   state.doing = "ready";
   redraw();
 }
@@ -849,8 +854,7 @@ busy(async () => {
         shown = state.page
       ) {
         shown.about = (await aboutCodes(shown.answers)) ?? new Map();
-        if (shown.entry === undefined)
-          shown.said = await variantsOf(shown.answers);
+        shown.said = await variantsOf(shown.answers);
       }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";

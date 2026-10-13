@@ -949,10 +949,45 @@ test("what a variant's page says: a sentence for each report, oldest first, tagg
       verdicts?: unknown[];
       gene?: string;
       labels?: Map<string, string>;
+      places?: Map<string, string>;
     },
     { sentence: string; tag?: string }[],
     string | undefined,
   ][] = [
+    [
+      "a report with its lab: its sentence names it, the year and the lab are kept apart, and a report of no lab says nothing of one",
+      {
+        reports: [
+          report("r1", "VUS", "2022-05-01"),
+          report("r2", undefined, "2024-03-21"),
+          report("r3", "Benign", undefined),
+          report("r4", "Benign", "2023-01-01"),
+        ],
+        says: martin,
+        verdicts: [verdict("r1", "differs")],
+        places: new Map([
+          ["r1", "Harbourline Genetics"],
+          ["r2", "St Columba's Hospital"],
+          ["r3", "Harbourline Genetics"],
+        ]),
+      },
+      [
+        {
+          sentence:
+            "Your 2022 report from Harbourline Genetics said uncertain significance.",
+          tag: "Differs from ClinVar today",
+        },
+        { sentence: "Your 2023 report said benign." },
+        {
+          sentence:
+            "Your 2024 report from St Columba's Hospital gives no ACMG classification.",
+        },
+        {
+          sentence: "An undated report from Harbourline Genetics said benign.",
+        },
+      ],
+      "ClinVar today says pathogenic/likely pathogenic: criteria provided, multiple submitters, no conflicts, five contributing submitters.",
+    ],
     [
       "Martin's page, in #138's words",
       {
@@ -1136,92 +1171,39 @@ test("what a variant's page says: a sentence for each report, oldest first, tagg
       says: input.says,
       verdicts: input.verdicts ?? [],
       labels: input.labels ?? LABELS,
+      ...(input.places && { places: input.places }),
     });
-    assert.deepEqual(said, { reports, clinvar }, name);
+    assert.deepEqual(
+      said.reports.map(
+        ({ sentence, tag }: { sentence: string; tag?: string }) =>
+          tag === undefined ? { sentence } : { sentence, tag },
+      ),
+      reports,
+      name,
+    );
+    assert.equal(said.clinvar, clinvar, name);
   }
-});
-
-test("a pod's page shows its variants after the tiles, each with its reports and what ClinVar says, then the counsellor sentence and the series' credit; a pod with none shows no such part, and a variant seen at two places is named by its gene and expression", () => {
-  const answers = {
-    [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
-    [VARIANTS]: [
-      { variant: "v1", gene: "MLH1", hgvs: "NM_000249.3:c.2042C>T" },
-      { variant: "v1", gene: "MLH1", hgvs: "NM_000249.4:c.2042C>T" },
-      { variant: "v1", gene: "MLH1", variation: "90011" },
-    ],
-    [REPORTS]: [
+  const [first, , undated] = view.variantSaid({
+    variant: { hgvs: [], variations: [] },
+    reports: [
       report("r1", "VUS", "2022-05-01"),
-      { ...report("r2", "Benign", "2023-01-01"), variant: "orphan" },
+      report("r2", "Benign", "2023-01-01"),
+      report("r3", "Benign", undefined),
     ],
-    [SEEN]: [
-      {
-        entry: "v1",
-        place: "Meridian Health System",
-        records: "1",
-        places: "2",
-      },
-      {
-        entry: "v1",
-        place: "Larkspur Valley Health",
-        records: "1",
-        places: "2",
-      },
-    ],
-  };
-  assert.deepEqual(
-    [...view.variantsAsked(answers)],
-    [
-      [
-        "v1",
-        {
-          gene: "MLH1",
-          hgvs: ["NM_000249.3:c.2042C>T", "NM_000249.4:c.2042C>T"],
-          variations: ["90011"],
-        },
-      ],
-    ],
-  );
-  const credit =
-    "ClinVar, NCBI. Not intended for direct diagnostic use or medical decision-making without review by a genetics professional.";
-  const shown = render(
-    view.podPage(answers, {
-      pod: "martin",
-      signIn: () => "",
-      said: {
-        says: new Map([
-          ["v1", rows({ classification: [concept("Pathogenic")] })],
-        ]),
-        verdicts: [verdict("r1", "differs")],
-        labels: LABELS,
-        credits: [credit],
-      },
-    }),
-  );
-  const words = shown.replace(/<[^>]*>/g, "");
-  for (const sentence of [
-    "Genetic variants",
-    "MLH1 · NM_000249.3:c.2042C>T · NM_000249.4:c.2042C>T · ClinVar 90011",
-    "Your 2022 report said uncertain significance.",
-    "Differs from ClinVar today",
-    "ClinVar today says pathogenic.",
-    "Your 2023 report said benign.",
-    "Your clinician or a genetic counsellor can explain what this means for you.",
-    "Not intended for direct diagnostic use or medical decision-making without review by a genetics professional",
-    "MLH1 NM_000249.3:c.2042C>T was recorded at Meridian Health System and Larkspur Valley Health. Cascade keeps it as one variant.",
-  ])
-    assert.ok(words.includes(sentence), sentence);
-  assert.ok(shown.indexOf("Genetic variants") > shown.indexOf('class="tiles"'));
-  assert.ok(
-    shown.indexOf("Your 2023 report") > shown.indexOf("ClinVar today says"),
-    "a report of no variant entry is listed last",
-  );
-  const bare = render(
-    view.podPage(
-      { [ALLERGIES]: answers[ALLERGIES] },
-      { pod: "martin", signIn: () => "" },
-    ),
-  );
-  assert.ok(!bare.includes("Genetic variants") && !bare.includes("counsellor"));
+    labels: LABELS,
+    places: new Map([["r1", "Harbourline Genetics"]]),
+  }).reports;
+  assert.deepEqual(first, {
+    report: "r1",
+    when: "2022",
+    place: "Harbourline Genetics",
+    sentence:
+      "Your 2022 report from Harbourline Genetics said uncertain significance.",
+  });
+  assert.deepEqual(undated, {
+    report: "r3",
+    sentence: "An undated report said benign.",
+  });
 });
 
 test("a code's page gives a variation's classification as ClinVar's sentence with the table's credit", () => {
@@ -1492,4 +1474,281 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
   const about = await view.codesSaid(answers, { tables: tables() });
   assert.deepEqual(asked, [[`${RX}314076`], [`${RX}29046`]]);
   assert.equal(about.get(`${RX}29046`).name.label, "lisinopril");
+});
+
+const DIFFERS = "Differs from ClinVar today";
+const COUNSELLOR =
+  "Your clinician or a genetic counsellor can explain what this means for you.";
+const HARBOURLINE = "Harbourline Genetics";
+const COLUMBA = "St Columba's Hospital";
+const CLINVAR = {
+  iri: "urn:test:clinvar",
+  label: "ClinVar variant classifications",
+  credit:
+    "ClinVar, NCBI. Not intended for direct diagnostic use or medical decision-making without review by a genetics professional.",
+  versions: [{ iri: VERSION, label: "1", issued: "2026-10-01" }],
+};
+const entryRow = (
+  entry: string,
+  label: string,
+  record: string,
+  document: string,
+  extra: object,
+) => ({
+  entry,
+  entryLabel: label,
+  record,
+  document,
+  importLabel: "FHIR pull",
+  ...extra,
+});
+const NAME = "NM_000249.3:c.2042C>T";
+/**
+ * One variant entry kept from two labs, a report of it from each, and a report whose variant only the reports name,
+ * which has no lab.
+ */
+const VARIANT_ANSWERS = {
+  [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
+  [VARIANTS]: [
+    { variant: "v1", gene: "MLH1", hgvs: NAME },
+    { variant: "v1", gene: "MLH1", hgvs: "NM_000249.4:c.2042C>T" },
+    { variant: "v1", gene: "MLH1", variation: "90011" },
+  ],
+  [REPORTS]: [
+    report("r1", "VUS", "2022-05-01"),
+    report("r2", "LikelyPathogenic", "2024-03-21"),
+    { ...report("r3", "Benign", "2023-01-01"), variant: "orphan" },
+  ],
+  [SEEN]: [HARBOURLINE, COLUMBA].map((place) => ({
+    entry: "v1",
+    place,
+    records: "1",
+    places: "2",
+  })),
+  [SOURCES]: [
+    entryRow("v1", `Variant entry · ${NAME}`, "v1-a", "doc-2022", {
+      hospital: HARBOURLINE,
+      arrived: "2026-09-01T10:00:00Z",
+    }),
+    entryRow("v1", `Variant entry · ${NAME}`, "v1-b", "doc-2024", {
+      hospital: COLUMBA,
+      arrived: "2026-09-02T10:00:00Z",
+    }),
+    entryRow("r1", "Interpretation entry · VUS", "r1-a", "doc-2022", {
+      hospital: HARBOURLINE,
+      arrived: "2026-09-01T10:00:00Z",
+    }),
+    entryRow("r2", "Interpretation entry · LP", "r2-a", "doc-2024", {
+      hospital: COLUMBA,
+      arrived: "2026-09-02T10:00:00Z",
+    }),
+    entryRow("r3", "Interpretation entry · Benign", "r3-a", "doc-other", {}),
+    entryRow(
+      "orphan",
+      "Variant entry · NM_000500.1:c.1A>G",
+      "o-a",
+      "doc-other",
+      {},
+    ),
+  ],
+};
+const VARIANTS_SAID = {
+  says: new Map([["v1", rows({ classification: [concept("Pathogenic")] })]]),
+  verdicts: [verdict("r1", "differs")],
+  labels: LABELS,
+};
+
+test("a pod's page has a Genetic variants tile beside the others, a row for each variant entry that opens it, naming its gene and expression, counting its reports and tagged only once the tables say a report differs; the page has no variants card, and the sentences about it are as before", () => {
+  const page = (said?: object) =>
+    render(
+      view.podPage(VARIANT_ANSWERS, {
+        pod: "martin",
+        signIn: () => "",
+        entryHref: (entry: string) => `/entries/${entry}`,
+        said,
+      }),
+    );
+  const rowsOf = (html: string) =>
+    [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].map((found) => ({
+      text: textOf((found[1] ?? "").replace(/ data-key="[^"]*"/g, "")),
+      href: /<a href="([^"]*)"/.exec(found[1] ?? "")?.[1],
+    }));
+  const before = page();
+  assert.ok(textOf(before).includes("Allergies 1"));
+  assert.ok(textOf(before).includes("Genetic variants 2"));
+  const ofVariants = ({ href }: { href?: string }) =>
+    ["/entries/v1", "/entries/orphan"].includes(href ?? "");
+  assert.deepEqual(rowsOf(before).filter(ofVariants), [
+    { text: `MLH1 ${NAME} 2`, href: "/entries/v1" },
+    { text: "NM_000500.1:c.1A>G 1", href: "/entries/orphan" },
+  ]);
+  assert.deepEqual(
+    rowsOf(page(VARIANTS_SAID))
+      .filter(ofVariants)
+      .map(({ text }) => text),
+    [`MLH1 ${NAME} 2 Differs from ClinVar today`, "NM_000500.1:c.1A>G 1"],
+  );
+  assert.ok(!before.includes('class="card variants"'));
+  assert.ok(!textOf(before).includes("counsellor"));
+  assert.ok(
+    textOf(before).includes(
+      `MLH1 ${NAME} was recorded at ${HARBOURLINE} and ${COLUMBA}. Cascade keeps it as one variant.`,
+    ),
+  );
+  assert.deepEqual(
+    view.named(VARIANT_ANSWERS, new Map())[VARIANTS],
+    VARIANT_ANSWERS[VARIANTS],
+  );
+  const bare = render(
+    view.podPage(
+      { [ALLERGIES]: VARIANT_ANSWERS[ALLERGIES] },
+      { pod: "martin", signIn: () => "" },
+    ),
+  );
+  assert.ok(!bare.includes("Genetic variants"));
+});
+
+test("variantReports gives each variant entry a pod holds, those its questions list first and a variant only a report names last, with its reports apart from their sentences", () => {
+  const found = view.variantReports(VARIANT_ANSWERS, VARIANTS_SAID, [CLINVAR]);
+  assert.deepEqual([...found.keys()], ["v1", "orphan"]);
+  const mlh1 = found.get("v1");
+  assert.equal(mlh1.name, `MLH1 ${NAME}`);
+  assert.deepEqual(mlh1.asked, {
+    gene: "MLH1",
+    hgvs: [NAME, "NM_000249.4:c.2042C>T"],
+    variations: ["90011"],
+  });
+  assert.deepEqual(
+    mlh1.reports.map(({ report, when, place, tag }: Record<string, string>) => [
+      report,
+      when,
+      place,
+      tag,
+    ]),
+    [
+      ["r1", "2022", HARBOURLINE, DIFFERS],
+      ["r2", "2024", COLUMBA, undefined],
+    ],
+  );
+  assert.equal(mlh1.clinvar, "ClinVar today says pathogenic.");
+  assert.deepEqual(mlh1.from, {
+    series: CLINVAR,
+    version: CLINVAR.versions[0],
+  });
+  const orphan = found.get("orphan");
+  assert.equal(orphan.name, "NM_000500.1:c.1A>G");
+  assert.deepEqual(orphan.asked, { hgvs: [], variations: [] });
+  assert.deepEqual(orphan.reports, [
+    { report: "r3", when: "2023", sentence: "Your 2023 report said benign." },
+  ]);
+  assert.equal(orphan.clinvar, undefined);
+  assert.equal(orphan.from, undefined);
+  const early = view.variantReports(VARIANT_ANSWERS).get("v1");
+  assert.deepEqual(
+    early.reports.map(({ tag }: { tag?: string }) => tag),
+    [undefined, undefined],
+  );
+  assert.equal(early.clinvar, undefined);
+});
+
+test("a variant's entry says its gene and expressions, its ClinVar ID linked to the series, the document each report came with and its date, and what else is known: what Cascade did, each report with its lab, ClinVar today with its table and version, the counsellor sentence, and the series' credit once", () => {
+  const entry = view.entryOf(VARIANT_ANSWERS, "v1", {
+    said: VARIANTS_SAID,
+    held: [CLINVAR],
+  });
+  assert.equal(entry.name, `MLH1 ${NAME}`);
+  assert.equal(entry.kind, "variant");
+  assert.deepEqual(entry.tags, [DIFFERS]);
+  assert.deepEqual(entry.what, [
+    { head: "Gene", text: "MLH1" },
+    { head: "Expressions", text: `${NAME}, NM_000249.4:c.2042C>T` },
+  ]);
+  assert.deepEqual(entry.codes, [{ notation: "90011", series: CLINVAR }]);
+  assert.deepEqual(
+    entry.where.map(({ place, issued }: Record<string, string>) => [
+      place,
+      issued,
+    ]),
+    [
+      [HARBOURLINE, "2022-05-01"],
+      [COLUMBA, "2024-03-21"],
+    ],
+  );
+  assert.deepEqual(entry.known, [
+    {
+      sentence: `Cascade recorded it at ${HARBOURLINE} and ${COLUMBA} and keeps it as one variant.`,
+    },
+    {
+      sentence: `Your 2022 report from ${HARBOURLINE} said uncertain significance.`,
+      tag: DIFFERS,
+    },
+    { sentence: `Your 2024 report from ${COLUMBA} said likely pathogenic.` },
+    {
+      sentence: "ClinVar today says pathogenic.",
+      from: { series: CLINVAR, version: CLINVAR.versions[0] },
+    },
+    { sentence: COUNSELLOR },
+  ]);
+  assert.deepEqual(entry.credits, [CLINVAR.credit]);
+  const page = render(
+    view.entryPage({
+      entry,
+      pod: "martin-okafor",
+      back: "/pods/martin-okafor/",
+      codeHref: (series: { iri: string }, notation: string) =>
+        `/code/${series.iri}/${notation}`,
+      tableHref: (series: { iri: string }) => `/table/${series.iri}`,
+    }),
+  );
+  const words = textOf(page).replace(/ \./g, ".");
+  for (const shown of [
+    `${entry.name} ${DIFFERS}`,
+    `Gene MLH1`,
+    `${HARBOURLINE} report of May 1, 2022;`,
+    `${COLUMBA} report of Mar 21, 2024;`,
+    `uncertain significance. ${DIFFERS}`,
+    "ClinVar today says pathogenic. From ClinVar variant classifications, version 1, Oct 1, 2026.",
+  ])
+    assert.ok(words.includes(shown), `${shown} is not in ${words}`);
+  assert.ok(page.includes('<a href="/code/urn:test:clinvar/90011">90011</a>'));
+  assert.equal(
+    words.split(CLINVAR.credit).length,
+    2,
+    "the credit is said once",
+  );
+});
+
+test("before the tables can say, a variant's entry names each report's lab and its classification in the IRI's own words, with no tag, no ClinVar sentence and its ClinVar ID unlinked; a variant only a report names is named from its label and takes the date of the document it shares", () => {
+  const entry = view.entryOf(VARIANT_ANSWERS, "v1");
+  assert.deepEqual(entry.tags, []);
+  assert.deepEqual(entry.codes, [{ notation: "90011" }]);
+  assert.deepEqual(
+    entry.known.map(({ sentence }: { sentence: string }) => sentence),
+    [
+      `Cascade recorded it at ${HARBOURLINE} and ${COLUMBA} and keeps it as one variant.`,
+      `Your 2022 report from ${HARBOURLINE} said VUS.`,
+      `Your 2024 report from ${COLUMBA} said likely pathogenic.`,
+      COUNSELLOR,
+    ],
+  );
+  assert.deepEqual(entry.credits, []);
+  assert.ok(
+    !render(
+      view.entryPage({ entry, pod: "martin-okafor", back: "/" }),
+    ).includes('<a href="/code'),
+  );
+
+  const orphan = view.entryOf(VARIANT_ANSWERS, "orphan");
+  assert.equal(orphan.name, "NM_000500.1:c.1A>G");
+  assert.equal(orphan.kind, "variant");
+  assert.deepEqual(orphan.what, []);
+  assert.deepEqual(orphan.codes, []);
+  assert.deepEqual(
+    orphan.where.map(({ issued }: Record<string, string>) => issued),
+    ["2023-01-01"],
+  );
+  assert.deepEqual(
+    orphan.known.map(({ sentence }: { sentence: string }) => sentence),
+    ["Your 2023 report said benign.", COUNSELLOR],
+  );
 });

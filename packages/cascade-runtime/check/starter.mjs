@@ -809,7 +809,7 @@ if (release === undefined) {
   );
 
   await behaviour(
-    "Martin's pod is loaded, and its page puts what ClinVar says today beside what each of his reports said, in the four states of his variants",
+    "Martin's pod is loaded, its page has a Genetic variants tile whose rows open each variant's entry, and the entry puts what ClinVar says today beside what each of his reports, from its lab, said, in the four states of his variants",
     async () => {
       const triplesOf = async (path) =>
         new OxigraphStore().parse(
@@ -957,10 +957,28 @@ if (release === undefined) {
         "the pod's reports are not the kit's, grouped by variant",
       );
 
+      const idOf = (entry) => entry.split(":").at(-1);
+      const entryPath = (variant) =>
+        `/pods/martin-okafor/entries/${encodeURIComponent(idOf(variant))}`;
+      const sources = await asked(SOURCES, "martin-okafor");
+      const labOf = (report) => {
+        const labs = [
+          ...new Set(
+            sources
+              .filter((row) => row.entry === report && row.hospital)
+              .map(({ hospital }) => hospital.replace(/ Demo Hospital$/, "")),
+          ),
+        ];
+        return labs.length === 0 ? "" : ` from ${labs.join(" and ")}`;
+      };
+
       const shown = await started();
       let html;
+      const entries = new Map();
       try {
         html = await settled(shown, "/pods/martin-okafor/");
+        for (const variant of new Set(rows.map((row) => row.variant)))
+          entries.set(variant, await served(shown, entryPath(variant)));
       } finally {
         await shown.stop();
       }
@@ -985,27 +1003,31 @@ if (release === undefined) {
         );
       }
       assert.ok(kitTiles > 0, "Martin's kit holds rows for no kind of tile");
-      const text = readable(html);
-      assert.ok(
-        text.includes(COUNSELLOR),
-        "no sentence sends him to a counsellor",
+      assert.equal(
+        tiles["Genetic variants"],
+        kitVariants.length,
+        "the Genetic variants tile of Martin's page",
       );
       assert.ok(
-        text.includes(
-          "not intended for direct diagnostic use or medical decision-making without review by a genetics professional",
-        ),
-        "the page does not carry ClinVar's own caution",
+        !html.includes('class="variant"') &&
+          !html.includes('class="card variants"'),
+        "Martin's page still has a card of variants",
       );
-      const blocks = new Map(
-        html
-          .split('<div class="variant"')
-          .slice(1)
-          .map((block) => [
-            textOf(/<h3\b[^>]*>([\s\S]*?)<\/h3>/.exec(block)?.[1] ?? ""),
-            items(block.slice(0, block.indexOf("</ul>"))),
-          ]),
+      const opens = new Set(
+        [
+          ...html.matchAll(
+            /<td data-key="[^"]*"><a href="(\/pods\/martin-okafor\/entries\/[^"]+)"/g,
+          ),
+        ].map(([, href]) => href),
       );
-      assert.equal(blocks.size, kitVariants.length, "the page's variants");
+      for (const variant of entries.keys())
+        assert.ok(
+          opens.has(entryPath(variant)),
+          `no row opens the entry ${entryPath(variant)}`,
+        );
+      for (const variant of podReports.keys())
+        assert.ok(entries.has(variant), "a report's variant has no row");
+
       for (const [variant, group] of podReports) {
         const rowsOfVariant = rows.filter((row) => row.variant === variant);
         const title = titleOf({
@@ -1023,40 +1045,83 @@ if (release === undefined) {
         assert.ok(kitVariant, `${title} is no variant of the kit`);
         const [id] = kitVariant.variations;
         const [gene] = kitVariant.genes;
-        const lines = blocks.get(title);
-        assert.ok(lines, `the page has no part for ${title}`);
+        const page = entries.get(variant);
+        const text = readable(page);
+        for (const scheme of ["urn:", "ni:", "http://", "https://"])
+          assert.ok(!text.includes(scheme), `${title}'s entry shows ${scheme}`);
+        const lines = items(page);
+        const reports = lines.filter((line) =>
+          /^(Your .+|An undated) report\b/.test(line),
+        );
         const sentences = [...group]
           .sort((a, b) => a.date.localeCompare(b.date))
-          .map(({ classification, date }) => ({
-            sentence: `Your ${date.slice(0, 4)} report said ${label(classification)}.`,
+          .map(({ report, classification, date }) => ({
+            sentence: `Your ${date.slice(0, 4)} report${labOf(report)} said ${label(classification)}.`,
             differs: id !== undefined && !rowOf(id).includes(classification),
           }));
-        assert.equal(lines.length, sentences.length + 1, `${title}: ${lines}`);
+        assert.equal(reports.length, sentences.length, `${title}: ${reports}`);
         sentences.forEach(({ sentence, differs }, at) => {
-          assert.ok(lines[at].startsWith(sentence), `${title}: ${lines[at]}`);
+          assert.ok(
+            reports[at].startsWith(sentence),
+            `${title}: ${reports[at]}`,
+          );
           assert.equal(
-            lines[at].includes(DIFFERS),
+            reports[at].includes(DIFFERS),
             differs,
-            `${title}: ${lines[at]}`,
+            `${title}: ${reports[at]}`,
           );
         });
-        const clinvar = lines.at(-1);
-        if (id !== undefined)
-          assert.equal(clinvar, saidOf(id), `${title}: ${clinvar}`);
-        else if (covered.includes(gene))
-          assert.equal(
+        const row = html
+          .split("<tr")
+          .find((part) => part.includes(`href="${entryPath(variant)}"`));
+        assert.equal(
+          textOf(row).includes(DIFFERS),
+          sentences.some(({ differs }) => differs),
+          `${title}: the tile's row`,
+        );
+        assert.equal(
+          heading(page).includes(DIFFERS),
+          sentences.some(({ differs }) => differs),
+          `${title}: the entry's heading`,
+        );
+        if (gene === "MLH1")
+          assert.ok(
+            heading(page).includes(DIFFERS),
+            "the MLH1 variant does not differ",
+          );
+        const clinvar = lines.find((line) => /^ClinVar(,| today)/.test(line));
+        assert.ok(clinvar, `${title}: no sentence of what ClinVar says`);
+        if (id !== undefined) {
+          assert.ok(clinvar.startsWith(saidOf(id)), `${title}: ${clinvar}`);
+          assert.ok(page.includes(`code=${id}`), `${title}: the ID is no link`);
+        } else if (covered.includes(gene))
+          assert.ok(
+            clinvar.startsWith(
+              "ClinVar, as this app holds it, has no row for this variant.",
+            ),
             clinvar,
-            "ClinVar, as this app holds it, has no row for this variant.",
           );
         else {
           const [, listed] =
-            /^ClinVar, as this app holds it, covers (.+), not (.+)\.$/.exec(
+            /^ClinVar, as this app holds it, covers (.+), not ([^.]+)\./.exec(
               clinvar,
             ) ?? [];
           assert.ok(listed, `${title}: ${clinvar}`);
           assert.deepEqual(listed.split(/, | and /).sort(), covered);
-          assert.ok(clinvar.endsWith(`not ${gene}.`), clinvar);
+          assert.ok(clinvar.includes(`not ${gene}.`), clinvar);
         }
+        assert.ok(
+          lines.indexOf(COUNSELLOR) > lines.indexOf(clinvar),
+          `${title}: the counsellor sentence does not follow ClinVar's`,
+        );
+        assert.ok(
+          text.includes(
+            "not intended for direct diagnostic use or medical decision-making without review by a genetics professional",
+          ),
+          `${title}: the entry does not carry ClinVar's own caution`,
+        );
+        if (gene === "MLH1")
+          assert.match(text, /report of [A-Z][a-z]{2} \d{1,2}, \d{4}/);
       }
     },
   );
