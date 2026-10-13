@@ -101,9 +101,9 @@ source, licence, credit, versions and how fresh its feed is; `uses()`, the
 pods last opened with each version, by name; `search(series, text, page)`, the
 codes of its current version, or of several series' (a source's), that are
 `text` or whose name holds it, 50 a page (`total` of them, the page after
-`offset`), each with what `about(codes)` says of it (its name, status and
-`ingredients`: the codes it maps to in the first product ingredients table that
-maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
+`offset`), each with what `about(codes)` says of it (its `notation`, the code as
+written; its name, status and `ingredients`: the codes it maps to in the first
+product ingredients table that maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
 they list or map to, from the first series that holds one; and `facts(code)`,
 what every held table says of a code, each fact with its series and version,
 a variation's classification among them (`classifications`), and the code's own
@@ -137,8 +137,9 @@ the package's, and code wins over the file. `feeds` lists every feed the app
 reads, the package's among them if it keeps it; `preference` gives each table
 kind's IRI the series a person reads it from, first first; `checkOnOpen: false`
 leaves only "Check now". `(await tablesBeside("pods")).about([codeIri])` gives
-each code's name, status and ingredients from the first series in that order
-that holds it.
+each code asked, with its notation (the code as written) and its name, status
+and ingredients from the first series in that order that holds it; a code no
+table holds has its notation alone.
 In Node only, `builders` names sources whose builders run on this machine in
 each check, a name under cascade-reference-tables' `builders/` or a path from
 the file; what one builds is kept as a feed's versions are, from
