@@ -33,6 +33,10 @@ const SAID = {
     "npm run console -- [--pod <name>]",
     "open Node's prompt with the pod as `pod`",
   ],
+  mcp: [
+    "npm run mcp",
+    "serve the pods to an MCP client such as Claude Desktop or VS Code, on stdin and stdout",
+  ],
 };
 
 const { scripts } = JSON.parse(

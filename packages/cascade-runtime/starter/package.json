@@ -16,9 +16,11 @@
     "pod:reset": "node pod.mjs reset",
     "kit:export": "node kit.mjs",
     "ask": "node ask.mjs",
-    "console": "node console.mjs"
+    "console": "node console.mjs",
+    "mcp": "node mcp.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
     "cascade-runtime": "0.0.0",
     "htm": "3.1.1",
     "preact": "11.0.0",

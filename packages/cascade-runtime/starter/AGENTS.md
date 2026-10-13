@@ -17,6 +17,12 @@ step, plain functions from a pod's question rows to the page's elements,
 which a browser can render too. Change one by editing its `` html`…` ``
 template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
 you like.
+`npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
+Claude Desktop, VS Code or any MCP client (the README says how to add it);
+`mcp-server.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
+beside `list_pods` and `ask`, each taking the pod's name. A hosted client sends
+what the tools return to its provider: never point one at a person's own pod
+without their say.
 `server.mjs` answers requests, hands it the rows, and renders each page to
 HTML with `preact-render-to-string`. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the

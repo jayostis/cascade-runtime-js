@@ -65,7 +65,15 @@ test("given a folder, it makes the project and names it, with the view's package
   assert.equal(manifest.name, "my-app");
   assert.equal(manifest.dependencies["cascade-runtime"], ADDRESS);
   for (const [tested, names] of [
-    ["../../package.json", ["preact", "htm", "preact-render-to-string"]],
+    [
+      "../../package.json",
+      [
+        "preact",
+        "htm",
+        "preact-render-to-string",
+        "@modelcontextprotocol/server",
+      ],
+    ],
     ["../../../site/package.json", ["preact", "htm"]],
   ] as const) {
     const { devDependencies } = JSON.parse(
