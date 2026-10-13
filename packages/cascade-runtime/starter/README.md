@@ -5,10 +5,12 @@ commands to load, make, remove and ask pods. It depends only on
 `cascade-runtime`, which keeps the pods; this app never writes a pod's files
 itself.
 
-The app is made with two pods, `alex-rivera` and `priya-natarajan`, loaded from
-the kits the package carries. Alex Rivera and Priya Natarajan are made up.
-Alex's records come from Apple Health exports; Priya's from exports and C-CDA
-files together. `npm run reset` puts the app back as it was made.
+The app is made with three pods, `alex-rivera`, `priya-natarajan` and
+`martin-okafor`, loaded from the kits the package carries. Alex Rivera, Priya
+Natarajan and Martin Okafor are made up. Alex's records come from Apple Health
+exports; Priya's from exports and C-CDA files together; Martin's pod holds two
+FHIR reports of one variant beside what ClinVar says today. `npm run reset`
+puts the app back as it was made.
 
 ## Start
 
@@ -61,7 +63,7 @@ script goes after `--`, or npm keeps it for itself.
 
 - `npm run dev` serves the app as `npm start` does, restarting it whenever a
   file is saved.
-- `npm run reset` removes every pod and loads Alex's and Priya's again, as
+- `npm run reset` removes every pod and loads Alex's, Priya's and Martin's again, as
   the File menu's "Reset all data" does, through the same function in
   `pods.mjs`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's

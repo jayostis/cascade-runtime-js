@@ -1065,7 +1065,7 @@ ${postButton(deleteAll, {}, "Delete all data", "warm", "Deleting all data…")}`
       box(
         "reset-all",
         "Reset all data?",
-        html`<p>Every pod goes, and Alex's and Priya's are loaded again.</p>
+        html`<p>Every pod goes, and Alex's, Priya's and Martin's are loaded again.</p>
 ${postButton(resetAll, {}, "Reset all data", "warm", "Resetting all data…")}`,
       ),
       box(

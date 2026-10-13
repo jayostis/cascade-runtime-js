@@ -281,7 +281,7 @@ test("every kit's saved conversions are the Bridge's own: each document converts
   const { differ, skipped, converted, unaccepted } = await differences();
   assert.deepEqual(differ, []);
   assert.deepEqual(skipped, ["conformance/priya-natarajan E11"]);
-  assert.equal(converted, 48);
+  assert.equal(converted, 50);
   assert.equal(unaccepted, 1);
 });
 

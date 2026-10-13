@@ -24,7 +24,10 @@ rec:SNOMEDCT a rec:CodeSystem ; rdfs:label "SNOMED CT"@en ; void:uriSpace "urn:t
 rec:NDC a rec:CodeSystem ; rdfs:label "NDC"@en ; void:uriSpace "urn:test:ndc/" .
 `;
 
-async function wordsOver(records: string): Promise<Words> {
+async function wordsOver(
+  records: string,
+  handles?: ConstructorParameters<typeof Words>[0]["handles"],
+): Promise<Words> {
   const vocabulary = new MemoryFiles("urn:test:vocabulary/");
   await vocabulary.write(RECORDS, new TextEncoder().encode(records));
   const store = new Union(new OxigraphStore());
@@ -57,6 +60,7 @@ async function wordsOver(records: string): Promise<Words> {
     person,
     people: new Map([["Test", person]]),
     folder: "test",
+    ...(handles === undefined ? {} : { handles }),
   });
 }
 
@@ -119,6 +123,30 @@ test("a variant is found by its HGVS expression, which holds a colon, or by its 
       `the matcher's same variation through the table of ${members}`,
     ),
     "urn:test:through",
+  );
+});
+
+test("a handle of a FHIR record with no id and a urn:uuid: fullUrl names the record from its fullUrl alone, and a handle with none of the known inputs is an Error", async () => {
+  const words = await wordsOver(REGISTRY, {
+    records: {
+      "HG-V1": { fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011" },
+      "NO-INPUTS": { identifier: "x" },
+    },
+    profiles: {
+      "HG-PAT": { fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52001" },
+    },
+  });
+  assert.equal(
+    await words.record("HG-V1"),
+    "urn:uuid:5f2ff240-5d0e-8484-82a8-35a333082cbf",
+  );
+  assert.equal(
+    await words.record("HG-PAT"),
+    "urn:uuid:b21d6039-06b7-877f-a351-cdb8a2412ee0",
+  );
+  await assert.rejects(
+    words.record("NO-INPUTS"),
+    /handles\.json gives NO-INPUTS no name inputs/,
   );
 });
 
