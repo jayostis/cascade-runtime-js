@@ -34,8 +34,11 @@ export interface Finding {
   direction: "up" | "down" | "not enough results";
   before: FindingSide;
   after: FindingSide;
-  /** What was left out of both sides: a value that is not a number, a number in another unit. */
-  left: { unparsed: number; otherUnit: number };
+  /**
+   * What was left out of both sides: a value that is not a number, a number in another unit, a result with no full
+   * day (a missing or partial date).
+   */
+  left: { unparsed: number; otherUnit: number; undated: number };
   /** 0 when there are not enough results. */
   score: number;
   /** The pod's lab rows, as `ask` gave them. */
@@ -137,11 +140,20 @@ function named(row: Row, wanted: string): boolean {
   );
 }
 
-function results(rows: readonly Row[]): Map<string, Result[]> {
+/** A test's dated results, oldest first; and, per test, the rows with no full day, which no series can place. */
+function results(rows: readonly Row[]): {
+  byTest: Map<string, Result[]>;
+  undated: Map<string, Row[]>;
+} {
   const byTest = new Map<string, Result[]>();
+  const undated = new Map<string, Row[]>();
   for (const row of rows) {
+    if (row.code === undefined) continue;
     const day = dayOf(row.performed);
-    if (row.code === undefined || day === undefined) continue;
+    if (day === undefined) {
+      undated.set(row.code, [...(undated.get(row.code) ?? []), row]);
+      continue;
+    }
     const value =
       row.value !== undefined && DECIMAL.test(row.value.trim())
         ? Number(row.value)
@@ -151,7 +163,7 @@ function results(rows: readonly Row[]): Map<string, Result[]> {
     byTest.set(row.code, group);
   }
   for (const group of byTest.values()) group.sort(byDay);
-  return byTest;
+  return { byTest, undated };
 }
 
 function unitOf(numeric: readonly Result[]): string {
@@ -167,7 +179,12 @@ function unitOf(numeric: readonly Result[]): string {
   return chosen;
 }
 
-function pair(event: Event, test: string, series: readonly Result[]) {
+function pair(
+  event: Event,
+  test: string,
+  series: readonly Result[],
+  undated: readonly Row[],
+) {
   const before = series.filter(({ day }) => day <= event.day);
   const after = series.filter(({ day }) => day > event.day);
   if (before.length === 0 || after.length === 0) return undefined;
@@ -219,15 +236,55 @@ function pair(event: Event, test: string, series: readonly Result[]) {
     direction,
     before: sideBefore,
     after: sideAfter,
-    left: { unparsed: unparsed.length, otherUnit: otherUnit.length },
+    left: {
+      unparsed: unparsed.length,
+      otherUnit: otherUnit.length,
+      undated: undated.length,
+    },
     score,
     rows: {
       before: first.map(({ row }) => row),
       after: second.map(({ row }) => row),
-      left: [...unparsed, ...otherUnit].sort(byDay).map(({ row }) => row),
+      left: [
+        ...[...unparsed, ...otherUnit].sort(byDay).map(({ row }) => row),
+        ...undated,
+      ],
     },
   };
   return finding;
+}
+
+/**
+ * A drug's entries as one therapy, keyed as a finding's key is: the earliest start and the latest end, so yearly
+ * renewals of one drug are one start, not as many as there are renewals. The first entry with the earliest start
+ * stands for it.
+ */
+function therapies(medications: readonly Row[]) {
+  const byDrug = new Map<
+    string,
+    { row: Row; started?: string; ended?: string }
+  >();
+  for (const row of medications) {
+    const label = notationOf(row.code) ?? row.medication ?? "";
+    const started = dayOf(row.started);
+    const ended = dayOf(row.ended);
+    const kept = byDrug.get(label);
+    if (kept === undefined) {
+      byDrug.set(label, {
+        row,
+        ...(started ? { started } : {}),
+        ...(ended ? { ended } : {}),
+      });
+      continue;
+    }
+    if (started && (kept.started === undefined || started < kept.started)) {
+      kept.started = started;
+      kept.row = row;
+    }
+    if (ended && (kept.ended === undefined || ended > kept.ended))
+      kept.ended = ended;
+  }
+  return [...byDrug.values()];
 }
 
 /**
@@ -245,7 +302,7 @@ export function changesIn(
   const limit = options.limit ?? DEFAULT_LIMIT;
   if (!(limit >= 1))
     throw new Refusal(`limit must be at least 1, not ${String(limit)}`);
-  const series = results(labs);
+  const { byTest: series, undated } = results(labs);
   let chosen = medications;
   if (options.medication !== undefined) {
     const wanted = options.medication;
@@ -262,17 +319,19 @@ export function changesIn(
     if (tests.length === 0) throw new Refusal(`no test ${wanted} in the pod`);
   }
   const found = new Map<string, Finding>();
-  for (const row of chosen) {
+  for (const { row, started, ended } of therapies(chosen)) {
     const events: Event[] = [];
-    const started = dayOf(row.started);
-    const ended = dayOf(row.ended);
     if (started) events.push({ kind: "after start", day: started, row });
     if (ended) events.push({ kind: "after stop", day: ended, row });
     for (const event of events)
       for (const test of tests) {
-        const finding = pair(event, test, series.get(test)!);
-        if (finding !== undefined && !found.has(finding.key))
-          found.set(finding.key, finding);
+        const finding = pair(
+          event,
+          test,
+          series.get(test)!,
+          undated.get(test) ?? [],
+        );
+        if (finding !== undefined) found.set(finding.key, finding);
       }
   }
   const all = [...found.values()];
@@ -337,7 +396,7 @@ export function compact(finding: Finding): CompactFinding {
 export interface LabSeries {
   test: { code: string; notation?: string; name?: string };
   results: { date: string; value: number; unit: string }[];
-  left: { unparsed: number };
+  left: { unparsed: number; undated: number };
 }
 
 /**
@@ -346,7 +405,7 @@ export interface LabSeries {
  * @throws Refusal when the rows hold no such test.
  */
 export function labSeriesIn(labs: readonly Row[], test: string): LabSeries {
-  const series = results(labs);
+  const { byTest: series, undated } = results(labs);
   const code = [...series.keys()].find(
     (each) => each === test || notationOf(each) === test,
   );
@@ -363,7 +422,10 @@ export function labSeriesIn(labs: readonly Row[], test: string): LabSeries {
     results: all
       .filter(({ value }) => value !== undefined)
       .map(({ day, value, unit }) => ({ date: day, value: value!, unit })),
-    left: { unparsed: all.filter(({ value }) => value === undefined).length },
+    left: {
+      unparsed: all.filter(({ value }) => value === undefined).length,
+      undated: (undated.get(code) ?? []).length,
+    },
   };
 }
 
@@ -441,7 +503,9 @@ export function checkInput(
       if (given[name] === undefined)
         throw new Refusal(`${at}.${name} is required`);
     for (const [name, value] of Object.entries(given)) {
-      const property = schema.properties?.[name];
+      const property = Object.hasOwn(schema.properties ?? {}, name)
+        ? schema.properties![name]
+        : undefined;
       if (property === undefined) {
         if (schema.additionalProperties === false)
           throw new Refusal(`${at}.${name} is not a property of ${at}`);
