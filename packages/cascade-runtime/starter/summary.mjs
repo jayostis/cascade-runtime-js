@@ -1532,9 +1532,11 @@ export function codePage({ source, held, facts, codeHref, back }) {
     status,
     mappings,
     classifications = [],
+    page,
   } = facts;
   return html`<p><a href=${back}>${source.label}</a></p>
 <h1>${notation}${about?.name !== undefined && ` ${about.name.label}`}</h1>
+${page !== undefined && html`<p><a href=${page.href} rel="external">${page.system}'s page for ${notation}</a></p>`}
 ${names.map(
   (name) => html`<div class="card"><h2>Names</h2>
 <p><strong>${name.label}</strong></p>

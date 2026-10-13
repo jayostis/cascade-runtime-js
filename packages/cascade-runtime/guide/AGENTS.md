@@ -106,7 +106,8 @@ written; its name, status and `ingredients`: the codes it maps to in the first
 product ingredients table that maps it) and the codes it maps to; `codeNamed(series, notation)`, the code written so that
 they list or map to, from the first series that holds one; and `facts(code)`,
 what every held table says of a code, each fact with its series and version,
-a variation's classification among them (`classifications`); and
+a variation's classification among them (`classifications`), and the code's own
+page at its publisher (`page: { href, system }`) where its code system has one; and
 `variantClassification({ gene, hgvs, variations })`, what the app's current
 version of the first held variant classifications series that covers the gene
 says of a variant: `rows` with its one row (found by its ClinVar IDs when it has
