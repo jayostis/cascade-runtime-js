@@ -46,6 +46,18 @@ text, and tags a retired code. Above the tiles, "Worth a look" (`worthALook`,
 drawn by `worthPart`) lists what needs review, each report that differs from
 ClinVar today and each pair of medications that share an ingredient, each line
 linking to its entry; a line, a row and an entry carry the same tag (`TAGS`).
+Below it, "What changed" (`changedPart`, over `changesIn` of the pod's
+medication history and lab results) has a card for each change after a
+medication started or stopped, in `CHANGED`'s words, which state an order and a
+comparison of means and never a cause; each card links to its results
+(`#change-<key>`) and to the trend at `/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`
+(`trendPage` over `labSeriesIn` and `timelineIn`; `trendPath` in `pods.mjs`
+makes the address, a view never builds one). The three people's pods hold too
+little for a card; a story patient's does: Ines Calloway, at Cascade North, by
+"+ New pod" and "Sign in at Cascade North". `TREND_VIEW` is the trend as a tool
+a model can call, which a browser host registers with `useView`; this server's
+pages register nothing, and a model reaches the trend through each
+`find_changes` finding's `view` address.
 A row of a tile's table opens its entry at
 `/pods/<name>/entries/<id>`: what it is, where it came from (a line for each
 document its records were derived from) and what else is known, which is what

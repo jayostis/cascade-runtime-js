@@ -5,14 +5,14 @@ import { fileURLToPath, URL } from "node:url";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { openPod } from "cascade-runtime";
 import { podServer } from "./mcp-server.mjs";
-import { podFolder, podNames } from "./pods.mjs";
+import { podFolder, podNames, trendUrl } from "./pods.mjs";
 
 chdir(fileURLToPath(new URL(".", import.meta.url)));
 
-const pods = podServer({
-  names: podNames,
-  open: (name) => openPod(podFolder(name)),
-});
+const pods = podServer(
+  { names: podNames, open: (name) => openPod(podFolder(name)) },
+  { viewOf: trendUrl },
+);
 const serving = serveStdio(() => pods.build());
 
 stdin.on("close", async () => {

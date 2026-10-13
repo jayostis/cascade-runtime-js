@@ -178,6 +178,8 @@ const tagged = (tag) =>
 const SEEN = "pod/What was seen more than once";
 const VARIANTS = "pod/My genetic variants";
 const REPORTS = "pod/What each report says of a variant";
+export const HISTORY = "pod/My medication history";
+export const LABS = "pod/My lab results";
 
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
@@ -186,6 +188,7 @@ export const QUESTIONS = [
   REVIEW,
   VARIANTS,
   REPORTS,
+  HISTORY,
   ...SECTIONS.flatMap(({ question }) => question ?? []),
 ];
 
@@ -1002,7 +1005,11 @@ export function tile(section, rows, entryHref) {
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
  *   the rows by;
  * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; no report
- *   is tagged `Differs`, on a row or in what is worth a look, until it does.
+ *   is tagged `Differs`, on a row or in what is worth a look, until it does;
+ * - `changes`: what changed after a medication started or stopped, as `changesIn` gives it over the pod's medication
+ *   history and lab results; none, no part, as when the pod holds no row of either;
+ * - `trendHref({ test, medication })`: the address of the trend of a test, a medication marked, which a change links to;
+ * - `register(view)`: called with `TREND_VIEW` while What changed is on screen, giving back what undoes it.
  */
 export function podPage(
   asked,
@@ -1017,6 +1024,9 @@ export function podPage(
     entryHref,
     about = new Map(),
     said,
+    changes,
+    trendHref,
+    register,
   },
 ) {
   const answers = named(asked, about);
@@ -1024,6 +1034,12 @@ export function podPage(
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
   const worth = worthPart(worthALook(answers, about, said), entryHref);
+  const changed =
+    changes !== undefined &&
+    (answers[HISTORY] ?? []).length > 0 &&
+    (answers[LABS] ?? []).length > 0
+      ? changedPart({ changes, about, entryHref, trendHref, register })
+      : undefined;
   const tiles = SECTIONS.map((section) => [
     section,
     sectionRows(section, answers, said),
@@ -1040,10 +1056,494 @@ ${places.length > 0 && html`<ul class="chips">${places.map((place) => html`<li>$
 ${from !== undefined && html`<p class="note">Brought in the record from ${hospitalName(from)}.</p>`}
 ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.length === 1 ? "a reference table version" : `${unheld.length} reference table versions`} this app does not hold, and is matched without ${unheld.length === 1 ? "it" : "them"}.</p>`}
 ${worth}
+${changed}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
+}
+
+/**
+ * What a finding says, by its kind and direction: that a test's results were lower or higher after a medication started
+ * or stopped, as a comparison of means in an order. It never says why.
+ */
+export const CHANGED = {
+  "after start": {
+    down: (test, medication) =>
+      `${test} was lower after ${medication} started.`,
+    up: (test, medication) => `${test} was higher after ${medication} started.`,
+  },
+  "after stop": {
+    down: (test, medication) =>
+      `${test} was lower after ${medication} stopped.`,
+    up: (test, medication) => `${test} was higher after ${medication} stopped.`,
+  },
+};
+
+/** The view a model can open: the trend of one test, a medication marked. A host registers it with what runs it. */
+export const TREND_VIEW = {
+  name: "show_trend",
+  description:
+    "Opens the trend of one lab test over time, the days a medication started and stopped marked on it. It shows what changed after what, never why.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      test: { type: "string", description: "A LOINC code such as 18262-6." },
+      medication: {
+        type: "string",
+        description:
+          "An RxNorm code such as 617310, or the medication's name where it has no code; none marked if left out.",
+      },
+    },
+    required: ["test"],
+    additionalProperties: false,
+  },
+};
+
+/** While the component is on screen, calls `register(definition)`, and what it gives back when it goes; nothing without `register`. */
+export function useView(register, definition) {
+  useEffect(() => register?.(definition), [register, definition]);
+}
+
+const DAY_MS = 86_400_000;
+const timeOf = (text) => Date.parse(`${String(text).slice(0, 10)}T00:00:00Z`);
+const dayAt = (time) => day(new Date(time).toISOString());
+const monthAt = (time) =>
+  new Date(time).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+const near = (n) => Math.round(n * 10) / 10;
+const resultsSaid = (n) => `${n} ${n === 1 ? "result" : "results"}`;
+
+/** The bare code of an IRI: its last `/` or `#` part. */
+function notationOf(code) {
+  const last = String(code ?? "")
+    .split(/[/#]/)
+    .pop();
+  if (!last) return undefined;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+/** What was left out of a finding's means or a test's results, in words. */
+function leftSaid({ unparsed = 0, otherUnit = 0, undated = 0 }) {
+  const parts = [
+    unparsed > 0 &&
+      (unparsed === 1
+        ? "1 value that is not a number"
+        : `${unparsed} values that are not numbers`),
+    otherUnit > 0 && `${resultsSaid(otherUnit)} in another unit`,
+    undated > 0 && `${resultsSaid(undated)} with no full date`,
+  ].filter(Boolean);
+  return parts.length === 0 ? undefined : `Left out: ${listed(parts)}.`;
+}
+
+/** The tests a pod's lab rows hold, by name: their code, bare code and name. */
+export function testsIn(labs) {
+  const tests = new Map();
+  for (const row of labs) {
+    if (!row.code) continue;
+    const kept = tests.get(row.code);
+    if (kept === undefined)
+      tests.set(row.code, {
+        code: row.code,
+        notation: notationOf(row.code),
+        name: row.test || undefined,
+      });
+    else if (kept.name === undefined && row.test) kept.name = row.test;
+  }
+  return [...tests.values()].sort((a, b) =>
+    (a.name ?? a.notation ?? "").localeCompare(b.name ?? b.notation ?? ""),
+  );
+}
+
+/** The trend a finding is about, as `trendHref` takes it: bare codes, the medication's name where it has no code. */
+function trendOfFinding({ test, medication }) {
+  const drug = medication.notation ?? medication.name;
+  return {
+    test: test.notation ?? test.code,
+    ...(drug ? { medication: drug } : {}),
+  };
+}
+
+/**
+ * The test and medication a trend shows, from what an address asked for: both as asked; with no test, the strongest
+ * change's, else the pod's first test; none when the pod holds no lab row. `changes` is `changesIn`'s answer and `labs`
+ * the rows of `pod/My lab results`.
+ */
+export function trendInput({ changes = [], labs = [] }, { test, medication }) {
+  if (test) return { test, ...(medication ? { medication } : {}) };
+  const strongest = changes.find(
+    ({ direction }) => direction !== "not enough results",
+  );
+  if (strongest !== undefined) return trendOfFinding(strongest);
+  const [first] = testsIn(labs);
+  return first === undefined
+    ? undefined
+    : { test: first.notation ?? first.code };
+}
+
+/** The medications of `timeline` (`timelineIn`'s answer) as the therapies `changesIn` takes them for: a drug once, from its earliest start to its latest end. */
+function therapiesOf(timeline, about = new Map()) {
+  const drugs = new Map();
+  for (const entry of timeline) {
+    const key = entry.notation ?? entry.name;
+    const kept = drugs.get(key);
+    if (kept === undefined) {
+      drugs.set(key, {
+        key,
+        name: labelled(
+          about,
+          entry.code,
+          entry.name || entry.notation || "Unnamed medication",
+        ),
+        code: entry.code,
+        started: entry.started,
+        ended: entry.ended,
+      });
+      continue;
+    }
+    if (entry.started && (!kept.started || entry.started < kept.started))
+      kept.started = entry.started;
+    if (entry.ended && (!kept.ended || entry.ended > kept.ended))
+      kept.ended = entry.ended;
+  }
+  return [...drugs.values()];
+}
+
+/** Where a time and a value fall in a drawing of `size`, over the days and numbers of `points` and `marks`. */
+function plotOf({ points, marks = [], size }) {
+  const { width, height, margin } = size;
+  const times = [
+    ...points.map(({ time }) => time),
+    ...marks.map(({ time }) => time),
+  ];
+  let from = Math.min(...times);
+  let to = Math.max(...times);
+  if (from === to) {
+    from -= DAY_MS;
+    to += DAY_MS;
+  }
+  const values = points.map(({ value }) => value);
+  let low = Math.min(...values);
+  let high = Math.max(...values);
+  const pad = (high - low) * 0.1 || Math.abs(low) * 0.1 || 1;
+  low -= pad;
+  high += pad;
+  const across = width - margin.left - margin.right;
+  const down = height - margin.top - margin.bottom;
+  return {
+    ...size,
+    from,
+    to,
+    low,
+    high,
+    x: (time) => margin.left + ((time - from) / (to - from)) * across,
+    y: (value) => margin.top + (1 - (value - low) / (high - low)) * down,
+  };
+}
+
+const SMALL = {
+  width: 240,
+  height: 84,
+  margin: { top: 8, right: 8, bottom: 8, left: 8 },
+  radius: 3,
+};
+const LARGE = {
+  width: 640,
+  height: 280,
+  margin: { top: 30, right: 36, bottom: 34, left: 60 },
+  radius: 4,
+};
+
+/** `count` values from `from` to `to`, evenly. */
+const spread = (count, from, to) =>
+  Array.from(
+    { length: count },
+    (_, at) => from + ((to - from) * at) / (count - 1),
+  );
+
+/**
+ * A line of results over time, drawn as SVG: one marker for each point, the days in `marks` (`{ time, kind, text }`) as
+ * dashed lines across it, and with `axes` the days along the bottom and the numbers at the left, in `unit`. The title and
+ * the description are what a screen reader says; the colours are the page's.
+ */
+function Chart({
+  id,
+  plot,
+  points,
+  marks = [],
+  unit,
+  title,
+  desc,
+  axes = false,
+}) {
+  const { width, height, margin, radius, from, to, low, high, x, y } = plot;
+  const sorted = [...points].sort((a, b) => a.time - b.time);
+  const right = width - margin.right;
+  const bottom = height - margin.bottom;
+  const days = (to - from) / DAY_MS;
+  return html`<svg class="chart ${axes ? "large" : "small"}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${id}-title ${id}-desc">
+<title id="${id}-title">${title}</title>
+<desc id="${id}-desc">${desc}</desc>
+${axes && spread(4, low, high).map((value) => html`<line class="grid" x1=${margin.left} x2=${right} y1=${near(y(value))} y2=${near(y(value))} /><text class="tick" x=${margin.left - 8} y=${near(y(value)) + 4} text-anchor="end">${rounded(value)}</text>`)}
+${axes && spread(5, from, to).map((time) => html`<text class="tick" x=${near(x(time))} y=${bottom + 20} text-anchor="middle">${days >= 150 ? monthAt(time) : dayAt(time)}</text>`)}
+${axes && html`<text class="tick" transform="translate(14 ${near(margin.top + (bottom - margin.top) / 2)}) rotate(-90)" text-anchor="middle">${unit}</text>`}
+${marks.map(({ time, kind, text }) => html`<line class="mark ${kind}" x1=${near(x(time))} x2=${near(x(time))} y1=${margin.top} y2=${bottom} />${axes && html`<text class="tick" x=${near(x(time))} y=${margin.top - 10} text-anchor=${x(time) > width / 2 ? "end" : "start"}>${text}</text>`}`)}
+<polyline class="series" fill="none" points=${sorted.map(({ time, value }) => `${near(x(time))},${near(y(value))}`).join(" ")} />
+${sorted.map(({ time, value }) => html`<circle class="marker" cx=${near(x(time))} cy=${near(y(value))} r=${radius}><title>${dayAt(time)}: ${rounded(value)} ${unit}</title></circle>`)}
+</svg>`;
+}
+
+/** The medications of `drugs` as bars from their start to their stop, to the right edge while one has none, along the days of `plot`. */
+function Lane({ id, plot, drugs, chosen, title, desc }) {
+  const { width, margin, from, to, x } = plot;
+  const rowHeight = 32;
+  const height = drugs.length * rowHeight + 8;
+  return html`<svg class="chart lane" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${id}-title ${id}-desc">
+<title id="${id}-title">${title}</title>
+<desc id="${id}-desc">${desc}</desc>
+${drugs.map((drug, at) => {
+  const top = 4 + at * rowHeight;
+  const start = drug.started ? timeOf(drug.started) : undefined;
+  const end = drug.ended ? timeOf(drug.ended) : to;
+  const drawn = start !== undefined && start <= to && end >= from;
+  const left = drawn ? x(Math.max(start, from)) : margin.left;
+  const across = drawn ? Math.max(2, x(Math.min(end, to)) - left) : 0;
+  const on = drug === chosen;
+  return html`<text class="lane-label${on ? " chosen" : ""}" x=${margin.left} y=${top + 11}>${drug.name}</text>${drawn && html`<rect class="bar${on ? " chosen" : ""}" x=${near(left)} y=${top + 16} width=${near(across)} height="8" rx="4"><title>${drug.name}: ${drug.started ? `from ${day(drug.started)}` : "start not known"}${drug.ended ? ` to ${day(drug.ended)}` : ", not stopped"}</title></rect>`}`;
+})}
+</svg>`;
+}
+
+/** The unit most of `results` carry, the earliest on a tie. */
+function unitOf(results) {
+  const counts = new Map();
+  for (const { unit } of results) counts.set(unit, (counts.get(unit) ?? 0) + 1);
+  let chosen = "";
+  let most = 0;
+  for (const [unit, count] of counts)
+    if (count > most) {
+      chosen = unit;
+      most = count;
+    }
+  return chosen;
+}
+
+function Trend({
+  pod,
+  back,
+  labs,
+  series,
+  timeline,
+  test,
+  medication,
+  trendHref,
+  about = new Map(),
+  register,
+}) {
+  useView(register, TREND_VIEW);
+  const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
+  if (series === undefined)
+    return html`${backLink}
+<h1>Not found</h1>
+<p>${test === undefined ? "This pod holds no lab results to show a trend of." : `This pod holds no results for the test ${test}.`}</p>`;
+  const name = trendTitle(series, about);
+  const drugs = therapiesOf(timeline, about);
+  const wanted = medication?.toLowerCase();
+  const chosen =
+    medication === undefined
+      ? undefined
+      : drugs.find(
+          (drug) =>
+            drug.key === medication ||
+            drug.code === medication ||
+            drug.name.toLowerCase() === wanted,
+        );
+  const unit = unitOf(series.results);
+  const drawn = series.results.filter((result) => result.unit === unit);
+  const points = drawn.map(({ date, value }) => ({
+    time: timeOf(date),
+    value,
+  }));
+  const marks =
+    chosen === undefined
+      ? []
+      : [
+          chosen.started && {
+            time: timeOf(chosen.started),
+            kind: "start",
+            text: `${chosen.name} started`,
+          },
+          chosen.ended && {
+            time: timeOf(chosen.ended),
+            kind: "stop",
+            text: `${chosen.name} stopped`,
+          },
+        ].filter(Boolean);
+  const link = (given) =>
+    trendHref({
+      test: series.test.notation ?? series.test.code,
+      ...(chosen ? { medication: chosen.key } : {}),
+      ...given,
+    });
+  const left = leftSaid(series.left);
+  const unplotted = series.results.length - drawn.length;
+  let chart;
+  if (points.length > 0) {
+    const plot = plotOf({ points, marks, size: LARGE });
+    const values = points.map(({ value }) => value);
+    const described = `${resultsSaid(points.length)} from ${dayAt(Math.min(...points.map(({ time }) => time)))} to ${dayAt(Math.max(...points.map(({ time }) => time)))}, from ${rounded(Math.min(...values))} to ${rounded(Math.max(...values))} ${unit}.${marks.map(({ time, text }) => ` ${text} ${dayAt(time)}.`).join("")}`;
+    chart = html`<${Chart} id="trend-chart" plot=${plot} points=${points} marks=${marks} unit=${unit} title=${name} desc=${described} axes />
+<${Lane} id="trend-lane" plot=${plot} drugs=${drugs} chosen=${chosen} title="Medications" desc=${drugs.length === 0 ? "No medication." : drugs.map((drug) => `${drug.name}${drug.started ? ` from ${dayAt(timeOf(drug.started))}` : ", start not known"}${drug.ended ? ` to ${dayAt(timeOf(drug.ended))}` : ", not stopped"}.`).join(" ")} />`;
+  }
+  const picked = (on) => (on ? "true" : undefined);
+  return html`${backLink}
+<h1>${name}</h1>
+<p class="lead">${series.results.length === 0 ? "No result of this test is a number." : `${resultsSaid(series.results.length)}${unit === "" ? "" : `, in ${unit}`}`}</p>
+${medication !== undefined && chosen === undefined && html`<p class="note">This pod holds no medication ${medication}.</p>`}
+${chart && html`<div class="card trend">${chart}${unplotted > 0 && html`<p class="muted">The chart leaves out ${resultsSaid(unplotted)} in another unit; the table lists ${unplotted === 1 ? "it" : "them"}.</p>`}</div>`}
+<div class="card"><h2>Results</h2>
+${left && html`<p class="muted">${left}</p>`}
+<div class="scroll"><table>
+<thead><tr><th>Date</th><th>Value</th><th>Unit</th></tr></thead>
+<tbody>
+${series.results.map((result) => html`<tr><td>${day(result.date)}</td><td>${rounded(result.value)}</td><td>${result.unit}</td></tr>`)}
+</tbody>
+</table></div></div>
+<div class="card picker"><h2>Show</h2>
+<h3>Test</h3>
+<ul>${testsIn(labs).map((each) => html`<li><a href=${link({ test: each.notation ?? each.code })} aria-current=${picked((each.notation ?? each.code) === (series.test.notation ?? series.test.code))}>${each.name ?? each.notation ?? each.code}</a></li>`)}</ul>
+<h3>Medication marked</h3>
+<ul><li><a href=${trendHref({ test: series.test.notation ?? series.test.code })} aria-current=${picked(chosen === undefined)}>None</a></li>
+${drugs.map((drug) => html`<li><a href=${link({ medication: drug.key })} aria-current=${picked(drug === chosen)}>${drug.name}</a></li>`)}</ul>
+</div>`;
+}
+
+/**
+ * The trend of one test, a medication marked: a chart of the results with the days the medication started and stopped
+ * dashed across it, each medication as a bar under it, a table of the results and links to pick another test or
+ * medication. It states what changed after what, never why.
+ *
+ * - `pod`, `back`: the pod's name and the address of its page;
+ * - `labs`: the rows of `pod/My lab results`, for the tests to pick from;
+ * - `series`: `labSeriesIn`'s answer for the test, or undefined when the pod holds none: the page says so;
+ * - `timeline`: `timelineIn`'s answer over the pod's medication history;
+ * - `test`, `medication`: as asked; `medication` is a bare RxNorm code, or a name, and none is marked when it names
+ *   none the pod holds;
+ * - `trendHref({ test, medication })`: the address of a trend, which the links of the picker go to;
+ * - `about`: what the tables say of the codes of the pod's lab results and medication history, as the card names them;
+ *   the page names the test and the medications by it where it names the code, else by the record's own text;
+ * - `register(view)`: as `podPage` takes it.
+ */
+export function trendPage(props) {
+  return html`<${Trend} ...${props} />`;
+}
+
+/** The name a trend page and its tab give the test: the tables' where they name its code, else the record's own text. */
+export function trendTitle(series, about = new Map()) {
+  const { code, name, notation } = series.test;
+  return labelled(about, code, name ?? notation ?? code);
+}
+
+/** One finding as a card: what changed, the means, what was left out, a small chart and the links to its results and trend. */
+function Change({ finding, names, trendHref }) {
+  const { key, kind, direction, unit, before, after, left, rows } = finding;
+  const id = `change-${slug(key)}`;
+  const points = [...rows.before, ...rows.after].map((row) => ({
+    time: timeOf(row.performed),
+    value: Number(row.value),
+  }));
+  const marks = [
+    {
+      time: timeOf(finding.medication.date),
+      kind: kind === "after start" ? "start" : "stop",
+      text: "",
+    },
+  ];
+  const plot = plotOf({ points, marks, size: SMALL });
+  const sentence = CHANGED[kind][direction](names.test, names.medication);
+  const forgone = leftSaid(left);
+  const shown = rows.before.length + rows.after.length + rows.left.length;
+  return html`<div class="change">
+<p class="said">${capitalised(sentence)}</p>
+<p>${rounded(before.mean)} → ${rounded(after.mean)} ${unit}, the mean of ${resultsSaid(before.count)} before and ${after.count} after.</p>
+${forgone && html`<p class="muted">${forgone}</p>`}
+<${Chart} id=${id} plot=${plot} points=${points} marks=${marks} unit=${unit} title=${names.test} desc="${resultsSaid(points.length)} from ${dayAt(Math.min(...points.map((point) => point.time)))} to ${dayAt(Math.max(...points.map((point) => point.time)))}. ${names.medication} ${kind === "after start" ? "started" : "stopped"} ${day(finding.medication.date)}." />
+<p class="row"><a href="#${id}">Show the ${resultsSaid(shown)}</a>${trendHref !== undefined && html` <a href=${trendHref(trendOfFinding(finding))}>Open the trend</a>`}</p>
+</div>`;
+}
+
+const LAB_SECTION = SECTIONS.find(({ question }) => question === LABS);
+
+/** The tables' name for `code` where it names it, else `own`. */
+const labelled = (about, code, own) =>
+  (code === undefined ? undefined : about.get(code)?.name?.label) ?? own;
+
+/** A finding's test and medication as the page names them: by the tables' `about` where it names the code, else by the record's own text. */
+function changeNames(finding, about) {
+  const { test, medication } = finding;
+  return {
+    test: labelled(about, test.code, test.name ?? test.notation ?? test.code),
+    medication: labelled(
+      about,
+      medication.code,
+      medication.name || medication.notation || "an unnamed medication",
+    ),
+  };
+}
+
+function Changed({ changes, about, entryHref, trendHref, register }) {
+  useView(register, TREND_VIEW);
+  const shown = changes.filter(
+    ({ direction }) => direction !== "not enough results",
+  );
+  const thin = changes.filter(
+    ({ direction }) => direction === "not enough results",
+  );
+  const boxes = shown.map((finding) => {
+    const { rows } = finding;
+    const all = [...rows.before, ...rows.after, ...rows.left];
+    return box(
+      `change-${slug(finding.key)}`,
+      `${changeNames(finding, about).test} results`,
+      html`${rows.left.length > 0 && html`<p class="muted">${rows.left.length} of these ${rows.left.length === 1 ? "was" : "were"} left out of the means.</p>`}
+<${Table} section=${LAB_SECTION} rows=${opening(LAB_SECTION, all)} entryHref=${entryHref} />`,
+      { wide: true },
+    );
+  });
+  if (thin.length > 0)
+    boxes.push(
+      box(
+        "too-few",
+        "Too few results to say anything",
+        html`<ul>${thin.map((finding) => {
+          const names = changeNames(finding, about);
+          return html`<li>${capitalised(names.test)} and ${names.medication}, ${finding.kind === "after start" ? "started" : "stopped"} ${day(finding.medication.date)}: ${resultsSaid(finding.before.count)} before, ${finding.after.count} after.${trendHref !== undefined && html` <a href=${trendHref(trendOfFinding(finding))}>Open the trend</a>`}</li>`;
+        })}</ul>`,
+      ),
+    );
+  return html`<div class="card changes"><h2>What changed</h2>
+${shown.length === 0 ? html`<p>Nothing stands out yet.</p>` : shown.map((finding) => html`<${Change} key=${finding.key} finding=${finding} names=${changeNames(finding, about)} trendHref=${trendHref} />`)}
+${thin.length > 0 && html`<p>${thin.length} ${thin.length === 1 ? "pair" : "pairs"} of a medication and a test had too few results to say anything. <a href="#too-few">Show ${thin.length === 1 ? "it" : "them"}</a></p>`}
+<p class="muted">These say what changed after what, never why. A clinician can say why.</p>
+</div>
+${boxes}`;
+}
+
+/**
+ * The part of a pod's page that says what changed in its lab results after a medication started or stopped, as
+ * `changesIn` gives it: a card for each change, strongest first, with its means, a small chart and links to the results
+ * behind it and to its trend; one line for the pairs with too few results to say anything. `about`, `entryHref`,
+ * `trendHref` and `register` are as `podPage` takes them.
+ */
+export function changedPart(props) {
+  return html`<${Changed} ...${props} />`;
 }
 
 /** The card that brings in more: a sign-in button per hospital holding the demo person, and "Find a hospital". */
@@ -2233,6 +2733,25 @@ a { color: var(--accent); }
 .worth li { margin: 0.3rem 0; }
 .worth a { color: var(--text); }
 .worth a:hover { color: var(--accent); }
+.changes .change { padding: 0.9rem 0; border-top: 1px solid var(--line); }
+.changes h2 + .change { border-top: 0; padding-top: 0; }
+.changes p { margin: 0.25rem 0; }
+.changes .said { font-weight: 600; }
+.chart { display: block; max-width: 100%; height: auto; }
+.chart.small { width: 15rem; margin: 0.4rem 0; }
+.chart.large, .chart.lane { width: 100%; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .tick, .chart .lane-label { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.chart .series { stroke: var(--accent); stroke-width: 2; }
+.chart .marker { fill: var(--accent); stroke: var(--panel); stroke-width: 1; }
+.chart .mark { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .bar { fill: var(--muted); opacity: 0.55; }
+.chart .bar.chosen { fill: var(--accent); opacity: 1; }
+.chart .lane-label.chosen { fill: var(--text); font-weight: 600; }
+.picker h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0.6rem 0 0.3rem; }
+.picker ul { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.picker a { display: inline-block; padding: 0.15rem 0.7rem; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; }
+.picker a[aria-current] { background: var(--tint); border-color: var(--accent); font-weight: 600; }
 .entry ul { margin: 0; padding-left: 1.2rem; }
 .entry li { margin: 0.3rem 0; }
 .entry .from { display: block; }

@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { render } from "preact-render-to-string";
+import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
+import {
+  changesIn,
+  type Finding,
+  labSeriesIn,
+  openPod,
+  type Pod,
+  pullFiles,
+  type Row,
+  timelineIn,
+} from "cascade-runtime";
+import { pulled } from "./hospitals.js";
 
 const view = await import(
   new URL("../../starter/summary.mjs", import.meta.url).href
 );
+const { trendPath } = (await import(
+  new URL("../../starter/pods.mjs", import.meta.url).href
+)) as { trendPath: (pod: string, trend: object) => string };
 
 const ALLERGIES = "pod/My active allergies";
 const CONDITIONS = "pod/My active conditions";
@@ -1877,5 +1892,321 @@ test("before the tables can say, a variant's entry names each report's lab and i
   assert.deepEqual(
     orphan.known.map(({ sentence }: { sentence: string }) => sentence),
     ["Your 2023 report said benign.", COUNSELLOR],
+  );
+});
+
+const HISTORY = "pod/My medication history";
+
+interface Story {
+  pod: Pod;
+  answers: Record<string, Row[]>;
+  changes: Finding[];
+}
+
+let built: Promise<Map<string, Story>> | undefined;
+
+/** The five story patients' pods, brought in from North once and shared by the tests that need them. */
+function storyPods(): Promise<Map<string, Story>> {
+  built ??= (async () => {
+    const north = await loadHospital("cascade-north");
+    const stories = new Map<string, Story>();
+    for (const { patient } of await loadStories()) {
+      const { pull } = await pulled(north, patient);
+      const pod = await openPod();
+      const imported = await pod.import(pullFiles(pull, "north"), {
+        aboutSubject: true,
+      });
+      assert.equal(imported.refused, undefined, patient);
+      const answers = Object.fromEntries(
+        await Promise.all(
+          (view.QUESTIONS as string[]).map(
+            async (question) => [question, await pod.ask(question)] as const,
+          ),
+        ),
+      );
+      stories.set(patient, {
+        pod,
+        answers,
+        changes: changesIn(answers[HISTORY]!, answers[LABS]!, { limit: 20 }),
+      });
+    }
+    return stories;
+  })();
+  return built;
+}
+
+after(async () => {
+  for (const { pod } of (await built)?.values() ?? []) await pod.close();
+});
+
+const entryLink = (entry: string) => `/entry/${view.entryId(entry)}`;
+const text = (markup: string) =>
+  markup
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const count = (markup: string, part: string) => markup.split(part).length - 1;
+const hrefsOf = (markup: string, label: string) =>
+  [
+    ...markup.matchAll(new RegExp(`<a href="([^"]*)"[^>]*>${label}</a>`, "g")),
+  ].map(([, href]) => href!.replaceAll("&amp;", "&"));
+const capitalised = (sentence: string) =>
+  sentence[0]!.toUpperCase() + sentence.slice(1);
+
+/** A story pod's page as the Node starter draws it, with `answers` in place of the pod's own. */
+function podOf(name: string, story: Story, answers = story.answers) {
+  return render(
+    view.podPage(answers, {
+      pod: name,
+      signIn: () => null,
+      entryHref: entryLink,
+      changes: story.changes,
+      trendHref: (trend: object) => trendPath(name, trend),
+    }),
+  );
+}
+
+/** A story pod's trend page for the test and medication asked, as the Node starter draws it. */
+function trendOf(
+  name: string,
+  { answers, changes }: Story,
+  asked: { test?: string; medication?: string },
+) {
+  const labs = answers[LABS]!;
+  const medications = answers[HISTORY]!;
+  const input = view.trendInput({ changes, labs }, asked);
+  let series;
+  try {
+    series = input === undefined ? undefined : labSeriesIn(labs, input.test);
+  } catch {
+    series = undefined;
+  }
+  return render(
+    view.trendPage({
+      pod: name,
+      back: `/pods/${name}/`,
+      labs,
+      series,
+      timeline: timelineIn(medications),
+      test: input?.test,
+      medication: input?.medication,
+      trendHref: (trend: object) => trendPath(name, trend),
+    }),
+  );
+}
+
+test("What changed on the statin story patient's page: one card in CHANGED's words with both means and counts, the six results behind it each linking to its entry, and the trend's address", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const page = podOf("ines-calloway", story);
+  assert.equal(count(page, 'class="change"'), 1);
+  const said = capitalised(
+    view.CHANGED["after start"].down(
+      finding!.test.name,
+      finding!.medication.name,
+    ),
+  );
+  assert.ok(text(page).includes(said), said);
+  assert.match(
+    text(page),
+    /162 → 98\.3 mg\/dL, the mean of 3 results before and 3 after/,
+  );
+
+  const behind = page.slice(page.indexOf('id="change-start-617310-18262-6"'));
+  const [box] = behind.split('class="dialog"');
+  assert.deepEqual(
+    hrefsOf(box!, "[^<]*").sort(),
+    [...finding!.rows.before, ...finding!.rows.after]
+      .map(({ entry }) => entryLink(entry!))
+      .sort(),
+  );
+  assert.deepEqual(hrefsOf(page, "Open the trend"), [
+    trendPath("ines-calloway", { test: "18262-6", medication: "617310" }),
+  ]);
+  assert.deepEqual(hrefsOf(page, "Show the 6 results"), [
+    "#change-start-617310-18262-6",
+  ]);
+});
+
+test("What changed says nothing stands out when no pair does, counts a pair with too few results without a card, and is absent when the pod holds no lab row or no medication-history row", async () => {
+  const stories = await storyPods();
+  const herring = podOf("pell-hargrove", stories.get("story-red-herring")!);
+  assert.match(text(herring), /Nothing stands out yet\./);
+  assert.equal(count(herring, 'class="change"'), 0);
+
+  const little = stories.get("story-too-little")!;
+  const thin = podOf("rafferty-moon", little);
+  assert.equal(count(thin, 'class="change"'), 0);
+  assert.match(
+    text(thin),
+    /1 pair of a medication and a test had too few results to say anything\./,
+  );
+  assert.match(text(thin), /3 results before, 1 after/);
+  assert.deepEqual(hrefsOf(thin, "Open the trend"), [
+    trendPath("rafferty-moon", { test: "2823-3", medication: "979492" }),
+  ]);
+
+  for (const question of [LABS, HISTORY])
+    assert.equal(
+      count(
+        podOf("pell-hargrove", little, { ...little.answers, [question]: [] }),
+        'class="card changes"',
+      ),
+      0,
+      question,
+    );
+});
+
+test("nothing What changed or the trend draws, for any of the five stories, nor any sentence CHANGED gives, says why a result changed", async () => {
+  const causes =
+    /because|caus|due to|effect|led to|improv|worsen|thanks to|\bworks?\b/i;
+  const sentences = Object.values(view.CHANGED as object).flatMap((byWay) =>
+    Object.values(byWay as object).map((say) =>
+      (say as (a: string, b: string) => string)("Test", "Medication"),
+    ),
+  );
+  assert.equal(sentences.length, 4);
+  for (const sentence of sentences) assert.doesNotMatch(sentence, causes);
+
+  for (const [patient, story] of await storyPods()) {
+    const drawn = text(
+      render(
+        view.changedPart({
+          changes: story.changes,
+          about: new Map(),
+          entryHref: entryLink,
+          trendHref: (trend: object) => trendPath(patient, trend),
+        }),
+      ),
+    );
+    assert.match(drawn, /What changed/, patient);
+    assert.doesNotMatch(drawn, causes, patient);
+    assert.doesNotMatch(text(trendOf("a-pod", story, {})), causes, patient);
+  }
+});
+
+test("the trend names its first date from the earliest result, and its test and medication by the tables where they name the code, else by the record's own text", () => {
+  const series = {
+    test: {
+      code: "http://loinc.org/18262-6",
+      notation: "18262-6",
+      name: "LDL",
+    },
+    results: [{ date: "2024-03-10", value: 98, unit: "mg/dL" }],
+    left: { unparsed: 0, undated: 0 },
+  };
+  const timeline = [
+    {
+      name: "Atorvastatin",
+      code: "http://www.nlm.nih.gov/research/umls/rxnorm/617310",
+      notation: "617310",
+      started: "2024-01-05",
+    },
+    { name: "Aspirin", notation: "1191", started: "2020-01-01" },
+  ];
+  const drawn = (about?: Map<string, unknown>) =>
+    render(
+      view.trendPage({
+        pod: "a-pod",
+        back: "/pods/a-pod/",
+        labs: [],
+        series,
+        timeline,
+        test: "18262-6",
+        medication: "617310",
+        trendHref: (trend: object) => trendPath("a-pod", trend),
+        ...(about ? { about } : {}),
+      }),
+    );
+
+  const own = drawn();
+  assert.match(
+    own,
+    /<desc id="trend-chart-desc">1 result from Mar 10, 2024 to Mar 10, 2024/,
+  );
+  assert.match(own, /Atorvastatin started Jan 5, 2024./);
+  assert.match(text(own), /LDL/);
+  assert.match(text(own), /Atorvastatin/);
+
+  const named = drawn(
+    new Map([
+      [series.test.code, { name: { label: "LDL cholesterol" } }],
+      [timeline[0]!.code!, { name: { label: "Atorvastatin calcium" } }],
+    ]),
+  );
+  assert.match(named, /<h1>LDL cholesterol[<]/);
+  assert.match(named, /Atorvastatin calcium started/);
+  assert.match(text(named), /Aspirin/);
+});
+
+test("the trend states that the chart leaves out a result in another unit, while its table still lists it", () => {
+  const series = {
+    test: { code: "http://loinc.org/18262-6", notation: "18262-6" },
+    results: [
+      { date: "2024-03-10", value: 98, unit: "mg/dL" },
+      { date: "2024-04-10", value: 98, unit: "mg/dL" },
+      { date: "2024-05-10", value: 2.5, unit: "mmol/L" },
+    ],
+    left: { unparsed: 0, undated: 0 },
+  };
+  const page = render(
+    view.trendPage({
+      pod: "a-pod",
+      back: "/pods/a-pod/",
+      labs: [],
+      series,
+      timeline: [],
+      test: "18262-6",
+      trendHref: (trend: object) => trendPath("a-pod", trend),
+    }),
+  );
+  assert.match(text(page), /The chart leaves out 1 result in another unit/);
+  assert.doesNotMatch(text(page), /Left out/);
+  assert.equal(count(page, "<tr><td>"), 3);
+});
+
+test("the trend round-trips through its address: the state read from it draws the same test and medication, a marker for each result, the medication's start marked, the test named and the results in a table; a test the pod lacks says so", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const href = trendPath("ines-calloway", {
+    test: "18262-6",
+    medication: "617310",
+  });
+  const query = new URL(href, "http://app.test").searchParams;
+  const asked = {
+    test: query.get("test") ?? undefined,
+    medication: query.get("medication") ?? undefined,
+  };
+  assert.deepEqual(asked, { test: "18262-6", medication: "617310" });
+  const page = trendOf("ines-calloway", story, asked);
+
+  assert.equal(count(page, 'class="marker"'), 6);
+  assert.equal(count(page, 'class="mark start"'), 1);
+  assert.equal(count(page, 'class="mark stop"'), 0);
+  const name = story.changes[0]!.test.name!;
+  assert.match(
+    page,
+    new RegExp(`<title id="trend-chart-title">${name}</title>`),
+  );
+  assert.match(
+    page,
+    /<desc id="trend-chart-desc">6 results from Sep 1, 2023 to Dec 2, 2024/,
+  );
+  assert.equal(count(page, "<tr><td>"), 6);
+  assert.deepEqual(
+    [...page.matchAll(/aria-current="true">([^<]*)</g)].map(([, said]) => said),
+    [name, story.changes[0]!.medication.name],
+  );
+
+  assert.deepEqual(
+    view.trendInput({ changes: story.changes, labs: story.answers[LABS]! }, {}),
+    asked,
+  );
+  const none = trendOf("ines-calloway", story, { test: "18262-6" });
+  assert.equal(count(none, 'class="mark start"'), 0);
+  assert.equal(count(none, 'class="marker"'), 6);
+
+  assert.match(
+    text(trendOf("ines-calloway", story, { test: "0000-0" })),
+    /This pod holds no results for the test 0000-0\./,
   );
 });

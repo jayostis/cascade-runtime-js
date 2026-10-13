@@ -61,6 +61,7 @@ const ALLERGIES = "pod/My active allergies";
 const REVIEW = "entry/What needs review";
 const SOURCES = "entry/Where it came from";
 const ROWAN = "Rowan Ellery Marsh";
+const INES = "Ines Calloway";
 const idOf = (entry) => entry.split(":").at(-1);
 /** The question each tile of a pod's page counts, by the tile's title. */
 const TILES = {
@@ -505,7 +506,8 @@ const rowan = [north, south].map((data) => ({
   fhirBase: data.hospital.fhirBase,
   patient: named(data, ${JSON.stringify(ROWAN)}),
 }));
-console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, allergens, rowan }));
+const ines = { fhirBase: north.hospital.fhirBase, patient: named(north, ${JSON.stringify(INES)}) };
+console.log(JSON.stringify({ row, patient, patients: Object.keys(north.patients), look, allergens, rowan, ines }));
 `;
   // A file, not `--eval`: the import's Bridge runs in a worker, which inherits node's flags, and `--input-type` there
   // refuses its file.
@@ -1583,6 +1585,91 @@ if (release === undefined) {
             !forms(shown).some(({ person }) => person === ROWAN),
             `the new-pod box still offers ${ROWAN}`,
           );
+        },
+      );
+
+      await behaviour(
+        "a story patient's pod says what changed after a medication started, opens its trend, and every link under the pod opens",
+        async () => {
+          assert.ok(
+            forms(await served(server, "/pods/hospital/")).some(
+              ({ person }) => person === INES,
+            ),
+            `the new-pod box does not offer ${INES}`,
+          );
+          const made = await send("/pods", { person: INES });
+          const page = made.headers.get("location");
+          const pod = page.split("/")[2];
+          const connection = await signIn(
+            pod,
+            expected.ines.fhirBase,
+            expected.ines.patient,
+            "allow",
+          );
+          const shown = await bringIn(await boxed(connection, INES));
+          assert.equal(heading(shown), INES);
+
+          const card = readable(shown);
+          assert.match(
+            card,
+            /\bwas lower after [^.]+ started\./,
+            "no card says a test was lower after a medication started",
+          );
+          assert.ok(
+            card.includes(
+              "162 → 98.3 mg/dL, the mean of 3 results before and 3 after",
+            ),
+            "the card does not give both means and their counts",
+          );
+          const results = shown.slice(
+            shown.indexOf('id="change-start-617310-18262-6"'),
+          );
+          assert.equal(
+            linksOf(results.split('class="dialog"')[0]).hrefs.filter((href) =>
+              href.includes("/entries/"),
+            ).length,
+            6,
+            "the box behind the card does not link its six results' entries",
+          );
+
+          const opens = /<a href="([^"]*)">Open the trend<\/a>/.exec(
+            shown,
+          )?.[1];
+          assert.ok(opens, "the card does not open the trend");
+          const trend = new URL(textOf(opens), server.address);
+          assert.deepEqual(
+            [
+              trend.searchParams.get("test"),
+              trend.searchParams.get("medication"),
+            ],
+            ["18262-6", "617310"],
+          );
+          const chart = await served(server, trend.pathname + trend.search);
+          assert.equal(
+            chart.split('class="marker"').length - 1,
+            6,
+            "the trend does not mark each of the six results",
+          );
+          assert.ok(chart.includes('class="mark start"'), "no start marked");
+
+          const { dead, links, pages } = await crawled(server, [page]);
+          stdout.write(`followed ${links} links over ${pages.size} pages\n`);
+          assert.equal(dead.length, 0, `dead links:\n${dead.join("\n")}`);
+          assert.ok(
+            [...pages.keys()].some((address) =>
+              new URL(address).pathname.endsWith("/trend"),
+            ),
+            "the crawl reached no trend",
+          );
+
+          const priya = await served(server, "/pods/priya-natarajan/");
+          assert.ok(
+            readable(priya).includes(
+              "1 pair of a medication and a test had too few results to say anything.",
+            ),
+            "Priya's page does not count her pair with too few results",
+          );
+          assert.ok(!priya.includes('class="change"'), "Priya has a card");
         },
       );
 

@@ -34,6 +34,7 @@ export type {
 export type { TablesSettings } from "@cascade-runtime/runtime";
 export * from "./changes.js";
 export * from "./connect/index.js";
+export * from "./tools.js";
 export { Refusal } from "@cascade-runtime/runtime";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
 export { configureTables } from "./node/resolved.js";

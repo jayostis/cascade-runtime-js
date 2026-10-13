@@ -27,6 +27,17 @@ each kind of record, which opens a table you can sort by a heading and filter.
 "+ New pod" makes a pod for anyone by name, or for one of the demo hospitals'
 made-up patients in one click.
 
+Under what is worth a look, a pod with medication history and lab results has
+"What changed": for each test whose results differ before and after a
+medication started or stopped, a card with the two means, a small chart, the
+results behind it and "Open the trend", a chart of that test over time with the
+medication's start and stop dashed across it, at
+`/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`. It states what changed
+after what, never why. The three people's pods hold too little to show a card.
+Ines Calloway, a made-up patient at Cascade North, does: her LDL is lower after
+atorvastatin started. "+ New pod", Ines Calloway, "Sign in at Cascade North" and
+"Bring it into … pod" make that pod.
+
 The title bar has two menus. File has "Delete all data", which removes every
 pod, and "Reset all data", which does what `npm run reset` does; each first
 asks you to confirm. Help has "About": this app's name and version, the
@@ -67,7 +78,9 @@ the app's pods. A client starts it; it prints nothing itself. It offers:
   started or stopped, strongest first, with the numbers; `finding_rows` gives
   the lab rows behind one, `lab_series` one test's results over time and
   `timeline` each medication's start and end. They state what changed, never
-  why.
+  why. Each finding of `find_changes` carries `view`, the address of the trend
+  that draws its results; it opens while `npm start` runs, on `PORT` if the
+  client has it too, else 3000.
 - `ask`: a pod's records by the name of a question (allergies, conditions,
   medications, medication history, lab results, immunizations, procedures,
   genetic variants, the person, where an entry came from), a few rows of the
@@ -156,7 +169,8 @@ script goes after `--`, or npm keeps it for itself.
 - `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
 - `pods.mjs`: what the commands and the server share: where pods live, which
-  one a command works on, and deleting and resetting them all.
+  one a command works on, deleting and resetting them all, and the addresses
+  of a pod's page and its trend.
 - `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands, and
   `help.mjs`, which lists them.
 - `mcp.mjs`, `mcp-server.mjs`: the MCP server on stdio, and the tools it
