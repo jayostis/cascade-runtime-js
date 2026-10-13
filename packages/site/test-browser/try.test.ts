@@ -14,6 +14,7 @@ import {
   type Route,
 } from "playwright";
 import {
+  changeTools,
   connect,
   DEMO_PLAN,
   type Imported,
@@ -290,6 +291,30 @@ function recordDraws(): void {
     },
     true,
   );
+}
+
+interface Registered {
+  registered: { name: string; signal: AbortSignal }[];
+}
+
+/**
+ * Gives every page of the context a stand-in `document.modelContext`, as WebMCP's gives one, recording each tool
+ * registered and the signal that takes it away.
+ */
+function recordTools(): void {
+  const registered: Registered["registered"] = [];
+  Object.assign(globalThis, { registered });
+  Object.defineProperty(document, "modelContext", {
+    configurable: true,
+    value: {
+      registerTool: (
+        tool: { name: string },
+        options: { signal: AbortSignal },
+      ) => {
+        registered.push({ name: tool.name, signal: options.signal });
+      },
+    },
+  });
 }
 
 /** When `what` was first drawn in the page, ms since its navigation started or, after a click, since the click. */
@@ -1532,6 +1557,112 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       }
       await fresh.close();
     }
+  } finally {
+    await context.close();
+  }
+});
+
+test("in try/, Ines Calloway's new pod signed in at North says what changed after atorvastatin started and registers the trend and the pod's change tools with the model context, opens the trend at its address, and going to another pod takes every tool away", async () => {
+  const demo = await loadHospitals();
+  const ines = view
+    .demoPeople(demo)
+    .find(({ name }) => name === "Ines Calloway");
+  assert.ok(ines, "no demo person is Ines Calloway");
+  const [north] = ines.at;
+  assert.ok(north && ines.at.length === 1, "Ines is not at North alone");
+  const loaded = demo.find((each) => each.hospital.fhirBase === north.fhirBase);
+  const patient = Object.entries(loaded?.patients ?? {}).find(
+    ([, bundle]) => view.patientName(bundle) === ines.name,
+  )?.[0];
+  assert.ok(patient, "North holds no patient Ines Calloway");
+
+  const context = await browser.newContext();
+  await context.addInitScript(recordTools);
+  try {
+    const page = watched(await context.newPage());
+    const live = (): Promise<string[]> =>
+      page.evaluate(() =>
+        (globalThis as unknown as Registered).registered
+          .filter(({ signal }) => !signal.aborted)
+          .map(({ name }) => name)
+          .sort(),
+      );
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, ines.name);
+    await page.waitForFunction(
+      () => navigator.serviceWorker.controller !== null,
+    );
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.click(
+        `button:has-text("Sign in at ${view.hospitalName(north.name)}")`,
+      ),
+    ]);
+    await popup.waitForSelector('button[value="allow"]');
+    await popup.check(`input[name="patient"][value="${patient}"]`);
+    await popup.click('button[value="allow"]');
+    await settled(page);
+    await page.click("#connection button:has-text('Bring it into')");
+    await settled(page, 300_000);
+
+    const card = page.locator(".change");
+    await card.first().waitFor({ timeout: 60_000 });
+    assert.equal(await card.count(), 1);
+    const said = (await card.innerText()).replace(/\s+/g, " ");
+    assert.match(said, /was lower after .+ started\./);
+    assert.ok(
+      said.includes(
+        "162 → 98.3 mg/dL, the mean of 3 results before and 3 after",
+      ),
+      said,
+    );
+
+    const tools = changeTools({ ask: async () => [] }).map(({ name }) => name);
+    await page.waitForFunction(() =>
+      (globalThis as unknown as Registered).registered.some(
+        ({ name, signal }) => name === "show_trend" && !signal.aborted,
+      ),
+    );
+    assert.deepEqual(await live(), ["show_trend", ...tools].sort());
+
+    await inPlace(page, () =>
+      page.click('.change a:has-text("Open the trend")'),
+    );
+    const query = new URL(page.url()).searchParams;
+    assert.deepEqual(
+      [
+        query.get("pod"),
+        query.has("trend"),
+        query.get("test"),
+        query.get("medication"),
+      ],
+      ["ines-calloway", true, "18262-6", "617310"],
+    );
+    const chart = page.locator("svg.chart.large");
+    assert.equal(await chart.locator("circle.marker").count(), 6);
+    assert.equal(
+      await chart.locator("title").first().textContent(),
+      await page.textContent("main h1"),
+    );
+    assert.deepEqual(await live(), ["show_trend", ...tools].sort());
+
+    const recorded = await page.evaluate(
+      () => (globalThis as unknown as Registered).registered.length,
+    );
+    await inPlace(page, () => page.click('nav a:has-text("Alex Rivera")'));
+    assert.equal(await page.textContent("main h1"), "Alex Rivera");
+    assert.ok(
+      await page.evaluate(
+        (count) =>
+          (globalThis as unknown as Registered).registered
+            .slice(0, count)
+            .every(({ signal }) => signal.aborted),
+        recorded,
+      ),
+      "a tool of the pod left is still registered",
+    );
+    assert.deepEqual(await live(), [...tools].sort());
   } finally {
     await context.close();
   }
