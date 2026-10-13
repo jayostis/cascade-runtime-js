@@ -129,6 +129,26 @@ export const SECTIONS = [
     sortBy: 1,
     newestFirst: true,
   },
+  {
+    title: "Genetic variants",
+    one: "variant",
+    field: "variant",
+    codes: [],
+    rows: variantRows,
+    columns: [
+      text("Variant", (row) => row.variant),
+      number("Reports", (row) => row.reports),
+      {
+        head: "ClinVar today",
+        type: "text",
+        key: (row) => (row.differs ? DIFFERS : ""),
+        show: (row) => (row.differs ? DIFFERS : ""),
+        warm: () => true,
+        tag: true,
+      },
+    ],
+    sortBy: 0,
+  },
 ];
 
 const SOURCES = "entry/Where it came from";
@@ -145,12 +165,17 @@ export const QUESTIONS = [
   REVIEW,
   VARIANTS,
   REPORTS,
-  ...SECTIONS.map(({ question }) => question),
+  ...SECTIONS.flatMap(({ question }) => question ?? []),
 ];
 
-/** The rows of `section` in `answers`: the only way a section's rows are read. */
-export function sectionRows(section, answers) {
-  return answers[section.question] ?? [];
+/**
+ * The rows of `section` in `answers`: the only way a section's rows are read. A section with `rows` builds them from
+ * several questions and `said` (`variantsSaid`'s answer, none until the tables can say) rather than from one.
+ */
+export function sectionRows(section, answers, said) {
+  return section.rows === undefined
+    ? (answers[section.question] ?? [])
+    : section.rows(answers, said);
 }
 
 const isCode = (code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? "");
@@ -190,7 +215,11 @@ function namingOf(section, row, about) {
 export function named(answers, about) {
   const renamed = { ...answers };
   for (const section of SECTIONS) {
-    if (answers[section.question] === undefined) continue;
+    if (
+      section.question === undefined ||
+      answers[section.question] === undefined
+    )
+      continue;
     renamed[section.question] = sectionRows(section, answers).map((row) => {
       const { label, retired } = namingOf(section, row, about);
       return {
@@ -412,8 +441,6 @@ export function noticed(answers, about = new Map()) {
         name: row[section.field] || fromLabel(row.entryLabel).name,
         one: section.one,
       });
-  for (const [variant, asked] of variantsAsked(answers))
-    entries.set(variant, { name: variantName(asked), one: "variant" });
   const joined = [...seenAt(answers)]
     .filter(([entry]) => entries.has(entry))
     .map(([entry, { places, across }]) => {
@@ -653,8 +680,9 @@ function whenOf(date, dates) {
 /**
  * What a variant's page says: a sentence for each of its `reports` (rows of "What each report says of a variant"),
  * oldest first, each with a tag when `verdicts` (`Pod.agreement()`'s rows) say it differs from the row `says` read; and
- * what ClinVar says today. A report's classification is named by `labels` (`Tables.labels`' answer). `variant` is as
- * `variantsAsked` gives it.
+ * what ClinVar says today. Each is `{ report, when, place, sentence, tag }`, the year or day it is named by and the lab
+ * it came from (`places`, a report's IRI to its lab) only when it has them. A report's classification is named by
+ * `labels` (`Tables.labels`' answer). `variant` is as `variantsAsked` gives it.
  */
 export function variantSaid({
   variant,
@@ -662,6 +690,7 @@ export function variantSaid({
   says,
   verdicts = [],
   labels = new Map(),
+  places = new Map(),
 }) {
   const row = says?.found === "rows" ? says.rows[0] : undefined;
   const dates = reports.flatMap((report) => report.date ?? []);
@@ -673,8 +702,8 @@ export function variantSaid({
   return {
     reports: ordered.map((report) => {
       const when = whenOf(report.date, dates);
-      const head =
-        when === undefined ? "An undated report" : `Your ${when} report`;
+      const place = places.get(report.report);
+      const head = `${when === undefined ? "An undated report" : `Your ${when} report`}${place === undefined ? "" : ` from ${place}`}`;
       const sentence =
         report.classification === undefined
           ? `${head} gives no ACMG classification.`
@@ -688,7 +717,13 @@ export function variantSaid({
             each.origin === says.version &&
             each.verdict === "differs",
         );
-      return differs ? { sentence, tag: DIFFERS } : { sentence };
+      return {
+        report: report.report,
+        ...(when !== undefined && { when }),
+        ...(place !== undefined && { place }),
+        sentence,
+        ...(differs && { tag: DIFFERS }),
+      };
     }),
     clinvar: clinvarSaid(says, variant?.gene),
   };
@@ -696,8 +731,8 @@ export function variantSaid({
 
 /**
  * Everything the page says of variants that needs the tables: for each variant entry in `answers` what the tables'
- * `variantClassification` says of it, `pod.agreement()`'s verdicts only when the pod has a report, the labels of the
- * reports' classifications, and the credit of each series an answer read.
+ * `variantClassification` says of it, `pod.agreement()`'s verdicts only when the pod has a report, and the labels of
+ * the reports' classifications.
  */
 export async function variantsSaid(answers, { tables, pod }) {
   const asked = variantsAsked(answers);
@@ -711,70 +746,81 @@ export async function variantsSaid(answers, { tables, pod }) {
       ]),
     ),
   );
-  const [verdicts, labels, held] = await Promise.all([
+  const [verdicts, labels] = await Promise.all([
     reports.length === 0 ? [] : pod.agreement(),
     tables.labels([
       ...new Set(reports.flatMap(({ classification }) => classification ?? [])),
     ]),
-    tables.held(),
   ]);
-  const credits = new Set(
-    [...says.values()].flatMap((each) =>
-      each.series === undefined
-        ? []
-        : (held.find(({ iri }) => iri === each.series)?.credit ?? []),
-    ),
-  );
-  return { says, verdicts, labels, credits: [...credits] };
+  return { says, verdicts, labels };
 }
 
 /**
- * The part of a pod's page that holds its variants, none when it has none: each variant entry with a sentence for each
- * of its reports and one for what ClinVar says today, the reports of no variant entry last, and under them the sentence
- * that sends a person to someone who can explain, and the credit of each series read. `said` is `variantsSaid`'s answer,
- * none until the tables can say.
+ * Each variant entry the Genetic variants section shows, by its IRI: its `name`, `asked` as `variantsAsked` gives it
+ * (none of either for a variant only a report names), its `reports` as `variantSaid` gives them, each naming the lab
+ * of its own entry's documents, `clinvar`, what ClinVar says today, and `from`, the `{ series, version }` among `held`
+ * that sentence was read from. `said` is `variantsSaid`'s answer, none until the tables can say, and then no report is
+ * tagged and there is no sentence from ClinVar.
  */
-function variantsPart(answers, said) {
-  const asked = variantsAsked(answers);
-  const reports = new Map();
+export function variantReports(answers, said, held = []) {
+  const sources = answers[SOURCES] ?? [];
+  const reported = new Map();
   for (const report of answers[REPORTS] ?? [])
-    reports.set(report.variant, [
-      ...(reports.get(report.variant) ?? []),
+    reported.set(report.variant, [
+      ...(reported.get(report.variant) ?? []),
       report,
     ]);
-  if (asked.size === 0 && reports.size === 0) return undefined;
-  const lines = ({ reports, clinvar }) =>
-    html`${reports.map(({ sentence, tag }) => html`<li>${sentence}${tag !== undefined && html` <span class="tag warm">${tag}</span>`}</li>`)}${clinvar !== undefined && html`<li>${clinvar}</li>`}`;
-  const read = (entry, variant, own) =>
-    variantSaid({
-      variant,
-      reports: own,
-      says: said?.says.get(entry),
-      verdicts: said?.verdicts,
-      labels: said?.labels,
-    });
-  const variants = [...asked].map(([entry, each]) => {
-    const title = [
-      each.gene,
-      ...each.hgvs,
-      ...each.variations.map((id) => `ClinVar ${id}`),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    return html`<div class="variant" key=${entry}><h3>${title || UNNAMED}</h3>
-<ul>${lines(read(entry, each, reports.get(entry) ?? []))}</ul></div>`;
-  });
-  const others = [...reports]
-    .filter(([entry]) => !asked.has(entry))
-    .flatMap(
-      ([entry, own]) => read(entry, { hgvs: [], variations: [] }, own).reports,
-    );
-  return html`<div class="card variants"><h2>Genetic variants</h2>
-${variants}
-${others.length > 0 && html`<ul>${lines({ reports: others })}</ul>`}
-<p>${COUNSELLOR}</p>
-${(said?.credits ?? []).map((credit) => html`<p class="muted">${credit}</p>`)}
-</div>`;
+  const labs = new Map();
+  for (const row of sources)
+    if (row.hospital !== undefined)
+      labs.set(row.entry, [...(labs.get(row.entry) ?? []), placeOf(row)]);
+  const places = new Map(
+    [...labs].map(([report, each]) => [report, listed([...new Set(each)])]),
+  );
+  const asked = variantsAsked(answers);
+  return new Map(
+    [...new Set([...asked.keys(), ...reported.keys()])].map((entry) => {
+      const variant = asked.get(entry) ?? { hgvs: [], variations: [] };
+      const says = said?.says.get(entry);
+      const read = variantSaid({
+        variant,
+        reports: reported.get(entry) ?? [],
+        says,
+        verdicts: said?.verdicts,
+        labels: said?.labels,
+        places,
+      });
+      const named = variantName(variant);
+      const from = says === undefined ? undefined : heldAt(says.version, held);
+      return [
+        entry,
+        {
+          name:
+            named === UNNAMED
+              ? fromLabel(
+                  sources.find((row) => row.entry === entry)?.entryLabel,
+                ).name
+              : named,
+          asked: variant,
+          reports: read.reports,
+          clinvar: read.clinvar,
+          ...(from !== undefined && { from }),
+        },
+      ];
+    }),
+  );
+}
+
+/** The Genetic variants section's rows: `{ entry, variant, reports, differs }` for each variant `variantReports` gives. */
+function variantRows(answers, said) {
+  return [...variantReports(answers, said)].map(
+    ([entry, { name, reports }]) => ({
+      entry,
+      variant: name,
+      reports: reports.length,
+      differs: reports.some(({ tag }) => tag === DIFFERS),
+    }),
+  );
 }
 
 /** The section's rows in the order its table opens in, a row with nothing to sort by last either way. */
@@ -903,7 +949,8 @@ export function tile(section, rows, entryHref) {
  * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
  *   the rows by;
- * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say.
+ * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; the
+ *   Genetic variants tile's `ClinVar today` column is empty until it does.
  */
 export function podPage(
   asked,
@@ -925,9 +972,12 @@ export function podPage(
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
   const sentences = noticed(answers, about);
-  const tiles = SECTIONS.filter(
-    (section) => sectionRows(section, answers).length > 0,
-  ).map((section) => tile(section, sectionRows(section, answers), entryHref));
+  const tiles = SECTIONS.map((section) => [
+    section,
+    sectionRows(section, answers, said),
+  ])
+    .filter(([, rows]) => rows.length > 0)
+    .map(([section, rows]) => tile(section, rows, entryHref));
   const lead =
     records === 0
       ? "Nothing here yet."
@@ -939,7 +989,6 @@ ${from !== undefined && html`<p class="note">Brought in the record from ${hospit
 ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.length === 1 ? "a reference table version" : `${unheld.length} reference table versions`} this app does not hold, and is matched without ${unheld.length === 1 ? "it" : "them"}.</p>`}
 ${sentences.length > 0 && html`<div class="card noticed"><h2>What Cascade noticed</h2><ul>${sentences.map((sentence) => html`<li>${sentence}</li>`)}</ul></div>`}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
-${variantsPart(answers, said)}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
@@ -990,14 +1039,19 @@ function seenSaid({ places, across }, one) {
     : `It arrived more than once${places.length === 0 ? "" : ` from ${places[0]}`}. Cascade keeps it as one ${one}.`;
 }
 
-/** A line for each document an entry's source rows came from, the oldest arrival first, as `entryOf`'s `where`. */
-function linesOf(rows) {
+/**
+ * A line for each document an entry's source rows came from, the oldest arrival first, as `entryOf`'s `where`;
+ * `issued` is the date of the report each document held, by document, which the line says when it has one.
+ */
+function linesOf(rows, issued = new Map()) {
   const lines = new Map();
   for (const row of rows) {
-    const at = lines.get(row.document ?? row.record);
+    const document = row.document ?? row.record;
+    const at = lines.get(document);
     if (at === undefined)
-      lines.set(row.document ?? row.record, {
+      lines.set(document, {
         place: placeOf(row),
+        ...(issued.has(document) && { issued: issued.get(document) }),
         ...(row.retrieved !== undefined && { retrieved: row.retrieved }),
         arrived: row.arrived,
         ...(row.hospital !== undefined &&
@@ -1051,6 +1105,65 @@ function claimsOf(codes, about, held) {
 }
 
 /**
+ * What a variant entry's page says that no other kind's does, from `variantReports`: `what`, its genes and expressions
+ * as written; `codes`, its ClinVar IDs, linked to the series `said` read them from when `held` holds it; `issued`, the
+ * date of each report by the document it came from, which is a document of the variant too; and `known`, each report
+ * oldest first, what ClinVar says today with the table it was read from, then the counsellor sentence.
+ */
+function variantFacts(answers, entry, said, held) {
+  const { asked, reports, clinvar, from } = variantReports(
+    answers,
+    said,
+    held,
+  ).get(entry);
+  const genes = [
+    ...new Set(
+      (answers[VARIANTS] ?? [])
+        .filter((row) => row.variant === entry)
+        .flatMap(({ gene }) => gene ?? []),
+    ),
+  ];
+  const facts = [
+    [genes.length === 1 ? "Gene" : "Genes", genes],
+    [asked.hgvs.length === 1 ? "Expression" : "Expressions", asked.hgvs],
+  ];
+  const series = held.find(({ iri }) => iri === said?.says.get(entry)?.series);
+  const dates = new Map(
+    (answers[REPORTS] ?? []).map(({ report, date }) => [report, date]),
+  );
+  const issued = new Map();
+  for (const { report } of reports)
+    for (const row of answers[SOURCES] ?? [])
+      if (
+        row.entry === report &&
+        row.document !== undefined &&
+        dates.get(report) !== undefined &&
+        !issued.has(row.document)
+      )
+        issued.set(row.document, dates.get(report));
+  return {
+    what: facts
+      .filter(([, texts]) => texts.length > 0)
+      .map(([head, texts]) => ({ head, text: texts.join(", ") })),
+    codes: asked.variations.map((notation) => ({
+      notation,
+      ...(series !== undefined && { series }),
+    })),
+    issued,
+    known: [
+      ...reports.map(({ sentence, tag }) => ({
+        sentence,
+        ...(tag !== undefined && { tag }),
+      })),
+      ...(clinvar === undefined
+        ? []
+        : [{ sentence: clinvar, ...(from !== undefined && { from }) }]),
+      { sentence: COUNSELLOR },
+    ],
+  };
+}
+
+/**
  * The entry whose address part is `id` (see `entryId`), as its page reads it, or undefined when no row of "Where it
  * came from" has it. `answers` holds the rows of each of `QUESTIONS`, by question; `about` is `codesSaid`'s answer, and
  * `held` the tables' `held()`, both empty until the tables can say.
@@ -1059,22 +1172,35 @@ function claimsOf(codes, about, held) {
  * - `what`: the section's columns after the name, as `{ head, text }`; `recorded`, the record's own name when the tables
  *   named it otherwise; and `codes`, each `{ notation, series }`, the series that names it when one is held;
  * - `where`: a line for each document the entry's records came from, a record with none its own, the oldest arrival
- *   first, each `{ place, retrieved, arrived, importLabel, records }`; `importLabel` only when a hospital is the place;
+ *   first, each `{ place, issued, retrieved, arrived, importLabel, records }`; `importLabel` only when a hospital is the place, `issued` only on a variant's line a report also came from;
  * - `known`: what Cascade did, then what the tables say of each code, as `{ sentence, tag, from }`, a table's claim
  *   with `from`, the `{ series, version }` among `held` it came from; and `credits`, each cited series' once.
  *
  * An entry no section shows is named and kinded from its label, and has no columns or codes.
+ *
+ * A variant (the Genetic variants section's) has instead, by `variantFacts`: its genes and expressions for `what`, its
+ * ClinVar IDs for `codes`, the date of each report on the `where` line of its document as `issued`, and `known` lines
+ * for each report, ClinVar today and the counsellor sentence; `said` is `variantsSaid`'s answer, none until the tables
+ * can say. `tags` holds `DIFFERS` when a report differs.
  */
-export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
+export function entryOf(
+  answers,
+  id,
+  { about = new Map(), said, held = [] } = {},
+) {
   const sources = answers[SOURCES] ?? [];
   const entry = sources.find((row) => entryId(row.entry) === id)?.entry;
   if (entry === undefined) return undefined;
   const ofEntry = (rows) => rows.filter((row) => row.entry === entry);
   const section = SECTIONS.find(
-    (each) => ofEntry(sectionRows(each, answers)).length > 0,
+    (each) => ofEntry(sectionRows(each, answers, said)).length > 0,
   );
   const rows =
-    section === undefined ? [] : ofEntry(sectionRows(section, answers));
+    section === undefined ? [] : ofEntry(sectionRows(section, answers, said));
+  const variant =
+    section?.one === "variant"
+      ? variantFacts(answers, entry, said, held)
+      : undefined;
   const label = [
     ...rows,
     ...ofEntry(sources),
@@ -1109,36 +1235,45 @@ export function entryOf(answers, id, { about = new Map(), held = [] } = {}) {
     );
   for (const sentence of reviews.values()) known.push({ sentence });
   known.push(...claimsOf(codes, about, held));
+  if (variant !== undefined) known.push(...variant.known);
 
   return {
     entry,
     name: title === UNNAMED ? `An unnamed ${kind}` : title,
     kind,
-    tags: retired === undefined ? [] : [retired],
+    tags: [
+      ...(retired === undefined ? [] : [retired]),
+      ...(rows.some((row) => row.differs) ? [DIFFERS] : []),
+    ],
     what:
-      section === undefined
-        ? []
-        : section.columns.slice(1).flatMap((column) => {
-            const texts = [
-              ...new Set(
-                rows.map((row) => column.show(row) ?? "").filter(Boolean),
-              ),
-            ];
-            return texts.length === 0
-              ? []
-              : [{ head: column.head, text: texts.join(", ") }];
-          }),
+      variant !== undefined
+        ? variant.what
+        : section === undefined
+          ? []
+          : section.columns.slice(1).flatMap((column) => {
+              const texts = [
+                ...new Set(
+                  rows.map((row) => column.show(row) ?? "").filter(Boolean),
+                ),
+              ];
+              return texts.length === 0
+                ? []
+                : [{ head: column.head, text: texts.join(", ") }];
+            }),
     ...(given !== undefined &&
       own !== undefined &&
       own !== given && { recorded: own }),
-    codes: codes.map((code) => {
-      const series = seriesOf(about.get(code), held);
-      return {
-        notation: about.get(code)?.notation ?? codeShown(code),
-        ...(series !== undefined && { series }),
-      };
-    }),
-    where: linesOf(ofEntry(sources)),
+    codes:
+      variant !== undefined
+        ? variant.codes
+        : codes.map((code) => {
+            const series = seriesOf(about.get(code), held);
+            return {
+              notation: about.get(code)?.notation ?? codeShown(code),
+              ...(series !== undefined && { series }),
+            };
+          }),
+    where: linesOf(ofEntry(sources), variant?.issued),
     known,
     credits: [
       ...new Set(known.flatMap(({ from }) => from?.series.credit ?? [])),
@@ -1179,8 +1314,9 @@ ${codes.length > 0 && html`<dt>${codes.length === 1 ? "Code" : "Codes"}</dt><dd>
 }
 <div class="card entry"><h2>Where it came from</h2><ul>
 ${entry.where.map(
-  ({ place, retrieved, arrived, importLabel, records }) =>
+  ({ place, issued, retrieved, arrived, importLabel, records }) =>
     html`<li><strong>${place}</strong> <span class="muted">${[
+      issued !== undefined && `report of ${day(issued)}`,
       retrieved !== undefined && `retrieved ${day(retrieved)}`,
       arrived !== undefined &&
         `arrived ${day(arrived)}${importLabel === undefined ? "" : ` through ${importLabel}`}`,
@@ -2030,9 +2166,6 @@ a { color: var(--accent); }
 .noticed { background: var(--tint); border-color: transparent; }
 .noticed ul { margin: 0; padding-left: 1.2rem; }
 .noticed li { margin: 0.3rem 0; }
-.variants h3 { font-size: 0.95rem; margin: 0.9rem 0 0.2rem; }
-.variants ul { margin: 0; padding-left: 1.2rem; }
-.variants li { margin: 0.3rem 0; }
 .entry ul { margin: 0; padding-left: 1.2rem; }
 .entry li { margin: 0.3rem 0; }
 .entry .from { display: block; }
