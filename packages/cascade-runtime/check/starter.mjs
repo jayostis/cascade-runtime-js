@@ -787,7 +787,7 @@ try {
       stdout.write(
         `followed ${links} links over ${pages.size} pages in ${Date.now() - began} ms\n`,
       );
-      assert.deepEqual(dead, [], `dead links:\n${dead.join("\n")}`);
+      assert.equal(dead.length, 0, `dead links:\n${dead.join("\n")}`);
       for (const root of roots) {
         const page = pages.get(new URL(root, server.address).href);
         const boxes = tileBoxes(page.html);
