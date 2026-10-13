@@ -32,7 +32,7 @@ const REPORTS = "pod/What each report says of a variant";
 const CORE = "https://ns.cascadeprotocol.org/core/v1#";
 const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+const PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
 const COUNSELLOR =
   "Your clinician or a genetic counsellor can explain what this means for you.";
 const DIFFERS = "Differs from ClinVar today";
@@ -761,11 +761,9 @@ if (release === undefined) {
           `http://www.ncbi.nlm.nih.gov/clinvar/${id}`,
           `${REC}clinvarClassification`,
         );
-      const labels = await triplesOf(
-        "ontologies/genomics/v1-draft/genomics.ttl",
-      );
+      const labels = await triplesOf("ontologies/records/v1-draft/records.ttl");
       const label = (concept) => {
-        const [text] = objectsOf(labels, concept, RDFS_LABEL);
+        const [text] = objectsOf(labels, concept, PREF_LABEL);
         return text.slice(0, 1).toLowerCase() + text.slice(1);
       };
       const kitReports = await triplesOf(
@@ -810,7 +808,13 @@ if (release === undefined) {
         "the pod's reports are not the kit's, grouped by variant",
       );
 
-      const html = await served(server, "/pods/martin-okafor/");
+      const shown = await started();
+      let html;
+      try {
+        html = await settled(shown, "/pods/martin-okafor/");
+      } finally {
+        await shown.stop();
+      }
       assert.equal(heading(html), "Martin Okafor");
       const text = readable(html);
       assert.ok(
