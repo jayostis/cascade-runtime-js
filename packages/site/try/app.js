@@ -339,6 +339,17 @@ async function showPod(from) {
   };
   state.doing = "ready";
   redraw();
+  reopenBox();
+}
+
+/**
+ * Opens the box the address's hash names once the page is drawn: the browser matches `:target` when it goes to an
+ * address, not for an element drawn after, as when Back returns to the pod's page from an entry opened from its box.
+ */
+function reopenBox() {
+  const { hash } = location;
+  if (hash.length > 1 && document.getElementById(hash.slice(1)))
+    location.replace(hash);
 }
 
 /** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
