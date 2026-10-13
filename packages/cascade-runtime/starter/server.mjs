@@ -9,10 +9,14 @@ import process, { env, exit, stderr, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
+  changesIn,
   ConnectionFailure,
+  labSeriesIn,
   openPod,
   pullFiles,
+  Refusal,
   tablesBeside,
+  timelineIn,
 } from "cascade-runtime";
 import { render } from "preact-render-to-string";
 import { hospitalsAt } from "./hospitals.mjs";
@@ -21,9 +25,11 @@ import {
   KITS,
   podFolder,
   podNames,
+  podPath,
   POD_NAME,
   PODS,
   resetAll,
+  trendPath,
 } from "./pods.mjs";
 import {
   checkedNote,
@@ -36,9 +42,11 @@ import {
   entryOf,
   entryPage,
   frame,
+  HISTORY,
   hospitalName,
   hospitalsPage,
   html,
+  LABS,
   newPodDialog,
   noPods,
   noTables,
@@ -53,6 +61,8 @@ import {
   sourcesOf,
   tableId,
   tablePage,
+  trendInput,
+  trendPage,
   variantsSaid,
 } from "./summary.mjs";
 
@@ -80,7 +90,6 @@ async function answered(pod) {
   return answers;
 }
 
-const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
 const entryPath = (name, entry) =>
   `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
@@ -383,6 +392,8 @@ async function showPod(response, name, query, names) {
     unheld: (await podNamed(name)).opened?.unheld,
     about: await aboutCodes(answers),
     said: await variantsOf(answers, await podNamed(name)),
+    changes: changesIn(answers[HISTORY], answers[LABS], { limit: 20 }),
+    trendHref: (trend) => trendPath(name, trend),
   });
   send(
     response,
@@ -428,6 +439,54 @@ async function showEntry(response, name, id, names) {
     response,
     entry === undefined ? 404 : 200,
     await page(entry?.name ?? "Not found", body, { current: name, names }),
+  );
+}
+
+/**
+ * The trend of the test `query`'s `test` names, the medication `medication` names marked: the pod's results of one
+ * test over time. With no `test` it is the strongest change's, else the pod's first. A test the pod holds no result of
+ * is 404.
+ */
+async function showTrend(response, name, query, names) {
+  const pod = await podNamed(name);
+  const [medications, labs] = await Promise.all([
+    pod.ask(HISTORY),
+    pod.ask(LABS),
+  ]);
+  const asked = {
+    test: query.get("test") ?? undefined,
+    medication: query.get("medication") ?? undefined,
+  };
+  const input = trendInput(
+    { changes: changesIn(medications, labs, { limit: 20 }), labs },
+    asked,
+  );
+  let series;
+  try {
+    series = input === undefined ? undefined : labSeriesIn(labs, input.test);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+  }
+  const body = trendPage({
+    pod: name,
+    back: podPath(name),
+    labs,
+    series,
+    timeline: timelineIn(medications),
+    test: input?.test,
+    medication: input?.medication,
+    trendHref: (trend) => trendPath(name, trend),
+  });
+  send(
+    response,
+    series === undefined ? 404 : 200,
+    await page(
+      series === undefined
+        ? "Not found"
+        : (series.test.name ?? series.test.notation ?? series.test.code),
+      body,
+      { current: name, names },
+    ),
   );
 }
 
@@ -656,13 +715,14 @@ const server = createServer(async (request, response) => {
       );
     }
     const at =
-      /^\/pods\/([^/]+)\/(?:(hospitals)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
+      /^\/pods\/([^/]+)\/(?:(hospitals|trend)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
         pathname,
       );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
     const names = name === undefined ? undefined : await podNames();
     if (name !== undefined && names.includes(name)) {
-      const [, , isHospitals, n, entry] = at;
+      const [, , view, n, entry] = at;
+      const isHospitals = view === "hospitals" ? view : undefined;
       if (entry !== undefined && !post)
         return await showEntry(
           response,
@@ -670,6 +730,8 @@ const server = createServer(async (request, response) => {
           decodeURIComponent(entry),
           names,
         );
+      if (view === "trend" && !post)
+        return await showTrend(response, name, url.searchParams, names);
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,

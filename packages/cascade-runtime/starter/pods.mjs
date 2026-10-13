@@ -1,8 +1,9 @@
-// What the scripts share: where pods live, what a pod may be called, and which pod a script works on.
+// What the scripts share: where pods live, what a pod may be called, which pod a script works on, and the addresses
+// the app's pages have.
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { exit, stderr } from "node:process";
-import { fileURLToPath, URL } from "node:url";
+import { env, exit, stderr } from "node:process";
+import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { parseArgs } from "node:util";
 import { replayKit } from "cascade-runtime/fixtures";
 
@@ -16,6 +17,31 @@ export const NO_POD =
 
 export function podFolder(name) {
   return join(PODS, name);
+}
+
+/** The address of a pod's page. */
+export const podPath = (name) => `/pods/${encodeURIComponent(name)}/`;
+
+/**
+ * The address of a pod's trend: `test` is a LOINC code and `medication` an RxNorm code, or a name where the drug has no
+ * code, both as bare as `find_changes` gives them; with no `medication`, none is marked.
+ */
+export function trendPath(name, { test, medication }) {
+  const query = new URLSearchParams({
+    test,
+    ...(medication === undefined ? {} : { medication }),
+  });
+  return `${podPath(name)}trend?${query}`;
+}
+
+/** The origin `server.mjs` listens on, for a script that is not the server: `PORT`, else 3000. */
+export function appOrigin() {
+  return `http://127.0.0.1:${Number(env.PORT || 3000)}`;
+}
+
+/** `trendPath` on the app's origin: the address a model can be given. */
+export function trendUrl(name, trend) {
+  return new URL(trendPath(name, trend), appOrigin()).href;
 }
 
 /**

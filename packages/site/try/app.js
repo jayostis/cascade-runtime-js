@@ -9,17 +9,24 @@
 import { render as renderInto } from "preact";
 import {
   appTables,
+  changesIn,
+  changeTools,
+  checkInput,
   checkTables,
   connect,
   ConnectionFailure,
   deletePod,
   DEMO_PLAN,
+  labSeriesIn,
   openPod,
   popupSignIn,
   pull,
   pullFiles,
+  Refusal,
   searchDirectory,
   TEST_DIRECTORY,
+  timelineIn,
+  toolRegistry,
   warm,
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
@@ -34,9 +41,11 @@ import {
   entryId,
   entryOf,
   entryPage,
+  HISTORY,
   hospitalName,
   hospitalsPage,
   html,
+  LABS,
   layout,
   newPodDialog,
   noPods,
@@ -53,6 +62,8 @@ import {
   STYLE,
   tableId,
   tablePage,
+  trendInput,
+  trendPage,
   variantsSaid,
 } from "./summary.js";
 
@@ -177,6 +188,51 @@ const signInButton = (fhirBase, label) =>
 const entryHref = (pod, entry) =>
   `${podHref(pod)}&entry=${encodeURIComponent(entryId(entry))}`;
 
+/** The address of a pod's trend of a test, a medication marked: the pod's, with `trend` and the test and medication. */
+const trendHref = (pod, { test, medication }) =>
+  `${podHref(pod)}&trend&${new URLSearchParams({
+    test,
+    ...(medication === undefined ? {} : { medication }),
+  })}`;
+
+/** The pages the model context offers as tools: the views of the page shown, and the changes of the pod shown. */
+const registry = toolRegistry(document.modelContext);
+/** The tools of the pod shown, and the controller whose signal ends them. */
+let podTools;
+
+/** Registers the change tools of `shown` while it is the pod shown; none when `shown` is undefined. */
+function offerTools(shown) {
+  if (podTools?.pod === shown) return;
+  podTools?.controller.abort();
+  podTools = undefined;
+  if (shown === undefined) return;
+  const controller = new AbortController();
+  for (const tool of changeTools(shown))
+    registry.register(tool, { signal: controller.signal });
+  podTools = { pod: shown, controller };
+}
+
+/**
+ * Registers `view`, a view of the page shown, as a tool that goes to its address; gives back what takes it away. The
+ * tool's input is checked by the view's own schema.
+ */
+function register(view) {
+  const controller = new AbortController();
+  registry.register(
+    {
+      ...view,
+      async execute(input) {
+        checkInput(view.inputSchema, input);
+        const href = trendHref(state.current, input);
+        await busy(() => go(href), opening(href));
+        return href;
+      },
+    },
+    { signal: controller.signal },
+  );
+  return () => controller.abort();
+}
+
 /** The entry `state.page` names, as the pod's answers and what the tables say of its codes give it. */
 function entryShown() {
   const { answers, about, said, entry } = state.page;
@@ -229,6 +285,13 @@ function pageShown() {
       unheld: pod?.opened?.unheld,
       about,
       said,
+      changes: (state.page.changes ??= changesIn(
+        answers[HISTORY] ?? [],
+        answers[LABS] ?? [],
+        { limit: 20 },
+      )),
+      trendHref: (trend) => trendHref(current, trend),
+      register,
     }),
   };
 }
@@ -362,6 +425,47 @@ async function showEntry(id) {
   state.page = { answers, entry: id, about, said };
   state.doing = "ready";
   redraw();
+}
+
+/**
+ * The trend of the test `query`'s `test` names, the medication `medication` names marked; with no test, the strongest
+ * change's, else the pod's first. A test the pod holds no result of says so.
+ */
+async function showTrend(query) {
+  const [medications, labs] = await Promise.all([
+    pod.ask(HISTORY),
+    pod.ask(LABS),
+  ]);
+  const input = trendInput(
+    { changes: changesIn(medications, labs, { limit: 20 }), labs },
+    {
+      test: query.get("test") ?? undefined,
+      medication: query.get("medication") ?? undefined,
+    },
+  );
+  let series;
+  try {
+    series = input === undefined ? undefined : labSeriesIn(labs, input.test);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+  }
+  const { current } = state;
+  render(
+    series === undefined
+      ? "Not found"
+      : (series.test.name ?? series.test.notation ?? series.test.code),
+    trendPage({
+      pod: current,
+      back: podHref(current),
+      labs,
+      series,
+      timeline: timelineIn(medications),
+      test: input?.test,
+      medication: input?.medication,
+      trendHref: (trend) => trendHref(current, trend),
+      register,
+    }),
+  );
 }
 
 function showHospitals(text) {
@@ -500,20 +604,24 @@ async function route() {
     replaceAddress(String(rest) === "" ? location.pathname : `?${rest}`);
   }
   state.table = undefined;
-  if (query.has("table"))
+  if (query.has("table")) {
+    offerTools(undefined);
     return showTable(
       query.get("table") ?? "",
       query.get("q") ?? "",
       pageNumber(query.get("page")),
       query.get("code"),
     );
+  }
   const asked = query.get("pod");
   state.current = asked ?? undefined;
   if (asked === null && state.pods.length === 0) {
+    offerTools(undefined);
     if (!query.has("deleted") && !deletedAll()) await firstVisit();
     if (state.pods.length === 0) return render("No pods yet", noPods());
   }
   if (asked !== null && !state.pods.includes(asked)) {
+    offerTools(undefined);
     state.current = undefined;
     return render(
       "Not found",
@@ -524,8 +632,10 @@ async function route() {
   state.current = asked ?? state.pods[0];
   if (asked === null) replaceAddress(podHref(state.current));
   pod = await podNamed(state.current);
+  offerTools(pod);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   if (query.has("entry")) return showEntry(query.get("entry") ?? "");
+  if (query.has("trend")) return showTrend(query);
   await showPod();
 }
 

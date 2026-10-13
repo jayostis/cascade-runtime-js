@@ -11,6 +11,7 @@ export default tseslint.config(
     files: ["packages/site/try/**/*.js"],
     languageOptions: {
       globals: {
+        AbortController: "readonly",
         document: "readonly",
         fetch: "readonly",
         FormData: "readonly",

@@ -62,6 +62,7 @@ export type {
 } from "../pod.js";
 export * from "../changes.js";
 export * from "../connect/index.js";
+export * from "../tools.js";
 export { Refusal } from "@cascade-runtime/runtime";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";

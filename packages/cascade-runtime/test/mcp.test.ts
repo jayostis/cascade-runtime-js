@@ -9,13 +9,19 @@ import { pulled } from "./hospitals.js";
 const { podServer, QUESTIONS, WARNING } = (await import(
   new URL("../../starter/mcp-server.mjs", import.meta.url).href
 )) as {
-  podServer: (pods: {
-    names(): Promise<string[]>;
-    open(name: string): Promise<Pod>;
-  }) => { build(): { connect(transport: unknown): Promise<void> } };
+  podServer: (
+    pods: {
+      names(): Promise<string[]>;
+      open(name: string): Promise<Pod>;
+    },
+    options?: { viewOf(pod: string, trend: object): string },
+  ) => { build(): { connect(transport: unknown): Promise<void> } };
   QUESTIONS: string[];
   WARNING: string;
 };
+const { trendUrl } = (await import(
+  new URL("../../starter/pods.mjs", import.meta.url).href
+)) as { trendUrl: (pod: string, trend: object) => string };
 
 const STATIN = "story-statin";
 const pods = new Map<string, Pod>();
@@ -43,10 +49,13 @@ before(async () => {
   pods.set(STATIN, statin);
   pods.set("empty", await openPod());
 
-  const served = podServer({
-    names: async () => [...pods.keys()],
-    open: async (name) => pods.get(name)!,
-  });
+  const served = podServer(
+    {
+      names: async () => [...pods.keys()],
+      open: async (name) => pods.get(name)!,
+    },
+    { viewOf: trendUrl },
+  );
   const [toServer, toClient] = InMemoryTransport.createLinkedPair();
   await served.build().connect(toServer);
   client = new Client({ name: "test", version: "0.0.0" });
@@ -93,6 +102,7 @@ test("find_changes on the statin story patient's pod gives the LDL finding with 
   assert.equal(found.error, false);
   const [finding] = JSON.parse(found.text) as {
     key: string;
+    view: string;
     kind: string;
     direction: string;
     test: { notation: string };
@@ -100,6 +110,12 @@ test("find_changes on the statin story patient's pod gives the LDL finding with 
     after: { count: number; mean: number };
   }[];
   assert.equal(finding!.key, "start:617310:18262-6");
+  const view = new URL(finding!.view);
+  assert.match(view.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(
+    view.pathname + view.search,
+    "/pods/story-statin/trend?test=18262-6&medication=617310",
+  );
   assert.deepEqual(
     [finding!.kind, finding!.test.notation, finding!.direction],
     ["after start", "18262-6", "down"],
