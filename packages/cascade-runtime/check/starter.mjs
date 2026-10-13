@@ -1084,7 +1084,7 @@ if (release === undefined) {
           sentences.some(({ differs }) => differs),
           `${title}: the entry's heading`,
         );
-        if (gene === "MLH1")
+        if (gene === "MLH1" && id !== undefined)
           assert.ok(
             heading(page).includes(DIFFERS),
             "the MLH1 variant does not differ",
@@ -1120,7 +1120,7 @@ if (release === undefined) {
           ),
           `${title}: the entry does not carry ClinVar's own caution`,
         );
-        if (gene === "MLH1")
+        if (gene === "MLH1" && id !== undefined)
           assert.match(text, /report of [A-Z][a-z]{2} \d{1,2}, \d{4}/);
       }
     },

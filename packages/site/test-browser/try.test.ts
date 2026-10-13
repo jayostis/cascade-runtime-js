@@ -1229,7 +1229,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       await page.locator("main .variants, main .variant").count(),
       0,
     );
-    const mlh1 = rows.filter({ hasText: "MLH1" });
+    const mlh1 = rows.filter({ hasText: "NM_000249.3" });
     assert.match(
       await mlh1.innerText(),
       /Differs from ClinVar today/,
@@ -1279,7 +1279,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
     );
     await back();
 
-    await opens(rows.filter({ hasNotText: /MLH1|BRCA2/ }).first());
+    await opens(rows.filter({ hasNotText: /NM_000249|BRCA2/ }).first());
     assert.ok(
       (await body()).includes(
         "ClinVar, as this app holds it, has no row for this variant.",
