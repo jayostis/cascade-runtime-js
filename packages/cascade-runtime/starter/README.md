@@ -56,6 +56,67 @@ with made-up patients. They need no account and no network: this app serves
 their sign-in pages under `/demo-hospitals/`. The SMART Health IT Sandbox is a
 real test server and needs the network.
 
+## Ask the pods from Claude Desktop, VS Code or any MCP client
+
+`npm run mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio over
+the app's pods. A client starts it; it prints nothing itself. It offers:
+
+- `list_pods`: the pods' names.
+- `find_changes`: what changed in a pod's lab results after a medication
+  started or stopped, strongest first, with the numbers; `finding_rows` gives
+  the lab rows behind one, `lab_series` one test's results over time and
+  `timeline` each medication's start and end. They state what changed, never
+  why.
+- `ask`: a pod's records by the name of a question (allergies, conditions,
+  medications, medication history, lab results, immunizations, procedures,
+  genetic variants, the person, where an entry came from), a few rows of the
+  many; it never takes a query of your own.
+
+Every tool but `list_pods` takes the pod's name. Ask "find anything interesting
+in this pod" or "did anything change after I stopped metformin?" and the client
+calls the tools. Restart the client's server after `npm run pod:reset` of a pod
+it has shown.
+
+**A hosted client sends what the tools return to its provider.** The pods this
+app is made with, and the demo hospitals' patients, are made up. A pod you made
+from your own records is yours to decide about: use a model that runs on your
+machine, or leave that pod out.
+
+**Claude Desktop.** Open Settings, Developer, Edit Config, and add the server
+to `claude_desktop_config.json` (on Windows `%APPDATA%\Claude\`, on macOS
+`~/Library/Application Support/Claude/`), with this app's folder in the path
+(`args` must use an absolute path, as Claude Desktop starts the server from
+another folder; forward slashes work on Windows too), then quit Claude Desktop
+and start it again:
+
+```json
+{
+  "mcpServers": {
+    "cascade": {
+      "command": "node",
+      "args": ["C:/path/to/my-app/mcp.mjs"]
+    }
+  }
+}
+```
+
+If Claude Desktop cannot find `node`, give the full path to it as `command`.
+
+**VS Code.** In this app's folder, make `.vscode/mcp.json`, then start the
+server from the file's Start link or from Chat in Agent mode:
+
+```json
+{
+  "servers": {
+    "cascade": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp.mjs"]
+    }
+  }
+}
+```
+
 ## The commands
 
 `npm run help` lists every command with what it does. An option to an npm
@@ -97,6 +158,8 @@ script goes after `--`, or npm keeps it for itself.
   one a command works on, and deleting and resetting them all.
 - `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands, and
   `help.mjs`, which lists them.
+- `mcp.mjs`, `mcp-server.mjs`: the MCP server on stdio, and the tools it
+  offers.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in
