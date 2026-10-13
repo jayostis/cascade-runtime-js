@@ -1334,7 +1334,7 @@ test("a builder the configuration names runs locally and its versions are kept a
   );
 });
 
-test("a code's name and status come from the first series of their kinds, in the order of preference, that holds it, a later one where the first does not", async () => {
+test("a code's name and status come from the first series of their kinds, in the order of preference, that holds it, a later one where the first does not, and every code asked is answered with how it is written", async () => {
   const { store } = await built();
   const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
   const cvx57 = "http://hl7.org/fhir/sid/cvx/57";
@@ -1368,7 +1368,12 @@ test("a code's name and status come from the first series of their kinds, in the
       assert.equal(retired?.deprecated, true, code);
       assert.equal(references.seriesOf(retired?.origin ?? ""), holder, code);
     }
-    assert.equal(about.has(unknown), false);
+    assert.equal(about.get(cvx141)?.notation, "141");
+    const unnamed = about.get(unknown);
+    assert.equal(unnamed?.notation, "999999");
+    assert.equal(unnamed?.name, undefined);
+    assert.equal(unnamed?.status, undefined);
+    assert.equal(unnamed?.ingredients, undefined);
   }
 });
 
