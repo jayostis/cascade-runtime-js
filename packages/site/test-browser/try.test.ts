@@ -58,6 +58,8 @@ const ENGINE = /\/web_bg\.wasm$/;
 type Answers = Record<string, Row[]>;
 interface Person {
   readonly name: string;
+  readonly family: string;
+  readonly given: string;
   readonly at: readonly { readonly name: string; readonly fhirBase: string }[];
 }
 interface Section {
@@ -80,6 +82,7 @@ interface View {
   counted(records: Readonly<Record<string, number>>): string;
   hospitalName(name: string): string;
   demoPeople(demo: unknown): Person[];
+  familyFirst(person: Person): string;
   patientName(bundle: unknown): string | undefined;
   slug(person: string): string;
 }
@@ -463,7 +466,7 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
 
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
-  await newPod(page, person.name);
+  await newPod(page, view.familyFirst(person));
   assert.equal(await page.textContent("main h1"), person.name);
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   assert.match(
@@ -1589,7 +1592,7 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
       );
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
-    await newPod(page, ines.name);
+    await newPod(page, view.familyFirst(ines));
     await page.waitForFunction(
       () => navigator.serviceWorker.controller !== null,
     );
