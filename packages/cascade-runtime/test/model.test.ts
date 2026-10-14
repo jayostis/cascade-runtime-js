@@ -349,6 +349,35 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
         { type: "done", stop: "calls" },
       ],
     ],
+    [
+      "a call with Gemini's thought signature",
+      () => ({
+        events: [
+          delta({
+            tool_calls: [
+              {
+                index: 0,
+                id: "g",
+                type: "function",
+                function: { name: "one", arguments: "{}" },
+                extra_content: { google: { thought_signature: "sig" } },
+              },
+            ],
+          }),
+          delta({}, "tool_calls"),
+        ],
+      }),
+      [
+        {
+          type: "call",
+          id: "g",
+          name: "one",
+          arguments: "{}",
+          extra: { google: { thought_signature: "sig" } },
+        },
+        { type: "done", stop: "calls" },
+      ],
+    ],
     ["a refusal", openai.refusal, [{ type: "refused", text: "No." }]],
     [
       "a bad key, which the provider echoes back",
@@ -426,9 +455,18 @@ test("an OpenAI-compatible request carries the system parts as one message, the 
     {
       role: "assistant",
       content: "",
-      calls: [{ id: "c1", name: "list_pods", arguments: "{}" }],
+      calls: [
+        { id: "c1", name: "list_pods", arguments: "{}" },
+        {
+          id: "c2",
+          name: "list_pods",
+          arguments: "{}",
+          extra: { google: { thought_signature: "sig" } },
+        },
+      ],
     },
     { role: "tool", id: "c1", content: "[]" },
+    { role: "tool", id: "c2", content: "[]" },
   ];
   const tools = [
     {
@@ -468,9 +506,16 @@ test("an OpenAI-compatible request carries the system parts as one message, the 
           type: "function",
           function: { name: "list_pods", arguments: "{}" },
         },
+        {
+          id: "c2",
+          type: "function",
+          function: { name: "list_pods", arguments: "{}" },
+          extra_content: { google: { thought_signature: "sig" } },
+        },
       ],
     },
     { role: "tool", tool_call_id: "c1", content: "[]" },
+    { role: "tool", tool_call_id: "c2", content: "[]" },
   ]);
   assert.deepEqual(groq.tools, [
     {

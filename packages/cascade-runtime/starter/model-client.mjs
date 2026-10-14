@@ -130,11 +130,14 @@ function openaiMessages(system, messages) {
         return {
           role: "assistant",
           content: message.content || null,
-          tool_calls: message.calls.map(({ id, name, arguments: args }) => ({
-            id,
-            type: "function",
-            function: { name, arguments: args },
-          })),
+          tool_calls: message.calls.map(
+            ({ id, name, arguments: args, extra }) => ({
+              id,
+              type: "function",
+              function: { name, arguments: args },
+              ...(extra === undefined ? {} : { extra_content: extra }),
+            }),
+          ),
         };
       return { role: message.role, content: message.content };
     }),
@@ -193,6 +196,7 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
         if (part.id) call.id = part.id;
         if (part.function?.name) call.name += part.function.name;
         if (part.function?.arguments) call.arguments += part.function.arguments;
+        if (part.extra_content) call.extra = part.extra_content;
       }
       if (choice.finish_reason) finish = choice.finish_reason;
     }
@@ -210,12 +214,13 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
     return;
   }
   const made = calls.filter(Boolean);
-  for (const [index, { id, name, arguments: args }] of made.entries())
+  for (const [index, { id, name, arguments: args, extra }] of made.entries())
     yield {
       type: "call",
       id: id || `call_${index}`,
       name,
       arguments: args || "{}",
+      ...(extra === undefined ? {} : { extra }),
     };
   yield {
     type: "done",
@@ -335,7 +340,8 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
 /**
  * A `Model` for the provider: `turn({ system, messages, tools, signal })` streams the events of one request. `local` is
  * true when the address is on this computer. An unknown provider throws a `Refusal`; a missing address or name falls back to the
- * provider's default, and `other` has none.
+ * provider's default, and `other` has none. A `call` event may carry `extra`, what the provider attached to the call
+ * (Gemini's thought signature): an assistant message's call that has it sends it back, unread.
  */
 export function modelClient({ provider, url, name, key }) {
   const known = PROVIDERS[provider];
