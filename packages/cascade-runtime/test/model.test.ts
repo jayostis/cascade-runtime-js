@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { Refusal } from "cascade-runtime";
 
 interface Event {
   type: string;
@@ -93,13 +94,13 @@ const delta = (
 ];
 
 const openai = {
-  call: (): Reply => ({
+  call: (withId = true): Reply => ({
     events: [
       delta({
         tool_calls: [
           {
             index: 0,
-            id: "c1",
+            ...(withId ? { id: "c1" } : {}),
             type: "function",
             function: { name: "note_word", arguments: "" },
           },
@@ -277,6 +278,19 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
         {
           type: "call",
           id: "c1",
+          name: "note_word",
+          arguments: '{"word":"ready"}',
+        },
+        { type: "done", stop: "calls" },
+      ],
+    ],
+    [
+      "a call the server gave no ID",
+      () => openai.call(false),
+      [
+        {
+          type: "call",
+          id: "call_0",
           name: "note_word",
           arguments: '{"word":"ready"}',
         },
@@ -588,9 +602,18 @@ test("the settings make a model, none make nothing, and no property of a model s
       { CASCADE_MODEL_PROVIDER: "other" },
       /needs an address/,
     ],
+    [
+      "a key and no provider",
+      { CASCADE_MODEL_KEY: KEY },
+      /PROVIDER is not set/,
+    ],
   ];
   for (const [what, env, reason] of refusals)
-    assert.throws(() => modelFrom(env), reason, what);
+    assert.throws(
+      () => modelFrom(env),
+      (error) => error instanceof Refusal && reason.test(error.message),
+      what,
+    );
   assert.equal(
     modelFrom({ CASCADE_MODEL_PROVIDER: "groq", CASCADE_MODEL_KEY: KEY })!.name,
     "openai/gpt-oss-120b",

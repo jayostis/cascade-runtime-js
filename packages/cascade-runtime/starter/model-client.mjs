@@ -3,6 +3,7 @@
 // app knows a provider's wire format, and no property of a `Model` exposes its key.
 import { existsSync } from "node:fs";
 import process from "node:process";
+import { Refusal } from "cascade-runtime";
 import { fileURLToPath, URL } from "node:url";
 
 /** Where `npm run model` keeps its settings, beside this module. */
@@ -296,7 +297,7 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
         if (block)
           made.push({
             type: "call",
-            id: block.id,
+            id: block.id || `call_${made.length}`,
             name: block.name,
             arguments: block.json || "{}",
           });
@@ -322,14 +323,14 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
 
 /**
  * A `Model` for the provider: `turn({ system, messages, tools, signal })` streams the events of one request. `local` is
- * true when the address is on this computer. An unknown provider throws; a missing address or name falls back to the
+ * true when the address is on this computer. An unknown provider throws a `Refusal`; a missing address or name falls back to the
  * provider's default, and `other` has none.
  */
 export function modelClient({ provider, url, name, key }) {
   const known = PROVIDERS[provider];
   if (!known)
-    throw new Error(
-      `unknown model provider "${provider}": use ${Object.keys(PROVIDERS).join(", ")}`,
+    throw new Refusal(
+      `unknown model provider "${provider}": use ${Object.keys(PROVIDERS).join(", ")}, or run \`npm run model\``,
     );
   const settings = {
     provider,
@@ -338,9 +339,13 @@ export function modelClient({ provider, url, name, key }) {
     key,
   };
   if (!settings.url)
-    throw new Error(`the provider ${provider} needs an address (a URL)`);
+    throw new Refusal(
+      `the provider ${provider} needs an address: set CASCADE_MODEL_URL, or run \`npm run model\``,
+    );
   if (!settings.name)
-    throw new Error(`the provider ${provider} needs a model name`);
+    throw new Refusal(
+      `the provider ${provider} needs a model name: set CASCADE_MODEL_NAME, or run \`npm run model\``,
+    );
   const turn =
     provider === "anthropic"
       ? (input) => anthropicTurn(settings, input)
@@ -361,11 +366,17 @@ export function modelFrom(env = process.env) {
   if (env === process.env && existsSync(ENV_FILE))
     process.loadEnvFile(ENV_FILE);
   const provider = env.CASCADE_MODEL_PROVIDER;
-  if (!provider) return undefined;
+  if (!provider) {
+    if (SETTINGS.some((name) => env[name]))
+      throw new Refusal(
+        "CASCADE_MODEL_PROVIDER is not set, though other model settings are: run `npm run model`",
+      );
+    return undefined;
+  }
   const key = env.CASCADE_MODEL_KEY || undefined;
   const hosted = PROVIDERS[provider] && !["local", "other"].includes(provider);
   if (hosted && !key)
-    throw new Error(
+    throw new Refusal(
       `CASCADE_MODEL_KEY is not set for ${provider}: run \`npm run model\``,
     );
   return modelClient({
