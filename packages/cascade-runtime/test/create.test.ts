@@ -106,6 +106,56 @@ test("given a folder, it makes the project and names it, with the view's package
     assert.ok(!terminal.text().includes(line), `it printed ${line}`);
 });
 
+test("a terminal that sets up the tables reports each phase with its seconds, before the first kit's line, and a failure leaves the kits to try", async () => {
+  for (const fails of [false, true]) {
+    const terminal = recording();
+    const folder = join(parent, `tables-${fails}`);
+    let pods = "";
+    assert.equal(
+      await create([folder, "--tarball", ADDRESS], {
+        ...terminal,
+        tables: async (given, phase) => {
+          pods = given;
+          await phase(
+            "Reading the tables…",
+            async () => 3,
+            () => "3 versions",
+          );
+          await phase("Checking the feed…", async () => undefined);
+          if (fails) throw new Error("no room");
+          await phase("Listing the codes…", async () => undefined);
+        },
+      }),
+      0,
+    );
+    assert.equal(pods, join(folder, "pods"));
+    const text = terminal.text();
+    assert.match(text, /Reading the tables… 3 versions, \d+\.\d s\n/);
+    assert.match(text, /Checking the feed… \d+\.\d s\n/);
+    assert.equal(/Listing the codes… \d+\.\d s\n/.test(text), !fails);
+    assert.equal(
+      /the app's tables could not be set up: no room/.test(text),
+      fails,
+    );
+    assert.ok(
+      text.indexOf("Checking the feed…") <
+        text.indexOf("Loading the pod alex-rivera"),
+      "the setup came after the first kit",
+    );
+    assert.equal(terminal.done.length, 4, "the kits loaded");
+  }
+});
+
+test("a terminal that sets up no tables prints no phase", async () => {
+  const terminal = recording();
+  await create([join(parent, "no-tables"), "--tarball", ADDRESS], terminal);
+  assert.doesNotMatch(terminal.text(), /Reading|Checking|Listing/);
+  assert.match(
+    terminal.text(),
+    /Loading the pod alex-rivera.*loaded in \d+\.\d s/,
+  );
+});
+
 test("a terminal offers a model once the app is made, and says how to add one later when it is not taken up", async () => {
   for (const [taken, hint] of [
     [true, false],

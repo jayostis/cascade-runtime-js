@@ -482,6 +482,8 @@ export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
+  #written = 0;
+  readonly #listing: Promise<void>[] = [];
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -542,9 +544,29 @@ export class Tables {
         SHIPS_WITH,
       ))
         if (!kept.has(`${stemOf(version.value)}${LISTED}`))
-          this.#listed(version.value).catch(() => undefined);
+          this.#listing.push(
+            this.#listed(version.value).then(
+              () => undefined,
+              () => undefined,
+            ),
+          );
       return checked;
     });
+  }
+
+  /** Resolves when the listings the checks so far started have finished, whether or not they succeeded. */
+  async listing(): Promise<void> {
+    await Promise.all(this.#listing);
+  }
+
+  /**
+   * Copies the package's tables into the store when it is empty, which a first use does anyway: the bytes written, or
+   * 0 when the store held them already.
+   */
+  async start(): Promise<number> {
+    const before = this.#written;
+    await this.#start();
+    return this.#written - before;
   }
 
   /**
@@ -1309,14 +1331,19 @@ export class Tables {
       ]) {
         const bytes = await starter.read(path);
         if (bytes === undefined) continue;
-        if (path.endsWith(PUBLISHED_ROWS))
+        if (path.endsWith(PUBLISHED_ROWS)) {
+          const rows = await (this.#options.work ?? IN_THIS_THREAD).published(
+            new Uint8Array(bytes),
+          );
           await files.write(
             `${path.slice(0, -PUBLISHED_ROWS.length)}.ttl`,
-            await (this.#options.work ?? IN_THIS_THREAD).published(
-              new Uint8Array(bytes),
-            ),
+            rows,
           );
-        else await files.write(path, bytes);
+          this.#written += rows.byteLength;
+        } else {
+          await files.write(path, bytes);
+          this.#written += bytes.byteLength;
+        }
       }
       this.#references = undefined;
     })().finally(() => {

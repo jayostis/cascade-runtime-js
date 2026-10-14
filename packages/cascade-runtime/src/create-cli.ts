@@ -29,6 +29,10 @@ process.exitCode = await create(process.argv.slice(2), {
       }
     : {}),
   install: npmInstall,
+  tables: async (pods, phase) => {
+    const { setUpTables } = await import("./node/kits.js");
+    await setUpTables(pods, phase);
+  },
   load: async (kit, folder) => {
     const { replayKit } = await import("./node/kits.js");
     await replayKit(kit, folder);

@@ -3,9 +3,15 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { env, exit, stderr } from "node:process";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { parseArgs } from "node:util";
-import { replayKit } from "cascade-runtime/fixtures";
+import {
+  phaseOn,
+  replayKit,
+  seconds,
+  setUpTables,
+} from "cascade-runtime/fixtures";
 
 /** Every pod of this app is a folder here, named as the pod. */
 export const PODS = fileURLToPath(new URL("pods/", import.meta.url));
@@ -86,15 +92,25 @@ export async function deleteAll() {
 
 /**
  * Removes every pod and loads the kits' pods again, the app as it was made: what `npm run reset` and the File menu's
- * Reset all data do. `loading(kit)` is called as each kit starts. Gives the names of the pods there were.
+ * Reset all data do. `out(text)`, when given, is told what is under way: the tables' setup as its own step with each
+ * phase's seconds, then each kit with its own. Gives the names of the pods there were.
  */
-export async function resetAll(loading = () => undefined) {
+export async function resetAll(out) {
   const names = await deleteAll();
+  if (out !== undefined)
+    try {
+      await setUpTables(PODS, phaseOn(out));
+    } catch (error) {
+      out(`\nthe app's tables could not be set up: ${error.message}\n`);
+    }
   for (const kit of KITS) {
-    loading(kit);
+    const started = performance.now();
+    out?.(`\nLoading the pod ${kit}, from the kit the package carries…`);
     try {
       await replayKit(kit, podFolder(kit));
+      out?.(` loaded in ${seconds(started)}\n`);
     } catch (error) {
+      out?.("\n");
       throw new Error(`the pod ${kit} did not load: ${error.message}`, {
         cause: error,
       });
