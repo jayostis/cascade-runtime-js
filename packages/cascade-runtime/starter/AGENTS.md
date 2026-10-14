@@ -19,10 +19,13 @@ template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
 you like.
 `npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
 Claude Desktop, VS Code or any MCP client (the README says how to add it);
-`mcp-server.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
-beside `list_pods` and `ask`, each taking the pod's name. A hosted client sends
-what the tools return to its provider: never point one at a person's own pod
-without their say.
+`pod-tools.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
+beside `list_pods` and `ask`, each taking the pod's name; `chat.mjs`, the app's
+`POST /chat`, runs the same tools for a model and adds three that open the
+app's own pages. A hosted client sends what the tools return to its provider:
+never point one at a person's own pod without their say. The starter holds only
+made-up records (the kits, the demo hospitals); before connecting real records,
+decide whether a hosted model may see them.
 `npm run model` runs `model.mjs`: it asks which model a chat uses, checks that the
 model calls a tool and writes `CASCADE_MODEL_PROVIDER`, `_URL`, `_NAME` and `_KEY`
 to `.env` (untracked; `--off` removes them). `model-client.mjs` is the one door to
@@ -64,6 +67,15 @@ little for a card; a story patient's does: Ines Calloway, at Cascade North, by
 a model can call, which a browser host registers with `useView`; this server's
 pages register nothing, and a model reaches the trend through each
 `find_changes` finding's `view` address.
+Every page has the chat strip (`Chat` renders it, from the `chat` that `frame`
+is given: the model's `{ provider, name, local }`, never its address or key, the
+pod's name, and `suggestions`, a list of texts; `chatStrip` runs it, both in
+`summary.mjs`, with `CHAT_STYLE`). It talks to `POST /chat` (`chat.mjs`). The
+browser keeps the chats, in `localStorage`, each under the pod it is about, and
+the open chat's ID in `sessionStorage` (`cascade.chat.open`); a tool's `open`
+address moves the app there when the turn ends, and the chat goes with it. Any
+element with `data-ask` (a JSON context) starts a new chat with that context,
+and one with `data-ask-text` sends its text as typed.
 A row of a tile's table opens its entry at
 `/pods/<name>/entries/<id>`: what it is, where it came from (a line for each
 document its records were derived from) and what else is known, which is what

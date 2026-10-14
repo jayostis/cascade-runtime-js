@@ -719,6 +719,41 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
   );
 });
 
+test("the chat strip says how to set a model when none is set, and otherwise holds the form, the suggestions and the model's name, and no strip on a page that reloads itself", () => {
+  const shown = (chat: object, refresh = false) =>
+    render(
+      view.frame({
+        title: "Alex Rivera",
+        body: view.html`<h1>Alex Rivera</h1>`,
+        pods: ["alex-rivera"],
+        current: "alex-rivera",
+        href: (pod: string) => `/pods/${pod}/`,
+        home: "/",
+        dialog: "",
+        menu: { deleteAll: "/d", resetAll: "/r", about: { name: "a" } },
+        chat,
+        refresh,
+      }),
+    );
+  const off = shown({ pod: "alex-rivera", suggestions: [] });
+  assert.match(off, /run <code>npm run model<\/code>/);
+  assert.doesNotMatch(off, /<form class="chat-form"/);
+  const chat = {
+    model: { provider: "other", name: "m-1", local: false },
+    pod: "alex-rivera",
+    suggestions: ["Find anything interesting"],
+  };
+  const on = shown(chat);
+  assert.match(on, /<section class="chat"[^>]* data-pod="alex-rivera"/);
+  assert.match(on, /<form class="chat-form">/);
+  assert.match(
+    on,
+    /<div class="chat-chips" hidden><button [^>]*data-ask-text="Find anything interesting"/,
+  );
+  assert.match(on, /m-1/);
+  assert.doesNotMatch(shown(chat, true), /class="chat"/);
+});
+
 test("Escape closes an open menu and follows the open box's own close link, or with none clears the hash; a click closes every open menu but the one whose name it is on", () => {
   const listening = (close?: { click: () => void }) => {
     const on: Record<string, ((event: object) => void)[]> = {};

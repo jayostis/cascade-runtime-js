@@ -1,27 +1,12 @@
 // The MCP server over the app's pods: what `mcp.mjs` serves on stdio. A client such as Claude Desktop or VS Code lists
-// the pods, asks the curated questions and runs the analytics of `cascade-runtime` (`changeTools`).
+// the pods, asks the curated questions and runs the analytics of `cascade-runtime` (`changeTools`). The tools are
+// those of `pod-tools.mjs`, which the app's chat uses too.
 import { readFile } from "node:fs/promises";
-import console from "node:console";
 import { URL } from "node:url";
 import { fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
-import { changeTools, Refusal } from "cascade-runtime";
+import { podTools, withPod } from "./pod-tools.mjs";
 
-/** The questions `ask` offers: the person's own records, who they are and where an entry came from. Never free SPARQL. */
-export const QUESTIONS = [
-  "pod/My active allergies",
-  "pod/My active conditions",
-  "pod/My active medications",
-  "pod/My medication history",
-  "pod/My lab results",
-  "pod/My immunizations",
-  "pod/My procedures",
-  "pod/My genetic variants",
-  "pod/The person this pod is about",
-  "entry/Where it came from",
-];
-/** How many rows `ask` gives unless asked for more: a pod's lab results run to thousands of tokens. */
-export const DEFAULT_ROWS = 50;
-export const MAXIMUM_ROWS = 500;
+export { DEFAULT_ROWS, MAXIMUM_ROWS, QUESTIONS } from "./pod-tools.mjs";
 
 export const WARNING =
   "A hosted client (Claude Desktop, VS Code with a hosted model, any chat service) sends what these tools return to its provider. The example and story pods are made up; a person's own pod is theirs to decide about before it is asked here.";
@@ -34,91 +19,9 @@ const { version } = JSON.parse(
   await readFile(new URL("package.json", import.meta.url), "utf8"),
 );
 
-/** The trend a finding is about, as `viewOf` takes it: the bare test and medication codes, the medication's name where it has no code. */
-function trendOf({ test, medication }) {
-  const drug = medication.notation ?? medication.name;
-  return {
-    test: test.notation ?? test.code,
-    ...(drug === "" ? {} : { medication: drug }),
-  };
-}
-
-/**
- * A tool over the pods: its schema as a client sees it, and what it does with a pod, the input beside `pod` and the
- * pod's name. With `viewOf(pod, trend)`, each finding of `find_changes` carries `view`, the address it gives.
- */
-function toolsOver(viewOf) {
-  const sample = changeTools({ ask: async () => [] });
-  const analytics = sample.map(({ name, description, inputSchema }) => ({
-    name,
-    description,
-    inputSchema,
-    run: async (pod, input, podName) => {
-      const result = await changeTools(pod)
-        .find((each) => each.name === name)
-        .execute(input);
-      return name === "find_changes" && viewOf !== undefined
-        ? result.map((finding) => ({
-            ...finding,
-            view: viewOf(podName, trendOf(finding)),
-          }))
-        : result;
-    },
-  }));
-  return [
-    ...analytics,
-    {
-      name: "ask",
-      description:
-        "A pod's records by the name of a question, as rows: its allergies, conditions, medications (active, or all with when each started and stopped), lab results, immunizations, procedures, genetic variants, the person it is about, or where an entry came from.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          question: {
-            type: "string",
-            description: "The question's name.",
-            enum: QUESTIONS,
-          },
-          limit: {
-            type: "integer",
-            description: `At most this many rows; ${DEFAULT_ROWS} if left out. The answer says how many there are.`,
-            minimum: 1,
-            maximum: MAXIMUM_ROWS,
-          },
-        },
-        required: ["question"],
-        additionalProperties: false,
-      },
-      async run(pod, { question, limit }) {
-        const rows = await pod.ask(question);
-        return {
-          question,
-          total: rows.length,
-          rows: rows.slice(0, limit ?? DEFAULT_ROWS),
-        };
-      },
-    },
-  ];
-}
-
-/** The tool as a client sees it: every tool of a pod takes the pod's name beside its own properties. */
-function withPod(tool) {
-  const { properties = {}, required = [] } = tool.inputSchema;
-  return {
-    ...tool.inputSchema,
-    properties: {
-      pod: {
-        type: "string",
-        description: "The pod's name, one of those list_pods gives.",
-      },
-      ...properties,
-    },
-    required: ["pod", ...required],
-  };
-}
-
-const text = (value, isError = false) => ({
-  content: [{ type: "text", text: value }],
+/** A tool's answer as MCP sends it. */
+const content = ({ text, isError }) => ({
+  content: [{ type: "text", text }],
   ...(isError ? { isError } : {}),
 });
 
@@ -128,35 +31,7 @@ const text = (value, isError = false) => ({
  * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results.
  */
 export function podServer(pods, { viewOf } = {}) {
-  const tools = toolsOver(viewOf);
-  const opened = new Map();
-
-  async function podNamed(name) {
-    const names = await pods.names();
-    if (!names.includes(name))
-      throw new Refusal(
-        names.length === 0
-          ? `there is no pod ${name}, and no pod at all`
-          : `there is no pod ${name}; the pods are ${names.join(", ")}`,
-      );
-    if (!opened.has(name)) {
-      const opening = pods.open(name);
-      opened.set(name, opening);
-      opening.catch(() => opened.delete(name));
-    }
-    return opened.get(name);
-  }
-
-  /** What a tool gives: its result as JSON, or, for input the rules refuse, a tool error saying why. */
-  async function answer(run) {
-    try {
-      return text(JSON.stringify(await run()));
-    } catch (error) {
-      if (error instanceof Refusal) return text(error.message, true);
-      console.error(error);
-      return text("the server failed; its log says why", true);
-    }
-  }
+  const shared = podTools(pods, { viewOf });
 
   function build() {
     const server = new McpServer(
@@ -170,35 +45,27 @@ export function podServer(pods, { viewOf } = {}) {
     server.registerTool(
       "list_pods",
       {
-        description: "The names of the pods there are.",
-        inputSchema: fromJsonSchema({
-          type: "object",
-          properties: {},
-          additionalProperties: false,
-        }),
+        description: shared.list.description,
+        inputSchema: fromJsonSchema(shared.list.inputSchema),
       },
-      () => answer(() => pods.names()),
+      async () => content(await shared.answer(shared.list.run)),
     );
-    for (const tool of tools) {
+    for (const tool of shared.tools) {
       const schema = withPod(tool);
       server.registerTool(
         tool.name,
         { description: tool.description, inputSchema: fromJsonSchema(schema) },
-        (input) =>
-          answer(async () => {
-            const { pod, ...rest } = input;
-            return tool.run(await podNamed(pod), rest, pod);
-          }),
+        async (input) =>
+          content(
+            await shared.answer(async () => {
+              const { pod, ...rest } = input;
+              return tool.run(await shared.podNamed(pod), rest, pod);
+            }),
+          ),
       );
     }
     return server;
   }
 
-  async function close() {
-    const closing = [...opened.values()];
-    opened.clear();
-    await Promise.allSettled(closing.map(async (each) => (await each).close()));
-  }
-
-  return { build, close };
+  return { build, close: shared.close };
 }

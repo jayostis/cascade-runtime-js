@@ -68,6 +68,19 @@ with made-up patients. They need no account and no network: this app serves
 their sign-in pages under `/demo-hospitals/`. The SMART Health IT Sandbox is a
 real test server and needs the network.
 
+## Chat with the pods in the app
+
+Run `npm run model` once, then `npm start`: every page has a chat strip at the
+bottom. Ask "find anything interesting" and it answers from the pod's records,
+with the numbers of each change and the lab results behind it as a card under
+the answer, and "Open the trend" draws it. Ask it to "open Ines Calloway's pod"
+and the app goes there, with your chat. Stop ends the model's answer. Chats are
+kept by your browser, under the pod they are about. Each question goes to the
+model you chose with the newest part of the chat (its last 24,000 characters)
+and what its tools read from the pod. Without a model the
+strip only says to run `npm run model`. The chat can only read: it never
+changes a pod.
+
 ## Ask the pods from Claude Desktop, VS Code or any MCP client
 
 `npm run mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio over
@@ -185,6 +198,10 @@ script goes after `--`, or npm keeps it for itself.
   offers.
 - `model.mjs`, `model-client.mjs`: `npm run model`, and the one door to a
   model, whichever provider.
+- `pod-tools.mjs`: the tools over a pod, which the MCP server and the chat
+  share.
+- `chat.mjs`: `POST /chat`, the chat's loop: the model's tool calls run over
+  the pods, with tools that open the app's own pages.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in

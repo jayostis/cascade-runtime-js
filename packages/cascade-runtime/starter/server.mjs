@@ -19,7 +19,9 @@ import {
   timelineIn,
 } from "cascade-runtime";
 import { render } from "preact-render-to-string";
+import { chatRoute, chatTools, entryPath } from "./chat.mjs";
 import { hospitalsAt } from "./hospitals.mjs";
+import { modelFrom } from "./model-client.mjs";
 import {
   deleteAll,
   KITS,
@@ -38,7 +40,6 @@ import {
   connectionDialog,
   demoPeople,
   didNote,
-  entryId,
   entryOf,
   entryPage,
   frame,
@@ -66,6 +67,7 @@ import {
   trendTitle,
   variantsSaid,
 } from "./summary.mjs";
+import { podTools } from "./pod-tools.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
 const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
@@ -90,9 +92,6 @@ async function answered(pod) {
   for (const question of QUESTIONS) answers[question] = await pod.ask(question);
   return answers;
 }
-
-const entryPath = (name, entry) =>
-  `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
 /** The reference tables the pods are matched with, kept in `pods/.tables/`. */
 const tables = () => tablesBeside(PODS);
@@ -159,6 +158,15 @@ async function page(
       menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
       note,
       refresh,
+      chat: {
+        model: model && {
+          provider: model.provider,
+          name: model.name,
+          local: model.local,
+        },
+        pod: current ?? "",
+        suggestions: [],
+      },
       tables: {
         series: sourcesOf(held),
         current: table,
@@ -645,6 +653,29 @@ async function demoHospitalPage(request, response, url) {
 
 const demo = await loadHospitals();
 const people = demoPeople(demo);
+
+/**
+ * The model the app was set up with (`npm run model`), or none. A setting the client refuses is said on the console and
+ * the app runs without a model.
+ */
+function modelSet() {
+  try {
+    return modelFrom();
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    stderr.write(`No model is used: ${error.message}\n`);
+    return undefined;
+  }
+}
+
+const model = modelSet();
+/** The tools the chat reaches, over the pods this server holds open. */
+const chatting = chatTools(
+  podTools(
+    { names: podNames, open: podNamed },
+    { viewOf: trendPath, keep: false },
+  ),
+);
 const packageOf = async (path) =>
   JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 const [app, runtime] = await Promise.all([
@@ -686,6 +717,8 @@ const server = createServer(async (request, response) => {
         403,
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
+    if (post && pathname === "/chat")
+      return await chatRoute(request, response, { model, tools: chatting });
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
     if (!post && pathname === "/")
