@@ -290,5 +290,19 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
   );
   await card.getByRole("button", { name: "Open the trend" }).click();
   await page.waitForURL(`${modelled.origin}${view}`);
+
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="asker" data-ask='{"kind":"entry","id":"x"}' data-ask-label="Lisinopril">Ask about this</button>`,
+    );
+  });
+  await page.locator("#asker").click();
+  assert.equal(
+    await page.locator(".chat-about").textContent(),
+    "About: Lisinopril",
+  );
+  assert.equal(await page.locator(".chat-chips").isHidden(), true);
   await page.close();
 });

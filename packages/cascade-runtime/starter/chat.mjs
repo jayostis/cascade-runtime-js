@@ -21,7 +21,7 @@ export const MAX_ROUNDS = 6;
 const MAX_MESSAGES = 100;
 const MAX_CHARACTERS = 100_000;
 const MAX_BODY_BYTES = 1024 * 1024;
-const MAX_CONTEXT = 2000;
+const MAX_CONTEXT = 200;
 
 /** The rules the model is given, apart from where the person is. */
 export const RULES = `You answer questions about the health records in the pods of this app, for the person who owns them.
@@ -29,6 +29,10 @@ Every number, date and name you give comes from a tool's result, never from memo
 A finding says what changed after what: a test's results were lower or higher after a medication started or stopped. It never says why, never that the medication caused the change, and never advice about what to do. A clinician can say why.
 A record's date is a fact of the record. Never call a date "in the future" or "in the past" because of what you believe the date today to be.
 Write plain text with no links and no markdown. The app shows a finding's rows under your answer, and open_trend, open_entry and open_pod move the app to a page: use them when the person asks to see something.`;
+
+/** What a chat that began with "Ask about this" is also told: its answer is about the thing, not the person. */
+export const EXPLAIN_THE_THING =
+  "Explain the thing the person asked about, never the person: say what the records show of it, and nothing of the person's habits, choices or character.";
 
 const NO_POD = "No pod is open.";
 
@@ -39,6 +43,31 @@ function contextOf({ pod, page }) {
 
 const isObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const CONTEXT_KEYS = {
+  finding: ["key"],
+  entry: ["id"],
+  trend: ["test", "medication"],
+};
+
+/** The shapes the "Ask about this" buttons send; the text reaches the system prompt, so nothing else passes. */
+function checkContext(context) {
+  const keys = isObject(context) ? CONTEXT_KEYS[context.kind] : undefined;
+  if (
+    keys === undefined ||
+    Object.keys(context).some((key) => key !== "kind" && !keys.includes(key)) ||
+    keys.some((key) =>
+      context[key] === undefined
+        ? key !== "medication"
+        : typeof context[key] !== "string" ||
+          context[key] === "" ||
+          context[key].length > MAX_CONTEXT,
+    )
+  )
+    throw new Refusal(
+      `context must be { kind: "finding", key }, { kind: "entry", id } or { kind: "trend", test, medication? }, each value a text of at most ${MAX_CONTEXT} characters`,
+    );
+}
 
 /**
  * The body of `POST /chat`: `pod` (the name of the pod the page is about, or "" for none), `page` (its address),
@@ -80,13 +109,7 @@ export function checkBody(body) {
     );
   if (messages.at(-1).role !== "user")
     throw new Refusal("the last message must be the person's");
-  if (
-    context !== undefined &&
-    (!isObject(context) || JSON.stringify(context).length > MAX_CONTEXT)
-  )
-    throw new Refusal(
-      `context must be an object of at most ${MAX_CONTEXT} characters`,
-    );
+  if (context !== undefined) checkContext(context);
   return {
     pod,
     page,
@@ -309,7 +332,8 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
     ...(body.context === undefined
       ? []
       : [
-          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, or a trend by its test and medication.`,
+          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, or a trend by its test and medication. Find it with the tools.`,
+          EXPLAIN_THE_THING,
         ]),
   ];
   const messages = [...body.messages];

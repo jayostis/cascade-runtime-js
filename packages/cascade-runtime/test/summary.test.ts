@@ -2091,6 +2091,7 @@ function trendOf(
   name: string,
   { answers, changes }: Story,
   asked: { test?: string; medication?: string },
+  ask?: boolean,
 ) {
   const labs = answers[LABS]!;
   const medications = answers[HISTORY]!;
@@ -2111,6 +2112,7 @@ function trendOf(
       test: input?.test,
       medication: input?.medication,
       trendHref: (trend: object) => trendPath(name, trend),
+      ...(ask ? { ask } : {}),
     }),
   );
 }
@@ -2329,4 +2331,110 @@ test("the trend round-trips through its address: the state read from it draws th
     text(trendOf("ines-calloway", story, { test: "0000-0" })),
     /This pod holds no results for the test 0000-0\./,
   );
+});
+
+/** The `data-ask` contexts a page draws, in order. */
+const asksOf = (markup: string) =>
+  [...markup.matchAll(/data-ask="([^"]*)"/g)].map(
+    ([, context]) =>
+      JSON.parse(context!.replaceAll("&quot;", '"')) as Record<string, unknown>,
+  );
+
+test("suggested questions: Ines Calloway's find a change and ask about it named as the page names it, a pod whose only reason is a Worth a look line asks nothing the tools cannot answer, a pod's four at most keep the first and last in place, and the same answers give the same list", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const ines = view.suggestedQuestions(story.answers, {
+    changes: story.changes,
+  }) as string[];
+  assert.deepEqual(ines, [
+    "Find anything interesting in this pod",
+    `Did ${finding!.test.name} change after ${finding!.medication.name} started?`,
+  ]);
+  assert.deepEqual(
+    view.suggestedQuestions(story.answers, { changes: story.changes }),
+    ines,
+  );
+
+  assert.deepEqual(
+    view.suggestedQuestions(
+      {
+        [HISTORY]: [],
+        [LABS]: [],
+        [REVIEW]: [{ entry: "e1", needs: "judged different, still joined" }],
+      },
+      { changes: [] },
+    ),
+    [],
+  );
+
+  const change = (n: number, kind: string) => ({
+    kind,
+    direction: "down",
+    test: { code: `t${n}`, name: `Test ${n}` },
+    medication: { code: `m${n}`, name: `Drug ${n}` },
+  });
+  const many = view.suggestedQuestions(
+    { [HISTORY]: [{ medication: "Drug 1", ended: "2024-05-01" }] },
+    {
+      changes: [
+        change(1, "after start"),
+        change(2, "after stop"),
+        change(3, "after start"),
+        change(4, "after start"),
+        { ...change(5, "after start"), direction: "not enough results" },
+      ],
+    },
+  );
+  assert.deepEqual(many, [
+    "Find anything interesting in this pod",
+    "Did Test 1 change after Drug 1 started?",
+    "Did Test 2 change after Drug 2 stopped?",
+    "Which medications have I stopped?",
+  ]);
+  assert.deepEqual(view.suggestedQuestions({}, { changes: [] }), []);
+});
+
+test("Ask about this: with a model set, each What changed card (a Worth a look line none), the trend and an entry draw a button naming the finding's key, the entry's ID or the trend's test and medication, and with none set they draw none", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const draw = (ask?: boolean) =>
+    render(
+      view.podPage(story.answers, {
+        pod: "ines-calloway",
+        signIn: () => null,
+        entryHref: entryLink,
+        changes: story.changes,
+        trendHref: (trend: object) => trendPath("ines-calloway", trend),
+        ...(ask ? { ask } : {}),
+      }),
+    );
+  assert.deepEqual(asksOf(draw()), []);
+  assert.doesNotMatch(draw(), /Ask about this/);
+  const asked = asksOf(draw(true));
+  assert.deepEqual(
+    asked.filter(({ kind }) => kind === "finding"),
+    [{ kind: "finding", key: finding!.key }],
+  );
+  assert.deepEqual(
+    asked.filter(({ kind }) => kind === "entry"),
+    [],
+  );
+
+  const marked = { test: "18262-6", medication: "617310" };
+  assert.deepEqual(asksOf(trendOf("ines-calloway", story, marked)), []);
+  assert.deepEqual(asksOf(trendOf("ines-calloway", story, marked, true)), [
+    { kind: "trend", ...marked },
+  ]);
+  const [entry] = story.answers[LABS]!;
+  const page = render(
+    view.entryPage({
+      entry: view.entryOf(story.answers, view.entryId(entry!.entry!)),
+      pod: "ines-calloway",
+      back: "/",
+      ask: true,
+    }),
+  );
+  assert.deepEqual(asksOf(page), [
+    { kind: "entry", id: view.entryId(entry!.entry!) },
+  ]);
 });
