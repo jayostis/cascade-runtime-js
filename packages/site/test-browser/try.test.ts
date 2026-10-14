@@ -320,6 +320,29 @@ function recordTools(): void {
   });
 }
 
+/**
+ * Holds what Preact runs after a paint, a view's registration and the abort a page leaving gives it, once
+ * `globalThis.effectsHeld` is set (never until a test sets it): its frame callbacks and 35 ms timeouts are dropped
+ * and never run, so no machine is slow enough to let them through.
+ */
+function lagEffects(): void {
+  const held = (): boolean =>
+    (globalThis as unknown as { effectsHeld?: boolean }).effectsHeld === true;
+  const timeout = globalThis.setTimeout.bind(globalThis);
+  const frame = globalThis.requestAnimationFrame.bind(globalThis);
+  // Preact waits for a frame or 35 ms, whichever comes first.
+  globalThis.setTimeout = ((
+    callback: TimerHandler,
+    ms?: number,
+    ...rest: unknown[]
+  ) =>
+    ms === 35 && held()
+      ? 0
+      : timeout(callback, ms, ...rest)) as typeof globalThis.setTimeout;
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) =>
+    held() ? 0 : frame(callback)) as typeof frame;
+}
+
 /** When `what` was first drawn in the page, ms since its navigation started or, after a click, since the click. */
 async function drawnAt(page: Page, what: string): Promise<number> {
   try {
@@ -1581,6 +1604,7 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
 
   const context = await browser.newContext();
   await context.addInitScript(recordTools);
+  await context.addInitScript(lagEffects);
   try {
     const page = watched(await context.newPage());
     const live = (): Promise<string[]> =>
@@ -1653,6 +1677,9 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
     const recorded = await page.evaluate(
       () => (globalThis as unknown as Registered).registered.length,
     );
+    await page.evaluate(() => {
+      Object.assign(globalThis, { effectsHeld: true });
+    });
     await inPlace(page, () => page.click('nav a:has-text("Alex Rivera")'));
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.ok(
