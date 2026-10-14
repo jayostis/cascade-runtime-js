@@ -4,6 +4,7 @@ import { cp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { type Phase, phaseOn, seconds } from "./phase.js";
 
 /** This package's root, `dist/src/` being two levels down, in the workspace and in an install alike. */
 const PACKAGE = fileURLToPath(new URL("../../", import.meta.url));
@@ -25,6 +26,11 @@ export interface Terminal {
   readonly ask?: () => Promise<string>;
   /** Installs the project's dependencies in the folder, resolving whether it succeeded. */
   readonly install: (folder: string) => Promise<boolean>;
+  /**
+   * Sets up the app's tables in the pods folder as a step of its own, before any kit, reporting each phase through
+   * `phase`; absent when there is nothing to set up. Rejecting with why it could not: the kits then try on their own.
+   */
+  readonly tables?: (pods: string, phase: Phase) => Promise<void>;
   /** Replays the kit's story into the folder, rejecting with why it could not. */
   readonly load: (kit: string, folder: string) => Promise<void>;
   /** Offers to connect a model in the made app and runs the app's `npm run model` when taken up; absent when no person is at a terminal. Resolves whether a model was set up. */
@@ -161,6 +167,14 @@ export async function create(
     );
     return 1;
   }
+  if (terminal.tables !== undefined)
+    try {
+      await terminal.tables(join(target, "pods"), phaseOn(terminal.out));
+    } catch (error) {
+      terminal.err(
+        `the app's tables could not be set up: ${(error as Error).message}\nThe pods try to load them again.\n`,
+      );
+    }
   const loaded = [];
   for (const kit of KITS) {
     terminal.out(`\nLoading the pod ${kit}, from the kit the package carries…`);
@@ -169,9 +183,7 @@ export async function create(
     try {
       await terminal.load(kit, pod);
       loaded.push(kit);
-      terminal.out(
-        ` loaded in ${((performance.now() - started) / 1000).toFixed(1)} s\n`,
-      );
+      terminal.out(` loaded in ${seconds(started)}\n`);
     } catch (error) {
       await rm(pod, { recursive: true, force: true });
       terminal.out("\n");
