@@ -17,7 +17,6 @@ export * from "./ids.js";
 export * from "./importer.js";
 export * from "./importers.js";
 export * from "./layout.js";
-export * from "./lines-about.js";
 export * from "./load-adapter.js";
 export * from "./matcher.js";
 export * from "./names.js";

@@ -1058,6 +1058,20 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
     reads.slice(before).filter((path) => path.startsWith(fileStem(names))),
     [],
   );
+
+  let served = first;
+  const later = new Tables({
+    files: new MemoryFiles("urn:test:tables/"),
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    fetch: (input, init) => fetchOf(served)(input, init),
+  });
+  await later.check();
+  assert.ok(!(await later.references()).isVersion(groups.second));
+  served = feed;
+  await later.check();
+  assert.ok((await later.references()).isVersion(groups.second));
 });
 
 test("rows are found through no index that is unreadable, or was built for a kind found by nothing or by fewer properties: the rows a code finds are among them", async () => {

@@ -219,31 +219,6 @@ export function termsOfRows(text: string): RowTerms[] {
   return terms;
 }
 
-/** The row subjects each code finds, as an index by code that `rowsByCode` wrote for these properties: none when it is not one. */
-export function indexedRows(
-  bytes: Uint8Array | undefined,
-  foundBy: readonly string[],
-): Readonly<Record<string, readonly string[]>> | undefined {
-  if (bytes === undefined) return undefined;
-  try {
-    const index = JSON.parse(new TextDecoder().decode(bytes)) as {
-      foundBy: unknown;
-      rows: Record<string, unknown>;
-    };
-    return JSON.stringify(index.foundBy) ===
-      JSON.stringify([...foundBy].sort()) &&
-      Object.values(index.rows).every(
-        (subjects) =>
-          Array.isArray(subjects) &&
-          subjects.every((subject) => typeof subject === "string"),
-      )
-      ? (index.rows as Record<string, string[]>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 const ESCAPED: Readonly<Record<string, string>> = {
   t: "\t",
   b: "\b",

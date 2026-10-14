@@ -3,9 +3,8 @@ import { test } from "node:test";
 import { MemoryFiles, readText } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { linesAbout } from "../src/lines-about.js";
 import { iri, type Triple } from "../src/rdf.js";
-import { References, tableTerms } from "../src/references.js";
+import { linesAbout, References, tableTerms } from "../src/references.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 

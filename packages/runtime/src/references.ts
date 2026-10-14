@@ -1,6 +1,5 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
-import { linesAbout } from "./lines-about.js";
 import { fileStem } from "./names.js";
 import { iri, RDF, type Triple } from "./rdf.js";
 import { REC, Refusal } from "./step.js";
@@ -157,13 +156,30 @@ function indexed(
   }
 }
 
-/** A version's N-Triples and the subjects each code finds in them; neither when it has no index for the properties. */
-type Kept =
-  | {
-      readonly text: string;
-      readonly found: ReadonlyMap<string, readonly string[]>;
-    }
-  | { readonly text?: undefined; readonly found?: undefined };
+/**
+ * The lines of a subject in a version's N-Triples, found by halving: the lines are sorted, so a subject's are together.
+ * The core relies on rows being in canonical order wherever a `.codes.json` exists: one is only ever written beside
+ * rows in that order (`rowsOf` refuses any other), and a folder with an index and unsorted rows would lose rows
+ * silently.
+ */
+export function linesAbout(text: string, subject: string): string[] {
+  const prefix = `<${subject}> `;
+  let [low, high] = [0, text.length];
+  while (low < high) {
+    const start = text.lastIndexOf("\n", ((low + high) >> 1) - 1) + 1;
+    if (text.slice(start, start + prefix.length) < prefix) {
+      const end = text.indexOf("\n", start);
+      low = end < 0 ? text.length : end + 1;
+    } else high = start;
+  }
+  const lines: string[] = [];
+  for (let at = low; text.startsWith(prefix, at);) {
+    const end = text.indexOf("\n", at);
+    lines.push(text.slice(at, end < 0 ? text.length : end));
+    at = end < 0 ? text.length : end + 1;
+  }
+  return lines;
+}
 
 /**
  * Reference tables: `references.ttl`, the index of each series and its versions, and one file per version
@@ -174,7 +190,11 @@ export class References {
   readonly #folder: string;
   readonly #vocabulary: Files | undefined;
   readonly #parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>;
-  readonly #keeping = new Map<string, Promise<Kept>>();
+  readonly #texts = new Map<string, Promise<string>>();
+  readonly #indexes = new Map<
+    string,
+    Promise<ReadonlyMap<string, readonly string[]> | undefined>
+  >();
   readonly index: Graph;
 
   private constructor(
@@ -248,25 +268,18 @@ export class References {
     version: string,
     find?: { readonly codes: ReadonlySet<string>; readonly terms: TableTerms },
   ): Promise<Triple[]> {
-    let stem: string;
-    try {
-      stem = fileStem(version);
-    } catch (error) {
-      throw new Refusal(
-        `${this.#folder} lists ${version}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    const stem = this.#stem(version);
     const path = `${this.#folder}${stem}.ttl`;
     const foundBy =
       find?.terms.foundBy.get(
         this.kindOf(this.seriesOf(version) ?? "") ?? "",
       ) ?? [];
-    const kept =
-      find === undefined ? undefined : await this.#kept(path, stem, foundBy);
-    if (kept?.found !== undefined) {
-      const { text, found } = kept;
+    const found =
+      find === undefined ? undefined : await this.codes(version, foundBy);
+    if (find !== undefined && found !== undefined) {
+      const text = await this.text(version);
       const subjects = new Set(
-        [...find!.codes].flatMap((code) => found.get(code) ?? []),
+        [...find.codes].flatMap((code) => found.get(code) ?? []),
       );
       const lines = [...subjects]
         .sort((a, b) => (`<${a}> ` < `<${b}> ` ? -1 : 1))
@@ -288,36 +301,59 @@ export class References {
     return this.#parse(bytes, this.#source.iri + path);
   }
 
-  /**
-   * A version's text and its index by code, each read once per property set the index is built for; none when
-   * there is no file or no index for them, which is not remembered, so a file written later is found.
-   */
-  async #kept(
-    path: string,
-    stem: string,
-    foundBy: readonly string[],
-  ): Promise<Kept> {
-    const key = `${path} ${JSON.stringify([...foundBy].sort())}`;
-    let kept = this.#keeping.get(key);
-    if (kept === undefined) {
-      kept = (async () => {
-        const found = indexed(
-          await this.#source.read(`${this.#folder}${stem}${CODES}`),
-          foundBy,
-        );
-        const bytes =
-          found === undefined ? undefined : await this.#source.read(path);
-        return found === undefined || bytes === undefined
-          ? {}
-          : { text: new TextDecoder().decode(bytes), found };
-      })();
-      this.#keeping.set(key, kept);
-      const forget = (): void => {
-        if (this.#keeping.get(key) === kept) this.#keeping.delete(key);
-      };
-      kept.then((each) => each.found === undefined && forget(), forget);
+  #stem(version: string): string {
+    try {
+      return fileStem(version);
+    } catch (error) {
+      throw new Refusal(
+        `${this.#folder} lists ${version}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-    return kept;
+  }
+
+  /** A version's N-Triples, read once: a version's rows never change. A missing file is refused, and not remembered. */
+  text(version: string): Promise<string> {
+    const stem = this.#stem(version);
+    let text = this.#texts.get(stem);
+    if (text === undefined) {
+      text = (async () => {
+        const bytes = await this.#source.read(`${this.#folder}${stem}.ttl`);
+        if (bytes === undefined)
+          throw new Refusal(`${this.#folder} holds no rows for ${version}`);
+        return new TextDecoder().decode(bytes);
+      })();
+      this.#texts.set(stem, text);
+      const kept = text;
+      text.catch(() => {
+        if (this.#texts.get(stem) === kept) this.#texts.delete(stem);
+      });
+    }
+    return text;
+  }
+
+  /**
+   * The subjects each code finds in a version, by the index beside its rows built for these properties, read once;
+   * none when there is no index for them, which is not remembered, so one written later is found.
+   */
+  codes(
+    version: string,
+    foundBy: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly string[]> | undefined> {
+    const stem = this.#stem(version);
+    const key = `${stem} ${JSON.stringify([...foundBy].sort())}`;
+    let found = this.#indexes.get(key);
+    if (found === undefined) {
+      found = this.#source
+        .read(`${this.#folder}${stem}${CODES}`)
+        .then((bytes) => indexed(bytes, foundBy));
+      this.#indexes.set(key, found);
+      const kept = found;
+      const forget = (): void => {
+        if (this.#indexes.get(key) === kept) this.#indexes.delete(key);
+      };
+      found.then((each) => each === undefined && forget(), forget);
+    }
+    return found;
   }
 
   /** The one series whose versions hold the matcher's rules. */
