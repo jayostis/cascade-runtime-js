@@ -23,6 +23,12 @@ Claude Desktop, VS Code or any MCP client (the README says how to add it);
 beside `list_pods` and `ask`, each taking the pod's name. A hosted client sends
 what the tools return to its provider: never point one at a person's own pod
 without their say.
+`npm run model` runs `model.mjs`: it asks which model a chat uses, checks that the
+model calls a tool and writes `CASCADE_MODEL_PROVIDER`, `_URL`, `_NAME` and `_KEY`
+to `.env` (untracked; `--off` removes them). `model-client.mjs` is the one door to
+a model: `modelFrom()` reads those settings, loads `.env` itself and gives
+nothing when there are none; a model's `turn()` streams events whatever the
+provider. Nothing else may know a provider's wire format or hold its key.
 `server.mjs` answers requests, hands it the rows, and renders each page to
 HTML with `preact-render-to-string`. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the
