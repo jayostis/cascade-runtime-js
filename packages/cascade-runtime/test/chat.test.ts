@@ -46,23 +46,23 @@ const {
     emit: (event: ChatEvent) => void;
   }) => Promise<void>;
 };
-const { podTools } = (await import(
+const { changeAnswers, podTools } = (await import(
   new URL("../../starter/pod-tools.mjs", import.meta.url).href
-)) as { podTools: (...options: unknown[]) => unknown };
-const { changeSaid, codesSaid, entryId, HISTORY, LABS, SOURCES } =
-  (await import(
-    new URL("../../starter/summary.mjs", import.meta.url).href
-  )) as {
-    changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
-    codesSaid: (
-      answers: Record<string, unknown[]>,
-      options: { tables: unknown },
-    ) => Promise<Map<string, unknown>>;
-    HISTORY: string;
-    LABS: string;
-    entryId: (entry: string) => string;
-    SOURCES: string;
-  };
+)) as {
+  changeAnswers: (pod: unknown) => Promise<Record<string, unknown[]>>;
+  podTools: (...options: unknown[]) => unknown;
+};
+const { changeSaid, codesSaid, entryId, SOURCES } = (await import(
+  new URL("../../starter/summary.mjs", import.meta.url).href
+)) as {
+  changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
+  codesSaid: (
+    answers: Record<string, unknown[]>,
+    options: { tables: unknown },
+  ) => Promise<Map<string, unknown>>;
+  entryId: (entry: string) => string;
+  SOURCES: string;
+};
 
 const STATIN = "story-statin";
 const pods = new Map<string, Pod>();
@@ -233,13 +233,7 @@ test("a finding says itself as the page does: named by what the tables say of it
           ]),
       ),
   };
-  const names = await codesSaid(
-    {
-      [HISTORY]: await statin.ask(HISTORY),
-      [LABS]: await statin.ask(LABS),
-    },
-    { tables },
-  );
+  const names = await codesSaid(await changeAnswers(statin), { tables });
   const { model } = fakeModel([
     calling(call("c1", "find_changes", { pod: STATIN })),
     reply("Done."),
