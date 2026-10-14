@@ -3313,7 +3313,7 @@ export function chatStrip(page, budget = 24000, first = undefined) {
     keep();
     draw();
     turn = undefined;
-    if (moveTo) go(moveTo);
+    if (moveTo && !answer.stopped) go(moveTo);
     else input.focus();
   }
 
@@ -3325,6 +3325,7 @@ export function chatStrip(page, budget = 24000, first = undefined) {
     input.focus();
   };
   let turnEnded = Promise.resolve();
+  let clicks = 0;
   const asking = async (target) => {
     let context;
     try {
@@ -3332,9 +3333,16 @@ export function chatStrip(page, budget = 24000, first = undefined) {
     } catch {
       return;
     }
+    const mine = ++clicks;
     if (running) {
+      if (
+        chat.messages.length <= 2 &&
+        JSON.stringify(chat.context) === JSON.stringify(context)
+      )
+        return;
       running.abort();
       await turnEnded;
+      if (mine !== clicks) return;
     }
     begin(context, target.dataset.askLabel);
     const question = first?.(context);
@@ -3374,12 +3382,15 @@ export function chatStrip(page, budget = 24000, first = undefined) {
 
 /** The question a click on an "Ask about this" button for `context` sends at once; undefined for a kind it does not know. */
 export function firstQuestion(context) {
-  return {
+  const questions = {
     finding: "What does this change show?",
     trend: "What does this trend show?",
     entry: "What is this, and where did it come from?",
     worth: "What does this flag mean?",
-  }[context?.kind];
+  };
+  return Object.hasOwn(questions, context?.kind)
+    ? questions[context.kind]
+    : undefined;
 }
 
 /** `closing`, `sortAndFilter`, `busyForms` and `chatStrip` as a page's inline script, over the whole document. */

@@ -2340,6 +2340,7 @@ test("Ask about this: a click sends the kind's first question, and none for a ki
     [{ kind: "entry", id: "e" }, "What is this, and where did it come from?"],
     [{ kind: "worth", entry: "e" }, "What does this flag mean?"],
     [{ kind: "other" }, undefined],
+    [{ kind: "toString" }, undefined],
   ] as const)
     assert.equal(view.firstQuestion(context), question, context.kind);
 });

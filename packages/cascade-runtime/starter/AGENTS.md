@@ -76,7 +76,8 @@ browser keeps the chats, in `localStorage`, each under the pod it is about, and
 the open chat's ID in `sessionStorage` (`cascade.chat.open`); a tool's `open`
 address moves the app there when the turn ends, and the chat goes with it. Any
 element with `data-ask` (a JSON context) starts a new chat with that context,
-and one with `data-ask-text` sends its text as typed.
+and one with `data-ask-text` sends its text as typed. A `data-ask` click also sends
+the kind's first question (`firstQuestion`), stopping a turn still running first.
 A row of a tile's table opens its entry at
 `/pods/<name>/entries/<id>`: what it is, where it came from (a line for each
 document its records were derived from) and what else is known, which is what

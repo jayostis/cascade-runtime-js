@@ -319,6 +319,22 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
     (await page.locator(".chat-log .model").textContent()) ?? "",
     /^Here it is\./,
   );
+
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="asker" data-ask='{"kind":"entry","id":"y"}' data-ask-label="Aspirin">Ask about this</button>`,
+    );
+  });
+  let requests = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/chat")) requests += 1;
+  });
+  await page.locator("#asker").dblclick();
+  await page.locator(".chat-log .model").waitFor();
+  await page.locator(".chat-send:not([hidden])").waitFor();
+  assert.equal(requests, 1);
   await page.close();
 });
 
