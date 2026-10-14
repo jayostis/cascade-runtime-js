@@ -719,18 +719,8 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
   );
 });
 
-test("the chat strip says how to set a model when none is set, and otherwise holds the form, the suggestions and the model's name, never its address or key", async () => {
-  const { modelFrom } = (await import(
-    new URL("../../starter/model-client.mjs", import.meta.url).href
-  )) as { modelFrom: (env: Record<string, string>) => never };
-  const key = "sk-test-key-that-must-not-leave";
-  const model = modelFrom({
-    CASCADE_MODEL_PROVIDER: "other",
-    CASCADE_MODEL_URL: "http://127.0.0.1:9/v1",
-    CASCADE_MODEL_NAME: "m-1",
-    CASCADE_MODEL_KEY: key,
-  }) as { provider: string; name: string; local: boolean };
-  const shown = (chat: object) =>
+test("the chat strip says how to set a model when none is set, and otherwise holds the form, the suggestions and the model's name, and no strip on a page that reloads itself", () => {
+  const shown = (chat: object, refresh = false) =>
     render(
       view.frame({
         title: "Alex Rivera",
@@ -742,17 +732,18 @@ test("the chat strip says how to set a model when none is set, and otherwise hol
         dialog: "",
         menu: { deleteAll: "/d", resetAll: "/r", about: { name: "a" } },
         chat,
+        refresh,
       }),
     );
   const off = shown({ pod: "alex-rivera", suggestions: [] });
   assert.match(off, /run <code>npm run model<\/code>/);
   assert.doesNotMatch(off, /<form class="chat-form"/);
-  const { provider, name, local } = model;
-  const on = shown({
-    model: { provider, name, local },
+  const chat = {
+    model: { provider: "other", name: "m-1", local: false },
     pod: "alex-rivera",
     suggestions: ["Find anything interesting"],
-  });
+  };
+  const on = shown(chat);
   assert.match(on, /<section class="chat"[^>]* data-pod="alex-rivera"/);
   assert.match(on, /<form class="chat-form">/);
   assert.match(
@@ -760,8 +751,7 @@ test("the chat strip says how to set a model when none is set, and otherwise hol
     /<div class="chat-chips" hidden><button [^>]*data-ask-text="Find anything interesting"/,
   );
   assert.match(on, /m-1/);
-  assert.doesNotMatch(on, /127\.0\.0\.1:9|sk-test/);
-  assert.equal(on.includes(key), false);
+  assert.doesNotMatch(shown(chat, true), /class="chat"/);
 });
 
 test("Escape closes an open menu and follows the open box's own close link, or with none clears the hash; a click closes every open menu but the one whose name it is on", () => {

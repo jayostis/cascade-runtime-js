@@ -48,7 +48,6 @@ const { entryId, SOURCES } = (await import(
 )) as { entryId: (entry: string) => string; SOURCES: string };
 
 const STATIN = "story-statin";
-const KEY = "sk-test-key-that-must-not-leave";
 const pods = new Map<string, Pod>();
 let tools: Tools;
 
@@ -97,10 +96,9 @@ const reply = (text: string) => [
   { type: "done", stop: "end" },
 ];
 
-/** A model over `turns`, one per request, an in-process stand-in for the model client. It holds a key it never shows. */
+/** A model over `turns`, one per request, an in-process stand-in for the model client. */
 function fakeModel(turns: unknown[][], { local = true } = {}) {
   const requests: Request[] = [];
-  const key = KEY;
   const model: Model = {
     provider: "fake",
     name: "fake-1",
@@ -110,7 +108,6 @@ function fakeModel(turns: unknown[][], { local = true } = {}) {
       const events = turns[requests.length - 1];
       assert.ok(events, `no turn ${requests.length} was scripted`);
       for (const event of events) yield event;
-      void key;
     },
   };
   return { model, requests };
@@ -134,7 +131,7 @@ const said = (text: string) => ({
 const toolEvents = (events: ChatEvent[]) =>
   events.filter(({ type }) => type === "tool");
 
-test("a question that calls find_changes runs it: the model sees the compact finding, the events carry the finding with the keys of its rows, the page goes in its own context message, and no key is in any event", async () => {
+test("a question that calls find_changes runs it: the model sees the compact finding, the events carry the finding with the keys of its rows, the page goes in its own context message, and each finding says itself in the app's own sentence", async () => {
   const { model, requests } = fakeModel([
     calling(call("c1", "find_changes", { pod: STATIN })),
     reply("LDL was lower after the statin started."),
@@ -149,12 +146,14 @@ test("a question that calls find_changes runs it: the model sees the compact fin
   assert.equal(found!.ok, true);
   const [finding] = found!.findings as {
     key: string;
+    said: string;
     view: string;
     before: { count: number };
     after: { count: number };
     rows: { entry: string; value: string; side: string }[];
   }[];
   assert.equal(finding!.key, "start:617310:18262-6");
+  assert.match(finding!.said, /^LDL.* was lower after .* started\.$/);
   assert.equal(
     finding!.view,
     `/pods/${STATIN}/trend?test=18262-6&medication=617310`,
@@ -177,7 +176,6 @@ test("a question that calls find_changes runs it: the model sees the compact fin
   assert.equal(toolMessage.role, "tool");
   assert.ok(toolMessage.content.includes(finding!.key));
   assert.ok(!toolMessage.content.includes('"rows"'));
-  assert.ok(!JSON.stringify(events).includes(KEY));
 });
 
 test("open_pod, open_trend and open_entry give the address of a page that is there, and for input that names nothing there a tool error that lists what is", async () => {
@@ -327,6 +325,19 @@ test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod
       /characters in all/,
     ],
     [{ ...good, context: "text" }, /context must be an object/],
+    [{ ...good, context: { about: "x".repeat(2000) } }, /context must be an/],
+    [{ ...good, pod: "x".repeat(201) }, /pod must be/],
+    [{ ...good, page: `/${"x".repeat(2000)}` }, /page must be an address/],
+    [
+      {
+        ...good,
+        messages: Array.from({ length: 101 }, () => ({
+          role: "user",
+          content: "x",
+        })),
+      },
+      /at most 100 messages/,
+    ],
   ];
   for (const [body, reason] of refused)
     assert.throws(
@@ -398,6 +409,9 @@ test("POST /chat streams the events as NDJSON; a body the rules refuse is 400 wi
     assert.equal(refused.status, 400);
     assert.ok(((await refused.json()) as { error: string }).error.length > 0);
   }
+  const huge = await post(running.url, `{"x":"${"x".repeat(1024 * 1024)}"}`);
+  assert.equal(huge.status, 400);
+  assert.match(((await huge.json()) as { error: string }).error, /at most/);
   await running.close();
 
   const none = await served(undefined);

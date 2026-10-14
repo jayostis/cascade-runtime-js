@@ -1,7 +1,13 @@
 // The tools over a pod that the MCP server (`mcp-server.mjs`) and the app's chat (`chat.mjs`) share: the analytics of
 // `cascade-runtime` (`changeTools`), `ask`, and `list_pods`, with the pod each is about named in its input.
 import console from "node:console";
-import { changeTools, Refusal } from "cascade-runtime";
+import {
+  changeTools,
+  checkInput,
+  compact,
+  findChanges,
+  Refusal,
+} from "cascade-runtime";
 
 /** The questions `ask` offers: the person's own records, who they are and where an entry came from. Never free SPARQL. */
 export const QUESTIONS = [
@@ -35,21 +41,35 @@ function trendOf({ test, medication }) {
  */
 export function toolsOver(viewOf) {
   const sample = changeTools({ ask: async () => [] });
+  /** `find_changes` once over the pod: `value` as the tool gives it, and `found`, the findings with their rows. */
+  async function findings(pod, input, podName, inputSchema) {
+    checkInput(inputSchema, input);
+    const found = await findChanges(pod, input);
+    const value = found
+      .map(compact)
+      .map((finding) =>
+        viewOf === undefined
+          ? finding
+          : { ...finding, view: viewOf(podName, trendOf(finding)) },
+      );
+    return { value, found };
+  }
   const analytics = sample.map(({ name, description, inputSchema }) => ({
     name,
     description,
     inputSchema,
-    run: async (pod, input, podName) => {
-      const result = await changeTools(pod)
-        .find((each) => each.name === name)
-        .execute(input);
-      return name === "find_changes" && viewOf !== undefined
-        ? result.map((finding) => ({
-            ...finding,
-            view: viewOf(podName, trendOf(finding)),
-          }))
-        : result;
-    },
+    ...(name === "find_changes"
+      ? {
+          findings: (pod, input, podName) =>
+            findings(pod, input, podName, inputSchema),
+        }
+      : {}),
+    run: async (pod, input, podName) =>
+      name === "find_changes"
+        ? (await findings(pod, input, podName, inputSchema)).value
+        : changeTools(pod)
+            .find((each) => each.name === name)
+            .execute(input),
   }));
   return [
     ...analytics,

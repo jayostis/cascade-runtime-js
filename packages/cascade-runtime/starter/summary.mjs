@@ -2174,7 +2174,7 @@ ${refresh && html`<meta http-equiv="refresh" content="1" />`}
 </head>
 <body>
 ${layout(shown)}
-${chat !== undefined && html`<${Chat} ...${chat} />`}
+${chat !== undefined && !refresh && html`<${Chat} ...${chat} />`}
 ${doing()}
 <script dangerouslySetInnerHTML=${{ __html: SCRIPT }}></script>
 </body>
@@ -3039,14 +3039,12 @@ export function chatStrip(page, budget = 24000) {
     const made = make("div", "card");
     const test =
       finding.test.name ?? finding.test.notation ?? finding.test.code;
-    const change = { up: "higher", down: "lower" }[finding.direction];
     made.append(
       make(
         "p",
         "said",
-        change === undefined
-          ? `${test}: not enough results around ${finding.medication.name}`
-          : `${test}: ${change} ${finding.kind === "after start" ? "after starting" : "after stopping"} ${finding.medication.name}`,
+        finding.said ??
+          `${test}: not enough results around ${finding.medication.name}`,
       ),
       make("p", "muted", side("Before", finding.before, finding.unit)),
       make("p", "muted", side("After", finding.after, finding.unit)),
@@ -3082,6 +3080,7 @@ export function chatStrip(page, budget = 24000) {
     const made = make("div", "model", message.content);
     for (const finding of message.findings ?? []) made.append(card(finding));
     if (message.stopped) made.append(make("div", "stopped", "Stopped."));
+    if (message.cut) made.append(make("div", "stopped", "Cut short."));
     return made;
   };
   const draw = () => {
@@ -3137,9 +3136,15 @@ export function chatStrip(page, budget = 24000) {
     keep();
     draw();
     let moveTo;
+    let afterTool = false;
     const handle = (event) => {
-      if (event.type === "delta") answer.content += event.text;
+      if (event.type === "delta") {
+        if (afterTool && answer.content !== "") answer.content += "\n\n";
+        afterTool = false;
+        answer.content += event.text;
+      } else if (event.type === "done") answer.cut = event.stop === "length";
       else if (event.type === "tool") {
+        afterTool = true;
         if (event.findings)
           answer.findings = [...(answer.findings ?? []), ...event.findings];
         if (event.open) moveTo = event.open;

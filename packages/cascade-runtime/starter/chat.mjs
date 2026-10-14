@@ -3,16 +3,11 @@
 // `chatRoute` is `POST /chat`; `runChat` the loop, which tells what happens as events.
 import { Buffer } from "node:buffer";
 import console from "node:console";
-import {
-  checkInput,
-  findChanges,
-  labSeriesIn,
-  Refusal,
-  timelineIn,
-} from "cascade-runtime";
+import { checkInput, labSeriesIn, Refusal, timelineIn } from "cascade-runtime";
 import { podPath, trendPath } from "./pods.mjs";
 import { withPod } from "./pod-tools.mjs";
 import {
+  CHANGED,
   entryId,
   HISTORY,
   LABS,
@@ -31,7 +26,7 @@ const MAX_CONTEXT = 2000;
 /** The rules the model is given, apart from where the person is. */
 export const RULES = `You answer questions about the health records in the pods of this app, for the person who owns them.
 Every number, date and name you give comes from a tool's result, never from memory or estimate. Say when a tool finds nothing.
-A finding says what changed after what: a test's results were lower or higher after a medication started or stopped. It never says why, never that the medication caused the change, and never advice about what to do. Say that a doctor can tell what it means.
+A finding says what changed after what: a test's results were lower or higher after a medication started or stopped. It never says why, never that the medication caused the change, and never advice about what to do. A clinician can say why.
 A record's date is a fact of the record. Never call a date "in the future" or "in the past" because of what you believe the date today to be.
 Write plain text with no links and no markdown. The app shows a finding's rows under your answer, and open_trend, open_entry and open_pod move the app to a page: use them when the person asks to see something.`;
 
@@ -105,6 +100,17 @@ export const entryPath = (name, entry) =>
   `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
 const unique = (items) => [...new Set(items)];
+
+/** What the app says of a finding everywhere else (`CHANGED`); nothing where there were not enough results. */
+function saidOf({ kind, direction, test, medication }) {
+  const say = CHANGED[kind]?.[direction];
+  if (say === undefined) return undefined;
+  const sentence = say(
+    test.name ?? test.notation ?? test.code,
+    medication.name,
+  );
+  return sentence[0].toUpperCase() + sentence.slice(1);
+}
 
 /** A finding's rows as a card shows them: each lab result by its entry's ID. */
 function rowsOf({ rows }) {
@@ -201,14 +207,14 @@ const OPEN_TOOLS = [
       const rows = await pod.ask(SOURCES);
       if (!rows.some((row) => entryId(row.entry) === entryId(entry)))
         throw new Refusal(
-          `the pod ${name} holds no entry ${entry}; its ${unique(rows.map((row) => row.entry)).length} entries are those the entry column of ask's rows names`,
+          `the pod ${name} holds no entry ${entry}; ask's rows give each entry's ID in their entry column`,
         );
       return { opened: entryPath(name, entry) };
     },
   },
 ];
 
-const text = (value) => ({ text: value, isError: true });
+const toolError = (reason) => ({ text: reason, isError: true });
 
 /**
  * The tools a chat reaches: `shared` is `podTools(...)`. `specs` is what the model is told of them; `run(name,
@@ -236,19 +242,20 @@ export function chatTools(shared) {
   async function runTool(tool, input) {
     const { pod: name, ...rest } = input;
     const pod = await shared.podNamed(name);
+    if (tool.name === "find_changes") {
+      const { value, found } = await tool.findings(pod, rest, name);
+      return {
+        value,
+        findings: value.map((finding) => ({
+          ...finding,
+          said: saidOf(finding),
+          rows: rowsOf(found.find(({ key }) => key === finding.key)),
+        })),
+      };
+    }
     const value = await tool.run(pod, rest, name);
-    const found =
-      tool.name === "find_changes" ? await findChanges(pod, rest) : undefined;
     return {
       value,
-      ...(found === undefined
-        ? {}
-        : {
-            findings: value.map((finding) => ({
-              ...finding,
-              rows: rowsOf(found.find(({ key }) => key === finding.key)),
-            })),
-          }),
       ...(tool.name.startsWith("open_") ? { open: value.opened } : {}),
     };
   }
@@ -258,14 +265,14 @@ export function chatTools(shared) {
     try {
       input = rawArguments === "" ? {} : JSON.parse(rawArguments);
     } catch (error) {
-      return text(`the arguments are not JSON: ${error.message}`);
+      return toolError(`the arguments are not JSON: ${error.message}`);
     }
     const listing = name === shared.list.name;
     const tool = listing
       ? shared.list
       : tools.find((each) => each.name === name);
     if (tool === undefined)
-      return text(
+      return toolError(
         `there is no tool ${name}; the tools are ${specs.map((each) => each.name).join(", ")}`,
       );
     try {
@@ -275,9 +282,9 @@ export function chatTools(shared) {
         : await runTool(tool, input);
       return { text: JSON.stringify(done.value), ...done };
     } catch (error) {
-      if (error instanceof Refusal) return text(error.message);
+      if (error instanceof Refusal) return toolError(error.message);
       console.error(error);
-      return text("the server failed; its log says why");
+      return toolError("the server failed; its log says why");
     }
   }
 

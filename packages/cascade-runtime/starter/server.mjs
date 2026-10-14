@@ -663,8 +663,7 @@ function modelSet() {
     return modelFrom();
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
-    stderr.write(`No model is used: ${error.message}
-`);
+    stderr.write(`No model is used: ${error.message}\n`);
     return undefined;
   }
 }

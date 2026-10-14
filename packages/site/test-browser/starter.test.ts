@@ -222,3 +222,73 @@ test("with no model set the strip says to run npm run model and has no form; wit
   assert.equal(shown.includes(KEY), false);
   assert.equal(shown.includes(stub.url), false);
 });
+
+test("a finding the model's tool found is drawn as a card with the app's sentence, its numbers and row links, and Open the trend goes to the trend", async () => {
+  const view = "/pods/ines-calloway/trend?test=18262-6&medication=617310";
+  const finding = {
+    key: "start:617310:18262-6",
+    kind: "after start",
+    direction: "down",
+    said: "LDL was lower after atorvastatin started.",
+    unit: "mg/dL",
+    test: { code: "18262-6", notation: "18262-6", name: "LDL" },
+    medication: { name: "atorvastatin", date: "2024-03-01" },
+    before: { count: 2, mean: 160, min: 150, max: 170 },
+    after: { count: 1, mean: 95, min: 95, max: 95 },
+    view,
+    rows: [
+      {
+        entry: "lab-1",
+        performed: "2024-01-10T00:00:00Z",
+        value: "150",
+        unit: "mg/dL",
+        side: "before",
+      },
+      {
+        entry: "lab-2",
+        performed: "2024-06-10T00:00:00Z",
+        value: "95",
+        unit: "mg/dL",
+        side: "after",
+      },
+    ],
+  };
+  const events = [
+    { type: "start" },
+    {
+      type: "tool",
+      id: "c1",
+      name: "find_changes",
+      ok: true,
+      findings: [finding],
+    },
+    { type: "delta", text: "Here it is." },
+    { type: "done", stop: "end" },
+  ];
+  const page = await browser.newPage();
+  await page.route("**/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: events.map((event) => JSON.stringify(event)).join("\n") + "\n",
+    }),
+  );
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  await page.getByLabel("Ask a question").fill("find anything interesting");
+  await page.getByRole("button", { name: "Send" }).click();
+  const card = page.locator(".chat-log .card");
+  await card.waitFor();
+  const said = (await card.textContent()) ?? "";
+  assert.match(said, /LDL was lower after atorvastatin started\./);
+  assert.match(said, /mean 160 mg\/dL over 2 results/);
+  assert.match(said, /mean 95 mg\/dL over 1 result\b/);
+  assert.deepEqual(
+    await card
+      .locator("li a")
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
+    ["/pods/ines-calloway/entries/lab-1", "/pods/ines-calloway/entries/lab-2"],
+  );
+  await card.getByRole("button", { name: "Open the trend" }).click();
+  await page.waitForURL(`${modelled.origin}${view}`);
+  await page.close();
+});
