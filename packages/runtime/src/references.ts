@@ -1,5 +1,6 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
+import { linesAbout } from "./lines-about.js";
 import { fileStem } from "./names.js";
 import { iri, RDF, type Triple } from "./rdf.js";
 import { REC, Refusal } from "./step.js";
@@ -156,6 +157,14 @@ function indexed(
   }
 }
 
+/** A version's N-Triples and the subjects each code finds in them; neither when it has no index for the properties. */
+type Kept =
+  | {
+      readonly text: string;
+      readonly found: ReadonlyMap<string, readonly string[]>;
+    }
+  | { readonly text?: undefined; readonly found?: undefined };
+
 /**
  * Reference tables: `references.ttl`, the index of each series and its versions, and one file per version
  * holding its rows, named from the version's name.
@@ -165,6 +174,7 @@ export class References {
   readonly #folder: string;
   readonly #vocabulary: Files | undefined;
   readonly #parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>;
+  readonly #keeping = new Map<string, Promise<Kept>>();
   readonly index: Graph;
 
   private constructor(
@@ -247,6 +257,25 @@ export class References {
       );
     }
     const path = `${this.#folder}${stem}.ttl`;
+    const foundBy =
+      find?.terms.foundBy.get(
+        this.kindOf(this.seriesOf(version) ?? "") ?? "",
+      ) ?? [];
+    const kept =
+      find === undefined ? undefined : await this.#kept(path, stem, foundBy);
+    if (kept?.found !== undefined) {
+      const { text, found } = kept;
+      const subjects = new Set(
+        [...find!.codes].flatMap((code) => found.get(code) ?? []),
+      );
+      const lines = [...subjects]
+        .sort((a, b) => (`<${a}> ` < `<${b}> ` ? -1 : 1))
+        .flatMap((subject) => linesAbout(text, subject));
+      return this.#parse(
+        new TextEncoder().encode(lines.join("\n")),
+        this.#source.iri + path,
+      );
+    }
     const bytes = await this.#source.read(path);
     if (bytes === undefined && this.#vocabulary !== undefined) {
       const shared = `${RULE_LIST}${stem}.ttl`;
@@ -256,28 +285,39 @@ export class References {
     }
     if (bytes === undefined)
       throw new Refusal(`${this.#folder} holds no rows for ${version}`);
-    const found =
-      find === undefined
-        ? undefined
-        : indexed(
-            await this.#source.read(`${this.#folder}${stem}${CODES}`),
-            find.terms.foundBy.get(
-              this.kindOf(this.seriesOf(version) ?? "") ?? "",
-            ) ?? [],
-          );
-    if (find === undefined || found === undefined)
-      return this.#parse(bytes, this.#source.iri + path);
-    const subjects = new Set(
-      [...find.codes].flatMap((code) => found.get(code) ?? []),
-    );
-    const lines = new TextDecoder()
-      .decode(bytes)
-      .split("\n")
-      .filter((line) => subjects.has(/^<([^>]*)>/.exec(line)?.[1] ?? ""));
-    return this.#parse(
-      new TextEncoder().encode(lines.join("\n")),
-      this.#source.iri + path,
-    );
+    return this.#parse(bytes, this.#source.iri + path);
+  }
+
+  /**
+   * A version's text and its index by code, each read once per property set the index is built for; none when
+   * there is no file or no index for them, which is not remembered, so a file written later is found.
+   */
+  async #kept(
+    path: string,
+    stem: string,
+    foundBy: readonly string[],
+  ): Promise<Kept> {
+    const key = `${path} ${JSON.stringify([...foundBy].sort())}`;
+    let kept = this.#keeping.get(key);
+    if (kept === undefined) {
+      kept = (async () => {
+        const found = indexed(
+          await this.#source.read(`${this.#folder}${stem}${CODES}`),
+          foundBy,
+        );
+        const bytes =
+          found === undefined ? undefined : await this.#source.read(path);
+        return found === undefined || bytes === undefined
+          ? {}
+          : { text: new TextDecoder().decode(bytes), found };
+      })();
+      this.#keeping.set(key, kept);
+      const forget = (): void => {
+        if (this.#keeping.get(key) === kept) this.#keeping.delete(key);
+      };
+      kept.then((each) => each.found === undefined && forget(), forget);
+    }
+    return kept;
   }
 
   /** The one series whose versions hold the matcher's rules. */

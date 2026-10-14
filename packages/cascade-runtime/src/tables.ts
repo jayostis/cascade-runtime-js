@@ -495,6 +495,7 @@ export class Tables {
     string,
     Promise<Readonly<Record<string, readonly string[]>>>
   >();
+  #references: Promise<References> | undefined;
   #concepts: Promise<ReadonlyMap<string, string>> | undefined;
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
@@ -639,7 +640,15 @@ export class Tables {
   async references(): Promise<References> {
     await this.#start();
     const { files, vocabulary, newStore } = this.#options;
-    return References.of(new TablesFiles(files, vocabulary), "", newStore);
+    const references = (this.#references ??= References.of(
+      new TablesFiles(files, vocabulary),
+      "",
+      newStore,
+    ));
+    references.catch(() => {
+      if (this.#references === references) this.#references = undefined;
+    });
+    return references;
   }
 
   /** The version of each held series a pod opened now is given. */
@@ -1323,6 +1332,7 @@ export class Tables {
           );
         else await files.write(path, bytes);
       }
+      this.#references = undefined;
     })().finally(() => {
       this.#started = undefined;
     });
@@ -1477,6 +1487,7 @@ export class Tables {
           ),
       ]);
       await this.#options.files.write(INDEX, ntriples(index.triples));
+      this.#references = undefined;
       if (held !== undefined) {
         this.#texts.delete(held.value);
         this.#listings.delete(held.value);
