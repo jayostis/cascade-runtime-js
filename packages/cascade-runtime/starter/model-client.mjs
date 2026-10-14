@@ -27,7 +27,7 @@ export const PROVIDERS = {
   gemini: {
     label: "Google Gemini",
     summary: "free key, no card",
-    name: "gemini-3.8-flash",
+    name: "gemini-3.5-flash-lite",
     url: "https://generativelanguage.googleapis.com/v1beta/openai/",
     key: "https://aistudio.google.com/apikey",
     data: `Google uses the free tier to improve its products, and people may read what is sent. ${FREE_ONLY_FOR_STORIES} Google's terms allow only the paid tier for people in the EEA, Switzerland and the UK: there, choose Groq or a model on this computer.`,
@@ -97,14 +97,56 @@ export function redact(text, key) {
   return key ? said.replaceAll(key, "[key]") : said;
 }
 
-/** Why a request failed, in the provider's words and with the network's reason beneath: "Connection error. (ECONNREFUSED)". */
-function failureOf(error, key) {
+/** What a person can do about a refused key or a busy model, in place of the provider's own reply; nothing for any other failure. */
+function advice(status, message, { provider, name }) {
+  const label =
+    provider === "other"
+      ? "The model server"
+      : (PROVIDERS[provider]?.label ?? provider);
+  if (
+    status === 401 ||
+    status === 403 ||
+    (status === 400 && KEYED.test(message))
+  )
+    return `${label} rejected the key: check CASCADE_MODEL_KEY in .env, or run \`npm run model\` again. ${message}`;
+  if (status === 429 || status === 503)
+    return `${name} is busy at ${label} (${status}): try again in a minute, or choose another model with \`npm run model\``;
+  return message;
+}
+
+const KEYED = /\b(api[ _-]?key|auth key|key)\b/i;
+
+/**
+ * Why a request failed: what a person can do about it where the status says (a rejected key, a busy model), else the
+ * provider's words with the network's reason beneath: "Connection error. (ECONNREFUSED)". The key is never in it.
+ */
+function failureOf(error, settings) {
   let message = error?.message ?? String(error);
   let reason;
   for (let cause = error?.cause; cause; cause = cause.cause)
     reason = cause.code || cause.message || reason;
   if (reason && !message.includes(reason)) message += ` (${reason})`;
-  return { status: error?.status, message: redact(message, key) };
+  return {
+    status: error?.status,
+    message: redact(advice(error?.status, message, settings), settings.key),
+  };
+}
+
+/**
+ * The assistant message that asks for `calls`, as a `Model` takes it back: each call keeps what the provider attached
+ * (`extra`), or Gemini refuses the next round.
+ */
+export function callsMessage(said, calls) {
+  return {
+    role: "assistant",
+    content: said,
+    calls: calls.map(({ id, name, arguments: input, extra }) => ({
+      id,
+      name,
+      arguments: input,
+      ...(extra === undefined ? {} : { extra }),
+    })),
+  };
 }
 
 function parseArguments(text) {
@@ -202,7 +244,7 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
     }
   } catch (error) {
     if (signal?.aborted) return;
-    yield { type: "error", ...failureOf(error, settings.key) };
+    yield { type: "error", ...failureOf(error, settings) };
     return;
   }
   if (signal?.aborted) return;
@@ -322,7 +364,7 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
     }
   } catch (error) {
     if (signal?.aborted) return;
-    yield { type: "error", ...failureOf(error, settings.key) };
+    yield { type: "error", ...failureOf(error, settings) };
     return;
   }
   if (signal?.aborted) return;

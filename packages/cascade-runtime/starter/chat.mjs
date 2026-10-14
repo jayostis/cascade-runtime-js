@@ -4,6 +4,7 @@
 import { Buffer } from "node:buffer";
 import console from "node:console";
 import { checkInput, labSeriesIn, Refusal, timelineIn } from "cascade-runtime";
+import { callsMessage } from "./model-client.mjs";
 import { podPath, trendPath } from "./pods.mjs";
 import { withPod } from "./pod-tools.mjs";
 import {
@@ -377,16 +378,7 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
       });
       return;
     }
-    messages.push({
-      role: "assistant",
-      content: said,
-      calls: calls.map(({ id, name, arguments: input, extra }) => ({
-        id,
-        name,
-        arguments: input,
-        ...(extra === undefined ? {} : { extra }),
-      })),
-    });
+    messages.push(callsMessage(said, calls));
     for (const call of calls) {
       if (signal.aborted) return;
       const done = await tools.run(call.name, call.arguments);

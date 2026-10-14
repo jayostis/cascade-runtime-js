@@ -29,6 +29,13 @@ interface Settings {
   name?: string;
   key?: string;
 }
+interface FakeInput {
+  setRawMode(on: boolean): void;
+  resume(): void;
+  pause(): void;
+  on(name: string, listener: (chunk: Buffer) => void): void;
+  off(name: string, listener: (chunk: Buffer) => void): void;
+}
 interface Terminal {
   out(text: string): void;
   err(text: string): void;
@@ -42,13 +49,21 @@ const { modelClient, modelFrom } = (await import(
   modelClient(settings: Settings): Model;
   modelFrom(env: Record<string, string>): Model | undefined;
 };
-const { check, flow, save, remove } = (await import(
+const { check, flow, save, remove, secret } = (await import(
   new URL("../../starter/model.mjs", import.meta.url).href
 )) as {
   save(folder: string, values: Record<string, string>): Promise<void>;
   remove(folder: string): Promise<boolean>;
   check(model: Model): Promise<{ ok: boolean; reason?: string }>;
   flow(args: string[], terminal: Terminal, folder: string): Promise<number>;
+  secret(
+    question: string,
+    io: {
+      stdin: FakeInput;
+      stdout: { write(text: string): void };
+      exit(code: number): void;
+    },
+  ): Promise<string>;
 };
 
 const KEY = "sk-TESTSECRET-1234";
@@ -716,13 +731,13 @@ test("the check passes only when the model calls the tool with arguments its sch
         "a bad key",
         "openai",
         openai.unauthorized,
-        /the provider said: .*Incorrect API key/,
+        /rejected the key.*Incorrect API key/,
       ],
       [
         "a bad key",
         "anthropic",
         anthropic.unauthorized,
-        /the provider said: .*invalid x-api-key/,
+        /rejected the key.*invalid x-api-key/,
       ],
       [
         "arguments of the wrong type",
@@ -757,6 +772,148 @@ test("the check passes only when the model calls the tool with arguments its sch
       assert.ok(!result.reason!.includes(KEY), `${label} shows the key`);
     }
   }
+});
+
+test("a rejected key or a busy model is said plainly, with what to do, and no reply shows the key", async () => {
+  const rejected =
+    /^Google Gemini rejected the key: check CASCADE_MODEL_KEY in \.env, or run `npm run model` again\./;
+  const cases: [string, number, string, RegExp][] = [
+    ["401", 401, "Incorrect API key", rejected],
+    ["403", 403, "Permission denied", rejected],
+    ["a 400 naming the key", 400, "API key not valid", rejected],
+    [
+      "429",
+      429,
+      "Quota",
+      /^m is busy at Google Gemini \(429\): try again in a minute, or choose another model with `npm run model`$/,
+    ],
+    [
+      "503",
+      503,
+      "high demand",
+      /^m is busy at Google Gemini \(503\): try again in a minute, or choose another model with `npm run model`$/,
+    ],
+    ["another 400", 400, "Unknown field", /^400 .*Unknown field/],
+  ];
+  for (const [what, status, message, expected] of cases) {
+    const { url } = await serving(() => ({
+      status,
+      json: { error: { message: `${message} ${KEY}` } },
+    }));
+    const seen = await events(
+      modelClient({
+        provider: "gemini",
+        url: `${url}/v1`,
+        name: "m",
+        key: KEY,
+      }),
+    );
+    assert.equal(seen.length, 1, what);
+    const said = String(seen[0]!.message);
+    assert.equal(seen[0]!.status, status, what);
+    assert.match(said, expected, what);
+    assert.ok(!said.includes(KEY), `${what} shows the key`);
+    if (what === "another 400")
+      assert.doesNotMatch(said, /rejected the key|busy/, what);
+  }
+});
+
+test("the check sends the call's result back as the chat does, extra included, and fails when that second round fails", async () => {
+  const extra = { google: { thought_signature: "sig" } };
+  const call = (): Reply => ({
+    events: [
+      delta({
+        tool_calls: [
+          {
+            index: 0,
+            id: "c1",
+            type: "function",
+            function: { name: "note_word", arguments: '{"word":"ready"}' },
+            extra_content: extra,
+          },
+        ],
+      }),
+      delta({}, "tool_calls"),
+    ],
+  });
+  const settings = (url: string) => ({
+    provider: "other",
+    url: `${url}/v1`,
+    name: "m",
+    key: KEY,
+  });
+
+  let round = 0;
+  const failing = await serving(() =>
+    ++round === 1
+      ? call()
+      : {
+          status: 400,
+          json: {
+            error: { message: "Function call is missing a thought_signature" },
+          },
+        },
+  );
+  const failed = await check(modelClient(settings(failing.url)));
+  assert.equal(failed.ok, false);
+  assert.match(failed.reason!, /second round.*thought_signature/);
+  assert.equal(failing.bodies.length, 2);
+  const [assistant, tool] = (
+    failing.bodies[1]!.messages as Record<string, unknown>[]
+  ).slice(-2);
+  assert.deepEqual(
+    (assistant!.tool_calls as Record<string, unknown>[])[0]!.extra_content,
+    extra,
+  );
+  assert.equal(tool!.tool_call_id, "c1");
+
+  round = 0;
+  const answering = await serving(() =>
+    ++round === 1 ? call() : openai.text(),
+  );
+  assert.deepEqual(await check(modelClient(settings(answering.url))), {
+    ok: true,
+  });
+  assert.equal(answering.bodies.length, 2);
+});
+
+test("a secret shows a bullet for each character it keeps, drops Ctrl+V with a hint said once, and Backspace removes one bullet", async () => {
+  const handlers: ((chunk: Buffer) => void)[] = [];
+  const written: string[] = [];
+  const modes: boolean[] = [];
+  const input: FakeInput = {
+    setRawMode: (on) => modes.push(on),
+    resume: () => undefined,
+    pause: () => undefined,
+    on: (_name, listener) => handlers.push(listener),
+    off: (_name, listener) => handlers.splice(handlers.indexOf(listener), 1),
+  };
+  const reading = secret("key: ", {
+    stdin: input,
+    stdout: { write: (text) => written.push(text) },
+    exit: () => assert.fail("exited"),
+  });
+  const type = (text: string) => handlers[0]!(Buffer.from(text));
+  type("ab");
+  type("\x16");
+  type("\x16");
+  type("c\x7fd");
+  type("\r");
+  assert.equal(await reading, "abd");
+  const shown = written.join("");
+  assert.equal(shown.split("Ctrl+V does not paste here").length - 1, 1);
+  assert.match(
+    shown,
+    /\nCtrl\+V does not paste here: right-click, or Ctrl\+Shift\+V in Windows Terminal\n/,
+  );
+  assert.ok(shown.includes("\b \b"), "Backspace erased nothing");
+  assert.equal([...shown].filter((c) => c === "•").length, 2 + 2 + 2);
+  assert.ok(
+    !written.some((text) => /^[a-d]$/.test(text)),
+    "a character showed",
+  );
+  assert.deepEqual(modes, [true, false]);
+  assert.equal(handlers.length, 0);
 });
 
 /** A terminal answering from a script, and keeping everything it was shown. */
