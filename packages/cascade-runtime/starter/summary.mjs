@@ -4,7 +4,7 @@
 // state. It imports only `preact`, `preact/hooks` and `htm`, with no build step. Rewrite it freely: it is only this
 // app's view.
 import { Fragment, h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import htm from "htm";
 
 /**
@@ -1118,9 +1118,13 @@ export const TREND_VIEW = {
   },
 };
 
-/** While the component is on screen, calls `register(definition)`, and what it gives back when it goes; nothing without `register`. */
+/**
+ * While the component is on screen, calls `register(definition)`, and what it gives back when it goes; nothing without
+ * `register`. Both happen as the page changes, never after it: a passive effect runs after the next paint, so a view
+ * could be registered, or still be registered, once the page had gone.
+ */
 export function useView(register, definition) {
-  useEffect(() => register?.(definition), [register, definition]);
+  useLayoutEffect(() => register?.(definition), [register, definition]);
 }
 
 const DAY_MS = 86_400_000;
