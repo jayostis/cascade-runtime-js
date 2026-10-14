@@ -1710,6 +1710,9 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
     "pod/My active medications": [
       { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
     ],
+    "pod/My medication history": [
+      { entry: "m2", medication: "Old", code: `${RX}1`, ended: "2024-01-01" },
+    ],
   };
   const asked: string[][] = [];
   const tables = () => ({
@@ -1726,7 +1729,8 @@ test("what the tables say of the codes a pod holds includes the ingredients thos
     },
   });
   const about = await view.codesSaid(answers, { tables: tables() });
-  assert.deepEqual(asked, [[`${RX}314076`], [`${RX}29046`]]);
+  assert.deepEqual(asked, [[`${RX}314076`, `${RX}1`], [`${RX}29046`]]);
+  assert.equal(about.get(`${RX}1`).name.label, "lisinopril");
   assert.equal(about.get(`${RX}29046`).name.label, "lisinopril");
 });
 

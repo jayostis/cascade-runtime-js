@@ -49,13 +49,20 @@ const {
 const { podTools } = (await import(
   new URL("../../starter/pod-tools.mjs", import.meta.url).href
 )) as { podTools: (...options: unknown[]) => unknown };
-const { changeSaid, entryId, SOURCES } = (await import(
-  new URL("../../starter/summary.mjs", import.meta.url).href
-)) as {
-  changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
-  entryId: (entry: string) => string;
-  SOURCES: string;
-};
+const { changeSaid, codesSaid, entryId, HISTORY, LABS, SOURCES } =
+  (await import(
+    new URL("../../starter/summary.mjs", import.meta.url).href
+  )) as {
+    changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
+    codesSaid: (
+      answers: Record<string, unknown[]>,
+      options: { tables: unknown },
+    ) => Promise<Map<string, unknown>>;
+    HISTORY: string;
+    LABS: string;
+    entryId: (entry: string) => string;
+    SOURCES: string;
+  };
 
 const STATIN = "story-statin";
 const pods = new Map<string, Pod>();
@@ -214,12 +221,25 @@ test("a finding says itself as the page does: named by what the tables say of it
     STATIN,
   );
   const [whole] = pageFindings;
-  const names = new Map([
-    [
-      whole!.medication.code,
-      { name: { label: "atorvastatin 20 MG Oral Tablet" } },
-    ],
-  ]);
+  const statin = pods.get(STATIN)!;
+  const tables = {
+    about: async (codes: string[]) =>
+      new Map(
+        codes
+          .filter((code) => code === whole!.medication.code)
+          .map((code) => [
+            code,
+            { name: { label: "atorvastatin 20 MG Oral Tablet" } },
+          ]),
+      ),
+  };
+  const names = await codesSaid(
+    {
+      [HISTORY]: await statin.ask(HISTORY),
+      [LABS]: await statin.ask(LABS),
+    },
+    { tables },
+  );
   const { model } = fakeModel([
     calling(call("c1", "find_changes", { pod: STATIN })),
     reply("Done."),

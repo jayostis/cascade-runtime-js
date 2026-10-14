@@ -204,13 +204,19 @@ export function sectionRows(section, answers, said) {
 
 const isCode = (code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? "");
 
-/** The codes the sections' rows in `answers` hold, each once: what to ask the tables' `about` of. */
+/**
+ * The codes the sections' rows in `answers`, and the medication history's, hold, each once: what to ask the tables'
+ * `about` of. The history is no section, but the change cards name their medication by it, stopped or not.
+ */
 export function codesOf(answers) {
-  const codes = SECTIONS.flatMap((section) =>
-    sectionRows(section, answers).flatMap((row) =>
-      section.codes.map((column) => row[column]),
+  const codes = [
+    ...SECTIONS.flatMap((section) =>
+      sectionRows(section, answers).flatMap((row) =>
+        section.codes.map((column) => row[column]),
+      ),
     ),
-  );
+    ...(answers[HISTORY] ?? []).map((row) => row.code),
+  ];
   return [...new Set(codes.filter(isCode))];
 }
 
