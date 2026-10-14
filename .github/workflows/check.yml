@@ -115,11 +115,15 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Drop half-written row files before they are saved
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: rm -f "$CASCADE_ROWS_CACHE"/*.tmp
       - uses: actions/cache/save@v6
         if: ${{ !cancelled() && hashFiles('cascade-runtime-js/.rows-cache/**') != '' && hashFiles('cascade-runtime-js/.rows-cache/**') != steps.rows-before.outputs.hash }}
         with:
           path: cascade-runtime-js/.rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
       # Every test launches the headless shell and nothing launches the full Chrome, so only the shell is installed and kept.
       - id: playwright
         if: ${{ !cancelled() }}
@@ -223,11 +227,15 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Drop half-written row files before they are saved
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: rm -f "$CASCADE_ROWS_CACHE"/*.tmp
       - uses: actions/cache/save@v6
         if: ${{ !cancelled() && hashFiles('.rows-cache/**') != '' && hashFiles('.rows-cache/**') != steps.rows-before.outputs.hash }}
         with:
           path: .rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build/pages
@@ -340,11 +348,15 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Drop half-written row files before they are saved
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: rm -f "$CASCADE_ROWS_CACHE"/*.tmp
       - uses: actions/cache/save@v6
         if: ${{ !cancelled() && hashFiles('.rows-cache/**') != '' && hashFiles('.rows-cache/**') != steps.rows-before.outputs.hash }}
         with:
           path: .rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
       - run: npx playwright install --with-deps chromium
       - run: npm run test:launcher
 
@@ -394,11 +406,15 @@ jobs:
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Drop half-written row files before they are saved
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: rm -f "$CASCADE_ROWS_CACHE"/*.tmp
       - uses: actions/cache/save@v6
         if: ${{ !cancelled() && hashFiles('cascade-runtime-js/.rows-cache/**') != '' && hashFiles('cascade-runtime-js/.rows-cache/**') != steps.rows-before.outputs.hash }}
         with:
           path: cascade-runtime-js/.rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
       - uses: actions/upload-artifact@v7
         with:
           name: package

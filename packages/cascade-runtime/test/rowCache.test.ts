@@ -35,6 +35,11 @@ test("a row file named by its content is fetched once and then read from the fol
       new Uint8Array(await readFile(join(folder, `${hash}.nq.gz`))),
       bytes,
     );
+    const blocked = join(folder, "regular-file");
+    await writeFile(blocked, "not a folder");
+    const unkept = keptRows(live, join(blocked, "rows"));
+    const answered = await unkept(url);
+    assert.deepEqual(new Uint8Array(await answered.arrayBuffer()), bytes);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
