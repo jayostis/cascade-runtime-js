@@ -537,26 +537,31 @@ export class Tables {
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
-      // Listed now, so a version the starter copies brought is quick on its first view too.
-      const kept = new Set(await this.#options.files.list(""));
-      for (const [, , version] of (await this.#index()).match(
-        undefined,
-        SHIPS_WITH,
-      ))
-        if (!kept.has(`${stemOf(version.value)}${LISTED}`))
-          this.#listing.push(
-            this.#listed(version.value).then(
-              () => undefined,
-              () => undefined,
-            ),
-          );
+      await this.#startListing();
       return checked;
     });
   }
 
-  /** Resolves when the listings the checks so far started have finished, whether or not they succeeded. */
+  /** Starts listing every shipped version not yet listed, so a version the starter copies brought is quick on its first view too. */
+  async #startListing(): Promise<void> {
+    const kept = new Set(await this.#options.files.list(""));
+    for (const [, , version] of (await this.#index()).match(
+      undefined,
+      SHIPS_WITH,
+    ))
+      if (!kept.has(`${stemOf(version.value)}${LISTED}`))
+        this.#listing.push(
+          this.#listed(version.value).then(
+            () => undefined,
+            () => undefined,
+          ),
+        );
+  }
+
+  /** Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background. */
   async listing(): Promise<void> {
-    await Promise.all(this.#listing);
+    await this.#next(() => this.#startListing());
+    while (this.#listing.length > 0) await Promise.all(this.#listing.splice(0));
   }
 
   /**

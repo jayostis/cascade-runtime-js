@@ -1,5 +1,6 @@
 import { dirname, join, resolve as absolute } from "node:path";
 import { resolved } from "./node/resolved.js";
+import { checkedOutcome, startedOutcome } from "./outcomes.js";
 import type { Phase } from "./phase.js";
 import { openPodWith, type Pod } from "./pod.js";
 import { CHECK_ON_OPEN_MS, type Tables } from "./tables.js";
@@ -60,46 +61,19 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
       await phase(
         "Reading the reference tables the package carries into pods/.tables…",
         () => tables.start(),
-        async (bytes) => {
-          if (bytes === 0) return "already there";
-          const held = await tables.held();
-          const versions = held.reduce(
-            (sum, { versions }) => sum + versions.length,
-            0,
-          );
-          return `${versions} versions in ${held.length} series, ${Math.round(bytes / 1e6)} MB`;
-        },
+        async (bytes) =>
+          startedOutcome(bytes, bytes === 0 ? [] : await tables.held()),
       );
       if (parts.local.config.tables.checkOnOpen) {
+        let signal = new AbortController().signal;
         await phase(
           `Checking ${parts.local.config.tables.feeds.join(", ")} for newer tables…`,
-          () => tables.check({ signal: AbortSignal.timeout(CHECK_ON_OPEN_MS) }),
-          async (checked) => {
-            const kept = new Set(checked.flatMap((one) => one.kept));
-            const later = checked.find((one) => one.later !== undefined)?.later;
-            const refused = checked.reduce(
-              (sum, one) => sum + one.refused.length,
-              0,
-            );
-            const said = [];
-            if (kept.size > 0) {
-              const held = await tables.held();
-              const names = held
-                .filter(({ versions }) =>
-                  versions.some(({ iri }) => kept.has(iri)),
-                )
-                .map(({ label }) => label);
-              said.push(
-                `kept ${kept.size} newer ${kept.size === 1 ? "version" : "versions"} (${names.join(", ")})`,
-              );
-            } else if (later === undefined) said.push("none newer");
-            if (later !== undefined)
-              said.push(
-                `not reached (${later}); the package's tables are used`,
-              );
-            if (refused > 0) said.push(`${refused} refused`);
-            return said.join(", ");
+          () => {
+            signal = AbortSignal.timeout(CHECK_ON_OPEN_MS);
+            return tables.check({ signal });
           },
+          async (checked) =>
+            checkedOutcome(checked, await tables.held(), signal.aborted),
         );
       }
       await phase("Listing the tables' codes for search…", () =>

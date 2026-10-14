@@ -104,6 +104,11 @@ test("given a folder, it makes the project and names it, with the view's package
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
   for (const line of ["npx ", "pod:load"])
     assert.ok(!terminal.text().includes(line), `it printed ${line}`);
+  assert.doesNotMatch(terminal.text(), /Reading|Checking|Listing/);
+  assert.match(
+    terminal.text(),
+    /Loading the pod alex-rivera.*loaded in \d+\.\d s/,
+  );
 });
 
 test("a terminal that sets up the tables reports each phase with its seconds, before the first kit's line, and a failure leaves the kits to try", async () => {
@@ -138,22 +143,12 @@ test("a terminal that sets up the tables reports each phase with its seconds, be
       fails,
     );
     assert.ok(
-      text.indexOf("Checking the feed…") <
+      text.indexOf(fails ? "Checking the feed…" : "Listing the codes…") <
         text.indexOf("Loading the pod alex-rivera"),
-      "the setup came after the first kit",
+      "a setup line came after the first kit's",
     );
     assert.equal(terminal.done.length, 4, "the kits loaded");
   }
-});
-
-test("a terminal that sets up no tables prints no phase", async () => {
-  const terminal = recording();
-  await create([join(parent, "no-tables"), "--tarball", ADDRESS], terminal);
-  assert.doesNotMatch(terminal.text(), /Reading|Checking|Listing/);
-  assert.match(
-    terminal.text(),
-    /Loading the pod alex-rivera.*loaded in \d+\.\d s/,
-  );
 });
 
 test("a terminal offers a model once the app is made, and says how to add one later when it is not taken up", async () => {
