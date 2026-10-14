@@ -1,4 +1,4 @@
-import { documentName, rowsByCode } from "@cascade-runtime/runtime";
+import { documentName, linesAbout, rowsByCode } from "@cascade-runtime/runtime";
 
 export const PROV = "http://www.w3.org/ns/prov#";
 export const SPECIALIZATION_OF = `${PROV}specializationOf`;
@@ -195,23 +195,11 @@ const ROW = /^<[^>]*> <([^>]*)> (.*) \.$/;
  * The rows of a subject in a version's N-Triples, found by halving: the lines are sorted, so a subject's are together.
  */
 export function rowsAbout(text: string, subject: string): Row[] {
-  const prefix = `<${subject}> `;
-  let [low, high] = [0, text.length];
-  while (low < high) {
-    const start = text.lastIndexOf("\n", ((low + high) >> 1) - 1) + 1;
-    if (text.slice(start, start + prefix.length) < prefix) {
-      const end = text.indexOf("\n", start);
-      low = end < 0 ? text.length : end + 1;
-    } else high = start;
-  }
   const rows: Row[] = [];
-  for (let at = low; text.startsWith(prefix, at);) {
-    const end = text.indexOf("\n", at);
-    const [, predicate, object] =
-      ROW.exec(text.slice(at, end < 0 ? text.length : end)) ?? [];
+  for (const line of linesAbout(text, subject)) {
+    const [, predicate, object] = ROW.exec(line) ?? [];
     if (predicate !== undefined && object !== undefined)
       rows.push({ predicate, object });
-    at = end < 0 ? text.length : end + 1;
   }
   return rows;
 }
@@ -229,31 +217,6 @@ export function termsOfRows(text: string): RowTerms[] {
       ]);
   }
   return terms;
-}
-
-/** The row subjects each code finds, as an index by code that `rowsByCode` wrote for these properties: none when it is not one. */
-export function indexedRows(
-  bytes: Uint8Array | undefined,
-  foundBy: readonly string[],
-): Readonly<Record<string, readonly string[]>> | undefined {
-  if (bytes === undefined) return undefined;
-  try {
-    const index = JSON.parse(new TextDecoder().decode(bytes)) as {
-      foundBy: unknown;
-      rows: Record<string, unknown>;
-    };
-    return JSON.stringify(index.foundBy) ===
-      JSON.stringify([...foundBy].sort()) &&
-      Object.values(index.rows).every(
-        (subjects) =>
-          Array.isArray(subjects) &&
-          subjects.every((subject) => typeof subject === "string"),
-      )
-      ? (index.rows as Record<string, string[]>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 const ESCAPED: Readonly<Record<string, string>> = {
