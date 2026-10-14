@@ -1,5 +1,5 @@
 // The tools over a pod that the MCP server (`mcp-server.mjs`) and the app's chat (`chat.mjs`) share: the analytics of
-// `cascade-runtime` (`changeTools`), `ask`, and `list_pods`, with the pod each is about named in its input.
+// `cascade-runtime` (`changeTools`), `ask`, `worth_a_look` and `list_pods`, with the pod each is about named in its input.
 import console from "node:console";
 import {
   changeTools,
@@ -8,6 +8,7 @@ import {
   findChanges,
   Refusal,
 } from "cascade-runtime";
+import { entryId, QUESTIONS as ANSWERED, worthALook } from "./summary.mjs";
 
 /** The questions `ask` offers: the person's own records, who they are and where an entry came from. Never free SPARQL. */
 export const QUESTIONS = [
@@ -35,11 +36,33 @@ function trendOf({ test, medication }) {
   };
 }
 
+/** A pod's answers to each question its page reads, by question. */
+export async function answersOf(pod) {
+  const answers = {};
+  for (const question of ANSWERED) answers[question] = await pod.ask(question);
+  return answers;
+}
+
+/**
+ * The lines of a pod's Worth a look, as its page draws them: `worthALook` over the pod's answers, with what
+ * `aboutCodes(answers)` and `variantsOf(answers, pod)` say of them (each none until the tables can say). The page runs
+ * `worthALook` on the same inputs, so `worth_a_look` and the page agree.
+ */
+export async function worthLines(pod, { aboutCodes, variantsOf }) {
+  const answers = await answersOf(pod);
+  const [about, said] = await Promise.all([
+    aboutCodes(answers),
+    variantsOf(answers, pod),
+  ]);
+  return worthALook(answers, about, said);
+}
+
 /**
  * A tool over the pods: its schema as a client sees it, and what it does with a pod, the input beside `pod` and the
- * pod's name. With `viewOf(pod, trend)`, each finding of `find_changes` carries `view`, the address it gives.
+ * pod's name. With `viewOf(pod, trend)`, each finding of `find_changes` carries `view`, the address it gives. With
+ * `worthOf(pod)`, which gives the pod's lines of Worth a look, there is a `worth_a_look` tool.
  */
-export function toolsOver(viewOf) {
+export function toolsOver(viewOf, worthOf) {
   const sample = changeTools({ ask: async () => [] });
   /** `find_changes` once over the pod: `value` as the tool gives it, and `found`, the findings with their rows. */
   async function findings(pod, input, podName, inputSchema) {
@@ -71,8 +94,30 @@ export function toolsOver(viewOf) {
             .find((each) => each.name === name)
             .execute(input),
   }));
+  const worth =
+    worthOf === undefined
+      ? []
+      : [
+          {
+            name: "worth_a_look",
+            description:
+              "What a pod's page lists under Worth a look, in its order: each line's sentence, the ID of the entry it is about and its tag. It states what is flagged (an entry that needs review, a report that differs from ClinVar today, medications that share an ingredient), never why; there are none when nothing is.",
+            inputSchema: {
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            },
+            run: async (pod) =>
+              (await worthOf(pod)).map(({ sentence, entry, tag }) => ({
+                sentence,
+                entry: entryId(entry),
+                ...(tag === undefined ? {} : { tag }),
+              })),
+          },
+        ];
   return [
     ...analytics,
+    ...worth,
     {
       name: "ask",
       description:
@@ -126,9 +171,10 @@ export function withPod(tool) {
 /**
  * The tools over `pods`: `names()` gives the names of the pods there are, `open(name)` opens one. A pod is opened when
  * first asked about and kept until `close()`, unless `options.keep` is false, which leaves keeping to `open`.
- * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results.
+ * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results;
+ * `options.worthOf(pod)` the lines of its Worth a look (`worthLines`), and without it there is no `worth_a_look`.
  */
-export function podTools(pods, { viewOf, keep = true } = {}) {
+export function podTools(pods, { viewOf, worthOf, keep = true } = {}) {
   const opened = new Map();
 
   /** The pod named, opened; a Refusal naming the pods there are when there is none. */
@@ -182,7 +228,7 @@ export function podTools(pods, { viewOf, keep = true } = {}) {
       },
       run: () => pods.names(),
     },
-    tools: toolsOver(viewOf),
+    tools: toolsOver(viewOf, worthOf),
     names: () => pods.names(),
     podNamed,
     answer,

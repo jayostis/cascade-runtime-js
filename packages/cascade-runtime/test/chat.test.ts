@@ -387,6 +387,11 @@ test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod
     ],
     [{ ...good, context: { kind: "finding" } }, /context must be/],
     [{ ...good, context: { kind: "entry", id: 7 } }, /context must be/],
+    [{ ...good, context: { kind: "worth" } }, /context must be/],
+    [
+      { ...good, context: { kind: "worth", entry: "e1", sentence: "x" } },
+      /context must be/,
+    ],
     [
       { ...good, context: { kind: "trend", test: "t", medication: 7 } },
       /context must be/,
@@ -415,6 +420,9 @@ test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod
       JSON.stringify(body),
     );
   assert.doesNotThrow(() => checkBody(good));
+  assert.doesNotThrow(() =>
+    checkBody({ ...good, context: { kind: "worth", entry: "e1" } }),
+  );
 
   const events: ChatEvent[] = [];
   await assert.rejects(

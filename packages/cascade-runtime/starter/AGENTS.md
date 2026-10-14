@@ -20,8 +20,9 @@ you like.
 `npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
 Claude Desktop, VS Code or any MCP client (the README says how to add it);
 `pod-tools.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
-beside `list_pods` and `ask`, each taking the pod's name; `chat.mjs`, the app's
-`POST /chat`, runs the same tools for a model and adds three that open the
+beside `list_pods`, `ask` and `worth_a_look` (`worthLines`: `worthALook` on the same
+inputs the page reads), each taking the pod's name; `chat.mjs`, the
+app's `POST /chat`, runs the same tools for a model and adds three that open the
 app's own pages. A hosted client sends what the tools return to its provider:
 never point one at a person's own pod without their say. The starter holds only
 made-up records (the kits, the demo hospitals); before connecting real records,

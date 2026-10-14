@@ -14,7 +14,10 @@ const { podServer, QUESTIONS, WARNING } = (await import(
       names(): Promise<string[]>;
       open(name: string): Promise<Pod>;
     },
-    options?: { viewOf(pod: string, trend: object): string },
+    options?: {
+      viewOf(pod: string, trend: object): string;
+      worthOf(pod: Pod): Promise<unknown[]>;
+    },
   ) => { build(): { connect(transport: unknown): Promise<void> } };
   QUESTIONS: string[];
   WARNING: string;
@@ -23,7 +26,48 @@ const { trendUrl } = (await import(
   new URL("../../starter/pods.mjs", import.meta.url).href
 )) as { trendUrl: (pod: string, trend: object) => string };
 
+const { worthLines } = (await import(
+  new URL("../../starter/pod-tools.mjs", import.meta.url).href
+)) as {
+  worthLines: (
+    pod: unknown,
+    tables: {
+      aboutCodes(answers: unknown): Promise<undefined>;
+      variantsOf(answers: unknown, pod: unknown): Promise<undefined>;
+    },
+  ) => Promise<unknown[]>;
+};
+const { entryId, worthALook } = (await import(
+  new URL("../../starter/summary.mjs", import.meta.url).href
+)) as {
+  entryId: (entry: string) => string;
+  worthALook: (answers: Record<string, unknown[]>) => {
+    sentence: string;
+    entry: string;
+    tag?: string;
+  }[];
+};
+
 const STATIN = "story-statin";
+/** A pod whose answers hold one entry that needs review, so its page has a line of Worth a look; it reads nothing else. */
+const REVIEWED = "reviewed";
+const REVIEW_ANSWERS: Record<string, unknown[]> = {
+  "entry/What needs review": [
+    {
+      entry: "urn:uuid:0e1f",
+      entryLabel: "Allergy entry · Latex",
+      needs: "judged different, still joined",
+    },
+  ],
+};
+const reviewed = {
+  ask: async (question: string) => REVIEW_ANSWERS[question] ?? [],
+  close: async () => {},
+} as unknown as Pod;
+const unsaid = {
+  aboutCodes: async () => undefined,
+  variantsOf: async () => undefined,
+};
 const pods = new Map<string, Pod>();
 let client: Client;
 
@@ -48,13 +92,17 @@ before(async () => {
   assert.equal(imported.refused, undefined);
   pods.set(STATIN, statin);
   pods.set("empty", await openPod());
+  pods.set(REVIEWED, reviewed);
 
   const served = podServer(
     {
       names: async () => [...pods.keys()],
       open: async (name) => pods.get(name)!,
     },
-    { viewOf: trendUrl },
+    {
+      viewOf: trendUrl,
+      worthOf: (pod) => worthLines(pod, unsaid),
+    },
   );
   const [toServer, toClient] = InMemoryTransport.createLinkedPair();
   await served.build().connect(toServer);
@@ -76,6 +124,7 @@ test("a client lists the pods and the tools, each but the list taking the pod's 
     "lab_series",
     "list_pods",
     "timeline",
+    "worth_a_look",
   ]);
   for (const { name, inputSchema } of tools)
     assert.equal(
@@ -90,10 +139,15 @@ test("a client lists the pods and the tools, each but the list taking the pod's 
     QUESTIONS,
   );
   assert.ok(client.getInstructions()?.includes(WARNING));
+  assert.match(
+    client.getInstructions() ?? "",
+    /worth_a_look is a good first call/,
+  );
 
   assert.deepEqual(JSON.parse((await call("list_pods", {})).text), [
     STATIN,
     "empty",
+    REVIEWED,
   ]);
 });
 
@@ -139,6 +193,24 @@ test("find_changes on the statin story patient's pod gives the LDL finding with 
   assert.equal(asked.rows.length, 2);
 });
 
+test("worth_a_look gives a pod's Worth a look lines as its page does, each with its sentence, its entry's ID and its tag, and none for a pod with no line", async () => {
+  const expected = worthALook(REVIEW_ANSWERS).map(
+    ({ sentence, entry, tag }) => ({
+      sentence,
+      entry: entryId(entry),
+      tag,
+    }),
+  );
+  assert.equal(expected.length, 1);
+  const lines = await call("worth_a_look", { pod: REVIEWED });
+  assert.equal(lines.error, false);
+  assert.deepEqual(JSON.parse(lines.text), expected);
+  assert.deepEqual(
+    JSON.parse((await call("worth_a_look", { pod: "empty" })).text),
+    [],
+  );
+});
+
 test("input the rules refuse is a tool error that says why, never a crash: a question outside the list, a pod there is none of, a missing pod, a test the pod lacks", async () => {
   const refused: [string, Record<string, unknown>, RegExp][] = [
     [
@@ -158,6 +230,8 @@ test("input the rules refuse is a tool error that says why, never a crash: a que
     ["lab_series", { pod: STATIN, test: "0000-0" }, /no test/],
     ["finding_rows", { pod: STATIN, key: "start:0:0" }, /no finding/],
     ["timeline", { pod: STATIN, extra: true }, /additional properties/],
+    ["worth_a_look", { pod: "nobody" }, /no pod nobody; the pods are/],
+    ["worth_a_look", { pod: STATIN, extra: true }, /additional properties/],
   ];
   for (const [name, args, reason] of refused) {
     const { error, text } = await call(name, args);

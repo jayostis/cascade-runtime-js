@@ -13,7 +13,7 @@ export const WARNING =
 
 const INSTRUCTIONS = `${WARNING}
 
-Every tool but list_pods takes the pod's name: list_pods gives the names. find_changes states what changed in a person's lab results after a medication started or stopped, with the numbers; never why. Use its numbers as they are, and say when it finds nothing. Each finding's view is the address of a page that draws its results as a chart; it opens while the app is running (npm start).`;
+Every tool but list_pods takes the pod's name: list_pods gives the names. find_changes states what changed in a person's lab results after a medication started or stopped, with the numbers; never why. Use its numbers as they are, and say when it finds nothing. worth_a_look is a good first call: it lists what the pod's page flags (an entry that needs review, a report that differs from ClinVar today, medications that share an ingredient), each with its entry's ID, saying what is flagged and never why. Each finding's view is the address of a page that draws its results as a chart; it opens while the app is running (npm start).`;
 
 const { version } = JSON.parse(
   await readFile(new URL("package.json", import.meta.url), "utf8"),
@@ -28,10 +28,11 @@ const content = ({ text, isError }) => ({
 /**
  * The server over `pods`: `names()` gives the names of the pods there are, `open(name)` opens one. A pod is opened
  * when first asked about and kept until `close()`. `build()` gives a server for one connection, all sharing the pods.
- * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results.
+ * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results;
+ * `options.worthOf(pod)` the lines of the pod's Worth a look, which `worth_a_look` gives.
  */
-export function podServer(pods, { viewOf } = {}) {
-  const shared = podTools(pods, { viewOf });
+export function podServer(pods, { viewOf, worthOf } = {}) {
+  const shared = podTools(pods, { viewOf, worthOf });
 
   function build() {
     const server = new McpServer(
