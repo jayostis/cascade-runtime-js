@@ -516,7 +516,7 @@ export function worthPart(lines, entryHref, ask) {
  * its tools. `label` says which one to a screen reader.
  */
 function askButton(context, label) {
-  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} data-ask-label=${label} aria-label=${`Ask about this: ${label}`}>Ask about this</button>`;
+  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} data-ask-label=${label} title="Ask about this" aria-label=${`Ask about this: ${label}`}><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 20.5l1.5-4.9A8 8 0 1 1 21 12z" /></svg></button>`;
 }
 
 /** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
@@ -2952,7 +2952,10 @@ export const CHAT_STYLE = `
 .chat-log .card ul { list-style: none; margin: 0.4rem 0; padding: 0; max-height: 9rem; overflow: auto; font-size: 0.9rem; }
 .chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.5rem; }
 .chat-chips button { font-size: 0.85rem; padding: 0.15rem 0.7rem; border-radius: 999px; }
-button.ask { font-size: 0.85rem; padding: 0.1rem 0.6rem; }
+button.ask { font-size: inherit; line-height: 1; padding: 0.15em 0.3em; border-color: transparent; vertical-align: middle; }
+button.ask svg { display: block; width: 1.1em; height: 1.1em; }
+button.ask:hover { background: var(--soft); }
+button.ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-form { display: flex; gap: 0.5rem; }
 .chat-form input { flex: 1; min-width: 0; }
 `;
