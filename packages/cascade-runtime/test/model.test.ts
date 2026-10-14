@@ -777,7 +777,7 @@ test("the check passes only when the model calls the tool with arguments its sch
 test("a rejected key or a busy model is said plainly, with what to do, and no reply shows the key", async () => {
   const rejected =
     /^Google Gemini rejected the key: check CASCADE_MODEL_KEY in \.env, or run `npm run model` again\./;
-  const cases: [string, number, string, RegExp][] = [
+  const cases: [string, number, string, RegExp, string?][] = [
     ["401", 401, "Incorrect API key", rejected],
     ["403", 403, "Permission denied", rejected],
     ["a 400 naming the key", 400, "API key not valid", rejected],
@@ -794,16 +794,37 @@ test("a rejected key or a busy model is said plainly, with what to do, and no re
       /^m is busy at Google Gemini \(503\): try again in a minute, or choose another model with `npm run model`$/,
     ],
     ["another 400", 400, "Unknown field", /^400 .*Unknown field/],
+    [
+      "a 400 naming a property key",
+      400,
+      `Unknown name "key" at 'tools[0]'`,
+      /^400 .*Unknown name "key"/,
+    ],
+    ["Invalid Auth key", 400, "Invalid Auth key.", rejected],
+    [
+      "529 from Anthropic",
+      529,
+      "overloaded",
+      /^m is busy at Anthropic \(529\): try again/,
+      "anthropic",
+    ],
+    [
+      "503 from a local server",
+      503,
+      "loading",
+      /^m is busy at The model server \(503\): try again/,
+      "local",
+    ],
   ];
-  for (const [what, status, message, expected] of cases) {
+  for (const [what, status, message, expected, provider] of cases) {
     const { url } = await serving(() => ({
       status,
       json: { error: { message: `${message} ${KEY}` } },
     }));
     const seen = await events(
       modelClient({
-        provider: "gemini",
-        url: `${url}/v1`,
+        provider: provider ?? "gemini",
+        url: provider === "anthropic" ? url : `${url}/v1`,
         name: "m",
         key: KEY,
       }),
@@ -813,7 +834,7 @@ test("a rejected key or a busy model is said plainly, with what to do, and no re
     assert.equal(seen[0]!.status, status, what);
     assert.match(said, expected, what);
     assert.ok(!said.includes(KEY), `${what} shows the key`);
-    if (what === "another 400")
+    if (/^(another 400|a 400 naming a property key)$/.test(what))
       assert.doesNotMatch(said, /rejected the key|busy/, what);
   }
 });
@@ -898,8 +919,9 @@ test("a secret shows a bullet for each character it keeps, drops Ctrl+V with a h
   type("\x16");
   type("\x16");
   type("c\x7fd");
+  type("\x1b[D\x1b[3~\x1b[200~e\x1b[201~\x1bOA");
   type("\r");
-  assert.equal(await reading, "abd");
+  assert.equal(await reading, "abde");
   const shown = written.join("");
   assert.equal(shown.split("Ctrl+V does not paste here").length - 1, 1);
   assert.match(
@@ -907,7 +929,7 @@ test("a secret shows a bullet for each character it keeps, drops Ctrl+V with a h
     /\nCtrl\+V does not paste here: right-click, or Ctrl\+Shift\+V in Windows Terminal\n/,
   );
   assert.ok(shown.includes("\b \b"), "Backspace erased nothing");
-  assert.equal([...shown].filter((c) => c === "•").length, 2 + 2 + 2);
+  assert.equal([...shown].filter((c) => c === "•").length, 2 + 2 + 2 + 1);
   assert.ok(
     !written.some((text) => /^[a-d]$/.test(text)),
     "a character showed",

@@ -324,6 +324,9 @@ export async function flow(args, terminal, folder = HERE) {
 const PASTE_HINT =
   "Ctrl+V does not paste here: right-click, or Ctrl+Shift+V in Windows Terminal";
 
+// eslint-disable-next-line no-control-regex
+const KEY_SEQUENCES = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O.)?/g;
+
 /**
  * Reads a line from a terminal in raw mode, echoing a `•` for each character kept so a paste can be seen to land. Ctrl+V
  * arrives as `\x16` where the console does not paste: it is dropped, and said so once.
@@ -341,7 +344,7 @@ export function secret(question, io = { stdin, stdout, exit }) {
       output.write("\n");
     };
     const onData = (chunk) => {
-      for (const character of chunk.toString("utf8")) {
+      for (const character of String(chunk).replace(KEY_SEQUENCES, "")) {
         if (character === "\r" || character === "\n") {
           finish();
           return done(line.join(""));
@@ -363,6 +366,7 @@ export function secret(question, io = { stdin, stdout, exit }) {
         }
       }
     };
+    input.setEncoding?.("utf8");
     input.setRawMode(true);
     input.resume();
     input.on("data", onData);

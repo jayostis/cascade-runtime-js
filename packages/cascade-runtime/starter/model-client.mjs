@@ -100,7 +100,7 @@ export function redact(text, key) {
 /** What a person can do about a refused key or a busy model, in place of the provider's own reply; nothing for any other failure. */
 function advice(status, message, { provider, name }) {
   const label =
-    provider === "other"
+    provider === "other" || provider === "local"
       ? "The model server"
       : (PROVIDERS[provider]?.label ?? provider);
   if (
@@ -109,12 +109,12 @@ function advice(status, message, { provider, name }) {
     (status === 400 && KEYED.test(message))
   )
     return `${label} rejected the key: check CASCADE_MODEL_KEY in .env, or run \`npm run model\` again. ${message}`;
-  if (status === 429 || status === 503)
+  if (status === 429 || status === 503 || status === 529)
     return `${name} is busy at ${label} (${status}): try again in a minute, or choose another model with \`npm run model\``;
   return message;
 }
 
-const KEYED = /\b(api[ _-]?key|auth key|key)\b/i;
+const KEYED = /\b(api[ _-]?key|auth(entication)? key)\b/i;
 
 /**
  * Why a request failed: what a person can do about it where the status says (a rejected key, a busy model), else the
