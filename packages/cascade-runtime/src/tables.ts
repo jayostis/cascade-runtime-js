@@ -484,6 +484,7 @@ export class Tables {
   #started: Promise<void> | undefined;
   #written = 0;
   readonly #listing: Promise<void>[] = [];
+  #listedFromRows = 0;
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -542,26 +543,29 @@ export class Tables {
     });
   }
 
-  /** Starts listing every shipped version not yet listed, so a version the starter copies brought is quick on its first view too. */
+  /** Starts listing every shipped version, which reads a valid listing kept beside it and lists again one that is not valid. */
   async #startListing(): Promise<void> {
-    const kept = new Set(await this.#options.files.list(""));
     for (const [, , version] of (await this.#index()).match(
       undefined,
       SHIPS_WITH,
     ))
-      if (!kept.has(`${stemOf(version.value)}${LISTED}`))
-        this.#listing.push(
-          this.#listed(version.value).then(
-            () => undefined,
-            () => undefined,
-          ),
-        );
+      this.#listing.push(
+        this.#listed(version.value).then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
   }
 
-  /** Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background. */
-  async listing(): Promise<void> {
+  /**
+   * Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background.
+   * The number of versions it listed from their rows: 0 when each came listed, as the starter copies carry them.
+   */
+  async listing(): Promise<number> {
+    const before = this.#listedFromRows;
     await this.#next(() => this.#startListing());
     while (this.#listing.length > 0) await Promise.all(this.#listing.splice(0));
+    return this.#listedFromRows - before;
   }
 
   /**
@@ -1279,6 +1283,7 @@ export class Tables {
         uriSpaces,
       );
       await files.write(path, listed);
+      this.#listedFromRows += 1;
       return JSON.parse(new TextDecoder().decode(listed)) as Listed;
     });
   }
@@ -1559,7 +1564,8 @@ export class Tables {
 
 /**
  * The starter copies: the store a check of the feeds keeps now, each version's rows in it as the feed published them
- * (`PUBLISHED_ROWS`) in place of its N-Triples, so they are carried at their published size.
+ * (`PUBLISHED_ROWS`) in place of its N-Triples, so they are carried at their published size, and its listing for
+ * search beside it, so a new app lists nothing.
  */
 export async function writeStarterCopies(
   options: Pick<TablesOptions, "feeds" | "vocabulary" | "newStore"> & {
@@ -1587,7 +1593,6 @@ export async function writeStarterCopies(
     },
   }).check({ cache: "no-cache" });
   for (const path of await store.list("")) {
-    if (path.endsWith(LISTED)) continue;
     const rows = published.get(path);
     if (rows !== undefined)
       await write(`${path.slice(0, -".ttl".length)}${PUBLISHED_ROWS}`, rows);

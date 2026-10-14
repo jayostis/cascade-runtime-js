@@ -76,8 +76,13 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
             checkedOutcome(checked, await tables.held(), signal.aborted),
         );
       }
-      await phase("Listing the tables' codes for search…", () =>
-        tables.listing(),
+      await phase(
+        "Listing the tables' codes for search…",
+        () => tables.listing(),
+        (listed) =>
+          listed === 0
+            ? "already listed by the package"
+            : `${listed} ${listed === 1 ? "table" : "tables"} listed`,
       );
       return tables;
     });
