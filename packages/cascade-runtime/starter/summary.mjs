@@ -1467,7 +1467,7 @@ export function trendTitle(series, about = new Map()) {
 
 /** One finding as a card: what changed, the means, what was left out, a small chart and the links to its results and trend. */
 function Change({ finding, names, trendHref, ask }) {
-  const { key, kind, direction, unit, before, after, left, rows } = finding;
+  const { key, kind, unit, before, after, left, rows } = finding;
   const id = `change-${slug(key)}`;
   const points = [...rows.before, ...rows.after].map((row) => ({
     time: timeOf(row.performed),
@@ -1481,11 +1481,11 @@ function Change({ finding, names, trendHref, ask }) {
     },
   ];
   const plot = plotOf({ points, marks, size: SMALL });
-  const sentence = CHANGED[kind][direction](names.test, names.medication);
+  const sentence = sentenceOf(finding, names);
   const forgone = leftSaid(left);
   const shown = rows.before.length + rows.after.length + rows.left.length;
   return html`<div class="change">
-<p class="said">${capitalised(sentence)}</p>
+<p class="said">${sentence}</p>
 <p>${rounded(before.mean)} → ${rounded(after.mean)} ${unit}, the mean of ${resultsSaid(before.count)} before and ${after.count} after.</p>
 ${forgone && html`<p class="muted">${forgone}</p>`}
 <${Chart} id=${id} plot=${plot} points=${points} marks=${marks} unit=${unit} title=${names.test} desc="${resultsSaid(points.length)} from ${dayAt(Math.min(...points.map((point) => point.time)))} to ${dayAt(Math.max(...points.map((point) => point.time)))}. ${names.medication} ${kind === "after start" ? "started" : "stopped"} ${day(finding.medication.date)}." />
@@ -1514,9 +1514,11 @@ function changeNames(finding, about) {
 
 /** What a finding says, in the words the page uses for it: its card, its "Ask about this" label and the chat's finding card. */
 export function changeSaid(finding, about = new Map()) {
-  const { test, medication } = changeNames(finding, about);
-  const sentence = CHANGED[finding.kind][finding.direction](test, medication);
-  return capitalised(sentence);
+  return sentenceOf(finding, changeNames(finding, about));
+}
+
+function sentenceOf({ kind, direction }, { test, medication }) {
+  return capitalised(CHANGED[kind][direction](test, medication));
 }
 
 /** The most questions an empty chat offers. */
@@ -3308,6 +3310,7 @@ export function chatStrip(page, budget = 24000) {
     if (target.dataset.chat) {
       chat = chats.find((each) => each.id === target.dataset.chat) ?? chat;
       recent.open = false;
+      fold(false);
       keep();
       return draw();
     }

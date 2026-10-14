@@ -713,7 +713,15 @@ const chatting = chatTools(
     { names: podNames, open: podNamed },
     { viewOf: trendPath, keep: false },
   ),
-  { namesFor: async (pod) => aboutCodes(await answered(pod)) },
+  {
+    namesFor: async (pod) => {
+      const [medications, labs] = await Promise.all([
+        pod.ask(HISTORY),
+        pod.ask(LABS),
+      ]);
+      return aboutCodes({ [HISTORY]: medications, [LABS]: labs });
+    },
+  },
 );
 const packageOf = async (path) =>
   JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));

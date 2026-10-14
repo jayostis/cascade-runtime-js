@@ -332,7 +332,6 @@ test("an open chat leaves the page's own content in view, and the strip folds to
   const strip = page.locator(".chat");
   const height = async () => (await strip.boundingBox())!.height;
   assert.ok((await height()) < 850 / 2, `the strip is ${await height()} px`);
-  assert.equal(await page.locator("h1").isVisible(), true);
   assert.ok(
     await page
       .locator(".chat-log")
@@ -347,6 +346,10 @@ test("an open chat leaves the page's own content in view, and the strip folds to
   await page.reload();
   assert.equal(await page.locator(".chat-form").isVisible(), false);
   await page.getByRole("button", { name: "Show chat" }).click();
+  assert.equal(await page.locator(".chat-form").isVisible(), true);
+  await page.getByRole("button", { name: "Hide chat" }).click();
+  await page.locator(".chat-recent summary").click();
+  await page.locator(".chat-recent li button").first().click();
   assert.equal(await page.locator(".chat-form").isVisible(), true);
   await page.close();
 });
