@@ -323,7 +323,7 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
       ],
     ],
     [
-      "two calls the server gave no index",
+      "two calls the server gave no index, the first with Gemini's thought signature",
       () => ({
         events: [
           delta({
@@ -332,6 +332,7 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
                 id: "a",
                 type: "function",
                 function: { name: "one", arguments: "{}" },
+                extra_content: { google: { thought_signature: "sig" } },
               },
               {
                 id: "b",
@@ -344,7 +345,13 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
         ],
       }),
       [
-        { type: "call", id: "a", name: "one", arguments: "{}" },
+        {
+          type: "call",
+          id: "a",
+          name: "one",
+          arguments: "{}",
+          extra: { google: { thought_signature: "sig" } },
+        },
         { type: "call", id: "b", name: "two", arguments: '{"x":1}' },
         { type: "done", stop: "calls" },
       ],
@@ -426,9 +433,18 @@ test("an OpenAI-compatible request carries the system parts as one message, the 
     {
       role: "assistant",
       content: "",
-      calls: [{ id: "c1", name: "list_pods", arguments: "{}" }],
+      calls: [
+        { id: "c1", name: "list_pods", arguments: "{}" },
+        {
+          id: "c2",
+          name: "list_pods",
+          arguments: "{}",
+          extra: { google: { thought_signature: "sig" } },
+        },
+      ],
     },
     { role: "tool", id: "c1", content: "[]" },
+    { role: "tool", id: "c2", content: "[]" },
   ];
   const tools = [
     {
@@ -468,9 +484,16 @@ test("an OpenAI-compatible request carries the system parts as one message, the 
           type: "function",
           function: { name: "list_pods", arguments: "{}" },
         },
+        {
+          id: "c2",
+          type: "function",
+          function: { name: "list_pods", arguments: "{}" },
+          extra_content: { google: { thought_signature: "sig" } },
+        },
       ],
     },
     { role: "tool", tool_call_id: "c1", content: "[]" },
+    { role: "tool", tool_call_id: "c2", content: "[]" },
   ]);
   assert.deepEqual(groq.tools, [
     {

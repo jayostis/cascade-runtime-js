@@ -145,9 +145,10 @@ const said = (text: string) => ({
 const toolEvents = (events: ChatEvent[]) =>
   events.filter(({ type }) => type === "tool");
 
-test("a question that calls find_changes runs it: the model sees the compact finding, the events carry the finding with the keys of its rows, the page goes in its own context message, and each finding says itself in the app's own sentence", async () => {
+test("a question that calls find_changes runs it: the model sees the compact finding, the events carry the finding with the keys of its rows, the page goes in its own context message, each finding says itself in the app's own sentence, and the call goes back with what the provider attached to it", async () => {
+  const signed = { google: { thought_signature: "sig" } };
   const { model, requests } = fakeModel([
-    calling(call("c1", "find_changes", { pod: STATIN })),
+    calling({ ...call("c1", "find_changes", { pod: STATIN }), extra: signed }),
     reply("LDL was lower after the statin started."),
   ]);
   const events = await chat(model, said("find anything interesting"));
@@ -190,6 +191,10 @@ test("a question that calls find_changes runs it: the model sees the compact fin
   assert.equal(toolMessage.role, "tool");
   assert.ok(toolMessage.content.includes(finding!.key));
   assert.ok(!toolMessage.content.includes('"rows"'));
+  const asked = second!.messages.at(-2) as unknown as {
+    calls: { extra?: unknown }[];
+  };
+  assert.deepEqual(asked.calls[0]!.extra, signed);
 });
 
 test("a finding says itself as the page does: named by what the tables say of its codes", async () => {

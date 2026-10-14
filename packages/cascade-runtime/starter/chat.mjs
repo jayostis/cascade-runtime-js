@@ -380,10 +380,11 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
     messages.push({
       role: "assistant",
       content: said,
-      calls: calls.map(({ id, name, arguments: input }) => ({
+      calls: calls.map(({ id, name, arguments: input, extra }) => ({
         id,
         name,
         arguments: input,
+        ...(extra === undefined ? {} : { extra }),
       })),
     });
     for (const call of calls) {
