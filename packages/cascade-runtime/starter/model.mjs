@@ -6,7 +6,13 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL, URL } from "node:url";
 import { parseArgs } from "node:util";
 import { checkInput, Refusal } from "cascade-runtime";
-import { modelClient, PROVIDERS, redact, SETTINGS } from "./model-client.mjs";
+import {
+  callsMessage,
+  modelClient,
+  PROVIDERS,
+  redact,
+  SETTINGS,
+} from "./model-client.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const USAGE = "usage: npm run model [-- --off]";
@@ -34,23 +40,62 @@ export const CHECK_TOOL = {
   },
 };
 
-/**
- * One real request carrying only `CHECK_TOOL`: passes only when the model calls it with arguments its schema accepts.
- * Resolves `{ ok: true }` or `{ ok: false, reason }`, the reason in the provider's own words where it gave one.
- */
-export async function check(model, { seconds = CHECK_SECONDS } = {}) {
-  const signal = globalThis.AbortSignal.timeout(seconds * 1000);
-  let spoke = false;
+const CHECK_SYSTEM = [
+  "You are being tested on calling a tool. Answer by calling it.",
+];
+
+/** The chat's second round: the call's result goes back, as the chat sends it, and the model must answer without error. */
+async function secondRound(model, messages, call, signal, seconds) {
+  let answered = false;
   for await (const event of model.turn({
-    system: ["You are being tested on calling a tool. Answer by calling it."],
+    system: CHECK_SYSTEM,
     messages: [
-      { role: "user", content: 'Note the word "ready" with the tool.' },
+      ...messages,
+      { role: "tool", id: call.id, content: "Noted: ready." },
     ],
     tools: [CHECK_TOOL],
     signal,
   })) {
     if (event.type === "error")
-      return { ok: false, reason: `the provider said: ${event.message}` };
+      return {
+        ok: false,
+        reason: `it called the tool, but failed once the result went back (the chat's second round): ${event.message}`,
+      };
+    if (event.type === "refused")
+      return {
+        ok: false,
+        reason: `it called the tool, then declined once the result went back: ${event.text}`,
+      };
+    if (event.type === "text" || event.type === "call") answered = true;
+  }
+  if (signal.aborted)
+    return { ok: false, reason: `no answer within ${seconds} seconds` };
+  return answered
+    ? { ok: true }
+    : {
+        ok: false,
+        reason: "it sent no answer once the tool's result went back",
+      };
+}
+
+/**
+ * Two real requests carrying only `CHECK_TOOL`, as the chat makes them: passes only when the model calls it with
+ * arguments its schema accepts, and then answers, without error, the result sent back.
+ * Resolves `{ ok: true }` or `{ ok: false, reason }`, the reason in the provider's own words where it gave one.
+ */
+export async function check(model, { seconds = CHECK_SECONDS } = {}) {
+  const signal = globalThis.AbortSignal.timeout(seconds * 1000);
+  let spoke = false;
+  const messages = [
+    { role: "user", content: 'Note the word "ready" with the tool.' },
+  ];
+  for await (const event of model.turn({
+    system: CHECK_SYSTEM,
+    messages,
+    tools: [CHECK_TOOL],
+    signal,
+  })) {
+    if (event.type === "error") return { ok: false, reason: event.message };
     if (event.type === "refused")
       return { ok: false, reason: `the model declined: ${event.text}` };
     if (event.type === "text") spoke = true;
@@ -62,13 +107,19 @@ export async function check(model, { seconds = CHECK_SECONDS } = {}) {
         };
       try {
         checkInput(CHECK_TOOL.inputSchema, JSON.parse(event.arguments));
-        return { ok: true };
       } catch (error) {
         return {
           ok: false,
           reason: `it called ${CHECK_TOOL.name} with arguments its schema does not accept: ${error.message}`,
         };
       }
+      return secondRound(
+        model,
+        [...messages, callsMessage("", [event])],
+        event,
+        signal,
+        seconds,
+      );
     }
   }
   if (signal.aborted)
@@ -210,12 +261,14 @@ export async function flow(args, terminal, folder = HERE) {
       return 2;
     }
     key = typed = (
-      await terminal.secret("Its key, if it wants one (not shown): ")
+      await terminal.secret(
+        "Its key, if it wants one (a • shows for each character): ",
+      )
     ).trim();
   } else {
     say(`\nMake a key at ${known.key}\n`);
     key = typed = (
-      await terminal.secret("Paste it here (it is not shown): ")
+      await terminal.secret("Paste it here (a • shows for each character): ")
     ).trim();
     if (key === "") {
       complain("No key given; nothing was changed.\n");
@@ -268,35 +321,55 @@ export async function flow(args, terminal, folder = HERE) {
   return 0;
 }
 
-/** Reads a line without echoing it, from a terminal in raw mode. */
-function secret(question) {
-  stdout.write(question);
+const PASTE_HINT =
+  "Ctrl+V does not paste here: right-click, or Ctrl+Shift+V in Windows Terminal";
+
+// eslint-disable-next-line no-control-regex
+const KEY_SEQUENCES = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O.)?/g;
+
+/**
+ * Reads a line from a terminal in raw mode, echoing a `•` for each character kept so a paste can be seen to land. Ctrl+V
+ * arrives as `\x16` where the console does not paste: it is dropped, and said so once.
+ */
+export function secret(question, io = { stdin, stdout, exit }) {
+  const { stdin: input, stdout: output } = io;
+  output.write(question);
   return new Promise((done) => {
-    let line = "";
+    const line = [];
+    let hinted = false;
     const finish = () => {
-      stdin.setRawMode(false);
-      stdin.pause();
-      stdin.off("data", onData);
-      stdout.write("\n");
+      input.setRawMode(false);
+      input.pause();
+      input.off("data", onData);
+      output.write("\n");
     };
     const onData = (chunk) => {
-      for (const character of chunk.toString("utf8")) {
+      for (const character of String(chunk).replace(KEY_SEQUENCES, "")) {
         if (character === "\r" || character === "\n") {
           finish();
-          return done(line);
+          return done(line.join(""));
         }
         if (character === "\x03") {
           finish();
-          exit(130);
+          io.exit(130);
+          return;
         }
-        if (character === "\x7f" || character === "\b")
-          line = line.slice(0, -1);
-        else if (character >= " ") line += character;
+        if (character === "\x16") {
+          if (!hinted)
+            output.write(`\n${PASTE_HINT}\n${"•".repeat(line.length)}`);
+          hinted = true;
+        } else if (character === "\x7f" || character === "\b") {
+          if (line.pop() !== undefined) output.write("\b \b");
+        } else if (character >= " ") {
+          line.push(character);
+          output.write("•");
+        }
       }
     };
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.on("data", onData);
+    input.setEncoding?.("utf8");
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
   });
 }
 
