@@ -64,7 +64,7 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
   );
 });
 
-test("a file written again is read whole as it was or as it is, never cut short, and no half-written file is listed", async () => {
+test("a file written again is read whole as it was or as it is, never cut short, however many readers keep it open, and no half-written file is listed", async () => {
   const files = new FolderFiles(await mkdtemp(join(tmpdir(), "files-")), POD);
   const versions = [1, 2].map((n) =>
     JSON.stringify({ n, rows: "x".repeat(n * 50_000) }),
@@ -82,19 +82,23 @@ test("a file written again is read whole as it was or as it is, never cut short,
       writing = false;
     }
   })();
+  await files.write("held.json.notmine.writing", new Uint8Array());
   const seen = new Set<string | undefined>();
   const listed = new Set<string>();
-  const readers = [0].map(async () => {
+  const readers = [1, 1, 1, 1, 0, 0, 0, 0].map(async (pause) => {
     while (writing) {
       seen.add(text(await files.read("held.json")));
       for (const path of await files.list("")) listed.add(path);
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      if (pause) await new Promise((resolve) => setTimeout(resolve, pause));
     }
   });
   await Promise.all([writer, ...readers]);
   for (const read of seen)
     assert.ok(versions.includes(read ?? ""), "a read was cut short");
-  assert.deepEqual([...listed], ["held.json"]);
+  assert.deepEqual([...listed].sort(), [
+    "held.json",
+    "held.json.notmine.writing",
+  ]);
 });
 
 test("the bytes an app holds are read as a copy, whether a Buffer or a Uint8Array of another realm", async () => {
