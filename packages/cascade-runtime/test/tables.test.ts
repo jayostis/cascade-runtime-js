@@ -152,7 +152,7 @@ function fetchOf(served: Served): typeof fetch {
 
 function tablesOver(
   served: Served,
-  files = new MemoryFiles("urn:test:tables/"),
+  files: Files = new MemoryFiles("urn:test:tables/"),
   vocabulary: Files = parts.vocabulary,
 ): Tables {
   return new Tables({
@@ -989,10 +989,22 @@ test("the kinds an app keeps are those a rule list names and those the vocabular
   assert.deepEqual(genesOf(groups.series), []);
 });
 
-test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others", async () => {
-  const tables = tablesOver(feed);
+test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others, each version's files read once", async () => {
+  const reads: string[] = [];
+  const inner = new MemoryFiles("urn:test:tables/");
+  const counted: Files = {
+    iri: inner.iri,
+    read: (path) => {
+      reads.push(path);
+      return inner.read(path);
+    },
+    write: (path, bytes) => inner.write(path, bytes),
+    list: (folder) => inner.list(folder),
+  };
+  const tables = tablesOver(feed, counted);
   await tables.check();
   const references = await tables.references();
+  assert.equal(await tables.references(), references);
   const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
   const names = feed.catalog.find(
     ([subject, predicate]) =>
@@ -1021,6 +1033,45 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
       subjects(found).length,
   );
   assert.deepEqual(subjects(await references.rows(names, find)), [cvx141]);
+
+  const everything = await references.rows(names);
+  const lines = (rows: readonly Triple[]): string[] =>
+    rows.map((row) => row.map((term) => term.value).join(" ")).sort();
+  assert.deepEqual(
+    lines(
+      await references.rows(names, {
+        ...find,
+        codes: new Set([...subjects(everything), "urn:test:no-rows"]),
+      }),
+    ),
+    lines(everything),
+  );
+  assert.deepEqual(
+    await references.rows(names, { ...find, codes: new Set(["urn:test:x"]) }),
+    [],
+  );
+
+  const before = reads.length;
+  await references.rows(names, find);
+  await references.rows(names, find);
+  assert.deepEqual(
+    reads.slice(before).filter((path) => path.startsWith(fileStem(names))),
+    [],
+  );
+
+  let served = first;
+  const later = new Tables({
+    files: new MemoryFiles("urn:test:tables/"),
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    fetch: (input, init) => fetchOf(served)(input, init),
+  });
+  await later.check();
+  assert.ok(!(await later.references()).isVersion(groups.second));
+  served = feed;
+  await later.check();
+  assert.ok((await later.references()).isVersion(groups.second));
 });
 
 test("rows are found through no index that is unreadable, or was built for a kind found by nothing or by fewer properties: the rows a code finds are among them", async () => {

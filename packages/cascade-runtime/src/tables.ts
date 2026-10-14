@@ -22,7 +22,6 @@ import {
 } from "@cascade-runtime/runtime";
 import {
   gunzipped,
-  indexedRows,
   IN_THIS_THREAD,
   LISTING_FORMAT,
   merged,
@@ -483,7 +482,6 @@ export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
-  readonly #texts = new Map<string, Promise<string>>();
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -491,10 +489,7 @@ export class Tables {
     string,
     Promise<ReadonlyMap<string, readonly string[]>>
   >();
-  readonly #byCode = new Map<
-    string,
-    Promise<Readonly<Record<string, readonly string[]>>>
-  >();
+  #references: Promise<References> | undefined;
   #concepts: Promise<ReadonlyMap<string, string>> | undefined;
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
@@ -639,7 +634,15 @@ export class Tables {
   async references(): Promise<References> {
     await this.#start();
     const { files, vocabulary, newStore } = this.#options;
-    return References.of(new TablesFiles(files, vocabulary), "", newStore);
+    const references = (this.#references ??= References.of(
+      new TablesFiles(files, vocabulary),
+      "",
+      newStore,
+    ));
+    references.catch(() => {
+      if (this.#references === references) this.#references = undefined;
+    });
+    return references;
   }
 
   /** The version of each held series a pod opened now is given. */
@@ -1009,11 +1012,7 @@ export class Tables {
       one: (typeof held)[number],
     ): Promise<WhatClinVarSays> => {
       const index = await this.#codesIn(one.version);
-      const subjects = new Set(
-        codes.flatMap((code) =>
-          Object.hasOwn(index, code) ? index[code]! : [],
-        ),
-      );
+      const subjects = new Set(codes.flatMap((code) => index.get(code) ?? []));
       const [subject, ...others] = subjects;
       const { series, version } = one;
       if (subject === undefined || others.length > 0)
@@ -1125,29 +1124,26 @@ export class Tables {
 
   /**
    * In a version, the row subjects each code finds, as the index `rowsByCode` wrote beside it; when that is missing or
-   * was built for other properties, made from its lines and kept beside it, as a listing is. Made once.
+   * was built for other properties, made from its lines and kept beside it, as a listing is. Read once, by `References`.
    */
-  #codesIn(
+  async #codesIn(
     version: string,
-  ): Promise<Readonly<Record<string, readonly string[]>>> {
-    return once(this.#byCode, version, async () => {
-      const { files, vocabulary, newStore } = this.#options;
-      const [references, { foundBy }] = await Promise.all([
-        this.references(),
-        tableTerms(vocabulary, newStore),
-      ]);
-      const by =
-        foundBy.get(
-          references.kindOf(references.seriesOf(version) ?? "") ?? "",
-        ) ?? [];
-      const path = `${stemOf(version)}${CODES}`;
-      const kept = indexedRows(await files.read(path), by);
-      if (kept !== undefined) return kept;
-      const made = rowsByCode(termsOfRows(await this.#text(version)), by);
-      if (made === undefined) return {};
-      await files.write(path, made);
-      return indexedRows(made, by) ?? {};
-    });
+  ): Promise<ReadonlyMap<string, readonly string[]>> {
+    const { files, vocabulary, newStore } = this.#options;
+    const [references, { foundBy }] = await Promise.all([
+      this.references(),
+      tableTerms(vocabulary, newStore),
+    ]);
+    const by =
+      foundBy.get(
+        references.kindOf(references.seriesOf(version) ?? "") ?? "",
+      ) ?? [];
+    const kept = await references.codes(version, by);
+    if (kept !== undefined) return kept;
+    const made = rowsByCode(termsOfRows(await references.text(version)), by);
+    if (made === undefined) return new Map();
+    await files.write(`${stemOf(version)}${CODES}`, made);
+    return (await references.codes(version, by)) ?? new Map();
   }
 
   /** The current version of each series given that the app holds. */
@@ -1205,11 +1201,9 @@ export class Tables {
     });
   }
 
-  /** A held version's N-Triples, read once: a version's rows never change. */
-  #text(version: string): Promise<string> {
-    return once(this.#texts, version, async () =>
-      new TextDecoder().decode(await this.#rows(version)),
-    );
+  /** A held version's N-Triples, read once, by `References`: a version's rows never change. */
+  async #text(version: string): Promise<string> {
+    return (await this.references()).text(version);
   }
 
   /** A held version's N-Triples as they are kept. */
@@ -1305,8 +1299,9 @@ export class Tables {
   #start(): Promise<void> {
     this.#started ??= (async () => {
       const { files, starter } = this.#options;
-      if (starter === undefined || (await files.read(HELD)) !== undefined)
-        return;
+      const empty = (await files.read(HELD)) === undefined;
+      if (empty) this.#references = undefined;
+      if (starter === undefined || !empty) return;
       const paths = await starter.list("");
       for (const path of [
         ...paths.filter((path) => path !== HELD),
@@ -1323,6 +1318,7 @@ export class Tables {
           );
         else await files.write(path, bytes);
       }
+      this.#references = undefined;
     })().finally(() => {
       this.#started = undefined;
     });
@@ -1477,12 +1473,11 @@ export class Tables {
           ),
       ]);
       await this.#options.files.write(INDEX, ntriples(index.triples));
+      this.#references = undefined;
       if (held !== undefined) {
-        this.#texts.delete(held.value);
         this.#listings.delete(held.value);
         this.#inverses.delete(held.value);
         this.#notations.delete(held.value);
-        this.#byCode.delete(held.value);
         for (const key of this.#merges.keys())
           if (key.split(" ").includes(held.value)) this.#merges.delete(key);
       }

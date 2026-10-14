@@ -4,7 +4,7 @@ import { MemoryFiles, readText } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, type Triple } from "../src/rdf.js";
-import { References, tableTerms } from "../src/references.js";
+import { linesAbout, References, tableTerms } from "../src/references.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
@@ -79,6 +79,20 @@ test("a folder without a file for a version of the vocabulary's rule list reads 
     await ruleCount((await references()).rows(`urn:uuid:${rules}`)),
     0,
   );
+});
+
+test("a subject's lines are found by halving, whether it is first, last, a prefix of another subject or has none", () => {
+  const subjects = ["a", "a/b", "ab", "b", "c"];
+  const lines = subjects
+    .flatMap((subject) => [`<${subject}> <p> "1" .`, `<${subject}> <q> "2" .`])
+    .sort();
+  for (const text of [`${lines.join("\n")}\n`, lines.join("\n")])
+    for (const subject of [...subjects, "", "a/", "aa", "d", "0"])
+      assert.deepEqual(
+        linesAbout(text, subject),
+        lines.filter((line) => line.startsWith(`<${subject}> `)),
+        subject,
+      );
 });
 
 test("the table terms hold one code system for each the vocabulary's records file registers, with its label and its URI space", async () => {
