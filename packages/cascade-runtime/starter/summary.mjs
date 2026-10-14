@@ -2163,17 +2163,18 @@ ${boxes}
  * A whole page: `layout` in a document titled `title`, with the stylesheet and the page's script. `refresh` makes the
  * page reload itself every second. Render it to a string after `<!doctype html>`.
  */
-export function frame({ title, refresh, ...shown }) {
+export function frame({ title, refresh, chat, ...shown }) {
   return html`<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 ${refresh && html`<meta http-equiv="refresh" content="1" />`}
 <title>${title} · Cascade</title>
-<style dangerouslySetInnerHTML=${{ __html: STYLE }}></style>
+<style dangerouslySetInnerHTML=${{ __html: STYLE + (chat === undefined ? "" : CHAT_STYLE) }}></style>
 </head>
 <body>
 ${layout(shown)}
+${chat !== undefined && html`<${Chat} ...${chat} />`}
 ${doing()}
 <script dangerouslySetInnerHTML=${{ __html: SCRIPT }}></script>
 </body>
@@ -2183,6 +2184,33 @@ ${doing()}
 /** What a page says while it is busy: a spinner and `said`, one line; hidden while `said` is undefined. */
 export function doing(said) {
   return html`<p class="doing" role="status" hidden=${said === undefined}><span class="spinner" aria-hidden="true"></span><span class="said">${said}</span></p>`;
+}
+
+/**
+ * The chat strip at the bottom of a page, which `chatStrip` fills in the browser. `model` is `{ provider, name, local }`
+ * of the model the app was set up with, or nothing, when the strip only says how to set one; `pod` the name of the pod
+ * the page is about, or ""; `suggestions` the questions offered in an empty chat, as texts.
+ */
+export function Chat({ model, pod, suggestions = [] }) {
+  if (!model)
+    return html`<section class="chat" aria-label="Chat"><p class="chat-off">To chat with a model about these pods, run <code>npm run model</code>.</p></section>`;
+  return html`<section class="chat" aria-label="Chat" data-pod=${pod}>
+<div class="chat-bar">
+<strong>Chat</strong>
+<span class="muted">${model.name}${model.local ? ", on this computer" : `, from ${model.provider}`}</span>
+<details class="chat-recent"><summary>Recent chats</summary><ul></ul></details>
+<button type="button" class="quiet chat-new">New chat</button>
+</div>
+<div class="chat-log" role="log" aria-live="polite" hidden></div>
+<div class="chat-chips" hidden>
+${suggestions.map((text) => html`<button type="button" class="quiet" data-ask-text=${text}>${text}</button>`)}
+</div>
+<form class="chat-form">
+<input name="text" autocomplete="off" aria-label="Ask a question" placeholder=${pod === "" ? "Ask about your pods" : "Ask about this pod"} />
+<button type="submit" class="chat-send">Send</button>
+<button type="button" class="quiet chat-stop" hidden>Stop</button>
+</form>
+</section>`;
 }
 
 /** The page when there is no pod yet. */
@@ -2826,6 +2854,34 @@ form.inline { display: inline; }
 body[data-state="busy"] { cursor: progress; }
 `;
 
+/** The chat strip's styles, from `STYLE`'s colours so dark mode follows; a page that has a strip gets them after `STYLE`. */
+export const CHAT_STYLE = `
+.chat { position: sticky; bottom: 0; z-index: 8; background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
+.chat [hidden] { display: none; }
+.chat-off { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.chat-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
+.chat-bar .chat-new { margin-left: auto; padding: 0.15rem 0.7rem; }
+.chat-recent { position: relative; font-size: 0.9rem; }
+.chat-recent summary { cursor: pointer; color: var(--accent); }
+.chat-recent ul { position: absolute; bottom: calc(100% + 0.35rem); left: 0; z-index: 10; min-width: 16rem; max-height: 14rem; overflow: auto; list-style: none; margin: 0; padding: 0.3rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); }
+.chat-recent li button { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); border-color: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-recent li button:hover { background: var(--soft); }
+.chat-recent li.empty { padding: 0.3rem 0.6rem; color: var(--muted); }
+.chat-log { max-height: 42vh; overflow: auto; margin: 0 0 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-log .you { align-self: flex-end; max-width: 80%; background: var(--tint); border-radius: 10px; padding: 0.3rem 0.8rem; white-space: pre-wrap; }
+.chat-log .model { white-space: pre-wrap; }
+.chat-log .stopped { color: var(--muted); font-size: 0.9rem; }
+.chat-log .refused { border-left: 3px solid var(--accent); background: var(--soft); padding: 0.4rem 0.8rem; border-radius: 0 7px 7px 0; }
+.chat-log .failed { border-left: 3px solid var(--warm); background: var(--warm-bg); color: var(--warm); padding: 0.4rem 0.8rem; border-radius: 0 7px 7px 0; }
+.chat-log .card { margin: 0; padding: 0.7rem 0.9rem; background: var(--page); }
+.chat-log .card p { margin: 0.15rem 0; }
+.chat-log .card ul { list-style: none; margin: 0.4rem 0; padding: 0; max-height: 9rem; overflow: auto; font-size: 0.9rem; }
+.chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.5rem; }
+.chat-chips button { font-size: 0.85rem; padding: 0.15rem 0.7rem; border-radius: 999px; }
+.chat-form { display: flex; gap: 0.5rem; }
+.chat-form input { flex: 1; min-width: 0; }
+`;
+
 /**
  * On the document `page`: a click anywhere but on an open menu's own name closes that menu; Escape closes an open menu,
  * and follows the open box's own close link. The listeners are added once however often this runs on the page.
@@ -2904,5 +2960,278 @@ export function busyForms(page) {
   });
 }
 
-/** `closing`, `sortAndFilter` and `busyForms` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);`;
+/**
+ * On the document `page`, rendered to a string: the chat strip (`Chat`) talks to `POST /chat`. Chats are kept by the
+ * browser in `localStorage` as `{ id, pod, title, context?, messages, updated }`, each under the pod it is about; the
+ * open chat's ID is in `sessionStorage` under `cascade.chat.open`, so the page an `open` moves the app to reopens it.
+ * A message is `{ role: "user" | "assistant", content, findings?, kind? }`; only `user` and `assistant` text without a
+ * `kind` (a refusal or an error, which the model did not say) is sent, the newest within `budget` characters. Any
+ * element with `data-ask` (a JSON context) starts a new chat with that context, and one with `data-ask-text` sends its
+ * text as typed. The listeners are added once.
+ */
+export function chatStrip(page, budget = 24000) {
+  const strip = page.querySelector(".chat[data-pod]");
+  if (!strip || strip.ready) return;
+  strip.ready = true;
+  const win = page.defaultView;
+  const pod = strip.dataset.pod;
+  const log = strip.querySelector(".chat-log");
+  const chips = strip.querySelector(".chat-chips");
+  const input = strip.querySelector("input");
+  const send = strip.querySelector(".chat-send");
+  const stop = strip.querySelector(".chat-stop");
+  const recent = strip.querySelector(".chat-recent");
+  const SAVED = "cascade.chats";
+  const OPEN = "cascade.chat.open";
+  const ENTRIES = 30;
+  const podOf = (address) => {
+    const at = /^\/pods\/([^/]+)\//.exec(address);
+    return at ? decodeURIComponent(at[1]) : "";
+  };
+  const storing = (action) => {
+    try {
+      return action();
+    } catch {
+      return undefined;
+    }
+  };
+  const load = () => {
+    const saved = storing(() => JSON.parse(win.localStorage.getItem(SAVED)));
+    return Array.isArray(saved) ? saved : [];
+  };
+  const fresh = (context) => ({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    pod,
+    title: "",
+    ...(context === undefined ? {} : { context }),
+    messages: [],
+    updated: Date.now(),
+  });
+  let chats = load();
+  const opened = storing(() => win.sessionStorage.getItem(OPEN));
+  let chat =
+    chats.find((each) => each.id === opened && each.pod === pod) ?? fresh();
+  let running;
+
+  const keep = () => {
+    chat.updated = Date.now();
+    chats = [chat, ...load().filter((each) => each.id !== chat.id)]
+      .filter((each) => each.messages.length > 0)
+      .sort((a, b) => b.updated - a.updated)
+      .slice(0, ENTRIES);
+    storing(() => {
+      win.localStorage.setItem(SAVED, JSON.stringify(chats));
+      win.sessionStorage.setItem(OPEN, chat.id);
+    });
+  };
+  const make = (tag, className, text) => {
+    const made = page.createElement(tag);
+    if (className) made.className = className;
+    if (text !== undefined) made.textContent = text;
+    return made;
+  };
+  const round = (number) => Math.round(number * 10) / 10;
+  const side = (name, each, unit) =>
+    each.count === 0
+      ? `${name}: no results`
+      : `${name}: mean ${round(each.mean)} ${unit} over ${each.count} ${each.count === 1 ? "result" : "results"} (${round(each.min)} to ${round(each.max)})`;
+  const card = (finding) => {
+    const made = make("div", "card");
+    const test =
+      finding.test.name ?? finding.test.notation ?? finding.test.code;
+    const change = { up: "higher", down: "lower" }[finding.direction];
+    made.append(
+      make(
+        "p",
+        "said",
+        change === undefined
+          ? `${test}: not enough results around ${finding.medication.name}`
+          : `${test}: ${change} ${finding.kind === "after start" ? "after starting" : "after stopping"} ${finding.medication.name}`,
+      ),
+      make("p", "muted", side("Before", finding.before, finding.unit)),
+      make("p", "muted", side("After", finding.after, finding.unit)),
+    );
+    const base = finding.view.replace(/trend\?.*$/, "");
+    const rows = make("ul");
+    for (const row of finding.rows) {
+      const item = make("li");
+      const link = make(
+        "a",
+        "",
+        `${row.performed.slice(0, 10)}: ${row.value} ${row.unit}`,
+      );
+      link.href = `${base}entries/${encodeURIComponent(row.entry)}`;
+      item.append(link, " ", make("span", "tag", row.side));
+      rows.append(item);
+    }
+    const open = make("button", "quiet", "Open the trend");
+    open.type = "button";
+    open.dataset.open = finding.view;
+    made.append(rows, open);
+    return made;
+  };
+  const view = (message) => {
+    if (message.role === "user") return make("div", "you", message.content);
+    if (message.kind)
+      return make(
+        "div",
+        message.kind === "refused" ? "refused" : "failed",
+        (message.kind === "refused" ? "The model declined: " : "No answer: ") +
+          message.content,
+      );
+    const made = make("div", "model", message.content);
+    for (const finding of message.findings ?? []) made.append(card(finding));
+    if (message.stopped) made.append(make("div", "stopped", "Stopped."));
+    return made;
+  };
+  const draw = () => {
+    log.replaceChildren(...chat.messages.map(view));
+    log.hidden = chat.messages.length === 0;
+    chips.hidden = chat.messages.length > 0 || chips.children.length === 0;
+    log.scrollTop = log.scrollHeight;
+    send.hidden = running !== undefined;
+    stop.hidden = running === undefined;
+    const list = recent.querySelector("ul");
+    const here = chats.filter((each) => each.pod === pod);
+    list.replaceChildren(
+      ...(here.length === 0
+        ? [make("li", "empty", "No chats yet")]
+        : here.map((each) => {
+            const item = make("li");
+            const button = make("button", "", each.title);
+            button.type = "button";
+            button.dataset.chat = each.id;
+            item.append(button);
+            return item;
+          })),
+    );
+  };
+  const go = (address) => {
+    chat.pod = podOf(address);
+    keep();
+    win.location.assign(address);
+  };
+  const wire = () => {
+    const kept = [];
+    let characters = 0;
+    for (const message of chat.messages.slice(0, -1).reverse()) {
+      if (message.kind || !message.content) continue;
+      characters += message.content.length;
+      if (characters > budget && kept.length > 0) break;
+      kept.unshift({ role: message.role, content: message.content });
+    }
+    while (kept[0]?.role === "assistant") kept.shift();
+    return kept.slice(-100);
+  };
+  const note = (kind, content) =>
+    chat.messages.push({ role: "assistant", kind, content });
+
+  async function ask(text) {
+    text = text.trim();
+    if (text === "" || running) return;
+    chat.title ||= text.slice(0, 60);
+    chat.messages.push({ role: "user", content: text });
+    const answer = { role: "assistant", content: "" };
+    chat.messages.push(answer);
+    running = new win.AbortController();
+    keep();
+    draw();
+    let moveTo;
+    const handle = (event) => {
+      if (event.type === "delta") answer.content += event.text;
+      else if (event.type === "tool") {
+        if (event.findings)
+          answer.findings = [...(answer.findings ?? []), ...event.findings];
+        if (event.open) moveTo = event.open;
+      } else if (event.type === "refused") note("refused", event.text);
+      else if (event.type === "error") note("error", event.message);
+    };
+    try {
+      const response = await win.fetch("/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: running.signal,
+        body: JSON.stringify({
+          pod: chat.pod,
+          page: win.location.pathname + win.location.search,
+          messages: wire(),
+          ...(chat.context === undefined ? {} : { context: chat.context }),
+        }),
+      });
+      if (!response.ok)
+        note(
+          "error",
+          (await response.json().catch(() => ({}))).error ??
+            `the app answered ${response.status}`,
+        );
+      else {
+        const reader = response.body.getReader();
+        const decoder = new win.TextDecoder();
+        let pending = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          pending += decoder.decode(value, { stream: true });
+          const lines = pending.split("\n");
+          pending = lines.pop();
+          for (const line of lines)
+            if (line !== "") {
+              handle(JSON.parse(line));
+              draw();
+            }
+        }
+      }
+    } catch (error) {
+      if (error.name === "AbortError") answer.stopped = true;
+      else note("error", `the app could not be reached: ${error.message}`);
+    }
+    running = undefined;
+    if (answer.content === "" && !answer.findings && !answer.stopped)
+      chat.messages.splice(chat.messages.indexOf(answer), 1);
+    keep();
+    draw();
+    if (moveTo) go(moveTo);
+    else input.focus();
+  }
+
+  const begin = (context) => {
+    chat = fresh(context);
+    storing(() => win.sessionStorage.removeItem(OPEN));
+    draw();
+    input.focus();
+  };
+  strip.querySelector("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = input.value;
+    input.value = "";
+    ask(text);
+  });
+  page.addEventListener("click", (event) => {
+    const target = event.target.closest?.(
+      "[data-ask], [data-ask-text], [data-open], [data-chat], .chat-new, .chat-stop",
+    );
+    if (!target) return;
+    if (target.matches(".chat-stop")) return running?.abort();
+    if (running) return;
+    if (target.matches(".chat-new")) return begin();
+    if (target.dataset.open) return go(target.dataset.open);
+    if (target.dataset.chat) {
+      chat = chats.find((each) => each.id === target.dataset.chat) ?? chat;
+      recent.open = false;
+      keep();
+      return draw();
+    }
+    if (target.dataset.ask !== undefined) {
+      try {
+        begin(JSON.parse(target.dataset.ask));
+      } catch {
+        return;
+      }
+    }
+    if (target.dataset.askText !== undefined) ask(target.dataset.askText);
+  });
+  draw();
+}
+
+/** `closing`, `sortAndFilter`, `busyForms` and `chatStrip` as a page's inline script, over the whole document. */
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);(${chatStrip})(document);`;

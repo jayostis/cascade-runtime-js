@@ -21,6 +21,7 @@ import {
 import { render } from "preact-render-to-string";
 import { chatRoute, chatTools, entryPath } from "./chat.mjs";
 import { hospitalsAt } from "./hospitals.mjs";
+import { modelFrom } from "./model-client.mjs";
 import {
   deleteAll,
   KITS,
@@ -157,6 +158,15 @@ async function page(
       menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
       note,
       refresh,
+      chat: {
+        model: model && {
+          provider: model.provider,
+          name: model.name,
+          local: model.local,
+        },
+        pod: current ?? "",
+        suggestions: [],
+      },
       tables: {
         series: sourcesOf(held),
         current: table,
@@ -645,26 +655,21 @@ const demo = await loadHospitals();
 const people = demoPeople(demo);
 
 /**
- * The model the app was set up with (`npm run model`), or none. The one place the model client is reached; a client
- * not yet there means no model is set.
+ * The model the app was set up with (`npm run model`), or none. A setting the client refuses is said on the console and
+ * the app runs without a model.
  */
-async function modelSet() {
-  let client;
+function modelSet() {
   try {
-    client = await import("./model-client.mjs");
+    return modelFrom();
   } catch (error) {
-    if (
-      error.code === "ERR_MODULE_NOT_FOUND" &&
-      error.message.startsWith("Cannot find module") &&
-      error.message.includes("model-client.mjs")
-    )
-      return undefined;
-    throw error;
+    if (!(error instanceof Refusal)) throw error;
+    stderr.write(`No model is used: ${error.message}
+`);
+    return undefined;
   }
-  return client.modelFrom();
 }
 
-const model = await modelSet();
+const model = modelSet();
 /** The tools the chat reaches, over the pods this server holds open. */
 const chatting = chatTools(
   podTools(
