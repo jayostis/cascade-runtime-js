@@ -69,6 +69,8 @@ jobs:
     name: browser
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
+    env:
+      CASCADE_ROWS_CACHE: ${{ github.workspace }}/cascade-runtime-js/.rows-cache
     # The start action's comment on the pull request is the tests job's to post.
     permissions:
       contents: read
@@ -90,6 +92,17 @@ jobs:
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
+      # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
+      # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
+      - id: rows
+        uses: actions/cache/restore@v6
+        with:
+          path: cascade-runtime-js/.rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: table-rows-${{ runner.os }}-
+      - id: rows-before
+        shell: bash
+        run: echo "hash=${{ hashFiles('cascade-runtime-js/.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
       - name: Pack the package, whose browser build try/ serves
         if: ${{ !cancelled() }}
         run: npm run build:package
@@ -102,6 +115,11 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/cache/save@v6
+        if: ${{ !cancelled() && hashFiles('cascade-runtime-js/.rows-cache/**') != '' && hashFiles('cascade-runtime-js/.rows-cache/**') != steps.rows-before.outputs.hash }}
+        with:
+          path: cascade-runtime-js/.rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
       # Every test launches the headless shell and nothing launches the full Chrome, so only the shell is installed and kept.
       - id: playwright
         if: ${{ !cancelled() }}
@@ -175,6 +193,8 @@ jobs:
     name: build-pages
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    env:
+      CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
     steps:
       - uses: actions/checkout@v7
         with:
@@ -184,6 +204,17 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
+      # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
+      - id: rows
+        uses: actions/cache/restore@v6
+        with:
+          path: .rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: table-rows-${{ runner.os }}-
+      - id: rows-before
+        shell: bash
+        run: echo "hash=${{ hashFiles('.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
       - name: Pack the package, whose browser build try/ serves
         run: npm run build:package
         env:
@@ -192,6 +223,11 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/cache/save@v6
+        if: ${{ !cancelled() && hashFiles('.rows-cache/**') != '' && hashFiles('.rows-cache/**') != steps.rows-before.outputs.hash }}
+        with:
+          path: .rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build/pages
@@ -273,6 +309,8 @@ jobs:
     name: launcher
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    env:
+      CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
@@ -283,6 +321,17 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
+      # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
+      - id: rows
+        uses: actions/cache/restore@v6
+        with:
+          path: .rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: table-rows-${{ runner.os }}-
+      - id: rows-before
+        shell: bash
+        run: echo "hash=${{ hashFiles('.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
       - name: Pack the package, whose browser build try/ serves
         run: npm run build:package
         env:
@@ -291,6 +340,11 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/cache/save@v6
+        if: ${{ !cancelled() && hashFiles('.rows-cache/**') != '' && hashFiles('.rows-cache/**') != steps.rows-before.outputs.hash }}
+        with:
+          path: .rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
       - run: npx playwright install --with-deps chromium
       - run: npm run test:launcher
 
@@ -300,6 +354,8 @@ jobs:
   package:
     name: package
     runs-on: ubuntu-latest
+    env:
+      CASCADE_ROWS_CACHE: ${{ github.workspace }}/cascade-runtime-js/.rows-cache
     defaults:
       run:
         working-directory: cascade-runtime-js
@@ -318,6 +374,17 @@ jobs:
         uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
+      # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
+      # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
+      - id: rows
+        uses: actions/cache/restore@v6
+        with:
+          path: cascade-runtime-js/.rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: table-rows-${{ runner.os }}-
+      - id: rows-before
+        shell: bash
+        run: echo "hash=${{ hashFiles('cascade-runtime-js/.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
       - if: ${{ github.event_name == 'pull_request' }}
         run: npm run build:package
         env:
@@ -327,6 +394,11 @@ jobs:
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/cache/save@v6
+        if: ${{ !cancelled() && hashFiles('cascade-runtime-js/.rows-cache/**') != '' && hashFiles('cascade-runtime-js/.rows-cache/**') != steps.rows-before.outputs.hash }}
+        with:
+          path: cascade-runtime-js/.rows-cache
+          key: table-rows-${{ runner.os }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v7
         with:
           name: package
