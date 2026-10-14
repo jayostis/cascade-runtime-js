@@ -298,12 +298,43 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
       `<button id="asker" data-ask='{"kind":"entry","id":"x"}' data-ask-label="Lisinopril">Ask about this</button>`,
     );
   });
+  const sent = page.waitForRequest("**/chat");
   await page.locator("#asker").click();
+  const body = (await sent).postDataJSON();
+  assert.deepEqual(body.context, { kind: "entry", id: "x" });
+  assert.deepEqual(body.messages, [
+    { role: "user", content: "What is this, and where did it come from?" },
+  ]);
   assert.equal(
     await page.locator(".chat-about").textContent(),
     "About: Lisinopril",
   );
   assert.equal(await page.locator(".chat-chips").isHidden(), true);
+  assert.equal(
+    await page.locator(".chat-log .you").textContent(),
+    "What is this, and where did it come from?",
+  );
+  await page.locator(".chat-log .model").waitFor();
+  assert.match(
+    (await page.locator(".chat-log .model").textContent()) ?? "",
+    /^Here it is\./,
+  );
+
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="asker" data-ask='{"kind":"entry","id":"y"}' data-ask-label="Aspirin">Ask about this</button>`,
+    );
+  });
+  let requests = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/chat")) requests += 1;
+  });
+  await page.locator("#asker").dblclick();
+  await page.locator(".chat-log .model").waitFor();
+  await page.locator(".chat-send:not([hidden])").waitFor();
+  assert.equal(requests, 1);
   await page.close();
 });
 
@@ -329,12 +360,10 @@ const openOnLongAnswer = async (width: number, height: number) => {
   await page.evaluate((text) => {
     document.body.insertAdjacentHTML(
       "beforeend",
-      `<button id="asker" data-ask='{"kind":"entry","id":"x"}' data-ask-label="${text}">Ask about this</button>`,
+      `<button id="asker" data-ask='{"kind":"finding","key":"x"}' data-ask-label="${text}">Ask about this</button>`,
     );
   }, label);
   await page.locator("#asker").click();
-  await page.getByLabel("Ask a question").fill("say a lot");
-  await page.getByRole("button", { name: "Send" }).click();
   await page.locator(".chat-send:not([hidden])").waitFor();
   return { page, label };
 };
