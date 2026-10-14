@@ -2411,6 +2411,15 @@ test("Ask about this: with a model set, each What changed card and each Worth a 
   assert.deepEqual(asksOf(draw()), []);
   assert.doesNotMatch(draw(), /Ask about this/);
   const asked = asksOf(draw(true));
+  const buttons = [
+    ...draw(true).matchAll(/<button [^>]*data-ask="[^>]*>(.*?)<\/button>/g),
+  ];
+  assert.equal(buttons.length, asked.length);
+  for (const [button, inside] of buttons) {
+    assert.match(button, /title="Ask about this"/);
+    assert.match(button, /aria-label="Ask about this: [^"]+"/);
+    assert.equal(inside!.replace(/<svg.*<\/svg>/, ""), "");
+  }
   assert.deepEqual(
     asked.filter(({ kind }) => kind === "finding"),
     [{ kind: "finding", key: finding!.key }],

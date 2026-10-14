@@ -516,7 +516,7 @@ export function worthPart(lines, entryHref, ask) {
  * its tools. `label` says which one to a screen reader.
  */
 function askButton(context, label) {
-  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} data-ask-label=${label} aria-label=${`Ask about this: ${label}`}>Ask about this</button>`;
+  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} data-ask-label=${label} title="Ask about this" aria-label=${`Ask about this: ${label}`}><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 20.5l1.5-4.9A8 8 0 1 1 21 12z" /></svg></button>`;
 }
 
 /** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
@@ -2919,12 +2919,18 @@ body[data-state="busy"] { cursor: progress; }
 
 /** The chat strip's styles, from `STYLE`'s colours so dark mode follows; a page that has a strip gets them after `STYLE`. */
 export const CHAT_STYLE = `
-.chat { position: sticky; bottom: 0; z-index: 8; display: flex; flex-direction: column; max-height: 33vh; background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
+.chat { position: sticky; bottom: 0; z-index: 8; display: flex; flex-direction: column; max-height: max(33vh, 15rem); background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
 .chat [hidden] { display: none; }
 .chat-off { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .chat-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
 .chat > * { flex: none; }
 .chat > .chat-log, .chat > .chat-chips { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.chat > .chat-log { min-height: 4rem; }
+.chat-about { margin: 0 0 0.4rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+@media (max-width: 46rem) {
+  .chat-bar { gap: 0.25rem 0.75rem; }
+  .chat-about { -webkit-line-clamp: 1; line-clamp: 1; }
+}
 .chat[data-folded="true"] > :not(.chat-bar) { display: none; }
 .chat[data-folded="true"] .chat-bar { margin: 0; }
 .chat-bar .chat-new { margin-left: auto; }
@@ -2946,7 +2952,11 @@ export const CHAT_STYLE = `
 .chat-log .card ul { list-style: none; margin: 0.4rem 0; padding: 0; max-height: 9rem; overflow: auto; font-size: 0.9rem; }
 .chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.5rem; }
 .chat-chips button { font-size: 0.85rem; padding: 0.15rem 0.7rem; border-radius: 999px; }
-button.ask { font-size: 0.85rem; padding: 0.1rem 0.6rem; }
+button.ask { position: relative; font-size: inherit; line-height: 1; padding: 0.15em 0.3em; border-color: transparent; vertical-align: middle; }
+button.ask svg { display: block; width: 1.1em; height: 1.1em; }
+button.ask:hover { background: var(--panel); border-color: var(--line); }
+@media (pointer: coarse) { button.ask::after { content: ""; position: absolute; inset: -6px -8px; } }
+button.ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-form { display: flex; gap: 0.5rem; }
 .chat-form input { flex: 1; min-width: 0; }
 `;
@@ -3083,6 +3093,10 @@ export function chatStrip(page, budget = 24000) {
   let chat =
     chats.find((each) => each.id === opened && each.pod === pod) ?? fresh();
   let running;
+  let turn;
+  let taken = false;
+  for (const kind of ["wheel", "touchmove", "pointerdown", "keydown"])
+    log.addEventListener(kind, () => (taken = true), { passive: true });
 
   const toggle = strip.querySelector(".chat-fold");
   const fold = (folded) => {
@@ -3168,11 +3182,25 @@ export function chatStrip(page, budget = 24000) {
     log.hidden = chat.messages.length === 0;
     about.hidden = chat.context === undefined;
     about.textContent = about.hidden ? "" : `About: ${chat.label}`;
+    about.title = about.textContent;
     chips.hidden =
       chat.messages.length > 0 ||
       chat.context !== undefined ||
       chips.children.length === 0;
-    log.scrollTop = log.scrollHeight;
+    const at = turn ?? chat.messages.findLastIndex((m) => m.role === "user");
+    const asked = at < 0 ? undefined : log.children[at];
+    if (asked === undefined) log.scrollTop = log.scrollHeight;
+    else if (!taken) {
+      const answer = log.children[at + 1] ?? asked;
+      const room = log.clientHeight;
+      const start =
+        answer.getBoundingClientRect().top - asked.getBoundingClientRect().top >
+        room * 0.75
+          ? answer
+          : asked;
+      log.scrollTop +=
+        start.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    }
     send.hidden = running !== undefined;
     stop.hidden = running === undefined;
     const list = recent.querySelector("ul");
@@ -3215,6 +3243,8 @@ export function chatStrip(page, budget = 24000) {
     if (text === "" || running) return;
     fold(false);
     chat.title ||= text.slice(0, 60);
+    turn = chat.messages.length;
+    taken = false;
     chat.messages.push({ role: "user", content: text });
     const answer = { role: "assistant", content: "" };
     chat.messages.push(answer);
@@ -3281,6 +3311,7 @@ export function chatStrip(page, budget = 24000) {
       chat.messages.splice(chat.messages.indexOf(answer), 1);
     keep();
     draw();
+    turn = undefined;
     if (moveTo) go(moveTo);
     else input.focus();
   }
@@ -3312,6 +3343,7 @@ export function chatStrip(page, budget = 24000) {
     if (target.dataset.chat) {
       chat = chats.find((each) => each.id === target.dataset.chat) ?? chat;
       recent.open = false;
+      taken = false;
       fold(false);
       keep();
       return draw();
