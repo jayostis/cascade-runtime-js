@@ -10,7 +10,7 @@ import {
   Refusal,
   timelineIn,
 } from "cascade-runtime";
-import { KITS, podPath, trendPath } from "./pods.mjs";
+import { podPath, trendPath } from "./pods.mjs";
 import { withPod } from "./pod-tools.mjs";
 import {
   entryId,
@@ -48,17 +48,16 @@ const isObject = (value) =>
 /**
  * The body of `POST /chat`: `pod` (the name of the pod the page is about, or "" for none), `page` (its address),
  * `messages` (what the person and the model said, `user` and `assistant` text only, the last the person's),
- * optionally `context` (what an "Ask about this" is about) and `confirmed` (the pods the person has allowed a hosted
- * model to be asked about).
+ * optionally `context` (what an "Ask about this" is about).
  *
  * @throws Refusal saying what is wrong.
  */
 export function checkBody(body) {
   if (!isObject(body)) throw new Refusal("the body must be a JSON object");
   for (const key of Object.keys(body))
-    if (!["pod", "page", "messages", "context", "confirmed"].includes(key))
+    if (!["pod", "page", "messages", "context"].includes(key))
       throw new Refusal(`${key} is not a property of the body`);
-  const { pod, page, messages, context, confirmed = [] } = body;
+  const { pod, page, messages, context } = body;
   if (typeof pod !== "string" || pod.length > 200)
     throw new Refusal("pod must be a pod's name, or an empty string for none");
   if (typeof page !== "string" || !page.startsWith("/") || page.length > 2000)
@@ -93,18 +92,11 @@ export function checkBody(body) {
     throw new Refusal(
       `context must be an object of at most ${MAX_CONTEXT} characters`,
     );
-  if (
-    !Array.isArray(confirmed) ||
-    confirmed.length > 100 ||
-    !confirmed.every((each) => typeof each === "string")
-  )
-    throw new Refusal("confirmed must be a list of pod names");
   return {
     pod,
     page,
     messages: messages.map(({ role, content }) => ({ role, content })),
     ...(context === undefined ? {} : { context }),
-    confirmed,
   };
 }
 
@@ -219,12 +211,11 @@ const OPEN_TOOLS = [
 const text = (value) => ({ text: value, isError: true });
 
 /**
- * The tools a chat reaches: `shared` is `podTools(...)`, `demoNames` the names of the demo hospitals. `specs` is what
- * the model is told of them. A `session` runs them for one chat, as a model at `local` (a loopback address) or not
- * and with the pods the person `confirmed` it may be asked about. A hosted model is not sent a person's own pod, nor
- * its name, until it is confirmed; a made-up one, an example or story pod, it is.
+ * The tools a chat reaches: `shared` is `podTools(...)`. `specs` is what the model is told of them; `run(name,
+ * rawArguments)` runs one call of the model and gives `{ text, isError, value, findings?, open? }`. Input the rules
+ * refuse is `isError`, for the model to read; nothing here throws for it.
  */
-export function chatTools(shared, { demoNames }) {
+export function chatTools(shared) {
   const tools = [...shared.tools, ...OPEN_TOOLS].map((tool) => ({
     ...tool,
     inputSchema: withPod(tool),
@@ -242,122 +233,61 @@ export function chatTools(shared, { demoNames }) {
     })),
   ];
 
-  function session({ local, confirmed = [] }) {
-    const allowed = new Set(confirmed);
-    const made = new Map();
-
-    /** Made up: an example pod, or one that holds records and every one came from a demo hospital. */
-    function madeUp(name) {
-      if (KITS.includes(name)) return true;
-      if (!made.has(name))
-        made.set(
-          name,
-          shared
-            .podNamed(name)
-            .then((pod) => pod.ask(SOURCES))
-            .then(
-              (rows) =>
-                rows.length > 0 &&
-                rows.every(({ hospital }) => demoNames.has(hospital)),
-            ),
-        );
-      return made.get(name);
-    }
-
-    const needsConfirmation = async (name) =>
-      !local && !allowed.has(name) && !(await madeUp(name));
-
-    async function visible() {
-      const names = await shared.names();
-      if (local) return names;
-      const shown = await Promise.all(
-        names.map(async (name) => !(await needsConfirmation(name))),
-      );
-      return names.filter((_, at) => shown[at]);
-    }
-
-    async function runTool(tool, input) {
-      const { pod: name, ...rest } = input;
-      if (!(await shared.names()).includes(name)) {
-        const names = await visible();
-        throw new Refusal(
-          names.length === 0
-            ? `there is no pod ${name}, and no pod at all`
-            : `there is no pod ${name}; the pods are ${names.join(", ")}`,
-        );
-      }
-      if (await needsConfirmation(name)) return { confirm: name };
-      const pod = await shared.podNamed(name);
-      const value = await tool.run(pod, rest, name);
-      const found =
-        tool.name === "find_changes" ? await findChanges(pod, rest) : undefined;
-      return {
-        value,
-        ...(found === undefined
-          ? {}
-          : {
-              findings: value.map((finding) => ({
-                ...finding,
-                rows: rowsOf(found.find(({ key }) => key === finding.key)),
-              })),
-            }),
-        ...(tool.name.startsWith("open_") ? { open: value.opened } : {}),
-      };
-    }
-
+  async function runTool(tool, input) {
+    const { pod: name, ...rest } = input;
+    const pod = await shared.podNamed(name);
+    const value = await tool.run(pod, rest, name);
+    const found =
+      tool.name === "find_changes" ? await findChanges(pod, rest) : undefined;
     return {
-      /** Whether a hosted model may not be asked about the pod yet: it is a person's own and not confirmed. */
-      needsConfirmation,
-
-      /**
-       * A tool call of the model, by name and raw JSON arguments: `{ text, isError, value, findings?, open? }`, or
-       * `{ confirm }` naming the pod the person must allow first. Input the rules refuse is `isError`, for the model
-       * to read; nothing here throws for it.
-       */
-      async run(name, rawArguments) {
-        let input;
-        try {
-          input = rawArguments === "" ? {} : JSON.parse(rawArguments);
-        } catch (error) {
-          return text(`the arguments are not JSON: ${error.message}`);
-        }
-        if (name === shared.list.name) {
-          try {
-            checkInput(shared.list.inputSchema, input);
-          } catch (error) {
-            if (error instanceof Refusal) return text(error.message);
-            throw error;
-          }
-          const value = await visible();
-          return { text: JSON.stringify(value), value };
-        }
-        const tool = tools.find((each) => each.name === name);
-        if (tool === undefined)
-          return text(
-            `there is no tool ${name}; the tools are ${specs.map((each) => each.name).join(", ")}`,
-          );
-        try {
-          checkInput(tool.inputSchema, input);
-          const done = await runTool(tool, input);
-          if (done.confirm !== undefined) return done;
-          return { text: JSON.stringify(done.value), ...done };
-        } catch (error) {
-          if (error instanceof Refusal) return text(error.message);
-          console.error(error);
-          return text("the server failed; its log says why");
-        }
-      },
+      value,
+      ...(found === undefined
+        ? {}
+        : {
+            findings: value.map((finding) => ({
+              ...finding,
+              rows: rowsOf(found.find(({ key }) => key === finding.key)),
+            })),
+          }),
+      ...(tool.name.startsWith("open_") ? { open: value.opened } : {}),
     };
   }
 
-  return { specs, names: () => shared.names(), session };
+  async function run(name, rawArguments) {
+    let input;
+    try {
+      input = rawArguments === "" ? {} : JSON.parse(rawArguments);
+    } catch (error) {
+      return text(`the arguments are not JSON: ${error.message}`);
+    }
+    const listing = name === shared.list.name;
+    const tool = listing
+      ? shared.list
+      : tools.find((each) => each.name === name);
+    if (tool === undefined)
+      return text(
+        `there is no tool ${name}; the tools are ${specs.map((each) => each.name).join(", ")}`,
+      );
+    try {
+      checkInput(tool.inputSchema, input);
+      const done = listing
+        ? { value: await shared.list.run() }
+        : await runTool(tool, input);
+      return { text: JSON.stringify(done.value), ...done };
+    } catch (error) {
+      if (error instanceof Refusal) return text(error.message);
+      console.error(error);
+      return text("the server failed; its log says why");
+    }
+  }
+
+  return { specs, names: () => shared.names(), run };
 }
 
 /**
  * Runs one chat turn: asks `model` about `body` (see `checkBody`) with `tools` (`chatTools`'s), runs the tool calls it
- * makes, and calls `emit` with what happens: `start`, `delta` (text), `tool` (a call and what it gave), `confirm` (a
- * pod the person must allow a hosted model to be asked about; the chat ends there), then one of `done`, `refused` (the
- * model answered and said no) or `error` (nothing answered). A `signal` that aborts ends the chat with no more events.
+ * makes, and calls `emit` with what happens: `start`, `delta` (text), `tool` (a call and what it gave), then one of
+ * `done`, `refused` (the model answered and said no) or `error` (nothing answered). A `signal` that aborts ends the chat with no more events.
  *
  * @throws Refusal when `body` is bad, or names a pod there is not; nothing has been emitted then.
  */
@@ -365,15 +295,7 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
   const body = checkBody(given);
   if (body.pod !== "" && !(await tools.names()).includes(body.pod))
     throw new Refusal(`there is no pod ${body.pod}`);
-  const session = tools.session({
-    local: model.local,
-    confirmed: body.confirmed,
-  });
   emit({ type: "start" });
-  if (body.pod !== "" && (await session.needsConfirmation(body.pod))) {
-    emit({ type: "confirm", provider: model.provider, pod: body.pod });
-    return;
-  }
   const system = [
     RULES,
     contextOf(body),
@@ -431,11 +353,7 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
     });
     for (const call of calls) {
       if (signal.aborted) return;
-      const done = await session.run(call.name, call.arguments);
-      if (done.confirm !== undefined) {
-        emit({ type: "confirm", provider: model.provider, pod: done.confirm });
-        return;
-      }
+      const done = await tools.run(call.name, call.arguments);
       const ok = done.isError !== true;
       emit({
         type: "tool",

@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import {
-  loadHospital,
-  loadHospitals,
-  loadStories,
-} from "@cascade-runtime/demo-hospital/node";
+import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
 import { openPod, type Pod, pullFiles, Refusal } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 
@@ -33,7 +29,7 @@ const { chatRoute, chatTools, checkBody, MAX_ROUNDS, runChat } = (await import(
     response: unknown,
     options: { model: Model | undefined; tools: Tools },
   ) => Promise<void>;
-  chatTools: (shared: unknown, options: { demoNames: Set<string> }) => Tools;
+  chatTools: (shared: unknown) => Tools;
   checkBody: (body: unknown) => unknown;
   MAX_ROUNDS: number;
   runChat: (options: {
@@ -52,7 +48,6 @@ const { entryId, SOURCES } = (await import(
 )) as { entryId: (entry: string) => string; SOURCES: string };
 
 const STATIN = "story-statin";
-const OWN = "empty";
 const KEY = "sk-test-key-that-must-not-leave";
 const pods = new Map<string, Pod>();
 let tools: Tools;
@@ -69,7 +64,6 @@ before(async () => {
   });
   assert.equal(imported.refused, undefined);
   pods.set(STATIN, statin);
-  pods.set(OWN, await openPod());
   tools = chatTools(
     podTools(
       {
@@ -81,11 +75,6 @@ before(async () => {
           `/pods/${pod}/trend?test=${test}&medication=${medication}`,
       },
     ),
-    {
-      demoNames: new Set(
-        (await loadHospitals()).map(({ hospital }) => hospital.name),
-      ),
-    },
   );
 });
 
@@ -310,63 +299,6 @@ test("the model's refusal and its error end the chat as events of their own", as
   );
 });
 
-test("a hosted model is asked about an example or story pod without confirmation, but about a person's own pod only once the person confirmed it, whichever way the pod is named", async () => {
-  const hosted = { local: false };
-  const names = async (model: Model, confirmed?: string[]) => {
-    const events = await chat(model, {
-      ...said("who"),
-      ...(confirmed ? { confirmed } : {}),
-    });
-    return toolEvents(events)[0]!.result;
-  };
-  const listing = (confirmed?: string[]) =>
-    names(
-      fakeModel([calling(call("c1", "list_pods", {})), reply("done")], hosted)
-        .model,
-      confirmed,
-    );
-  assert.deepEqual(await listing(), [STATIN]);
-  assert.deepEqual(await listing([OWN]), [STATIN, OWN]);
-  assert.deepEqual(
-    await names(
-      fakeModel([calling(call("c1", "list_pods", {})), reply("done")]).model,
-    ),
-    [STATIN, OWN],
-  );
-
-  const asking = fakeModel(
-    [calling(call("c1", "timeline", { pod: OWN })), reply("done")],
-    hosted,
-  );
-  const stopped = await chat(asking.model, said("their medications"));
-  assert.deepEqual(stopped.at(-1), {
-    type: "confirm",
-    provider: "fake",
-    pod: OWN,
-  });
-  assert.equal(toolEvents(stopped).length, 0);
-  assert.equal(asking.requests.length, 1);
-
-  const own = fakeModel([reply("done")], hosted);
-  const atOwn = await chat(own.model, {
-    ...said("hello"),
-    pod: OWN,
-    page: `/pods/${OWN}/`,
-  });
-  assert.deepEqual(
-    atOwn.map(({ type }) => type),
-    ["start", "confirm"],
-  );
-  assert.equal(own.requests.length, 0);
-  const confirmed = await chat(fakeModel([reply("done")], hosted).model, {
-    ...said("hello"),
-    pod: OWN,
-    page: `/pods/${OWN}/`,
-    confirmed: [OWN],
-  });
-  assert.equal(confirmed.at(-1)!.type, "done");
-});
-
 test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod there is none of; nothing is emitted", async () => {
   const good = {
     pod: STATIN,
@@ -395,7 +327,6 @@ test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod
       /characters in all/,
     ],
     [{ ...good, context: "text" }, /context must be an object/],
-    [{ ...good, confirmed: [1] }, /confirmed must be a list/],
   ];
   for (const [body, reason] of refused)
     assert.throws(

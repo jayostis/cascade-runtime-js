@@ -23,7 +23,9 @@ Claude Desktop, VS Code or any MCP client (the README says how to add it);
 beside `list_pods` and `ask`, each taking the pod's name; `chat.mjs`, the app's
 `POST /chat`, runs the same tools for a model and adds three that open the
 app's own pages. A hosted client sends what the tools return to its provider:
-never point one at a person's own pod without their say.
+never point one at a person's own pod without their say. The starter holds only
+made-up records (the kits, the demo hospitals); before connecting real records,
+decide whether a hosted model may see them.
 `npm run model` runs `model.mjs`: it asks which model a chat uses, checks that the
 model calls a tool and writes `CASCADE_MODEL_PROVIDER`, `_URL`, `_NAME` and `_KEY`
 to `.env` (untracked; `--off` removes them). `model-client.mjs` is the one door to

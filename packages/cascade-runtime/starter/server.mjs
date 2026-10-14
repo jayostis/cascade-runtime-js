@@ -671,7 +671,6 @@ const chatting = chatTools(
     { names: podNames, open: podNamed },
     { viewOf: trendPath, keep: false },
   ),
-  { demoNames: new Set(demo.map(({ hospital }) => hospital.name)) },
 );
 const packageOf = async (path) =>
   JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
