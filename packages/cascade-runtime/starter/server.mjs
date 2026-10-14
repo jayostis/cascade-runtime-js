@@ -56,7 +56,6 @@ import {
   personName,
   podPage,
   postButton,
-  QUESTIONS,
   slug,
   sourcePage,
   sourcesOf,
@@ -68,7 +67,7 @@ import {
   trendTitle,
   variantsSaid,
 } from "./summary.mjs";
-import { podTools } from "./pod-tools.mjs";
+import { answersOf, podTools, worthLines } from "./pod-tools.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
 const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
@@ -88,11 +87,7 @@ function podNamed(name) {
 /** Each pod's answers, by question, as its page last showed them. */
 const lastShown = new Map();
 
-async function answered(pod) {
-  const answers = {};
-  for (const question of QUESTIONS) answers[question] = await pod.ask(question);
-  return answers;
-}
+const answered = answersOf;
 
 /** The reference tables the pods are matched with, kept in `pods/.tables/`. */
 const tables = () => tablesBeside(PODS);
@@ -359,6 +354,10 @@ async function suggested(name, known = {}) {
       known.changes ??
       changesIn(answers[HISTORY], answers[LABS], { limit: 20 }),
     about: known.about ?? (await aboutCodes(answers)),
+    said:
+      "said" in known
+        ? known.said
+        : await variantsOf(answers, await podNamed(name)),
   });
 }
 
@@ -441,7 +440,7 @@ async function showPod(response, name, query, names) {
       names,
       note: didNote(query, KITS),
       refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
-      suggestions: await suggested(name, { answers, about, changes }),
+      suggestions: await suggested(name, { answers, about, changes, said }),
     }),
   );
 }
@@ -481,7 +480,7 @@ async function showEntry(response, name, id, names) {
     await page(entry?.name ?? "Not found", body, {
       current: name,
       names,
-      suggestions: await suggested(name, { answers, about }),
+      suggestions: await suggested(name, { answers, about, said }),
     }),
   );
 }
@@ -711,7 +710,11 @@ const model = modelSet();
 const chatting = chatTools(
   podTools(
     { names: podNames, open: podNamed },
-    { viewOf: trendPath, keep: false },
+    {
+      viewOf: trendPath,
+      worthOf: (pod) => worthLines(pod, { aboutCodes, variantsOf }),
+      keep: false,
+    },
   ),
   {
     namesFor: async (pod) => {

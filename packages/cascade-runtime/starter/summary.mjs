@@ -499,19 +499,19 @@ export function worthALook(answers, about = new Map(), said) {
 
 /**
  * The part of a pod's page that lists `lines`, as `worthALook` gives them: each line's sentence a link to
- * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line. With `ask`, each line
- * is plain text with no `entryHref`.
+ * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line. With `ask`, each line has
+ * an "Ask about this" button naming its entry (`{ kind: "worth", entry }`), which `worth_a_look` reaches.
  */
-export function worthPart(lines, entryHref) {
+export function worthPart(lines, entryHref, ask) {
   if (lines.length === 0) return undefined;
   return html`<div class="card worth"><h2>Worth a look</h2><ul>${lines.map(
     ({ sentence, entry, tag }) =>
-      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}</li>`,
+      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}${ask && askButton({ kind: "worth", entry: entryId(entry) }, sentence)}</li>`,
   )}</ul></div>`;
 }
 
 /**
- * A button that starts a chat about `context`: `{ kind: "finding", key }`, `{ kind: "entry", id }` or `{ kind: "trend",
+ * A button that starts a chat about `context`: `{ kind: "finding", key }`, `{ kind: "entry", id }`, `{ kind: "worth", entry }` or `{ kind: "trend",
  * test, medication? }`, which `chatStrip` listens for. It names the thing, never its text, so the model reaches it through
  * its tools. `label` says which one to a screen reader.
  */
@@ -1020,7 +1020,7 @@ export function tile(section, rows, entryHref) {
  *   history and lab results; none, no part, as when the pod holds no row of either;
  * - `trendHref({ test, medication })`: the address of the trend of a test, a medication marked, which a change links to;
  * - `register(view)`: called with `TREND_VIEW` while What changed is on screen, giving back what undoes it;
- * - `ask`: true when a model is set, and each change has an "Ask about this" button.
+ * - `ask`: true when a model is set, and each change and each line of Worth a look has an "Ask about this" button.
  */
 export function podPage(
   asked,
@@ -1045,7 +1045,7 @@ export function podPage(
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const worth = worthPart(worthALook(answers, about, said), entryHref);
+  const worth = worthPart(worthALook(answers, about, said), entryHref, ask);
   const changed =
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
@@ -1527,20 +1527,22 @@ const SUGGESTED = 4;
 /**
  * The questions an empty chat offers, as texts: at most `SUGGESTED`, in a fixed order, the same for the same input,
  * and each only when the pod holds what answers it. First "Find anything interesting in this pod", when What changed
- * has a change (the chat's tools cannot reach why Worth a look flags a line); then, for each change shown, strongest first, "Did <test> change after
+ * has a change or Worth a look has a line (`worth_a_look` gives the lines); then, for each change shown, strongest first, "Did <test> change after
  * <medication> started?" (or "stopped"), named as its card names them; last "Which medications have I stopped?", when a
  * medication of the history has an end date. The changes make room for the other two. `answers` holds the rows of each
- * of `QUESTIONS`, by question, and `changes` and `about` are as `podPage` takes them.
+ * of `QUESTIONS`, by question, and `changes`, `about` and `said` are as `podPage` takes them.
  */
 export function suggestedQuestions(
   answers,
-  { changes = [], about = new Map() },
+  { changes = [], about = new Map(), said },
 ) {
   const shown = changes.filter(
     ({ direction }) => direction !== "not enough results",
   );
   const first =
-    shown.length > 0 ? ["Find anything interesting in this pod"] : [];
+    shown.length > 0 || worthALook(answers, about, said).length > 0
+      ? ["Find anything interesting in this pod"]
+      : [];
   const last = (answers[HISTORY] ?? []).some((row) => row.ended)
     ? ["Which medications have I stopped?"]
     : [];

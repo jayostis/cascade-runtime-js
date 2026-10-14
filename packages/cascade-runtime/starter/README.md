@@ -100,6 +100,10 @@ the app's pods. A client starts it; it prints nothing itself. It offers:
   why. Each finding of `find_changes` carries `view`, the address of the trend
   that draws its results; it opens while `npm start` runs, on `PORT` if the
   client has it too, else 3000.
+- `worth_a_look`: what the pod's page lists under Worth a look, in its order:
+  each line's sentence, its entry's ID and its tag. It states what is flagged
+  (an entry that needs review, a report that differs from ClinVar today,
+  medications that share an ingredient), never why.
 - `ask`: a pod's records by the name of a question (allergies, conditions,
   medications, medication history, lab results, immunizations, procedures,
   genetic variants, the person, where an entry came from), a few rows of the

@@ -2340,7 +2340,7 @@ const asksOf = (markup: string) =>
       JSON.parse(context!.replaceAll("&quot;", '"')) as Record<string, unknown>,
   );
 
-test("suggested questions: Ines Calloway's find a change and ask about it named as the page names it, a pod whose only reason is a Worth a look line asks nothing the tools cannot answer, a pod's four at most keep the first and last in place, and the same answers give the same list", async () => {
+test("suggested questions: Ines Calloway's find a change and ask about it named as the page names it, a pod with a Worth a look line and no change is offered it too, a pod's four at most keep the first and last in place, and the same answers give the same list", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const [finding] = story.changes;
   const ines = view.suggestedQuestions(story.answers, {
@@ -2364,7 +2364,7 @@ test("suggested questions: Ines Calloway's find a change and ask about it named 
       },
       { changes: [] },
     ),
-    [],
+    ["Find anything interesting in this pod"],
   );
 
   const change = (n: number, kind: string) => ({
@@ -2394,7 +2394,7 @@ test("suggested questions: Ines Calloway's find a change and ask about it named 
   assert.deepEqual(view.suggestedQuestions({}, { changes: [] }), []);
 });
 
-test("Ask about this: with a model set, each What changed card (a Worth a look line none), the trend and an entry draw a button naming the finding's key, the entry's ID or the trend's test and medication, and with none set they draw none", async () => {
+test("Ask about this: with a model set, each What changed card and each Worth a look line, the trend and an entry draw a button naming the finding's key, the line's entry ID, the entry's ID or the trend's test and medication, and with none set they draw none", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const [finding] = story.changes;
   const draw = (ask?: boolean) =>
@@ -2419,6 +2419,23 @@ test("Ask about this: with a model set, each What changed card (a Worth a look l
     asked.filter(({ kind }) => kind === "entry"),
     [],
   );
+
+  const lines = {
+    [REVIEW]: [
+      { entry: "urn:uuid:e1", needs: "judged different, still joined" },
+    ],
+  };
+  const worth = (ask?: boolean) =>
+    render(
+      view.podPage(lines, {
+        pod: "ines-calloway",
+        signIn: () => null,
+        entryHref: entryLink,
+        ...(ask ? { ask } : {}),
+      }),
+    );
+  assert.deepEqual(asksOf(worth()), []);
+  assert.deepEqual(asksOf(worth(true)), [{ kind: "worth", entry: "e1" }]);
 
   const marked = { test: "18262-6", medication: "617310" };
   assert.deepEqual(asksOf(trendOf("ines-calloway", story, marked)), []);

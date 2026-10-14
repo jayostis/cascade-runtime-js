@@ -49,6 +49,7 @@ const CONTEXT_KEYS = {
   finding: ["key"],
   entry: ["id"],
   trend: ["test", "medication"],
+  worth: ["entry"],
 };
 
 /** The shapes the "Ask about this" buttons send; the text reaches the system prompt, so nothing else passes. */
@@ -66,7 +67,7 @@ function checkContext(context) {
     )
   )
     throw new Refusal(
-      `context must be { kind: "finding", key }, { kind: "entry", id } or { kind: "trend", test, medication? }, each value a text of at most ${MAX_CONTEXT} characters`,
+      `context must be { kind: "finding", key }, { kind: "entry", id }, { kind: "trend", test, medication? } or { kind: "worth", entry }, each value a text of at most ${MAX_CONTEXT} characters`,
     );
 }
 
@@ -335,7 +336,7 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
     ...(body.context === undefined
       ? []
       : [
-          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, or a trend by its test and medication. Find it with the tools.`,
+          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, a trend by its test and medication, or a line of Worth a look by its entry's ID; worth_a_look gives that line, which says what is flagged and never why. Find it with the tools.`,
           EXPLAIN_THE_THING,
         ]),
   ];
