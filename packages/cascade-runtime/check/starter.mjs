@@ -443,8 +443,12 @@ async function crawled(server, roots) {
   }
   const dead = links.flatMap(({ on, href, target, fragment }) => {
     const reached = pages.get(target);
-    if (reached.status !== 200)
-      return [`${on} links ${href}, which answered ${reached.status}`];
+    if (reached.status !== 200) {
+      const said = /<pre>([^<]*)<\/pre>/.exec(reached.html)?.[1];
+      return [
+        `${on} links ${href}, which answered ${reached.status}${said === undefined ? "" : `: ${said}`}`,
+      ];
+    }
     return fragment === "" || reached.ids.has(fragment)
       ? []
       : [`${on} links ${href}, whose page has no element #${fragment}`];
