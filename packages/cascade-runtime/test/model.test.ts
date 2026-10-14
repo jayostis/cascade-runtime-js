@@ -323,7 +323,7 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
       ],
     ],
     [
-      "two calls the server gave no index",
+      "two calls the server gave no index, the first with Gemini's thought signature",
       () => ({
         events: [
           delta({
@@ -332,6 +332,7 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
                 id: "a",
                 type: "function",
                 function: { name: "one", arguments: "{}" },
+                extra_content: { google: { thought_signature: "sig" } },
               },
               {
                 id: "b",
@@ -344,37 +345,14 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
         ],
       }),
       [
-        { type: "call", id: "a", name: "one", arguments: "{}" },
-        { type: "call", id: "b", name: "two", arguments: '{"x":1}' },
-        { type: "done", stop: "calls" },
-      ],
-    ],
-    [
-      "a call with Gemini's thought signature",
-      () => ({
-        events: [
-          delta({
-            tool_calls: [
-              {
-                index: 0,
-                id: "g",
-                type: "function",
-                function: { name: "one", arguments: "{}" },
-                extra_content: { google: { thought_signature: "sig" } },
-              },
-            ],
-          }),
-          delta({}, "tool_calls"),
-        ],
-      }),
-      [
         {
           type: "call",
-          id: "g",
+          id: "a",
           name: "one",
           arguments: "{}",
           extra: { google: { thought_signature: "sig" } },
         },
+        { type: "call", id: "b", name: "two", arguments: '{"x":1}' },
         { type: "done", stop: "calls" },
       ],
     ],
