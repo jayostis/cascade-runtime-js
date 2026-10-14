@@ -307,6 +307,100 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
   await page.close();
 });
 
+/** A page with the chat strip open on a long answer to "say a lot" about a long label, in a window of this size. */
+const openOnLongAnswer = async (width: number, height: number) => {
+  const page = await browser.newPage({ viewport: { width, height } });
+  await page.route("**/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body:
+        [
+          { type: "start" },
+          { type: "delta", text: "A long answer. ".repeat(400) },
+          { type: "done", stop: "end" },
+        ]
+          .map((event) => JSON.stringify(event))
+          .join("\n") + "\n",
+    }),
+  );
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  const label = "A long label about one finding of the pod. ".repeat(6);
+  await page.evaluate((text) => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="asker" data-ask='{"kind":"entry","id":"x"}' data-ask-label="${text}">Ask about this</button>`,
+    );
+  }, label);
+  await page.locator("#asker").click();
+  await page.getByLabel("Ask a question").fill("say a lot");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.locator(".chat-send:not([hidden])").waitFor();
+  return { page, label };
+};
+
+test("the question box stays in view with the page at its top, in a short window and a phone-sized one", async () => {
+  for (const [width, height] of [
+    [375, 667],
+    [844, 390],
+  ] as const) {
+    const { page } = await openOnLongAnswer(width, height);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const input = (await page.locator(".chat-form input").boundingBox())!;
+    assert.ok(
+      input.y >= 0 && input.y + input.height <= height,
+      `at ${width}x${height} the question box is ${input.y}+${input.height}`,
+    );
+    await page.close();
+  }
+});
+
+test("on a phone the About line is clamped to one line, the page scrolls its end above the open strip, and a long answer opens at its question", async () => {
+  const { page, label } = await openOnLongAnswer(390, 600);
+
+  const box = async (selector: string) =>
+    (await page.locator(selector).boundingBox())!;
+  const log = await box(".chat-log");
+  const lines = await page
+    .locator(".chat-about")
+    .evaluate(
+      (element) =>
+        element.getBoundingClientRect().height /
+        parseFloat(getComputedStyle(element).lineHeight),
+    );
+  assert.ok(lines <= 1.05, `the About line is ${lines} lines`);
+  assert.equal(
+    await page.locator(".chat-about").getAttribute("title"),
+    `About: ${label}`,
+  );
+  const question = await box(".chat-log .you");
+  assert.ok(
+    question.y >= log.y - 1 &&
+      question.y + question.height <= log.y + log.height,
+    `question ${question.y}+${question.height}, log ${log.y}+${log.height}`,
+  );
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const strip = await box(".chat");
+  const last = await page.evaluate(
+    () => document.querySelector("main")!.getBoundingClientRect().bottom,
+  );
+  assert.ok(
+    last <= strip.y + 1,
+    `the page ends at ${last}, the strip starts at ${strip.y}`,
+  );
+
+  await page.reload();
+  const reopened = await box(".chat-log .you");
+  const room = await box(".chat-log");
+  assert.ok(
+    reopened.y >= room.y - 1 &&
+      reopened.y + reopened.height <= room.y + room.height,
+    `after a reload the question is ${reopened.y}+${reopened.height}, the log ${room.y}+${room.height}`,
+  );
+  await page.close();
+});
+
 test("an open chat leaves the page's own content in view, and the strip folds to its bar and stays folded in the tab", async () => {
   const page = await browser.newPage({
     viewport: { width: 1100, height: 850 },
