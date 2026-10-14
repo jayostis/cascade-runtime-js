@@ -72,6 +72,8 @@ test("given a folder, it makes the project and names it, with the view's package
         "htm",
         "preact-render-to-string",
         "@modelcontextprotocol/server",
+        "openai",
+        "@anthropic-ai/sdk",
       ],
     ],
     ["../../../site/package.json", ["preact", "htm"]],
@@ -85,7 +87,8 @@ test("given a folder, it makes the project and names it, with the view's package
   const ignored = (await readFile(join(folder, ".gitignore"), "utf8")).split(
     /\r?\n/,
   );
-  assert.ok(ignored.includes("pods/"), ".gitignore does not list pods/");
+  for (const entry of ["pods/", ".env"])
+    assert.ok(ignored.includes(entry), `.gitignore does not list ${entry}`);
   assert.deepEqual(terminal.done, [
     `install ${folder}`,
     `load alex-rivera into ${join(folder, "pods", "alex-rivera")}`,
@@ -101,6 +104,40 @@ test("given a folder, it makes the project and names it, with the view's package
     assert.ok(terminal.text().includes(line), `it did not print ${line}`);
   for (const line of ["npx ", "pod:load"])
     assert.ok(!terminal.text().includes(line), `it printed ${line}`);
+});
+
+test("a terminal offers a model once the app is made, and says how to add one later when it is not taken up", async () => {
+  for (const [taken, hint] of [
+    [true, false],
+    [false, true],
+  ] as const) {
+    const terminal = recording();
+    const offered: string[] = [];
+    const folder = join(parent, `model-${taken}`);
+    assert.equal(
+      await create([folder, "--tarball", ADDRESS], {
+        ...terminal,
+        model: async (made) => {
+          offered.push(made);
+          assert.equal(
+            terminal.done.length,
+            4,
+            "it offered once the pods were loaded",
+          );
+          return taken;
+        },
+      }),
+      0,
+    );
+    assert.deepEqual(offered, [folder]);
+    assert.equal(terminal.text().includes("npm run model"), hint);
+  }
+  const terminal = recording();
+  assert.equal(
+    await create([join(parent, "no-model"), "--tarball", ADDRESS], terminal),
+    0,
+  );
+  assert.ok(!terminal.text().includes("npm run model"), "it offered a model");
 });
 
 test("a pod that does not load leaves the app made, and says which", async () => {

@@ -37,6 +37,10 @@ const SAID = {
     "npm run mcp",
     "serve the pods to an MCP client such as Claude Desktop or VS Code, on stdin and stdout",
   ],
+  model: [
+    "npm run model [-- --off]",
+    "choose the model the chat uses and check that it calls tools, keeping the choice in .env; --off removes it",
+  ],
 };
 
 const { scripts } = JSON.parse(

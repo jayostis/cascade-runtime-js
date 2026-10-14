@@ -65,6 +65,10 @@ keeping the package and the pods, under `pods/<name>/`. It is made with three,
 - `npm run mcp` is an MCP server on stdio over every pod, for a client such as
   Claude Desktop to start (the starter's README says how). A hosted client
   sends what the tools return to its provider.
+- `npm run model [-- --off]` asks which model the app's chat uses (a free
+  hosted key, a model on this computer, or a paid one), checks that it calls a
+  tool and keeps the choice, key included, in the app's untracked `.env`.
+  `--off` removes it. Without `.env` the app runs as it did.
 - `npm run kit:export -- <kit> <download>` copies a download into the app, for
   `look`: `alex-rivera x-e12` as `apple_health_export`, and
   `priya-natarajan kestrel-harbor-health-summary.xml` as that file.

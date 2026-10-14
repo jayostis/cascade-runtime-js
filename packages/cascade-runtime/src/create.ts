@@ -27,6 +27,8 @@ export interface Terminal {
   readonly install: (folder: string) => Promise<boolean>;
   /** Replays the kit's story into the folder, rejecting with why it could not. */
   readonly load: (kit: string, folder: string) => Promise<void>;
+  /** Offers to connect a model in the made app and runs the app's `npm run model` when taken up; absent when no person is at a terminal. Resolves whether a model was set up. */
+  readonly model?: (folder: string) => Promise<boolean>;
 }
 
 /** The word as a shell reads it: quoted when it holds a space or a character a shell would act on. */
@@ -178,6 +180,8 @@ export async function create(
       );
     }
   }
+  const chat =
+    terminal.model === undefined ? undefined : await terminal.model(target);
   terminal.out(
     [
       "",
@@ -191,24 +195,41 @@ export async function create(
       "  npm start",
       "",
       "then open http://127.0.0.1:3000/. `npm run help` lists the app's commands.",
+      ...(chat === false
+        ? ["", "`npm run model` connects a model to the app's chat later."]
+        : []),
       "",
     ].join("\n"),
   );
   return 0;
 }
 
-/** npm's install in the folder, its output shown: npm's own script when npm ran this, otherwise `npm` through the shell. */
-export function npmInstall(folder: string): Promise<boolean> {
-  const npm = process.env.npm_execpath;
+/** npm with the arguments in the folder, on the terminal: npm's own script when npm ran this, otherwise `npm` through the shell. Resolves whether it succeeded. */
+function npm(folder: string, args: readonly string[]): Promise<boolean> {
+  const script = process.env.npm_execpath;
   const child =
-    npm !== undefined && /\.c?js$/.test(npm)
-      ? spawn(process.execPath, [npm, "install"], {
+    script !== undefined && /\.c?js$/.test(script)
+      ? spawn(process.execPath, [script, ...args], {
           cwd: folder,
           stdio: "inherit",
         })
-      : spawn("npm install", { cwd: folder, stdio: "inherit", shell: true });
+      : spawn(["npm", ...args].join(" "), {
+          cwd: folder,
+          stdio: "inherit",
+          shell: true,
+        });
   return new Promise((done) => {
     child.on("error", () => done(false));
     child.on("close", (code) => done(code === 0));
   });
+}
+
+/** npm's install in the folder, its output shown. */
+export function npmInstall(folder: string): Promise<boolean> {
+  return npm(folder, ["install"]);
+}
+
+/** The made app's `npm run model`, on the terminal. */
+export function npmRunModel(folder: string): Promise<boolean> {
+  return npm(folder, ["run", "model"]);
 }

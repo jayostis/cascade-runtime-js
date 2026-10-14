@@ -149,6 +149,14 @@ script goes after `--`, or npm keeps it for itself.
   folder as a person puts it there: `alex-rivera x-e12` as
   `apple_health_export`, `priya-natarajan kestrel-harbor-health-summary.xml` as
   that file.
+- `npm run model` asks which model a chat will use: Google Gemini, Groq or
+  OpenRouter (each gives a free key from a sign-up page), Ollama or LM Studio
+  on this computer, Anthropic, or another OpenAI-compatible address. It says
+  what that provider does with what it is sent, makes one real request to
+  check that the model calls a tool, and keeps the choice and the key in
+  `.env` beside `server.mjs`, which git ignores. A free hosted tier is for the
+  example and story pods, not a person's own. Run it again to change the
+  choice; `npm run model -- --off` removes it.
 - `ask` and `console` need `--pod <name>` whenever the app has more than one
   pod, as a made app does; it may be left out only when there is exactly one.
 
@@ -175,6 +183,8 @@ script goes after `--`, or npm keeps it for itself.
   `help.mjs`, which lists them.
 - `mcp.mjs`, `mcp-server.mjs`: the MCP server on stdio, and the tools it
   offers.
+- `model.mjs`, `model-client.mjs`: `npm run model`, and the one door to a
+  model, whichever provider.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in
