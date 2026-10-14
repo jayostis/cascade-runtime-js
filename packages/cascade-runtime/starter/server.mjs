@@ -87,8 +87,6 @@ function podNamed(name) {
 /** Each pod's answers, by question, as its page last showed them. */
 const lastShown = new Map();
 
-const answered = answersOf;
-
 /** The reference tables the pods are matched with, kept in `pods/.tables/`. */
 const tables = () => tablesBeside(PODS);
 const tablePath = (series) =>
@@ -340,7 +338,7 @@ async function home(response, query) {
  * the pod's `answers`, what the tables say of them (`about`) and `changes` is used; the rest is read.
  */
 async function remembered(name) {
-  const answers = await answered(await podNamed(name));
+  const answers = await answersOf(await podNamed(name));
   lastShown.set(name, answers);
   return answers;
 }
@@ -387,7 +385,7 @@ async function showPod(response, name, query, names) {
   const answers =
     shown?.step === "bringing in" && lastShown.has(name)
       ? lastShown.get(name)
-      : await answered(await podNamed(name));
+      : await answersOf(await podNamed(name));
   lastShown.set(name, answers);
   const [about, said] = await Promise.all([
     aboutCodes(answers),
@@ -453,7 +451,7 @@ async function showPod(response, name, query, names) {
 async function showEntry(response, name, id, names) {
   let answers = lastShown.get(name);
   if (answers === undefined || entryOf(answers, id) === undefined) {
-    answers = await answered(await podNamed(name));
+    answers = await answersOf(await podNamed(name));
     lastShown.set(name, answers);
   }
   const [about, held, said] = await Promise.all([
@@ -530,7 +528,7 @@ async function showTrend(response, name, query, names) {
       {
         current: name,
         names,
-        suggestions: await suggested(name, { changes, about }),
+        suggestions: await suggested(name, { changes }),
       },
     ),
   );

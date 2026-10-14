@@ -45,8 +45,8 @@ export async function answersOf(pod) {
 
 /**
  * The lines of a pod's Worth a look, as its page draws them: `worthALook` over the pod's answers, with what
- * `aboutCodes(answers)` and `variantsOf(answers, pod)` say of them (each none until the tables can say). The page and
- * `worth_a_look` both take the lines from here.
+ * `aboutCodes(answers)` and `variantsOf(answers, pod)` say of them (each none until the tables can say). The page runs
+ * `worthALook` on the same inputs, so `worth_a_look` and the page agree.
  */
 export async function worthLines(pod, { aboutCodes, variantsOf }) {
   const answers = await answersOf(pod);
