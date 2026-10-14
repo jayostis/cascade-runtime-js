@@ -2919,7 +2919,7 @@ body[data-state="busy"] { cursor: progress; }
 
 /** The chat strip's styles, from `STYLE`'s colours so dark mode follows; a page that has a strip gets them after `STYLE`. */
 export const CHAT_STYLE = `
-.chat { position: sticky; bottom: 0; z-index: 8; display: flex; flex-direction: column; max-height: 33vh; background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
+.chat { position: sticky; bottom: 0; z-index: 8; display: flex; flex-direction: column; max-height: max(33vh, 15rem); background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
 .chat [hidden] { display: none; }
 .chat-off { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .chat-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
@@ -2927,6 +2927,10 @@ export const CHAT_STYLE = `
 .chat > .chat-log, .chat > .chat-chips { flex: 0 1 auto; min-height: 0; overflow: auto; }
 .chat > .chat-log { min-height: 4rem; }
 .chat-about { margin: 0 0 0.4rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+@media (max-width: 46rem) {
+  .chat-bar { gap: 0.25rem 0.75rem; }
+  .chat-about { -webkit-line-clamp: 1; line-clamp: 1; }
+}
 .chat[data-folded="true"] > :not(.chat-bar) { display: none; }
 .chat[data-folded="true"] .chat-bar { margin: 0; }
 .chat-bar .chat-new { margin-left: auto; }
@@ -3179,10 +3183,11 @@ export function chatStrip(page, budget = 24000) {
       chat.messages.length > 0 ||
       chat.context !== undefined ||
       chips.children.length === 0;
-    const asked = turn === undefined ? undefined : log.children[turn];
+    const at = turn ?? chat.messages.findLastIndex((m) => m.role === "user");
+    const asked = at < 0 ? undefined : log.children[at];
     if (asked === undefined) log.scrollTop = log.scrollHeight;
     else if (!taken) {
-      const answer = log.children[turn + 1] ?? asked;
+      const answer = log.children[at + 1] ?? asked;
       const room = log.clientHeight;
       const start =
         answer.getBoundingClientRect().top - asked.getBoundingClientRect().top >
@@ -3334,6 +3339,7 @@ export function chatStrip(page, budget = 24000) {
     if (target.dataset.chat) {
       chat = chats.find((each) => each.id === target.dataset.chat) ?? chat;
       recent.open = false;
+      taken = false;
       fold(false);
       keep();
       return draw();
