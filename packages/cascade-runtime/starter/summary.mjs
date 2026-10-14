@@ -2952,9 +2952,10 @@ export const CHAT_STYLE = `
 .chat-log .card ul { list-style: none; margin: 0.4rem 0; padding: 0; max-height: 9rem; overflow: auto; font-size: 0.9rem; }
 .chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.5rem; }
 .chat-chips button { font-size: 0.85rem; padding: 0.15rem 0.7rem; border-radius: 999px; }
-button.ask { font-size: inherit; line-height: 1; padding: 0.15em 0.3em; border-color: transparent; vertical-align: middle; }
+button.ask { position: relative; font-size: inherit; line-height: 1; padding: 0.15em 0.3em; border-color: transparent; vertical-align: middle; }
 button.ask svg { display: block; width: 1.1em; height: 1.1em; }
-button.ask:hover { background: var(--soft); }
+button.ask:hover { background: var(--panel); border-color: var(--line); }
+@media (pointer: coarse) { button.ask::after { content: ""; position: absolute; inset: -6px -8px; } }
 button.ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-form { display: flex; gap: 0.5rem; }
 .chat-form input { flex: 1; min-width: 0; }
