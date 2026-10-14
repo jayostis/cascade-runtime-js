@@ -119,7 +119,11 @@ test("a terminal offers a model once the app is made, and says how to add one la
         ...terminal,
         model: async (made) => {
           offered.push(made);
-          assert.equal(terminal.done.length, 4, "it offered before the pods");
+          assert.equal(
+            terminal.done.length,
+            4,
+            "it offered once the pods were loaded",
+          );
           return taken;
         },
       }),

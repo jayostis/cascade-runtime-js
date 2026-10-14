@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { after, before, test } from "node:test";
 import { Refusal } from "cascade-runtime";
 
@@ -41,9 +42,11 @@ const { modelClient, modelFrom } = (await import(
   modelClient(settings: Settings): Model;
   modelFrom(env: Record<string, string>): Model | undefined;
 };
-const { check, flow } = (await import(
+const { check, flow, save, remove } = (await import(
   new URL("../../starter/model.mjs", import.meta.url).href
 )) as {
+  save(folder: string, values: Record<string, string>): Promise<void>;
+  remove(folder: string): Promise<boolean>;
   check(model: Model): Promise<{ ok: boolean; reason?: string }>;
   flow(args: string[], terminal: Terminal, folder: string): Promise<number>;
 };
@@ -51,7 +54,12 @@ const { check, flow } = (await import(
 const KEY = "sk-TESTSECRET-1234";
 
 /** What a stub server answers: a status and either a JSON body or the server-sent events of a stream. */
-type Reply = { status?: number; json?: object; events?: [string, object][] };
+type Reply = {
+  status?: number;
+  json?: object;
+  events?: [string, object][];
+  stall?: boolean;
+};
 
 /** A loopback stub of a provider's API: answers every request with what `reply` says and keeps each request's body. */
 async function stub(reply: () => Reply): Promise<{
@@ -68,7 +76,7 @@ async function stub(reply: () => Reply): Promise<{
     request.on("end", () => {
       bodies.push(JSON.parse(text) as Record<string, unknown>);
       headers.push(request.headers);
-      const { status = 200, json, events } = reply();
+      const { status = 200, json, events, stall } = reply();
       if (json) {
         response.writeHead(status, { "content-type": "application/json" });
         response.end(JSON.stringify(json));
@@ -77,7 +85,7 @@ async function stub(reply: () => Reply): Promise<{
       response.writeHead(status, { "content-type": "text/event-stream" });
       for (const [name, data] of events ?? [])
         response.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
-      response.end();
+      if (!stall) response.end();
     });
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -314,6 +322,33 @@ test("an OpenAI-compatible turn streams text, assembles a call from its fragment
         { type: "done", stop: "length" },
       ],
     ],
+    [
+      "two calls the server gave no index",
+      () => ({
+        events: [
+          delta({
+            tool_calls: [
+              {
+                id: "a",
+                type: "function",
+                function: { name: "one", arguments: "{}" },
+              },
+              {
+                id: "b",
+                type: "function",
+                function: { name: "two", arguments: '{"x":1}' },
+              },
+            ],
+          }),
+          delta({}, "tool_calls"),
+        ],
+      }),
+      [
+        { type: "call", id: "a", name: "one", arguments: "{}" },
+        { type: "call", id: "b", name: "two", arguments: '{"x":1}' },
+        { type: "done", stop: "calls" },
+      ],
+    ],
     ["a refusal", openai.refusal, [{ type: "refused", text: "No." }]],
     [
       "a bad key, which the provider echoes back",
@@ -359,6 +394,30 @@ test("no server at the address is an error event, and an aborted turn ends with 
     name: "m",
   });
   assert.deepEqual(await events(model, AbortSignal.abort()), []);
+
+  const cut = (full: Reply): Reply => ({
+    events: full.events!.slice(0, -1),
+    stall: true,
+  });
+  for (const [provider, reply, path] of [
+    ["local", cut(openai.call()), "/v1"],
+    ["anthropic", cut(anthropic.call()), ""],
+  ] as const) {
+    const stalled = await serving(() => reply);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 400);
+    const model = modelClient({
+      provider,
+      url: `${stalled.url}${path}`,
+      name: "m",
+      key: KEY,
+    });
+    assert.deepEqual(
+      await events(model, controller.signal),
+      [],
+      `${provider}: an abort in mid-stream ends the turn with no event`,
+    );
+  }
 });
 
 test("an OpenAI-compatible request carries the system parts as one message, the tools, the calls and their results; only a model on this computer or another address is told not to think", async () => {
@@ -497,6 +556,7 @@ test("an Anthropic request carries system text blocks, the tools, and consecutiv
     name: "m",
     key: KEY,
   });
+  process.env.ANTHROPIC_AUTH_TOKEN = "OTHER-CREDENTIAL";
   for await (const event of model.turn({
     system: ["rules", "context"],
     messages: [
@@ -557,6 +617,8 @@ test("an Anthropic request carries system text blocks, the tools, and consecutiv
     },
   ]);
   assert.equal(headers[0]!["x-api-key"], KEY);
+  assert.equal(headers[0]!.authorization, undefined);
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
 });
 
 test("the settings make a model, none make nothing, and no property of a model shows its key", () => {
@@ -692,12 +754,13 @@ function scripted(asks: string[], secrets: string[] = []) {
   return { terminal, text: () => shown.join("") };
 }
 
+const envIn = async (path: string) => parseEnv(await readFile(path, "utf8"));
+
 const settingsIn = async (path: string) =>
   Object.fromEntries(
-    (await readFile(path, "utf8"))
-      .split("\n")
-      .filter((line) => line.startsWith("CASCADE_MODEL_"))
-      .map((line) => line.split(/=(.*)/s).slice(0, 2)),
+    Object.entries(await envIn(path)).filter(([name]) =>
+      name.startsWith("CASCADE_MODEL_"),
+    ),
   );
 
 test("the flow keeps the four settings in .env after a model that calls a tool, never shows the key, and --off removes only them", async () => {
@@ -718,7 +781,37 @@ test("the flow keeps the four settings in .env after a model that calls a tool, 
   assert.equal(good.headers[0]!.authorization, `Bearer ${KEY}`);
 
   assert.equal(await flow(["--off"], scripted([]).terminal, app), 0);
-  assert.equal(await readFile(env, "utf8"), "KEEP=1\n");
+  assert.deepEqual(await envIn(env), { KEEP: "1" });
+});
+
+test("the settings are kept in .env as process.loadEnvFile reads them back, in the file's own line endings, and a value that cannot be is refused", async () => {
+  const app = await mkdtemp(join(folder, "app-"));
+  const env = join(app, ".env");
+  const settings = (url: string, key: string) => ({
+    CASCADE_MODEL_PROVIDER: "other",
+    CASCADE_MODEL_URL: url,
+    CASCADE_MODEL_NAME: "a name # with 'both' quotes",
+    CASCADE_MODEL_KEY: key,
+  });
+  await writeFile(env, "KEEP=1\r\nOTHER=2\r\n");
+  for (const key of ['k"e y#1', "k'e y#1", "plain"]) {
+    await save(app, settings("http://h/v1", key));
+    const text = await readFile(env, "utf8");
+    assert.ok(!/(^|[^\r])\n/.test(text), "a line lost its CR");
+    assert.deepEqual(await envIn(env), {
+      KEEP: "1",
+      OTHER: "2",
+      ...settings("http://h/v1", key),
+    });
+  }
+  await assert.rejects(
+    save(app, settings("http://h/v1", `a"b'c`)),
+    (error) => error instanceof Refusal,
+  );
+  assert.equal(await remove(app), true);
+  assert.deepEqual(await envIn(env), { KEEP: "1", OTHER: "2" });
+  assert.equal(await remove(app), false);
+  assert.ok((await readFile(env, "utf8")).includes("\r\n"));
 });
 
 test("the flow changes nothing for a model that does not call tools or a key the provider refuses, whose message does not show the key either", async () => {

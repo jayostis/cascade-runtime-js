@@ -143,6 +143,7 @@ function openaiMessages(system, messages) {
 
 async function* openaiTurn(settings, { system, messages, tools, signal }) {
   const calls = [];
+  let last;
   let finish;
   let refusal = "";
   const body = {
@@ -166,6 +167,8 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
     const client = new OpenAI({
       baseURL: settings.url,
       apiKey: settings.key || "none",
+      organization: null,
+      project: null,
       maxRetries: 0,
     });
     for await (const chunk of await client.chat.completions.create(body, {
@@ -177,11 +180,16 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
       if (delta?.content) yield { type: "text", text: delta.content };
       if (delta?.refusal) refusal += delta.refusal;
       for (const part of delta?.tool_calls ?? []) {
-        const call = (calls[part.index ?? 0] ??= {
-          id: "",
-          name: "",
-          arguments: "",
-        });
+        const startsNew =
+          part.index === undefined &&
+          last !== undefined &&
+          ((part.id && part.id !== last.id) ||
+            (!part.id && part.function?.name && last.name));
+        const slot =
+          part.index ??
+          Math.max(startsNew ? calls.length : calls.length - 1, 0);
+        const call = (calls[slot] ??= { id: "", name: "", arguments: "" });
+        last = call;
         if (part.id) call.id = part.id;
         if (part.function?.name) call.name += part.function.name;
         if (part.function?.arguments) call.arguments += part.function.arguments;
@@ -193,6 +201,7 @@ async function* openaiTurn(settings, { system, messages, tools, signal }) {
     yield { type: "error", ...failureOf(error, settings.key) };
     return;
   }
+  if (signal?.aborted) return;
   if (refusal || finish === "content_filter") {
     yield {
       type: "refused",
@@ -257,7 +266,8 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({
       baseURL: settings.url,
-      apiKey: settings.key,
+      apiKey: settings.key ?? null,
+      authToken: null,
       maxRetries: 0,
     });
     const events = await client.messages.create(
@@ -310,6 +320,7 @@ async function* anthropicTurn(settings, { system, messages, tools, signal }) {
     yield { type: "error", ...failureOf(error, settings.key) };
     return;
   }
+  if (signal?.aborted) return;
   if (stop === "refusal") {
     yield { type: "refused", text: "The model declined to answer." };
     return;

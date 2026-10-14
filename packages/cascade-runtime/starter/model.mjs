@@ -5,14 +5,19 @@ import { argv, exit, stderr, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL, URL } from "node:url";
 import { parseArgs } from "node:util";
-import { checkInput } from "cascade-runtime";
+import { checkInput, Refusal } from "cascade-runtime";
 import { modelClient, PROVIDERS, redact, SETTINGS } from "./model-client.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const USAGE = "usage: npm run model [-- --off]";
 const CHOICES = Object.keys(PROVIDERS);
 const SERVERS = [
-  { label: "Ollama", url: "http://localhost:11434/v1", key: "ollama" },
+  {
+    label: "Ollama",
+    url: "http://localhost:11434/v1",
+    key: "ollama",
+    name: PROVIDERS.local.name,
+  },
   { label: "LM Studio", url: "http://localhost:1234/v1", key: "lm-studio" },
 ];
 const CHECK_SECONDS = 120;
@@ -89,39 +94,46 @@ async function readEnv(folder) {
 
 const setting = new RegExp(`^\\s*(export\\s+)?(${SETTINGS.join("|")})\\s*=`);
 
-/** The text of an `.env` without the four settings, every other line as it was. */
+/** The lines of an `.env` other than the four settings, each with its own line ending; and whether any setting was dropped. */
 function withoutSettings(text) {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => !setting.test(line))
-    .join("\n");
+  const lines = text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  const kept = lines.filter((line) => !setting.test(line));
+  return { kept, dropped: kept.length < lines.length };
 }
 
-const quoted = (value) =>
-  /^[\w./:@+=,-]*$/.test(value) ? value : `"${value.replaceAll('"', '\\"')}"`;
+/** A value as `process.loadEnvFile` reads it back: it unescapes nothing, so a quote that is not in the value is the one used. */
+function quoted(value, name) {
+  if (/^[\w./:@+=,-]*$/.test(value)) return value;
+  if (!/[\r\n']/.test(value)) return `'${value}'`;
+  if (!/[\r\n"]|\\n/.test(value)) return `"${value}"`;
+  throw new Refusal(
+    `${name} cannot be kept in .env: a value with a line break, or with both kinds of quote, is read back differently.`,
+  );
+}
 
-/** Replaces the four settings in the folder's `.env`, keeping its other lines. */
+/** Replaces the four settings in the folder's `.env`, keeping its other lines as they were. */
 export async function save(folder, values) {
-  const kept = withoutSettings((await readEnv(folder)) ?? "").replace(
-    /\n*$/,
-    "",
+  const text = (await readEnv(folder)) ?? "";
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = SETTINGS.map(
+    (name) => `${name}=${quoted(values[name] ?? "", name)}${eol}`,
   );
-  const lines = SETTINGS.map((name) => `${name}=${quoted(values[name] ?? "")}`);
-  await writeFile(
-    envFile(folder),
-    `${kept === "" ? "" : `${kept}\n`}${lines.join("\n")}\n`,
-    { mode: 0o600 },
-  );
+  const { kept } = withoutSettings(text);
+  while (kept.length > 0 && kept.at(-1).trim() === "") kept.pop();
+  if (kept.length > 0 && !/\n$/.test(kept.at(-1))) kept[kept.length - 1] += eol;
+  await writeFile(envFile(folder), [...kept, ...lines].join(""), {
+    mode: 0o600,
+  });
 }
 
 /** Removes the four settings; whether there were any. */
 export async function remove(folder) {
   const text = await readEnv(folder);
   if (text === undefined) return false;
-  const kept = withoutSettings(text);
-  if (kept === text) return false;
-  if (kept.trim() === "") await rm(envFile(folder));
-  else await writeFile(envFile(folder), kept, { mode: 0o600 });
+  const { kept, dropped } = withoutSettings(text);
+  if (!dropped) return false;
+  if (kept.every((line) => line.trim() === "")) await rm(envFile(folder));
+  else await writeFile(envFile(folder), kept.join(""), { mode: 0o600 });
   return true;
 }
 
@@ -187,7 +199,7 @@ export async function flow(args, terminal, folder = HERE) {
       complain("That is neither: run `npm run model` again.\n");
       return 2;
     }
-    ({ url, key } = server);
+    ({ url, key, name } = server);
     say(
       `Start ${server.label} with a model that calls tools before going on; \`npm run model\` does not download or start one.\n`,
     );
@@ -238,14 +250,20 @@ export async function flow(args, terminal, folder = HERE) {
       return 1;
     }
   }
-  await save(folder, {
-    CASCADE_MODEL_PROVIDER: provider,
-    CASCADE_MODEL_URL: url,
-    CASCADE_MODEL_NAME: name,
-    CASCADE_MODEL_KEY: key,
-  });
+  try {
+    await save(folder, {
+      CASCADE_MODEL_PROVIDER: provider,
+      CASCADE_MODEL_URL: url,
+      CASCADE_MODEL_NAME: name,
+      CASCADE_MODEL_KEY: key,
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    complain(`${error.message} Nothing was changed.\n`);
+    return 2;
+  }
   say(
-    `\nSaved to .env: ${provider}, ${name}${known.key || provider === "other" ? ", and the key" : ""}. \`npm start\` now offers the chat; \`npm run model -- --off\` removes it.\n`,
+    `\nSaved to .env: ${provider}, ${name}${typed === "" ? "" : ", and the key"}. \`npm start\` now offers the chat; \`npm run model -- --off\` removes it.\n`,
   );
   return 0;
 }
