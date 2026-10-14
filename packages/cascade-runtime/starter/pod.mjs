@@ -77,9 +77,7 @@ async function everything() {
   argumentsOf(args, "npm run reset", {}, 0);
   let removed;
   try {
-    removed = await resetAll((kit) =>
-      stdout.write(`Loading the pod ${kit}…\n`),
-    );
+    removed = await resetAll((text) => stdout.write(text));
   } catch (error) {
     refuse(error.message);
   }

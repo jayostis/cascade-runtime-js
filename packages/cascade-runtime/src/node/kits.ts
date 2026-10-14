@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve as absolute } from "node:path";
 import { featureStory, kitsOf, OxigraphStore } from "@cascade-runtime/runtime";
 import { featurePod, FolderFiles } from "@cascade-runtime/runtime/node";
 import { tablesBeside } from "../index.js";
+import type { Phase } from "../phase.js";
 import { shipped, type Tables } from "../tables.js";
 import { resolved } from "./resolved.js";
 
@@ -80,6 +81,14 @@ export async function kitDownload(
         : `the kit ${kit} has several downloads ${download}, one a person`,
     );
   return found[0]!.folder;
+}
+
+/**
+ * The app's tables set up as their own step, which the kits then use: read into the pods' `.tables`, the feed
+ * checked, and the listing for search finished, each reported through `phase`.
+ */
+export async function setUpTables(pods: string, phase: Phase): Promise<Tables> {
+  return tablesBeside(pods, phase);
 }
 
 /**
