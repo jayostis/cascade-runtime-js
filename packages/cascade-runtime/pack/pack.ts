@@ -41,7 +41,7 @@ import {
   type Resolved,
 } from "@cascade-runtime/runtime/node";
 import { keptRows } from "../src/node/rowCache.js";
-import { writeStarterCopies } from "../src/tables.js";
+import { LISTED, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -249,7 +249,7 @@ async function packStarterTables(
       );
     log(`${feed}: ${kept.length} starter copies`);
   }
-  await writeListed(folder);
+  await writeListed(folder, (path) => !path.endsWith(LISTED));
 }
 
 /** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`. */
@@ -261,9 +261,13 @@ function read(path: string): boolean {
 
 /**
  * Lists every file under the folder, as a browser reads it over HTTP, and packs those a pod reads into one file beside
- * it, `<folder>.json`, so a browser fetches them at once.
+ * it, `<folder>.json`, so a browser fetches them at once. A browser is not told of the files `served` refuses, which
+ * stay in the folder for Node: the tables' listings are 56 MB, which a page lists itself in its worker.
  */
-async function writeListed(folder: string): Promise<void> {
+async function writeListed(
+  folder: string,
+  served: (path: string) => boolean = () => true,
+): Promise<void> {
   const paths = (
     await readdir(folder, { recursive: true, withFileTypes: true })
   )
@@ -271,7 +275,7 @@ async function writeListed(folder: string): Promise<void> {
     .map((entry) =>
       relative(folder, join(entry.parentPath, entry.name)).split(sep).join("/"),
     )
-    .filter((path) => path !== FILES_JSON)
+    .filter((path) => path !== FILES_JSON && served(path))
     .sort();
   await writeJson(join(folder, FILES_JSON), paths);
   const files = new Map<string, Uint8Array>();

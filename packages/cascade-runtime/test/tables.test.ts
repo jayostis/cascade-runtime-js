@@ -34,7 +34,7 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { openPodWith } from "../src/pod.js";
-import { listing, merged } from "../src/rows.js";
+import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
   type Checked,
   LISTED,
@@ -840,6 +840,7 @@ test("the starter copies carry each version's rows as published, and a store emp
   const stem = fileStem(groups.first);
   assert.ok(carried.includes(`${stem}${PUBLISHED_ROWS}`));
   assert.ok(!carried.includes(`${stem}.ttl`));
+  assert.ok(carried.includes(`${stem}${LISTED}`));
   const app = join(scratch, "reset");
   const tables = new Tables({
     files: new FolderFiles(join(app, ".tables")),
@@ -847,9 +848,14 @@ test("the starter copies carry each version's rows as published, and a store emp
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
     starter,
+    work: {
+      ...IN_THIS_THREAD,
+      listed: () => Promise.reject(new Error("listed what came listed")),
+    },
   });
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
+  assert.equal(await tables.listing(), 0);
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>
