@@ -30,6 +30,10 @@ A finding says what changed after what: a test's results were lower or higher af
 A record's date is a fact of the record. Never call a date "in the future" or "in the past" because of what you believe the date today to be.
 Write plain text with no links and no markdown. The app shows a finding's rows under your answer, and open_trend, open_entry and open_pod move the app to a page: use them when the person asks to see something.`;
 
+/** What a chat that began with "Ask about this" is also told: its answer is about the thing, not the person. */
+export const EXPLAIN_THE_THING =
+  "Explain the thing the person asked about, never the person: say what the records show of it, and nothing of the person's habits, choices or character.";
+
 const NO_POD = "No pod is open.";
 
 /** The context message of a turn: where the person is, apart from their words. */
@@ -309,7 +313,8 @@ export async function runChat({ model, tools, body: given, signal, emit }) {
     ...(body.context === undefined
       ? []
       : [
-          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, or a trend by its test and medication.`,
+          `The person asked about this: ${JSON.stringify(body.context)}. It names a finding by its key, an entry by its ID, or a trend by its test and medication. Find it with the tools.`,
+          EXPLAIN_THE_THING,
         ]),
   ];
   const messages = [...body.messages];

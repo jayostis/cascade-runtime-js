@@ -499,14 +499,24 @@ export function worthALook(answers, about = new Map(), said) {
 
 /**
  * The part of a pod's page that lists `lines`, as `worthALook` gives them: each line's sentence a link to
- * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line.
+ * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line. With `ask`, each line
+ * has an "Ask about this" button for its entry.
  */
-export function worthPart(lines, entryHref) {
+export function worthPart(lines, entryHref, ask = false) {
   if (lines.length === 0) return undefined;
   return html`<div class="card worth"><h2>Worth a look</h2><ul>${lines.map(
     ({ sentence, entry, tag }) =>
-      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}</li>`,
+      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}${ask && askButton({ kind: "entry", id: entryId(entry) }, sentence)}</li>`,
   )}</ul></div>`;
+}
+
+/**
+ * A button that starts a chat about `context`: `{ kind: "finding", key }`, `{ kind: "entry", id }` or `{ kind: "trend",
+ * test, medication? }`, which `chatStrip` listens for. It names the thing, never its text, so the model reaches it through
+ * its tools. `label` says which one to a screen reader.
+ */
+function askButton(context, label) {
+  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} aria-label=${`Ask about this: ${label}`}>Ask about this</button>`;
 }
 
 /** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
@@ -1009,7 +1019,8 @@ export function tile(section, rows, entryHref) {
  * - `changes`: what changed after a medication started or stopped, as `changesIn` gives it over the pod's medication
  *   history and lab results; none, no part, as when the pod holds no row of either;
  * - `trendHref({ test, medication })`: the address of the trend of a test, a medication marked, which a change links to;
- * - `register(view)`: called with `TREND_VIEW` while What changed is on screen, giving back what undoes it.
+ * - `register(view)`: called with `TREND_VIEW` while What changed is on screen, giving back what undoes it;
+ * - `ask`: true when a model is set, and each line of Worth a look and each change has an "Ask about this" button.
  */
 export function podPage(
   asked,
@@ -1027,18 +1038,19 @@ export function podPage(
     changes,
     trendHref,
     register,
+    ask,
   },
 ) {
   const answers = named(asked, about);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const worth = worthPart(worthALook(answers, about, said), entryHref);
+  const worth = worthPart(worthALook(answers, about, said), entryHref, ask);
   const changed =
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
     (answers[LABS] ?? []).length > 0
-      ? changedPart({ changes, about, entryHref, trendHref, register })
+      ? changedPart({ changes, about, entryHref, trendHref, register, ask })
       : undefined;
   const tiles = SECTIONS.map((section) => [
     section,
@@ -1346,6 +1358,7 @@ function Trend({
   trendHref,
   about = new Map(),
   register,
+  ask,
 }) {
   useView(register, TREND_VIEW);
   const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
@@ -1405,7 +1418,7 @@ function Trend({
   const picked = (on) => (on ? "true" : undefined);
   return html`${backLink}
 <h1>${name}</h1>
-<p class="lead">${series.results.length === 0 ? "No result of this test is a number." : `${resultsSaid(series.results.length)}${unit === "" ? "" : `, in ${unit}`}`}</p>
+<p class="lead">${series.results.length === 0 ? "No result of this test is a number." : `${resultsSaid(series.results.length)}${unit === "" ? "" : `, in ${unit}`}`}${ask && askButton({ kind: "trend", test: series.test.notation ?? series.test.code, ...(chosen ? { medication: chosen.key } : {}) }, chosen ? `${name} and ${chosen.name}` : name)}</p>
 ${medication !== undefined && chosen === undefined && html`<p class="note">This pod holds no medication ${medication}.</p>`}
 ${chart && html`<div class="card trend">${chart}${unplotted > 0 && html`<p class="muted">The chart leaves out ${resultsSaid(unplotted)} in another unit; the table lists ${unplotted === 1 ? "it" : "them"}.</p>`}</div>`}
 <div class="card"><h2>Results</h2>
@@ -1439,7 +1452,8 @@ ${drugs.map((drug) => html`<li><a href=${link({ medication: drug.key })} aria-cu
  * - `trendHref({ test, medication })`: the address of a trend, which the links of the picker go to;
  * - `about`: what the tables say of the codes of the pod's lab results and medication history, as the card names them;
  *   the page names the test and the medications by it where it names the code, else by the record's own text;
- * - `register(view)`: as `podPage` takes it.
+ * - `register(view)`: as `podPage` takes it;
+ * - `ask`: as `podPage` takes it; the page has an "Ask about this" button for the test and the medication marked.
  */
 export function trendPage(props) {
   return html`<${Trend} ...${props} />`;
@@ -1452,7 +1466,7 @@ export function trendTitle(series, about = new Map()) {
 }
 
 /** One finding as a card: what changed, the means, what was left out, a small chart and the links to its results and trend. */
-function Change({ finding, names, trendHref }) {
+function Change({ finding, names, trendHref, ask }) {
   const { key, kind, direction, unit, before, after, left, rows } = finding;
   const id = `change-${slug(key)}`;
   const points = [...rows.before, ...rows.after].map((row) => ({
@@ -1475,7 +1489,7 @@ function Change({ finding, names, trendHref }) {
 <p>${rounded(before.mean)} → ${rounded(after.mean)} ${unit}, the mean of ${resultsSaid(before.count)} before and ${after.count} after.</p>
 ${forgone && html`<p class="muted">${forgone}</p>`}
 <${Chart} id=${id} plot=${plot} points=${points} marks=${marks} unit=${unit} title=${names.test} desc="${resultsSaid(points.length)} from ${dayAt(Math.min(...points.map((point) => point.time)))} to ${dayAt(Math.max(...points.map((point) => point.time)))}. ${names.medication} ${kind === "after start" ? "started" : "stopped"} ${day(finding.medication.date)}." />
-<p class="row"><a href="#${id}">Show the ${resultsSaid(shown)}</a>${trendHref !== undefined && html` <a href=${trendHref(trendOfFinding(finding))}>Open the trend</a>`}</p>
+<p class="row"><a href="#${id}">Show the ${resultsSaid(shown)}</a>${trendHref !== undefined && html` <a href=${trendHref(trendOfFinding(finding))}>Open the trend</a>`}${ask && askButton({ kind: "finding", key }, sentence)}</p>
 </div>`;
 }
 
@@ -1498,7 +1512,43 @@ function changeNames(finding, about) {
   };
 }
 
-function Changed({ changes, about, entryHref, trendHref, register }) {
+/** The most questions an empty chat offers. */
+const SUGGESTED = 4;
+
+/**
+ * The questions an empty chat offers, as texts: at most `SUGGESTED`, in a fixed order, the same for the same input,
+ * and each only when the pod holds what answers it. First "Find anything interesting in this pod", when What changed
+ * has a change or Worth a look a line; then, for each change shown, strongest first, "Did <test> change after
+ * <medication> started?" (or "stopped"), named as its card names them; last "Which medications have I stopped?", when a
+ * medication of the history has an end date. The changes make room for the other two. `answers` holds the rows of each
+ * of `QUESTIONS`, by question, and `changes`, `about` and `said` are as `podPage` takes them.
+ */
+export function suggestedQuestions(
+  answers,
+  { changes = [], about = new Map(), said },
+) {
+  const shown = changes.filter(
+    ({ direction }) => direction !== "not enough results",
+  );
+  const interesting =
+    shown.length > 0 ||
+    worthALook(named(answers, about), about, said).length > 0;
+  const first = interesting ? ["Find anything interesting in this pod"] : [];
+  const last = (answers[HISTORY] ?? []).some((row) => row.ended)
+    ? ["Which medications have I stopped?"]
+    : [];
+  const changed = [
+    ...new Set(
+      shown.map((finding) => {
+        const names = changeNames(finding, about);
+        return `Did ${names.test} change after ${names.medication} ${finding.kind === "after start" ? "started" : "stopped"}?`;
+      }),
+    ),
+  ].slice(0, SUGGESTED - first.length - last.length);
+  return [...first, ...changed, ...last];
+}
+
+function Changed({ changes, about, entryHref, trendHref, register, ask }) {
   useView(register, TREND_VIEW);
   const shown = changes.filter(
     ({ direction }) => direction !== "not enough results",
@@ -1529,7 +1579,7 @@ function Changed({ changes, about, entryHref, trendHref, register }) {
       ),
     );
   return html`<div class="card changes"><h2>What changed</h2>
-${shown.length === 0 ? html`<p>Nothing stands out yet.</p>` : shown.map((finding) => html`<${Change} key=${finding.key} finding=${finding} names=${changeNames(finding, about)} trendHref=${trendHref} />`)}
+${shown.length === 0 ? html`<p>Nothing stands out yet.</p>` : shown.map((finding) => html`<${Change} key=${finding.key} finding=${finding} names=${changeNames(finding, about)} trendHref=${trendHref} ask=${ask} />`)}
 ${thin.length > 0 && html`<p>${thin.length} ${thin.length === 1 ? "pair" : "pairs"} of a medication and a test had too few results to say anything. <a href="#too-few">Show ${thin.length === 1 ? "it" : "them"}</a></p>`}
 <p class="muted">These say what changed after what, never why. A clinician can say why.</p>
 </div>
@@ -1540,7 +1590,8 @@ ${boxes}`;
  * The part of a pod's page that says what changed in its lab results after a medication started or stopped, as
  * `changesIn` gives it: a card for each change, strongest first, with its means, a small chart and links to the results
  * behind it and to its trend; one line for the pairs with too few results to say anything. `about`, `entryHref`,
- * `trendHref` and `register` are as `podPage` takes them.
+ * `trendHref`, `register` and `ask` are as `podPage` takes them; with `ask`, each card has an "Ask about this" button
+ * carrying its finding's key.
  */
 export function changedPart(props) {
   return html`<${Changed} ...${props} />`;
@@ -1848,9 +1899,10 @@ export function entryOf(
  * An entry's page, as a person reads it: its name and tags, what it is, where it came from and what else is known, each
  * part absent when it has nothing to say but where it came from. `entry` is `entryOf`'s answer, none when the entry is
  * not in the pod. `back` is the pod's address; a code with a series is a link to `codeHref(series, notation)`, and
- * the version a table's claim comes from a link to `tableHref(series)`.
+ * the version a table's claim comes from a link to `tableHref(series)`. With `ask`, as `podPage` takes it, the page has
+ * an "Ask about this" button for the entry.
  */
-export function entryPage({ entry, pod, back, codeHref, tableHref }) {
+export function entryPage({ entry, pod, back, codeHref, tableHref, ask }) {
   const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
   if (entry === undefined)
     return html`${backLink}
@@ -1867,7 +1919,7 @@ export function entryPage({ entry, pod, back, codeHref, tableHref }) {
     html`${at > 0 && ", "}${code.series === undefined ? code.notation : html`<a href=${codeHref(code.series, code.notation)}>${code.notation}</a>`}`;
   return html`${backLink}
 <h1>${name}${tags.map(tagged)}</h1>
-<p class="lead">${capitalised(kind)}</p>
+<p class="lead">${capitalised(kind)}${ask && askButton({ kind: "entry", id: entryId(entry.entry) }, name)}</p>
 ${
   (facts.length > 0 || codes.length > 0) &&
   html`<div class="card entry"><h2>What it is</h2><dl class="facts">
@@ -2878,6 +2930,7 @@ export const CHAT_STYLE = `
 .chat-log .card ul { list-style: none; margin: 0.4rem 0; padding: 0; max-height: 9rem; overflow: auto; font-size: 0.9rem; }
 .chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.5rem; }
 .chat-chips button { font-size: 0.85rem; padding: 0.15rem 0.7rem; border-radius: 999px; }
+button.ask { font-size: 0.85rem; padding: 0.1rem 0.6rem; }
 .chat-form { display: flex; gap: 0.5rem; }
 .chat-form input { flex: 1; min-width: 0; }
 `;

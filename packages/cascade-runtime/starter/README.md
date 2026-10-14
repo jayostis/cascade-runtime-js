@@ -81,6 +81,12 @@ and what its tools read from the pod. Without a model the
 strip only says to run `npm run model`. The chat can only read: it never
 changes a pod.
 
+An empty chat offers up to four questions worked out from the pod's own records
+(not by a model), such as "Did LDL cholesterol change after atorvastatin
+started?", and each line of Worth a look, each What changed card, each trend
+and each entry has an "Ask about this" button that opens a new chat about that
+one thing. The model is told to explain the thing, never the person.
+
 ## Ask the pods from Claude Desktop, VS Code or any MCP client
 
 `npm run mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio over

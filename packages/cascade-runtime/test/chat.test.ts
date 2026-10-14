@@ -471,3 +471,14 @@ test("a request that closes before the answer ends aborts the call to the model"
   await sawAbort;
   await running.close();
 });
+
+test("a chat that began with Ask about this tells the model the thing it asked about and to explain the thing, never the person; a chat with no context is told neither", async () => {
+  const context = { kind: "finding", key: "start:617310:18262-6" };
+  const { model, requests } = fakeModel([reply("Done."), reply("Done.")]);
+  await chat(model, { ...said("tell me about this"), context });
+  await chat(model, said("tell me about this"));
+  const [asked, plain] = requests.map(({ system }) => system.join("\n"));
+  assert.ok(asked!.includes(JSON.stringify(context)));
+  assert.match(asked!, /never the person/);
+  assert.doesNotMatch(plain!, /never the person|asked about this/);
+});
