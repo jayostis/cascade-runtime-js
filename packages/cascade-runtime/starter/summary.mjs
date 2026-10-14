@@ -500,13 +500,13 @@ export function worthALook(answers, about = new Map(), said) {
 /**
  * The part of a pod's page that lists `lines`, as `worthALook` gives them: each line's sentence a link to
  * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line. With `ask`, each line
- * has an "Ask about this" button for its entry.
+ * is plain text with no `entryHref`.
  */
-export function worthPart(lines, entryHref, ask = false) {
+export function worthPart(lines, entryHref) {
   if (lines.length === 0) return undefined;
   return html`<div class="card worth"><h2>Worth a look</h2><ul>${lines.map(
     ({ sentence, entry, tag }) =>
-      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}${ask && askButton({ kind: "entry", id: entryId(entry) }, sentence)}</li>`,
+      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}</li>`,
   )}</ul></div>`;
 }
 
@@ -516,7 +516,7 @@ export function worthPart(lines, entryHref, ask = false) {
  * its tools. `label` says which one to a screen reader.
  */
 function askButton(context, label) {
-  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} aria-label=${`Ask about this: ${label}`}>Ask about this</button>`;
+  return html` <button type="button" class="quiet ask" data-ask=${JSON.stringify(context)} data-ask-label=${label} aria-label=${`Ask about this: ${label}`}>Ask about this</button>`;
 }
 
 /** What a row of "What needs review" is told apart by: its entry, what it needs, and for a pair of medications, the other. */
@@ -1020,7 +1020,7 @@ export function tile(section, rows, entryHref) {
  *   history and lab results; none, no part, as when the pod holds no row of either;
  * - `trendHref({ test, medication })`: the address of the trend of a test, a medication marked, which a change links to;
  * - `register(view)`: called with `TREND_VIEW` while What changed is on screen, giving back what undoes it;
- * - `ask`: true when a model is set, and each line of Worth a look and each change has an "Ask about this" button.
+ * - `ask`: true when a model is set, and each change has an "Ask about this" button.
  */
 export function podPage(
   asked,
@@ -1045,7 +1045,7 @@ export function podPage(
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const worth = worthPart(worthALook(answers, about, said), entryHref, ask);
+  const worth = worthPart(worthALook(answers, about, said), entryHref);
   const changed =
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
@@ -1518,22 +1518,20 @@ const SUGGESTED = 4;
 /**
  * The questions an empty chat offers, as texts: at most `SUGGESTED`, in a fixed order, the same for the same input,
  * and each only when the pod holds what answers it. First "Find anything interesting in this pod", when What changed
- * has a change or Worth a look a line; then, for each change shown, strongest first, "Did <test> change after
+ * has a change (the chat's tools cannot reach why Worth a look flags a line); then, for each change shown, strongest first, "Did <test> change after
  * <medication> started?" (or "stopped"), named as its card names them; last "Which medications have I stopped?", when a
  * medication of the history has an end date. The changes make room for the other two. `answers` holds the rows of each
- * of `QUESTIONS`, by question, and `changes`, `about` and `said` are as `podPage` takes them.
+ * of `QUESTIONS`, by question, and `changes` and `about` are as `podPage` takes them.
  */
 export function suggestedQuestions(
   answers,
-  { changes = [], about = new Map(), said },
+  { changes = [], about = new Map() },
 ) {
   const shown = changes.filter(
     ({ direction }) => direction !== "not enough results",
   );
-  const interesting =
-    shown.length > 0 ||
-    worthALook(named(answers, about), about, said).length > 0;
-  const first = interesting ? ["Find anything interesting in this pod"] : [];
+  const first =
+    shown.length > 0 ? ["Find anything interesting in this pod"] : [];
   const last = (answers[HISTORY] ?? []).some((row) => row.ended)
     ? ["Which medications have I stopped?"]
     : [];
@@ -2253,6 +2251,7 @@ export function Chat({ model, pod, suggestions = [] }) {
 <details class="chat-recent"><summary>Recent chats</summary><ul></ul></details>
 <button type="button" class="quiet chat-new">New chat</button>
 </div>
+<div class="chat-about muted" hidden></div>
 <div class="chat-log" role="log" aria-live="polite" hidden></div>
 <div class="chat-chips" hidden>
 ${suggestions.map((text) => html`<button type="button" class="quiet" data-ask-text=${text}>${text}</button>`)}
@@ -3029,6 +3028,7 @@ export function chatStrip(page, budget = 24000) {
   const win = page.defaultView;
   const pod = strip.dataset.pod;
   const log = strip.querySelector(".chat-log");
+  const about = strip.querySelector(".chat-about");
   const chips = strip.querySelector(".chat-chips");
   const input = strip.querySelector("input");
   const send = strip.querySelector(".chat-send");
@@ -3052,11 +3052,11 @@ export function chatStrip(page, budget = 24000) {
     const saved = storing(() => JSON.parse(win.localStorage.getItem(SAVED)));
     return Array.isArray(saved) ? saved : [];
   };
-  const fresh = (context) => ({
+  const fresh = (context, label) => ({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2),
     pod,
     title: "",
-    ...(context === undefined ? {} : { context }),
+    ...(context === undefined ? {} : { context, label }),
     messages: [],
     updated: Date.now(),
   });
@@ -3139,7 +3139,12 @@ export function chatStrip(page, budget = 24000) {
   const draw = () => {
     log.replaceChildren(...chat.messages.map(view));
     log.hidden = chat.messages.length === 0;
-    chips.hidden = chat.messages.length > 0 || chips.children.length === 0;
+    about.hidden = chat.context === undefined;
+    about.textContent = about.hidden ? "" : `About: ${chat.label}`;
+    chips.hidden =
+      chat.messages.length > 0 ||
+      chat.context !== undefined ||
+      chips.children.length === 0;
     log.scrollTop = log.scrollHeight;
     send.hidden = running !== undefined;
     stop.hidden = running === undefined;
@@ -3252,8 +3257,8 @@ export function chatStrip(page, budget = 24000) {
     else input.focus();
   }
 
-  const begin = (context) => {
-    chat = fresh(context);
+  const begin = (context, label) => {
+    chat = fresh(context, label);
     storing(() => win.sessionStorage.removeItem(OPEN));
     draw();
     input.focus();
@@ -3281,7 +3286,7 @@ export function chatStrip(page, budget = 24000) {
     }
     if (target.dataset.ask !== undefined) {
       try {
-        begin(JSON.parse(target.dataset.ask));
+        begin(JSON.parse(target.dataset.ask), target.dataset.askLabel);
       } catch {
         return;
       }

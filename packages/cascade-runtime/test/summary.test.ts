@@ -1,7 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, test } from "node:test";
 import { render } from "preact-render-to-string";
 import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
@@ -15,7 +12,6 @@ import {
   type Row,
   timelineIn,
 } from "cascade-runtime";
-import { replayKit } from "cascade-runtime/fixtures";
 import { pulled } from "./hospitals.js";
 
 const view = await import(
@@ -2344,55 +2340,32 @@ const asksOf = (markup: string) =>
       JSON.parse(context!.replaceAll("&quot;", '"')) as Record<string, unknown>,
   );
 
-test("suggested questions: Ines Calloway's find a change and ask about it named as the cards name it, Alex's hold no history and no lab result and so ask nothing about a change, a pod's four at most keep the first and last in place, and the same answers give the same list", async () => {
+test("suggested questions: Ines Calloway's find a change and ask about it named as the page names it, a pod whose only reason is a Worth a look line asks nothing the tools cannot answer, a pod's four at most keep the first and last in place, and the same answers give the same list", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const [finding] = story.changes;
-  const about = new Map([
-    [finding!.test.code!, { name: { label: "LDL cholesterol" } }],
-    [finding!.medication.code!, { name: { label: "atorvastatin" } }],
-  ]);
   const ines = view.suggestedQuestions(story.answers, {
     changes: story.changes,
-    about,
   }) as string[];
-  assert.equal(ines[0], "Find anything interesting in this pod");
-  assert.ok(
-    ines.includes("Did LDL cholesterol change after atorvastatin started?"),
-    ines.join(" | "),
-  );
+  assert.deepEqual(ines, [
+    "Find anything interesting in this pod",
+    `Did ${finding!.test.name} change after ${finding!.medication.name} started?`,
+  ]);
   assert.deepEqual(
-    view.suggestedQuestions(story.answers, { changes: story.changes, about }),
+    view.suggestedQuestions(story.answers, { changes: story.changes }),
     ines,
   );
-  assert.ok(ines.length <= 4);
 
-  const folder = await mkdtemp(join(tmpdir(), "cascade-suggest-"));
-  try {
-    await replayKit("alex-rivera", folder);
-    const alex = await openPod(folder);
-    try {
-      const answers = Object.fromEntries(
-        await Promise.all(
-          (view.QUESTIONS as string[]).map(
-            async (question) => [question, await alex.ask(question)] as const,
-          ),
-        ),
-      );
-      assert.equal(answers[HISTORY]!.length, 0);
-      assert.equal(answers[LABS]!.length, 0);
-      const chips = view.suggestedQuestions(answers, {
-        changes: changesIn(answers[HISTORY]!, answers[LABS]!),
-      }) as string[];
-      assert.deepEqual(
-        chips.filter((chip) => /^Did |^Which /.test(chip)),
-        [],
-      );
-    } finally {
-      await alex.close();
-    }
-  } finally {
-    await rm(folder, { recursive: true, force: true });
-  }
+  assert.deepEqual(
+    view.suggestedQuestions(
+      {
+        [HISTORY]: [],
+        [LABS]: [],
+        [REVIEW]: [{ entry: "e1", needs: "judged different, still joined" }],
+      },
+      { changes: [] },
+    ),
+    [],
+  );
 
   const change = (n: number, kind: string) => ({
     kind,
@@ -2421,7 +2394,7 @@ test("suggested questions: Ines Calloway's find a change and ask about it named 
   assert.deepEqual(view.suggestedQuestions({}, { changes: [] }), []);
 });
 
-test("Ask about this: with a model set, each What changed card, each Worth a look line, the trend and an entry draw a button naming the finding's key, the entry's ID or the trend's test and medication, and with none set they draw none", async () => {
+test("Ask about this: with a model set, each What changed card (a Worth a look line none), the trend and an entry draw a button naming the finding's key, the entry's ID or the trend's test and medication, and with none set they draw none", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const [finding] = story.changes;
   const draw = (ask?: boolean) =>
@@ -2442,10 +2415,9 @@ test("Ask about this: with a model set, each What changed card, each Worth a loo
     asked.filter(({ kind }) => kind === "finding"),
     [{ kind: "finding", key: finding!.key }],
   );
-  const lines = view.worthALook(story.answers) as { entry: string }[];
   assert.deepEqual(
     asked.filter(({ kind }) => kind === "entry"),
-    lines.map(({ entry }) => ({ kind: "entry", id: view.entryId(entry) })),
+    [],
   );
 
   const marked = { test: "18262-6", medication: "617310" };

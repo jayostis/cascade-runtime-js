@@ -342,20 +342,23 @@ async function home(response, query) {
 
 /**
  * The questions an empty chat offers on a page of the pod `name`, none with no model set. What the caller already has of
- * the pod's `answers`, what the tables say of them (`about`, `said`) and `changes` is used; the rest is read.
+ * the pod's `answers`, what the tables say of them (`about`) and `changes` is used; the rest is read.
  */
+async function remembered(name) {
+  const answers = await answered(await podNamed(name));
+  lastShown.set(name, answers);
+  return answers;
+}
+
 async function suggested(name, known = {}) {
   if (model === undefined) return [];
   const answers =
-    known.answers ??
-    lastShown.get(name) ??
-    (await answered(await podNamed(name)));
+    known.answers ?? lastShown.get(name) ?? (await remembered(name));
   return suggestedQuestions(answers, {
     changes:
       known.changes ??
       changesIn(answers[HISTORY], answers[LABS], { limit: 20 }),
     about: known.about ?? (await aboutCodes(answers)),
-    said: known.said ?? (await variantsOf(answers, await podNamed(name))),
   });
 }
 
@@ -438,7 +441,7 @@ async function showPod(response, name, query, names) {
       names,
       note: didNote(query, KITS),
       refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
-      suggestions: await suggested(name, { answers, about, said, changes }),
+      suggestions: await suggested(name, { answers, about, changes }),
     }),
   );
 }
@@ -478,7 +481,7 @@ async function showEntry(response, name, id, names) {
     await page(entry?.name ?? "Not found", body, {
       current: name,
       names,
-      suggestions: await suggested(name, { answers, about, said }),
+      suggestions: await suggested(name, { answers, about }),
     }),
   );
 }
@@ -498,10 +501,8 @@ async function showTrend(response, name, query, names) {
     test: query.get("test") ?? undefined,
     medication: query.get("medication") ?? undefined,
   };
-  const input = trendInput(
-    { changes: changesIn(medications, labs, { limit: 20 }), labs },
-    asked,
-  );
+  const changes = changesIn(medications, labs, { limit: 20 });
+  const input = trendInput({ changes, labs }, asked);
   let series;
   try {
     series = input === undefined ? undefined : labSeriesIn(labs, input.test);
@@ -527,7 +528,11 @@ async function showTrend(response, name, query, names) {
     await page(
       series === undefined ? "Not found" : trendTitle(series, about),
       body,
-      { current: name, names, suggestions: await suggested(name) },
+      {
+        current: name,
+        names,
+        suggestions: await suggested(name, { changes, about }),
+      },
     ),
   );
 }

@@ -21,9 +21,14 @@ type Model = {
 };
 type Tools = unknown;
 
-const { chatRoute, chatTools, checkBody, MAX_ROUNDS, runChat } = (await import(
-  new URL("../../starter/chat.mjs", import.meta.url).href
-)) as {
+const {
+  chatRoute,
+  chatTools,
+  checkBody,
+  EXPLAIN_THE_THING,
+  MAX_ROUNDS,
+  runChat,
+} = (await import(new URL("../../starter/chat.mjs", import.meta.url).href)) as {
   chatRoute: (
     request: unknown,
     response: unknown,
@@ -31,6 +36,7 @@ const { chatRoute, chatTools, checkBody, MAX_ROUNDS, runChat } = (await import(
   ) => Promise<void>;
   chatTools: (shared: unknown) => Tools;
   checkBody: (body: unknown) => unknown;
+  EXPLAIN_THE_THING: string;
   MAX_ROUNDS: number;
   runChat: (options: {
     model: Model;
@@ -324,8 +330,23 @@ test("a body the rules refuse is a Refusal naming what is wrong, and so is a pod
       { ...good, messages: [{ role: "user", content: "x".repeat(100_001) }] },
       /characters in all/,
     ],
-    [{ ...good, context: "text" }, /context must be an object/],
-    [{ ...good, context: { about: "x".repeat(2000) } }, /context must be an/],
+    [{ ...good, context: "text" }, /context must be/],
+    [{ ...good, context: { about: "x" } }, /context must be/],
+    [{ ...good, context: { kind: "person", id: "x" } }, /context must be/],
+    [
+      { ...good, context: { kind: "finding", key: "x", id: "y" } },
+      /context must be/,
+    ],
+    [{ ...good, context: { kind: "finding" } }, /context must be/],
+    [{ ...good, context: { kind: "entry", id: 7 } }, /context must be/],
+    [
+      { ...good, context: { kind: "trend", test: "t", medication: 7 } },
+      /context must be/,
+    ],
+    [
+      { ...good, context: { kind: "finding", key: "x".repeat(201) } },
+      /context must be/,
+    ],
     [{ ...good, pod: "x".repeat(201) }, /pod must be/],
     [{ ...good, page: `/${"x".repeat(2000)}` }, /page must be an address/],
     [
@@ -479,6 +500,7 @@ test("a chat that began with Ask about this tells the model the thing it asked a
   await chat(model, said("tell me about this"));
   const [asked, plain] = requests.map(({ system }) => system.join("\n"));
   assert.ok(asked!.includes(JSON.stringify(context)));
-  assert.match(asked!, /never the person/);
-  assert.doesNotMatch(plain!, /never the person|asked about this/);
+  assert.ok(asked!.includes(EXPLAIN_THE_THING));
+  assert.ok(!plain!.includes(EXPLAIN_THE_THING));
+  assert.doesNotMatch(plain!, /asked about this/);
 });

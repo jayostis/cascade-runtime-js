@@ -82,10 +82,10 @@ strip only says to run `npm run model`. The chat can only read: it never
 changes a pod.
 
 An empty chat offers up to four questions worked out from the pod's own records
-(not by a model), such as "Did LDL cholesterol change after atorvastatin
-started?", and each line of Worth a look, each What changed card, each trend
-and each entry has an "Ask about this" button that opens a new chat about that
-one thing. The model is told to explain the thing, never the person.
+(not by a model), such as "Did LDL cholesterol change after atorvastatin 20 MG Oral Tablet
+started?", and each What changed card, each trend and each entry has an "Ask
+about this" button that opens a new chat about that one thing, named at the top
+of the chat. The model is told to explain the thing, never the person.
 
 ## Ask the pods from Claude Desktop, VS Code or any MCP client
 
