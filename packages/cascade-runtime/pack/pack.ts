@@ -40,6 +40,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
+import { keptRows } from "../src/node/rowCache.js";
 import { writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
@@ -237,6 +238,7 @@ async function packStarterTables(
     {
       feeds,
       vocabulary: new FolderFiles(vocabulary),
+      fetch: keptRows(fetch),
       newStore: () => new OxigraphStore(),
     },
     (path, bytes) => written.write(path, bytes),
