@@ -1546,16 +1546,14 @@ export function changedPart(props) {
   return html`<${Changed} ...${props} />`;
 }
 
-/** The card that brings in more: a sign-in button per hospital holding the demo person, and "Find a hospital". */
+/**
+ * The card that brings in more: a sign-in button per hospital holding the demo person, and "Find a hospital". It
+ * says nothing of what a hospital holds: nothing here asks it.
+ */
 function bringIn({ empty, person, signIn, findHospital }) {
-  const at = (person?.at ?? []).map(({ name }) => hospitalName(name));
-  const said =
-    person === undefined
-      ? "Sign in at a hospital, see what it has, and bring it into this pod."
-      : `${person.name} has records waiting at ${listed(at)}.${at.length > 1 ? " Bring in each to see the pod join what they agree on." : ""}`;
   return html`<div class="card">
 <h2>${empty ? "Bring in records" : "Bring in more"}</h2>
-<p>${said}</p>
+<p>Sign in at a hospital, see what it has, and bring it into this pod.</p>
 <div class="row">${(person?.at ?? []).map(signIn)}<a class="button quiet" href=${findHospital}>Find a hospital</a></div>
 </div>`;
 }
@@ -1958,7 +1956,8 @@ function Steps({ connection }) {
 
 /**
  * Every person the demo hospitals hold, by name, the same person at two hospitals once, by name and birth date; each
- * with the hospitals that hold them. `demo` is the demo hospitals as `loadHospitals` gives them.
+ * with the hospitals that hold them, and their `family` and `given` names as the hospital holds them separately.
+ * `demo` is the demo hospitals as `loadHospitals` gives them.
  */
 export function demoPeople(demo) {
   const people = new Map();
@@ -1967,10 +1966,27 @@ export function demoPeople(demo) {
       const name = patientName(bundle);
       if (name === undefined) continue;
       const key = `${name}|${patientOf(bundle).birthDate}`;
-      if (!people.has(key)) people.set(key, { name, at: [] });
+      if (!people.has(key)) {
+        const { family = "", given = [] } = patientOf(bundle).name[0];
+        people.set(key, { name, family, given: given.join(" "), at: [] });
+      }
       people.get(key).at.push(hospital);
     }
-  return [...people.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return byFamily([...people.values()]);
+}
+
+/** A person as a list of people reads them, family name first: `Marsh, Rowan Ellery`; their name as it is when no family name is held. */
+export function familyFirst({ name, family, given }) {
+  return family ? [family, given].filter(Boolean).join(", ") : name;
+}
+
+/** `people` sorted by family name, then given name; a person with no family name sorts by their name. */
+export function byFamily(people) {
+  return [...people].sort(
+    (a, b) =>
+      (a.family || a.name).localeCompare(b.family || b.name) ||
+      (a.given ?? "").localeCompare(b.given ?? ""),
+  );
 }
 
 function patientOf(bundle) {
@@ -2014,11 +2030,11 @@ function choice({ label, note, action, fields = {}, href, doing }) {
  * field post `person` to `action`.
  */
 export function newPodDialog({ people, pods, action, more }) {
-  const demo = people
+  const demo = byFamily(people)
     .filter((person) => !pods.includes(slug(person.name)))
     .map((person) =>
       choice({
-        label: person.name,
+        label: familyFirst(person),
         note: `Records waiting at ${listed(person.at.map(({ name }) => hospitalName(name)))}`,
         action,
         fields: { person: person.name },
@@ -2192,7 +2208,7 @@ export function hospitalsPage({
 }) {
   const who = personName(pod);
   const cards = rows.map((row) => {
-    const here = people
+    const here = byFamily(people)
       .filter((person) =>
         person.at.some((each) => each.fhirBase === row.fhirBase),
       )
@@ -2200,7 +2216,7 @@ export function hospitalsPage({
         const elsewhere = person.at
           .filter((each) => each.fhirBase !== row.fhirBase)
           .map(({ name }) => hospitalName(name));
-        return html`<li>${person.name}${elsewhere.length > 0 && html` <span class="muted">also at ${listed(elsewhere)}</span>`}</li>`;
+        return html`<li>${familyFirst(person)}${elsewhere.length > 0 && html` <span class="muted">also at ${listed(elsewhere)}</span>`}</li>`;
       });
     return html`<div class="card">
 <div class="row"><h2>${hospitalName(row.name)}</h2>${signIn(row)}</div>

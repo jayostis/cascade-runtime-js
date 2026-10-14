@@ -343,6 +343,91 @@ test("a row's place, as a person says it", () => {
     assert.equal(view.placeOf(row), place, JSON.stringify(row));
 });
 
+test("a hospital's people are listed family name first and sorted by family name, then given name, wherever they are listed", () => {
+  const north = { name: "Cascade North Demo Hospital", fhirBase: "https://n" };
+  const south = { name: "Cascade South Demo Hospital", fhirBase: "https://s" };
+  const patient = (family: string, given: string[], birthDate: string) => ({
+    entry: [
+      {
+        resource: {
+          resourceType: "Patient",
+          name: [{ family, given }],
+          birthDate,
+        },
+      },
+    ],
+  });
+  const people = view.demoPeople([
+    {
+      hospital: north,
+      patients: {
+        a: patient("Marsh", ["Rowan", "Ellery"], "1979-04-12"),
+        b: patient("Fenn", ["Tobias"], "1980-01-01"),
+        c: patient("Marsh", ["Anna"], "1990-02-02"),
+      },
+    },
+    {
+      hospital: south,
+      patients: { a: patient("Marsh", ["Rowan", "Ellery"], "1979-04-12") },
+    },
+  ]);
+  const expected = ["Fenn, Tobias", "Marsh, Anna", "Marsh, Rowan Ellery"];
+  const asItems = (shown: unknown, selector: RegExp) =>
+    [...render(shown as never).matchAll(selector)].map(([, text]) => text);
+  assert.deepEqual(
+    asItems(
+      view.hospitalsPage({
+        pod: "x",
+        rows: [{ ...north }],
+        text: "",
+        search: "?hospitals",
+        signIn: () => "",
+        people,
+        back: "/",
+      }),
+      /<li>([^<]*)(?: <span|<\/li>)/g,
+    ),
+    expected,
+  );
+  assert.deepEqual(
+    asItems(
+      view.newPodDialog({ people, pods: [], action: "make" }),
+      /<button>([^<]*)<span/g,
+    ),
+    expected,
+  );
+});
+
+test("a pod's page makes no claim about what a hospital holds, and still signs in at each hospital of its demo person", () => {
+  const person = {
+    name: "Rowan Ellery Marsh",
+    at: [
+      { name: "Cascade North Demo Hospital", fhirBase: "https://n" },
+      { name: "Cascade South Demo Hospital", fhirBase: "https://s" },
+    ],
+  };
+  const card = render(
+    view.podPage(
+      {},
+      {
+        pod: "rowan-ellery-marsh",
+        person,
+        signIn: (hospital: { name: string }) => `[${hospital.name}]`,
+        findHospital: "?hospitals",
+      },
+    ),
+  );
+  const words = card.replace(/<[^>]*>/g, "");
+  assert.ok(
+    words.includes(
+      "Sign in at a hospital, see what it has, and bring it into this pod.",
+    ),
+  );
+  assert.ok(!/waiting/.test(words), words);
+  assert.ok(person.at.every(({ name }) => card.includes(`[${name}]`)));
+  assert.ok(words.includes("Find a hospital"));
+});
+
 test("a pod's name, from a person's", () => {
   for (const [person, pod] of [
     ["Rowan Ellery Marsh", "rowan-ellery-marsh"],
