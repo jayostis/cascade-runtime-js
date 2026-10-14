@@ -2925,6 +2925,8 @@ export const CHAT_STYLE = `
 .chat-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
 .chat > * { flex: none; }
 .chat > .chat-log, .chat > .chat-chips { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.chat > .chat-log { min-height: 4rem; }
+.chat-about { margin: 0 0 0.4rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .chat[data-folded="true"] > :not(.chat-bar) { display: none; }
 .chat[data-folded="true"] .chat-bar { margin: 0; }
 .chat-bar .chat-new { margin-left: auto; }
@@ -3083,6 +3085,10 @@ export function chatStrip(page, budget = 24000) {
   let chat =
     chats.find((each) => each.id === opened && each.pod === pod) ?? fresh();
   let running;
+  let turn;
+  let taken = false;
+  for (const kind of ["wheel", "touchmove", "pointerdown", "keydown"])
+    log.addEventListener(kind, () => (taken = true), { passive: true });
 
   const toggle = strip.querySelector(".chat-fold");
   const fold = (folded) => {
@@ -3168,11 +3174,24 @@ export function chatStrip(page, budget = 24000) {
     log.hidden = chat.messages.length === 0;
     about.hidden = chat.context === undefined;
     about.textContent = about.hidden ? "" : `About: ${chat.label}`;
+    about.title = about.textContent;
     chips.hidden =
       chat.messages.length > 0 ||
       chat.context !== undefined ||
       chips.children.length === 0;
-    log.scrollTop = log.scrollHeight;
+    const asked = turn === undefined ? undefined : log.children[turn];
+    if (asked === undefined) log.scrollTop = log.scrollHeight;
+    else if (!taken) {
+      const answer = log.children[turn + 1] ?? asked;
+      const room = log.clientHeight;
+      const start =
+        answer.getBoundingClientRect().top - asked.getBoundingClientRect().top >
+        room * 0.75
+          ? answer
+          : asked;
+      log.scrollTop +=
+        start.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    }
     send.hidden = running !== undefined;
     stop.hidden = running === undefined;
     const list = recent.querySelector("ul");
@@ -3215,6 +3234,8 @@ export function chatStrip(page, budget = 24000) {
     if (text === "" || running) return;
     fold(false);
     chat.title ||= text.slice(0, 60);
+    turn = chat.messages.length;
+    taken = false;
     chat.messages.push({ role: "user", content: text });
     const answer = { role: "assistant", content: "" };
     chat.messages.push(answer);
@@ -3281,6 +3302,7 @@ export function chatStrip(page, budget = 24000) {
       chat.messages.splice(chat.messages.indexOf(answer), 1);
     keep();
     draw();
+    turn = undefined;
     if (moveTo) go(moveTo);
     else input.focus();
   }

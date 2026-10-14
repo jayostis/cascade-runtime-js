@@ -307,6 +307,67 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
   await page.close();
 });
 
+test("on a phone the About line never overlaps the log, the page scrolls its end above the open strip, and a long answer opens at its question", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 600 } });
+  await page.route("**/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body:
+        [
+          { type: "start" },
+          { type: "delta", text: "A long answer. ".repeat(400) },
+          { type: "done", stop: "end" },
+        ]
+          .map((event) => JSON.stringify(event))
+          .join("\n") + "\n",
+    }),
+  );
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  const label = "A long label about one finding of the pod. ".repeat(6);
+  await page.evaluate((text) => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="asker" data-ask='{"kind":"entry","id":"x"}' data-ask-label="${text}">Ask about this</button>`,
+    );
+  }, label);
+  await page.locator("#asker").click();
+  await page.getByLabel("Ask a question").fill("say a lot");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.locator(".chat-log .model").waitFor();
+  await page.waitForTimeout(300);
+
+  const box = async (selector: string) =>
+    (await page.locator(selector).boundingBox())!;
+  const about = await box(".chat-about");
+  const log = await box(".chat-log");
+  assert.ok(
+    about.y + about.height <= log.y,
+    `the About line ends at ${about.y + about.height}, the log starts at ${log.y}`,
+  );
+  assert.equal(
+    await page.locator(".chat-about").getAttribute("title"),
+    `About: ${label}`,
+  );
+  const question = await box(".chat-log .you");
+  assert.ok(
+    question.y >= log.y - 1 &&
+      question.y + question.height <= log.y + log.height,
+    `question ${question.y}+${question.height}, log ${log.y}+${log.height}`,
+  );
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const strip = await box(".chat");
+  const last = await page.evaluate(
+    () => document.querySelector("main")!.getBoundingClientRect().bottom,
+  );
+  assert.ok(
+    last <= strip.y + 1,
+    `the page ends at ${last}, the strip starts at ${strip.y}`,
+  );
+  await page.close();
+});
+
 test("an open chat leaves the page's own content in view, and the strip folds to its bar and stays folded in the tab", async () => {
   const page = await browser.newPage({
     viewport: { width: 1100, height: 850 },
