@@ -185,6 +185,10 @@ script goes after `--`, or npm keeps it for itself.
   offers.
 - `model.mjs`, `model-client.mjs`: `npm run model`, and the one door to a
   model, whichever provider.
+- `pod-tools.mjs`: the tools over a pod, which the MCP server and the chat
+  share.
+- `chat.mjs`: `POST /chat`, the chat's loop: the model's tool calls run over
+  the pods, with tools that open the app's own pages.
 - `AGENTS.md`: for a coding agent building on this app.
 
 The full guide to `cascade-runtime` is in

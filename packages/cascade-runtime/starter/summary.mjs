@@ -143,7 +143,7 @@ export const SECTIONS = [
   },
 ];
 
-const SOURCES = "entry/Where it came from";
+export const SOURCES = "entry/Where it came from";
 const REVIEW = "entry/What needs review";
 
 const DIFFERS = "Differs";

@@ -19,6 +19,7 @@ import {
   timelineIn,
 } from "cascade-runtime";
 import { render } from "preact-render-to-string";
+import { chatRoute, chatTools, entryPath } from "./chat.mjs";
 import { hospitalsAt } from "./hospitals.mjs";
 import {
   deleteAll,
@@ -38,7 +39,6 @@ import {
   connectionDialog,
   demoPeople,
   didNote,
-  entryId,
   entryOf,
   entryPage,
   frame,
@@ -66,6 +66,7 @@ import {
   trendTitle,
   variantsSaid,
 } from "./summary.mjs";
+import { podTools } from "./pod-tools.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
 const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
@@ -90,9 +91,6 @@ async function answered(pod) {
   for (const question of QUESTIONS) answers[question] = await pod.ask(question);
   return answers;
 }
-
-const entryPath = (name, entry) =>
-  `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
 /** The reference tables the pods are matched with, kept in `pods/.tables/`. */
 const tables = () => tablesBeside(PODS);
@@ -645,6 +643,36 @@ async function demoHospitalPage(request, response, url) {
 
 const demo = await loadHospitals();
 const people = demoPeople(demo);
+
+/**
+ * The model the app was set up with (`npm run model`), or none. The one place the model client is reached; a client
+ * not yet there means no model is set.
+ */
+async function modelSet() {
+  let client;
+  try {
+    client = await import("./model-client.mjs");
+  } catch (error) {
+    if (
+      error.code === "ERR_MODULE_NOT_FOUND" &&
+      error.message.startsWith("Cannot find module") &&
+      error.message.includes("model-client.mjs")
+    )
+      return undefined;
+    throw error;
+  }
+  return client.modelFrom();
+}
+
+const model = await modelSet();
+/** The tools the chat reaches, over the pods this server holds open. */
+const chatting = chatTools(
+  podTools(
+    { names: podNames, open: podNamed },
+    { viewOf: trendPath, keep: false },
+  ),
+  { demoNames: new Set(demo.map(({ hospital }) => hospital.name)) },
+);
 const packageOf = async (path) =>
   JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 const [app, runtime] = await Promise.all([
@@ -686,6 +714,8 @@ const server = createServer(async (request, response) => {
         403,
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
+    if (post && pathname === "/chat")
+      return await chatRoute(request, response, { model, tools: chatting });
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
     if (!post && pathname === "/")

@@ -19,10 +19,11 @@ template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
 you like.
 `npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
 Claude Desktop, VS Code or any MCP client (the README says how to add it);
-`mcp-server.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
-beside `list_pods` and `ask`, each taking the pod's name. A hosted client sends
-what the tools return to its provider: never point one at a person's own pod
-without their say.
+`pod-tools.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
+beside `list_pods` and `ask`, each taking the pod's name; `chat.mjs`, the app's
+`POST /chat`, runs the same tools for a model and adds three that open the
+app's own pages. A hosted client sends what the tools return to its provider:
+never point one at a person's own pod without their say.
 `npm run model` runs `model.mjs`: it asks which model a chat uses, checks that the
 model calls a tool and writes `CASCADE_MODEL_PROVIDER`, `_URL`, `_NAME` and `_KEY`
 to `.env` (untracked; `--off` removes them). `model-client.mjs` is the one door to
