@@ -321,12 +321,13 @@ function recordTools(): void {
 }
 
 /**
- * Holds back what Preact runs after a paint, a view's registration and the abort a page leaving gives it, by
- * `globalThis.effectLag` ms (none until a test sets it): a slow machine's lag, made certain.
+ * Holds what Preact runs after a paint, a view's registration and the abort a page leaving gives it, once
+ * `globalThis.effectsHeld` is set (never until a test sets it): its frame callbacks and 35 ms timeouts are dropped
+ * and never run, so no machine is slow enough to let them through.
  */
 function lagEffects(): void {
-  const lag = (): number =>
-    (globalThis as unknown as { effectLag?: number }).effectLag ?? 0;
+  const held = (): boolean =>
+    (globalThis as unknown as { effectsHeld?: boolean }).effectsHeld === true;
   const timeout = globalThis.setTimeout.bind(globalThis);
   const frame = globalThis.requestAnimationFrame.bind(globalThis);
   // Preact waits for a frame or 35 ms, whichever comes first.
@@ -335,15 +336,11 @@ function lagEffects(): void {
     ms?: number,
     ...rest: unknown[]
   ) =>
-    timeout(
-      callback,
-      ms === 35 ? 35 + lag() : ms,
-      ...rest,
-    )) as typeof globalThis.setTimeout;
+    ms === 35 && held()
+      ? 0
+      : timeout(callback, ms, ...rest)) as typeof globalThis.setTimeout;
   globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) =>
-    lag() === 0
-      ? frame(callback)
-      : timeout(() => callback(performance.now()), lag())) as typeof frame;
+    held() ? 0 : frame(callback)) as typeof frame;
 }
 
 /** When `what` was first drawn in the page, ms since its navigation started or, after a click, since the click. */
@@ -1681,7 +1678,7 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
       () => (globalThis as unknown as Registered).registered.length,
     );
     await page.evaluate(() => {
-      Object.assign(globalThis, { effectLag: 1500 });
+      Object.assign(globalThis, { effectsHeld: true });
     });
     await inPlace(page, () => page.click('nav a:has-text("Alex Rivera")'));
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
