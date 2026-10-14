@@ -8,7 +8,13 @@ import {
   findChanges,
   Refusal,
 } from "cascade-runtime";
-import { entryId, QUESTIONS as ANSWERED, worthALook } from "./summary.mjs";
+import {
+  entryId,
+  HISTORY,
+  LABS,
+  QUESTIONS as ANSWERED,
+  worthALook,
+} from "./summary.mjs";
 
 /** The questions `ask` offers: the person's own records, who they are and where an entry came from. Never free SPARQL. */
 export const QUESTIONS = [
@@ -41,6 +47,18 @@ export async function answersOf(pod) {
   const answers = {};
   for (const question of ANSWERED) answers[question] = await pod.ask(question);
   return answers;
+}
+
+/**
+ * A pod's medication history and lab results, by question: what `aboutCodes` needs to name a medication or a test in
+ * a finding. The chat and the trend page ask it of the pod, so both name the same things.
+ */
+export async function changeAnswers(pod) {
+  const [medications, labs] = await Promise.all([
+    pod.ask(HISTORY),
+    pod.ask(LABS),
+  ]);
+  return { [HISTORY]: medications, [LABS]: labs };
 }
 
 /**

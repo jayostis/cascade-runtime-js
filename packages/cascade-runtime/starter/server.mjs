@@ -67,7 +67,12 @@ import {
   trendTitle,
   variantsSaid,
 } from "./summary.mjs";
-import { answersOf, podTools, worthLines } from "./pod-tools.mjs";
+import {
+  answersOf,
+  changeAnswers,
+  podTools,
+  worthLines,
+} from "./pod-tools.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
 const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
@@ -490,10 +495,8 @@ async function showEntry(response, name, id, names) {
  */
 async function showTrend(response, name, query, names) {
   const pod = await podNamed(name);
-  const [medications, labs] = await Promise.all([
-    pod.ask(HISTORY),
-    pod.ask(LABS),
-  ]);
+  const answers = await changeAnswers(pod);
+  const { [HISTORY]: medications, [LABS]: labs } = answers;
   const asked = {
     test: query.get("test") ?? undefined,
     medication: query.get("medication") ?? undefined,
@@ -506,7 +509,7 @@ async function showTrend(response, name, query, names) {
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
   }
-  const about = await aboutCodes({ [HISTORY]: medications, [LABS]: labs });
+  const about = await aboutCodes(answers);
   const body = trendPage({
     pod: name,
     back: podPath(name),
@@ -715,13 +718,7 @@ const chatting = chatTools(
     },
   ),
   {
-    namesFor: async (pod) => {
-      const [medications, labs] = await Promise.all([
-        pod.ask(HISTORY),
-        pod.ask(LABS),
-      ]);
-      return aboutCodes({ [HISTORY]: medications, [LABS]: labs });
-    },
+    namesFor: async (pod) => aboutCodes(await changeAnswers(pod)),
   },
 );
 const packageOf = async (path) =>
