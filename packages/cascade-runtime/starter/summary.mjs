@@ -3046,9 +3046,10 @@ export function busyForms(page) {
  * A message is `{ role: "user" | "assistant", content, findings?, kind? }`; only `user` and `assistant` text without a
  * `kind` (a refusal or an error, which the model did not say) is sent, the newest within `budget` characters. Any
  * element with `data-ask` (a JSON context) starts a new chat with that context, and one with `data-ask-text` sends its
- * text as typed. The listeners are added once.
+ * text as typed. A `data-ask` click also sends `first(context)`, when it names one, as the person's first question; a
+ * turn still running is stopped first. The listeners are added once.
  */
-export function chatStrip(page, budget = 24000) {
+export function chatStrip(page, budget = 24000, first = undefined) {
   const strip = page.querySelector(".chat[data-pod]");
   if (!strip || strip.ready) return;
   strip.ready = true;
@@ -3323,11 +3324,27 @@ export function chatStrip(page, budget = 24000) {
     draw();
     input.focus();
   };
+  let turnEnded = Promise.resolve();
+  const asking = async (target) => {
+    let context;
+    try {
+      context = JSON.parse(target.dataset.ask);
+    } catch {
+      return;
+    }
+    if (running) {
+      running.abort();
+      await turnEnded;
+    }
+    begin(context, target.dataset.askLabel);
+    const question = first?.(context);
+    if (question) turnEnded = ask(question);
+  };
   strip.querySelector("form").addEventListener("submit", (event) => {
     event.preventDefault();
     const text = input.value;
     input.value = "";
-    ask(text);
+    turnEnded = ask(text);
   });
   page.addEventListener("click", (event) => {
     const target = event.target.closest?.(
@@ -3337,6 +3354,7 @@ export function chatStrip(page, budget = 24000) {
     if (target.matches(".chat-fold"))
       return fold(strip.dataset.folded !== "true");
     if (target.matches(".chat-stop")) return running?.abort();
+    if (target.dataset.ask !== undefined) return asking(target);
     if (running) return;
     if (target.matches(".chat-new")) return begin();
     if (target.dataset.open) return go(target.dataset.open);
@@ -3348,17 +3366,21 @@ export function chatStrip(page, budget = 24000) {
       keep();
       return draw();
     }
-    if (target.dataset.ask !== undefined) {
-      try {
-        begin(JSON.parse(target.dataset.ask), target.dataset.askLabel);
-      } catch {
-        return;
-      }
-    }
-    if (target.dataset.askText !== undefined) ask(target.dataset.askText);
+    if (target.dataset.askText !== undefined)
+      turnEnded = ask(target.dataset.askText);
   });
   draw();
 }
 
+/** The question a click on an "Ask about this" button for `context` sends at once; undefined for a kind it does not know. */
+export function firstQuestion(context) {
+  return {
+    finding: "What does this change show?",
+    trend: "What does this trend show?",
+    entry: "What is this, and where did it come from?",
+    worth: "What does this flag mean?",
+  }[context?.kind];
+}
+
 /** `closing`, `sortAndFilter`, `busyForms` and `chatStrip` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);(${chatStrip})(document);`;
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);(${chatStrip})(document, 24000, ${firstQuestion});`;

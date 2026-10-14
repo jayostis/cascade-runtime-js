@@ -2333,6 +2333,17 @@ test("the trend round-trips through its address: the state read from it draws th
   );
 });
 
+test("Ask about this: a click sends the kind's first question, and none for a kind it does not know", () => {
+  for (const [context, question] of [
+    [{ kind: "finding", key: "k" }, "What does this change show?"],
+    [{ kind: "trend", test: "t" }, "What does this trend show?"],
+    [{ kind: "entry", id: "e" }, "What is this, and where did it come from?"],
+    [{ kind: "worth", entry: "e" }, "What does this flag mean?"],
+    [{ kind: "other" }, undefined],
+  ] as const)
+    assert.equal(view.firstQuestion(context), question, context.kind);
+});
+
 /** The `data-ask` contexts a page draws, in order. */
 const asksOf = (markup: string) =>
   [...markup.matchAll(/data-ask="([^"]*)"/g)].map(
