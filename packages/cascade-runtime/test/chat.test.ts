@@ -34,7 +34,7 @@ const {
     response: unknown,
     options: { model: Model | undefined; tools: Tools },
   ) => Promise<void>;
-  chatTools: (shared: unknown) => Tools;
+  chatTools: (shared: unknown, options?: unknown) => Tools;
   checkBody: (body: unknown) => unknown;
   EXPLAIN_THE_THING: string;
   MAX_ROUNDS: number;
@@ -49,13 +49,18 @@ const {
 const { podTools } = (await import(
   new URL("../../starter/pod-tools.mjs", import.meta.url).href
 )) as { podTools: (...options: unknown[]) => unknown };
-const { entryId, SOURCES } = (await import(
+const { changeSaid, entryId, SOURCES } = (await import(
   new URL("../../starter/summary.mjs", import.meta.url).href
-)) as { entryId: (entry: string) => string; SOURCES: string };
+)) as {
+  changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
+  entryId: (entry: string) => string;
+  SOURCES: string;
+};
 
 const STATIN = "story-statin";
 const pods = new Map<string, Pod>();
 let tools: Tools;
+let shared: unknown;
 
 before(async () => {
   const north = await loadHospital("cascade-north");
@@ -69,18 +74,17 @@ before(async () => {
   });
   assert.equal(imported.refused, undefined);
   pods.set(STATIN, statin);
-  tools = chatTools(
-    podTools(
-      {
-        names: async () => [...pods.keys()],
-        open: async (n: string) => pods.get(n),
-      },
-      {
-        viewOf: (pod: string, { test, medication }: Record<string, string>) =>
-          `/pods/${pod}/trend?test=${test}&medication=${medication}`,
-      },
-    ),
+  shared = podTools(
+    {
+      names: async () => [...pods.keys()],
+      open: async (n: string) => pods.get(n),
+    },
+    {
+      viewOf: (pod: string, { test, medication }: Record<string, string>) =>
+        `/pods/${pod}/trend?test=${test}&medication=${medication}`,
+    },
   );
+  tools = chatTools(shared);
 });
 
 after(async () => {
@@ -119,11 +123,15 @@ function fakeModel(turns: unknown[][], { local = true } = {}) {
   return { model, requests };
 }
 
-async function chat(model: Model, body: Record<string, unknown>) {
+async function chat(
+  model: Model,
+  body: Record<string, unknown>,
+  using: Tools = tools,
+) {
   const events: ChatEvent[] = [];
   await runChat({
     model,
-    tools,
+    tools: using,
     body: { pod: STATIN, page: `/pods/${STATIN}/`, ...body },
     signal: new AbortController().signal,
     emit: (event) => events.push(event),
@@ -182,6 +190,46 @@ test("a question that calls find_changes runs it: the model sees the compact fin
   assert.equal(toolMessage.role, "tool");
   assert.ok(toolMessage.content.includes(finding!.key));
   assert.ok(!toolMessage.content.includes('"rows"'));
+});
+
+test("a finding says itself as the page does: named by what the tables say of its codes", async () => {
+  const tool = (
+    shared as {
+      tools: {
+        name: string;
+        findings: (...a: unknown[]) => Promise<{
+          found: { key: string; medication: { code: string } }[];
+        }>;
+      }[];
+    }
+  ).tools.find(({ name }) => name === "find_changes")!;
+  const { found: pageFindings } = await tool.findings(
+    pods.get(STATIN),
+    {},
+    STATIN,
+  );
+  const [whole] = pageFindings;
+  const names = new Map([
+    [
+      whole!.medication.code,
+      { name: { label: "atorvastatin 20 MG Oral Tablet" } },
+    ],
+  ]);
+  const { model } = fakeModel([
+    calling(call("c1", "find_changes", { pod: STATIN })),
+    reply("Done."),
+  ]);
+  const events = await chat(
+    model,
+    said("find anything"),
+    chatTools(shared, { namesFor: async () => names }),
+  );
+  const [found] = toolEvents(events);
+  const finding = (found!.findings as { said: string; key: string }[]).find(
+    ({ key }) => key === whole!.key,
+  );
+  assert.match(finding!.said, /after atorvastatin 20 MG Oral Tablet started.$/);
+  assert.equal(finding!.said, changeSaid(whole, names));
 });
 
 test("open_pod, open_trend and open_entry give the address of a page that is there, and for input that names nothing there a tool error that lists what is", async () => {
