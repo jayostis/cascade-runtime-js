@@ -64,6 +64,39 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
   );
 });
 
+test("a file written again is read whole as it was or as it is, never cut short, and no half-written file is listed", async () => {
+  const files = new FolderFiles(await mkdtemp(join(tmpdir(), "files-")), POD);
+  const versions = [1, 2].map((n) =>
+    JSON.stringify({ n, rows: "x".repeat(n * 50_000) }),
+  );
+  await files.write("held.json", new TextEncoder().encode(versions[0]));
+  let writing = true;
+  const writer = (async () => {
+    try {
+      for (let time = 0; time < 40; time += 1)
+        await files.write(
+          "held.json",
+          new TextEncoder().encode(versions[time % 2]),
+        );
+    } finally {
+      writing = false;
+    }
+  })();
+  const seen = new Set<string | undefined>();
+  const listed = new Set<string>();
+  const readers = [0].map(async () => {
+    while (writing) {
+      seen.add(text(await files.read("held.json")));
+      for (const path of await files.list("")) listed.add(path);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+  });
+  await Promise.all([writer, ...readers]);
+  for (const read of seen)
+    assert.ok(versions.includes(read ?? ""), "a read was cut short");
+  assert.deepEqual([...listed], ["held.json"]);
+});
+
 test("the bytes an app holds are read as a copy, whether a Buffer or a Uint8Array of another realm", async () => {
   const held: [string, Uint8Array][] = [
     ["a/buffer.xml", Buffer.from("abc")],
