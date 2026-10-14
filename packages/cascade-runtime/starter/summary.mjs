@@ -1512,6 +1512,13 @@ function changeNames(finding, about) {
   };
 }
 
+/** What a finding says, in the words the page uses for it: its card, its "Ask about this" label and the chat's finding card. */
+export function changeSaid(finding, about = new Map()) {
+  const { test, medication } = changeNames(finding, about);
+  const sentence = CHANGED[finding.kind][finding.direction](test, medication);
+  return capitalised(sentence);
+}
+
 /** The most questions an empty chat offers. */
 const SUGGESTED = 4;
 
@@ -2250,6 +2257,7 @@ export function Chat({ model, pod, suggestions = [] }) {
 <span class="muted">${model.name}${model.local ? ", on this computer" : `, from ${model.provider}`}</span>
 <details class="chat-recent"><summary>Recent chats</summary><ul></ul></details>
 <button type="button" class="quiet chat-new">New chat</button>
+<button type="button" class="quiet chat-fold" aria-expanded="true">Hide chat</button>
 </div>
 <div class="chat-about muted" hidden></div>
 <div class="chat-log" role="log" aria-live="polite" hidden></div>
@@ -2907,18 +2915,23 @@ body[data-state="busy"] { cursor: progress; }
 
 /** The chat strip's styles, from `STYLE`'s colours so dark mode follows; a page that has a strip gets them after `STYLE`. */
 export const CHAT_STYLE = `
-.chat { position: sticky; bottom: 0; z-index: 8; background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
+.chat { position: sticky; bottom: 0; z-index: 8; display: flex; flex-direction: column; max-height: 33vh; background: var(--panel); border-top: 1px solid var(--line); padding: 0.6rem 1.25rem; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08); }
 .chat [hidden] { display: none; }
 .chat-off { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .chat-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
-.chat-bar .chat-new { margin-left: auto; padding: 0.15rem 0.7rem; }
+.chat > * { flex: none; }
+.chat > .chat-log, .chat > .chat-chips { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.chat[data-folded="true"] > :not(.chat-bar) { display: none; }
+.chat[data-folded="true"] .chat-bar { margin: 0; }
+.chat-bar .chat-new { margin-left: auto; }
+.chat-bar .chat-new, .chat-bar .chat-fold { padding: 0.15rem 0.7rem; }
 .chat-recent { position: relative; font-size: 0.9rem; }
 .chat-recent summary { cursor: pointer; color: var(--accent); }
 .chat-recent ul { position: absolute; bottom: calc(100% + 0.35rem); left: 0; z-index: 10; min-width: 16rem; max-height: 14rem; overflow: auto; list-style: none; margin: 0; padding: 0.3rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); }
 .chat-recent li button { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); border-color: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-recent li button:hover { background: var(--soft); }
 .chat-recent li.empty { padding: 0.3rem 0.6rem; color: var(--muted); }
-.chat-log { max-height: 42vh; overflow: auto; margin: 0 0 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-log { margin: 0 0 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .chat-log .you { align-self: flex-end; max-width: 80%; background: var(--tint); border-radius: 10px; padding: 0.3rem 0.8rem; white-space: pre-wrap; }
 .chat-log .model { white-space: pre-wrap; }
 .chat-log .stopped { color: var(--muted); font-size: 0.9rem; }
@@ -3036,6 +3049,7 @@ export function chatStrip(page, budget = 24000) {
   const recent = strip.querySelector(".chat-recent");
   const SAVED = "cascade.chats";
   const OPEN = "cascade.chat.open";
+  const FOLDED = "cascade.chat.folded";
   const ENTRIES = 30;
   const podOf = (address) => {
     const at = /^\/pods\/([^/]+)\//.exec(address);
@@ -3065,6 +3079,15 @@ export function chatStrip(page, budget = 24000) {
   let chat =
     chats.find((each) => each.id === opened && each.pod === pod) ?? fresh();
   let running;
+
+  const toggle = strip.querySelector(".chat-fold");
+  const fold = (folded) => {
+    strip.dataset.folded = folded ? "true" : "false";
+    toggle.setAttribute("aria-expanded", String(!folded));
+    toggle.textContent = folded ? "Show chat" : "Hide chat";
+    storing(() => win.sessionStorage.setItem(FOLDED, String(folded)));
+  };
+  fold(storing(() => win.sessionStorage.getItem(FOLDED)) === "true");
 
   const keep = () => {
     chat.updated = Date.now();
@@ -3186,6 +3209,7 @@ export function chatStrip(page, budget = 24000) {
   async function ask(text) {
     text = text.trim();
     if (text === "" || running) return;
+    fold(false);
     chat.title ||= text.slice(0, 60);
     chat.messages.push({ role: "user", content: text });
     const answer = { role: "assistant", content: "" };
@@ -3260,6 +3284,7 @@ export function chatStrip(page, budget = 24000) {
   const begin = (context, label) => {
     chat = fresh(context, label);
     storing(() => win.sessionStorage.removeItem(OPEN));
+    fold(false);
     draw();
     input.focus();
   };
@@ -3271,9 +3296,11 @@ export function chatStrip(page, budget = 24000) {
   });
   page.addEventListener("click", (event) => {
     const target = event.target.closest?.(
-      "[data-ask], [data-ask-text], [data-open], [data-chat], .chat-new, .chat-stop",
+      "[data-ask], [data-ask-text], [data-open], [data-chat], .chat-new, .chat-stop, .chat-fold",
     );
     if (!target) return;
+    if (target.matches(".chat-fold"))
+      return fold(strip.dataset.folded !== "true");
     if (target.matches(".chat-stop")) return running?.abort();
     if (running) return;
     if (target.matches(".chat-new")) return begin();

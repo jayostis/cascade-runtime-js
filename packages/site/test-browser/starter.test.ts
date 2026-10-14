@@ -306,3 +306,47 @@ test("a finding the model's tool found is drawn as a card with the app's sentenc
   assert.equal(await page.locator(".chat-chips").isHidden(), true);
   await page.close();
 });
+
+test("an open chat leaves the page's own content in view, and the strip folds to its bar and stays folded in the tab", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 1100, height: 850 },
+  });
+  await page.route("**/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body:
+        [
+          { type: "start" },
+          { type: "delta", text: "A long answer. ".repeat(400) },
+          { type: "done", stop: "end" },
+        ]
+          .map((event) => JSON.stringify(event))
+          .join("\n") + "\n",
+    }),
+  );
+  await page.goto(`${modelled.origin}/pods/ines-calloway/`);
+  await page.getByLabel("Ask a question").fill("say a lot");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.locator(".chat-log .model").waitFor();
+  const strip = page.locator(".chat");
+  const height = async () => (await strip.boundingBox())!.height;
+  assert.ok((await height()) < 850 / 2, `the strip is ${await height()} px`);
+  assert.equal(await page.locator("h1").isVisible(), true);
+  assert.ok(
+    await page
+      .locator(".chat-log")
+      .evaluate((log) => log.scrollHeight > log.clientHeight),
+    "the log scrolls inside the strip",
+  );
+
+  await page.getByRole("button", { name: "Hide chat" }).click();
+  assert.equal(await page.locator(".chat-form").isVisible(), false);
+  const bar = await height();
+  assert.ok(bar < 100, `the bar is ${bar} px`);
+  await page.reload();
+  assert.equal(await page.locator(".chat-form").isVisible(), false);
+  await page.getByRole("button", { name: "Show chat" }).click();
+  assert.equal(await page.locator(".chat-form").isVisible(), true);
+  await page.close();
+});

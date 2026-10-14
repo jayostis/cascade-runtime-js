@@ -8,6 +8,7 @@ import { podPath, trendPath } from "./pods.mjs";
 import { withPod } from "./pod-tools.mjs";
 import {
   CHANGED,
+  changeSaid,
   entryId,
   HISTORY,
   LABS,
@@ -124,15 +125,11 @@ export const entryPath = (name, entry) =>
 
 const unique = (items) => [...new Set(items)];
 
-/** What the app says of a finding everywhere else (`CHANGED`); nothing where there were not enough results. */
-function saidOf({ kind, direction, test, medication }) {
-  const say = CHANGED[kind]?.[direction];
-  if (say === undefined) return undefined;
-  const sentence = say(
-    test.name ?? test.notation ?? test.code,
-    medication.name,
-  );
-  return sentence[0].toUpperCase() + sentence.slice(1);
+/** What the page says of a finding (`changeSaid`), named by `about`; nothing where there were not enough results. */
+function saidOf(finding, about) {
+  return CHANGED[finding.kind]?.[finding.direction] === undefined
+    ? undefined
+    : changeSaid(finding, about);
 }
 
 /** A finding's rows as a card shows them: each lab result by its entry's ID. */
@@ -242,9 +239,11 @@ const toolError = (reason) => ({ text: reason, isError: true });
 /**
  * The tools a chat reaches: `shared` is `podTools(...)`. `specs` is what the model is told of them; `run(name,
  * rawArguments)` runs one call of the model and gives `{ text, isError, value, findings?, open? }`. Input the rules
- * refuse is `isError`, for the model to read; nothing here throws for it.
+ * refuse is `isError`, for the model to read; nothing here throws for it. `namesFor(pod, findings)` gives what the
+ * tables say of the findings' codes (the page's `about`), so a finding says itself as the page does; without it, by the
+ * records' own text.
  */
-export function chatTools(shared) {
+export function chatTools(shared, { namesFor } = {}) {
   const tools = [...shared.tools, ...OPEN_TOOLS].map((tool) => ({
     ...tool,
     inputSchema: withPod(tool),
@@ -267,13 +266,17 @@ export function chatTools(shared) {
     const pod = await shared.podNamed(name);
     if (tool.name === "find_changes") {
       const { value, found } = await tool.findings(pod, rest, name);
+      const about = await namesFor?.(pod, found);
       return {
         value,
-        findings: value.map((finding) => ({
-          ...finding,
-          said: saidOf(finding),
-          rows: rowsOf(found.find(({ key }) => key === finding.key)),
-        })),
+        findings: value.map((finding) => {
+          const whole = found.find(({ key }) => key === finding.key);
+          return {
+            ...finding,
+            said: saidOf(whole, about),
+            rows: rowsOf(whole),
+          };
+        }),
       };
     }
     const value = await tool.run(pod, rest, name);
