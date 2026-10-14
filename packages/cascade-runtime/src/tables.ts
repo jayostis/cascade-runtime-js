@@ -484,6 +484,7 @@ export class Tables {
   #started: Promise<void> | undefined;
   #written = 0;
   readonly #listing: Promise<void>[] = [];
+  #listedFromRows = 0;
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -542,35 +543,29 @@ export class Tables {
     });
   }
 
-  /** Starts listing every shipped version not yet listed, so a version the starter copies brought is quick on its first view too. */
+  /** Starts listing every shipped version, which reads a valid listing kept beside it and lists again one that is not valid. */
   async #startListing(): Promise<void> {
-    const kept = new Set(await this.#options.files.list(""));
     for (const [, , version] of (await this.#index()).match(
       undefined,
       SHIPS_WITH,
     ))
-      if (!kept.has(`${stemOf(version.value)}${LISTED}`))
-        this.#listing.push(
-          this.#listed(version.value).then(
-            () => undefined,
-            () => undefined,
-          ),
-        );
+      this.#listing.push(
+        this.#listed(version.value).then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
   }
 
   /**
    * Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background.
-   * The number of versions it had to list: 0 when each came listed, as the starter copies carry them.
+   * The number of versions it listed from their rows: 0 when each came listed, as the starter copies carry them.
    */
   async listing(): Promise<number> {
+    const before = this.#listedFromRows;
     await this.#next(() => this.#startListing());
-    let listed = 0;
-    while (this.#listing.length > 0) {
-      const waiting = this.#listing.splice(0);
-      listed += waiting.length;
-      await Promise.all(waiting);
-    }
-    return listed;
+    while (this.#listing.length > 0) await Promise.all(this.#listing.splice(0));
+    return this.#listedFromRows - before;
   }
 
   /**
@@ -1288,6 +1283,7 @@ export class Tables {
         uriSpaces,
       );
       await files.write(path, listed);
+      this.#listedFromRows += 1;
       return JSON.parse(new TextDecoder().decode(listed)) as Listed;
     });
   }

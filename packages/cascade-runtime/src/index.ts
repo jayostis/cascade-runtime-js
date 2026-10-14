@@ -81,7 +81,7 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
         () => tables.listing(),
         (listed) =>
           listed === 0
-            ? "every table came listed"
+            ? "already listed by the package"
             : `${listed} ${listed === 1 ? "table" : "tables"} listed`,
       );
       return tables;

@@ -856,6 +856,30 @@ test("the starter copies carry each version's rows as published, and a store emp
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
   assert.equal(await tables.listing(), 0);
+  assert.ok(
+    (await tables.search(groups.series, "141")).found.length > 0,
+    "a carried listing is read, not listed again",
+  );
+  const stale = new MemoryFiles("urn:test:starter-stale/");
+  for (const path of carried)
+    await stale.write(path, (await starter.read(path)) as Uint8Array);
+  const listed = `${stem}${LISTED}`;
+  const kept = JSON.parse(
+    new TextDecoder().decode(await stale.read(listed)),
+  ) as Record<string, unknown>;
+  await stale.write(
+    listed,
+    new TextEncoder().encode(JSON.stringify({ ...kept, format: 0 })),
+  );
+  const old = new Tables({
+    files: new MemoryFiles("urn:test:app-stale/"),
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    starter: stale,
+  });
+  await old.current();
+  assert.equal(await old.listing(), 1);
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>

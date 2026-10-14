@@ -223,7 +223,15 @@ async function stagedPackage(): Promise<{
     const tree = `components/${repositoryName(component)}/${component.commit}`;
     paths.push(`${tree}.json`, ...(await staged.list(tree)));
   }
-  paths.push(`${STARTER_TABLES}.json`, ...(await staged.list(STARTER_TABLES)));
+  const served = await staged.read(`${STARTER_TABLES}/files.json`);
+  if (served === undefined) throw new Error(`${STAGE} holds no starter tables`);
+  paths.push(
+    `${STARTER_TABLES}.json`,
+    `${STARTER_TABLES}/files.json`,
+    ...(JSON.parse(new TextDecoder().decode(served)) as string[]).map(
+      (path) => `${STARTER_TABLES}/${path}`,
+    ),
+  );
   const files = new Map<string, Uint8Array>();
   for (const path of paths) {
     const bytes = await staged.read(path);
