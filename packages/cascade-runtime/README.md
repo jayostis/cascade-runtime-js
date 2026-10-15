@@ -20,3 +20,19 @@ It is built from
 [cascade-runtime-js](https://github.com/jayostis/cascade-runtime-js) by
 `npm run build:package`, and every merge to its `main` attaches the tarball to a
 pre-release `build-<commit>`. It is not on npm.
+
+## LOINC
+
+The package redistributes content from LOINC: its starter copies of the reference
+tables hold LOINC's long common names, the status of its codes and its panels'
+members, which an app names lab results and shows panels by. LOINC's notice, as
+its license (§10.1) asks of every copy:
+
+> This material contains content from LOINC (http://loinc.org). LOINC is
+> copyright © Regenstrief Institute, Inc. and the Logical Observation
+> Identifiers Names and Codes (LOINC) Committee and is available at no cost under
+> the license at http://loinc.org/license. LOINC® is a registered United States
+> trademark of Regenstrief Institute, Inc.
+
+A page that names a code from the table shows the same credit, which the table's
+series carries.

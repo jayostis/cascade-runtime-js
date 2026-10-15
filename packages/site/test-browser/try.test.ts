@@ -1588,6 +1588,48 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
   }
 });
 
+test("in try/, Priya's pod, copied on a first visit, names her potassium result by LOINC once the tables are ready, and its class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous", async () => {
+  const context = await browser.newContext();
+  await context.addInitScript(recordDraws);
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(
+      `${served.url}try/index.html?pod=priya-natarajan#see-lab-results`,
+    );
+    await settled(page);
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 120_000,
+    });
+    const results = page.locator("#see-lab-results tbody tr");
+    assert.ok(
+      (await results
+        .filter({ hasText: "Potassium [Moles/volume] in Serum or Plasma" })
+        .count()) > 0,
+      "no potassium result is named by LOINC",
+    );
+    await page.goto(`${served.url}try/index.html?pod=priya-natarajan&classes`);
+    await settled(page);
+    await page.waitForFunction(
+      () =>
+        document.querySelector("main h1")?.textContent === "Medicines by class",
+      undefined,
+      { timeout: 120_000 },
+    );
+    await page.waitForSelector("main .card h2", { timeout: 120_000 });
+    const body = ((await page.locator("main").innerText()) ?? "").replace(
+      /\s+/g,
+      " ",
+    );
+    for (const said of [
+      "Angiotensin Converting Enzyme Inhibitor [EPC]",
+      "lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+    ])
+      assert.ok(body.includes(said), `${said} is not in ${body}`);
+  } finally {
+    await context.close();
+  }
+});
+
 test("in try/, Ines Calloway's new pod signed in at North says what changed after atorvastatin started and registers the trend and the pod's change tools with the model context, opens the trend at its address, and going to another pod takes every tool away", async () => {
   const demo = await loadHospitals();
   const ines = view

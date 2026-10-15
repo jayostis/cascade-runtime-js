@@ -51,6 +51,28 @@ const SPDX = "http://spdx.org/rdf/terms#";
 const SHIPS_WITH = `${REC}shipsWith`;
 /** Beside a feed, when its watcher last checked each source. */
 const WATCHED = "checked.json";
+/** The kinds a code's page gives a section of their own, so its generic mappings do not list them. */
+const OWN_SECTIONS = [`${REC}PanelMembers`, `${REC}DrugClasses`];
+/** The relations of a drug class row, in the order a code's page lists them. */
+const RELATIONS = [
+  `${REC}establishedPharmacologicClass`,
+  `${REC}mechanismOfAction`,
+  `${REC}physiologicEffect`,
+  `${REC}chemicalStructure`,
+];
+const NOTATIONS = new Intl.Collator("en", { numeric: true });
+/** A panel row's other code, with its place, before `facts` names it. */
+interface PlaceOf {
+  readonly code: string;
+  readonly sequence?: number;
+  readonly required?: string;
+}
+/** A class row, before `facts` names its codes. */
+interface ClassOf {
+  readonly relation: string;
+  readonly class: string;
+  readonly through?: string;
+}
 /** How many codes a page of a search shows. */
 export const PAGE_SIZE = 50;
 /** What follows a version's file stem in the name of its listing, which a search reads. */
@@ -195,6 +217,23 @@ export interface Fact {
   readonly version: string;
 }
 
+/** Where a code stands in a panel, as the row that puts it there gives it. */
+export interface Placed extends Coded {
+  /** The `rec:panelSequence` of the row. */
+  readonly sequence?: number;
+  /** The `rec:observationRequiredInPanel` of the row: `R` for a member the panel requires. */
+  readonly required?: string;
+}
+
+/** A class a drug is in, by the relation its row gives. */
+export interface InClass {
+  /** The row's predicate: `rec:establishedPharmacologicClass`, `rec:mechanismOfAction`, `rec:physiologicEffect` or `rec:chemicalStructure`. */
+  readonly relation: string;
+  readonly class: Coded;
+  /** The code the class is on when it is not the code asked of: FDA classes the ingredient or a precise ingredient, not a product. */
+  readonly through?: Coded;
+}
+
 /** Everything the held tables say of a code, each fact with its series and version. */
 export interface Facts extends Coded {
   /** From each names series that names it, in the order of preference. */
@@ -217,6 +256,22 @@ export interface Facts extends Coded {
   })[];
   /** From each variant classifications series whose current version holds it as a row's subject, in the order of preference. */
   readonly classifications: readonly (Fact & ClassificationRow)[];
+  /**
+   * From each panel members series whose current version holds it: the members the code has as a panel, by their
+   * sequence, and the panels that have it as a member, by their codes, at most a page of them.
+   */
+  readonly panels: readonly (Fact & {
+    readonly members: readonly Placed[];
+    readonly heldBy: {
+      readonly total: number;
+      readonly panels: readonly Placed[];
+    };
+  })[];
+  /**
+   * From each drug classes series whose current version holds a row on the code or on a code that shares an ingredient
+   * with it in a product ingredients series: each class by its relation.
+   */
+  readonly classes: readonly (Fact & { readonly in: readonly InClass[] })[];
   /** The code's own page at its code system's publisher, from the vocabulary's page template; none when the code system has none. */
   readonly page?: { readonly href: string; readonly system: string };
 }
@@ -914,10 +969,12 @@ export class Tables {
         index
           .subjects(SHIPS_WITH)
           .map(({ value }) => value)
-          .filter((series) =>
-            foundBy
-              .get(references.kindOf(series) ?? "")
-              ?.includes(`${OWL}annotatedSource`),
+          .filter(
+            (series) =>
+              !OWN_SECTIONS.includes(references.kindOf(series) ?? "") &&
+              foundBy
+                .get(references.kindOf(series) ?? "")
+                ?.includes(`${OWL}annotatedSource`),
           )
           .flatMap((series) => {
             const version = current(series);
@@ -958,6 +1015,20 @@ export class Tables {
             },
           ];
     });
+    // A panel and a class are the code's whatever source's page asks: a medication's classes are MED-RT's, not RxNorm's.
+    const anywhere = (kind: string): Fact[] =>
+      this.#preferred(references, kind).flatMap((series) => {
+        const version = index.objects(iri(series), SHIPS_WITH)[0]?.value;
+        return version === undefined ? [] : [{ series, version }];
+      });
+    const [panels, classes] = await Promise.all([
+      this.#panels(code, anywhere(`${REC}PanelMembers`)),
+      this.#classes(
+        code,
+        anywhere(`${REC}DrugClasses`),
+        anywhere(`${REC}ProductIngredients`),
+      ),
+    ]);
     const about = await this.about([
       code,
       ...status.flatMap(({ replacedBy }) => replacedBy),
@@ -965,6 +1036,15 @@ export class Tables {
         ...mapsTo.flatMap((target) => [target.code, ...target.alongside.codes]),
         ...mappedFrom.codes,
       ]),
+      ...panels.flatMap(({ members, heldBy }) => [
+        ...members.map(({ code }) => code),
+        ...heldBy.panels.map(({ code }) => code),
+      ]),
+      ...classes.flatMap(({ in: each }) =>
+        each.flatMap(({ class: of, through }) =>
+          through === undefined ? [of] : [of, through],
+        ),
+      ),
     ]);
     const coded = (each: string): Coded => ({
       code: each,
@@ -1002,7 +1082,209 @@ export class Tables {
         mappedFrom: codes(fact.mappedFrom),
       })),
       classifications,
+      panels: panels.map((fact) => ({
+        ...fact,
+        members: fact.members.map(({ code, ...place }) => ({
+          ...coded(code),
+          ...place,
+        })),
+        heldBy: {
+          total: fact.heldBy.total,
+          panels: fact.heldBy.panels.map(({ code, ...place }) => ({
+            ...coded(code),
+            ...place,
+          })),
+        },
+      })),
+      classes: classes.map((fact) => ({
+        ...fact,
+        in: fact.in.map(({ relation, class: of, through }) => ({
+          relation,
+          class: coded(of),
+          ...(through !== undefined && { through: coded(through) }),
+        })),
+      })),
     };
+  }
+
+  /**
+   * In each panel members version, the rows that have the code as their panel, by their sequence, and as their member,
+   * by their panel's notation. Rows are read by predicate, which a listing drops.
+   */
+  async #panels(
+    code: string,
+    held: readonly Fact[],
+  ): Promise<
+    (Fact & {
+      members: PlaceOf[];
+      heldBy: { total: number; panels: PlaceOf[] };
+    })[]
+  > {
+    const { uriSpaces } = await tableTerms(
+      this.#options.vocabulary,
+      this.#options.newStore,
+    );
+    return (
+      await Promise.all(
+        held.map(async (fact) => {
+          const [index, text] = await Promise.all([
+            this.#codesIn(fact.version),
+            this.#text(fact.version),
+          ]);
+          const members: PlaceOf[] = [];
+          const holding: PlaceOf[] = [];
+          for (const subject of index.get(code) ?? []) {
+            const rows = rowsAbout(text, subject);
+            const [panel] = values(rows, `${OWL}annotatedSource`);
+            const [member] = values(rows, `${OWL}annotatedTarget`);
+            const [sequence] = values(rows, `${REC}panelSequence`);
+            const [required] = values(rows, `${REC}observationRequiredInPanel`);
+            const place = {
+              ...(sequence !== undefined && { sequence: Number(sequence) }),
+              ...(required !== undefined && { required }),
+            };
+            if (panel === code && member !== undefined)
+              members.push({ code: member, ...place });
+            if (member === code && panel !== undefined)
+              holding.push({ code: panel, ...place });
+          }
+          const byNotation = (a: PlaceOf, b: PlaceOf): number =>
+            NOTATIONS.compare(
+              notation(uriSpaces, a.code),
+              notation(uriSpaces, b.code),
+            ) || (a.sequence ?? 0) - (b.sequence ?? 0);
+          members.sort(
+            (a, b) =>
+              (a.sequence ?? Infinity) - (b.sequence ?? Infinity) ||
+              byNotation(a, b),
+          );
+          holding.sort(byNotation);
+          return members.length === 0 && holding.length === 0
+            ? []
+            : [
+                {
+                  ...fact,
+                  members,
+                  heldBy: {
+                    total: holding.length,
+                    panels: holding.slice(0, PAGE_SIZE),
+                  },
+                },
+              ];
+        }),
+      )
+    ).flat();
+  }
+
+  /**
+   * In each drug classes version, the classes of the code and of every code that shares an ingredient with it in a
+   * product ingredients version: FDA classes an ingredient or a precise ingredient, and a product reaches the class
+   * through its ingredient. A class is listed once for each relation, on the code itself if it is there.
+   */
+  async #classes(
+    code: string,
+    held: readonly Fact[],
+    ingredients: readonly Fact[],
+  ): Promise<(Fact & { in: ClassOf[] })[]> {
+    if (held.length === 0) return [];
+    const sharing = await this.#sharing(
+      [code],
+      ingredients.map(({ version }) => version),
+    );
+    return (
+      await Promise.all(
+        held.map(async (fact) => {
+          const [index, text] = await Promise.all([
+            this.#codesIn(fact.version),
+            this.#text(fact.version),
+          ]);
+          const found = new Map<string, ClassOf>();
+          for (const on of sharing)
+            for (const subject of index.get(on) ?? []) {
+              const rows = rowsAbout(text, subject);
+              const [relation] = values(rows, `${OWL}annotatedProperty`);
+              const [target] = values(rows, `${OWL}annotatedTarget`);
+              if (relation === undefined || target === undefined) continue;
+              const key = `${relation} ${target}`;
+              if (!found.has(key))
+                found.set(key, {
+                  relation,
+                  class: target,
+                  ...(on !== code && { through: on }),
+                });
+            }
+          const each = [...found.values()].sort(
+            (a, b) =>
+              RELATIONS.indexOf(a.relation) - RELATIONS.indexOf(b.relation) ||
+              a.class.localeCompare(b.class),
+          );
+          return each.length === 0 ? [] : [{ ...fact, in: each }];
+        }),
+      )
+    ).flat();
+  }
+
+  /**
+   * The codes, then each code that maps to an ingredient of one of them in one of the product ingredients versions,
+   * the ingredient itself among them: the codes a class of the codes may be on.
+   */
+  async #sharing(
+    codes: readonly string[],
+    versions: readonly string[],
+  ): Promise<Set<string>> {
+    const sharing = new Set(codes);
+    for (const version of versions) {
+      const [{ mapsTo }, from] = await Promise.all([
+        this.#listed(version),
+        this.#mappedFrom(version),
+      ]);
+      for (const code of codes)
+        for (const ingredient of Object.hasOwn(mapsTo, code)
+          ? mapsTo[code]!
+          : []) {
+          sharing.add(ingredient);
+          for (const same of from.get(ingredient) ?? []) sharing.add(same);
+        }
+    }
+    return sharing;
+  }
+
+  /**
+   * The rows a walk from these codes to their drug classes can read, for `tables/medication-classes.rq`: in the current
+   * version of each product ingredients series the rows of the codes and of every code sharing an ingredient with
+   * them, and in the current version of each drug classes series the rows of those, each with the descriptions of the
+   * version and its series. A superset of what the query joins; the query says what is a class of what.
+   */
+  async reached(
+    codes: readonly string[],
+  ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
+    const references = await this.references();
+    const terms = await tableTerms(
+      this.#options.vocabulary,
+      this.#options.newStore,
+    );
+    const current = (kind: string): string[] =>
+      this.#preferred(references, kind).map((series) =>
+        references.fallback(series),
+      );
+    const ingredients = current(`${REC}ProductIngredients`);
+    const sharing = await this.#sharing(codes, ingredients);
+    const read = async (version: string) => {
+      // The rows are found by an index beside them, which is made now if the version came without one.
+      await this.#codesIn(version);
+      return {
+        version,
+        rows: await references.rows(version, { codes: sharing, terms }),
+        description: [
+          ...references.description(version),
+          ...references.description(references.seriesOf(version) ?? ""),
+        ],
+      };
+    };
+    return Promise.all([
+      ...ingredients.map(read),
+      ...current(`${REC}DrugClasses`).map(read),
+    ]);
   }
 
   /**

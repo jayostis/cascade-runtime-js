@@ -992,6 +992,29 @@ if (release === undefined) {
   );
 
   await behaviour(
+    "Priya's potassium result is named by LOINC, and the class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous",
+    async () => {
+      const pod = await served(server, "/pods/priya-natarajan/");
+      assert.ok(
+        readable(pod).includes("Potassium [Moles/volume] in Serum or Plasma"),
+        "her potassium result is not named by LOINC",
+      );
+      assert.ok(
+        readable(pod).includes("Which of these medicines are in a class?"),
+        "her page does not offer the class question",
+      );
+      const classes = readable(
+        await served(server, "/pods/priya-natarajan/classes"),
+      );
+      for (const said of [
+        "Angiotensin Converting Enzyme Inhibitor [EPC]",
+        "lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+      ])
+        assert.ok(classes.includes(said), `${said} is not on ${classes}`);
+    },
+  );
+
+  await behaviour(
     "Martin's pod is loaded, its page has a Genetic variants tile whose rows open each variant's entry, and the entry puts what ClinVar says today beside what each of his reports, from its lab, said, in the four states of his variants",
     async () => {
       const triplesOf = async (path) =>

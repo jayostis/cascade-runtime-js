@@ -1,5 +1,6 @@
 import {
   clock,
+  codeIri,
   CorePod,
   type Files,
   type Importer,
@@ -29,6 +30,7 @@ import {
   readText,
   type References,
   type StoreFactory,
+  tableTerms,
   type Triple,
   Union,
   type VocabularyBuild,
@@ -110,6 +112,13 @@ export interface Pod {
    * `verdict`. It is answered over the app's current version of the table, kept as an answer is, and writes nothing.
    */
   agreement(): Promise<Row[]>;
+  /**
+   * The classes the app's tables give each active medication of the pod (`tables/medication-classes.rq`): the entry
+   * (`entry`), its `medication`, the `class`, the `relation` the class row gives it, the version of the drug classes
+   * table that holds the row (`origin`) and the code the row is on (`through`). It is answered over the current
+   * versions of the tables, reads the pod and writes nothing. A combination product is in no class: MED-RT classes none.
+   */
+  medicationClasses(): Promise<Row[]>;
   close(): Promise<void>;
 }
 
@@ -280,7 +289,27 @@ type Askable = Awaited<ReturnType<typeof askable>>;
 export const AGREEMENT = "tables/agreement";
 const AGREEMENT_QUERY = `${QUERIES}${AGREEMENT}.rq`;
 
+/** The medicines in a class are asked of the tables the app holds, beside the verdicts: a query beside the questions. */
+const CLASSES_QUERY = `${QUERIES}tables/medication-classes.rq`;
+/** The statements of the medication entries, which `tables/medication-classes.rq` reads of the pod. */
+const MEDICATION_ENTRIES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
+CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a clinical:Medication ; ?property ?value }`;
+const SELECTED_CODE = `${REC}selectedCode`;
+const RXNORM_CODE = "https://ns.cascadeprotocol.org/clinical/v1#rxNormCode";
+
 const agreements = new WeakMap<Files, Promise<string>>();
+const classQueries = new WeakMap<Files, Promise<string>>();
+
+/** The text of the vocabulary's medication classes query, read once. */
+function classesText(vocabulary: Files): Promise<string> {
+  let found = classQueries.get(vocabulary);
+  if (found === undefined) {
+    found = readText(vocabulary, CLASSES_QUERY);
+    classQueries.set(vocabulary, found);
+    found.catch(() => classQueries.delete(vocabulary));
+  }
+  return found;
+}
 
 /** The text of the vocabulary's agreement query, read once. */
 function agreementText(vocabulary: Files): Promise<string> {
@@ -506,6 +535,10 @@ class OpenPod implements Pod {
 
   agreement(): Promise<Row[]> {
     return this.#next(() => this.#agreement());
+  }
+
+  medicationClasses(): Promise<Row[]> {
+    return this.#next(() => this.#medicationClasses());
   }
 
   close(): Promise<void> {
@@ -819,6 +852,44 @@ class OpenPod implements Pod {
     if (answers !== undefined && key !== undefined)
       await answers.keep(lens, AGREEMENT, key, verdicts);
     return verdicts;
+  }
+
+  /**
+   * The query over a dataset of its own, as the core's `selectWithRows` builds one but for the rows it reads: the
+   * pod's medication entries, and the rows of the product ingredients and drug classes versions that can join the
+   * codes they state, found by those codes and by the codes sharing an ingredient with them. The core finds a row by
+   * a code the pod states, which a class never is: FDA gives it on a precise ingredient the pod does not state.
+   */
+  async #medicationClasses(): Promise<Row[]> {
+    const { vocabulary, lens, newStore, tables } = this.#parts;
+    const [text, held, { codeSystems }] = await Promise.all([
+      classesText(vocabulary),
+      this.#core.dataset(lens),
+      tableTerms(vocabulary, newStore),
+    ]);
+    const entries = await held.construct(MEDICATION_ENTRIES);
+    const space = codeSystems.find(({ label }) => label === "RxNorm")?.uriSpace;
+    if (space === undefined)
+      throw new Error("the vocabulary registers no code system RxNorm");
+    const codes = new Set<string>();
+    for (const [, property, value] of entries)
+      if (property.value === SELECTED_CODE || property.value === RXNORM_CODE)
+        if (value.termType === "Literal")
+          codes.add(codeIri(space, value.value));
+        else if (value.value.startsWith(space)) codes.add(value.value);
+    if (codes.size === 0) return [];
+    const union = new Union(newStore());
+    await union.add(entries, "urn:cascade:entries");
+    for (const { version, rows, description } of await tables.reached([
+      ...codes,
+    ])) {
+      await union.add(rows, version);
+      await union.add(description, "urn:cascade:references");
+    }
+    const { rows } = await union.select(text);
+    return rows.map((row) =>
+      Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+    );
   }
 
   async #ask(

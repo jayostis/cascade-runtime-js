@@ -16,6 +16,7 @@ import {
   Refusal,
   tableTerms,
   tablesSettings,
+  type Term,
   type Triple,
   withTables,
   RULE_LIST,
@@ -317,6 +318,15 @@ interface Mapping {
   readonly justification: (source: string, target: string) => string;
   /** The row's SSSOM cardinality, when its kind gives one. */
   readonly cardinality?: (source: string, target: string) => string;
+  /** The code system of the rows' targets, when it is not the sources'. */
+  readonly targetSystem?: string;
+  /** The predicate of the row from `source` to `target`, when kinds of the series' rows give several. */
+  readonly predicateOf?: (source: string, target: string) => string;
+  /** What else the row says. */
+  readonly extra?: (
+    source: string,
+    target: string,
+  ) => readonly (readonly [string, Term])[];
 }
 
 const INGREDIENTS: Mapping = {
@@ -348,56 +358,75 @@ async function withMappings(
   mapping: Mapping,
   line: readonly (readonly (readonly [string, string])[])[],
 ): Promise<{ served: Served; versions: string[] }> {
+  return withVersions(
+    served,
+    mapping,
+    line.map((pairs) => mappingRows(mapping, pairs)),
+  );
+}
+
+/** The rows of a mapping series' version, one for each `[source, target]`. */
+function mappingRows(
+  mapping: Mapping,
+  pairs: readonly (readonly [string, string])[],
+): Triple[] {
+  return pairs.flatMap(([source, target]) => {
+    const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
+    return [
+      [subject, iri(`${RDF}type`), iri("http://www.w3.org/2002/07/owl#Axiom")],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedSource"),
+        iri(mapping.system + source),
+      ],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
+        iri(mapping.predicateOf?.(source, target) ?? mapping.predicate),
+      ],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
+        iri((mapping.targetSystem ?? mapping.system) + target),
+      ],
+      [
+        subject,
+        iri("https://w3id.org/sssom/mapping_justification"),
+        iri(
+          `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
+        ),
+      ],
+      ...(mapping.cardinality === undefined
+        ? []
+        : [
+            [
+              subject,
+              iri("https://w3id.org/sssom/mapping_cardinality"),
+              literal(mapping.cardinality(source, target)),
+            ] as Triple,
+          ]),
+      ...(mapping.extra?.(source, target) ?? []).map(
+        ([predicate, object]): Triple => [subject, iri(predicate), object],
+      ),
+    ] as Triple[];
+  });
+}
+
+/** The feed with a series added, its line of versions each holding the rows given, the last current. */
+async function withVersions(
+  served: Served,
+  series: { series: string; label: string; kind: string },
+  line: readonly (readonly Triple[])[],
+): Promise<{ served: Served; versions: string[] }> {
   const files = new Map(served.files);
   const versions: string[] = [];
   let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
 @prefix rdfs: <${RDFS}> . @prefix rec: <${REC}> . @prefix spdx: <${SPDX}> .
-<${mapping.series}> a rec:ReferenceSeries ; rdfs:label "${mapping.label}" ; rec:tableKind rec:${mapping.kind} .
+<${series.series}> a rec:ReferenceSeries ; rdfs:label "${series.label}" ; rec:tableKind rec:${series.kind} .
 `;
-  for (const [index, pairs] of line.entries()) {
-    const rows = pairs.flatMap(([source, target]) => {
-      const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
-      return [
-        [
-          subject,
-          iri(`${RDF}type`),
-          iri("http://www.w3.org/2002/07/owl#Axiom"),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedSource"),
-          iri(mapping.system + source),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
-          iri(mapping.predicate),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
-          iri(mapping.system + target),
-        ],
-        [
-          subject,
-          iri("https://w3id.org/sssom/mapping_justification"),
-          iri(
-            `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
-          ),
-        ],
-        ...(mapping.cardinality === undefined
-          ? []
-          : [
-              [
-                subject,
-                iri("https://w3id.org/sssom/mapping_cardinality"),
-                literal(mapping.cardinality(source, target)),
-              ] as Triple,
-            ]),
-      ] as Triple[];
-    });
+  for (const [index, rows] of line.entries()) {
     const previous = versions.at(-1);
-    const version = await versionName(mapping.series, previous, rows);
+    const version = await versionName(series.series, previous, rows);
     const bytes = await gzipped(
       new TextDecoder()
         .decode(ntriples(rows))
@@ -407,15 +436,15 @@ async function withMappings(
         .sort()
         .join("\n"),
     );
-    const url = `https://tables.example/rows/${mapping.kind}-${index}.nq.gz`;
+    const url = `https://tables.example/rows/${series.kind}-${series.series.slice(-12)}-${index}.nq.gz`;
     files.set(url, bytes);
-    turtle += `<${version}> prov:specializationOf <${mapping.series}> ; pav:version "${index + 1}" ;
+    turtle += `<${version}> prov:specializationOf <${series.series}> ; pav:version "${index + 1}" ;
   ${previous === undefined ? "" : `prov:wasRevisionOf <${previous}> ;`}
   dcat:distribution [ dcat:downloadURL <${url}> ; spdx:checksum [ spdx:checksumValue "${await hex(bytes)}" ] ] .
 `;
     versions.push(version);
   }
-  turtle += `<${mapping.series}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
+  turtle += `<${series.series}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
   const added = await new OxigraphStore().parse(turtle, FEED);
   return {
     served: { ...served, files, catalog: [...served.catalog, ...added] },
@@ -1484,6 +1513,93 @@ test("a code's ingredients are the targets of the first held product ingredients
   assert.equal(about.get(unmapped!)?.ingredients, undefined);
 });
 
+test("a pod that joined two allergies through a product ingredients version written with skos:broadMatch, by the matcher rules before the relation moved to obo:RO_0002248, keeps that Same and gains the one through the version written with the new relation", async () => {
+  const advil: [string, string] = ["153010", "5640"];
+  const ibuprofen: [string, string] = ["5640", "5640"];
+  const written = {
+    ...INGREDIENTS,
+    predicate: "http://www.w3.org/2004/02/skos/core#broadMatch",
+  };
+  const old = await withMappings(feed, written, [[advil, ibuprofen]]);
+  const next = await withVersions(feed, INGREDIENTS, [
+    mappingRows(written, [advil, ibuprofen]),
+    mappingRows(INGREDIENTS, [advil, ibuprofen]),
+  ]);
+  // Version 8 of the rule list reads the relation as skos:broadMatch; the shipped one reads obo:RO_0002248.
+  const { index, shipped } = await ruleList();
+  const [, eighth] =
+    /<([^>]+)> a prov:Entity ;\s+prov:specializationOf <[^>]+> ;\s+pav:version "8"/.exec(
+      index,
+    ) ?? [];
+  assert.ok(eighth !== undefined);
+  const { vocabulary } = parts;
+  const before: Files = {
+    iri: vocabulary.iri,
+    read: async (path) =>
+      path === `${RULE_LIST}references.ttl`
+        ? new TextEncoder().encode(
+            index.replace(
+              `rec:shipsWith <${shipped}>`,
+              `rec:shipsWith <${eighth}>`,
+            ),
+          )
+        : vocabulary.read(path),
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
+  const store = new MemoryFiles("urn:test:tables/");
+  const folder = join(scratch, "pods", "broad-match");
+  const held = tablesOver(old.served, store, before);
+  await held.check();
+  let pod = await openPodWith({ ...parts, tables: held }, folder);
+  const allergies = ["153010", "5640"].map(
+    (code, index) => `<urn:cascade:output-${index}> a health:AllergyRecord .
+<urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
+  health:allergenCode <${RXNORM}${code}> ; rec:patient <${pod.subject}> .`,
+  );
+  const entered = await pod.enter(`${PREFIXES}
+<urn:cascade:this-entry> a prov:Activity ;
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+${allergies.join("\n")}`);
+  assert.equal(entered.refused, undefined);
+  await pod.close();
+  const [oldVersion, newVersion] = next.versions;
+  const joined = async (): Promise<string[]> =>
+    (
+      await pod.ask({
+        query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
+          ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+          VALUES ?used { <${oldVersion}> <${newVersion}> }
+          ?record pav:hasCurrentVersion/health:allergenCode ?code
+        } GROUP BY ?judgment ?used`,
+      })
+    )
+      .map(
+        ({ used = "", codes = "" }) =>
+          `${used === oldVersion ? "broadMatch" : "obo"}: ${codes.replaceAll(RXNORM, "").split(" ").sort().join(" ")}`,
+      )
+      .sort();
+
+  pod = await openPodWith({ ...parts, tables: held }, folder);
+  try {
+    assert.deepEqual(await joined(), ["broadMatch: 153010 5640"]);
+  } finally {
+    await pod.close();
+  }
+  const after = tablesOver(next.served, store);
+  await after.check({ cache: "no-cache" });
+  pod = await openPodWith({ ...parts, tables: after }, folder);
+  try {
+    assert.equal(pod.opened?.refused, undefined);
+    assert.deepEqual(await joined(), [
+      "broadMatch: 153010 5640",
+      "obo: 153010 5640",
+    ]);
+  } finally {
+    await pod.close();
+  }
+});
+
 test("an app's tables are the package's with each field of its own file, then of its code, in their place; and what an app cannot set is refused", async () => {
   const packaged = parts.local.config;
   const packageConfig = join(
@@ -1581,4 +1697,247 @@ test("an app's tables are the package's with each field of its own file, then of
     () => configureTables({}),
     "configureTables after a start that failed",
   );
+});
+
+const LOINC = spaceOf("LOINC");
+const MEDRT = spaceOf("MED-RT");
+const OBO = "http://purl.obolibrary.org/obo/";
+const SKOS_PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
+const XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer";
+
+const PANELS: Mapping = {
+  series: "urn:uuid:9a3c5e7f-1b2d-4f60-8a9b-0c1d2e3f4a5b",
+  label: "LOINC panel members",
+  kind: "PanelMembers",
+  system: LOINC,
+  predicate: `${OBO}RO_0002351`,
+  justification: () => "ManualMappingCuration",
+};
+
+const CLASSES: Mapping = {
+  series: "urn:uuid:2b4d6f81-3c5e-4a70-9b1c-2d3e4f5a6b7c",
+  label: "Drug classes",
+  kind: "DrugClasses",
+  system: RXNORM,
+  targetSystem: MEDRT,
+  predicate: `${REC}establishedPharmacologicClass`,
+  justification: () => "ManualMappingCuration",
+};
+
+const NAMES = (
+  series: string,
+  label: string,
+): { series: string; label: string; kind: string } => ({
+  series,
+  label,
+  kind: "CodeNames",
+});
+
+const named = (code: string, name: string): Triple => [
+  iri(code),
+  iri(SKOS_PREF_LABEL),
+  literal(name),
+];
+
+test("a code's page gives a panel's members in order with the one it requires and the panels that hold a member, a lab result's LOINC name, and a drug's classes by relation through the ingredient FDA gives them on, and the pod's medicines in a class are asked of the tables", async () => {
+  const panel = "24323-8";
+  const members: [string, string][] = [
+    [panel, "2951-2"],
+    [panel, "2823-3"],
+    [panel, "17861-6"],
+  ];
+  const place: Record<string, [number, string | undefined]> = {
+    "2951-2": [2, "R"],
+    "2823-3": [1, undefined],
+    "17861-6": [3, "O"],
+  };
+  const panels = await withMappings(
+    feed,
+    {
+      ...PANELS,
+      extra: (_, member) => [
+        [
+          `${REC}panelSequence`,
+          literal(String(place[member]![0]), XSD_INTEGER),
+        ],
+        ...(place[member]![1] === undefined
+          ? []
+          : [
+              [
+                `${REC}observationRequiredInPanel`,
+                literal(place[member]![1]),
+              ] as const,
+            ]),
+      ],
+    },
+    [members],
+  );
+  const lisinopril = "29046";
+  const ingredients = await withMappings(panels.served, INGREDIENTS, [
+    [
+      ["314076", lisinopril],
+      ["1546022", lisinopril],
+      [lisinopril, lisinopril],
+      // A combination maps to the multiple ingredient concept, which MED-RT classes none of.
+      ["206771", "214354"],
+    ],
+  ]);
+  const classes = await withMappings(
+    ingredients.served,
+    {
+      ...CLASSES,
+      predicateOf: (_, target) =>
+        target === "N0000000174"
+          ? `${REC}mechanismOfAction`
+          : CLASSES.predicate,
+    },
+    [
+      [
+        ["1546022", "N0000175562"],
+        ["1546022", "N0000000174"],
+      ],
+    ],
+  );
+  const loinc = await withVersions(
+    classes.served,
+    NAMES("urn:uuid:5c7e9a1b-4d6f-4b82-8c3d-4e5f6a7b8c9d", "LOINC names"),
+    [
+      [
+        named(`${LOINC}2823-3`, "Potassium [Moles/volume] in Serum or Plasma"),
+        named(`${LOINC}2951-2`, "Sodium [Moles/volume] in Serum or Plasma"),
+        named(`${LOINC}${panel}`, "Comprehensive metabolic 2000 panel"),
+      ],
+    ],
+  );
+  const medrt = await withVersions(
+    loinc.served,
+    NAMES("urn:uuid:6d8f0b2c-5e70-4c93-9d4e-5f6a7b8c9d0e", "MED-RT names"),
+    [
+      [
+        named(
+          `${MEDRT}N0000175562`,
+          "Angiotensin Converting Enzyme Inhibitor [EPC]",
+        ),
+        named(`${RXNORM}1546022`, "lisinopril anhydrous"),
+      ],
+    ],
+  );
+  const tables = tablesOver(medrt.served);
+  await tables.check();
+
+  const cmp = await tables.facts(`${LOINC}${panel}`);
+  const [held] = cmp.panels;
+  assert.deepEqual(
+    held?.members.map(({ notation, sequence, required, about }) => [
+      notation,
+      sequence,
+      required,
+      about?.name?.label,
+    ]),
+    [
+      ["2823-3", 1, undefined, "Potassium [Moles/volume] in Serum or Plasma"],
+      ["2951-2", 2, "R", "Sodium [Moles/volume] in Serum or Plasma"],
+      ["17861-6", 3, "O", undefined],
+    ],
+  );
+  assert.deepEqual(
+    cmp.mappings
+      .map(({ series }) => series)
+      .filter((series) => series === PANELS.series),
+    [],
+    "a panel is not listed as a generic mapping",
+  );
+  const potassium = await tables.facts(`${LOINC}2823-3`);
+  assert.equal(
+    potassium.about?.name?.label,
+    "Potassium [Moles/volume] in Serum or Plasma",
+  );
+  assert.deepEqual(
+    potassium.panels.map(({ heldBy }) => [
+      heldBy.total,
+      heldBy.panels.map(({ notation, sequence }) => [notation, sequence]),
+    ]),
+    [[1, [[panel, 1]]]],
+  );
+
+  const tablet = await tables.facts(`${RXNORM}314076`);
+  assert.deepEqual(
+    tablet.classes.map(({ in: each }) =>
+      each.map(({ relation, class: of, through }) => [
+        relation.slice(REC.length),
+        of.notation,
+        of.about?.name?.label,
+        through?.about?.name?.label,
+      ]),
+    ),
+    [
+      [
+        [
+          "establishedPharmacologicClass",
+          "N0000175562",
+          "Angiotensin Converting Enzyme Inhibitor [EPC]",
+          "lisinopril anhydrous",
+        ],
+        ["mechanismOfAction", "N0000000174", undefined, "lisinopril anhydrous"],
+      ],
+    ],
+  );
+  assert.deepEqual(
+    (await tables.facts(`${RXNORM}1546022`)).classes.flatMap(({ in: each }) =>
+      each.map(({ through }) => through),
+    ),
+    [undefined, undefined],
+    "a class on the code itself is not reached through another",
+  );
+  assert.deepEqual((await tables.facts(`${RXNORM}206771`)).classes, []);
+
+  const folder = join(scratch, "pods", "classes");
+  const pod = await openPodWith({ ...parts, tables }, folder);
+  try {
+    const medication = (code: string, name: string, index: number): string =>
+      `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/clinical/v1#Medication> .
+<urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
+  <https://ns.cascadeprotocol.org/clinical/v1#drugName> "${name}" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#rxNormCode> <${RXNORM}${code}> ;
+  <https://ns.cascadeprotocol.org/clinical/v1#clinicalIntent> "prescribed" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#status> "active" ; rec:patient <${pod.subject}> .`;
+    const entered = await pod.enter(`${PREFIXES}
+<urn:cascade:this-entry> a prov:Activity ;
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+${medication("314076", "Lisinopril 10 MG Oral Tablet", 0)}
+${medication("206771", "Lisinopril with hydrochlorothiazide", 1)}`);
+    assert.equal(entered.refused, undefined);
+    const rows = await pod.medicationClasses();
+    assert.deepEqual(
+      rows
+        .map(
+          ({ medication, relation = "", class: of = "", through, origin }) => [
+            medication,
+            relation.slice(REC.length),
+            of.slice(MEDRT.length),
+            through?.slice(RXNORM.length),
+            origin === classes.versions[0],
+          ],
+        )
+        .sort(),
+      [
+        [
+          "Lisinopril 10 MG Oral Tablet",
+          "establishedPharmacologicClass",
+          "N0000175562",
+          "1546022",
+          true,
+        ],
+        [
+          "Lisinopril 10 MG Oral Tablet",
+          "mechanismOfAction",
+          "N0000000174",
+          "1546022",
+          true,
+        ],
+      ],
+    );
+  } finally {
+    await pod.close();
+  }
 });
