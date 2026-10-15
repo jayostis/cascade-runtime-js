@@ -324,7 +324,7 @@ const INGREDIENTS: Mapping = {
   label: "Product ingredients",
   kind: "ProductIngredients",
   system: RXNORM,
-  predicate: "http://www.w3.org/2004/02/skos/core#broadMatch",
+  predicate: "http://purl.obolibrary.org/obo/RO_0002248",
   justification: (source, target) =>
     source === target ? "ManualMappingCuration" : "MappingChaining",
 };
@@ -1264,8 +1264,8 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
         () =>
           withRows(feed, groups.second, (nquads) =>
             nquads.replace(
-              "<http://www.w3.org/2004/02/skos/core#broadMatch>",
-              '"broad" <urn:example:extra>',
+              /(#annotatedProperty> )<[^>]*>/,
+              '$1"broad" <urn:example:extra>',
             ),
           ),
         /not N-Quads/,
@@ -1275,7 +1275,7 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
         "a row whose IRI holds a space",
         () =>
           withRows(feed, groups.second, (nquads) =>
-            nquads.replace("core#broadMatch>", "core#broad match>"),
+            nquads.replace(/(#annotatedProperty> <[^> ]*)>/, "$1 match>"),
           ),
         /not N-Quads/,
         "refused",

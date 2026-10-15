@@ -156,7 +156,7 @@ each check, a name under cascade-reference-tables' `builders/` or a path from
 the file; what one builds is kept as a feed's versions are, from
 `pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
 the app installs itself:
-`npm install --save-exact github:jayostis/cascade-reference-tables#1101d9b070dcc435098c0b1a616152f9fc64b3ea`.
+`npm install --save-exact github:jayostis/cascade-reference-tables#e0a351577b0ce6085b20e80355b54093edd79003`.
 A version that does not descend from the one held of its series is never kept.
 
 In a browser, the same import, served with the package's `components/` beside

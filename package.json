@@ -39,7 +39,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
-    "cascade-reference-tables": "github:jayostis/cascade-reference-tables#1101d9b070dcc435098c0b1a616152f9fc64b3ea",
+    "cascade-reference-tables": "github:jayostis/cascade-reference-tables#e0a351577b0ce6085b20e80355b54093edd79003",
     "eslint": "10.12.0",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.9",

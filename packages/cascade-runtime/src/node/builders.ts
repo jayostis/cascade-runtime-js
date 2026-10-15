@@ -50,7 +50,13 @@ async function seenIn(
   const path = join(out, "checked.json");
   if (!existsSync(path)) return undefined;
   const { checked } = JSON.parse(await readFile(path, "utf8")) as Host.Checked;
-  return checked[source]?.inputs;
+  const last = checked[source];
+  return last?.inputs === undefined
+    ? undefined
+    : {
+        inputs: last.inputs,
+        ...(last.builder === undefined ? {} : { builder: last.builder }),
+      };
 }
 
 /**
