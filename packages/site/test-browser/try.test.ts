@@ -1593,6 +1593,11 @@ test("in try/, Priya's pod, copied on a first visit, names her potassium result 
   await context.addInitScript(recordDraws);
   try {
     const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 60_000,
+    });
     await page.goto(
       `${served.url}try/index.html?pod=priya-natarajan#see-lab-results`,
     );
@@ -1600,12 +1605,18 @@ test("in try/, Priya's pod, copied on a first visit, names her potassium result 
     await page.waitForSelector('body[data-tables="ready"]', {
       timeout: 120_000,
     });
-    const results = page.locator("#see-lab-results tbody tr");
+    const tests = (
+      await page
+        .locator("#see-lab-results tbody td:first-child")
+        .allInnerTexts()
+    ).map((text) => text.trim());
     assert.ok(
-      (await results
-        .filter({ hasText: "Potassium [Moles/volume] in Serum or Plasma" })
-        .count()) > 0,
-      "no potassium result is named by LOINC",
+      tests.includes("Potassium [Moles/volume] in Serum or Plasma"),
+      `no potassium result is named by LOINC among ${tests.join("; ")}`,
+    );
+    assert.ok(
+      !tests.includes("Potassium"),
+      "a result keeps the record's own name",
     );
     await page.goto(`${served.url}try/index.html?pod=priya-natarajan&classes`);
     await settled(page);
