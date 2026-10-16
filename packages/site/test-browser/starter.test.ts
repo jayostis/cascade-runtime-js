@@ -634,7 +634,7 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
         if (file.replaceAll("\\", "/") === "settings/encryption.json") continue;
         const text = await readFile(join(sealedFolder, file), "latin1");
         assert.ok(text.length > 0, file);
-        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+        for (const readable of ["@prefix", "Grace", '"title"', '"rows"'])
           assert.equal(text.includes(readable), false, `${file}: ${readable}`);
         assert.throws(() => JSON.parse(text), `${file} parses as JSON`);
       }

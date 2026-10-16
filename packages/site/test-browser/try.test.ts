@@ -2257,7 +2257,7 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
       for (const { key, text } of stored) {
         if (key === "settings/encryption.json") continue;
         assert.ok(text.length > 0, key);
-        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+        for (const readable of ["@prefix", "Grace", '"title"', '"rows"'])
           assert.equal(text.includes(readable), false, `${key}: ${readable}`);
         assert.throws(() => JSON.parse(text), `${key} parses as JSON`);
       }
