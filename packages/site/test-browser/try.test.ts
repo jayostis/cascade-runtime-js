@@ -2075,7 +2075,7 @@ test("in try/, the world's date set in a connection's box shows on the next sign
     await box
       .locator("summary", { hasText: "Change the world's date" })
       .click();
-    await box.locator('input[name="date"]').fill("2024-02-01");
+    await box.locator('input[type="date"]').fill("2024-02-01");
     await box.getByRole("button", { name: "Set", exact: true }).click();
     await saysIn("Hospitals answer as of 1 February 2024.");
 
@@ -2088,6 +2088,13 @@ test("in try/, the world's date set in a connection's box shows on the next sign
     await settled(page);
     await saysIn("Hospitals answer as of 1 February 2024.");
 
+    await box
+      .locator("summary", { hasText: "Change the world's date" })
+      .click();
+    assert.equal(
+      await box.locator('input[type="date"]').inputValue(),
+      "2024-02-01",
+    );
     await box.getByRole("button", { name: "Today", exact: true }).click();
     await saysIn("Hospitals answer with everything they hold.");
     await box.locator("a.close").click();
