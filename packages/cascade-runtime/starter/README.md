@@ -5,11 +5,13 @@ commands to load, make, remove and ask pods. It depends only on
 `cascade-runtime`, which keeps the pods; this app never writes a pod's files
 itself.
 
-The app is made with three pods, `alex-rivera`, `priya-natarajan` and
-`martin-okafor`, loaded from the kits the package carries. Alex Rivera, Priya
-Natarajan and Martin Okafor are made up. Alex's records come from Apple Health
-exports; Priya's from exports and C-CDA files together; Martin's pod holds two
-FHIR reports of one variant beside what ClinVar says today. `npm run reset`
+The app is made with four pods, `alex-rivera`, `priya-natarajan`,
+`martin-okafor` and `tamsin-vale`, loaded from the kits the package carries.
+Alex Rivera, Priya Natarajan, Martin Okafor and Tamsin Vale are made up. Alex's
+records come from Apple Health exports; Priya's from exports and C-CDA files
+together; Martin's pod holds two FHIR reports of one variant beside what
+ClinVar says today; Tamsin's two pulls from one hospital a year apart, her
+metformin stopped between them. `npm run reset`
 puts the app back as it was made.
 
 ## Start

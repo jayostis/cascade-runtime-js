@@ -1923,7 +1923,7 @@ if (release === undefined) {
           assert.equal(heading(back), "Alex Rivera");
           assert.ok(
             readable(back).includes(
-              "Reset: Alex Rivera, Priya Natarajan and Martin Okafor are back.",
+              "Reset: Alex Rivera, Priya Natarajan, Martin Okafor and Tamsin Vale are back.",
             ),
             "the page does not say which pods are back",
           );

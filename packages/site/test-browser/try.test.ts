@@ -416,7 +416,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
+test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -434,6 +434,7 @@ test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, w
     "Alex Rivera",
     "Martin Okafor",
     "Priya Natarajan",
+    "Tamsin Vale",
   ]);
   assert.deepEqual(await loadable(page), []);
   assert.deepEqual(
@@ -892,12 +893,13 @@ test("after a reload, the pods made in this browser are still on the left", asyn
       "Alex Rivera",
       "Martin Okafor",
       "Priya Natarajan",
+      "Tamsin Vale",
       joined.person.name,
     ].sort(),
   );
 });
 
-test("File, Delete all data empties the pods column, leaves no pod nor answers in the browser and says how many went, a later visit still has no pods, and Reset all data brings the three samples back", async () => {
+test("File, Delete all data empties the pods column, leaves no pod nor answers in the browser and says how many went, a later visit still has no pods, and Reset all data brings the four samples back", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
@@ -934,10 +936,11 @@ test("File, Delete all data empties the pods column, leaves no pod nor answers i
       "Alex Rivera",
       "Martin Okafor",
       "Priya Natarajan",
+      "Tamsin Vale",
     ]);
     assert.equal(
       await page.textContent("main .note"),
-      "Reset: Alex Rivera, Martin Okafor and Priya Natarajan are back.",
+      "Reset: Alex Rivera, Martin Okafor, Priya Natarajan and Tamsin Vale are back.",
     );
   } finally {
     await context.close();
@@ -948,7 +951,8 @@ test("a first visit where no sample copies leaves no database, says there are no
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());
-    const samples = /\/(alex-rivera|martin-okafor|priya-natarajan)\/pod[/.]/;
+    const samples =
+      /\/(alex-rivera|martin-okafor|priya-natarajan|tamsin-vale)\/pod[/.]/;
     await page.route(samples, (route) => route.abort());
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -966,6 +970,7 @@ test("a first visit where no sample copies leaves no database, says there are no
       ALEX,
       "martin-okafor",
       "priya-natarajan",
+      "tamsin-vale",
     ]);
 
     await page.unroute(samples);
@@ -982,7 +987,7 @@ test("a failed copy whose database another connection holds open says so, and on
   try {
     const page = watched(await context.newPage());
     await page.route(
-      /\/(alex-rivera|martin-okafor|priya-natarajan)\/pod[/.]/,
+      /\/(alex-rivera|martin-okafor|priya-natarajan|tamsin-vale)\/pod[/.]/,
       (route) => route.abort(),
     );
     await page.goto(`${served.url}try/index.html`);

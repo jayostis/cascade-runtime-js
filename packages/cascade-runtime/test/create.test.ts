@@ -94,9 +94,10 @@ test("given a folder, it makes the project and names it, with the view's package
     `load alex-rivera into ${join(folder, "pods", "alex-rivera")}`,
     `load priya-natarajan into ${join(folder, "pods", "priya-natarajan")}`,
     `load martin-okafor into ${join(folder, "pods", "martin-okafor")}`,
+    `load tamsin-vale into ${join(folder, "pods", "tamsin-vale")}`,
   ]);
   for (const line of [
-    "with the pods alex-rivera, priya-natarajan and martin-okafor.",
+    "with the pods alex-rivera, priya-natarajan, martin-okafor and tamsin-vale.",
     "npm start",
     "npm run help",
     agentPrompt("my-app"),
@@ -196,7 +197,7 @@ test("a pod that does not load leaves the app made, and says which", async () =>
   );
   assert.match(
     terminal.text(),
-    /with the pods alex-rivera and martin-okafor\./,
+    /with the pods alex-rivera, martin-okafor and tamsin-vale\./,
   );
 });
 

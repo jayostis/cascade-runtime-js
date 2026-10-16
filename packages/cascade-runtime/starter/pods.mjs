@@ -17,10 +17,15 @@ import {
 /** Every pod of this app is a folder here, named as the pod. */
 export const PODS = fileURLToPath(new URL("pods/", import.meta.url));
 /** The kits whose pods the app was made with. */
-export const KITS = ["alex-rivera", "priya-natarajan", "martin-okafor"];
+export const KITS = [
+  "alex-rivera",
+  "priya-natarajan",
+  "martin-okafor",
+  "tamsin-vale",
+];
 export const POD_NAME = /^[a-z0-9][a-z0-9._-]*$/;
 export const NO_POD =
-  "No pod loaded. Run `npm run reset` to load Alex's, Priya's and Martin's pods.";
+  "No pod loaded. Run `npm run reset` to load Alex's, Priya's, Martin's and Tamsin's pods.";
 
 export function podFolder(name) {
   return join(PODS, name);
