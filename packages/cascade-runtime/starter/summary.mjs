@@ -818,7 +818,9 @@ export function variantSaid({
 /**
  * Everything the page says of variants that needs the tables: for each variant entry in `answers` what the tables'
  * `variantClassification` says of it, `pod.agreement()`'s verdicts only when the pod has a report, and the labels of
- * the reports' classifications.
+ * the reports' classifications; and `names`, the held ClinVar names' `about` answer's name of the one variation each
+ * entry's classification found, an entry whose classification found none, or whose name's version the app does not hold,
+ * having none.
  */
 export async function variantsSaid(answers, { tables, pod }) {
   const asked = variantsAsked(answers);
@@ -838,7 +840,23 @@ export async function variantsSaid(answers, { tables, pod }) {
       ...new Set(reports.flatMap(({ classification }) => classification ?? [])),
     ]),
   ]);
-  return { says, verdicts, labels };
+  const found = new Map(
+    [...says].flatMap(([variant, each]) =>
+      each.found === "rows" && each.rows.length === 1
+        ? [[variant, each.rows[0].variation]]
+        : [],
+    ),
+  );
+  const about = await tables.about([...new Set(found.values())]);
+  const named = [...found].flatMap(([variant, variation]) => {
+    const name = about.get(variation)?.name;
+    return name === undefined ? [] : [[variant, name]];
+  });
+  const held = named.length === 0 ? [] : await tables.held();
+  const names = new Map(
+    named.filter(([, { origin }]) => heldAt(origin, held) !== undefined),
+  );
+  return { says, verdicts, labels, names };
 }
 
 /**
@@ -876,7 +894,10 @@ export function variantReports(answers, said, held = []) {
         labels: said?.labels,
         places,
       });
-      const named = variantName(variant);
+      const called = said?.names?.get(entry);
+      const namedFrom =
+        called === undefined ? undefined : heldAt(called.origin, held);
+      const named = called?.label ?? variantName(variant);
       const from = says === undefined ? undefined : heldAt(says.version, held);
       return [
         entry,
@@ -891,6 +912,7 @@ export function variantReports(answers, said, held = []) {
           reports: read.reports,
           clinvar: read.clinvar,
           ...(from !== undefined && { from }),
+          ...(namedFrom !== undefined && { namedFrom }),
         },
       ];
     }),
@@ -1761,7 +1783,7 @@ function claimsOf(codes, about, held) {
  * oldest first, what ClinVar says today with the table it was read from, then the counsellor sentence.
  */
 function variantFacts(answers, entry, said, held) {
-  const { asked, reports, clinvar, from } = variantReports(
+  const { name, asked, reports, clinvar, from, namedFrom } = variantReports(
     answers,
     said,
     held,
@@ -1802,6 +1824,14 @@ function variantFacts(answers, entry, said, held) {
     issued,
     differs: reports.some(({ tag }) => tag === DIFFERS),
     known: [
+      ...(namedFrom === undefined
+        ? []
+        : [
+            {
+              sentence: `ClinVar names this variation ${name}.`,
+              from: namedFrom,
+            },
+          ]),
       ...reports.map(({ sentence, tag }) => ({
         sentence,
         ...(tag !== undefined && { tag }),

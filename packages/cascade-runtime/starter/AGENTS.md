@@ -87,8 +87,9 @@ table and version. The page finds the entry by the last part of its IRI
 and an entry like any other: its entry shows each of its reports, with the lab
 it came from, beside what ClinVar says today (`variantClassification()`,
 `pod.agreement()` and `labels()`, gathered by `variantsSaid`), read from the
-app's current version of the series, with its credit; it records nothing in the
-pod. A pod with active medications links to `/pods/<name>/classes`, its medicines
+app's current version of the series, with its credit; when that finds one
+variation and a ClinVar names series holds its name, the entry is called by that
+name, protein change included; it records nothing in the pod. A pod with active medications links to `/pods/<name>/classes`, its medicines
 by class (`pod.medicationClasses()`, the classes named by `classesSaid`): the
 classes the tables give each, one class alone at `?class=<class IRI>`, which
 medicines are in none, and which have a class left out because the sources class

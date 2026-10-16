@@ -2213,6 +2213,86 @@ test("variantReports gives each variant entry a pod holds, those its questions l
   assert.equal(early.clinvar, undefined);
 });
 
+test("a variant is named by ClinVar's name of the one variation its classification found, its page saying which table named it; one the classification found none for, found two variations for, or the names table has no row for, or whose names version is not held, keeps its gene and expression", async () => {
+  const PROTEIN = "NM_000249.4(MLH1):c.2042C>T (p.Ala681Val)";
+  const NAMES = { iri: "urn:test:names", versions: [{ iri: "ni:///names-1" }] };
+  const name = { label: PROTEIN, altLabels: [], origin: "ni:///names-1" };
+  const stem = "http://www.ncbi.nlm.nih.gov/clinvar/";
+  const answers = {
+    [VARIANTS]: ["named", "unfound", "unnamed", "twofold"].map(
+      (variant, at) => ({
+        variant,
+        gene: "MLH1",
+        variation: String(at),
+      }),
+    ),
+    [SOURCES]: [
+      entryRow("named", "Variant entry · MLH1", "n-a", "doc", {
+        hospital: HARBOURLINE,
+        arrived: "2026-09-01T10:00:00Z",
+      }),
+    ],
+  };
+  const found = (variation: string) => ({
+    ...rows({}),
+    rows: [{ variation, classification: [] }],
+  });
+  const tables = {
+    variantClassification: async ({ variations }: { variations: string[] }) =>
+      variations[0] === "1"
+        ? { found: "not found", series: "s", version: "v" }
+        : variations[0] === "3"
+          ? {
+              ...found(`${stem}0`),
+              rows: [`${stem}0`, `${stem}3`].map((variation) => ({
+                variation,
+                classification: [],
+              })),
+            }
+          : found(`${stem}${variations[0]}`),
+    labels: async () => new Map(),
+    held: async () => [NAMES],
+    about: async (codes: string[]) =>
+      new Map(
+        codes.map((code) => [
+          code,
+          code === `${stem}0` ? { notation: "0", name } : { notation: "x" },
+        ]),
+      ),
+  };
+  const said = await view.variantsSaid(answers, { tables, pod: undefined });
+  const named = view.variantReports(answers, said, [NAMES]);
+  assert.deepEqual(
+    [...named].map(([entry, { name }]) => [entry, name]),
+    [
+      ["named", PROTEIN],
+      ["unfound", "MLH1"],
+      ["unnamed", "MLH1"],
+      ["twofold", "MLH1"],
+    ],
+  );
+  const unheld = view.variantReports(
+    answers,
+    await view.variantsSaid(answers, {
+      tables: { ...tables, held: async () => [] },
+      pod: undefined,
+    }),
+    [],
+  );
+  assert.equal(unheld.get("named").name, "MLH1");
+  assert.equal(unheld.get("named").namedFrom, undefined);
+  assert.deepEqual(named.get("named").namedFrom, {
+    series: NAMES,
+    version: NAMES.versions[0],
+  });
+  const entry = view.entryOf(answers, "named", { said, held: [NAMES] });
+  assert.equal(entry.name, PROTEIN);
+  assert.deepEqual(entry.known[0], {
+    sentence: `ClinVar names this variation ${PROTEIN}.`,
+    from: { series: NAMES, version: NAMES.versions[0] },
+  });
+});
+
 test("a variant's entry says its gene and expressions, its ClinVar ID linked to the series, the document each report came with and its date, and what else is known: what Cascade did, each report with its lab, ClinVar today with its table and version, the counsellor sentence, and the series' credit once", () => {
   const entry = view.entryOf(VARIANT_ANSWERS, "v1", {
     said: VARIANTS_SAID,

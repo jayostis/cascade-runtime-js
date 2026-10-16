@@ -1408,7 +1408,12 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       await page.locator("main .variants, main .variant").count(),
       0,
     );
-    const mlh1 = rows.filter({ hasText: "NM_000249.3" });
+    const mlh1 = rows.filter({ hasText: "p.Ala681Val" });
+    assert.match(
+      await mlh1.innerText(),
+      /NM_000249\.4\(MLH1\):c\.2042C>T \(p\.Ala681Val\)/,
+      "the MLH1 row is not named by ClinVar",
+    );
     assert.match(
       await mlh1.innerText(),
       /Differs/,

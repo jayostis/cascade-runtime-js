@@ -23,6 +23,7 @@ import { Tables } from "../dist/src/tables.js";
 
 /** What the tables the app holds now name each code, set once the app is installed. */
 let heldNames = async () => new Map();
+let heldSeries = async () => [];
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
@@ -583,6 +584,7 @@ await behaviour("the command makes the app", async () => {
     preference: vocabulary.config.tables.preference,
   });
   heldNames = (codes) => heldTables.about(codes);
+  heldSeries = () => heldTables.held();
   const kit = (through) =>
     featureStory(
       vocabulary.files,
@@ -1310,6 +1312,33 @@ if (release === undefined) {
           `${title}: the entry's heading`,
         );
         if (gene === "MLH1" && id !== undefined) {
+          const named = "NM_000249.4(MLH1):c.2042C>T (p.Ala681Val)";
+          assert.ok(
+            textOf(row).includes(named),
+            `the MLH1 row is not named by ClinVar: ${textOf(row)}`,
+          );
+          assert.ok(
+            heading(page).includes(named),
+            `the MLH1 entry is not named by ClinVar: ${heading(page)}`,
+          );
+          const origin = (
+            await heldNames([`http://www.ncbi.nlm.nih.gov/clinvar/${id}`])
+          ).get(`http://www.ncbi.nlm.nih.gov/clinvar/${id}`)?.name?.origin;
+          const series = (await heldSeries()).find(({ versions }) =>
+            versions.some(({ iri }) => iri === origin),
+          );
+          assert.ok(series, "no held series names the MLH1 variation");
+          const version = series.versions.find(({ iri }) => iri === origin);
+          const credit = lines.find((line) =>
+            line.startsWith(`ClinVar names this variation ${named}.`),
+          );
+          assert.ok(credit, "the entry does not say ClinVar names it");
+          assert.ok(
+            credit.includes(`From ${series.label}, `) &&
+              (version.label === undefined ||
+                credit.includes(`version ${version.label}`)),
+            `the entry does not credit the names series and version: ${credit}`,
+          );
           assert.ok(
             heading(page).includes(DIFFERS),
             "the MLH1 variant does not differ",
