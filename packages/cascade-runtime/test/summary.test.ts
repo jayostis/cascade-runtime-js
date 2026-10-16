@@ -1132,7 +1132,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
               withheld: [
                 {
                   relation: `${REC}mechanismOfAction`,
-                  ingredient: coded("4083", "estradiol"),
+                  ingredient: coded("29046", "lisinopril"),
                 },
               ],
             },
@@ -1147,7 +1147,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
     "A panel of 3 members, in order:",
     "2823-3 Potassium R-a",
     "2951-2 Sodium required",
-    "No mechanism of action is given: the forms of 4083 estradiol are classed differently.",
+    "No mechanism of action is given: FDA classes a different form of 29046 lisinopril; RxNorm does not tie this drug to it.",
     "17861-6 Calcium Rflx",
     "Itself a member of 3 panels:",
     "34567-8 A larger panel",
@@ -1280,21 +1280,21 @@ test("the medicines by class page groups the pod's active medicines under each c
   const row = (
     entry: string,
     medication: string,
-    cls: string | undefined,
+    cls: string,
     relation = "establishedPharmacologicClass",
-    on = "1546022",
+    on = "3827",
     stated = "false",
   ) => ({
     entry,
     medication,
-    ...(cls !== undefined && { class: `${MEDRT}${cls}` }),
+    class: `${MEDRT}${cls}`,
     relation: `${REC}${relation}`,
     origin: ORIGIN,
     through: `http://www.nlm.nih.gov/research/umls/rxnorm/${on}`,
     stated,
   });
   const rows = [
-    row("e4", "Estradiol 1 MG Oral Tablet", undefined, undefined, "4083"),
+    row("e4", "Estradiol 1 MG Oral Tablet", "N0000175825", undefined, "4083"),
     row(
       "e5",
       "Fluoroestradiol F-18",
@@ -1303,17 +1303,17 @@ test("the medicines by class page groups the pod's active medicines under each c
       "2372221",
       "true",
     ),
-    row("e1", "Lisinopril 10 MG Oral Tablet", "N0000175562"),
-    row(
-      "e1",
-      "Lisinopril 10 MG Oral Tablet",
-      "N0000000174",
-      "mechanismOfAction",
-    ),
     row("e2", "Enalapril", "N0000175562"),
+    row("e2", "Enalapril", "N0000000174", "mechanismOfAction"),
   ];
+  const LISINOPRIL_TABLET =
+    "http://www.nlm.nih.gov/research/umls/rxnorm/314076";
   const medications = [
-    { entry: "e1", medication: "Lisinopril 10 MG Oral Tablet" },
+    {
+      entry: "e1",
+      medication: "Lisinopril 10 MG Oral Tablet",
+      code: LISINOPRIL_TABLET,
+    },
     { entry: "e2", medication: "Enalapril" },
     { entry: "e3", medication: "Lisinopril with hydrochlorothiazide" },
     { entry: "e4", medication: "Estradiol 1 MG Oral Tablet" },
@@ -1343,10 +1343,17 @@ test("the medicines by class page groups the pod's active medicines under each c
       },
     ],
     [
-      "http://www.nlm.nih.gov/research/umls/rxnorm/1546022",
+      `${MEDRT}N0000175825`,
       {
-        notation: "1546022",
-        name: { label: "lisinopril anhydrous", altLabels: [], origin: ORIGIN },
+        notation: "N0000175825",
+        name: { label: "Estrogen [EPC]", altLabels: [], origin: ORIGIN },
+      },
+    ],
+    [
+      "http://www.nlm.nih.gov/research/umls/rxnorm/3827",
+      {
+        notation: "3827",
+        name: { label: "enalapril", altLabels: [], origin: ORIGIN },
       },
     ],
     [
@@ -1363,6 +1370,7 @@ test("the medicines by class page groups the pod's active medicines under each c
     rows,
     medications,
     about,
+    elsewhere: new Map([[LISINOPRIL_TABLET, ["lisinopril"]]]),
     held: [series],
     classHref: (code: string) => `/classes?class=${encodeURIComponent(code)}`,
     allHref: "/classes",
@@ -1371,15 +1379,15 @@ test("the medicines by class page groups the pod's active medicines under each c
   const all = textOf(render(view.classesPage(props)));
   for (const said of [
     "Angiotensin Converting Enzyme Inhibitor [EPC] Established pharmacologic class",
-    "Lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
-    "Enalapril through lisinopril anhydrous",
+    "Enalapril through enalapril",
+    "Estrogen [EPC]",
+    "Estradiol 1 MG Oral Tablet through estradiol",
     "Mechanism of action",
     "From Example drug classes, version 1, Oct 8, 2026.",
     "Classes are FDA's.",
     "Not in a class here",
+    "Lisinopril 10 MG Oral Tablet: FDA classes a different form of lisinopril; RxNorm does not tie this product to it.",
     "Lisinopril with hydrochlorothiazide. MED-RT classes single ingredients",
-    "Classes left out where the sources disagree",
-    "Estradiol 1 MG Oral Tablet: MED-RT gives the forms of estradiol different classes, so it gives the medicine no established pharmacologic class.",
   ])
     assert.ok(all.includes(said), `${said} in ${all}`);
   assert.ok(
@@ -1388,8 +1396,9 @@ test("the medicines by class page groups the pod's active medicines under each c
     "a class on a code the entry states is not through anything",
   );
   assert.ok(
-    !all.includes("Estradiol 1 MG Oral Tablet through"),
-    "a class left out is not reached",
+    !all.includes("Lisinopril 10 MG Oral Tablet, ") &&
+      !all.includes("Lisinopril 10 MG Oral Tablet and"),
+    "a medicine with its own reason is not in the general one",
   );
   assert.ok(
     all.indexOf("Established pharmacologic class") <
@@ -1399,8 +1408,11 @@ test("the medicines by class page groups the pod's active medicines under each c
   const picked = textOf(
     render(view.classesPage({ ...props, picked: `${MEDRT}N0000000174` })),
   );
-  assert.ok(picked.includes("Lisinopril 10 MG Oral Tablet"));
-  assert.ok(!picked.includes("Enalapril through"), "only the class picked");
+  assert.ok(picked.includes("Enalapril through"));
+  assert.ok(
+    !picked.includes("Estradiol 1 MG Oral Tablet through"),
+    "only the class picked",
+  );
   const none = textOf(render(view.classesPage({ ...props, rows: [] })));
   assert.ok(none.includes("None of this pod's active medicines is in a class"));
 });

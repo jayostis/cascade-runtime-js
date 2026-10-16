@@ -113,7 +113,8 @@ export interface Pod {
    */
   agreement(): Promise<Row[]>;
   /**
-   * The classes the app's tables give each active medication of the pod (`tables/medication-classes.rq`): the entry
+   * The classes the app's tables give each active medication of the pod
+   * (`tables/medication-classes-through-precise-ingredients.rq`): the entry
    * (`entry`), its `medication`, the `class`, the `relation` the class row gives it, the version of the drug classes
    * table that holds the row (`origin`) and the code the row is on (`through`). It is answered over the current
    * versions of the tables, reads the pod and writes nothing. A combination product is in no class: MED-RT classes none.
@@ -300,8 +301,8 @@ export const AGREEMENT = "tables/agreement";
 const AGREEMENT_QUERY = `${QUERIES}${AGREEMENT}.rq`;
 
 /** The medicines in a class are asked of the tables the app holds, beside the verdicts: a query beside the questions. */
-const CLASSES_QUERY = `${QUERIES}tables/medication-classes.rq`;
-/** The statements of the medication entries, which `tables/medication-classes.rq` reads of the pod. */
+const CLASSES_QUERY = `${QUERIES}tables/medication-classes-through-precise-ingredients.rq`;
+/** The statements of the medication entries, which the classes query reads of the pod. */
 const MEDICATION_ENTRIES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
 CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a clinical:Medication ; ?property ?value }`;
 const SELECTED_CODE = `${REC}selectedCode`;
@@ -881,8 +882,9 @@ class OpenPod implements Pod {
   /**
    * The query over a dataset of its own, as the core's `selectWithRows` builds one but for the rows it reads: the
    * pod's medication entries, and the rows of the product ingredients and drug classes versions that can join the
-   * codes they state, found by those codes and by the codes sharing an ingredient with them. The core finds a row by
-   * a code the pod states, which a class never is: FDA gives it on a precise ingredient the pod does not state.
+   * codes they state, found by those codes, their ingredients and their own precise ingredients (`Tables.reached`). The
+   * core finds a row by a code the pod states, which a class seldom is: FDA gives it on an ingredient or a precise
+   * ingredient the pod does not state.
    */
   async #medicationClasses(): Promise<Row[]> {
     const { vocabulary, lens, newStore, tables } = this.#parts;

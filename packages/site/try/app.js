@@ -32,6 +32,7 @@ import {
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   checkedNote,
+  classedElsewhere,
   classesPage,
   classesSaid,
   closing,
@@ -549,8 +550,9 @@ async function showClasses(picked) {
     pod.ask(MEDICATIONS),
   ]);
   const tables = await appTables();
-  const [about] = await Promise.all([
+  const [about, elsewhere] = await Promise.all([
     classesSaid(rows, { tables }).catch(() => undefined),
+    classedElsewhere(rows, medications, { tables }).catch(() => undefined),
     readTables(),
   ]);
   const sources = sourcesOf(state.tables);
@@ -562,6 +564,7 @@ async function showClasses(picked) {
       rows,
       medications,
       about,
+      elsewhere,
       held: state.tables,
       picked,
       classHref: (code) => classesHref(current, code),

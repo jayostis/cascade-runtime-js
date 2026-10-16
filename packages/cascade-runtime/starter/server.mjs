@@ -35,6 +35,7 @@ import {
 } from "./pods.mjs";
 import {
   checkedNote,
+  classedElsewhere,
   classesPage,
   classesSaid,
   codePage,
@@ -572,8 +573,11 @@ async function showClasses(response, name, query, names) {
     pod.ask(MEDICATIONS),
   ]);
   const kept = await tables();
-  const [about, held] = await Promise.all([
+  const [about, elsewhere, held] = await Promise.all([
     classesSaid(rows, { tables: kept }).catch(() => undefined),
+    classedElsewhere(rows, medications, { tables: kept }).catch(
+      () => undefined,
+    ),
     kept.held(),
   ]);
   const sources = sourcesOf(held);
@@ -583,6 +587,7 @@ async function showClasses(response, name, query, names) {
     rows,
     medications,
     about,
+    elsewhere,
     held,
     picked: query.get("class") ?? undefined,
     classHref: (code) =>

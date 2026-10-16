@@ -33,7 +33,11 @@ export type Verified =
   | { readonly refused: string };
 
 /** The shape of a listing; a kept listing of another is listed again. */
-export const LISTING_FORMAT = 1;
+export const LISTING_FORMAT = 2;
+
+/** A product ingredients row's predicate that names a precise ingredient, not an ingredient. */
+export const PRECISE_INGREDIENT =
+  "https://ns.cascadeprotocol.org/records/v1-draft#hasPreciseIngredient";
 
 /** A version's codes as a search lists them, and what it reads of them. */
 export interface Listed {
@@ -42,8 +46,10 @@ export interface Listed {
   readonly uriSpaces: readonly string[];
   /** Its rows' subjects in a code system and the sources of its mappings, in the order of their notations. */
   readonly codes: readonly string[];
-  /** In a mapping series, the codes each code maps to. */
+  /** In a mapping series, the codes each code maps to; a product ingredients row naming a precise ingredient is not one. */
   readonly mapsTo: Readonly<Record<string, readonly string[]>>;
+  /** In a product ingredients series, the precise ingredients each code has (`rec:hasPreciseIngredient`). */
+  readonly precise: Readonly<Record<string, readonly string[]>>;
   /** In a names series, each code it gives a preferred name, with its names, lowercased, each after a line break. */
   readonly names: Readonly<Record<string, string>>;
 }
@@ -253,6 +259,7 @@ export function values(rows: readonly Row[], predicate: string): string[] {
 
 const SOURCE = `<${OWL}annotatedSource> <`;
 const TARGET = `<${OWL}annotatedTarget> <`;
+const PRECISELY = `<${OWL}annotatedProperty> <${PRECISE_INGREDIENT}> .`;
 const LABELS = [`<${SKOS}prefLabel> `, `<${SKOS}altLabel> `];
 
 /** A code as written, without its code system's IRI. */
@@ -294,6 +301,7 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
   const codes = new Set<string>();
   const sources = new Map<string, string>();
   const targets = new Map<string, string[]>();
+  const preciseRows = new Set<string>();
   const names: Record<string, string> = {};
   const preferred = new Set<string>();
   let [subject, prefix] = ["", ""];
@@ -320,14 +328,18 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
       const each = targets.get(subject) ?? [];
       each.push(text.slice(predicate + TARGET.length, end - 3));
       targets.set(subject, each);
-    }
+    } else if (text.startsWith(PRECISELY, predicate)) preciseRows.add(subject);
     at = end + 1;
   }
   const mapsTo: Record<string, string[]> = {};
-  for (const [axiom, code] of sources)
+  const precise: Record<string, string[]> = {};
+  for (const [axiom, code] of sources) {
+    const into = preciseRows.has(axiom) ? precise : mapsTo;
     for (const target of targets.get(axiom) ?? [])
-      if (!(mapsTo[code] ??= []).includes(target)) mapsTo[code].push(target);
-  for (const each of Object.values(mapsTo)) each.sort();
+      if (!(into[code] ??= []).includes(target)) into[code].push(target);
+  }
+  for (const each of [...Object.values(mapsTo), ...Object.values(precise)])
+    each.sort();
   for (const code of Object.keys(names))
     if (!preferred.has(code)) delete names[code];
   return {
@@ -338,6 +350,7 @@ export function listing(text: string, uriSpaces: readonly string[]): Listed {
       .sort(([a], [b]) => ORDER.compare(a, b))
       .map(([, code]) => code),
     mapsTo,
+    precise,
     names,
   };
 }

@@ -2825,7 +2825,7 @@ ${
 }
 ${(classed.withheld ?? []).map(
   (each) =>
-    html`<p>No ${relationName(each.relation).toLowerCase()} is given: the forms of ${code(each.ingredient)} are classed differently.</p>`,
+    html`<p>No ${relationName(each.relation).toLowerCase()} is given: FDA classes a different form of ${code(each.ingredient)}; RxNorm does not tie this drug to it.</p>`,
 )}
 ${credit(classed.series)}
 ${from(classed)}</div>`,
@@ -2862,13 +2862,39 @@ export async function classesSaid(rows, { tables }) {
 }
 
 /**
+ * Of the `medications` (rows of `pod/My active medications`) in no class of `rows`, those whose code is in no class
+ * though FDA classes a different form of its ingredient, by the code: the names of those ingredients. Says nothing
+ * when the tables cannot say.
+ */
+export async function classedElsewhere(rows, medications, { tables }) {
+  const classed = new Set(rows.map(({ entry }) => entry));
+  const codes = [
+    ...new Set(
+      medications
+        .filter(({ entry, code }) => !classed.has(entry) && code !== undefined)
+        .map(({ code }) => code),
+    ),
+  ];
+  if (codes.length === 0) return new Map();
+  const found = await tables.classedElsewhere(codes);
+  const about = await tables.about([...new Set([...found.values()].flat())]);
+  const nameOf = (code) =>
+    about.get(code)?.name?.label ??
+    about.get(code)?.notation ??
+    notationOf(code);
+  return new Map(
+    [...found].map(([code, ingredients]) => [code, ingredients.map(nameOf)]),
+  );
+}
+
+/**
  * The page of a pod's medicines by class: `rows` is `pod.medicationClasses()`'s answer, `medications` the rows of
- * `pod/My active medications`, `about` is `classesSaid`'s answer, none until the tables can say, and `held` the tables'
- * `held()`. A class is a button of the picker, a link to `classHref(code)` (or to `allHref` for all of them); `picked` is
- * the class shown, by its code, or none for every class. Each medicine is a link to `entryHref(entry)`, and each class a
- * link to `codeHref(series, notation)` when `held` holds the series that names it. A row with no `class` says the
- * sources class an ingredient's forms differently, naming it in `through`; a row `stated` is on a code the entry
- * states, so is not "through" anything. The page says which medicines it does not class, and why.
+ * `pod/My active medications`, `about` is `classesSaid`'s answer, none until the tables can say, `elsewhere` is
+ * `classedElsewhere`'s, and `held` the tables' `held()`. A class is a button of the picker, a link to `classHref(code)`
+ * (or to `allHref` for all of them); `picked` is the class shown, by its code, or none for every class. Each medicine
+ * is a link to `entryHref(entry)`, and each class a link to `codeHref(series, notation)` when `held` holds the series
+ * that names it. A row `stated` is on a code the entry states, so is not "through" anything. The page says which
+ * medicines it does not class, and why.
  */
 export function classesPage({
   pod,
@@ -2876,6 +2902,7 @@ export function classesPage({
   rows,
   medications = [],
   about = new Map(),
+  elsewhere = new Map(),
   held = [],
   picked,
   classHref,
@@ -2884,20 +2911,7 @@ export function classesPage({
   codeHref,
 }) {
   const groups = new Map();
-  // A row with no class says the sources disagree about the relation for the entry, naming the ingredient.
-  const withheld = new Map();
   for (const row of rows) {
-    if (row.class === undefined) {
-      const kept = withheld.get(row.entry) ?? {
-        name: row.medication,
-        ingredients: new Set(),
-        relations: new Set(),
-      };
-      kept.ingredients.add(row.through);
-      kept.relations.add(row.relation);
-      withheld.set(row.entry, kept);
-      continue;
-    }
     const key = `${row.relation} ${row.class}`;
     if (!groups.has(key))
       groups.set(key, {
@@ -2930,12 +2944,10 @@ export function classesPage({
   const shown = classed.filter(
     (group) => picked === undefined || group.class === picked,
   );
-  const inAClass = new Set(
-    rows.filter((row) => row.class !== undefined).map((row) => row.entry),
-  );
-  const left = medications.filter(
-    ({ entry }) => !inAClass.has(entry) && !withheld.has(entry),
-  );
+  const inAClass = new Set(rows.map((row) => row.entry));
+  const left = medications.filter(({ entry }) => !inAClass.has(entry));
+  const formOf = left.filter(({ code }) => elsewhere.has(code));
+  const unclassed = left.filter(({ code }) => !elsewhere.has(code));
   const from = (group) => {
     const versions = [...group.origins].flatMap((origin) => {
       const found = heldAt(origin, held);
@@ -2986,17 +2998,16 @@ ${from(group)}</div>`,
 ${picked !== undefined && shown.length === 0 && html`<p>None of this pod's active medicines is in that class.</p>`}
 ${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
 ${
-  withheld.size > 0 &&
-  html`<div class="card"><h2>Classes left out where the sources disagree</h2>
-<ul>${[...withheld.values()].map(
-    (each) =>
-      html`<li>${each.name}: MED-RT gives the forms of ${listed([...each.ingredients].map(nameOf))} different classes, so it gives the medicine no ${listed([...each.relations].map((relation) => relationName(relation).toLowerCase()))}.</li>`,
-  )}</ul></div>`
-}
-${
   left.length > 0 &&
   html`<div class="card"><h2>Not in a class here</h2>
-<p>${listed(left.map(({ medication }) => medication))}. MED-RT classes single ingredients, not the combination of several, and gives some single ingredients no class; a drug the tables do not map to an ingredient has no class here.</p></div>`
+${formOf.map(
+  ({ medication, code }) =>
+    html`<p>${medication}: FDA classes a different form of ${listed(elsewhere.get(code))}; RxNorm does not tie this product to it.</p>`,
+)}
+${
+  unclassed.length > 0 &&
+  html`<p>${listed(unclassed.map(({ medication }) => medication))}. MED-RT classes single ingredients, not the combination of several, and gives some single ingredients no class; a drug the tables do not map to an ingredient has no class here.</p>`
+}</div>`
 }`;
 }
 

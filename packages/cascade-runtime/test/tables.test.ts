@@ -1756,13 +1756,47 @@ const PANEL = "24323-8";
 const LISINOPRIL = "29046";
 const ESTRADIOL = "4083";
 const FLUOROESTRADIOL = "2372221";
+const KETOCONAZOLE = "6135";
+const LEVOKETOCONAZOLE = "2588846";
 const MECHANISMS = new Set(["N0000000174", "N0000000100", "N0000175869"]);
+const AZOLES = "N0000007654";
+/** The product ingredients rows, `[source, target]`, that name a precise ingredient. */
+const PRECISE = new Set([`2588848 ${LEVOKETOCONAZOLE}`]);
+const PRECISE_INGREDIENTS: Mapping = {
+  ...INGREDIENTS,
+  predicateOf: (source, target) =>
+    PRECISE.has(`${source} ${target}`)
+      ? `${REC}hasPreciseIngredient`
+      : INGREDIENTS.predicate,
+};
+/** Estradiol's rows: its tablet, which has no precise ingredient, and fluoroestradiol F-18, a precise ingredient of it. */
+const ESTRADIOL_ROWS: [string, string][] = [
+  ["197658", ESTRADIOL],
+  [FLUOROESTRADIOL, ESTRADIOL],
+  [ESTRADIOL, ESTRADIOL],
+];
+const ESTRADIOL_CLASSES: [string, string][] = [
+  [ESTRADIOL, "N0000175825"],
+  [ESTRADIOL, "N0000000100"],
+  [FLUOROESTRADIOL, "N0000177914"],
+  [FLUOROESTRADIOL, "N0000175869"],
+];
+const CLASSES_BY_RELATION: Mapping = {
+  ...CLASSES,
+  predicateOf: (_, target) =>
+    MECHANISMS.has(target)
+      ? `${REC}mechanismOfAction`
+      : target === AZOLES
+        ? `${REC}chemicalStructure`
+        : CLASSES.predicate,
+};
 
 /**
- * The feed the panel and class tests share, built once: a panel and its members; a tablet, its precise ingredient and
- * lisinopril, FDA's class on the precise ingredient only; a combination, mapped to its multiple ingredient concept; and
- * estradiol, whose tablet maps to it and whose precise ingredient fluoroestradiol F-18 maps to it too, each classed
- * differently.
+ * The feed the panel and class tests share, built once: a panel and its members; a tablet of lisinopril, whose
+ * relations name no precise ingredient, and lisinopril anhydrous, a precise ingredient FDA classes; a combination,
+ * mapped to its multiple ingredient concept; estradiol, classed itself, whose tablet maps to it and whose precise
+ * ingredient fluoroestradiol F-18 maps to it too, classed differently; and a tablet of levoketoconazole, a precise
+ * ingredient of ketoconazole, each classed differently. Its product ingredients version states precise ingredients.
  */
 let planted: Promise<{ tables: Tables; classes: string }> | undefined;
 
@@ -1794,36 +1828,31 @@ function plantedTables(): Promise<{ tables: Tables; classes: string }> {
       },
       [Object.keys(place).map((member): [string, string] => [PANEL, member])],
     );
-    const ingredients = await withMappings(panels.served, INGREDIENTS, [
+    const ingredients = await withMappings(panels.served, PRECISE_INGREDIENTS, [
       [
         ["314076", LISINOPRIL],
         ["1546022", LISINOPRIL],
         [LISINOPRIL, LISINOPRIL],
         // A combination maps to the multiple ingredient concept, which MED-RT classes none of.
         ["197885", "214618"],
-        // A product maps to its ingredient, never to its own precise ingredient.
-        ["197658", ESTRADIOL],
-        [FLUOROESTRADIOL, ESTRADIOL],
-        [ESTRADIOL, ESTRADIOL],
+        ...ESTRADIOL_ROWS,
+        ["2588848", KETOCONAZOLE],
+        ["2588848", LEVOKETOCONAZOLE],
+        [LEVOKETOCONAZOLE, KETOCONAZOLE],
+        [KETOCONAZOLE, KETOCONAZOLE],
       ],
     ]);
     const classes = await withMappings(
       ingredients.served,
-      {
-        ...CLASSES,
-        predicateOf: (_, target) =>
-          MECHANISMS.has(target)
-            ? `${REC}mechanismOfAction`
-            : CLASSES.predicate,
-      },
+      CLASSES_BY_RELATION,
       [
         [
           ["1546022", "N0000175562"],
           ["1546022", "N0000000174"],
-          [ESTRADIOL, "N0000175825"],
-          [ESTRADIOL, "N0000000100"],
-          [FLUOROESTRADIOL, "N0000177914"],
-          [FLUOROESTRADIOL, "N0000175869"],
+          ...ESTRADIOL_CLASSES,
+          [KETOCONAZOLE, "N0000175487"],
+          [KETOCONAZOLE, AZOLES],
+          [LEVOKETOCONAZOLE, "N0000193183"],
         ],
       ],
     );
@@ -1912,32 +1941,6 @@ test("a lab result's code is named by LOINC and gives the panels that hold it", 
   assert.deepEqual(await tables.inPanels(`${LOINC}9999-9`), []);
 });
 
-test("a drug is in the classes FDA gives its ingredient's only classed code, by relation, through the code the row is on", async () => {
-  const { tables } = await plantedTables();
-  const tablet = await tables.facts(`${RXNORM}314076`);
-  assert.deepEqual(
-    tablet.classes.map(({ in: each }) =>
-      each.map(({ relation, class: of, through }) => [
-        relation.slice(REC.length),
-        of.notation,
-        of.about?.name?.label,
-        through?.about?.name?.label,
-      ]),
-    ),
-    [
-      [
-        [
-          "establishedPharmacologicClass",
-          "N0000175562",
-          "Angiotensin Converting Enzyme Inhibitor [EPC]",
-          "lisinopril anhydrous",
-        ],
-        ["mechanismOfAction", "N0000000174", undefined, "lisinopril anhydrous"],
-      ],
-    ],
-  );
-});
-
 test("a class on the code itself is not reached through another, and a combination has none", async () => {
   const { tables } = await plantedTables();
   assert.deepEqual(
@@ -1949,32 +1952,85 @@ test("a class on the code itself is not reached through another, and a combinati
   assert.deepEqual((await tables.facts(`${RXNORM}197885`)).classes, []);
 });
 
-test("precise ingredients classed differently give a product none of their classes, and each keeps its own", async () => {
+/** What a code's page says of its classes, a line each: a class with the code it is through, or a relation withheld. */
+async function classLines(tables: Tables, code: string): Promise<string[]> {
+  return (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
+    ({ in: each, withheld }) => [
+      ...each.map(
+        ({ relation, class: of, through }) =>
+          `${relation.slice(REC.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
+      ),
+      ...withheld.map(
+        ({ relation, ingredient }) =>
+          `${relation.slice(REC.length)} withheld, a different form of ${ingredient.notation}`,
+      ),
+    ],
+  );
+}
+
+test("a product is in its own precise ingredient's class, else in its ingredient's own, never in a different form's; a precise ingredient keeps its own", async () => {
   const { tables } = await plantedTables();
-  const byCode = async (code: string) =>
-    (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
-      ({ in: each, withheld }) => [
-        ...each.map(
-          ({ relation, class: of, through }) =>
-            `${relation.slice(REC.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
-        ),
-        ...withheld.map(
-          ({ relation, ingredient }) =>
-            `${relation.slice(REC.length)} withheld, ${ingredient.about?.name?.label}`,
-        ),
-      ],
-    );
-  assert.deepEqual(await byCode("197658"), [
-    "establishedPharmacologicClass withheld, estradiol",
-    "mechanismOfAction withheld, estradiol",
+  assert.deepEqual(await classLines(tables, "197658"), [
+    `establishedPharmacologicClass N0000175825 through ${ESTRADIOL}`,
+    `mechanismOfAction N0000000100 through ${ESTRADIOL}`,
   ]);
-  assert.deepEqual(await byCode(FLUOROESTRADIOL), [
+  assert.deepEqual(await classLines(tables, "2588848"), [
+    `establishedPharmacologicClass N0000193183 through ${LEVOKETOCONAZOLE}`,
+    `chemicalStructure ${AZOLES} through ${KETOCONAZOLE}`,
+  ]);
+  assert.deepEqual(await classLines(tables, "314076"), [
+    `establishedPharmacologicClass withheld, a different form of ${LISINOPRIL}`,
+    `mechanismOfAction withheld, a different form of ${LISINOPRIL}`,
+  ]);
+  assert.deepEqual(await classLines(tables, FLUOROESTRADIOL), [
     "establishedPharmacologicClass N0000177914",
     "mechanismOfAction N0000175869",
   ]);
-  assert.deepEqual(await byCode(ESTRADIOL), [
-    "establishedPharmacologicClass N0000175825",
-    "mechanismOfAction N0000000100",
+  assert.deepEqual(
+    await tables.classedElsewhere([
+      `${RXNORM}314076`,
+      `${RXNORM}197658`,
+      `${RXNORM}197885`,
+    ]),
+    new Map([[`${RXNORM}314076`, [`${RXNORM}${LISINOPRIL}`]]]),
+  );
+});
+
+test("a code's ingredients, and so the claim that it has one and Worth a look's shared ingredient, are its ingredient rows, never its precise ingredient rows", async () => {
+  const { tables } = await plantedTables();
+  const about = await tables.about([`${RXNORM}2588848`]);
+  assert.deepEqual(about.get(`${RXNORM}2588848`)?.ingredients?.codes, [
+    `${RXNORM}${KETOCONAZOLE}`,
+  ]);
+});
+
+test("a product ingredients version that states no precise ingredient gives a product only a class on its own code, and a check that keeps one that states them gives it its ingredient's", async () => {
+  const before = await withMappings(feed, PRECISE_INGREDIENTS, [
+    ESTRADIOL_ROWS,
+  ]);
+  const after = await withMappings(feed, PRECISE_INGREDIENTS, [
+    ESTRADIOL_ROWS,
+    [...ESTRADIOL_ROWS, ["2588848", LEVOKETOCONAZOLE]],
+  ]);
+  const files = new MemoryFiles("urn:test:tables/");
+  const classed = async (served: Served): Promise<string[]> => {
+    const { served: withClasses } = await withMappings(
+      served,
+      CLASSES_BY_RELATION,
+      [ESTRADIOL_CLASSES],
+    );
+    const tables = tablesOver(withClasses, files);
+    await tables.check();
+    return classLines(tables, "197658");
+  };
+  assert.deepEqual(
+    await classed(before.served),
+    [],
+    "a version that states no precise ingredient says nothing of other forms",
+  );
+  assert.deepEqual(await classed(after.served), [
+    `establishedPharmacologicClass N0000175825 through ${ESTRADIOL}`,
+    `mechanismOfAction N0000000100 through ${ESTRADIOL}`,
   ]);
 });
 
@@ -1988,6 +2044,7 @@ test("the pod's medicines in a class are asked of the tables by the same rule as
       "197885": "Hydrochlorothiazide 12.5 MG / Lisinopril 10 MG Oral Tablet",
       "197658": "Estradiol 1 MG Oral Tablet",
       [FLUOROESTRADIOL]: "Fluoroestradiol F-18",
+      "2588848": "Levoketoconazole 150 MG Oral Tablet",
     };
     const medication = (code: string, index: number): string =>
       `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/clinical/v1#Medication> .
@@ -2026,7 +2083,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
         [
           "Estradiol 1 MG Oral Tablet",
           "establishedPharmacologicClass",
-          "",
+          "N0000175825",
           ESTRADIOL,
           "false",
           true,
@@ -2034,7 +2091,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
         [
           "Estradiol 1 MG Oral Tablet",
           "mechanismOfAction",
-          "",
+          "N0000000100",
           ESTRADIOL,
           "false",
           true,
@@ -2056,18 +2113,18 @@ ${Object.keys(names).map(medication).join("\n")}`);
           true,
         ],
         [
-          "Lisinopril 10 MG Oral Tablet",
-          "establishedPharmacologicClass",
-          "N0000175562",
-          "1546022",
+          "Levoketoconazole 150 MG Oral Tablet",
+          "chemicalStructure",
+          AZOLES,
+          KETOCONAZOLE,
           "false",
           true,
         ],
         [
-          "Lisinopril 10 MG Oral Tablet",
-          "mechanismOfAction",
-          "N0000000174",
-          "1546022",
+          "Levoketoconazole 150 MG Oral Tablet",
+          "establishedPharmacologicClass",
+          "N0000193183",
+          LEVOKETOCONAZOLE,
           "false",
           true,
         ],
@@ -2075,12 +2132,10 @@ ${Object.keys(names).map(medication).join("\n")}`);
     );
     for (const [code, name] of Object.entries(names)) {
       const said = (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
-        ({ in: each, withheld }) => [
-          ...each.map(
+        ({ in: each }) =>
+          each.map(
             ({ relation, class: of }) => `${relation} ${MEDRT}${of.notation}`,
           ),
-          ...withheld.map(({ relation }) => `${relation} `),
-        ],
       );
       const asked = rows
         .filter((row) => row.medication === name)

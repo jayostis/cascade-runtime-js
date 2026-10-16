@@ -149,19 +149,31 @@ page of them); and `classes`: for an RxNorm code the classes of its ingredient,
 each `in` list a `relation` (`rec:establishedPharmacologicClass`,
 `rec:mechanismOfAction`, `rec:physiologicEffect` or `rec:chemicalStructure`), the
 `class` with its name, and `through`, the code FDA gave the class to when it is
-not the code asked of (FDA classes lisinopril on lisinopril anhydrous, not on a
-tablet of it). A class is joined only on exact evidence, relation by relation: a
-row on the code itself, else the rows of the codes that map to its ingredient
-(the ingredient and its precise ingredients) when every one of them that has a
-row of the relation gives the same classes. When they differ (estradiol and
-fluoroestradiol F-18) a product gets none of them, and `withheld` names the
-relation and the ingredient. `pod.medicationClasses()` says which of the pod's
-active medications are in which class (`entry`, `medication`, `class`,
-`relation`, `origin`, `through`, `stated`: whether the class is on a code the
-entry states), by the app's current tables; a row with no `class` is a relation
-withheld, `through` the ingredient. It writes nothing. A combination of
-ingredients is in no class, since MED-RT classes none, and the starter's page
-says so.
+not the code asked of (FDA classes estradiol, not a tablet of it). A class is
+joined only on exact evidence, relation by relation, as the vocabulary's
+`tables/medication-classes-through-precise-ingredients.rq` says: a row on the
+code itself, else the rows of the code's own precise ingredients
+(`rec:hasPreciseIngredient`), else, in a product ingredients version that states
+precise ingredients, its ingredient's own rows (an estradiol tablet takes
+estradiol's). Each relation is decided apart, so one product can take some from
+its precise ingredient and others from its ingredient: Recorlev takes the
+established class and the mechanisms of levoketoconazole, and its chemical
+structure (Azoles) of ketoconazole, which levoketoconazole has no row for; the
+`through` of each class says which. Never a different form's: a lisinopril
+tablet gets none of the classes FDA gives lisinopril anhydrous, and `withheld`
+names the relation and the ingredient whose other form is classed, only from a
+version that states precise ingredients (one that states none cannot say
+RxNorm does not tie the product to the form, so it withholds nothing and the
+page gives its general reason).
+`tables.classedElsewhere(codes)` gives those ingredients for codes in no class.
+`pod.medicationClasses()` says which of the pod's active medications are in
+which class (`entry`, `medication`, `class`, `relation`, `origin`, `through`,
+`stated`: whether the class is on a code the entry states), by the app's current
+tables. It writes nothing. A combination of ingredients is in no class, since
+MED-RT classes none, and the starter's page says so; it says too which medicine
+is in none because FDA classes a different form of its ingredient. A code's
+ingredients (`about().ingredients`) are its ingredient rows (`obo:RO_0002248`),
+never its precise ingredient rows.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with

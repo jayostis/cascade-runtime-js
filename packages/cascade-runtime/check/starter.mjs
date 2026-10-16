@@ -899,7 +899,7 @@ try {
     },
   );
   await behaviour(
-    "Priya's potassium result is named by LOINC, and the class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous",
+    "Priya's potassium result is named by LOINC, and the class page puts her amlodipine in its ingredient's class and says FDA classes a different form of her lisinopril, so it has none",
     async () => {
       const pod = readable(await served(server, "/pods/priya-natarajan/"));
       assert.ok(
@@ -914,10 +914,15 @@ try {
         await served(server, "/pods/priya-natarajan/classes"),
       );
       for (const said of [
-        "Angiotensin Converting Enzyme Inhibitor [EPC]",
-        "lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+        "Calcium Channel Blocker [EPC]",
+        "amlodipine 5 MG Oral Tablet through amlodipine",
+        "lisinopril 10 MG Oral Tablet: FDA classes a different form of lisinopril; RxNorm does not tie this product to it.",
       ])
         assert.ok(classes.includes(said), `${said} is not on ${classes}`);
+      assert.ok(
+        !classes.includes("Angiotensin Converting Enzyme Inhibitor [EPC]"),
+        "lisinopril is given the class FDA gives lisinopril anhydrous",
+      );
     },
   );
   await behaviour(

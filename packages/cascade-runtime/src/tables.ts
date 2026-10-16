@@ -73,7 +73,7 @@ interface ClassOf {
   readonly class: string;
   readonly through?: string;
 }
-/** A relation a code has no class for because the codes under its ingredient give different ones. */
+/** A relation a code has no class for though a different form of its ingredient has one. */
 interface WithheldOf {
   readonly relation: string;
   readonly ingredient: string;
@@ -239,10 +239,13 @@ export interface InClass {
   readonly through?: Coded;
 }
 
-/** A relation a code has no class for, because the codes under its ingredient are classed differently. */
+/**
+ * A relation a code has no class for, though the drug classes table classes a different form of its ingredient:
+ * RxNorm does not tie the code to that form.
+ */
 export interface WithheldClass {
   readonly relation: string;
-  /** The ingredient whose forms (itself and its precise ingredients) the drug classes table classes differently. */
+  /** The ingredient a different form of which is classed. */
   readonly ingredient: Coded;
 }
 
@@ -280,9 +283,9 @@ export interface Facts extends Coded {
     };
   })[];
   /**
-   * From each drug classes series whose current version holds a row on the code or on a code that shares an ingredient
-   * with it in a product ingredients series: each class by its relation, and each relation left out because the codes
-   * sharing the ingredient are classed differently.
+   * From each drug classes series whose current version holds a row on the code, on its own precise ingredient or on
+   * its ingredient, or on a different form of its ingredient: each class by its relation, and each relation the code has
+   * no class for though a different form of its ingredient has one.
    */
   readonly classes: readonly (Fact & {
     readonly in: readonly InClass[];
@@ -924,6 +927,38 @@ export class Tables {
     return undefined;
   }
 
+  /**
+   * For each code, the ingredients a different form of which the current drug classes versions class, where the code
+   * reaches no class of that relation: RxNorm does not tie the code to that form. A code with none is left out.
+   */
+  async classedElsewhere(
+    codes: readonly string[],
+  ): Promise<Map<string, string[]>> {
+    const [references, index] = await Promise.all([
+      this.references(),
+      this.#index(),
+    ]);
+    const current = (kind: string): Fact[] =>
+      this.#preferred(references, kind).flatMap((series) => {
+        const version = index.objects(iri(series), SHIPS_WITH)[0]?.value;
+        return version === undefined ? [] : [{ series, version }];
+      });
+    const [held, ingredients] = [
+      current(`${REC}DrugClasses`),
+      current(`${REC}ProductIngredients`),
+    ];
+    const found = new Map<string, string[]>();
+    for (const code of codes) {
+      const elsewhere = new Set(
+        (await this.#classes(code, held, ingredients)).flatMap(({ withheld }) =>
+          withheld.map(({ ingredient }) => ingredient),
+        ),
+      );
+      if (elsewhere.size > 0) found.set(code, [...elsewhere].sort());
+    }
+    return found;
+  }
+
   /** What every held series says of the code, or each of `among`, from its current version. */
   async facts(code: string, among?: readonly string[]): Promise<Facts> {
     // The store starts from the starter copies before its index is read.
@@ -1198,12 +1233,13 @@ export class Tables {
   }
 
   /**
-   * In each drug classes version, the classes of the code, by `tables/medication-classes.rq`'s rule, relation by
-   * relation: a class row on the code itself is its class; else the codes that map to its ingredient in a product
-   * ingredients version (the ingredient among them) give theirs only when every one that bears a row of the relation
-   * gives the same classes, and when they differ the code has none and the relation is withheld, naming the
-   * ingredient. A product maps to its ingredient and never to its own precise ingredient, so a class FDA gives one
-   * precise ingredient is not the product's.
+   * In each drug classes version, the classes of the code, by `tables/medication-classes-through-precise-ingredients.rq`'s
+   * rule, relation by relation, for each ingredient a product ingredients version maps the code to: a class row on the
+   * code itself is its class; else the classes of its own precise ingredients that are forms of that ingredient, when
+   * one or more bear a row of the relation; else, in a version that states precise ingredients, the ingredient's own.
+   * Nothing else: a relation the code reaches no class for, though a different form of its ingredient bears one, is
+   * withheld, naming the ingredient, for RxNorm does not tie the code to that form. Only a version that states precise
+   * ingredients says that: one that states none is silent on forms, so it withholds nothing.
    */
   async #classes(
     code: string,
@@ -1213,11 +1249,16 @@ export class Tables {
     if (held.length === 0) return [];
     const maps = await Promise.all(
       ingredients.map(async ({ version }) => {
-        const [{ mapsTo }, from] = await Promise.all([
+        const [{ mapsTo, precise }, from] = await Promise.all([
           this.#listed(version),
           this.#mappedFrom(version),
         ]);
-        return { mapsTo, from };
+        return {
+          mapsTo,
+          precise,
+          from,
+          stating: Object.keys(precise).length > 0,
+        };
       }),
     );
     return (
@@ -1241,7 +1282,7 @@ export class Tables {
             }
             return byRelation;
           };
-          // The step a class was reached at (0 the code, 1 the ingredient, 2 a precise ingredient) and the code it is on.
+          // The step a class was reached at (0 the code, 1 its own precise ingredient, 2 the ingredient) and the code it is on.
           const found = new Map<string, { step: number; of: ClassOf }>();
           const keep = (
             relation: string,
@@ -1268,38 +1309,54 @@ export class Tables {
           const mine = classesOf(code);
           for (const [relation, targets] of mine)
             for (const target of targets) keep(relation, target, 0, code);
-          const withheld = new Map<string, WithheldOf>();
-          for (const { mapsTo, from } of maps)
+          // A different form of an ingredient that bears a relation's rows, by the relation.
+          const elsewhere = new Map<string, Set<string>>();
+          for (const { mapsTo, precise, from, stating } of maps)
             for (const ingredient of Object.hasOwn(mapsTo, code)
               ? mapsTo[code]!
               : []) {
-              const bearing = new Map<string, Map<string, Set<string>>>();
-              for (const sibling of from.get(ingredient) ?? [])
-                for (const [relation, targets] of classesOf(sibling))
-                  bearing.set(
-                    relation,
-                    (bearing.get(relation) ?? new Map()).set(sibling, targets),
-                  );
-              for (const [relation, bearers] of bearing) {
+              const forms = (
+                Object.hasOwn(precise, code) ? precise[code]! : []
+              ).filter((form) => mapsTo[form]?.includes(ingredient));
+              const own = classesOf(ingredient);
+              const bearing = forms.map(
+                (form) => [form, classesOf(form)] as const,
+              );
+              const othersBear = new Set(
+                (from.get(ingredient) ?? [])
+                  .filter((other) => other !== code && other !== ingredient)
+                  .flatMap((other) => [...classesOf(other).keys()]),
+              );
+              for (const relation of RELATIONS) {
                 if (mine.has(relation)) continue;
-                const sets = [...bearers.values()];
-                const agree = sets.every(
-                  (each) =>
-                    each.size === sets[0]!.size &&
-                    [...each].every((target) => sets[0]!.has(target)),
+                const by = bearing.filter(([, classes]) =>
+                  classes.has(relation),
                 );
-                if (!agree) {
-                  withheld.set(`${relation} ${ingredient}`, {
+                if (by.length > 0)
+                  for (const [form, classes] of by)
+                    for (const target of classes.get(relation)!)
+                      keep(relation, target, 1, form);
+                else if (stating && own.has(relation))
+                  for (const target of own.get(relation)!)
+                    keep(relation, target, 2, ingredient);
+                else if (stating && othersBear.has(relation))
+                  elsewhere.set(
                     relation,
-                    ingredient,
-                  });
-                  continue;
-                }
-                for (const target of sets[0]!)
-                  for (const on of bearers.keys())
-                    keep(relation, target, on === ingredient ? 1 : 2, on);
+                    (elsewhere.get(relation) ?? new Set()).add(ingredient),
+                  );
               }
             }
+          const reached = new Set(
+            [...found.values()].map(({ of }) => of.relation),
+          );
+          const withheld = new Map<string, WithheldOf>();
+          for (const [relation, ingredients] of elsewhere)
+            if (!reached.has(relation))
+              for (const ingredient of ingredients)
+                withheld.set(`${relation} ${ingredient}`, {
+                  relation,
+                  ingredient,
+                });
           const each = [...found.values()]
             .map(({ of }) => of)
             .sort(
@@ -1320,28 +1377,24 @@ export class Tables {
   }
 
   /**
-   * The codes, then each code that maps to an ingredient of one of them in one of the product ingredients versions,
-   * the ingredient itself among them: the codes a class of the codes may be on.
+   * The codes, then their ingredients and their own precise ingredients in each of the product ingredients versions:
+   * the codes a class of the codes may be on.
    */
-  async #sharing(
+  async #classedOn(
     codes: readonly string[],
     versions: readonly string[],
   ): Promise<Set<string>> {
-    const sharing = new Set(codes);
+    const on = new Set(codes);
     for (const version of versions) {
-      const [{ mapsTo }, from] = await Promise.all([
-        this.#listed(version),
-        this.#mappedFrom(version),
-      ]);
+      const { mapsTo, precise } = await this.#listed(version);
       for (const code of codes)
-        for (const ingredient of Object.hasOwn(mapsTo, code)
-          ? mapsTo[code]!
-          : []) {
-          sharing.add(ingredient);
-          for (const same of from.get(ingredient) ?? []) sharing.add(same);
-        }
+        for (const each of [
+          ...(Object.hasOwn(mapsTo, code) ? mapsTo[code]! : []),
+          ...(Object.hasOwn(precise, code) ? precise[code]! : []),
+        ])
+          on.add(each);
     }
-    return sharing;
+    return on;
   }
 
   /**
@@ -1441,12 +1494,12 @@ export class Tables {
   }
 
   /**
-   * The rows a walk from these codes to their drug classes can read, for `tables/medication-classes.rq`: in the current
-   * version of each drug classes series the rows of the codes and of every code sharing an ingredient with them, and in
-   * the current version of each product ingredients series the rows of the codes and of the codes that bear those class
-   * rows (a code that bears none cannot change what its ingredient's other codes agree on, and an ingredient has
-   * hundreds of products), each with the descriptions of the version and its series. A superset of what the query
-   * joins; the query says what is a class of what.
+   * The rows a walk from these codes to their drug classes can read, for
+   * `tables/medication-classes-through-precise-ingredients.rq`: in the current version of each drug classes series the
+   * rows of the codes, their ingredients and their own precise ingredients, the only codes a class of theirs may be on;
+   * in the current version of each product ingredients series the rows of those codes, and one precise ingredient row
+   * where the version holds any, which says the version states them. Each comes with the descriptions of the version
+   * and its series. A superset of what the query joins; the query says what is a class of what.
    */
   async reached(
     codes: readonly string[],
@@ -1461,7 +1514,7 @@ export class Tables {
         references.fallback(series),
       );
     const ingredients = current(`${REC}ProductIngredients`);
-    const sharing = await this.#sharing(codes, ingredients);
+    const on = await this.#classedOn(codes, ingredients);
     const read = async (version: string, among: ReadonlySet<string>) => {
       // The rows are found by an index beside them, which is made now if the version came without one.
       await this.#codesIn(version);
@@ -1474,20 +1527,16 @@ export class Tables {
         ],
       };
     };
-    const classes = await Promise.all(
-      current(`${REC}DrugClasses`).map((version) => read(version, sharing)),
-    );
-    const bearing = new Set(codes);
-    for (const { rows } of classes)
-      for (const [, property, value] of rows)
-        if (property.value === `${OWL}annotatedSource`)
-          bearing.add(value.value);
-    return [
-      ...(await Promise.all(
-        ingredients.map((version) => read(version, bearing)),
-      )),
-      ...classes,
-    ];
+    return Promise.all([
+      ...ingredients.map(async (version) => {
+        const [stating] = Object.keys((await this.#listed(version)).precise);
+        return read(
+          version,
+          stating === undefined ? on : new Set(on).add(stating),
+        );
+      }),
+      ...current(`${REC}DrugClasses`).map((version) => read(version, on)),
+    ]);
   }
 
   /**

@@ -275,13 +275,16 @@ test("the tools give a story's findings, their rows, a test's series and the tim
   assert.equal(labs.results.length, 6);
   assert.equal(labs.left.unparsed, 0);
 
-  const [medication] = (await tools.get("timeline")!.execute({})) as {
+  const medications = (await tools.get("timeline")!.execute({})) as {
     notation: string;
     started: string;
   }[];
   assert.deepEqual(
-    [medication!.notation, medication!.started],
-    ["617310", "2024-03-04"],
+    medications.map(({ notation, started }) => [notation, started]),
+    [
+      ["197658", "2019-04-01"],
+      ["617310", "2024-03-04"],
+    ],
   );
 
   const refused: [string, unknown, RegExp][] = [
