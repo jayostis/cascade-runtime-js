@@ -1066,6 +1066,7 @@ export function tile(section, rows, entryHref, by) {
  * - `from`: the hospital a record was just brought in from, by its name, or undefined;
  * - `signIn(hospital)`: a button that signs the pod's person in at one of `person`'s hospitals;
  * - `findHospital`: the address of the page that finds a hospital;
+ * - `world`: what the hospitals answer as of now and the way to change it, as `worldDateLine` takes it, or undefined;
  * - `connection`: the box of a connection under way, as `connectionDialog` gives it, or undefined;
  * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
  * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
@@ -1087,6 +1088,7 @@ export function podPage(
     from,
     signIn,
     findHospital,
+    world,
     connection,
     unheld = [],
     entryHref,
@@ -1146,7 +1148,7 @@ ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</
 ${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
-${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
+${bringIn({ empty: records === 0, person, signIn, findHospital, world })}`;
 }
 
 /**
@@ -1686,12 +1688,14 @@ export function changedPart(props) {
 
 /**
  * The card that brings in more: a sign-in button per hospital holding the demo person, and "Find a hospital". It
- * says nothing of what a hospital holds: nothing here asks it.
+ * says nothing of what a hospital holds: nothing here asks it. With `world`, the date the hospitals answer as of and the
+ * way to change it come first, where a sign-in begins.
  */
-function bringIn({ empty, person, signIn, findHospital }) {
+function bringIn({ empty, person, signIn, findHospital, world }) {
   return html`<div class="card">
 <h2>${empty ? "Bring in records" : "Bring in more"}</h2>
 <p>Sign in at a hospital, see what it has, and bring it into this pod.</p>
+${world !== undefined && worldDateLine(world)}
 <div class="row">${(person?.at ?? []).map(signIn)}<a class="button quiet" href=${findHospital}>Find a hospital</a></div>
 </div>`;
 }
@@ -2580,9 +2584,11 @@ export function noPods() {
 /**
  * Finding a hospital for the pod `pod`: a search box that sends `q` to `search`, then a card per directory row in
  * `rows`, with its places, `signIn(row)` (its sign-in button), and the demo people in `people` it holds, each with
- * where else they are. `back` is the pod's address.
+ * where else they are. `back` is the pod's address. `world` is the date the hospitals answer as of and the way to change
+ * it, as `worldDateLine` takes it, shown above the cards.
  */
 export function hospitalsPage({
+  world,
   pod,
   rows,
   text,
@@ -2616,6 +2622,7 @@ ${
   });
   return html`<h1>Find a hospital</h1>
 <p class="lead">Sign in on the hospital's own page, see what it has, and bring it into ${who}'s pod.</p>
+${world !== undefined && worldDateLine(world)}
 <form method="get" action=${search} class="row card" data-doing="Searching…"><input name="q" value=${text} placeholder="Search by name or place" aria-label="Search by name or place" /><button>Search</button></form>
 ${cards.length === 0 ? html`<p class="muted">No hospital matches.</p>` : cards}
 <p><a href=${back}>Back to ${who}</a></p>`;
@@ -3388,11 +3395,116 @@ export function checkedNote(checked, held) {
 
 const BRINGING = "Bringing the record in…";
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+/** An instant as a program gives it: to the second, with a timezone, every part one the demo hospitals accept. */
+const WORLD_INSTANT =
+  /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,9})?(Z|[+-]((0\d|1[0-3]):[0-5]\d))$/;
+
+/** Whether `text`, as `YYYY-MM-DD`, names a day of the calendar. */
+function isDay(text) {
+  const day = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(text);
+}
+
+/**
+ * The world's date a person or a program gave, as the instant a hospital answers as of: a calendar day `D`
+ * (`YYYY-MM-DD`) is the end of that day in UTC, `D` and `T23:59:59Z`; an instant with a timezone is kept as it is.
+ * Undefined for anything else, empty text and a year below 1000 included.
+ */
+export function worldInstant(text) {
+  const given = String(text ?? "").trim();
+  if (Number(given.slice(0, 4)) < 1000) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(given))
+    return isDay(given) ? `${given}T23:59:59Z` : undefined;
+  return WORLD_INSTANT.test(given) &&
+    isDay(given.slice(0, 10)) &&
+    !Number.isNaN(Date.parse(given))
+    ? given
+    : undefined;
+}
+
+/** The UTC day of an instant, in words: `1 February 2024`. */
+function dayInWords(asOf) {
+  const day = new Date(Date.parse(asOf));
+  return `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${day.getUTCFullYear()}`;
+}
+
+/** What the hospitals answer as of, said in words: `Hospitals answer as of 1 February 2024.`, or with no date, with everything. */
+export function worldDateSaid(asOf) {
+  if (asOf === undefined) return "Hospitals answer with everything they hold.";
+  return `Hospitals answer as of ${dayInWords(asOf)}.`;
+}
+
+/** What a pull answered as of, in words: `Pulled as of 1 February 2024.`; undefined when no date was set. */
+export function pulledAsOfSaid(asOf) {
+  return asOf === undefined ? undefined : `Pulled as of ${dayInWords(asOf)}.`;
+}
+
+/**
+ * The form that sets the world's date: a day to pick and a Set button, and beside it a Today button that sends an
+ * empty date. Both post to `action`, the day field `date`.
+ */
+function worldDateForms({ asOf, action }) {
+  return html`<form method="post" action=${action} class="inline" data-doing="Setting the date…">
+<label>Date <input type="date" name="date" value=${asOf === undefined ? undefined : new Date(Date.parse(asOf)).toISOString().slice(0, 10)} required /></label>
+<button>Set</button>
+</form>
+${postButton(action, { date: "" }, "Today", "quiet", "Setting the date…")}`;
+}
+
+/**
+ * The line where a sign-in begins about the world's date: what the hospitals answer as of, `asOf`, and a way to change
+ * it, `href` a link to the page that does, else `action` where the line opens the forms in place.
+ */
+function worldDateLine({ asOf, href, action }) {
+  return html`<div class="world-date">
+<p class="muted">${worldDateSaid(asOf)}${href !== undefined && html` <a href=${href}>Change the world's date</a>`}</p>
+${
+  href === undefined &&
+  html`<details>
+<summary>Change the world's date</summary>
+${worldDateForms({ asOf, action })}
+</details>`
+}
+</div>`;
+}
+
+/**
+ * The page where the world's date is changed, on a host that has pages: the date the hospitals answer as of, `asOf`
+ * (an instant, or undefined for everything they hold), the forms that post to `action`, `problem` when the last date
+ * given was no date, `done` once it was set, and a link `back`.
+ */
+export function worldDatePage({ asOf, action, problem, done, back }) {
+  return html`<h1>The world's date</h1>
+<p class="lead">${worldDateSaid(asOf)}</p>
+${done === true && html`<p class="note">The world's date is set.</p>`}
+${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
+<div class="card world-date">
+<p>Pick a day: the hospitals then show their records as they stood at the end of it. Today puts the date back to now, with everything they hold.</p>
+${worldDateForms({ asOf, action })}
+</div>
+${back !== undefined && html`<p><a href=${back}>Back</a></p>`}`;
+}
+
 /**
  * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
  * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, a
  * sentence of why, with a Try again button when `retry`; else its steps, whose record `about` is when not the pod's
  * person, what each of `sources` (from `look`) holds, what `pulled` left out, and a button that posts to `bring`.
+ * With `pulledAsOf`, the instant the pull was made under (undefined: no date), the box says what the pull answered as of.
  */
 export function connectionDialog({
   id,
@@ -3406,6 +3518,7 @@ export function connectionDialog({
   pulled,
   about,
   bring,
+  pulledAsOf,
 }) {
   const who = personName(pod);
   const name = hospitalName(hospital);
@@ -3440,6 +3553,7 @@ ${
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
+${pulledAsOfSaid(pulledAsOf) !== undefined && html`<p class="muted">${pulledAsOfSaid(pulledAsOf)}</p>`}
 ${postButton(bring, {}, `Bring it into ${who}'s pod`, undefined, BRINGING)}
 </div>`);
 }
@@ -3563,6 +3677,9 @@ button.warm { background: var(--warm); border-color: var(--warm); color: var(--p
 .button.wide { display: block; text-align: center; }
 input { font: inherit; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); }
 form.inline { display: inline; }
+.world-date summary { cursor: pointer; color: var(--accent); }
+.world-date details { margin: 0 0 0.75rem; }
+.world-date form { margin: 0.4rem 0.4rem 0 0; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .row input { flex: 1; min-width: 10rem; }
 .encrypt { margin: 0.75rem 0; }

@@ -206,12 +206,26 @@ function fetched(url) {
   });
 }
 
-/** `npm start` on a port the system gives, with its address once it serves. */
-async function started() {
+/** `npm start` with `settings` added to its environment, which is expected to stop; gives its exit code and all it wrote. */
+async function stoppedAtStart(settings) {
+  stdout.write("\n$ npm start (expected to stop)\n");
+  const child = spawn(execPath, [NPM, "start"], {
+    cwd: app,
+    env: { ...env, ...settings, PORT: "0" },
+  });
+  let wrote = "";
+  for (const stream of [child.stdout, child.stderr])
+    stream.on("data", (chunk) => (wrote += chunk));
+  const code = await new Promise((done) => child.on("close", done));
+  return { code, wrote };
+}
+
+/** `npm start` on a port the system gives, with `settings` added to its environment, and its address once it serves. */
+async function started(settings = {}) {
   stdout.write("\n$ npm start (PORT=0)\n");
   const child = spawn(execPath, [NPM, "start"], {
     cwd: app,
-    env: { ...env, PORT: "0" },
+    env: { ...env, ...settings, PORT: "0" },
     detached: platform !== "win32",
   });
   let out = "";
@@ -1589,6 +1603,131 @@ if (release === undefined) {
               .map(({ allergen }) => allergen)
               .sort(),
             expected.allergens,
+          );
+        },
+      );
+
+      await behaviour(
+        "the world's date is shown where a sign-in begins and set by post, the hospital's sign-in page says it and the connection's box the date it was pulled under, a bad date is refused, Today takes it away, the variable sets it at start, and a bad variable stops the app",
+        async () => {
+          const pod = "hospital";
+          const north = expected.row.fhirBase;
+          const AS_OF = '<time datetime="2024-02-01T23:59:59Z"';
+          const FROM = encodeURIComponent("/pods/hospital/");
+          const EVERYTHING = "Hospitals answer with everything they hold.";
+          const AS_OF_SAID = "Hospitals answer as of 1 February 2024.";
+          /** The hospital's sign-in page for a new sign-in, which is then cancelled. */
+          const pickerNow = async () => {
+            const begun = await send(`/pods/${pod}/hospitals`, {
+              fhirBase: north,
+            });
+            const authorize = new URL(begun.headers.get("location"));
+            const picker = await (await fetch(authorize)).text();
+            const answered = await send(authorize.pathname, {
+              ...Object.fromEntries(authorize.searchParams),
+              patient: expected.patient,
+              decision: "cancel",
+            });
+            await fetch(new URL(answered.headers.get("location")), {
+              redirect: "manual",
+            });
+            return picker;
+          };
+          /** What the pod's page and the page that finds a hospital say, where a sign-in begins. */
+          const beginsWith = async (said) => {
+            for (const path of [
+              "/pods/hospital/",
+              "/pods/hospital/hospitals",
+            ]) {
+              const html = await served(server, path);
+              assert.ok(
+                readable(html).includes(said),
+                `${path} says not ${said}`,
+              );
+              assert.ok(
+                html.includes(
+                  `href="/world-date?back=${encodeURIComponent(path)}"`,
+                ),
+                `${path} has no link to change the date`,
+              );
+            }
+          };
+          assert.ok(
+            readable(await served(server, "/world-date")).includes(EVERYTHING),
+          );
+          await beginsWith(EVERYTHING);
+          assert.ok(!(await pickerNow()).includes('class="as-of"'));
+
+          const set = await send(`/world-date?back=${FROM}`, {
+            date: "2024-02-01",
+          });
+          assert.equal(set.status, 303);
+          assert.equal(
+            set.headers.get("location"),
+            `/world-date?set&back=${FROM}`,
+          );
+          const confirmed = await served(server, set.headers.get("location"));
+          assert.ok(readable(confirmed).includes(AS_OF_SAID));
+          assert.ok(confirmed.includes('<a href="/pods/hospital/">Back</a>'));
+          assert.ok(
+            (
+              await served(server, "/world-date?back=%2F%2Fevil.test%2F")
+            ).includes('<a href="/">Back</a>'),
+            "a back address off this app was followed",
+          );
+          await beginsWith(AS_OF_SAID);
+          assert.ok((await pickerNow()).includes(AS_OF));
+
+          const connection = await signIn(
+            pod,
+            north,
+            expected.patient,
+            "allow",
+          );
+          const pulledUnder = "Pulled as of 1 February 2024.";
+          assert.ok(
+            readable(await boxed(connection, "Hospital")).includes(pulledUnder),
+          );
+
+          const bad = await send("/world-date", { date: "soon" });
+          assert.equal(bad.status, 400);
+          const refused = readable(await bad.text());
+          assert.ok(refused.includes('"soon" is not a date'), refused);
+          assert.ok(
+            (await pickerNow()).includes(AS_OF),
+            "a refused date moved the world's date",
+          );
+
+          const today = await send("/world-date", { date: "" });
+          assert.equal(today.status, 303);
+          assert.ok(!(await pickerNow()).includes('class="as-of"'));
+          await beginsWith(EVERYTHING);
+          assert.ok(
+            readable(await boxed(connection, "Hospital")).includes(pulledUnder),
+            "the connection no longer says the date it was pulled under",
+          );
+
+          const dated = await started({ CASCADE_WORLD_DATE: "2024-02-01" });
+          try {
+            assert.ok(
+              readable(await served(dated, "/world-date")).includes(AS_OF_SAID),
+              "the variable set at start is not the world's date",
+            );
+          } finally {
+            await dated.stop();
+          }
+
+          const stopped = await stoppedAtStart({
+            CASCADE_WORLD_DATE: "2024-02-30",
+          });
+          assert.notEqual(
+            stopped.code,
+            0,
+            "a bad CASCADE_WORLD_DATE started the app",
+          );
+          assert.ok(
+            stopped.wrote.includes("2024-02-30"),
+            `the app did not name the bad date: ${stopped.wrote}`,
           );
         },
       );

@@ -32,7 +32,12 @@ import {
   Unopened,
   warm,
 } from "cascade-runtime";
-import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
+import {
+  hospitalId,
+  setWorldDate,
+  useDemoHospitals,
+  worldDate,
+} from "./demo-hospitals.js";
 import {
   checkedNote,
   classedElsewhere,
@@ -82,6 +87,7 @@ import {
   trendTitle,
   savedLoginChanged,
   variantsSaid,
+  worldInstant,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -112,10 +118,10 @@ const tableHref = (series) =>
   `?table=${encodeURIComponent(tableId(series.iri))}`;
 const CHECK = "check-tables";
 
-const hospitalsReady = useDemoHospitals(
-  new URL("demo-hospital-worker.js", location.href),
-);
+const WORKER = new URL("demo-hospital-worker.js", location.href);
+const hospitalsReady = useDemoHospitals(WORKER);
 hospitalsReady.catch(() => undefined);
+const WORLD_DATE = "world-date";
 
 /**
  * What the page shows: the pods here and the demo people; the pod shown, by name; `page`, the pod's page as its
@@ -129,6 +135,7 @@ hospitalsReady.catch(() => undefined);
 const state = {
   pods: [],
   people: [],
+  world: undefined,
   tables: [],
   tablesRead: undefined,
   table: undefined,
@@ -306,6 +313,7 @@ function pageShown() {
           back: podHref(current),
           connection,
           bring: "bring",
+          pulledAsOf: connection.asOf,
           ...connection.said,
         }),
       signIn: (hospital) =>
@@ -314,6 +322,7 @@ function pageShown() {
           `Sign in at ${hospitalName(hospital.name)}`,
         ),
       findHospital: `${podHref(current)}&hospitals`,
+      world: { asOf: state.world, action: WORLD_DATE },
       entryHref: (entry) => entryHref(current, entry),
       unheld: pod?.opened?.unheld,
       about,
@@ -619,6 +628,7 @@ function showHospitals(text) {
       text,
       search: `${podHref(current)}&hospitals`,
       signIn: (row) => signInButton(row.fhirBase, "Sign in"),
+      world: { asOf: state.world, action: WORLD_DATE },
       people,
       back: podHref(current),
     }),
@@ -832,7 +842,7 @@ async function signIn(fhirBase, popup) {
     popup?.close();
     throw new Error("That hospital is not in the directory.");
   }
-  const shown = { row, step: "signing in", requests: 0 };
+  const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
   state.connection = shown;
   const answers = await answered();
   state.page = {
@@ -886,6 +896,22 @@ async function signIn(fhirBase, popup) {
   } finally {
     popup?.close();
   }
+}
+
+/**
+ * Sets the date the demo hospitals answer as of to `text`, a day or an instant, or with none back to everything they
+ * hold, and draws the box again. The next sign-in answers as of it.
+ */
+async function changeWorld(text) {
+  const asOf = worldInstant(text);
+  if (text.trim() !== "" && asOf === undefined)
+    throw new Error(`"${text}" is not a date.`);
+  await hospitalsReady;
+  await setWorldDate(WORKER, asOf);
+  state.world = asOf;
+  const search = new URLSearchParams(location.search);
+  if (search.has("hospitals")) showHospitals(search.get("q") ?? "");
+  else redraw();
 }
 
 /**
@@ -1193,7 +1219,9 @@ document.addEventListener("submit", (event) => {
       "popup,width=520,height=720",
     );
     busy(() => signIn(String(fields.get("fhirBase")), popup), saying);
-  } else if (action === "bring") busy(bring, saying);
+  } else if (action === WORLD_DATE)
+    busy(() => changeWorld(String(fields.get("date") ?? "")), saying);
+  else if (action === "bring") busy(bring, saying);
   else if (action === "load")
     busy(() => load(String(fields.get("pod"))), saying);
   else if (action === "make")
@@ -1216,7 +1244,11 @@ window.addEventListener("popstate", () => {
 });
 
 busy(async () => {
-  [state.pods, state.people] = await Promise.all([podsHere(), demoPeople()]);
+  [state.pods, state.people, state.world] = await Promise.all([
+    podsHere(),
+    demoPeople(),
+    worldDate(WORKER).catch(() => undefined),
+  ]);
   await route();
 }, "Opening…").then(() =>
   warm().then(

@@ -144,6 +144,14 @@ test("a pull from North signed in as patient A holds A's North record, each reso
     .filter((u) => u.searchParams.has("patient"))
     .map((u) => u.href);
   assert.equal(new Set(searches).size, searches.length);
+  assert.ok(
+    urls.some(
+      (u) =>
+        u.pathname.endsWith("/DiagnosticReport") &&
+        u.searchParams.has("patient"),
+    ),
+    "the plan searches the hospital's diagnostic reports",
+  );
   const origin = new URL(north.hospital.fhirBase).origin;
   assert.ok(urls.every((u) => u.origin === origin));
   const token = seen.requests.findIndex((r) =>
