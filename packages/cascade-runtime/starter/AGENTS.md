@@ -3,8 +3,9 @@
 This app was made from the Cascade starter. It is a demonstration, not a
 foundation: rebuild it in any framework. What carries over is
 `cascade-runtime`, which keeps the pods, and the pods under `pods/<name>/`. It
-starts with three, Alex Rivera's, Priya Natarajan's and Martin Okafor's (two
-FHIR reports of one variant, beside what ClinVar says today), loaded from the
+starts with four, Alex Rivera's, Priya Natarajan's, Martin Okafor's (two
+FHIR reports of one variant, beside what ClinVar says today) and Tamsin Vale's
+(two pulls from Cascade North a year apart), loaded from the
 kits the package carries; `npm run reset` puts them back as they were made, and
 `npm run help` lists every command. `npm start` serves the app, and
 `npm run dev` restarts it on every save.
@@ -64,9 +65,9 @@ medication started or stopped, in `CHANGED`'s words, which state an order and a
 comparison of means and never a cause; each card links to its results
 (`#change-<key>`) and to the trend at `/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`
 (`trendPage` over `labSeriesIn` and `timelineIn`; `trendPath` in `pods.mjs`
-makes the address, a view never builds one). The three people's pods hold too
-little for a card; a story patient's does: Ines Calloway, at Cascade North, by
-"+ New pod" and "Sign in at Cascade North". `TREND_VIEW` is the trend as a tool
+makes the address, a view never builds one). Alex's, Priya's and Martin's pods
+hold too little for a card; Tamsin's holds one, and so does a story patient's:
+Ines Calloway, at Cascade North, by "+ New pod" and "Sign in at Cascade North". `TREND_VIEW` is the trend as a tool
 a model can call, which a browser host registers with `useView`; this server's
 pages register nothing, and a model reaches the trend through each
 `find_changes` finding's `view` address.

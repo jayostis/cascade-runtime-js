@@ -13,11 +13,11 @@ const SAID = {
   dev: ["npm run dev", "serve the app, restarting it whenever a file is saved"],
   reset: [
     "npm run reset",
-    "remove every pod and load Alex's, Priya's and Martin's again, as when the app was made",
+    "remove every pod and load Alex's, Priya's, Martin's and Tamsin's again, as when the app was made",
   ],
   "pod:load": [
     "npm run pod:load -- <kit> [--through <step>] [--as <name>]",
-    "load a kit's pod: alex-rivera, priya-natarajan or martin-okafor",
+    "load a kit's pod: alex-rivera, priya-natarajan, martin-okafor or tamsin-vale",
   ],
   "pod:new": ["npm run pod:new <name>", "make an empty pod"],
   "pod:reset": ["npm run pod:reset <name>", "remove one pod and all it holds"],
