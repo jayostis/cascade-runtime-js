@@ -3220,13 +3220,13 @@ test("the new-pod box offers to encrypt; the six-words page shows the words numb
         action: "/words",
         problem: view.NOT_WORDS,
       }),
-    ).includes("Those aren&#39;t words 2 and 5"),
+    ).includes("Those aren't words 2 and 5"),
     true,
   );
 
   const outcomes: [string, RegExp, boolean][] = [
     ["secret needed", /six words to open it/, true],
-    ["incorrect secret", /don&#39;t open this pod/, true],
+    ["incorrect secret", /don't open this pod/, true],
     ["malformed", /header is damaged or was changed/, false],
     ["unsupported version", /newer version of Cascade/, false],
     ["cannot open", /another way, not with six words/, false],

@@ -25,7 +25,11 @@ how severe an allergy is, or a genetic report that differs from ClinVar today,
 each linking to its entry; and a tile for
 each kind of record, which opens a table you can sort by a heading and filter.
 "+ New pod" makes a pod for anyone by name, or for one of the demo hospitals'
-made-up patients in one click.
+made-up patients in one click. Tick "Encrypt this pod with six words" there and the app
+shows six words, asks for the second and the fifth, and only then makes the pod with
+every file sealed; after a restart the pod's page asks for the words. The words
+are the only way in and cannot be recovered. `npm run ask`, `npm run console` and
+`npm run mcp` do not open an encrypted pod: they say so in one line.
 
 Under what is worth a look, a pod with medication history and lab results has
 "What changed": for each test whose results differ before and after a
