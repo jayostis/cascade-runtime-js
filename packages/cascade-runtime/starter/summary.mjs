@@ -2113,7 +2113,7 @@ ${
   html`<div class="card entry"><h2>What else is known</h2><ul>
 ${known.map(
   ({ sentence, tag, from, fromLead = "From" }) =>
-    html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">${fromLead} ${from.series.label},<a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
+    html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">${fromLead} ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
 )}
 </ul>${credits.map((credit) => html`<p class="muted">${credit}</p>`)}</div>`
 }

@@ -723,6 +723,7 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
   await page.waitForSelector('body[data-tables="ready"]', {
     timeout: 120_000,
   });
+  await page.click('a.tile[href="#see-medications"]');
   await inPlace(page, () =>
     page
       .locator("#see-medications tbody td:first-child a", {
