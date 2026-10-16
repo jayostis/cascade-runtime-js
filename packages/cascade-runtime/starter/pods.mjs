@@ -6,6 +6,7 @@ import { env, exit, stderr } from "node:process";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { parseArgs } from "node:util";
+import { openPod, Refusal, Unopened } from "cascade-runtime";
 import {
   phaseOn,
   replayKit,
@@ -23,6 +24,22 @@ export const NO_POD =
 
 export function podFolder(name) {
   return join(PODS, name);
+}
+
+/**
+ * The pod `name` in `folder`, opened without words, as the scripts and the MCP server do: an encrypted pod is a
+ * `Refusal` saying so in one line, since only the app asks for its six words.
+ */
+export async function openWithoutWords(name, folder) {
+  try {
+    return await openPod(folder);
+  } catch (error) {
+    if (error instanceof Unopened && error.outcome === "secret needed")
+      throw new Refusal(
+        `${name} is encrypted: open it in the app (\`npm start\`) with its six words; this command does not open encrypted pods`,
+      );
+    throw error;
+  }
 }
 
 /** The address of a pod's page. */

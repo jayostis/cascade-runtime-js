@@ -3,10 +3,16 @@
 import { chdir, exit, stderr, stdin } from "node:process";
 import { fileURLToPath, URL } from "node:url";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { openPod, tablesBeside } from "cascade-runtime";
+import { tablesBeside } from "cascade-runtime";
 import { podServer } from "./mcp-server.mjs";
 import { worthLines } from "./pod-tools.mjs";
-import { PODS, podFolder, podNames, trendUrl } from "./pods.mjs";
+import {
+  openWithoutWords,
+  PODS,
+  podFolder,
+  podNames,
+  trendUrl,
+} from "./pods.mjs";
 import { codesSaid, variantsSaid } from "./summary.mjs";
 
 chdir(fileURLToPath(new URL(".", import.meta.url)));
@@ -25,7 +31,7 @@ async function said(read) {
 }
 
 const pods = podServer(
-  { names: podNames, open: (name) => openPod(podFolder(name)) },
+  { names: podNames, open: (name) => openWithoutWords(name, podFolder(name)) },
   {
     viewOf: trendUrl,
     worthOf: (pod) =>

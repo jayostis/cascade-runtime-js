@@ -24,9 +24,12 @@ import {
   pullFiles,
   Refusal,
   searchDirectory,
+  sixWords,
   TEST_DIRECTORY,
   timelineIn,
   toolRegistry,
+  typedWords,
+  Unopened,
   warm,
 } from "cascade-runtime";
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
@@ -55,6 +58,8 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  NOT_WORDS,
+  openPodPage,
   pageNumber,
   panelPage,
   panelSaid,
@@ -64,6 +69,7 @@ import {
   podPage,
   postButton,
   QUESTIONS,
+  sixWordsPage,
   slug,
   sourcePage,
   sourcesOf,
@@ -74,6 +80,7 @@ import {
   trendPage,
   trendTitle,
   variantsSaid,
+  WORDS_CHANGED,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -770,7 +777,14 @@ async function route() {
   }
   state.current = asked ?? state.pods[0];
   if (asked === null) replaceAddress(podHref(state.current));
-  pod = await podNamed(state.current);
+  try {
+    pod = await podNamed(state.current);
+  } catch (error) {
+    if (!(error instanceof Unopened)) throw error;
+    pod = undefined;
+    offerTools(undefined);
+    return showLocked(error.outcome);
+  }
   offerTools(pod);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   if (query.has("entry")) return showEntry(query.get("entry") ?? "");
@@ -926,11 +940,98 @@ function markDeletedAll(deleted) {
   }
 }
 
-/** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it. */
-async function make(person) {
+/** The encrypted pod being made, `{ name, person, words }`, until its words are checked. Kept in memory only. */
+let making;
+
+/** The six-words page for the pod being made, saying `problem` when the last check failed. */
+function showWords(problem) {
+  closeDialog();
+  state.current = undefined;
+  return render(
+    "Your six words",
+    sixWordsPage({
+      pod: making.name,
+      words: making.words,
+      action: "confirm-words",
+      problem,
+    }),
+  );
+}
+
+/** The page of the encrypted pod shown while it is locked; `outcome` is how it last failed to open. */
+function showLocked(outcome) {
+  return render(
+    "Open this pod",
+    openPodPage({
+      pod: state.current,
+      outcome,
+      action: "unlock",
+      next: location.search,
+    }),
+  );
+}
+
+/** Offers the words to the browser's password manager, where it has an API for it; never relied on. */
+function offerToSave(name, words) {
+  try {
+    const { PasswordCredential } = globalThis;
+    if (PasswordCredential === undefined) return;
+    globalThis.navigator.credentials
+      .store(new PasswordCredential({ id: name, name, password: words }))
+      .catch(() => undefined);
+  } catch {
+    // The offer is a courtesy.
+  }
+}
+
+/** Makes the encrypted pod whose words were checked, and goes to it; else shows the page again, saying why not. */
+async function confirmWords(fields) {
+  if (making === undefined) {
+    closeDialog();
+    return render(
+      "No pod made",
+      html`<h1>No pod made</h1>
+<p>These six words are not waiting any more. Make the pod again.</p>`,
+    );
+  }
+  if (String(fields.get("password") ?? "") !== making.words)
+    return showWords(WORDS_CHANGED);
+  const asked = making.words.split(" ");
+  if (
+    typedWords(String(fields.get("word2") ?? "")) !== asked[1] ||
+    typedWords(String(fields.get("word5") ?? "")) !== asked[4]
+  )
+    return showWords(NOT_WORDS);
+  const { name, person, words } = making;
+  await podNamed(name, { title: person, secret: words });
+  making = undefined;
+  offerToSave(name, words);
+  state.pods = await podsHere();
+  return go(podHref(name));
+}
+
+/** Opens the locked pod shown with the words typed, and draws it; else says why it did not open. */
+async function unlock(fields) {
+  const secret = String(fields.get("password") ?? "");
+  if (secret.trim() === "") return showLocked("incorrect secret");
+  try {
+    pod = await podNamed(state.current, { secret });
+  } catch (error) {
+    if (!(error instanceof Unopened)) throw error;
+    return showLocked(error.outcome);
+  }
+  return go(location.search);
+}
+
+/** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it; with `encrypt`, asks for words first. */
+async function make(person, encrypt = false) {
   markDeletedAll(false);
   const name = slug(person);
   if (SAMPLES.includes(name)) return load(name);
+  if (encrypt && name !== "" && !state.pods.includes(name)) {
+    making = { name, person: person.trim(), words: sixWords() };
+    return showWords();
+  }
   if (name === "") {
     closeDialog();
     return render(
@@ -967,6 +1068,7 @@ async function deleteAll() {
   const opened = [...open.values()];
   open.clear();
   pod = undefined;
+  making = undefined;
   await Promise.allSettled(opened.map(async (each) => (await each).close()));
   const names = await podsHere();
   const all = new Set([...names, ...(await databases(ANSWERS))]);
@@ -1080,7 +1182,16 @@ document.addEventListener("submit", (event) => {
   else if (action === "load")
     busy(() => load(String(fields.get("pod"))), saying);
   else if (action === "make")
-    busy(() => make(String(fields.get("person") ?? "")), saying);
+    busy(
+      () =>
+        make(
+          String(fields.get("person") ?? ""),
+          document.getElementById("encrypt-pod")?.checked === true,
+        ),
+      saying,
+    );
+  else if (action === "confirm-words") busy(() => confirmWords(fields), saying);
+  else if (action === "unlock") busy(() => unlock(fields), saying);
   else if (action === MENU.deleteAll) busy(deleteEverything, saying);
   else if (action === MENU.resetAll) busy(resetEverything, saying);
   else if (action === CHECK) busy(checkNow, saying);

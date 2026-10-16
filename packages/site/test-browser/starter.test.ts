@@ -2,7 +2,15 @@
 // network. The copy makes its own pods, so nothing under the repository is written.
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
-import { cp, mkdtemp, rm, symlink, unlink } from "node:fs/promises";
+import {
+  cp,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -76,20 +84,32 @@ async function stubModel(): Promise<Stub> {
   };
 }
 
-type Started = { origin: string; stop: () => Promise<void> };
+type Started = {
+  origin: string;
+  folder: string;
+  stop: (keep?: boolean) => Promise<void>;
+};
 
-/** A copy of the starter in a folder of its own, listening on a port the system picks; `env` is the model's settings. */
-async function startStarter(env: Record<string, string>): Promise<Started> {
-  const folder = await mkdtemp(join(tmpdir(), "t273-"));
-  await cp(join(ROOT, "packages", "cascade-runtime", "starter"), folder, {
-    recursive: true,
-    filter: (from) => !/[\\/](node_modules|pods|\.env)$/.test(from),
-  });
-  await symlink(
-    join(ROOT, "node_modules"),
-    join(folder, "node_modules"),
-    "junction",
-  );
+/**
+ * A copy of the starter in a folder of its own, listening on a port the system picks; `env` is the model's settings.
+ * Given the `folder` of an earlier copy that `stop(true)` kept, it starts again in it, with its pods.
+ */
+async function startStarter(
+  env: Record<string, string>,
+  again?: string,
+): Promise<Started> {
+  const folder = again ?? (await mkdtemp(join(tmpdir(), "t273-")));
+  if (again === undefined) {
+    await cp(join(ROOT, "packages", "cascade-runtime", "starter"), folder, {
+      recursive: true,
+      filter: (from) => !/[\\/](node_modules|pods|\.env)$/.test(from),
+    });
+    await symlink(
+      join(ROOT, "node_modules"),
+      join(folder, "node_modules"),
+      "junction",
+    );
+  }
   const settings: Record<string, string | undefined> = {
     ...process.env,
     PORT: "0",
@@ -115,10 +135,12 @@ async function startStarter(env: Record<string, string>): Promise<Started> {
   });
   return {
     origin,
-    async stop() {
+    folder,
+    async stop(keep = false) {
       const exited = new Promise((done) => child.on("exit", done));
       child.kill();
       await exited;
+      if (keep) return;
       await unlink(join(folder, "node_modules"));
       await rm(folder, { recursive: true, force: true });
     },
@@ -475,4 +497,101 @@ test("an open chat leaves the page's own content in view, and the strip folds to
   await page.locator(".chat-recent li button").first().click();
   assert.equal(await page.locator(".chat-form").isVisible(), true);
   await page.close();
+});
+
+/** Every file under `folder`, by path relative to it. */
+async function filesUnder(folder: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const entry of await readdir(folder, {
+    recursive: true,
+    withFileTypes: true,
+  }))
+    if (entry.isFile())
+      found.push(join(entry.parentPath, entry.name).slice(folder.length + 1));
+  return found;
+}
+
+test("an encrypted pod: six words checked, nothing plaintext on disk, no chat saved, and after a restart only the words open it", async () => {
+  let sealed = await startStarter({
+    CASCADE_MODEL_PROVIDER: "other",
+    CASCADE_MODEL_URL: stub.url,
+    CASCADE_MODEL_NAME: "stub-1",
+    CASCADE_MODEL_KEY: KEY,
+  });
+  const folder = sealed.folder;
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${sealed.origin}/#new-pod`);
+    await page.getByLabel("Encrypt this pod with six words").check();
+    await page.getByLabel("A person's name").fill("Grace Hopper");
+    await page.getByRole("button", { name: "Make the pod" }).click();
+    const words = await page.locator(".words li").allTextContents();
+    assert.equal(words.length, 6);
+
+    await page.getByLabel("Word 2").fill("not-a-word");
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    assert.match(
+      (await page.locator("main").textContent()) ?? "",
+      /Those aren't words 2 and 5/,
+    );
+    assert.equal(
+      (await readdir(join(folder, "pods"))).includes("grace-hopper"),
+      false,
+      "a wrong check makes nothing",
+    );
+
+    await page.getByLabel("Word 2").fill(` ${words[1]!.toUpperCase()} `);
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    await page.waitForURL(`${sealed.origin}/pods/grace-hopper/`);
+
+    const files = await filesUnder(join(folder, "pods", "grace-hopper"));
+    assert.ok(files.length > 1, "the pod holds more than its header");
+    for (const file of files) {
+      if (file.replaceAll("\\", "/") === "settings/encryption.json") continue;
+      const text = await readFile(
+        join(folder, "pods", "grace-hopper", file),
+        "latin1",
+      );
+      assert.equal(text.includes("@prefix"), false, file);
+    }
+
+    await page.getByLabel("Ask a question").fill("tell me a long story");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.locator(".chat-log .model", { hasText: "Once upon" }).waitFor();
+    await page.getByRole("button", { name: "Stop" }).click();
+    const kept = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("cascade.chats") ?? "[]"),
+    );
+    assert.deepEqual(
+      kept.filter((chat: { pod: string }) => chat.pod === "grace-hopper"),
+      [],
+    );
+    await page.close();
+
+    await sealed.stop(true);
+    sealed = await startStarter({}, folder);
+    const again = await browser.newPage();
+    await again.goto(`${sealed.origin}/pods/grace-hopper/`);
+    await again
+      .getByLabel("Your six words")
+      .fill("one two three four five six");
+    await again.getByRole("button", { name: "Open this pod" }).click();
+    assert.match(
+      (await again.locator("main").textContent()) ?? "",
+      /don't open this pod/,
+    );
+    await again.getByLabel("Your six words").fill(words.join(" "));
+    await again.getByRole("button", { name: "Open this pod" }).click();
+    await again.waitForURL(`${sealed.origin}/pods/grace-hopper/`);
+    assert.equal(await again.getByLabel("Your six words").count(), 0);
+    assert.match(
+      (await again.locator("main").textContent()) ?? "",
+      /Grace Hopper/,
+    );
+    await again.close();
+  } finally {
+    await sealed.stop();
+  }
 });
