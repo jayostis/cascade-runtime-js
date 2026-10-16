@@ -568,6 +568,45 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
       "the words are never in the address",
     );
 
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Copy words" })
+        .getAttribute("type"),
+      "button",
+    );
+
+    await page.getByLabel("Password").fill("a suggested password");
+    await page.getByLabel("Word 2").fill(words[1]!);
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    assert.match(
+      (await page.locator("main").textContent()) ?? "",
+      /must hold the six words above/,
+    );
+    assert.equal(
+      await page.getByLabel("Password").inputValue(),
+      words.join(" "),
+      "the field is reset to the words",
+    );
+    assert.equal(
+      (await readdir(join(folder, "pods"))).includes("grace-hopper"),
+      false,
+      "a changed password field makes nothing",
+    );
+    await page.getByLabel("Pod", { exact: true }).fill("someone-else");
+    await page.getByLabel("Word 2").fill(words[1]!);
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    assert.match(
+      (await page.locator("main").textContent()) ?? "",
+      /Pod field must keep the pod's name/,
+    );
+    assert.equal(
+      (await readdir(join(folder, "pods"))).includes("grace-hopper"),
+      false,
+      "a changed name makes nothing",
+    );
+
     await page.getByLabel("Word 2").fill("not-a-word");
     await page.getByLabel("Word 5").fill(words[4]!);
     await page.getByRole("button", { name: "Make the encrypted pod" }).click();

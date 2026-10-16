@@ -80,6 +80,7 @@ import {
   trendInput,
   trendPage,
   trendTitle,
+  savedLoginChanged,
   variantsSaid,
 } from "./summary.js";
 
@@ -997,6 +998,8 @@ async function confirmWords(fields) {
 <p>These six words are not waiting any more. Make the pod again.</p>`,
     );
   }
+  const changed = savedLoginChanged(fields, making.name, making.words);
+  if (changed !== undefined) return showWords(changed);
   const asked = making.words.split(" ");
   if (
     typedWords(String(fields.get("word2") ?? "")) !== asked[1] ||

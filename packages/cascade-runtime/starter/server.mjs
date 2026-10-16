@@ -79,6 +79,7 @@ import {
   trendInput,
   trendPage,
   trendTitle,
+  savedLoginChanged,
   variantsSaid,
 } from "./summary.mjs";
 import {
@@ -757,6 +758,9 @@ async function newEncryptedPod(request, response) {
 <p>These six words are not waiting any more. Make the pod again.</p>`,
       ),
     );
+  const changed = savedLoginChanged(form, name, words);
+  if (changed !== undefined)
+    return await showWords(response, name, words, changed);
   const asked = words.split(" ");
   if (
     typedWords(form.get("word2") ?? "") !== asked[1] ||

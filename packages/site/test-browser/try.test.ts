@@ -2224,6 +2224,44 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
       "the words are never in the address",
     );
 
+    assert.equal(
+      await page.getAttribute("button[data-copy-words]", "type"),
+      "button",
+    );
+
+    await page.fill('input[name="password"]', "a suggested password");
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', words[4]!);
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(
+      (await page.textContent("main")) ?? "",
+      /must hold the six words above/,
+    );
+    assert.equal(
+      await page.inputValue('input[name="password"]'),
+      words.join(" "),
+      "the field is reset to the words",
+    );
+    assert.equal(
+      (await page.evaluate(async () => await indexedDB.databases())).some(
+        ({ name }) => name === "cascade-pod:grace-hopper",
+      ),
+      false,
+      "a changed password field makes nothing",
+    );
+    await page.fill('input[name="username"]', "someone-else");
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', words[4]!);
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(
+      (await page.textContent("main")) ?? "",
+      /Pod field must keep the pod's name/,
+    );
+
     await page.fill('input[name="word2"]', words[1]!);
     await page.fill('input[name="word5"]', "wrong");
     await inPlace(page, () =>

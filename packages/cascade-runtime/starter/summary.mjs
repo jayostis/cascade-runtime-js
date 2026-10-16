@@ -2275,11 +2275,29 @@ export const UNOPENED = {
 
 /** What the six-words page says when the check fails, by the way it failed. */
 export const NOT_WORDS = "Those aren't words 2 and 5.";
+export const WORDS_CHANGED =
+  "Don't change the Password field or take a suggested password: it must hold the six words above, so your password manager saves the words that open the pod.";
+export const POD_CHANGED =
+  "The Pod field must keep the pod's name, so the saved login matches the Open page.";
+
+/**
+ * What is wrong with the visible `password` and `username` of a submitted six-words form, or undefined when they are
+ * still the `words` shown (spaces compared as single ones) and the pod's name `pod`. Never repeats a submitted value.
+ */
+export function savedLoginChanged(fields, pod, words) {
+  const joined = String(fields.get("password") ?? "")
+    .trim()
+    .split(/\s+/)
+    .join(" ");
+  if (joined !== words) return WORDS_CHANGED;
+  if (String(fields.get("username") ?? "") !== pod) return POD_CHANGED;
+  return undefined;
+}
 
 /**
  * On the document `page`, rendered to a string: a button marked `data-copy-words` copies the words in its form's
  * password field to the clipboard and says so in the form's `data-copied` line; where the clipboard is not
- * available it says nothing and fails nowhere.
+ * available it says to write the words down, and fails nowhere.
  */
 export function copyWords(page) {
   page.addEventListener("click", async (event) => {
@@ -2292,7 +2310,8 @@ export function copyWords(page) {
       await globalThis.navigator.clipboard.writeText(words);
       if (note) note.textContent = "Copied";
     } catch {
-      if (note) note.textContent = "";
+      if (note)
+        note.textContent = "Copy isn't available here; write the words down.";
     }
   });
 }
@@ -2301,7 +2320,7 @@ export function copyWords(page) {
  * The first step of making an encrypted pod for `pod`: the `words` (six, separated by spaces) large and numbered,
  * what to do with them, and a form posting to `action` that asks for words 2 and 5. The form carries the pod's name
  * and, in two visible fields a password manager reads as a sign-up (`username`, `password`), the name and the words;
- * the receiver ignores both and goes by the words it holds. `problem`, when given, says what the last try got wrong.
+ * the receiver refuses a form where either has changed. `problem`, when given, says what the last try got wrong.
  * Nothing is made until the form is answered.
  */
 export function sixWordsPage({ pod, words, action, problem }) {
