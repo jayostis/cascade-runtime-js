@@ -46,8 +46,13 @@ const REFERENCES_GRAPH = "urn:cascade:references";
  * the version, outside the default graph, and the descriptions of those versions and their series as
  * `urn:cascade:references`, in it. A series with no one current version is left out, as the matcher leaves it.
  */
-async function addTables(union: Union, tables: References): Promise<void> {
+async function addTables(
+  union: Union,
+  tables: References,
+  rows: (version: string) => Promise<readonly Triple[]>,
+): Promise<void> {
   const named = await namedVersions(union);
+  const described: Triple[] = [];
   for (const { value: series } of tables.index.subjects(
     `${RDF}type`,
     iri(`${REC}ReferenceSeries`),
@@ -60,15 +65,13 @@ async function addTables(union: Union, tables: References): Promise<void> {
       throw error;
     }
     if (version === undefined) continue;
-    await union.store.add(await tables.rows(version), { graph: version });
-    await union.add(
-      await unstated(union, [
-        ...tables.description(version),
-        ...tables.description(series),
-      ]),
-      REFERENCES_GRAPH,
+    await union.store.add(await rows(version), { graph: version });
+    described.push(
+      ...tables.description(version),
+      ...tables.description(series),
     );
   }
+  await union.add(await unstated(union, described), REFERENCES_GRAPH);
 }
 
 /**
@@ -79,20 +82,24 @@ async function unstated(
   union: Union,
   triples: readonly Triple[],
 ): Promise<Triple[]> {
-  const key = (subject: string, predicate: Term, object: Term): string =>
-    `<${subject}> ${written(predicate)} ${written(object)}`;
+  if (triples.length === 0) return [];
+  const key = (subject: Term, predicate: Term, object: Term): string =>
+    `${written(subject)} ${written(predicate)} ${written(object)}`;
+  const subjects = [...new Set(triples.map(([s]) => written(s)))];
+  const { rows } = await union.select(
+    `SELECT ?s ?p ?o WHERE { VALUES ?s { ${subjects.join(" ")} } ?s ?p ?o }`,
+  );
   const held = new Set<string>();
-  for (const subject of new Set(triples.map(([s]) => s.value))) {
-    const { rows } = await union.select(
-      `SELECT ?p ?o WHERE { <${subject}> ?p ?o }`,
-    );
-    for (const row of rows) {
-      const [predicate, object] = [row.get("p"), row.get("o")];
-      if (predicate !== undefined && object !== undefined)
-        held.add(key(subject, predicate, object));
-    }
+  for (const row of rows) {
+    const [subject, predicate, object] = [
+      row.get("s"),
+      row.get("p"),
+      row.get("o"),
+    ];
+    if (subject && predicate && object)
+      held.add(key(subject, predicate, object));
   }
-  return triples.filter(([s, p, o]) => !held.has(key(s.value, p, o)));
+  return triples.filter(([s, p, o]) => !held.has(key(s, p, o)));
 }
 
 export type Outcome = "passed" | "failed" | "inapplicable";
@@ -304,6 +311,11 @@ class Run {
   readonly #handles = new Map<string, ReturnType<typeof Words.handlesOf>>();
   /** Each folder of tables a story holds, read once. */
   readonly #held = new Map<string, Promise<References | undefined>>();
+  /** Each version's rows, by the tables that hold it, read once. */
+  readonly #versions = new WeakMap<
+    References,
+    Map<string, Promise<readonly Triple[]>>
+  >();
 
   constructor(options: ConformanceOptions, layout: Layout) {
     this.#options = options;
@@ -316,8 +328,8 @@ class Run {
   }
 
   /**
-   * The pod as it stood at the node, under the lens, its steps named as the example names them; with the tables the
-   * story then holds, given the folder of the person's scripted input.
+   * The pod as it stood at the node, under the lens, its steps named as the example names them; given the folder of the
+   * person's scripted input, with the tables the story then holds, which a kit's checks do not read.
    */
   dataset(
     node: Node,
@@ -345,11 +357,28 @@ class Run {
                   folder === undefined
                     ? undefined
                     : await this.#tables(folder, replayed);
-                if (tables !== undefined) await addTables(union, tables);
+                if (tables !== undefined)
+                  await addTables(union, tables, (version) =>
+                    this.#rows(tables, version),
+                  );
                 return union;
               });
       found.catch(() => undefined);
       node.datasets.set(key, found);
+    }
+    return found;
+  }
+
+  #rows(tables: References, version: string): Promise<readonly Triple[]> {
+    let held = this.#versions.get(tables);
+    if (held === undefined) {
+      held = new Map();
+      this.#versions.set(tables, held);
+    }
+    let found = held.get(version);
+    if (found === undefined) {
+      found = tables.rows(version);
+      held.set(version, found);
     }
     return found;
   }
