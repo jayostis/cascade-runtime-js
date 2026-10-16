@@ -867,12 +867,11 @@ try {
       assert.equal(found.status, 200);
       const page = readable(found.body);
       assert.match(page, /was higher after .+ stopped\./);
-      assert.doesNotMatch(page, /urn:|http:\/\//);
-      const how = page.slice(page.indexOf("Where this comes from"));
-      assert.ok(
-        how.length < page.length,
-        "the card does not say where it comes from",
-      );
+      assert.doesNotMatch(page, /urn:/);
+      const from = page.indexOf("Where this comes from");
+      assert.ok(from >= 0, "the card does not say where it comes from");
+      const how = page.slice(from, page.indexOf("These say what", from));
+      assert.doesNotMatch(how, /urn:|https?:\/\//);
       assert.match(how, /The pod was filled by 2 imports/);
       assert.match(how, /retrieved Feb 1, 2024\..*retrieved Feb 1, 2025\./);
       assert.match(how, /version 1 to version 2, in import 2/);
