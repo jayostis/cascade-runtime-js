@@ -24,7 +24,11 @@ import {
   pullFiles,
   type Row,
 } from "cascade-runtime";
-import { demoFetch, hospitalId } from "@cascade-runtime/demo-hospital";
+import {
+  demoFetch,
+  hospitalId,
+  recordsAt,
+} from "@cascade-runtime/demo-hospital";
 import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
 import {
   FILES_JSON,
@@ -175,7 +179,7 @@ async function nodeJoin(family: string): Promise<Joined> {
       )?.[0];
       assert.ok(id);
       patients.set(hospital.name, id);
-      for (const { resource } of loaded.patients[id]?.entry ?? [])
+      for (const resource of recordsAt(loaded.patients[id]!))
         held.set(
           resource.resourceType,
           (held.get(resource.resourceType) ?? 0) + 1,

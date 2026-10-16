@@ -481,7 +481,7 @@ function loadedSteps(out) {
  */
 async function expectedPull() {
   const script = `
-import { demoHospital } from "@cascade-runtime/demo-hospital";
+import { demoHospital, recordsAt } from "@cascade-runtime/demo-hospital";
 import { loadHospital } from "@cascade-runtime/demo-hospital/node";
 import { connect, DEMO_PLAN, openPod, pull, pullFiles, TEST_DIRECTORY } from "cascade-runtime";
 const patient = "pt-1001";
@@ -503,7 +503,7 @@ await pod.close();
 const south = await loadHospital("cascade-south");
 const named = (data, person) =>
   Object.keys(data.patients).find((id) => {
-    const { name } = data.patients[id].entry.find(({ resource }) => resource.resourceType === "Patient").resource;
+    const { name } = recordsAt(data.patients[id]).find(({ resourceType }) => resourceType === "Patient");
     return [...name[0].given, name[0].family].join(" ") === person;
   });
 const rowan = [north, south].map((data) => ({
