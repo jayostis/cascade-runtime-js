@@ -120,12 +120,13 @@ published query by its file.
 ## Working on this repository
 
 The runtime loads the Bridge and the adapters in-process. The vocabulary's
-conformance kits are three people's stories: Alex Rivera's, from Apple Health
-exports, Priya Natarajan's, from exports and C-CDA files together, and Martin
-Okafor's, two FHIR reports of one variant beside what ClinVar says today.
+conformance kits are four people's stories: Alex Rivera's, from Apple Health
+exports, Priya Natarajan's, from exports and C-CDA files together, Martin
+Okafor's, two FHIR reports of one variant beside what ClinVar says today, and
+Tamsin Vale's, one hospital's record pulled twice a year apart.
 
 Node 22 or later. To build Alex's pod and the site that documents it, with
-`priya-natarajan` or `martin-okafor` in place of `alex-rivera` for the others:
+`priya-natarajan`, `martin-okafor` or `tamsin-vale` in place of `alex-rivera` for the others:
 
 ```sh
 npm install
@@ -247,5 +248,5 @@ picked as any counterpart is, and runs `npm run conformance` on them. The tests
 and the pod build then read those checkouts. The check is two jobs side by side,
 the tests with conformance and the browser, and `compatibility` is the job that
 reports once both have. CI publishes each kit's pod and site,
-Alex's, Priya's and Martin's, as an artifact, and on a push to `main` builds the pages from the head of every
+Alex's, Priya's, Martin's and Tamsin's, as an artifact, and on a push to `main` builds the pages from the head of every
 default branch and deploys them.

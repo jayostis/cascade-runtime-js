@@ -39,7 +39,7 @@ medication started or stopped, a card with the two means, a small chart, the
 results behind it and "Open the trend", a chart of that test over time with the
 medication's start and stop dashed across it, at
 `/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`. It states what changed
-after what, never why. The three people's pods hold too little to show a card.
+after what, never why. Alex's, Priya's and Martin's pods hold too little to show a card.
 Ines Calloway, a made-up patient at Cascade North, does: her LDL is lower after
 atorvastatin started. "+ New pod", Ines Calloway, "Sign in at Cascade North" and
 "Bring it into … pod" make that pod.
@@ -167,7 +167,7 @@ script goes after `--`, or npm keeps it for itself.
 
 - `npm run dev` serves the app as `npm start` does, restarting it whenever a
   file is saved.
-- `npm run reset` removes every pod and loads Alex's, Priya's and Martin's again, as
+- `npm run reset` removes every pod and loads Alex's, Priya's, Martin's and Tamsin's again, as
   the File menu's "Reset all data" does, through the same function in
   `pods.mjs`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
