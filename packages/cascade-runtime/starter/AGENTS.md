@@ -65,7 +65,10 @@ medication started or stopped, in `CHANGED`'s words, which state an order and a
 comparison of means and never a cause; each card links to its results
 (`#change-<key>`) and to the trend at `/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`
 (`trendPage` over `labSeriesIn` and `timelineIn`; `trendPath` in `pods.mjs`
-makes the address, a view never builds one). Alex's, Priya's and Martin's pods
+makes the address, a view never builds one). A pod that has been imported twice or more adds, under the cards,
+"Where this comes from" (`howOf`, over `pod/What each import brought in`, `record/Its revisions, in the order they arrived` and
+`record/What each version says`): the imports in order, each with its source, its retrieved date and what it brought
+in, and the medication's versions with what differs between them. Alex's, Priya's and Martin's pods
 hold too little for a card; Tamsin's holds one, and so does a story patient's:
 Ines Calloway, at Cascade North, by "+ New pod" and "Sign in at Cascade North". `TREND_VIEW` is the trend as a tool
 a model can call, which a browser host registers with `useView`; this server's

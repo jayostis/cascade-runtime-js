@@ -181,6 +181,9 @@ const REPORTS = "pod/What each report says of a variant";
 export const HISTORY = "pod/My medication history";
 export const MEDICATIONS = "pod/My active medications";
 export const LABS = "pod/My lab results";
+const IMPORTS = "pod/What each import brought in";
+const REVISIONS = "record/Its revisions, in the order they arrived";
+const VERSIONS = "record/What each version says";
 
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
@@ -190,6 +193,9 @@ export const QUESTIONS = [
   VARIANTS,
   REPORTS,
   HISTORY,
+  IMPORTS,
+  REVISIONS,
+  VERSIONS,
   ...SECTIONS.flatMap(({ question }) => question ?? []),
 ];
 
@@ -1112,7 +1118,20 @@ export function podPage(
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
     (answers[LABS] ?? []).length > 0
-      ? changedPart({ changes, about, entryHref, trendHref, register, ask })
+      ? changedPart({
+          changes,
+          about,
+          how: howOf(
+            asked,
+            changes.filter(
+              ({ direction }) => direction !== "not enough results",
+            ),
+          ),
+          entryHref,
+          trendHref,
+          register,
+          ask,
+        })
       : undefined;
   const tiles = SECTIONS.map((section) => [
     section,
@@ -1637,7 +1656,150 @@ export function suggestedQuestions(
   return [...first, ...changed, ...last];
 }
 
-function Changed({ changes, about, entryHref, trendHref, register, ask }) {
+/** A statement's field in words: `…/clinical/v1#endDate` is `end date`. */
+const fieldSaid = (field) =>
+  field
+    .split(/[#/]/)
+    .at(-1)
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .toLowerCase();
+
+/** A statement's value as a person reads it: a day as its date, a thing by its label, an address by its last part. */
+function valueSaid({ value, valueLabel }) {
+  if (valueLabel !== undefined) return valueLabel;
+  if (/^\d{4}-\d\d-\d\d/.test(value)) return day(value);
+  return isCode(value) ? value.split(/[#/:]/).at(-1) : value;
+}
+
+/** What differs between two versions' statements, status first: `{ field, before, after }`, each side a list of values. */
+function differences(before, after) {
+  return [...new Set([...before.keys(), ...after.keys()])]
+    .sort()
+    .flatMap((field) => {
+      const [was, now] = [before.get(field) ?? [], after.get(field) ?? []];
+      return was.join("\n") === now.join("\n")
+        ? []
+        : [{ field: fieldSaid(field), before: was, after: now }];
+    })
+    .sort(
+      (a, b) => Number(b.field === "status") - Number(a.field === "status"),
+    );
+}
+
+/**
+ * How the pod came to hold what What changed reads, from the rows of the imports, the revisions and the versions in
+ * `answers`; none until the pod holds two imports.
+ *
+ * - `pulls`: the imports, in the order they began, each `{ label, started, hospital, retrieved, brought, revised }`;
+ *   `hospital` and `retrieved` only when a document says them, `brought` is how many records it brought in and `revised`
+ *   how many of those were a new version of a record already held;
+ * - `revisions`: for each medication of `findings` whose record has more than one version, `{ finding, steps }`, a step
+ *   `{ from, to, pull, arrived, said }` for each arrival after the first: the versions numbered in the order they came,
+ *   the number of the pull that brought `to`, and `said`, what differs between the two, as `differences` gives it.
+ */
+export function howOf(answers, findings) {
+  const imports = new Map();
+  for (const row of answers[IMPORTS] ?? []) {
+    const each = imports.get(row.import) ?? {
+      label: row.importLabel,
+      started: row.started,
+      records: new Set(),
+    };
+    each.records.add(row.record);
+    imports.set(row.import, each);
+  }
+  if (imports.size < 2) return undefined;
+  const arrivals = answers[REVISIONS] ?? [];
+  const pulls = [...imports].map(([id, each]) => {
+    const own = arrivals.filter((row) => row.import === id);
+    const document = own.find(
+      (row) => row.hospital !== undefined || row.retrieved !== undefined,
+    );
+    return {
+      label: each.label,
+      started: each.started,
+      ...(document?.hospital !== undefined && { hospital: document.hospital }),
+      ...(document?.retrieved !== undefined && {
+        retrieved: document.retrieved,
+      }),
+      brought: each.records.size,
+      revised: new Set(
+        own
+          .filter((row) => row.previous !== undefined)
+          .map((row) => row.record),
+      ).size,
+    };
+  });
+  const stated = new Map();
+  for (const row of answers[VERSIONS] ?? []) {
+    const fields = stated.get(row.version) ?? new Map();
+    fields.set(
+      row.field,
+      [...(fields.get(row.field) ?? []), valueSaid(row)].sort(),
+    );
+    stated.set(row.version, fields);
+  }
+  const statements = (version) => stated.get(version) ?? new Map();
+  const ids = [...imports.keys()];
+  const medications = [
+    ...new Map(
+      findings
+        .filter(({ medication }) => medication.entry)
+        .map((finding) => [finding.medication.entry, finding]),
+    ).values(),
+  ];
+  const revisions = medications.flatMap((finding) => {
+    const records = new Set(
+      (answers[SOURCES] ?? [])
+        .filter((row) => row.entry === finding.medication.entry)
+        .map((row) => row.record),
+    );
+    return [...records].flatMap((record) => {
+      const seen = new Set();
+      const arrived = arrivals.filter(
+        (row) =>
+          row.record === record &&
+          !seen.has(row.revision) &&
+          seen.add(row.revision),
+      );
+      const versions = [...new Set(arrived.map((row) => row.version))];
+      const steps = arrived.slice(1).map((row, at) => ({
+        from: versions.indexOf(arrived[at].version) + 1,
+        to: versions.indexOf(row.version) + 1,
+        pull: ids.indexOf(row.import) + 1,
+        arrived: row.arrived,
+        said: differences(
+          statements(arrived[at].version),
+          statements(row.version),
+        ),
+      }));
+      return steps.length === 0 ? [] : [{ finding, steps }];
+    });
+  });
+  return { pulls, revisions };
+}
+
+/** The values of one side of a difference, or `none`. */
+const valuesSaid = (values) =>
+  values.length === 0 ? "none" : values.join(", ");
+
+/** One pull as the mechanism lists it: when, from where, retrieved when, and what it brought in. */
+function pullSaid({ label, started, hospital, retrieved, brought, revised }) {
+  const records = `${brought} ${brought === 1 ? "record" : "records"}`;
+  return `${label ?? "Import"} on ${day(started)}${hospital === undefined ? "" : `, from ${hospitalName(hospital)}`}${retrieved === undefined ? "" : `, retrieved ${day(retrieved)}`}. It brought in ${records}${revised > 0 ? `, ${revised} of ${revised === 1 ? "them a new version of a record" : "them new versions of records"} the pod already held` : ""}.`;
+}
+
+/** The mechanism behind What changed, as `howOf` gives it: the pulls in order, and each medication's versions. */
+function How({ how, about }) {
+  return html`<div class="how">
+<h3>Where this comes from</h3>
+<p>The pod was filled by ${how.pulls.length} imports, in this order:</p>
+<ol>${how.pulls.map((pull) => html`<li>${pullSaid(pull)}</li>`)}</ol>
+${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, on ${day(step.arrived)}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
+</div>`;
+}
+
+function Changed({ changes, about, how, entryHref, trendHref, register, ask }) {
   useView(register, TREND_VIEW);
   const shown = changes.filter(
     ({ direction }) => direction !== "not enough results",
@@ -1670,6 +1832,7 @@ function Changed({ changes, about, entryHref, trendHref, register, ask }) {
   return html`<div class="card changes"><h2>What changed</h2>
 ${shown.length === 0 ? html`<p>Nothing stands out yet.</p>` : shown.map((finding) => html`<${Change} key=${finding.key} finding=${finding} names=${changeNames(finding, about)} trendHref=${trendHref} ask=${ask} />`)}
 ${thin.length > 0 && html`<p>${thin.length} ${thin.length === 1 ? "pair" : "pairs"} of a medication and a test had too few results to say anything. <a href="#too-few">Show ${thin.length === 1 ? "it" : "them"}</a></p>`}
+${shown.length > 0 && how !== undefined && html`<${How} how=${how} about=${about} />`}
 <p class="muted">These say what changed after what, never why. A clinician can say why.</p>
 </div>
 ${boxes}`;
@@ -1680,7 +1843,8 @@ ${boxes}`;
  * `changesIn` gives it: a card for each change, strongest first, with its means, a small chart and links to the results
  * behind it and to its trend; one line for the pairs with too few results to say anything. `about`, `entryHref`,
  * `trendHref`, `register` and `ask` are as `podPage` takes them; with `ask`, each card has an "Ask about this" button
- * carrying its finding's key.
+ * carrying its finding's key. With `how`, as `howOf` gives it, the card says how the pod came to hold what it reads: the
+ * pulls in order and the medication's versions.
  */
 export function changedPart(props) {
   return html`<${Changed} ...${props} />`;
@@ -3629,6 +3793,9 @@ a { color: var(--accent); }
 .changes h2 + .change { border-top: 0; padding-top: 0; }
 .changes p { margin: 0.25rem 0; }
 .changes .said { font-weight: 600; }
+.changes .how { padding: 0.9rem 0; border-top: 1px solid var(--line); }
+.changes .how h3 { font-size: 0.95rem; margin: 0 0 0.3rem; }
+.changes .how ol { margin: 0.25rem 0; padding-left: 1.4rem; }
 .chart { display: block; max-width: 100%; height: auto; }
 .chart.small { width: 15rem; margin: 0.4rem 0; }
 .chart.large, .chart.lane { width: 100%; }
