@@ -2014,6 +2014,90 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
   }
 });
 
+test("in try/, the world's date set in a connection's box shows on the next sign-in page of the hospital, stays after a reload, and Today takes it away", async () => {
+  const demo = await loadHospitals();
+  const ines = view
+    .demoPeople(demo)
+    .find(({ name }) => name === "Ines Calloway");
+  assert.ok(ines, "no demo person is Ines Calloway");
+  const [north] = ines.at;
+  assert.ok(north && ines.at.length === 1, "Ines is not at North alone");
+  const loaded = demo.find((each) => each.hospital.fhirBase === north.fhirBase);
+  const patient = Object.entries(loaded?.patients ?? {}).find(
+    ([, bundle]) => view.patientName(bundle) === ines.name,
+  )?.[0];
+  assert.ok(patient, "North holds no patient Ines Calloway");
+
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    const box = page.locator("#connection");
+    /** The sign-in page in a popup, and the date its line says records stood on, if it has one. */
+    const signInPage = async (
+      allow: boolean,
+    ): Promise<string | null | undefined> => {
+      const [popup] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.click(
+          `button:has-text("Sign in at ${view.hospitalName(north.name)}")`,
+        ),
+      ]);
+      await popup.waitForSelector('button[value="allow"]');
+      const line = popup.locator("p.as-of time");
+      const stood =
+        (await line.count()) === 0
+          ? undefined
+          : await line.getAttribute("datetime");
+      if (allow) {
+        await popup.check(`input[name="patient"][value="${patient}"]`);
+        await popup.click('button[value="allow"]');
+      } else await popup.close();
+      return stood;
+    };
+    const saysIn = (what: string) =>
+      page.waitForFunction(
+        (text) =>
+          document.querySelector("#connection")?.textContent?.includes(text) ??
+          false,
+        what,
+      );
+
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, view.familyFirst(ines));
+    await page.waitForFunction(
+      () => navigator.serviceWorker.controller !== null,
+    );
+    assert.equal(await signInPage(true), undefined);
+    await settled(page);
+    await saysIn("Hospitals answer with everything they hold.");
+
+    await box
+      .locator("summary", { hasText: "Change the world's date" })
+      .click();
+    await box.locator('input[name="date"]').fill("2024-02-01");
+    await box.getByRole("button", { name: "Set", exact: true }).click();
+    await saysIn("Hospitals answer as of 1 February 2024.");
+
+    await page.goto(`${served.url}try/index.html?pod=ines-calloway`);
+    await settled(page);
+    await page.waitForFunction(
+      () => navigator.serviceWorker.controller !== null,
+    );
+    assert.equal(await signInPage(true), "2024-02-01T23:59:59Z");
+    await settled(page);
+    await saysIn("Hospitals answer as of 1 February 2024.");
+
+    await box.getByRole("button", { name: "Today", exact: true }).click();
+    await saysIn("Hospitals answer with everything they hold.");
+    await box.locator("a.close").click();
+    await settled(page);
+    assert.equal(await signInPage(false), undefined);
+  } finally {
+    await context.close();
+  }
+});
+
 test("try/ ships the starter tables its published answers were computed with: after a check that finds nothing new, a visit draws a copied pod from its kept answers, the engine held back", async () => {
   const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
   const [feedUrl] = config.tables.feeds;

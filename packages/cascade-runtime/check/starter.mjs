@@ -1593,6 +1593,71 @@ if (release === undefined) {
         },
       );
 
+      await behaviour(
+        "the world's date is set by post, the hospital's sign-in page and the connection's box say so, a bad date is refused, and Today takes it away",
+        async () => {
+          const pod = "hospital";
+          const north = expected.row.fhirBase;
+          const AS_OF = '<time datetime="2024-02-01T23:59:59Z"';
+          /** The hospital's sign-in page for a new sign-in, which is then cancelled. */
+          const pickerNow = async () => {
+            const begun = await send(`/pods/${pod}/hospitals`, {
+              fhirBase: north,
+            });
+            const authorize = new URL(begun.headers.get("location"));
+            const picker = await (await fetch(authorize)).text();
+            const answered = await send(authorize.pathname, {
+              ...Object.fromEntries(authorize.searchParams),
+              patient: expected.patient,
+              decision: "cancel",
+            });
+            await fetch(new URL(answered.headers.get("location")), {
+              redirect: "manual",
+            });
+            return picker;
+          };
+          assert.ok(
+            readable(await served(server, "/world-date")).includes(
+              "Hospitals answer with everything they hold.",
+            ),
+          );
+          assert.ok(!(await pickerNow()).includes('class="as-of"'));
+
+          const set = await send("/world-date", { date: "2024-02-01" });
+          assert.equal(set.status, 303);
+          assert.equal(set.headers.get("location"), "/world-date?set");
+          assert.ok(
+            readable(await served(server, "/world-date?set")).includes(
+              "Hospitals answer as of 1 February 2024.",
+            ),
+          );
+          assert.ok((await pickerNow()).includes(AS_OF));
+
+          const connection = await signIn(
+            pod,
+            north,
+            expected.patient,
+            "allow",
+          );
+          const said = readable(await boxed(connection, "Hospital"));
+          assert.ok(said.includes("Hospitals answer as of 1 February 2024."));
+          assert.ok(said.includes("Change the world's date"));
+
+          const bad = await send("/world-date", { date: "soon" });
+          assert.equal(bad.status, 400);
+          const refused = readable(await bad.text());
+          assert.ok(refused.includes('"soon" is not a date'), refused);
+          assert.ok(
+            (await pickerNow()).includes(AS_OF),
+            "a refused date moved the world's date",
+          );
+
+          const today = await send("/world-date", { date: "" });
+          assert.equal(today.status, 303);
+          assert.ok(!(await pickerNow()).includes('class="as-of"'));
+        },
+      );
+
       await behaviour("a new pod is made from a person's name", async () => {
         for (let time = 0; time < 2; time += 1) {
           const made = await send("/pods", { person: "Ada  Lovelace" });
