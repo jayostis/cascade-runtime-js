@@ -2,6 +2,8 @@ import {
   clock,
   codeIri,
   CorePod,
+  type DeriveKey,
+  EncryptedFiles,
   type Files,
   type Importer,
   type ImportProgress,
@@ -23,6 +25,7 @@ import {
   ntriples,
   podFiles,
   podRevision,
+  type PodKey,
   podStated,
   questions,
   randomId,
@@ -93,6 +96,8 @@ export interface Pod {
   readonly owner: string;
   /** The open that gave the pod the app's newer tables when it was opened (O1, O2); none when they had not changed. */
   readonly opened?: Opened;
+  /** Whether its files and its kept answers are sealed under a key only its secret opens. */
+  readonly encrypted: boolean;
   /** The export or download at the path, or the files the app holds of one. */
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
@@ -233,6 +238,8 @@ export interface Parts {
   /** The matcher's tables: the versions the app keeps from its feeds, and the vocabulary's rule list. */
   readonly tables: Tables;
   readonly newStore: StoreFactory;
+  /** What derives the key an encrypted pod's secret opens it with. */
+  readonly derive: DeriveKey;
   folder(path: string, iri?: string): Folder;
   /** Where the answers of a pod in a folder are kept; none when nothing may be kept. */
   readonly answers?: AnswerStore;
@@ -505,7 +512,8 @@ class OpenPod implements Pod {
     readonly address: string,
     readonly subject: string,
     tables: readonly string[],
-    answers?: Answers,
+    answers: Answers | undefined,
+    readonly encrypted: boolean,
     readonly opened?: Opened,
   ) {
     this.#parts = parts;
@@ -1045,15 +1053,40 @@ function coreOver(
   );
 }
 
+/** The parts with every file of a pod's folder and of its kept answers sealed under the key. */
+function sealedParts(parts: Parts, key: PodKey): Parts {
+  const { answers } = parts;
+  return {
+    ...parts,
+    folder: (path, iri) => {
+      const folder = parts.folder(path, iri);
+      return { ...folder, files: new EncryptedFiles(folder.files, key) };
+    },
+    ...(answers === undefined
+      ? {}
+      : {
+          answers: {
+            runtime: answers.runtime,
+            at: (folder) =>
+              new EncryptedFiles(answers.at(folder), key, { kind: "answers" }),
+          },
+        }),
+  };
+}
+
 /**
  * The pod in the folder, or in memory with none. A missing or empty folder, or memory, is a new pod, named from a base
  * of its own and created; a folder holding a pod opens as it is, and is given the app's tables unless `adopt` is false.
+ * With `key`, the folder's pod is encrypted under it, and a folder holding only its header is a new pod.
  */
 export async function openPodWith(
-  parts: Parts,
+  unsealed: Parts,
   folder?: string,
-  options: { title?: string; adopt?: boolean } = {},
+  options: { title?: string; adopt?: boolean; key?: PodKey } = {},
 ): Promise<Pod> {
+  const encrypted = options.key !== undefined;
+  const parts =
+    options.key === undefined ? unsealed : sealedParts(unsealed, options.key);
   const disk = folder === undefined ? undefined : parts.folder(folder);
   const answers =
     folder === undefined || parts.answers === undefined
@@ -1082,7 +1115,15 @@ export async function openPodWith(
     await answers?.describe({ address, subject, title });
     if (folder !== undefined)
       await parts.tables.opened(address, shipped(references), disk?.name);
-    return new OpenPod(parts, core, address, subject, tables, answers);
+    return new OpenPod(
+      parts,
+      core,
+      address,
+      subject,
+      tables,
+      answers,
+      encrypted,
+    );
   }
   const store = parts.newStore();
   const [stated, described] = await Promise.all([
@@ -1124,6 +1165,7 @@ export async function openPodWith(
     subject,
     tables,
     answers,
+    encrypted,
     options.adopt === false
       ? undefined
       : await openedWithTables(

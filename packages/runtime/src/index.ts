@@ -8,6 +8,7 @@ export * from "./core-pod.js";
 export * from "./dataset.js";
 export * from "./features.js";
 export * from "./derive.js";
+export * from "./encryption.js";
 export * from "./files.js";
 export * from "./filings.js";
 export * from "./folder-pack.js";
