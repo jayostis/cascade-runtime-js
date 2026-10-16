@@ -1238,7 +1238,8 @@ export class Tables {
    * code itself is its class; else the classes of its own precise ingredients that are forms of that ingredient, when
    * one or more bear a row of the relation; else, in a version that states precise ingredients, the ingredient's own.
    * Nothing else: a relation the code reaches no class for, though a different form of its ingredient bears one, is
-   * withheld, naming the ingredient, for RxNorm does not tie the code to that form.
+   * withheld, naming the ingredient, for RxNorm does not tie the code to that form. Only a version that states precise
+   * ingredients says that: one that states none is silent on forms, so it withholds nothing.
    */
   async #classes(
     code: string,
@@ -1338,7 +1339,7 @@ export class Tables {
                 else if (stating && own.has(relation))
                   for (const target of own.get(relation)!)
                     keep(relation, target, 2, ingredient);
-                else if (othersBear.has(relation))
+                else if (stating && othersBear.has(relation))
                   elsewhere.set(
                     relation,
                     (elsewhere.get(relation) ?? new Set()).add(ingredient),

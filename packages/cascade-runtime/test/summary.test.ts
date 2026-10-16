@@ -1132,7 +1132,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
               withheld: [
                 {
                   relation: `${REC}mechanismOfAction`,
-                  ingredient: coded("4083", "estradiol"),
+                  ingredient: coded("29046", "lisinopril"),
                 },
               ],
             },
@@ -1147,7 +1147,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
     "A panel of 3 members, in order:",
     "2823-3 Potassium R-a",
     "2951-2 Sodium required",
-    "No mechanism of action is given: FDA classes a different form of 4083 estradiol; RxNorm does not tie this drug to it.",
+    "No mechanism of action is given: FDA classes a different form of 29046 lisinopril; RxNorm does not tie this drug to it.",
     "17861-6 Calcium Rflx",
     "Itself a member of 3 panels:",
     "34567-8 A larger panel",

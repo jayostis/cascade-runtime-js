@@ -1759,6 +1759,7 @@ const FLUOROESTRADIOL = "2372221";
 const KETOCONAZOLE = "6135";
 const LEVOKETOCONAZOLE = "2588846";
 const MECHANISMS = new Set(["N0000000174", "N0000000100", "N0000175869"]);
+const AZOLES = "N0000007654";
 /** The product ingredients rows, `[source, target]`, that name a precise ingredient. */
 const PRECISE = new Set([`2588848 ${LEVOKETOCONAZOLE}`]);
 const PRECISE_INGREDIENTS: Mapping = {
@@ -1783,7 +1784,11 @@ const ESTRADIOL_CLASSES: [string, string][] = [
 const CLASSES_BY_RELATION: Mapping = {
   ...CLASSES,
   predicateOf: (_, target) =>
-    MECHANISMS.has(target) ? `${REC}mechanismOfAction` : CLASSES.predicate,
+    MECHANISMS.has(target)
+      ? `${REC}mechanismOfAction`
+      : target === AZOLES
+        ? `${REC}chemicalStructure`
+        : CLASSES.predicate,
 };
 
 /**
@@ -1846,6 +1851,7 @@ function plantedTables(): Promise<{ tables: Tables; classes: string }> {
           ["1546022", "N0000000174"],
           ...ESTRADIOL_CLASSES,
           [KETOCONAZOLE, "N0000175487"],
+          [KETOCONAZOLE, AZOLES],
           [LEVOKETOCONAZOLE, "N0000193183"],
         ],
       ],
@@ -1970,6 +1976,7 @@ test("a product is in its own precise ingredient's class, else in its ingredient
   ]);
   assert.deepEqual(await classLines(tables, "2588848"), [
     `establishedPharmacologicClass N0000193183 through ${LEVOKETOCONAZOLE}`,
+    `chemicalStructure ${AZOLES} through ${KETOCONAZOLE}`,
   ]);
   assert.deepEqual(await classLines(tables, "314076"), [
     `establishedPharmacologicClass withheld, a different form of ${LISINOPRIL}`,
@@ -2016,10 +2023,11 @@ test("a product ingredients version that states no precise ingredient gives a pr
     await tables.check();
     return classLines(tables, "197658");
   };
-  assert.deepEqual(await classed(before.served), [
-    `establishedPharmacologicClass withheld, a different form of ${ESTRADIOL}`,
-    `mechanismOfAction withheld, a different form of ${ESTRADIOL}`,
-  ]);
+  assert.deepEqual(
+    await classed(before.served),
+    [],
+    "a version that states no precise ingredient says nothing of other forms",
+  );
   assert.deepEqual(await classed(after.served), [
     `establishedPharmacologicClass N0000175825 through ${ESTRADIOL}`,
     `mechanismOfAction N0000000100 through ${ESTRADIOL}`,
@@ -2102,6 +2110,14 @@ ${Object.keys(names).map(medication).join("\n")}`);
           "N0000175869",
           FLUOROESTRADIOL,
           "true",
+          true,
+        ],
+        [
+          "Levoketoconazole 150 MG Oral Tablet",
+          "chemicalStructure",
+          AZOLES,
+          KETOCONAZOLE,
+          "false",
           true,
         ],
         [

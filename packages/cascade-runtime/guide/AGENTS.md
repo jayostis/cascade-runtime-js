@@ -153,11 +153,18 @@ not the code asked of (FDA classes estradiol, not a tablet of it). A class is
 joined only on exact evidence, relation by relation, as the vocabulary's
 `tables/medication-classes-through-precise-ingredients.rq` says: a row on the
 code itself, else the rows of the code's own precise ingredients
-(`rec:hasPreciseIngredient`; Recorlev takes levoketoconazole's), else, in a
-product ingredients version that states precise ingredients, its ingredient's
-own rows (an estradiol tablet takes estradiol's). Never a different form's: a
-lisinopril tablet gets none of the classes FDA gives lisinopril anhydrous, and
-`withheld` names the relation and the ingredient whose other form is classed.
+(`rec:hasPreciseIngredient`), else, in a product ingredients version that states
+precise ingredients, its ingredient's own rows (an estradiol tablet takes
+estradiol's). Each relation is decided apart, so one product can take some from
+its precise ingredient and others from its ingredient: Recorlev takes the
+established class and the mechanisms of levoketoconazole, and its chemical
+structure (Azoles) of ketoconazole, which levoketoconazole has no row for; the
+`through` of each class says which. Never a different form's: a lisinopril
+tablet gets none of the classes FDA gives lisinopril anhydrous, and `withheld`
+names the relation and the ingredient whose other form is classed, only from a
+version that states precise ingredients (one that states none cannot say
+RxNorm does not tie the product to the form, so it withholds nothing and the
+page gives its general reason).
 `tables.classedElsewhere(codes)` gives those ingredients for codes in no class.
 `pod.medicationClasses()` says which of the pod's active medications are in
 which class (`entry`, `medication`, `class`, `relation`, `origin`, `through`,

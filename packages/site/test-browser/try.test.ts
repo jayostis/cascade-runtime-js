@@ -1955,13 +1955,16 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
       { timeout: 120_000 },
     );
     await page.waitForSelector("main .card h2", { timeout: 120_000 });
-    const classes = (await page.locator("main").innerText()).replace(
-      /\s+/g,
-      " ",
-    );
+    const estrogen = (
+      await page
+        .locator("main .card", {
+          has: page.locator("h2", { hasText: "Estrogen [EPC]" }),
+        })
+        .innerText()
+    ).replace(/\s+/g, " ");
     assert.match(
-      classes,
-      /Estrogen \[EPC\] Established pharmacologic class .*stradiol 1 (mg tablet|MG Oral Tablet) through estradiol/i,
+      estrogen,
+      /stradiol 1 (mg tablet|MG Oral Tablet) through estradiol/i,
     );
   } finally {
     await context.close();
