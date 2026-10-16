@@ -27,6 +27,7 @@ export async function openFolderPod(
     {
       files,
       header: await headerIn(absolute(folder)),
+      reread: () => headerIn(absolute(folder)),
       held: async () => (await files.list("")).length > 0,
     },
     secret,

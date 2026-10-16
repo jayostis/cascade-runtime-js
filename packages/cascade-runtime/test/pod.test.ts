@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
   type DeriveKey,
+  EncryptedFiles,
   JUSTIFICATIONS,
   Layout,
   MATCHER,
@@ -27,8 +28,10 @@ import {
   checkouts,
   findRoot,
   FolderFiles,
+  headerIn,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { podKey } from "../src/encrypted.js";
 import { shipped } from "../src/tables.js";
 import {
   type Exported,
@@ -895,6 +898,49 @@ test("an encrypted pod opens only with its secret, after its header validates; a
   );
   assert.equal(derive.calls, 1);
   assert.deepEqual(await filesIn(directory), []);
+});
+
+test("two openings that both make the same new encrypted pod end with one header, so a file sealed by either opens by both; the loser with another secret is refused", async () => {
+  const derive = fastDerive();
+  const opening = (at: string, secret: string) => {
+    const files = new FolderFiles(at);
+    return podKey(
+      {
+        files,
+        header: undefined,
+        reread: () => headerIn(at),
+        held: async () => false,
+      },
+      secret,
+      derive,
+    );
+  };
+  const at = join(pods, "raced");
+  const [first, second] = await Promise.all([
+    opening(at, WORDS),
+    opening(at, WORDS),
+  ]);
+  assert.ok(first !== undefined && second !== undefined);
+  await new EncryptedFiles(new FolderFiles(at), first).write(
+    "a.ttl",
+    new TextEncoder().encode("a"),
+  );
+  const read = await new EncryptedFiles(new FolderFiles(at), second).read(
+    "a.ttl",
+  );
+  assert.equal(new TextDecoder().decode(read), "a");
+
+  const other = join(pods, "raced-apart");
+  const outcomes = await Promise.all(
+    [WORDS, "a b c d e f"].map((secret) =>
+      opening(other, secret).then(
+        () => "opened",
+        (error: unknown) =>
+          error instanceof Unopened ? error.outcome : "other",
+      ),
+    ),
+  );
+  assert.deepEqual(outcomes.sort(), ["incorrect secret", "opened"]);
 });
 
 test("six words are drawn from the list, typed words are cleaned, and words typed otherwise open the pod on the second try", async () => {

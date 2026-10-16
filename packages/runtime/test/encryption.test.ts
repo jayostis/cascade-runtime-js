@@ -240,17 +240,35 @@ test("a step writing a file larger than the sealing limit is refused and writes 
   assert.deepEqual(await memory.list(""), [HEADER]);
 });
 
-test("a write naming the header, or after the header changed, is refused and seals nothing", async () => {
+test("a write naming the header in any spelling, a path that is not canonical, or any file after the header changed, is refused and seals nothing", async () => {
   const { memory, files, header } = await sealedPod();
   await files.write("a.ttl", encoded("a"));
+  const refused: [string, RegExp][] = [
+    [HEADER, /is written only when the pod's encryption is made/],
+    ["Settings/Encryption.json", /is written only when/],
+    ["./a.ttl", /not a canonical path/],
+    ["settings//encryption.json", /not a canonical path/],
+    ["a/./b.ttl", /not a canonical path/],
+    ["a/../b.ttl", /not a canonical path/],
+    ["/a.ttl", /not a canonical path/],
+    ["settings\\encryption.json", /not a canonical path/],
+  ];
+  for (const [path, reason] of refused) {
+    await assert.rejects(files.write(path, encoded("{}")), reason, path);
+    if (reason.source.includes("canonical"))
+      await assert.rejects(files.read(path), reason, path);
+  }
+  assert.deepEqual(await memory.list(""), ["a.ttl", HEADER]);
+
+  await memory.write("a.ttl", encoded("tampered"));
   await assert.rejects(
-    files.write(HEADER, encoded("{}")),
-    /settings\/encryption\.json is written only when the pod's encryption is made/,
+    files.read("a.ttl"),
+    /does not open under the pod's key/,
   );
+
   await memory.write(HEADER, new Uint8Array([...header, 0x0a]));
-  await assert.rejects(
-    files.write("b.ttl", encoded("b")),
-    /the pod's header changed since it was opened; open it again/,
-  );
+  const changed = /the pod's header changed since it was opened; open it again/;
+  await assert.rejects(files.write("b.ttl", encoded("b")), changed);
+  await assert.rejects(files.read("a.ttl"), changed);
   assert.deepEqual(await memory.list(""), ["a.ttl", HEADER]);
 });

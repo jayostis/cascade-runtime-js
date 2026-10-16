@@ -76,6 +76,22 @@ export class IndexedDbFiles implements Files {
     await done(transaction);
   }
 
+  /** Writes the file only when none is at its path; false when one is. */
+  async writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+    const transaction = this.#database.transaction(STORE, "readwrite");
+    let created = true;
+    const adding = transaction
+      .objectStore(STORE)
+      .add(bytes.slice(), relative(this, pathOrIri));
+    adding.onerror = (event) => {
+      if (adding.error?.name !== "ConstraintError") return;
+      event.preventDefault();
+      created = false;
+    };
+    await done(transaction);
+    return created;
+  }
+
   async list(folder: string): Promise<string[]> {
     const prefix = relative(this, folder).replace(/\/$/, "");
     const range =

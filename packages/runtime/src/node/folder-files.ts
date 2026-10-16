@@ -1,4 +1,5 @@
 import {
+  link,
   mkdir,
   readdir,
   readFile,
@@ -122,6 +123,26 @@ export class FolderFiles implements Files {
     } catch (error) {
       await rm(writing, { force: true }).catch(() => undefined);
       throw error;
+    }
+  }
+
+  /** Writes the file only when none is at its path, whole or not at all; false when one is. */
+  async writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+    const local = this.#local(pathOrIri);
+    await mkdir(dirname(local), { recursive: true });
+    const writing = join(
+      dirname(local),
+      `${basename(local)}.${pid}.${(writes += 1)}.writing`,
+    );
+    try {
+      await writeFile(writing, bytes);
+      await link(writing, local);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
+    } finally {
+      await rm(writing, { force: true }).catch(() => undefined);
     }
   }
 

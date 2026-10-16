@@ -458,8 +458,26 @@ export class EncryptedFiles implements Files {
     return this.#kind === "pod" && PLAINTEXT.has(path);
   }
 
+  /** The canonical path, which is what is stored and what a file is bound to; any other spelling of one is refused. */
+  #path(pathOrIri: string): string {
+    const path = pathOrIri.startsWith(this.iri)
+      ? pathOrIri.slice(this.iri.length)
+      : pathOrIri;
+    if (
+      path === "" ||
+      path.includes("\\") ||
+      path
+        .split("/")
+        .some((part) => part === "" || part === "." || part === "..")
+    )
+      throw new Refusal(
+        `${path} is not a canonical path: it has a leading or doubled slash, a . or .. segment, or a backslash`,
+      );
+    return relative(this, path);
+  }
+
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
-    const path = relative(this, pathOrIri);
+    const path = this.#path(pathOrIri);
     const bytes = await this.#files.read(path);
     if (bytes === undefined || this.#plain(path)) return bytes;
     const plain = await opened(
@@ -468,6 +486,7 @@ export class EncryptedFiles implements Files {
       boundTo(this.#kind, this.#key.version, path),
     );
     if (plain !== undefined || this.#kind === "answers") return plain;
+    await this.#headerUnchanged();
     throw new Refusal(
       `${path} does not open under the pod's key: it was changed, moved from another path or sealed under another key`,
     );
@@ -477,14 +496,24 @@ export class EncryptedFiles implements Files {
     return this.writeAll([[pathOrIri, bytes]]);
   }
 
+  /** Refuses when a pod's header on disk is not the one the key was opened from; an answer cache has none. */
+  async #headerUnchanged(): Promise<void> {
+    if (this.#kind !== "pod") return;
+    const header = await this.#files.read(HEADER);
+    if (header === undefined || !same(header, this.#key.header))
+      throw new Refusal(
+        "the pod's header changed since it was opened; open it again",
+      );
+  }
+
   /** Seals every file, then writes them in one `writeAll` beneath, once the header is the one the key was opened from. */
   async writeAll(
     files: Iterable<readonly [string, Uint8Array]>,
   ): Promise<void> {
     const given: (readonly [string, Uint8Array])[] = [];
     for (const [pathOrIri, bytes] of files) {
-      const path = relative(this, pathOrIri);
-      if (this.#kind === "pod" && path === HEADER)
+      const path = this.#path(pathOrIri);
+      if (this.#kind === "pod" && path.toLowerCase() === HEADER.toLowerCase())
         throw new Refusal(
           `${HEADER} is written only when the pod's encryption is made`,
         );
@@ -494,13 +523,7 @@ export class EncryptedFiles implements Files {
         );
       given.push([path, bytes]);
     }
-    if (this.#kind === "pod") {
-      const header = await this.#files.read(HEADER);
-      if (header === undefined || !same(header, this.#key.header))
-        throw new Refusal(
-          "the pod's header changed since it was opened; open it again",
-        );
-    }
+    if (this.#kind === "pod") await this.#headerUnchanged();
     const sealed: (readonly [string, Uint8Array])[] = [];
     for (const [path, bytes] of given)
       sealed.push([

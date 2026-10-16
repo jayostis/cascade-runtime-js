@@ -669,6 +669,7 @@ export async function openPod(
       {
         files: database,
         header: await database.read(HEADER),
+        reread: () => database.read(HEADER),
         held: async () => held.length > 0,
       },
       secret,
