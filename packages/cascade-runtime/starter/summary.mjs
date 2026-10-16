@@ -179,6 +179,7 @@ const SEEN = "pod/What was seen more than once";
 const VARIANTS = "pod/My genetic variants";
 const REPORTS = "pod/What each report says of a variant";
 export const HISTORY = "pod/My medication history";
+export const MEDICATIONS = "pod/My active medications";
 export const LABS = "pod/My lab results";
 
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
@@ -222,17 +223,41 @@ export function codesOf(answers) {
 
 /**
  * What the tables' `about` makes of a row of `section`: `label`, the name of the first of its codes `about` names,
- * and `retired`, whether the code that named it, or with none the first of its codes with a status, is retired.
+ * `origin`, the version of the table that named it, and `retired`, whether the code that named it, or with none the first
+ * of its codes with a status, is retired.
  */
 function namingOf(section, row, about) {
   const said = section.codes.map((column) => about.get(row[column]));
   const naming = said.find((each) => each?.name !== undefined);
   return {
     label: naming?.name.label,
+    origin: naming?.name.origin,
     retired:
       statusOf(naming ?? said.find((each) => each?.status !== undefined)) !==
       "",
   };
+}
+
+/**
+ * The credit each series asks for that named a row of the sections in `answers` (by `about`), once, among `held`: a
+ * credit travels with what a table says, and a series whose names a page shows is one of them.
+ */
+function namingCredits(answers, about, held) {
+  const origins = SECTIONS.flatMap((section) =>
+    section.question === undefined || answers[section.question] === undefined
+      ? []
+      : sectionRows(section, answers).flatMap((row) => {
+          const { origin } = namingOf(section, row, about);
+          return origin === undefined ? [] : [origin];
+        }),
+  );
+  return [
+    ...new Set(
+      [...new Set(origins)].flatMap(
+        (origin) => heldAt(origin, held)?.series.credit ?? [],
+      ),
+    ),
+  ];
 }
 
 /**
@@ -1040,14 +1065,17 @@ export function podPage(
     unheld = [],
     entryHref,
     about = new Map(),
+    held = [],
     said,
     changes,
     trendHref,
+    classesHref,
     register,
     ask,
   },
 ) {
   const answers = named(asked, about);
+  const credits = namingCredits(asked, about, held);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
@@ -1076,6 +1104,8 @@ ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.l
 ${worth}
 ${changed}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
+${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
+${classesHref !== undefined && (answers[MEDICATIONS] ?? []).length > 0 && html`<p><a href=${classesHref}>Which of these medicines are in a class?</a></p>`}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
@@ -2655,8 +2685,15 @@ export function codePage({ source, held, facts, codeHref, back }) {
     status,
     mappings,
     classifications = [],
+    panels = [],
+    classes = [],
     page,
   } = facts;
+  const placed = (each) =>
+    html`<li>${code(each)}${each.required !== undefined && html` <span class="muted">${REQUIRED[each.required] ?? each.required}</span>`}</li>`;
+  const credit = (series) =>
+    tableOf(series)?.credit !== undefined &&
+    html`<p class="muted">${tableOf(series).credit}</p>`;
   return html`<p><a href=${back}>${source.label}</a></p>
 <h1>${notation}${about?.name !== undefined && ` ${about.name.label}`}</h1>
 ${page !== undefined && html`<p><a href=${page.href} rel="external">${page.system}'s page for ${notation}</a></p>`}
@@ -2686,10 +2723,213 @@ ${classifications.map(
     row,
   ) => html`<div class="card"><h2>${tableOf(row.series)?.label ?? row.series}</h2>
 <p>${rowSaid(row)}</p>
-${tableOf(row.series)?.credit !== undefined && html`<p class="muted">${tableOf(row.series).credit}</p>`}
+${credit(row.series)}
 ${from(row)}</div>`,
 )}
-${names.length + status.length + mappings.length + classifications.length === 0 && html`<p class="muted">No table this app holds says anything of this code.</p>`}`;
+${panels.map(
+  (
+    panel,
+  ) => html`<div class="card"><h2>${tableOf(panel.series)?.label ?? panel.series}</h2>
+${
+  panel.members.length > 0 &&
+  html`<p>A panel of ${panel.members.length === 1 ? "one member" : `${panel.members.length} members`}, in order:</p>
+<ol class="members">${panel.members.map(placed)}</ol>`
+}
+${
+  panel.heldBy.total > 0 &&
+  html`<p>${panel.members.length > 0 ? "Itself a member" : "A member"} of ${panel.heldBy.total === 1 ? "one panel" : `${panel.heldBy.total.toLocaleString("en")} panels`}:</p>
+<ul class="members">${panel.heldBy.panels.map(placed)}</ul>
+${panel.heldBy.total > panel.heldBy.panels.length && html`<p class="muted">and ${(panel.heldBy.total - panel.heldBy.panels.length).toLocaleString("en")} more.</p>`}`
+}
+${credit(panel.series)}
+${from(panel)}</div>`,
+)}
+${classes.map(
+  (
+    classed,
+  ) => html`<div class="card"><h2>${tableOf(classed.series)?.label ?? classed.series}</h2>
+${
+  classed.in.length > 0 &&
+  html`<ul class="members">${classed.in.map(
+    (each) =>
+      html`<li><strong>${relationName(each.relation)}:</strong> ${code(each.class)}${each.through !== undefined && html` <span class="muted">through ${code(each.through)}</span>`}</li>`,
+  )}</ul>`
+}
+${(classed.withheld ?? []).map(
+  (each) =>
+    html`<p>No ${relationName(each.relation).toLowerCase()} is given: the forms of ${code(each.ingredient)} are classed differently.</p>`,
+)}
+${credit(classed.series)}
+${from(classed)}</div>`,
+)}
+${names.length + status.length + mappings.length + classifications.length + panels.length + classes.length === 0 && html`<p class="muted">No table this app holds says anything of this code.</p>`}`;
+}
+
+/** What a panel's `ObservationRequiredInPanel` says, as LOINC writes it; a value not listed (R-a, Rflx) is shown as written. */
+const REQUIRED = {
+  R: "required",
+  O: "optional",
+  C: "conditional",
+};
+
+/** The relations of a drug class row, in the order a page lists them, and what a person calls each. */
+const RELATIONS = [
+  ["establishedPharmacologicClass", "Established pharmacologic class"],
+  ["mechanismOfAction", "Mechanism of action"],
+  ["physiologicEffect", "Physiologic effect"],
+  ["chemicalStructure", "Chemical structure"],
+].map(([term, name]) => [`${REC}${term}`, name]);
+
+const relationName = (relation) =>
+  RELATIONS.find(([each]) => each === relation)?.[1] ?? notationOf(relation);
+
+/**
+ * What the tables say of the classes `rows` (`pod.medicationClasses()`'s answer) hold and of the codes they were
+ * reached through, as `about` answers: their names. Names nothing when the tables cannot say.
+ */
+export async function classesSaid(rows, { tables }) {
+  return tables.about([
+    ...new Set(rows.flatMap((row) => [row.class, row.through]).filter(Boolean)),
+  ]);
+}
+
+/**
+ * The page of a pod's medicines by class: `rows` is `pod.medicationClasses()`'s answer, `medications` the rows of
+ * `pod/My active medications`, `about` is `classesSaid`'s answer, none until the tables can say, and `held` the tables'
+ * `held()`. A class is a button of the picker, a link to `classHref(code)` (or to `allHref` for all of them); `picked` is
+ * the class shown, by its code, or none for every class. Each medicine is a link to `entryHref(entry)`, and each class a
+ * link to `codeHref(series, notation)` when `held` holds the series that names it. A row with no `class` says the
+ * sources class an ingredient's forms differently, naming it in `through`; a row `stated` is on a code the entry
+ * states, so is not "through" anything. The page says which medicines it does not class, and why.
+ */
+export function classesPage({
+  pod,
+  back,
+  rows,
+  medications = [],
+  about = new Map(),
+  held = [],
+  picked,
+  classHref,
+  allHref,
+  entryHref,
+  codeHref,
+}) {
+  const groups = new Map();
+  // A row with no class says the sources disagree about the relation for the entry, naming the ingredient.
+  const withheld = new Map();
+  for (const row of rows) {
+    if (row.class === undefined) {
+      const kept = withheld.get(row.entry) ?? {
+        name: row.medication,
+        ingredients: new Set(),
+        relations: new Set(),
+      };
+      kept.ingredients.add(row.through);
+      kept.relations.add(row.relation);
+      withheld.set(row.entry, kept);
+      continue;
+    }
+    const key = `${row.relation} ${row.class}`;
+    if (!groups.has(key))
+      groups.set(key, {
+        relation: row.relation,
+        class: row.class,
+        medicines: new Map(),
+        origins: new Set(),
+      });
+    const group = groups.get(key);
+    if (!group.medicines.has(row.entry))
+      group.medicines.set(row.entry, {
+        entry: row.entry,
+        name: row.medication,
+        through: new Set(),
+      });
+    if (row.stated !== "true")
+      group.medicines.get(row.entry).through.add(row.through);
+    group.origins.add(row.origin);
+  }
+  const nameOf = (code) =>
+    about.get(code)?.name?.label ??
+    about.get(code)?.notation ??
+    notationOf(code);
+  const classed = [...groups.values()].sort(
+    (a, b) =>
+      RELATIONS.findIndex(([each]) => each === a.relation) -
+        RELATIONS.findIndex(([each]) => each === b.relation) ||
+      nameOf(a.class).localeCompare(nameOf(b.class)),
+  );
+  const shown = classed.filter(
+    (group) => picked === undefined || group.class === picked,
+  );
+  const inAClass = new Set(
+    rows.filter((row) => row.class !== undefined).map((row) => row.entry),
+  );
+  const left = medications.filter(
+    ({ entry }) => !inAClass.has(entry) && !withheld.has(entry),
+  );
+  const from = (group) => {
+    const versions = [...group.origins].flatMap((origin) => {
+      const found = heldAt(origin, held);
+      return found === undefined ? [] : [found];
+    });
+    return versions.length === 0
+      ? undefined
+      : html`<p class="muted">From ${listed(versions.map(({ series, version }) => `${series.label}, ${versionName(version)}`))}.</p>`;
+  };
+  const link = (group) => {
+    const series = about.get(group.class)?.name?.origin;
+    const found = series === undefined ? undefined : heldAt(series, held);
+    return found === undefined || codeHref === undefined
+      ? nameOf(group.class)
+      : html`<a href=${codeHref(found.series, about.get(group.class).notation)}>${nameOf(group.class)}</a>`;
+  };
+  const credits = [
+    ...new Set(
+      classed.flatMap((group) =>
+        [...group.origins].flatMap(
+          (origin) => heldAt(origin, held)?.series.credit ?? [],
+        ),
+      ),
+    ),
+  ];
+  return html`<p><a href=${back}>Back to ${personName(pod)}</a></p>
+<h1>Medicines by class</h1>
+<p class="lead">${classed.length === 0 ? "None of this pod's active medicines is in a class the app's tables know." : "Which of the active medicines of this pod are in a class, by the classes MED-RT gives the drug."}</p>
+${
+  classed.length > 0 &&
+  html`<div class="card picker"><h2>Pick a class</h2><ul>
+<li><a href=${allHref} aria-current=${picked === undefined ? "true" : undefined}>All classes</a></li>
+${classed.map(
+  (group) =>
+    html`<li><a href=${classHref(group.class)} aria-current=${picked === group.class ? "true" : undefined}>${nameOf(group.class)}</a></li>`,
+)}
+</ul></div>`
+}
+${shown.map(
+  (group) => html`<div class="card"><h2>${link(group)}</h2>
+<p class="muted">${relationName(group.relation)}</p>
+<ul>${[...group.medicines.values()].map(
+    (medicine) =>
+      html`<li>${entryHref === undefined ? medicine.name : html`<a href=${entryHref(medicine.entry)}>${medicine.name}</a>`}${medicine.through.size > 0 && html` <span class="muted">through ${listed([...medicine.through].map(nameOf))}</span>`}</li>`,
+  )}</ul>
+${from(group)}</div>`,
+)}
+${picked !== undefined && shown.length === 0 && html`<p>None of this pod's active medicines is in that class.</p>`}
+${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
+${
+  withheld.size > 0 &&
+  html`<div class="card"><h2>Classes left out where the sources disagree</h2>
+<ul>${[...withheld.values()].map(
+    (each) =>
+      html`<li>${each.name}: MED-RT gives the forms of ${listed([...each.ingredients].map(nameOf))} different classes, so it gives the medicine no ${listed([...each.relations].map((relation) => relationName(relation).toLowerCase()))}.</li>`,
+  )}</ul></div>`
+}
+${
+  left.length > 0 &&
+  html`<div class="card"><h2>Not in a class here</h2>
+<p>${listed(left.map(({ medication }) => medication))}. MED-RT classes single ingredients, not the combination of several, and gives some single ingredients no class; a drug the tables do not map to an ingredient has no class here.</p></div>`
+}`;
 }
 
 /** The page of reference tables when the app holds none. */

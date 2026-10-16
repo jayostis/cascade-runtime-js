@@ -35,6 +35,8 @@ import {
 } from "./pods.mjs";
 import {
   checkedNote,
+  classesPage,
+  classesSaid,
   codePage,
   codesSaid,
   connectionDialog,
@@ -48,6 +50,7 @@ import {
   hospitalsPage,
   html,
   LABS,
+  MEDICATIONS,
   newPodDialog,
   noPods,
   noTables,
@@ -392,9 +395,12 @@ async function showPod(response, name, query, names) {
       ? lastShown.get(name)
       : await answersOf(await podNamed(name));
   lastShown.set(name, answers);
-  const [about, said] = await Promise.all([
+  const [about, said, held] = await Promise.all([
     aboutCodes(answers),
     podNamed(name).then((pod) => variantsOf(answers, pod)),
+    tables()
+      .then((kept) => kept.held())
+      .catch(() => []),
   ]);
   const changes = changesIn(answers[HISTORY], answers[LABS], { limit: 20 });
   const from = query.get("from");
@@ -430,9 +436,11 @@ async function showPod(response, name, query, names) {
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
     about,
+    held,
     said,
     changes,
     trendHref: (trend) => trendPath(name, trend),
+    classesHref: classesPath(name),
     ask: model !== undefined,
   });
   send(
@@ -534,6 +542,47 @@ async function showTrend(response, name, query, names) {
         suggestions: await suggested(name, { changes }),
       },
     ),
+  );
+}
+
+const classesPath = (name) => `${podPath(name)}classes`;
+
+/**
+ * The pod's active medicines by the class the tables give them, or with `query`'s `class`, the medicines in that class
+ * alone: `pod.medicationClasses()` names the classes, the tables their names. With no tables to name them the classes
+ * are shown by their codes.
+ */
+async function showClasses(response, name, query, names) {
+  const pod = await podNamed(name);
+  const [rows, medications] = await Promise.all([
+    pod.medicationClasses(),
+    pod.ask(MEDICATIONS),
+  ]);
+  const kept = await tables();
+  const [about, held] = await Promise.all([
+    classesSaid(rows, { tables: kept }).catch(() => undefined),
+    kept.held(),
+  ]);
+  const sources = sourcesOf(held);
+  const body = classesPage({
+    pod: name,
+    back: podPath(name),
+    rows,
+    medications,
+    about,
+    held,
+    picked: query.get("class") ?? undefined,
+    classHref: (code) =>
+      `${classesPath(name)}?${new URLSearchParams({ class: code })}`,
+    allHref: classesPath(name),
+    entryHref: (entry) => entryPath(name, entry),
+    codeHref: (series, notation) =>
+      `${tablePath(sources.find((each) => each.series.includes(series)))}?${new URLSearchParams({ code: notation })}`,
+  });
+  send(
+    response,
+    200,
+    await page("Medicines by class", body, { current: name, names }),
   );
 }
 
@@ -794,7 +843,7 @@ const server = createServer(async (request, response) => {
       );
     }
     const at =
-      /^\/pods\/([^/]+)\/(?:(hospitals|trend)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
+      /^\/pods\/([^/]+)\/(?:(hospitals|trend|classes)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
         pathname,
       );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
@@ -811,6 +860,8 @@ const server = createServer(async (request, response) => {
         );
       if (view === "trend" && !post)
         return await showTrend(response, name, url.searchParams, names);
+      if (view === "classes" && !post)
+        return await showClasses(response, name, url.searchParams, names);
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,

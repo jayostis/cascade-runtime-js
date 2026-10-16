@@ -16,6 +16,7 @@ import { build } from "esbuild";
 import {
   BRIDGE_GLUE,
   BRIDGE_WASM,
+  CODES,
   FILES_JSON,
   type Followed,
   kitsOf,
@@ -41,7 +42,7 @@ import {
   type Resolved,
 } from "@cascade-runtime/runtime/node";
 import { keptRows } from "../src/node/rowCache.js";
-import { LISTED, writeStarterCopies } from "../src/tables.js";
+import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -249,7 +250,12 @@ async function packStarterTables(
       );
     log(`${feed}: ${kept.length} starter copies`);
   }
-  await writeListed(folder, (path) => !path.endsWith(LISTED));
+  await writeListed(
+    folder,
+    (path) => !path.endsWith(LISTED),
+    (path) =>
+      read(path) && !path.endsWith(PUBLISHED_ROWS) && !path.endsWith(CODES),
+  );
 }
 
 /** Whether a pod reads the file: not an example, under `conformance/` or `fixtures/`. */
@@ -262,11 +268,13 @@ function read(path: string): boolean {
 /**
  * Lists every file under the folder, as a browser reads it over HTTP, and packs those a pod reads into one file beside
  * it, `<folder>.json`, so a browser fetches them at once. A browser is not told of the files `served` refuses, which
- * stay in the folder for Node: the tables' listings are 56 MB, which a page lists itself in its worker.
+ * stay in the folder for Node: the tables' listings are 56 MB, which a page lists itself in its worker. A file `packed`
+ * refuses is listed but not packed, and a browser fetches it by its own URL.
  */
 async function writeListed(
   folder: string,
   served: (path: string) => boolean = () => true,
+  packed: (path: string) => boolean = read,
 ): Promise<void> {
   const paths = (
     await readdir(folder, { recursive: true, withFileTypes: true })
@@ -279,7 +287,7 @@ async function writeListed(
     .sort();
   await writeJson(join(folder, FILES_JSON), paths);
   const files = new Map<string, Uint8Array>();
-  for (const path of paths.filter(read))
+  for (const path of paths.filter(packed))
     files.set(path, await readFile(join(folder, ...path.split("/"))));
   await writeFile(`${folder}.json`, JSON.stringify(packFolder(paths, files)));
 }

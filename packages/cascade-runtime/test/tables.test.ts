@@ -16,6 +16,7 @@ import {
   Refusal,
   tableTerms,
   tablesSettings,
+  type Term,
   type Triple,
   withTables,
   RULE_LIST,
@@ -49,6 +50,7 @@ const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const SPDX = "http://spdx.org/rdf/terms#";
 const PROV = "http://www.w3.org/ns/prov#";
+const PAV = "http://purl.org/pav/";
 const CURRENT = `${DCAT}hasCurrentVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
@@ -317,6 +319,15 @@ interface Mapping {
   readonly justification: (source: string, target: string) => string;
   /** The row's SSSOM cardinality, when its kind gives one. */
   readonly cardinality?: (source: string, target: string) => string;
+  /** The code system of the rows' targets, when it is not the sources'. */
+  readonly targetSystem?: string;
+  /** The predicate of the row from `source` to `target`, when kinds of the series' rows give several. */
+  readonly predicateOf?: (source: string, target: string) => string;
+  /** What else the row says. */
+  readonly extra?: (
+    source: string,
+    target: string,
+  ) => readonly (readonly [string, Term])[];
 }
 
 const INGREDIENTS: Mapping = {
@@ -348,56 +359,75 @@ async function withMappings(
   mapping: Mapping,
   line: readonly (readonly (readonly [string, string])[])[],
 ): Promise<{ served: Served; versions: string[] }> {
+  return withVersions(
+    served,
+    mapping,
+    line.map((pairs) => mappingRows(mapping, pairs)),
+  );
+}
+
+/** The rows of a mapping series' version, one for each `[source, target]`. */
+function mappingRows(
+  mapping: Mapping,
+  pairs: readonly (readonly [string, string])[],
+): Triple[] {
+  return pairs.flatMap(([source, target]) => {
+    const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
+    return [
+      [subject, iri(`${RDF}type`), iri("http://www.w3.org/2002/07/owl#Axiom")],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedSource"),
+        iri(mapping.system + source),
+      ],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
+        iri(mapping.predicateOf?.(source, target) ?? mapping.predicate),
+      ],
+      [
+        subject,
+        iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
+        iri((mapping.targetSystem ?? mapping.system) + target),
+      ],
+      [
+        subject,
+        iri("https://w3id.org/sssom/mapping_justification"),
+        iri(
+          `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
+        ),
+      ],
+      ...(mapping.cardinality === undefined
+        ? []
+        : [
+            [
+              subject,
+              iri("https://w3id.org/sssom/mapping_cardinality"),
+              literal(mapping.cardinality(source, target)),
+            ] as Triple,
+          ]),
+      ...(mapping.extra?.(source, target) ?? []).map(
+        ([predicate, object]): Triple => [subject, iri(predicate), object],
+      ),
+    ] as Triple[];
+  });
+}
+
+/** The feed with a series added, its line of versions each holding the rows given, the last current. */
+async function withVersions(
+  served: Served,
+  series: { series: string; label: string; kind: string },
+  line: readonly (readonly Triple[])[],
+): Promise<{ served: Served; versions: string[] }> {
   const files = new Map(served.files);
   const versions: string[] = [];
   let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
 @prefix rdfs: <${RDFS}> . @prefix rec: <${REC}> . @prefix spdx: <${SPDX}> .
-<${mapping.series}> a rec:ReferenceSeries ; rdfs:label "${mapping.label}" ; rec:tableKind rec:${mapping.kind} .
+<${series.series}> a rec:ReferenceSeries ; rdfs:label "${series.label}" ; rec:tableKind rec:${series.kind} .
 `;
-  for (const [index, pairs] of line.entries()) {
-    const rows = pairs.flatMap(([source, target]) => {
-      const subject = iri(`urn:test:${mapping.kind}-row:${source}-${target}`);
-      return [
-        [
-          subject,
-          iri(`${RDF}type`),
-          iri("http://www.w3.org/2002/07/owl#Axiom"),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedSource"),
-          iri(mapping.system + source),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedProperty"),
-          iri(mapping.predicate),
-        ],
-        [
-          subject,
-          iri("http://www.w3.org/2002/07/owl#annotatedTarget"),
-          iri(mapping.system + target),
-        ],
-        [
-          subject,
-          iri("https://w3id.org/sssom/mapping_justification"),
-          iri(
-            `https://w3id.org/semapv/vocab/${mapping.justification(source, target)}`,
-          ),
-        ],
-        ...(mapping.cardinality === undefined
-          ? []
-          : [
-              [
-                subject,
-                iri("https://w3id.org/sssom/mapping_cardinality"),
-                literal(mapping.cardinality(source, target)),
-              ] as Triple,
-            ]),
-      ] as Triple[];
-    });
+  for (const [index, rows] of line.entries()) {
     const previous = versions.at(-1);
-    const version = await versionName(mapping.series, previous, rows);
+    const version = await versionName(series.series, previous, rows);
     const bytes = await gzipped(
       new TextDecoder()
         .decode(ntriples(rows))
@@ -407,15 +437,15 @@ async function withMappings(
         .sort()
         .join("\n"),
     );
-    const url = `https://tables.example/rows/${mapping.kind}-${index}.nq.gz`;
+    const url = `https://tables.example/rows/${series.kind}-${series.series.slice(-12)}-${index}.nq.gz`;
     files.set(url, bytes);
-    turtle += `<${version}> prov:specializationOf <${mapping.series}> ; pav:version "${index + 1}" ;
+    turtle += `<${version}> prov:specializationOf <${series.series}> ; pav:version "${index + 1}" ;
   ${previous === undefined ? "" : `prov:wasRevisionOf <${previous}> ;`}
   dcat:distribution [ dcat:downloadURL <${url}> ; spdx:checksum [ spdx:checksumValue "${await hex(bytes)}" ] ] .
 `;
     versions.push(version);
   }
-  turtle += `<${mapping.series}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
+  turtle += `<${series.series}> dcat:hasCurrentVersion <${versions.at(-1)}> .`;
   const added = await new OxigraphStore().parse(turtle, FEED);
   return {
     served: { ...served, files, catalog: [...served.catalog, ...added] },
@@ -1484,6 +1514,105 @@ test("a code's ingredients are the targets of the first held product ingredients
   assert.equal(about.get(unmapped!)?.ingredients, undefined);
 });
 
+test("a pod that joined two allergies through a product ingredients version written with skos:broadMatch, by the matcher rules before the relation moved to obo:RO_0002248, keeps that Same and gains the one through the version written with the new relation", async () => {
+  const advil: [string, string] = ["153010", "5640"];
+  const ibuprofen: [string, string] = ["5640", "5640"];
+  const written = {
+    ...INGREDIENTS,
+    predicate: "http://www.w3.org/2004/02/skos/core#broadMatch",
+  };
+  const old = await withMappings(feed, written, [[advil, ibuprofen]]);
+  const next = await withVersions(feed, INGREDIENTS, [
+    mappingRows(written, [advil, ibuprofen]),
+    mappingRows(INGREDIENTS, [advil, ibuprofen]),
+  ]);
+  // Version 8 of the rule list reads the relation as skos:broadMatch; the shipped one reads obo:RO_0002248.
+  const { index, shipped, series } = await ruleList();
+  const listed = await parts
+    .newStore()
+    .parse(index, `${parts.vocabulary.iri}${RULE_LIST}references.ttl`);
+  const [eighth] = listed
+    .filter(
+      ([subject, property, version]) =>
+        property.value === `${PAV}version` &&
+        version.value === "8" &&
+        listed.some(
+          ([of, kind, to]) =>
+            of.value === subject.value &&
+            kind.value === `${PROV}specializationOf` &&
+            to.value === series,
+        ),
+    )
+    .map(([subject]) => subject.value);
+  assert.ok(eighth !== undefined);
+  const { vocabulary } = parts;
+  const before: Files = {
+    iri: vocabulary.iri,
+    read: async (path) =>
+      path === `${RULE_LIST}references.ttl`
+        ? new TextEncoder().encode(
+            index.replace(
+              `rec:shipsWith <${shipped}>`,
+              `rec:shipsWith <${eighth}>`,
+            ),
+          )
+        : vocabulary.read(path),
+    write: (path, bytes) => vocabulary.write(path, bytes),
+    list: (folder) => vocabulary.list(folder),
+  };
+  const store = new MemoryFiles("urn:test:tables/");
+  const folder = join(scratch, "pods", "broad-match");
+  const held = tablesOver(old.served, store, before);
+  await held.check();
+  let pod = await openPodWith({ ...parts, tables: held }, folder);
+  const allergies = ["153010", "5640"].map(
+    (code, index) => `<urn:cascade:output-${index}> a health:AllergyRecord .
+<urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
+  health:allergenCode <${RXNORM}${code}> ; rec:patient <${pod.subject}> .`,
+  );
+  const entered = await pod.enter(`${PREFIXES}
+<urn:cascade:this-entry> a prov:Activity ;
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+${allergies.join("\n")}`);
+  assert.equal(entered.refused, undefined);
+  await pod.close();
+  const [oldVersion, newVersion] = next.versions;
+  const joined = async (): Promise<string[]> =>
+    (
+      await pod.ask({
+        query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
+          ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+          VALUES ?used { <${oldVersion}> <${newVersion}> }
+          ?record pav:hasCurrentVersion/health:allergenCode ?code
+        } GROUP BY ?judgment ?used`,
+      })
+    )
+      .map(
+        ({ used = "", codes = "" }) =>
+          `${used === oldVersion ? "broadMatch" : "obo"}: ${codes.replaceAll(RXNORM, "").split(" ").sort().join(" ")}`,
+      )
+      .sort();
+
+  pod = await openPodWith({ ...parts, tables: held }, folder);
+  try {
+    assert.deepEqual(await joined(), ["broadMatch: 153010 5640"]);
+  } finally {
+    await pod.close();
+  }
+  const after = tablesOver(next.served, store);
+  await after.check({ cache: "no-cache" });
+  pod = await openPodWith({ ...parts, tables: after }, folder);
+  try {
+    assert.equal(pod.opened?.refused, undefined);
+    assert.deepEqual(await joined(), [
+      "broadMatch: 153010 5640",
+      "obo: 153010 5640",
+    ]);
+  } finally {
+    await pod.close();
+  }
+});
+
 test("an app's tables are the package's with each field of its own file, then of its code, in their place; and what an app cannot set is refused", async () => {
   const packaged = parts.local.config;
   const packageConfig = join(
@@ -1581,4 +1710,372 @@ test("an app's tables are the package's with each field of its own file, then of
     () => configureTables({}),
     "configureTables after a start that failed",
   );
+});
+
+const LOINC = spaceOf("LOINC");
+const MEDRT = spaceOf("MED-RT");
+const OBO = "http://purl.obolibrary.org/obo/";
+const SKOS_PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
+const XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer";
+
+const PANELS: Mapping = {
+  series: "urn:uuid:9a3c5e7f-1b2d-4f60-8a9b-0c1d2e3f4a5b",
+  label: "LOINC panel members",
+  kind: "PanelMembers",
+  system: LOINC,
+  predicate: `${OBO}RO_0002351`,
+  justification: () => "ManualMappingCuration",
+};
+
+const CLASSES: Mapping = {
+  series: "urn:uuid:2b4d6f81-3c5e-4a70-9b1c-2d3e4f5a6b7c",
+  label: "Drug classes",
+  kind: "DrugClasses",
+  system: RXNORM,
+  targetSystem: MEDRT,
+  predicate: `${REC}establishedPharmacologicClass`,
+  justification: () => "ManualMappingCuration",
+};
+
+const NAMES = (
+  series: string,
+  label: string,
+): { series: string; label: string; kind: string } => ({
+  series,
+  label,
+  kind: "CodeNames",
+});
+
+const named = (code: string, name: string): Triple => [
+  iri(code),
+  iri(SKOS_PREF_LABEL),
+  literal(name),
+];
+
+const PANEL = "24323-8";
+const LISINOPRIL = "29046";
+const ESTRADIOL = "4083";
+const FLUOROESTRADIOL = "2372221";
+const MECHANISMS = new Set(["N0000000174", "N0000000100", "N0000175869"]);
+
+/**
+ * The feed the panel and class tests share, built once: a panel and its members; a tablet, its precise ingredient and
+ * lisinopril, FDA's class on the precise ingredient only; a combination, mapped to its multiple ingredient concept; and
+ * estradiol, whose tablet maps to it and whose precise ingredient fluoroestradiol F-18 maps to it too, each classed
+ * differently.
+ */
+let planted: Promise<{ tables: Tables; classes: string }> | undefined;
+
+function plantedTables(): Promise<{ tables: Tables; classes: string }> {
+  planted ??= (async () => {
+    const place: Record<string, [number, string | undefined]> = {
+      "2951-2": [2, "R"],
+      "2823-3": [1, undefined],
+      "17861-6": [3, "R-a"],
+    };
+    const panels = await withMappings(
+      feed,
+      {
+        ...PANELS,
+        extra: (_, member) => [
+          [
+            `${REC}panelSequence`,
+            literal(String(place[member]![0]), XSD_INTEGER),
+          ],
+          ...(place[member]![1] === undefined
+            ? []
+            : [
+                [
+                  `${REC}observationRequiredInPanel`,
+                  literal(place[member]![1]),
+                ] as const,
+              ]),
+        ],
+      },
+      [Object.keys(place).map((member): [string, string] => [PANEL, member])],
+    );
+    const ingredients = await withMappings(panels.served, INGREDIENTS, [
+      [
+        ["314076", LISINOPRIL],
+        ["1546022", LISINOPRIL],
+        [LISINOPRIL, LISINOPRIL],
+        // A combination maps to the multiple ingredient concept, which MED-RT classes none of.
+        ["197885", "214618"],
+        // A product maps to its ingredient, never to its own precise ingredient.
+        ["197658", ESTRADIOL],
+        [FLUOROESTRADIOL, ESTRADIOL],
+        [ESTRADIOL, ESTRADIOL],
+      ],
+    ]);
+    const classes = await withMappings(
+      ingredients.served,
+      {
+        ...CLASSES,
+        predicateOf: (_, target) =>
+          MECHANISMS.has(target)
+            ? `${REC}mechanismOfAction`
+            : CLASSES.predicate,
+      },
+      [
+        [
+          ["1546022", "N0000175562"],
+          ["1546022", "N0000000174"],
+          [ESTRADIOL, "N0000175825"],
+          [ESTRADIOL, "N0000000100"],
+          [FLUOROESTRADIOL, "N0000177914"],
+          [FLUOROESTRADIOL, "N0000175869"],
+        ],
+      ],
+    );
+    const loinc = await withVersions(
+      classes.served,
+      NAMES("urn:uuid:5c7e9a1b-4d6f-4b82-8c3d-4e5f6a7b8c9d", "LOINC names"),
+      [
+        [
+          named(
+            `${LOINC}2823-3`,
+            "Potassium [Moles/volume] in Serum or Plasma",
+          ),
+          named(`${LOINC}2951-2`, "Sodium [Moles/volume] in Serum or Plasma"),
+          named(`${LOINC}${PANEL}`, "Comprehensive metabolic 2000 panel"),
+        ],
+      ],
+    );
+    const medrt = await withVersions(
+      loinc.served,
+      NAMES("urn:uuid:6d8f0b2c-5e70-4c93-9d4e-5f6a7b8c9d0e", "MED-RT names"),
+      [
+        [
+          named(
+            `${MEDRT}N0000175562`,
+            "Angiotensin Converting Enzyme Inhibitor [EPC]",
+          ),
+          named(`${RXNORM}1546022`, "lisinopril anhydrous"),
+          named(`${RXNORM}${ESTRADIOL}`, "estradiol"),
+        ],
+      ],
+    );
+    const tables = tablesOver(medrt.served);
+    await tables.check();
+    return { tables, classes: classes.versions[0]! };
+  })();
+  return planted;
+}
+
+test("a panel's page gives its members in order with the ones it requires, and is no generic mapping", async () => {
+  const { tables } = await plantedTables();
+  const facts = await tables.facts(`${LOINC}${PANEL}`);
+  assert.deepEqual(
+    facts.panels[0]?.members.map(({ notation, sequence, required, about }) => [
+      notation,
+      sequence,
+      required,
+      about?.name?.label,
+    ]),
+    [
+      ["2823-3", 1, undefined, "Potassium [Moles/volume] in Serum or Plasma"],
+      ["2951-2", 2, "R", "Sodium [Moles/volume] in Serum or Plasma"],
+      ["17861-6", 3, "R-a", undefined],
+    ],
+  );
+  assert.deepEqual(
+    facts.mappings.filter(({ series }) => series === PANELS.series),
+    [],
+  );
+});
+
+test("a lab result's code is named by LOINC and gives the panels that hold it", async () => {
+  const { tables } = await plantedTables();
+  const potassium = await tables.facts(`${LOINC}2823-3`);
+  assert.equal(
+    potassium.about?.name?.label,
+    "Potassium [Moles/volume] in Serum or Plasma",
+  );
+  assert.deepEqual(
+    potassium.panels.map(({ heldBy }) => [
+      heldBy.total,
+      heldBy.panels.map(({ notation, sequence }) => [notation, sequence]),
+    ]),
+    [[1, [[PANEL, 1]]]],
+  );
+});
+
+test("a drug is in the classes FDA gives its ingredient's only classed code, by relation, through the code the row is on", async () => {
+  const { tables } = await plantedTables();
+  const tablet = await tables.facts(`${RXNORM}314076`);
+  assert.deepEqual(
+    tablet.classes.map(({ in: each }) =>
+      each.map(({ relation, class: of, through }) => [
+        relation.slice(REC.length),
+        of.notation,
+        of.about?.name?.label,
+        through?.about?.name?.label,
+      ]),
+    ),
+    [
+      [
+        [
+          "establishedPharmacologicClass",
+          "N0000175562",
+          "Angiotensin Converting Enzyme Inhibitor [EPC]",
+          "lisinopril anhydrous",
+        ],
+        ["mechanismOfAction", "N0000000174", undefined, "lisinopril anhydrous"],
+      ],
+    ],
+  );
+});
+
+test("a class on the code itself is not reached through another, and a combination has none", async () => {
+  const { tables } = await plantedTables();
+  assert.deepEqual(
+    (await tables.facts(`${RXNORM}1546022`)).classes.flatMap(({ in: each }) =>
+      each.map(({ through }) => through),
+    ),
+    [undefined, undefined],
+  );
+  assert.deepEqual((await tables.facts(`${RXNORM}197885`)).classes, []);
+});
+
+test("precise ingredients classed differently give a product none of their classes, and each keeps its own", async () => {
+  const { tables } = await plantedTables();
+  const byCode = async (code: string) =>
+    (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
+      ({ in: each, withheld }) => [
+        ...each.map(
+          ({ relation, class: of, through }) =>
+            `${relation.slice(REC.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
+        ),
+        ...withheld.map(
+          ({ relation, ingredient }) =>
+            `${relation.slice(REC.length)} withheld, ${ingredient.about?.name?.label}`,
+        ),
+      ],
+    );
+  assert.deepEqual(await byCode("197658"), [
+    "establishedPharmacologicClass withheld, estradiol",
+    "mechanismOfAction withheld, estradiol",
+  ]);
+  assert.deepEqual(await byCode(FLUOROESTRADIOL), [
+    "establishedPharmacologicClass N0000177914",
+    "mechanismOfAction N0000175869",
+  ]);
+  assert.deepEqual(await byCode(ESTRADIOL), [
+    "establishedPharmacologicClass N0000175825",
+    "mechanismOfAction N0000000100",
+  ]);
+});
+
+test("the pod's medicines in a class are asked of the tables by the same rule as a code's page", async () => {
+  const { tables, classes } = await plantedTables();
+  const folder = join(scratch, "pods", "classes");
+  const pod = await openPodWith({ ...parts, tables }, folder);
+  try {
+    const names: Record<string, string> = {
+      "314076": "Lisinopril 10 MG Oral Tablet",
+      "197885": "Hydrochlorothiazide 12.5 MG / Lisinopril 10 MG Oral Tablet",
+      "197658": "Estradiol 1 MG Oral Tablet",
+      [FLUOROESTRADIOL]: "Fluoroestradiol F-18",
+    };
+    const medication = (code: string, index: number): string =>
+      `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/clinical/v1#Medication> .
+<urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
+  <https://ns.cascadeprotocol.org/clinical/v1#drugName> "${names[code]}" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#rxNormCode> <${RXNORM}${code}> ;
+  <https://ns.cascadeprotocol.org/clinical/v1#clinicalIntent> "prescribed" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#status> "active" ; rec:patient <${pod.subject}> .`;
+    const entered = await pod.enter(`${PREFIXES}
+<urn:cascade:this-entry> a prov:Activity ;
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+${Object.keys(names).map(medication).join("\n")}`);
+    assert.equal(entered.refused, undefined);
+    const rows = await pod.medicationClasses();
+    assert.deepEqual(
+      rows
+        .map(
+          ({
+            medication,
+            relation = "",
+            class: of = "",
+            through,
+            stated,
+            origin,
+          }) => [
+            medication,
+            relation.slice(REC.length),
+            of.slice(MEDRT.length),
+            through?.slice(RXNORM.length),
+            stated,
+            origin === classes,
+          ],
+        )
+        .sort(),
+      [
+        [
+          "Estradiol 1 MG Oral Tablet",
+          "establishedPharmacologicClass",
+          "",
+          ESTRADIOL,
+          "false",
+          true,
+        ],
+        [
+          "Estradiol 1 MG Oral Tablet",
+          "mechanismOfAction",
+          "",
+          ESTRADIOL,
+          "false",
+          true,
+        ],
+        [
+          "Fluoroestradiol F-18",
+          "establishedPharmacologicClass",
+          "N0000177914",
+          FLUOROESTRADIOL,
+          "true",
+          true,
+        ],
+        [
+          "Fluoroestradiol F-18",
+          "mechanismOfAction",
+          "N0000175869",
+          FLUOROESTRADIOL,
+          "true",
+          true,
+        ],
+        [
+          "Lisinopril 10 MG Oral Tablet",
+          "establishedPharmacologicClass",
+          "N0000175562",
+          "1546022",
+          "false",
+          true,
+        ],
+        [
+          "Lisinopril 10 MG Oral Tablet",
+          "mechanismOfAction",
+          "N0000000174",
+          "1546022",
+          "false",
+          true,
+        ],
+      ],
+    );
+    for (const [code, name] of Object.entries(names)) {
+      const said = (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
+        ({ in: each, withheld }) => [
+          ...each.map(
+            ({ relation, class: of }) => `${relation} ${MEDRT}${of.notation}`,
+          ),
+          ...withheld.map(({ relation }) => `${relation} `),
+        ],
+      );
+      const asked = rows
+        .filter((row) => row.medication === name)
+        .map((row) => `${row.relation} ${row.class ?? ""}`);
+      assert.deepEqual(said.sort(), asked.sort(), name);
+    }
+  } finally {
+    await pod.close();
+  }
 });

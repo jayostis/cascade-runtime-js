@@ -88,7 +88,13 @@ and an entry like any other: its entry shows each of its reports, with the lab
 it came from, beside what ClinVar says today (`variantClassification()`,
 `pod.agreement()` and `labels()`, gathered by `variantsSaid`), read from the
 app's current version of the series, with its credit; it records nothing in the
-pod.
+pod. A pod with active medications links to `/pods/<name>/classes`, its medicines
+by class (`pod.medicationClasses()`, the classes named by `classesSaid`): the
+classes the tables give each, one class alone at `?class=<class IRI>`, which
+medicines are in none, and which have a class left out because the sources class
+their ingredient's forms differently; a lab result coded in LOINC is named by LOINC's long common
+name, and a code's page in the tables shows a panel's members and the classes of a
+medication.
 Stop the app's server
 with Ctrl+C in its terminal, or by the process you started, never by killing
 every Node process.

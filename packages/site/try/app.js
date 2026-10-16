@@ -32,6 +32,8 @@ import {
 import { hospitalId, useDemoHospitals } from "./demo-hospitals.js";
 import {
   checkedNote,
+  classesPage,
+  classesSaid,
   closing,
   codePage,
   codesSaid,
@@ -47,6 +49,7 @@ import {
   html,
   LABS,
   layout,
+  MEDICATIONS,
   newPodDialog,
   noPods,
   noTables,
@@ -196,6 +199,10 @@ const trendHref = (pod, { test, medication }) =>
     ...(medication === undefined ? {} : { medication }),
   })}`;
 
+/** The address of a pod's medicines by class, one class alone when `picked` is its code. */
+const classesHref = (pod, picked) =>
+  `${podHref(pod)}&classes${picked === undefined ? "" : `&${new URLSearchParams({ class: picked })}`}`;
+
 /** The pages the model context offers as tools: the views of the page shown, and the changes of the pod shown. */
 const registry = toolRegistry(document.modelContext);
 /** The tools of the pod shown, and the controller whose signal ends them. */
@@ -285,6 +292,7 @@ function pageShown() {
       entryHref: (entry) => entryHref(current, entry),
       unheld: pod?.opened?.unheld,
       about,
+      held: state.tables,
       said,
       changes: (state.page.changes ??= changesIn(
         answers[HISTORY] ?? [],
@@ -292,6 +300,7 @@ function pageShown() {
         { limit: 20 },
       )),
       trendHref: (trend) => trendHref(current, trend),
+      classesHref: classesHref(current),
       register,
     }),
   };
@@ -469,6 +478,41 @@ async function showTrend(query) {
   );
 }
 
+/**
+ * The pod's active medicines by the class the tables give them, or with `picked` that class alone. The classes come
+ * from the engine and the tables, so the page waits for both.
+ */
+async function showClasses(picked) {
+  const { current } = state;
+  const [rows, medications] = await Promise.all([
+    pod.medicationClasses(),
+    pod.ask(MEDICATIONS),
+  ]);
+  const tables = await appTables();
+  const [about] = await Promise.all([
+    classesSaid(rows, { tables }).catch(() => undefined),
+    readTables(),
+  ]);
+  const sources = sourcesOf(state.tables);
+  render(
+    "Medicines by class",
+    classesPage({
+      pod: current,
+      back: podHref(current),
+      rows,
+      medications,
+      about,
+      held: state.tables,
+      picked,
+      classHref: (code) => classesHref(current, code),
+      allHref: classesHref(current),
+      entryHref: (entry) => entryHref(current, entry),
+      codeHref: (series, notation) =>
+        `${tableHref(sources.find((each) => each.series.includes(series)))}&${new URLSearchParams({ code: notation })}`,
+    }),
+  );
+}
+
 function showHospitals(text) {
   const { current, people } = state;
   render(
@@ -637,6 +681,7 @@ async function route() {
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   if (query.has("entry")) return showEntry(query.get("entry") ?? "");
   if (query.has("trend")) return showTrend(query);
+  if (query.has("classes")) return showClasses(query.get("class") ?? undefined);
   await showPod();
 }
 

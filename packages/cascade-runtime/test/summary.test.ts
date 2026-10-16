@@ -549,6 +549,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
   const CVX = "urn:test:cvx/";
   const ICD = "urn:test:icd/";
   const SCT = "urn:test:sct/";
+  const LOINC = "http://loinc.org/rdf/";
   const name = (label: string) => ({
     name: { label, altLabels: [], origin: "urn:x:names" },
   });
@@ -561,6 +562,10 @@ test("a pod's page names a row by the first of its codes the tables name, else b
       { entry: "i2", vaccine: "Hantavax", code: `${CVX}57` },
       { entry: "i3", vaccine: "Old flu", code: `${CVX}15` },
       { entry: "i4", vaccine: "Unlisted", code: `${CVX}999` },
+    ],
+    [LABS]: [
+      { entry: "l1", test: "K+", code: `${LOINC}2823-3` },
+      { entry: "l2", test: "Chloride", code: `${LOINC}2075-0` },
     ],
     [CONDITIONS]: [
       {
@@ -578,6 +583,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     [`${CVX}15`, retired(`${CVX}141`, `${CVX}150`)],
     [`${SCT}195967001`, { ...name("Asthma (disorder)"), ...retired() }],
     [`${ICD}J45.909`, name("Unspecified asthma, uncomplicated")],
+    [`${LOINC}2823-3`, name("Potassium [Moles/volume] in Serum or Plasma")],
   ]);
   assert.deepEqual(
     view.codesOf(answers).sort(),
@@ -588,6 +594,8 @@ test("a pod's page names a row by the first of its codes the tables name, else b
       `${CVX}999`,
       `${SCT}195967001`,
       `${ICD}J45.909`,
+      `${LOINC}2823-3`,
+      `${LOINC}2075-0`,
     ].sort(),
   );
   const props = { pod: "alex-rivera", signIn: () => "", findHospital: "" };
@@ -605,6 +613,8 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     "Old flu",
     "Unlisted",
     "Unspecified asthma, uncomplicated",
+    "Potassium [Moles/volume] in Serum or Plasma",
+    "Chloride",
   ])
     assert.ok(named.includes(shown), shown);
   assert.ok(
@@ -621,7 +631,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
       line.startsWith("Old flu was marked as different"),
     ),
   );
-  for (const hidden of ["Fluarix", "Hantavax", "Asthma (disorder)"])
+  for (const hidden of ["Fluarix", "Hantavax", "Asthma (disorder)", "K+"])
     assert.ok(!named.includes(hidden), hidden);
   assert.equal(
     named.filter((line: string) => line.startsWith("Retired code")).length,
@@ -629,7 +639,7 @@ test("a pod's page names a row by the first of its codes the tables name, else b
     "only the codes that named a row, or with none the first with a status, mark it",
   );
   const unnamed = words();
-  for (const shown of ["Fluarix", "Hantavax", "Asthma"])
+  for (const shown of ["Fluarix", "Hantavax", "Asthma", "K+"])
     assert.ok(unnamed.includes(shown), shown);
   assert.ok(!unnamed.some((line: string) => line.startsWith("Retired")));
 });
@@ -1064,6 +1074,99 @@ test("tables are browsed by source: a source is named by the words its tables sh
     notation,
     about: { name: { label, altLabels: [], origin: "n" } },
   });
+  const panelTable = {
+    ...GROUPS,
+    iri: "urn:uuid:7a1b",
+    label: "Example panel members",
+    credit: "Panels are LOINC's.",
+  };
+  const classTable = {
+    ...GROUPS,
+    iri: "urn:uuid:8c2d",
+    label: "Example drug classes",
+  };
+  const placed = (notation: string, label: string, place: object) => ({
+    ...coded(notation, label),
+    ...place,
+  });
+  const panelsAndClasses = textOf(
+    render(
+      view.codePage({
+        source,
+        held: [NAMES, groups, alone, panelTable, classTable],
+        facts: {
+          ...coded("24323-8", "Comprehensive metabolic panel"),
+          names: [],
+          status: [],
+          mappings: [],
+          panels: [
+            {
+              series: panelTable.iri,
+              version: "ni:///v2",
+              members: [
+                placed("2823-3", "Potassium", { sequence: 1, required: "R-a" }),
+                placed("2951-2", "Sodium", { sequence: 2, required: "R" }),
+                placed("17861-6", "Calcium", { sequence: 3, required: "Rflx" }),
+              ],
+              heldBy: {
+                total: 3,
+                panels: [placed("34567-8", "A larger panel", { sequence: 9 })],
+              },
+            },
+          ],
+          classes: [
+            {
+              series: classTable.iri,
+              version: "ni:///v2",
+              in: [
+                {
+                  relation: `${REC}establishedPharmacologicClass`,
+                  class: coded("N0000175562", "ACE inhibitor [EPC]"),
+                  through: coded("1546022", "lisinopril anhydrous"),
+                },
+                {
+                  relation: `${REC}chemicalStructure`,
+                  class: coded("M0014310", "Lisinopril"),
+                },
+              ],
+              withheld: [
+                {
+                  relation: `${REC}mechanismOfAction`,
+                  ingredient: coded("4083", "estradiol"),
+                },
+              ],
+            },
+          ],
+        },
+        codeHref,
+        back: "/tables/s/",
+      }),
+    ),
+  );
+  for (const said of [
+    "A panel of 3 members, in order:",
+    "2823-3 Potassium R-a",
+    "2951-2 Sodium required",
+    "No mechanism of action is given: the forms of 4083 estradiol are classed differently.",
+    "17861-6 Calcium Rflx",
+    "Itself a member of 3 panels:",
+    "34567-8 A larger panel",
+    "and 2 more.",
+    "Panels are LOINC's.",
+    "From Example panel members, version 2, Oct 8, 2026.",
+    "Established pharmacologic class: N0000175562 ACE inhibitor [EPC] through 1546022 lisinopril anhydrous",
+    "Chemical structure: M0014310 Lisinopril",
+    "From Example drug classes, version 2, Oct 8, 2026.",
+  ])
+    assert.ok(
+      panelsAndClasses.includes(said),
+      `${said} in ${panelsAndClasses}`,
+    );
+  assert.ok(
+    panelsAndClasses.indexOf("2823-3") < panelsAndClasses.indexOf("2951-2") &&
+      panelsAndClasses.indexOf("2951-2") < panelsAndClasses.indexOf("17861-6"),
+    "members come in the order they were given",
+  );
   const code = textOf(
     render(
       view.codePage({
@@ -1107,6 +1210,199 @@ test("tables are browsed by source: a source is named by the words its tables sh
     "From Lone table, version 2, Oct 8, 2026.",
   ])
     assert.ok(code.includes(said), `${said} in ${code}`);
+});
+
+test("a pod's page credits the table whose names it shows, once, and no other", () => {
+  const code = "http://loinc.org/rdf/2823-3";
+  const answers = {
+    [LABS]: [
+      { entry: "l1", test: "K+", code },
+      { entry: "l2", test: "K again", code },
+    ],
+  };
+  const about = new Map<string, object>([
+    [
+      code,
+      {
+        name: {
+          label: "Potassium [Moles/volume] in Serum or Plasma",
+          altLabels: [],
+          origin: "urn:x:loinc-1",
+        },
+      },
+    ],
+  ]);
+  const held = [
+    {
+      iri: "urn:x:loinc",
+      versions: [{ iri: "urn:x:loinc-1" }],
+      credit: "This material contains content from LOINC.",
+    },
+    {
+      iri: "urn:x:other",
+      versions: [{ iri: "urn:x:other-1" }],
+      credit: "Another table's credit.",
+    },
+  ];
+  const shown = (props: object) =>
+    textOf(
+      render(
+        view.podPage(answers, {
+          pod: "alex-rivera",
+          signIn: () => "",
+          findHospital: "",
+          ...props,
+        }),
+      ),
+    );
+  const credited = shown({ about, held });
+  assert.equal(
+    credited.split("This material contains content from LOINC.").length,
+    2,
+  );
+  assert.ok(!credited.includes("Another table's credit."));
+  assert.ok(
+    !shown({ about: new Map(), held }).includes("content from LOINC"),
+    "a name the tables did not give has no credit",
+  );
+});
+
+test("the medicines by class page groups the pod's active medicines under each class, one class alone when picked, with the table and version each came from and its credit, and says which medicines are in none and why", () => {
+  const MEDRT = "https://ns.cascadeprotocol.org/codes/medrt/";
+  const ORIGIN = "urn:x:classes-1";
+  const series = {
+    ...GROUPS,
+    iri: "urn:x:classes",
+    label: "Example drug classes",
+    credit: "Classes are FDA's.",
+    versions: [{ iri: ORIGIN, label: "1", issued: "2026-10-08" }],
+  };
+  const row = (
+    entry: string,
+    medication: string,
+    cls: string | undefined,
+    relation = "establishedPharmacologicClass",
+    on = "1546022",
+    stated = "false",
+  ) => ({
+    entry,
+    medication,
+    ...(cls !== undefined && { class: `${MEDRT}${cls}` }),
+    relation: `${REC}${relation}`,
+    origin: ORIGIN,
+    through: `http://www.nlm.nih.gov/research/umls/rxnorm/${on}`,
+    stated,
+  });
+  const rows = [
+    row("e4", "Estradiol 1 MG Oral Tablet", undefined, undefined, "4083"),
+    row(
+      "e5",
+      "Fluoroestradiol F-18",
+      "N0000177914",
+      undefined,
+      "2372221",
+      "true",
+    ),
+    row("e1", "Lisinopril 10 MG Oral Tablet", "N0000175562"),
+    row(
+      "e1",
+      "Lisinopril 10 MG Oral Tablet",
+      "N0000000174",
+      "mechanismOfAction",
+    ),
+    row("e2", "Enalapril", "N0000175562"),
+  ];
+  const medications = [
+    { entry: "e1", medication: "Lisinopril 10 MG Oral Tablet" },
+    { entry: "e2", medication: "Enalapril" },
+    { entry: "e3", medication: "Lisinopril with hydrochlorothiazide" },
+    { entry: "e4", medication: "Estradiol 1 MG Oral Tablet" },
+    { entry: "e5", medication: "Fluoroestradiol F-18" },
+  ];
+  const about = new Map<string, object>([
+    [
+      `${MEDRT}N0000175562`,
+      {
+        notation: "N0000175562",
+        name: {
+          label: "Angiotensin Converting Enzyme Inhibitor [EPC]",
+          altLabels: [],
+          origin: ORIGIN,
+        },
+      },
+    ],
+    [
+      `${MEDRT}N0000000174`,
+      {
+        notation: "N0000000174",
+        name: {
+          label: "Angiotensin-converting Enzyme Inhibitors",
+          altLabels: [],
+          origin: ORIGIN,
+        },
+      },
+    ],
+    [
+      "http://www.nlm.nih.gov/research/umls/rxnorm/1546022",
+      {
+        notation: "1546022",
+        name: { label: "lisinopril anhydrous", altLabels: [], origin: ORIGIN },
+      },
+    ],
+    [
+      "http://www.nlm.nih.gov/research/umls/rxnorm/4083",
+      {
+        notation: "4083",
+        name: { label: "estradiol", altLabels: [], origin: ORIGIN },
+      },
+    ],
+  ]);
+  const props = {
+    pod: "priya-natarajan",
+    back: "/pods/priya-natarajan/",
+    rows,
+    medications,
+    about,
+    held: [series],
+    classHref: (code: string) => `/classes?class=${encodeURIComponent(code)}`,
+    allHref: "/classes",
+    entryHref: (entry: string) => `/entries/${entry}`,
+  };
+  const all = textOf(render(view.classesPage(props)));
+  for (const said of [
+    "Angiotensin Converting Enzyme Inhibitor [EPC] Established pharmacologic class",
+    "Lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+    "Enalapril through lisinopril anhydrous",
+    "Mechanism of action",
+    "From Example drug classes, version 1, Oct 8, 2026.",
+    "Classes are FDA's.",
+    "Not in a class here",
+    "Lisinopril with hydrochlorothiazide. MED-RT classes single ingredients",
+    "Classes left out where the sources disagree",
+    "Estradiol 1 MG Oral Tablet: MED-RT gives the forms of estradiol different classes, so it gives the medicine no established pharmacologic class.",
+  ])
+    assert.ok(all.includes(said), `${said} in ${all}`);
+  assert.ok(
+    all.includes("Fluoroestradiol F-18") &&
+      !all.includes("Fluoroestradiol F-18 through"),
+    "a class on a code the entry states is not through anything",
+  );
+  assert.ok(
+    !all.includes("Estradiol 1 MG Oral Tablet through"),
+    "a class left out is not reached",
+  );
+  assert.ok(
+    all.indexOf("Established pharmacologic class") <
+      all.indexOf("Mechanism of action"),
+    "the relations come in MED-RT's order",
+  );
+  const picked = textOf(
+    render(view.classesPage({ ...props, picked: `${MEDRT}N0000000174` })),
+  );
+  assert.ok(picked.includes("Lisinopril 10 MG Oral Tablet"));
+  assert.ok(!picked.includes("Enalapril through"), "only the class picked");
+  const none = textOf(render(view.classesPage({ ...props, rows: [] })));
+  assert.ok(none.includes("None of this pod's active medicines is in a class"));
 });
 
 test("what a check did, in one note", () => {

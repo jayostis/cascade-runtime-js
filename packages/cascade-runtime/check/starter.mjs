@@ -896,6 +896,28 @@ try {
       assert.match(page, /<p class="note" role="status">[^<]+<\/p>/);
     },
   );
+  await behaviour(
+    "Priya's potassium result is named by LOINC, and the class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous",
+    async () => {
+      const pod = readable(await served(server, "/pods/priya-natarajan/"));
+      assert.ok(
+        pod.includes("Potassium [Moles/volume] in Serum or Plasma"),
+        "her potassium result is not named by LOINC",
+      );
+      assert.ok(
+        pod.includes("Which of these medicines are in a class?"),
+        "her page does not offer the class question",
+      );
+      const classes = readable(
+        await served(server, "/pods/priya-natarajan/classes"),
+      );
+      for (const said of [
+        "Angiotensin Converting Enzyme Inhibitor [EPC]",
+        "lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+      ])
+        assert.ok(classes.includes(said), `${said} is not on ${classes}`);
+    },
+  );
 } finally {
   await server.stop();
 }

@@ -141,6 +141,28 @@ combination maps to its own multiple-ingredient concept (RxNorm's MIN),
 never to each of its ingredients, so lisinopril and lisinopril with
 hydrochlorothiazide share none.
 
+A LOINC code a pod's lab result states is named by LOINC's long common name where
+the app holds the LOINC names. `facts(code)` gives, beside the rest, `panels`: for
+a LOINC panel its `members` by their sequence, each with whether the panel
+requires it (`required`), and for a member the panels that hold it (`heldBy`, a
+page of them); and `classes`: for an RxNorm code the classes of its ingredient,
+each `in` list a `relation` (`rec:establishedPharmacologicClass`,
+`rec:mechanismOfAction`, `rec:physiologicEffect` or `rec:chemicalStructure`), the
+`class` with its name, and `through`, the code FDA gave the class to when it is
+not the code asked of (FDA classes lisinopril on lisinopril anhydrous, not on a
+tablet of it). A class is joined only on exact evidence, relation by relation: a
+row on the code itself, else the rows of the codes that map to its ingredient
+(the ingredient and its precise ingredients) when every one of them that has a
+row of the relation gives the same classes. When they differ (estradiol and
+fluoroestradiol F-18) a product gets none of them, and `withheld` names the
+relation and the ingredient. `pod.medicationClasses()` says which of the pod's
+active medications are in which class (`entry`, `medication`, `class`,
+`relation`, `origin`, `through`, `stated`: whether the class is on a code the
+entry states), by the app's current tables; a row with no `class` is a relation
+withheld, `through` the ingredient. It writes nothing. A combination of
+ingredients is in no class, since MED-RT classes none, and the starter's page
+says so.
+
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with
 `configureTables({ ... })` before the first pod opens; each field given replaces
