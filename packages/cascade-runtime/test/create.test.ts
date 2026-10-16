@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import { agentPrompt, create, type Terminal } from "../src/create.js";
+import { agentPrompt, create, KITS, type Terminal } from "../src/create.js";
 
 const ADDRESS =
   "https://example.org/releases/download/build-0/cascade-runtime-0.0.0.tgz";
@@ -148,7 +148,7 @@ test("a terminal that sets up the tables reports each phase with its seconds, be
         text.indexOf("Loading the pod alex-rivera"),
       "a setup line came after the first kit's",
     );
-    assert.equal(terminal.done.length, 4, "the kits loaded");
+    assert.equal(terminal.done.length, 1 + KITS.length, "the kits loaded");
   }
 });
 
@@ -167,7 +167,7 @@ test("a terminal offers a model once the app is made, and says how to add one la
           offered.push(made);
           assert.equal(
             terminal.done.length,
-            4,
+            1 + KITS.length,
             "it offered once the pods were loaded",
           );
           return taken;

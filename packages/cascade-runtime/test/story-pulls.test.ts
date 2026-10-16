@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
 import type { Story } from "@cascade-runtime/demo-hospital";
 import { loadStories } from "@cascade-runtime/demo-hospital/node";
-import { kitDownload } from "cascade-runtime/fixtures";
+import { findChanges, openPod } from "cascade-runtime";
+import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { storyPulls } from "./story-pulls.js";
 
 const KIT = "tamsin-vale";
@@ -69,5 +71,36 @@ test("each pull holds the medication and the results as they stood on its date",
         .sort(),
       name,
     );
+  }
+});
+
+test("the kit's pod, replayed from its story as the starter loads it, gives the story's finding", async () => {
+  const at = await mkdtemp(join(tmpdir(), "cascade-runtime-story-pulls-"));
+  try {
+    await replayKit(KIT, join(at, KIT));
+    const pod = await openPod(join(at, KIT));
+    try {
+      const found = await findChanges(pod);
+      assert.deepEqual(
+        found.map(({ kind, medication, test, direction }) => ({
+          kind,
+          medication: medication.notation,
+          date: medication.date,
+          test: test.notation,
+          direction,
+        })),
+        story.findings.map(({ kind, medication, date, test, direction }) => ({
+          kind,
+          medication,
+          date,
+          test,
+          direction,
+        })),
+      );
+    } finally {
+      await pod.close();
+    }
+  } finally {
+    await rm(at, { recursive: true, force: true });
   }
 });
