@@ -34,6 +34,7 @@
     "build:package": "tsc -b && node packages/cascade-runtime/dist/pack/pack.js",
     "serve:pages": "tsc -b && node packages/site/dist/src/node/cli.js serve-pages",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
+    "brands": "tsc -b && node packages/demo-hospital/dist/src/node/brands-cli.js packages/cascade-runtime/src/connect/demo-brands.ts",
     "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js"
   },
   "devDependencies": {
