@@ -11,23 +11,98 @@ import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
 import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
+import { namedVersions } from "./matcher.js";
 import {
   compile,
   type Compiled,
   type Compiling,
   type Reading,
 } from "./phrases.js";
-import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
-import { referenceIndex } from "./references.js";
+import {
+  blank,
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  type Term,
+  type Triple,
+  written,
+} from "./rdf.js";
+import { referenceIndex, References } from "./references.js";
 import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Dataset, StoreFactory } from "./store.js";
+import { Refusal, REC } from "./step.js";
+import type { Dataset, StoreFactory, Union } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
 const DOAP = "http://usefulinc.com/ns/doap#";
 const DCT = "http://purl.org/dc/terms/";
+const REFERENCES_GRAPH = "urn:cascade:references";
+
+/**
+ * Adds the tables to the pod as a `Then` reads it: the rows of each series' version current then as a graph named by
+ * the version, outside the default graph, and the descriptions of those versions and their series as
+ * `urn:cascade:references`, in it. A series whose current version is not in the folder is left out, as the matcher
+ * leaves it; so is a series the pod names several current versions of, which the matcher refuses its step over: a read
+ * refuses nothing.
+ */
+async function addTables(
+  union: Union,
+  tables: References,
+  rows: (version: string) => Promise<readonly Triple[]>,
+): Promise<void> {
+  const named = await namedVersions(union);
+  const described: Triple[] = [];
+  for (const { value: series } of tables.index.subjects(
+    `${RDF}type`,
+    iri(`${REC}ReferenceSeries`),
+  )) {
+    let version: string | undefined;
+    try {
+      version = tables.current(series, named.get(series) ?? []);
+    } catch (error) {
+      if (error instanceof Refusal) continue;
+      throw error;
+    }
+    if (version === undefined) continue;
+    await union.store.add(await rows(version), { graph: version });
+    described.push(
+      ...tables.description(version),
+      ...tables.description(series),
+    );
+  }
+  await union.add(await unstated(union, described), REFERENCES_GRAPH);
+}
+
+/**
+ * The triples the default graph does not yet hold: it is a set, and the store would answer a triple two graphs hold
+ * twice.
+ */
+async function unstated(
+  union: Union,
+  triples: readonly Triple[],
+): Promise<Triple[]> {
+  if (triples.length === 0) return [];
+  const key = (subject: Term, predicate: Term, object: Term): string =>
+    `${written(subject)} ${written(predicate)} ${written(object)}`;
+  const subjects = [...new Set(triples.map(([s]) => written(s)))];
+  const { rows } = await union.select(
+    `SELECT ?s ?p ?o WHERE { VALUES ?s { ${subjects.join(" ")} } ?s ?p ?o }`,
+  );
+  const held = new Set<string>();
+  for (const row of rows) {
+    const [subject, predicate, object] = [
+      row.get("s"),
+      row.get("p"),
+      row.get("o"),
+    ];
+    if (subject && predicate && object)
+      held.add(key(subject, predicate, object));
+  }
+  return triples.filter(([s, p, o]) => !held.has(key(s, p, o)));
+}
 
 export type Outcome = "passed" | "failed" | "inapplicable";
 
@@ -236,6 +311,13 @@ class Run {
   readonly layout: Layout;
   readonly #references = new Map<string, Promise<Graph>>();
   readonly #handles = new Map<string, ReturnType<typeof Words.handlesOf>>();
+  /** Each folder of tables a story holds, read once. */
+  readonly #held = new Map<string, Promise<References | undefined>>();
+  /** Each version's rows, by the tables that hold it, read once. */
+  readonly #versions = new WeakMap<
+    References,
+    Map<string, Promise<readonly Triple[]>>
+  >();
 
   constructor(options: ConformanceOptions, layout: Layout) {
     this.#options = options;
@@ -247,13 +329,18 @@ class Run {
     return compilingOf(vocabulary, people, newStore, this.#references);
   }
 
-  /** The pod as it stood at the node, under the lens, its steps named as the example names them. */
+  /**
+   * The pod as it stood at the node, under the lens, its steps named as the example names them; given the folder of the
+   * person's scripted input, with the tables the story then holds; a kit's checks read the same dataset and look only at
+   * the files under the pod's address.
+   */
   dataset(
     node: Node,
     lens: string,
     names?: readonly string[],
+    folder?: string,
   ): Promise<Dataset> {
-    const key = JSON.stringify([lens, names]);
+    const key = JSON.stringify([lens, names, folder]);
     let found = node.datasets.get(key);
     if (found === undefined) {
       const replayed = named(node.replayed, names);
@@ -268,9 +355,61 @@ class Run {
                 lens,
                 this.#options.newStore(),
                 this.#options.derive,
-              );
+              ).then(async (union) => {
+                const tables =
+                  folder === undefined
+                    ? undefined
+                    : await this.#tables(folder, replayed);
+                if (tables !== undefined)
+                  await addTables(union, tables, (version) =>
+                    this.#rows(tables, version),
+                  );
+                return union;
+              });
       found.catch(() => undefined);
       node.datasets.set(key, found);
+    }
+    return found;
+  }
+
+  #rows(tables: References, version: string): Promise<readonly Triple[]> {
+    let held = this.#versions.get(tables);
+    if (held === undefined) {
+      held = new Map();
+      this.#versions.set(tables, held);
+    }
+    let found = held.get(version);
+    if (found === undefined) {
+      found = tables.rows(version);
+      held.set(version, found);
+    }
+    return found;
+  }
+
+  /** The tables the story holds after its last step: the last open's, or else the person's `references/`, if any. */
+  #tables(folder: string, replayed: Replayed): Promise<References | undefined> {
+    const opened = replayed.steps.findLast(
+      ({ step, refused }) =>
+        step.happened.kind === "open" && refused === undefined,
+    )?.step.happened;
+    const open = opened?.kind === "open" ? opened.tables : undefined;
+    const path = `${folder === "" ? "" : `${folder}/`}${open ?? "references/"}`;
+    let found = this.#held.get(path);
+    if (found === undefined) {
+      const { vocabulary, newStore } = this.#options;
+      found = vocabulary
+        .read(`${path}references.ttl`)
+        .then((bytes) =>
+          bytes === undefined
+            ? undefined
+            : References.of(
+                vocabulary,
+                path,
+                newStore,
+                open === undefined ? undefined : vocabulary,
+              ),
+        );
+      this.#held.set(path, found);
     }
     return found;
   }
@@ -310,14 +449,15 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
+    const { person } = compiled;
     const store = new LazyDataset(() =>
       this.dataset(
         node,
         lens,
         replayed.steps.map(({ step }) => step.name),
+        person.folder,
       ),
     );
-    const { person } = compiled;
     let handles = this.#handles.get(feature.folder);
     if (handles === undefined) {
       handles = Words.handlesOf(vocabulary, feature.folder);
@@ -499,7 +639,7 @@ export async function runConformance(
         kit: feature.folder,
         folder: person.folder,
         replayed,
-        final: await run.dataset(node, KIT_LENS, names),
+        final: await run.dataset(node, KIT_LENS, names, person.folder),
         newStore: options.newStore,
         layout,
         shapes: options.shapes as Shapes,

@@ -17,6 +17,7 @@ export const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
 
 export const KINDS: Readonly<Record<string, string>> = {
   allergy: `${HEALTH}AllergyRecord`,
@@ -415,7 +416,7 @@ export class Words {
     ).map(([version]) => version ?? "");
   }
 
-  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document. */
+  /** Anything in words: a record, profile or person; a judgment; a reference series or version; a version of a record; a document; a record's entry. */
   async thing(words: string): Promise<string> {
     const person = this.#people.get(words);
     if (person !== undefined) return this.#remember(words, person.subject);
@@ -441,6 +442,15 @@ export class Words {
           FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier }
         }`,
         "document",
+      );
+    }
+    const entry = /^the entry of (.+)$/.exec(words);
+    if (entry !== null) {
+      const record = await this.record(entry[1] ?? "");
+      return this.#one(
+        words,
+        `SELECT DISTINCT ?entry WHERE { GRAPH ?view { ?entry <${MERGED_FROM}> <${record}> } }`,
+        "entry",
       );
     }
     const reference = await this.reference(words);

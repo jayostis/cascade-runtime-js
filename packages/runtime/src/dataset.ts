@@ -68,7 +68,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
-): Promise<Dataset> {
+): Promise<Union> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
   );

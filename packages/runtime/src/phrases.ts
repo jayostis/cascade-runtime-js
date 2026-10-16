@@ -4,6 +4,7 @@ import {
   ParameterTypeRegistry,
 } from "@cucumber/cucumber-expressions";
 import { compared, differences } from "./compare.js";
+import { QUERIES } from "./derive.js";
 import type { StatedStep } from "./features.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
@@ -82,7 +83,7 @@ export interface Compiled {
   /** The step the pod is read as it stood after, by its name, and the lens; the last step under everyday otherwise. */
   at?: { readonly index: number; readonly lens: string };
   readonly checks: { readonly text: string; readonly check: Check }[];
-  /** The query the last `When the query is:` gave, which the `it answers` steps after it read. */
+  /** The query the last `When the query is:` or `When the query {name} is asked` gave, which the `it answers` steps after it read. */
   query?: string;
 }
 
@@ -703,6 +704,15 @@ function cellTerm(
   return undefined;
 }
 
+/** The query, refused unless it is a SELECT: an answer is rows. */
+function selectOnly(query: string): string {
+  const prologue =
+    /^(?:\s+|#[^\n]*|BASE\s*<[^>]*>|PREFIX\s+[\w-]*:\s*<[^>]*>)*/i;
+  if (!/^SELECT\b/i.test(query.replace(prologue, "")))
+    throw new Error("the query is no SELECT: an answer is rows");
+  return query;
+}
+
 async function queryAnswers(
   reading: Reading,
   query: string,
@@ -976,11 +986,17 @@ const DEFINITIONS: Definition[] = [
     (compiled, _args, stated) => {
       if (stated.docString === undefined)
         throw new Error("the step gives no query beneath it");
-      const prologue =
-        /^(?:\s+|#[^\n]*|BASE\s*<[^>]*>|PREFIX\s+[\w-]*:\s*<[^>]*>)*/i;
-      if (!/^SELECT\b/i.test(stated.docString.replace(prologue, "")))
-        throw new Error("the query is no SELECT: an answer is rows");
-      compiled.query = stated.docString;
+      compiled.query = selectOnly(stated.docString);
+    },
+  ],
+  [
+    "the query {name} is asked",
+    async (compiled, [name], _stated, { vocabulary }) => {
+      const path = `${QUERIES}${String(name)}`;
+      const bytes = await vocabulary.read(path);
+      if (bytes === undefined)
+        throw new Error(`the vocabulary has no query ${path}`);
+      compiled.query = selectOnly(new TextDecoder().decode(bytes));
     },
   ],
 
