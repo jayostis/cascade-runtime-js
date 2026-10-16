@@ -567,6 +567,13 @@ test("the guide's lists are the vocabulary's and the starter's", async () => {
     ),
     sorted(Object.keys(starter.scripts)),
   );
+  const server = await readFile(join(PACKAGE, "starter", "server.mjs"), "utf8");
+  const stated = (sections.get("The starter") ?? []).join("\n");
+  for (const [, name] of server.matchAll(/env\.(CASCADE_[A-Z_]+)/g))
+    assert.ok(
+      stated.includes(`\`${name}\``),
+      `no item under "The starter" names ${name}`,
+    );
 });
 
 test("the starter's AGENTS.md points at the guide that ships", async () => {

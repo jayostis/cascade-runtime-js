@@ -313,7 +313,7 @@ function pageShown() {
           back: podHref(current),
           connection,
           bring: "bring",
-          world: { asOf: state.world, action: WORLD_DATE },
+          pulledAsOf: connection.asOf,
           ...connection.said,
         }),
       signIn: (hospital) =>
@@ -322,6 +322,7 @@ function pageShown() {
           `Sign in at ${hospitalName(hospital.name)}`,
         ),
       findHospital: `${podHref(current)}&hospitals`,
+      world: { asOf: state.world, action: WORLD_DATE },
       entryHref: (entry) => entryHref(current, entry),
       unheld: pod?.opened?.unheld,
       about,
@@ -627,6 +628,7 @@ function showHospitals(text) {
       text,
       search: `${podHref(current)}&hospitals`,
       signIn: (row) => signInButton(row.fhirBase, "Sign in"),
+      world: { asOf: state.world, action: WORLD_DATE },
       people,
       back: podHref(current),
     }),
@@ -840,7 +842,7 @@ async function signIn(fhirBase, popup) {
     popup?.close();
     throw new Error("That hospital is not in the directory.");
   }
-  const shown = { row, step: "signing in", requests: 0 };
+  const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
   state.connection = shown;
   const answers = await answered();
   state.page = {
@@ -907,7 +909,9 @@ async function changeWorld(text) {
   await hospitalsReady;
   await setWorldDate(WORKER, asOf);
   state.world = asOf;
-  redraw();
+  const search = new URLSearchParams(location.search);
+  if (search.has("hospitals")) showHospitals(search.get("q") ?? "");
+  else redraw();
 }
 
 /**

@@ -2014,7 +2014,7 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
   }
 });
 
-test("in try/, the world's date set in a connection's box shows on the next sign-in page of the hospital, stays after a reload, and Today takes it away", async () => {
+test("in try/, the world's date set before a sign-in shows on the hospital's sign-in page and in the box as the date the pull was made under, survives the worker being stopped, and Today takes it away", async () => {
   const demo = await loadHospitals();
   const ines = view
     .demoPeople(demo)
@@ -2054,13 +2054,27 @@ test("in try/, the world's date set in a connection's box shows on the next sign
       } else await popup.close();
       return stood;
     };
-    const saysIn = (what: string) =>
+    const world = page.locator(".world-date");
+    const worldSays = (what: string) =>
       page.waitForFunction(
         (text) =>
-          document.querySelector("#connection")?.textContent?.includes(text) ??
+          document.querySelector(".world-date")?.textContent?.includes(text) ??
           false,
         what,
       );
+    const boxSays = async () => (await box.textContent()) ?? "";
+    /** Closes the connection's box, and sets the world's date to a day, or with undefined takes it away. */
+    const setDate = async (day: string | undefined) => {
+      if ((await box.count()) > 0) await box.locator("a.close").click();
+      await settled(page);
+      await world.locator("summary").click();
+      if (day === undefined)
+        await world.getByRole("button", { name: "Today", exact: true }).click();
+      else {
+        await world.locator('input[type="date"]').fill(day);
+        await world.getByRole("button", { name: "Set", exact: true }).click();
+      }
+    };
 
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
@@ -2068,37 +2082,29 @@ test("in try/, the world's date set in a connection's box shows on the next sign
     await page.waitForFunction(
       () => navigator.serviceWorker.controller !== null,
     );
+    await worldSays("Hospitals answer with everything they hold.");
     assert.equal(await signInPage(true), undefined);
     await settled(page);
-    await saysIn("Hospitals answer with everything they hold.");
+    assert.ok(!(await boxSays()).includes("Pulled as of"));
 
-    await box
-      .locator("summary", { hasText: "Change the world's date" })
-      .click();
-    await box.locator('input[type="date"]').fill("2024-02-01");
-    await box.getByRole("button", { name: "Set", exact: true }).click();
-    await saysIn("Hospitals answer as of 1 February 2024.");
+    await setDate("2024-02-01");
+    await worldSays("Hospitals answer as of 1 February 2024.");
 
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("ServiceWorker.enable");
+    await cdp.send("ServiceWorker.stopAllWorkers");
     await page.goto(`${served.url}try/index.html?pod=ines-calloway`);
     await settled(page);
     await page.waitForFunction(
       () => navigator.serviceWorker.controller !== null,
     );
+    await worldSays("Hospitals answer as of 1 February 2024.");
     assert.equal(await signInPage(true), "2024-02-01T23:59:59Z");
     await settled(page);
-    await saysIn("Hospitals answer as of 1 February 2024.");
+    assert.ok((await boxSays()).includes("Pulled as of 1 February 2024."));
 
-    await box
-      .locator("summary", { hasText: "Change the world's date" })
-      .click();
-    assert.equal(
-      await box.locator('input[type="date"]').inputValue(),
-      "2024-02-01",
-    );
-    await box.getByRole("button", { name: "Today", exact: true }).click();
-    await saysIn("Hospitals answer with everything they hold.");
-    await box.locator("a.close").click();
-    await settled(page);
+    await setDate(undefined);
+    await worldSays("Hospitals answer with everything they hold.");
     assert.equal(await signInPage(false), undefined);
   } finally {
     await context.close();

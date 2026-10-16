@@ -463,7 +463,7 @@ async function showPod(response, name, query, names) {
           back: podPath(name),
           connection: shown,
           bring: `${podPath(name)}connections/${shown.n}`,
-          world: { asOf: hospitals.worldDate(), href: WORLD_DATE_AT },
+          pulledAsOf: shown.asOf,
           ...(await connectionView(name, shown)),
         });
   const body = podPage(answers, {
@@ -480,6 +480,7 @@ async function showPod(response, name, query, names) {
         `Sign in at ${hospitalName(hospital.name)}`,
       ),
     findHospital: `${podPath(name)}hospitals`,
+    world: worldDateAt(podPath(name)),
     entryHref: (entry) => entryPath(name, entry),
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
@@ -849,6 +850,7 @@ async function findHospital(response, name, text, names) {
     text,
     search: `${podPath(name)}hospitals`,
     signIn: (row) => signIn(name, row.fhirBase, "Sign in"),
+    world: worldDateAt(`${podPath(name)}hospitals`),
     people,
     back: podPath(name),
   });
@@ -937,21 +939,42 @@ async function imported(name, connection) {
 /** Where the world's date is shown and changed. */
 const WORLD_DATE_AT = "/world-date";
 
+/** The world's date as a page that comes from `back`, a path on this app, shows it, and its link to change it. */
+function worldDateAt(back) {
+  return {
+    asOf: hospitals.worldDate(),
+    href: `${WORLD_DATE_AT}?back=${encodeURIComponent(back)}`,
+  };
+}
+
+/** Where `/world-date` goes back to: `back` when it is a path on this app, else the home page. */
+function worldDateBack(back) {
+  if (back === null || !back.startsWith("/") || back.startsWith("//"))
+    return "/";
+  if (/[\\\s]/.test(back)) return "/";
+  const url = new URL(back, "http://app.invalid");
+  return url.origin === "http://app.invalid"
+    ? `${url.pathname}${url.search}`
+    : "/";
+}
+
 /**
  * The world's date: a page that says what the hospitals answer as of, and the post that sets it. A day or an instant
  * sets it; an empty date, the Today button's, takes it back to every version; anything else answers 400 with the page
  * and a sentence.
  */
 async function worldDateRoute(request, response, url) {
+  const back = worldDateBack(url.searchParams.get("back"));
+  const action = `${WORLD_DATE_AT}?back=${encodeURIComponent(back)}`;
   const shown = (status, problem) =>
     page(
       "The world's date",
       worldDatePage({
         asOf: hospitals.worldDate(),
-        action: WORLD_DATE_AT,
+        action,
         problem,
         done: url.searchParams.has("set") && status === 200,
-        back: "/",
+        back,
       }),
     ).then((body) => send(response, status, body));
   if (request.method !== "POST") return shown(200);
@@ -963,7 +986,10 @@ async function worldDateRoute(request, response, url) {
       `"${text}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
     );
   hospitals.setWorldDate(asOf);
-  return redirect(response, `${WORLD_DATE_AT}?set`);
+  return redirect(
+    response,
+    `${WORLD_DATE_AT}?set&back=${encodeURIComponent(back)}`,
+  );
 }
 
 /** A demo hospital's sign-in page, the form posted back to it included. */

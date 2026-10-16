@@ -3255,7 +3255,7 @@ test("the new-pod box offers to encrypt; the six-words page shows the words numb
   );
 });
 
-test("the world's date: a calendar day is the end of that day in UTC, an instant stays as given, and anything else is none; the page shows the date with Set and Today and says why a date was refused; a connection's box says what the hospitals answer as of, with a link or a form to change it", () => {
+test("the world's date: a calendar day is the end of that day in UTC, an instant stays as given, and anything else is none; the page shows the date with Set and Today and says why a date was refused; a connection's box says what its pull answered as of; the pod's page and the hospitals page say what the hospitals answer as of now, with a link or a form to change it", () => {
   const instants: [string, string | undefined][] = [
     ["2024-02-01", "2024-02-01T23:59:59Z"],
     [" 2024-02-01 ", "2024-02-01T23:59:59Z"],
@@ -3265,6 +3265,9 @@ test("the world's date: a calendar day is the end of that day in UTC, an instant
     ["2024-02-30", undefined],
     ["2024-13-01", undefined],
     ["2024-02-01T10:00:00", undefined],
+    ["0099-01-01", undefined],
+    ["0999-12-31T23:59:59Z", undefined],
+    ["1000-01-01", "1000-01-01T23:59:59Z"],
     ["yesterday", undefined],
   ];
   for (const [text, instant] of instants)
@@ -3280,6 +3283,16 @@ test("the world's date: a calendar day is the end of that day in UTC, an instant
   assert.equal(
     view.worldDateSaid(undefined),
     "Hospitals answer with everything they hold.",
+  );
+
+  const offset = "2024-02-01T00:30:00+01:00";
+  assert.equal(
+    view.worldDateSaid(offset),
+    "Hospitals answer as of 31 January 2024.",
+  );
+  assert.match(
+    render(view.worldDatePage({ asOf: offset, action: "/w" })),
+    /<input type="date" name="date" value="2024-01-31"/,
   );
 
   const shown = render(
@@ -3306,7 +3319,7 @@ test("the world's date: a calendar day is the end of that day in UTC, an instant
     ).includes("Soon is not a date."),
   );
 
-  const pulled = {
+  const box = {
     id: "connection",
     pod: "alex-rivera",
     hospital: "Cascade North Demo Hospital",
@@ -3316,33 +3329,57 @@ test("the world's date: a calendar day is the end of that day in UTC, an instant
     pulled: { missing: [], denied: [] },
     bring: "bring",
   };
-  const linked = render(
-    view.connectionDialog({ ...pulled, world: { asOf, href: "/world-date" } }),
-  );
-  assert.match(
-    linked,
-    /Hospitals answer as of 1 February 2024\.[^<]*<a href="\/world-date">Change the world's date<\/a>/,
-  );
-  const inPlace = render(
-    view.connectionDialog({
-      ...pulled,
-      world: { asOf: undefined, action: "world-date" },
-    }),
-  );
   assert.ok(
-    text(
-      view.connectionDialog({
-        ...pulled,
-        world: { asOf: undefined, action: "x" },
-      }),
-    ).includes("Hospitals answer with everything they hold."),
-  );
-  assert.match(
-    inPlace,
-    /<summary>Change the world's date<\/summary>[\s\S]*<form[^>]*action="world-date"[\s\S]*name="date"/,
+    text(view.connectionDialog({ ...box, pulledAsOf: asOf })).includes(
+      "Pulled as of 1 February 2024.",
+    ),
   );
   assert.doesNotMatch(
-    render(view.connectionDialog(pulled)),
+    text(view.connectionDialog(box)),
+    /Pulled as of|Hospitals answer|Change the world/,
+  );
+
+  const person = {
+    name: "Rowan Marsh",
+    at: [{ name: "Cascade North Demo Hospital", fhirBase: "https://n" }],
+  };
+  const podAt = (world: object) =>
+    render(
+      view.podPage(
+        {},
+        { pod: "x", person, signIn: () => "", findHospital: "?h", world },
+      ),
+    );
+  assert.match(
+    podAt({ asOf, href: "/world-date?back=%2Fp" }),
+    /Hospitals answer as of 1 February 2024\.[^<]*<a href="\/world-date\?back=%2Fp">Change the world's date<\/a>/,
+  );
+  assert.match(
+    podAt({ asOf: undefined, action: "world-date" }),
+    /Hospitals answer with everything they hold\.[\s\S]*<summary>Change the world's date<\/summary>[\s\S]*<form[^>]*action="world-date"[\s\S]*name="date"/,
+  );
+  assert.match(
+    render(
+      view.hospitalsPage({
+        pod: "x",
+        rows: [],
+        text: "",
+        search: "?h",
+        signIn: () => "",
+        people: [],
+        back: "/",
+        world: { asOf, action: "world-date" },
+      }),
+    ),
+    /Hospitals answer as of 1 February 2024\./,
+  );
+  assert.doesNotMatch(
+    render(
+      view.podPage(
+        {},
+        { pod: "x", person, signIn: () => "", findHospital: "?h" },
+      ),
+    ),
     /Hospitals answer/,
   );
 });
