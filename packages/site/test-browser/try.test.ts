@@ -29,7 +29,11 @@ import {
   hospitalId,
   recordsAt,
 } from "@cascade-runtime/demo-hospital";
-import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
+import {
+  loadHospital,
+  loadHospitals,
+  loadStories,
+} from "@cascade-runtime/demo-hospital/node";
 import {
   FILES_JSON,
   iri,
@@ -2111,6 +2115,89 @@ test("in try/, the world's date set before a sign-in shows on the hospital's sig
     await setDate(undefined);
     await worldSays("Hospitals answer with everything they hold.");
     assert.equal(await signInPage(false), undefined);
+  } finally {
+    await context.close();
+  }
+});
+
+test("in try/, Tamsin Vale signed in at North with the world's date at her story's first pull has metformin among her medications; with the date back at today, brought in again, it has stopped and the pod says what changed after", async () => {
+  const story = (await loadStories()).find(({ pulls }) => pulls?.length);
+  assert.ok(story?.pulls, "no story names its pulls");
+  const [finding] = story.findings;
+  assert.ok(finding?.kind === "after stop", "the story's finding is no stop");
+  const [first] = story.pulls;
+  assert.ok(
+    first && Date.parse(first.asOf) < Date.parse(finding.date),
+    "the story's first pull is not before the stop",
+  );
+  const north = await loadHospital(story.hospital);
+
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    /** Sets the date the demo hospitals answer as of, through try/'s own module, before a sign-in. */
+    const world = (asOf: string | undefined) =>
+      page.evaluate(async (at) => {
+        const { setWorldDate } = (await import(
+          new URL("demo-hospitals.js", location.href).href
+        )) as {
+          setWorldDate(script: URL, asOf: string | undefined): Promise<void>;
+        };
+        await setWorldDate(
+          new URL("demo-hospital-worker.js", location.href),
+          at ?? undefined,
+        );
+      }, asOf ?? null);
+    /** Signs the pod in at North as the story's patient, from Find a hospital, and brings the record in. */
+    const bringIn = async () => {
+      await page.click('a:has-text("Find a hospital")');
+      await settled(page);
+      const [popup] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.click(
+          `.card:has(h2:text-is(${JSON.stringify(view.hospitalName(north.hospital.name))})) button`,
+        ),
+      ]);
+      await popup.waitForSelector('button[value="allow"]');
+      await popup.check(`input[name="patient"][value="${story.patient}"]`);
+      await popup.click('button[value="allow"]');
+      await settled(page);
+      await page.click("#connection button:has-text('Bring it into')");
+      await settled(page, 300_000);
+    };
+    const metformin = async () =>
+      (await texts(page, "#see-medications tbody tr")).filter((row) =>
+        /metformin/i.test(row),
+      );
+
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.click('a[href="#new-pod"]');
+    await page.fill(
+      '#new-pod input[name="person"]:not([type="hidden"])',
+      "Tamsin at North",
+    );
+    await page.click('#new-pod button:has-text("Make the pod")');
+    await settled(page);
+    await page.waitForFunction(
+      () => navigator.serviceWorker.controller !== null,
+    );
+
+    await world(first.asOf);
+    await bringIn();
+    assert.equal((await metformin()).length, 1, "metformin is not taken");
+    assert.equal(await page.locator(".change").count(), 0);
+
+    await world(undefined);
+    await bringIn();
+    assert.deepEqual(await metformin(), [], "metformin is still taken");
+    const card = page.locator(".change");
+    await card.first().waitFor({ timeout: 60_000 });
+    assert.equal(await card.count(), 1);
+    assert.match(
+      (await card.innerText()).replace(/\s+/g, " "),
+      /was higher after .+ stopped\./,
+    );
   } finally {
     await context.close();
   }
