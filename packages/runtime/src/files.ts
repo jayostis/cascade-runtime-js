@@ -8,6 +8,8 @@ export interface Files {
   /** The file's bytes, or undefined when there is no such file. */
   read(pathOrIri: string): Promise<Uint8Array | undefined>;
   write(pathOrIri: string, bytes: Uint8Array): Promise<void>;
+  /** Writes the file, whole or not at all, only when none is at its path; false when one is. */
+  writeNew?(pathOrIri: string, bytes: Uint8Array): Promise<boolean>;
   /**
    * Writes every file, or, when one fails, none: where the host has transactions, one of them. Files without it are
    * written one by one, and a failure leaves those before it written.
@@ -83,6 +85,13 @@ export class MemoryFiles implements Files {
 
   async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
     this.#files.set(relative(this, pathOrIri), bytes.slice());
+  }
+
+  async writeNew(pathOrIri: string, bytes: Uint8Array): Promise<boolean> {
+    const path = relative(this, pathOrIri);
+    if (this.#files.has(path)) return false;
+    this.#files.set(path, bytes.slice());
+    return true;
   }
 
   async list(folder: string): Promise<string[]> {

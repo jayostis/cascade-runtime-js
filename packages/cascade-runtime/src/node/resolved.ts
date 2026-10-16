@@ -14,6 +14,7 @@ import {
   withTables,
 } from "@cascade-runtime/runtime";
 import {
+  argon2id,
   CONFIG_FILE,
   compiledBridge,
   type Components,
@@ -169,6 +170,7 @@ export async function partsOf(
     tablesIn: (folder) =>
       tablesOver(new FolderFiles(absolute(folder)), dirname(absolute(folder))),
     newStore,
+    derive: argon2id,
     folder: (path, iri) => {
       const folder = absolute(path);
       return {

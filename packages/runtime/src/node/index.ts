@@ -1,4 +1,5 @@
 export * from "./components.js";
+export * from "./encryption.js";
 export * from "./folder-files.js";
 export * from "./git.js";
 export * from "./resolver.js";

@@ -3,7 +3,9 @@ import {
   BRIDGE_GLUE,
   BRIDGE_WASM,
   type CompiledBridge,
+  EncryptedFiles,
   type Followed,
+  HEADER,
   importersNamed,
   Layout,
   LAYOUT_FILE,
@@ -12,6 +14,7 @@ import {
   parseConfig,
   type Placed,
   readText,
+  Refusal,
   repositoryName,
   type RuntimeConfig,
   type Source,
@@ -24,12 +27,14 @@ import {
   withTables,
 } from "@cascade-runtime/runtime";
 import {
+  argon2id,
   compiledBridge,
   FetchedFiles,
   IndexedDbFiles,
   inWebWorker,
 } from "@cascade-runtime/runtime/web";
 import { ANSWERS, Answers, DESCRIBED, entryVersion } from "../answers.js";
+import { podKey } from "../encrypted.js";
 import {
   bridgeLoaded,
   type Done,
@@ -63,7 +68,12 @@ export type {
 export * from "../changes.js";
 export * from "../connect/index.js";
 export * from "../tools.js";
-export { Refusal } from "@cascade-runtime/runtime";
+export {
+  Refusal,
+  Unopened,
+  type UnopenedOutcome,
+} from "@cascade-runtime/runtime";
+export { sixWords, typedWords } from "../six-words.js";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {
@@ -342,6 +352,7 @@ const resolved = once(async (): Promise<Resolved> => {
     importers: importersNamed(config.importers),
     tables: read.tables,
     newStore,
+    derive: argon2id,
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
@@ -403,6 +414,7 @@ class BrowserPod implements Pod {
   constructor(
     open: Pod | (() => Promise<Pod>),
     databases: readonly IndexedDbFiles[],
+    readonly encrypted: boolean,
     kept?: KeptPod,
   ) {
     if (typeof open === "function") this.#open = once(open);
@@ -611,18 +623,31 @@ function deleted(name: string, copying: unknown): Promise<void> {
  * `files.json` lists it, with the answers published beside it in place of any kept before. A copy that fails leaves no database, unless another
  * copy filled it meanwhile, which it keeps. Its answers are kept in a database of their own, `cascade-answers:<name>`,
  * with its address, subject and title in `pod.json`. A pod whose `pod.json` is kept opens without the engine, and
- * answers a question by name from its kept answers until it first computes.
+ * answers a question by name from its kept answers until it first computes. With `options.secret`, a new pod is made
+ * encrypted under it, its answers too, and an encrypted pod opens with it, as typed or as `typedWords` cleans it; an
+ * encrypted pod that does not open, or a secret given for a plaintext pod, throws `Unopened`. A secret is refused with
+ * `options.from` or with no name.
  */
 export async function openPod(
   name?: string,
-  options: { title?: string; from?: string } = {},
+  options: { title?: string; from?: string; secret?: string } = {},
 ): Promise<Pod> {
-  const { from, ...rest } = options;
-  if (name === undefined)
+  const { from, secret, ...rest } = options;
+  if (secret !== undefined && from !== undefined)
+    throw new Refusal(
+      "a published pod is copied in as it is published: copy it without a secret",
+    );
+  if (name === undefined) {
+    if (secret !== undefined)
+      throw new Refusal(
+        "a pod in memory is never encrypted: name it to open it with a secret",
+      );
     return new BrowserPod(
       await openPodWith(await resolved(), undefined, rest),
       [],
+      false,
     );
+  }
   const read = await reading();
   const named = DATABASE + name;
   const database = await IndexedDbFiles.open(named, `${named}/`);
@@ -640,6 +665,16 @@ export async function openPod(
       copying = false;
       held = await database.list("");
     }
+    const key = await podKey(
+      {
+        files: database,
+        header: await database.read(HEADER),
+        reread: () => database.read(HEADER),
+        held: async () => held.length > 0,
+      },
+      secret,
+      argon2id,
+    );
     const kept = await IndexedDbFiles.open(
       ANSWERS_DATABASE + name,
       `${ANSWERS_DATABASE}${name}/`,
@@ -663,20 +698,26 @@ export async function openPod(
           answers: { runtime: read.runtime, at: () => kept },
         },
         name,
-        rest,
+        key === undefined ? rest : { ...rest, key },
       );
     const databases = [database, kept];
+    const encrypted = key !== undefined;
     const pod =
       held.length === 0
         ? undefined
         : await keptPod(
             { ...read, lens: read.config.lens },
-            database,
-            new Answers(kept, read.runtime),
+            key === undefined ? database : new EncryptedFiles(database, key),
+            new Answers(
+              key === undefined
+                ? kept
+                : new EncryptedFiles(kept, key, { kind: "answers" }),
+              read.runtime,
+            ),
           );
     return pod === undefined
-      ? new BrowserPod(await open(), databases)
-      : new BrowserPod(open, databases, pod);
+      ? new BrowserPod(await open(), databases, encrypted)
+      : new BrowserPod(open, databases, encrypted, pod);
   } catch (error) {
     const empty =
       copying &&

@@ -1,0 +1,15 @@
+EFF Long Wordlist (eff_large_wordlist.txt)
+==========================================
+
+Source:  https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+Author:  Joseph Bonneau, for the Electronic Frontier Foundation (2016)
+License: Creative Commons Attribution 3.0 United States (CC BY 3.0 US)
+         https://creativecommons.org/licenses/by/3.0/us/
+
+Used by `six-words.ts` to make the six words that open an encrypted pod.
+
+`eff-wordlist.ts` embeds the list verbatim, one entry per line with its
+five-digit dice column, so it can be compared with EFF's published copy:
+7776 entries (6^5), md5 fcb9fd13e5f6512a790553aefff54f10. `six-words.ts` checks
+the whole 11111..66666 sequence, and that every word is distinct and matches
+^[a-z-]+$, on first use.

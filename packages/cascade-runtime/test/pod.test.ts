@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -12,6 +13,8 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import {
+  type DeriveKey,
+  EncryptedFiles,
   JUSTIFICATIONS,
   Layout,
   MATCHER,
@@ -25,18 +28,26 @@ import {
   checkouts,
   findRoot,
   FolderFiles,
+  headerIn,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { podKey } from "../src/encrypted.js";
 import { shipped } from "../src/tables.js";
 import {
   type Exported,
   type ImportProgress,
   openPod,
   type Pod,
+  Refusal,
+  sixWords,
   tablesBeside,
+  typedWords,
+  Unopened,
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
+import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
+import { openFolderPod } from "../src/node/folder-pod.js";
 import { partsOf, publishedAnswers } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
 import { keptPod, openPodWith, type Parts } from "../src/pod.js";
@@ -763,4 +774,194 @@ test("a published pod's answers, as the site computes them, are read back withou
     assert.deepEqual(await read.rows(question), await pod.ask(question));
   await assert.rejects(read.rows("pod/No such question"), /no question/);
   await assert.rejects(read.rows(QUESTION, "no such lens"), /no lens/);
+});
+
+const WORDS = "t-shirt abacus yo-yo zoom drop-down felt-tip";
+const TITLE = "Sealed Example";
+const HELD = "pod/What each folder holds";
+
+/** A stand-in for Argon2id, a hash of what it is given, counting its calls. */
+function fastDerive(): DeriveKey & { calls: number } {
+  const derive = async (secret: Uint8Array, salt: Uint8Array) => {
+    derive.calls += 1;
+    const input = new Uint8Array([...secret, ...salt]);
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+  };
+  derive.calls = 0;
+  return derive;
+}
+
+let made:
+  Promise<{ readonly folder: string; readonly rows: unknown }> | undefined;
+
+/** A pod made with the six words, asked one question so its answer is kept, and closed: made once. */
+function sealedPod(): Promise<{
+  readonly folder: string;
+  readonly rows: unknown;
+}> {
+  made ??= (async () => {
+    const at = join(pods, "sealed");
+    const opened = await openFolderPod({ ...kept, derive: fastDerive() }, at, {
+      secret: WORDS,
+      title: TITLE,
+    });
+    try {
+      assert.ok(opened.encrypted);
+      return { folder: at, rows: await opened.ask(HELD) };
+    } finally {
+      await opened.close();
+    }
+  })();
+  return made;
+}
+
+/** What opening gives: "opened", an `Unopened`'s outcome, or "refused" for another refusal. */
+async function outcomeOf(opening: Promise<Pod>): Promise<string> {
+  try {
+    await (await opening).close();
+    return "opened";
+  } catch (error) {
+    if (error instanceof Unopened) return error.outcome;
+    if (error instanceof Refusal) return "refused";
+    throw error;
+  }
+}
+
+test("a pod made with a secret is sealed under a 1.2 header, nothing else of it or its answers on disk is plaintext, and opened again with the secret it answers as before", async () => {
+  const { folder: at, rows } = await sealedPod();
+  const header = JSON.parse(
+    await readFile(join(at, "settings", "encryption.json"), "utf8"),
+  ) as { version: string; resourceFormat: number };
+  assert.equal(header.version, "1.2");
+  assert.equal(header.resourceFormat, 2);
+  const sealed = [
+    ...(await filesIn(at)).filter(
+      (file) => file !== join(at, "settings", "encryption.json"),
+    ),
+    ...(await filesIn(join(pods, ".answers", "sealed"))),
+  ];
+  assert.ok(sealed.some((file) => file.endsWith("answers.json")));
+  for (const file of sealed) {
+    const text = await readFile(file, "latin1");
+    for (const plain of ["@prefix", TITLE, '"rows"'])
+      assert.ok(!text.includes(plain), `${file} holds ${plain}`);
+  }
+  const reopened = await openFolderPod({ ...kept, derive: fastDerive() }, at, {
+    secret: WORDS,
+  });
+  try {
+    assert.ok(reopened.encrypted);
+    assert.deepEqual(await reopened.ask(HELD), rows);
+  } finally {
+    await reopened.close();
+  }
+});
+
+test("an encrypted pod opens only with its secret, after its header validates; a secret is refused for a plaintext pod or one in memory", async () => {
+  const { folder: sealed } = await sealedPod();
+  const newer = join(pods, "newer");
+  await mkdir(join(newer, "settings"), { recursive: true });
+  await writeFile(
+    join(newer, "settings", "encryption.json"),
+    JSON.stringify({ version: "2.0", algorithm: "aes-256-gcm", wraps: [] }),
+  );
+  const directory = join(pods, "directory");
+  await mkdir(join(directory, "settings", "encryption.json"), {
+    recursive: true,
+  });
+  const derive = fastDerive();
+  const parts = { ...kept, derive };
+  const cases: [string, string | undefined, string | undefined, string][] = [
+    ["an encrypted pod, no secret", sealed, undefined, "secret needed"],
+    [
+      "an encrypted pod, wrong words",
+      sealed,
+      "a b c d e f",
+      "incorrect secret",
+    ],
+    ["a plaintext pod, a secret", folder, WORDS, "not encrypted"],
+    ["a newer header, no secret", newer, undefined, "unsupported version"],
+    ["a newer header, a secret", newer, WORDS, "unsupported version"],
+    ["a header that is a directory", directory, WORDS, "malformed"],
+    ["a pod in memory, a secret", undefined, WORDS, "refused"],
+  ];
+  const outcomes: string[] = [];
+  for (const [, at, secret] of cases)
+    outcomes.push(
+      await outcomeOf(
+        openFolderPod(parts, at, secret === undefined ? {} : { secret }),
+      ),
+    );
+  assert.deepEqual(
+    outcomes,
+    cases.map(([, , , outcome]) => outcome),
+  );
+  assert.equal(derive.calls, 1);
+  assert.deepEqual(await filesIn(directory), []);
+});
+
+test("two openings that both make the same new encrypted pod end with one header, so a file sealed by either opens by both; the loser with another secret is refused", async () => {
+  const derive = fastDerive();
+  const opening = (at: string, secret: string) => {
+    const files = new FolderFiles(at);
+    return podKey(
+      {
+        files,
+        header: undefined,
+        reread: () => headerIn(at),
+        held: async () => false,
+      },
+      secret,
+      derive,
+    );
+  };
+  const at = join(pods, "raced");
+  const [first, second] = await Promise.all([
+    opening(at, WORDS),
+    opening(at, WORDS),
+  ]);
+  assert.ok(first !== undefined && second !== undefined);
+  await new EncryptedFiles(new FolderFiles(at), first).write(
+    "a.ttl",
+    new TextEncoder().encode("a"),
+  );
+  const read = await new EncryptedFiles(new FolderFiles(at), second).read(
+    "a.ttl",
+  );
+  assert.equal(new TextDecoder().decode(read), "a");
+
+  const other = join(pods, "raced-apart");
+  const outcomes = await Promise.all(
+    [WORDS, "a b c d e f"].map((secret) =>
+      opening(other, secret).then(
+        () => "opened",
+        (error: unknown) =>
+          error instanceof Unopened ? error.outcome : "other",
+      ),
+    ),
+  );
+  assert.deepEqual(outcomes.sort(), ["incorrect secret", "opened"]);
+});
+
+test("six words are drawn from the list, typed words are cleaned, and words typed otherwise open the pod on the second try", async () => {
+  const list = new Set(
+    EFF_LARGE_WORDLIST_LINES.map((line) => line.split("\t")[1]),
+  );
+  const words = sixWords().split(" ");
+  assert.equal(words.length, 6);
+  for (const word of words) assert.ok(list.has(word), word);
+  assert.notEqual(sixWords(), sixWords());
+
+  assert.equal(
+    typedWords(" T-Shirt, yo YO drop-down "),
+    "t-shirt yo-yo drop-down",
+  );
+
+  const { folder: at } = await sealedPod();
+  const derive = fastDerive();
+  const opened = await openFolderPod({ ...kept, derive }, at, {
+    secret: " T-SHIRT, Abacus yo yo zoom drop down felt-tip ",
+  });
+  await opened.close();
+  assert.equal(derive.calls, 2);
 });
