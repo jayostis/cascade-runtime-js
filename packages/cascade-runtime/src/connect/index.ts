@@ -4,7 +4,7 @@ export {
   type Connection,
   type SignIn,
 } from "./connect.js";
-export { searchDirectory, TEST_DIRECTORY } from "./directory.js";
+export { directoryOf, searchDirectory, TEST_DIRECTORY } from "./directory.js";
 export {
   ConnectionFailure,
   type FailureDetails,

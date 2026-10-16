@@ -1,23 +1,79 @@
+import { DEMO_BRANDS } from "./demo-brands.js";
 import type { DirectoryRow } from "./plan.js";
 
+type Json = Record<string, unknown>;
+
+function object(value: unknown): Json | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Json)
+    : undefined;
+}
+
+function objects(value: unknown): Json[] {
+  return Array.isArray(value)
+    ? value.map(object).filter((each) => each !== undefined)
+    : [];
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function place(address: Json): string | undefined {
+  const where = [text(address.city), text(address.state)].filter(
+    (part) => part !== undefined,
+  );
+  return where.length === 0 ? undefined : where.join(", ");
+}
+
 /**
- * Hospitals to develop and test against, none of them real: the demo hospitals, whose `.invalid` hosts answer only
- * through `@cascade-runtime/demo-hospital`'s fetch, never the real one, and the SMART Health IT launcher, whose
- * settings in its base ask for a patient's own login and approval.
+ * The rows of a SMART User-access Brands Bundle: one per endpoint of an Organization whose Endpoint is
+ * `hl7-fhir-rest`, in the bundle's order, with the Endpoint's address (without a trailing slash) as the FHIR base and
+ * the Organization's addresses as `"City, ST"` places. A bundle names no vendor, so the caller does. What cannot be
+ * read is skipped, never thrown on.
+ */
+export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
+  const bundle = object(brands);
+  if (bundle?.resourceType !== "Bundle") return [];
+  const resources = objects(bundle.entry).flatMap((entry) => {
+    const resource = object(entry.resource);
+    return resource === undefined ? [] : [{ resource, url: entry.fullUrl }];
+  });
+  const endpoints = new Map<string, Json>();
+  for (const { resource, url } of resources) {
+    if (resource.resourceType !== "Endpoint") continue;
+    endpoints.set(`Endpoint/${text(resource.id)}`, resource);
+    if (typeof url === "string") endpoints.set(url, resource);
+  }
+  return resources.flatMap(({ resource }) => {
+    const name = text(resource.name);
+    if (resource.resourceType !== "Organization" || name === undefined)
+      return [];
+    const places = objects(resource.address).flatMap(
+      (address) => place(address) ?? [],
+    );
+    return objects(resource.endpoint).flatMap((reference) => {
+      const endpoint = endpoints.get(String(reference.reference));
+      const fhirBase = text(endpoint?.address)?.replace(/\/+$/, "");
+      if (
+        object(endpoint?.connectionType)?.code !== "hl7-fhir-rest" ||
+        fhirBase === undefined
+      )
+        return [];
+      return [
+        { name, vendor, fhirBase, ...(places.length > 0 ? { places } : {}) },
+      ];
+    });
+  });
+}
+
+/**
+ * Hospitals to develop and test against, none of them real: the demo hospitals, read from `DEMO_BRANDS`, whose
+ * `.invalid` hosts answer only through `@cascade-runtime/demo-hospital`'s fetch, never the real one, and the SMART
+ * Health IT launcher, whose settings in its base ask for a patient's own login and approval.
  */
 export const TEST_DIRECTORY: readonly DirectoryRow[] = [
-  {
-    name: "Cascade North Demo Hospital",
-    vendor: "demo",
-    fhirBase: "https://cascade-north.demo.invalid/fhir",
-    places: ["Bellingham, WA", "Mount Vernon, WA"],
-  },
-  {
-    name: "Cascade South Demo Hospital",
-    vendor: "demo",
-    fhirBase: "https://cascade-south.demo.invalid/fhir",
-    places: ["Olympia, WA", "Centralia, WA"],
-  },
+  ...directoryOf(DEMO_BRANDS, "demo"),
   {
     name: "SMART Health IT Sandbox",
     vendor: "smart-launcher",
