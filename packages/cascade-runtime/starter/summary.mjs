@@ -1721,23 +1721,12 @@ function seriesOf(said, held) {
 }
 
 /**
- * The table versions the matcher's counting Sames of each entry's records cite (`prov:used`), by the entry's IRI, as
- * `pod.ask({ query })` rows. A version the app does not hold is left out by `entryOf`.
+ * The table versions the matcher's counting Sames of each entry's records cite, by the entry's IRI, as the vocabulary's
+ * `tables/joined-by.rq` gives them (`pod.joinedBy()`). A version the app does not hold is left out by `entryOf`.
  */
-export const JOINED_BY = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
-SELECT DISTINCT ?entry ?used WHERE {
-  ?judgment rec:counts true ; jdg:verdict jdg:Same ; prov:wasAttributedTo/a prov:SoftwareAgent ;
-            prov:hadMember ?member ; prov:used ?used .
-  ?member rec:inEntry ?entry .
-}
-ORDER BY ?entry ?used`;
-
-/** The pod's `JOINED_BY` rows as `entryOf` takes them: each entry's cited versions. */
 export async function joinedBy(pod) {
   const joined = new Map();
-  for (const { entry, used } of await pod.ask({ query: JOINED_BY }))
+  for (const { entry, used } of await pod.joinedBy())
     joined.set(entry, [...(joined.get(entry) ?? []), used]);
   return joined;
 }
@@ -1967,10 +1956,7 @@ export function entryOf(
       ...how(matched.shift()),
     });
   for (const at of matched)
-    known.push({
-      sentence: `Another reference table also joined it.`,
-      ...how(at),
-    });
+    known.push({ from: at, fromLead: "Also matched using" });
   const reviews = new Map();
   for (const row of ofEntry(answers[REVIEW] ?? []))
     reviews.set(
@@ -2551,13 +2537,21 @@ function versionName({ label, issued }) {
 /**
  * The sidebar's reference tables, under the pods: `series` the sources the app holds, as `sourcesOf` gives them, each a
  * link to `href(source)`, the one whose IRI is `current` marked; and a Check now button posting to `check`. While
- * `loading`, a page that has not yet read what the app holds says so instead of "None yet", which says there are none.
+ * `loading`, a page that has not yet read what the app holds says so instead of "None yet", which says there are none,
+ * and when `failed`, the read failed, which it says instead of both.
  */
-export function tablesNav({ series, current, href, check, loading = false }) {
+export function tablesNav({
+  series,
+  current,
+  href,
+  check,
+  loading = false,
+  failed = false,
+}) {
   return html`<section class="tables" aria-label="Reference tables"><h2>Reference tables</h2>
 ${
   series.length === 0
-    ? html`<p class="muted">${loading ? "Loading the reference tables…" : "None yet."}</p>`
+    ? html`<p class="muted">${failed ? "The reference tables could not be read." : loading ? "Loading the reference tables…" : "None yet."}</p>`
     : html`<ul>
 ${series.map((each) => html`<li><a href=${href(each)} aria-current=${each.iri === current ? "page" : undefined}>${each.label}</a></li>`)}
 </ul>`

@@ -130,6 +130,13 @@ export interface Pod {
    * nothing.
    */
   panelResults(panel: string): Promise<Row[]>;
+  /**
+   * The reference table versions that joined each entry's records (`tables/joined-by.rq`): the `entry` and the version
+   * (`used`) that a counting machine Same cited while joining one of its records. The rule list and the records'
+   * versions are never among them, a Same that no longer counts names nothing, and an entry joined without a table has no
+   * row. It reads the pod and writes nothing.
+   */
+  joinedBy(): Promise<Row[]>;
   close(): Promise<void>;
 }
 
@@ -315,6 +322,9 @@ const LAB_ENTRIES = `PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
 PREFIX rec: <${REC}>
 CONSTRUCT { ?entry health:testCode ?code ; rec:latestMember ?latest }
 WHERE { ?entry health:testCode ?code ; rec:latestMember ?latest }`;
+
+/** Which tables joined an entry is asked of the pod alone: its judgments name the versions, and it holds their descriptions. */
+const JOINED_BY_QUERY = `${QUERIES}tables/joined-by.rq`;
 
 const agreements = new WeakMap<Files, Promise<string>>();
 const tableQueries = new WeakMap<Files, Map<string, Promise<string>>>();
@@ -564,6 +574,10 @@ class OpenPod implements Pod {
 
   panelResults(panel: string): Promise<Row[]> {
     return this.#next(() => this.#panelResults(panel));
+  }
+
+  joinedBy(): Promise<Row[]> {
+    return this.#next(() => this.#joinedBy());
   }
 
   close(): Promise<void> {
@@ -945,6 +959,17 @@ class OpenPod implements Pod {
         Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
       )
       .filter((row) => row.panel === panel);
+  }
+
+  async #joinedBy(): Promise<Row[]> {
+    const { vocabulary, lens } = this.#parts;
+    const [text, held] = await Promise.all([
+      tableQueryText(vocabulary, JOINED_BY_QUERY),
+      this.#core.dataset(lens),
+    ]);
+    return (await held.select(text)).rows.map((row) =>
+      Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+    );
   }
 
   async #ask(

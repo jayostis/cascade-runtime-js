@@ -122,7 +122,7 @@ const state = {
   pods: [],
   people: [],
   tables: [],
-  tablesRead: false,
+  tablesRead: undefined,
   table: undefined,
   current: undefined,
   page: undefined,
@@ -344,7 +344,8 @@ function redraw() {
         current: state.table,
         href: tableHref,
         check: CHECK,
-        loading: !state.tablesRead,
+        loading: state.tablesRead === undefined,
+        failed: state.tablesRead === "failed",
       },
       dialog: newPodDialog({
         people,
@@ -616,12 +617,14 @@ function showHospitals(text) {
   );
 }
 
-/** Reads the reference tables this browser holds into `state.tables`. */
+/** Reads the reference tables this browser holds into `state.tables`, and notes whether the read answered. */
 async function readTables() {
   try {
     state.tables = await (await appTables()).held();
-  } finally {
-    state.tablesRead = true;
+    state.tablesRead = "read";
+  } catch (error) {
+    state.tablesRead = "failed";
+    throw error;
   }
 }
 
@@ -1110,6 +1113,9 @@ busy(async () => {
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";
     },
-    () => undefined,
+    () => {
+      state.tablesRead ??= "failed";
+      if (state.page !== undefined) redraw();
+    },
   ),
 );

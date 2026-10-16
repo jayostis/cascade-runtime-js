@@ -2211,6 +2211,21 @@ test("an entry kept as one names the held table version whose rows joined it, an
     twice.known.map(({ from }: { from?: { series: object } }) => from?.series),
     [NAMES, STATUS],
   );
+  const twicePage = textOf(
+    render(
+      view.entryPage({
+        entry: twice,
+        pod: "p",
+        back: "/",
+        tableHref: (series: { iri: string }) => series.iri,
+      }),
+    ),
+  ).replace(/ \./g, ".");
+  assert.ok(
+    twicePage.includes("Also matched using Example status, version 1,"),
+    twicePage,
+  );
+  assert.ok(!twicePage.includes("Another reference table"), twicePage);
 
   const none = view.entryOf(ENTRY_ANSWERS, "aa11", {
     held,
@@ -2256,25 +2271,33 @@ test("the Medications tile holds a By class link to the class view, and no other
   assert.ok(!noMedicines.includes("By class"));
 });
 
-test("the sidebar says the reference tables are loading until the app has read what it holds, and says None yet only after", () => {
-  const nav = (loading: boolean, series: object[] = []) =>
+test("the sidebar says the reference tables are loading until the app has read what it holds, says None yet only after a read that found none, and says they could not be read after one that failed", () => {
+  const nav = (state: "loading" | "none" | "failed", series: object[] = []) =>
     textOf(
       render(
         view.tablesNav({
           series,
           href: () => "/",
           check: "/check",
-          loading,
+          loading: state === "loading",
+          failed: state === "failed",
         }),
       ),
     );
-  assert.ok(nav(true).includes("Loading the reference tables"));
-  assert.ok(!nav(true).includes("None yet"));
-  assert.ok(nav(false).includes("None yet"));
-  assert.ok(!nav(false).includes("Loading"));
+  assert.ok(nav("loading").includes("Loading the reference tables"));
+  assert.ok(!nav("loading").includes("None yet"));
+  assert.ok(nav("none").includes("None yet"));
+  assert.ok(!nav("none").includes("Loading"));
+  const failed = nav("failed");
+  assert.ok(failed.includes("The reference tables could not be read."), failed);
+  assert.ok(
+    !failed.includes("None yet") && !failed.includes("Loading"),
+    failed,
+  );
+  assert.ok(failed.includes("Check now"), failed);
   const some = [{ iri: "urn:test:a", label: "Example names" }];
-  assert.ok(nav(true, some).includes("Example names"));
-  assert.ok(!nav(true, some).includes("Loading"));
+  assert.ok(nav("loading", some).includes("Example names"));
+  assert.ok(!nav("loading", some).includes("Loading"));
 });
 
 test("an entry no section shows is named and kinded from its label and says what a review line says; an address of no entry says so and links back", () => {

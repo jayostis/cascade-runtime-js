@@ -2076,6 +2076,16 @@ test("try/ ships the starter tables its published answers were computed with: af
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.ok((await tiles(page)).size > 0);
     assert.equal(await page.getAttribute("body", "data-engine"), null);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("aside section.tables")
+          ?.textContent?.includes("The reference tables could not be read."),
+      undefined,
+      { timeout: 30_000 },
+    );
+    const nav = (await page.textContent("aside section.tables")) ?? "";
+    assert.ok(!nav.includes("Loading") && !nav.includes("None yet"), nav);
 
     const sources = alex["entry/Where it came from"] ?? [];
     const penicillin = sources.filter(
