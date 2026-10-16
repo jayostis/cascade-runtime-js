@@ -2209,16 +2209,20 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
     );
     assert.match(await page.url(), /pod=grace-hopper/);
 
-    const pod = await storedIn(page, "cascade-pod:grace-hopper");
-    assert.ok(pod.length > 1, "the pod holds more than its header");
-    for (const { key, text } of pod)
-      if (key !== "settings/encryption.json")
-        assert.equal(text.includes("@prefix"), false, key);
-    for (const { key, text } of await storedIn(
-      page,
+    for (const database of [
+      "cascade-pod:grace-hopper",
       "cascade-answers:grace-hopper",
-    ))
-      assert.equal(text.includes("@prefix"), false, key);
+    ]) {
+      const stored = await storedIn(page, database);
+      assert.ok(stored.length > 0, `${database} holds values`);
+      for (const { key, text } of stored) {
+        if (key === "settings/encryption.json") continue;
+        assert.ok(text.length > 0, key);
+        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+          assert.equal(text.includes(readable), false, `${key}: ${readable}`);
+        assert.throws(() => JSON.parse(text), `${key} parses as JSON`);
+      }
+    }
 
     await page.goto(`${served.url}try/index.html?pod=grace-hopper`);
     await settled(page);

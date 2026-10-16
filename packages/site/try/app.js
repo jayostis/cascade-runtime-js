@@ -721,14 +721,17 @@ async function showTable(id, text, shown, code) {
   );
 }
 
-/** Check now: reads every feed past any cache, opens the pods again with what it kept, and says what it did. */
+/** Check now: reads every feed past any cache, opens the plaintext pods again with what it kept, and says what it did; an encrypted pod stays open and unlocked, and reads the new tables when next opened. */
 async function checkNow() {
   const checked = await checkTables();
   if (checked.some(({ kept }) => kept.length > 0)) {
-    const opened = [...open.values()];
-    open.clear();
-    pod = undefined;
-    await Promise.allSettled(opened.map(async (each) => (await each).close()));
+    for (const [name, opening] of [...open]) {
+      const each = await opening.catch(() => undefined);
+      if (each?.encrypted) continue;
+      open.delete(name);
+      if (each === pod) pod = undefined;
+      await each?.close().catch(() => undefined);
+    }
   }
   await readTables();
   const note = checkedNote(checked, state.tables);
@@ -1003,7 +1006,17 @@ async function confirmWords(fields) {
   )
     return showWords(NOT_WORDS);
   const { name, person, words } = making;
-  await podNamed(name, { title: person, secret: words });
+  if ((await podsHere()).includes(name)) {
+    making = undefined;
+    closeDialog();
+    return render(
+      "No pod made",
+      html`<h1>No pod made</h1>
+<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
+    );
+  }
+  if (!(await podNamed(name, { title: person, secret: words })).encrypted)
+    throw new Error(`The pod ${name} was made without its words.`);
   making = undefined;
   offerToSave(name, words);
   state.pods = await podsHere();

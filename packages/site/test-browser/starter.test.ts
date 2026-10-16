@@ -2,6 +2,7 @@
 // network. The copy makes its own pods, so nothing under the repository is written.
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   cp,
   mkdtemp,
@@ -546,17 +547,6 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
     await page.getByRole("button", { name: "Make the encrypted pod" }).click();
     await page.waitForURL(`${sealed.origin}/pods/grace-hopper/`);
 
-    const files = await filesUnder(join(folder, "pods", "grace-hopper"));
-    assert.ok(files.length > 1, "the pod holds more than its header");
-    for (const file of files) {
-      if (file.replaceAll("\\", "/") === "settings/encryption.json") continue;
-      const text = await readFile(
-        join(folder, "pods", "grace-hopper", file),
-        "latin1",
-      );
-      assert.equal(text.includes("@prefix"), false, file);
-    }
-
     await page.getByLabel("Ask a question").fill("tell me a long story");
     await page.getByRole("button", { name: "Send" }).click();
     await page.locator(".chat-log .model", { hasText: "Once upon" }).waitFor();
@@ -570,7 +560,47 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
     );
     await page.close();
 
+    const racing = await browser.newPage();
+    await racing.goto(`${sealed.origin}/#new-pod`);
+    await racing.getByLabel("Encrypt this pod with six words").check();
+    await racing.getByLabel("A person's name").fill("Alan Turing");
+    await racing.getByRole("button", { name: "Make the pod" }).click();
+    const racingWords = await racing.locator(".words li").allTextContents();
+    const plain = await browser.newPage();
+    await plain.goto(`${sealed.origin}/#new-pod`);
+    await plain.getByLabel("A person's name").fill("Alan Turing");
+    await plain.getByRole("button", { name: "Make the pod" }).click();
+    await plain.waitForURL(`${sealed.origin}/pods/alan-turing/`);
+    await racing.getByLabel("Word 2").fill(racingWords[1]!);
+    await racing.getByLabel("Word 5").fill(racingWords[4]!);
+    await racing
+      .getByRole("button", { name: "Make the encrypted pod" })
+      .click();
+    assert.match(
+      (await racing.locator("main").textContent()) ?? "",
+      /A pod named alan-turing exists already/,
+    );
+    assert.equal(await racing.url(), `${sealed.origin}/encrypted-pods`);
+    await racing.close();
+    await plain.close();
+
     await sealed.stop(true);
+    const answersFolder = join(folder, "pods", ".answers", "grace-hopper");
+    const sealedFolders = [join(folder, "pods", "grace-hopper")];
+    if (existsSync(answersFolder)) sealedFolders.push(answersFolder);
+    for (const sealedFolder of sealedFolders) {
+      const files = await filesUnder(sealedFolder);
+      assert.ok(files.length > 0, `${sealedFolder} holds files`);
+      for (const file of files) {
+        if (file.replaceAll("\\", "/") === "settings/encryption.json") continue;
+        const text = await readFile(join(sealedFolder, file), "latin1");
+        assert.ok(text.length > 0, file);
+        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+          assert.equal(text.includes(readable), false, `${file}: ${readable}`);
+        assert.throws(() => JSON.parse(text), `${file} parses as JSON`);
+      }
+    }
+
     sealed = await startStarter({}, folder);
     const again = await browser.newPage();
     await again.goto(`${sealed.origin}/pods/grace-hopper/`);

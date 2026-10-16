@@ -322,26 +322,32 @@ async function showTable(response, id, query) {
   );
 }
 
-/** Check now: reads every feed past any cache; the pods held open close when it kept a version, to open with it. */
+/** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
   const kept = await tables();
   const checked = await kept.check({ cache: "no-cache" });
-  if (checked.some((each) => each.kept.length > 0)) await closePods();
+  if (checked.some((each) => each.kept.length > 0)) await closePods(true);
   lastCheck = checkedNote(checked, await kept.held());
   redirect(response, "/tables/?checked");
 }
 
-/** Closes every pod the server holds open, to be opened again on the next request for it. */
-async function closePods() {
-  const pods = [...open.values()];
-  open.clear();
+/** Closes every pod the server holds open, or with `plaintextOnly` only those not encrypted, to be opened again on the next request for it. */
+async function closePods(plaintextOnly = false) {
+  const closing = [];
+  for (const [name, opening] of [...open]) {
+    const pod = await opening.catch(() => undefined);
+    if (plaintextOnly && pod?.encrypted) continue;
+    open.delete(name);
+    if (pod !== undefined) closing.push(pod.close());
+  }
   lastShown.clear();
-  await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
+  await Promise.allSettled(closing);
 }
 
 /** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
 async function closeAll() {
   hospitals?.forget();
+  waiting.clear();
   await closePods();
 }
 
@@ -760,8 +766,19 @@ async function newEncryptedPod(request, response) {
     typedWords(form.get("word5") ?? "") !== asked[4]
   )
     return await showWords(response, name, words, NOT_WORDS);
-  await podNamed(name, words);
   waiting.delete(name);
+  if ((await podNames()).includes(name))
+    return send(
+      response,
+      400,
+      await page(
+        "No pod made",
+        html`<h1>No pod made</h1>
+<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
+      ),
+    );
+  if (!(await podNamed(name, words)).encrypted)
+    throw new Error(`The pod ${name} was made without its words.`);
   redirect(response, podPath(name));
 }
 
