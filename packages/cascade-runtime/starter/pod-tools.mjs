@@ -2,6 +2,7 @@
 // `cascade-runtime` (`changeTools`), `ask`, `worth_a_look` and `list_pods`, with the pod each is about named in its input.
 import console from "node:console";
 import {
+  changesIn,
   changeTools,
   checkInput,
   compact,
@@ -13,6 +14,7 @@ import {
   HISTORY,
   LABS,
   QUESTIONS as ANSWERED,
+  withMechanism,
   worthALook,
 } from "./summary.mjs";
 
@@ -46,7 +48,11 @@ function trendOf({ test, medication }) {
 export async function answersOf(pod) {
   const answers = {};
   for (const question of ANSWERED) answers[question] = await pod.ask(question);
-  return answers;
+  return withMechanism(
+    answers,
+    changesIn(answers[HISTORY], answers[LABS], { limit: 20 }),
+    (question) => pod.ask(question),
+  );
 }
 
 /**

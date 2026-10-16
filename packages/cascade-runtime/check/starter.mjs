@@ -872,8 +872,11 @@ try {
       assert.ok(from >= 0, "the card does not say where it comes from");
       const how = page.slice(from, page.indexOf("These say what", from));
       assert.doesNotMatch(how, /urn:|https?:\/\//);
-      assert.match(how, /The pod was filled by 2 imports/);
-      assert.match(how, /retrieved Feb 1, 2024\..*retrieved Feb 1, 2025\./);
+      assert.match(how, /The pod's records came in 2 imports/);
+      assert.match(
+        how,
+        /From Cascade North, retrieved Feb 1, 2024: 5 records\..*From Cascade North, retrieved Feb 1, 2025: 4 records, 1 of them a new version of one the pod already held\./,
+      );
       assert.match(how, /version 1 to version 2, in import 2/);
       assert.match(
         how,

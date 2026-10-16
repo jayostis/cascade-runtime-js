@@ -2950,7 +2950,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
     arrived: `202${3 + n}-02-01T09:05:00Z`,
     import: `urn:uuid:import-${n}`,
     hospital: north,
-    retrieved: `202${3 + n}-02-01T00:00:00Z`,
+    retrieved: `202${3 + n}-01-30T00:00:00Z`,
     ...extra,
   });
   const said = (version: string, field: string, value: string) => ({
@@ -2977,7 +2977,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
   const drawn = text(podOf("pell-hargrove", story, twice));
   assert.match(
     drawn,
-    /Where this comes from The pod was filled by 2 imports, in this order: FHIR pull on Feb 1, 2024, from Cascade North, retrieved Feb 1, 2024\. It brought in 2 records\. FHIR pull on Feb 1, 2025, from Cascade North, retrieved Feb 1, 2025\. It brought in 1 record, 1 of them a new version of a record the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
+    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved Jan 30, 2024: 2 records\. From Cascade North, retrieved Jan 30, 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
   );
   assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
   assert.doesNotMatch(
@@ -2997,8 +2997,24 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       ),
     }),
   );
-  assert.match(unrevised, /The pod was filled by 2 imports/);
+  assert.match(unrevised, /The pod's records came in 2 imports/);
   assert.doesNotMatch(unrevised, /came in a new version/);
+
+  const asked: string[] = [];
+  const ask = async (question: string) => {
+    asked.push(question);
+    return [];
+  };
+  const base = { ...story.answers, [IMPORTS]: twice[IMPORTS] };
+  await view.withMechanism(
+    { ...base, [IMPORTS]: twice[IMPORTS]!.slice(0, 2) },
+    story.changes,
+    ask,
+  );
+  await view.withMechanism(base, [], ask);
+  assert.deepEqual(asked, [], "asked for a block that would not show");
+  await view.withMechanism(base, story.changes, ask);
+  assert.deepEqual(asked, [REVISIONS, VERSIONS]);
 });
 
 test("the trend names its first date from the earliest result, and its test and medication by the tables where they name the code, else by the record's own text", () => {

@@ -185,6 +185,9 @@ const IMPORTS = "pod/What each import brought in";
 const REVISIONS = "record/Its revisions, in the order they arrived";
 const VERSIONS = "record/What each version says";
 
+/** The questions only the mechanism under What changed reads: see `withMechanism`. */
+export const MECHANISM = [REVISIONS, VERSIONS];
+
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
   SOURCES,
@@ -194,8 +197,6 @@ export const QUESTIONS = [
   REPORTS,
   HISTORY,
   IMPORTS,
-  REVISIONS,
-  VERSIONS,
   ...SECTIONS.flatMap(({ question }) => question ?? []),
 ];
 
@@ -1687,6 +1688,24 @@ function differences(before, after) {
 }
 
 /**
+ * `answers` with the rows of `MECHANISM` added when `podPage` would draw them: the pod holds two imports or more and
+ * `changes` (as `changesIn` gives them) has a shown change of a medication. Otherwise `answers` as it is, and the two
+ * questions are never asked; `ask` gives a question's rows.
+ */
+export async function withMechanism(answers, changes, ask) {
+  const imports = new Set((answers[IMPORTS] ?? []).map((row) => row.import));
+  const shown = changes.some(
+    ({ direction, medication }) =>
+      direction !== "not enough results" && medication.entry,
+  );
+  if (imports.size < 2 || !shown) return answers;
+  const rows = await Promise.all(
+    MECHANISM.map(async (question) => [question, await ask(question)]),
+  );
+  return { ...answers, ...Object.fromEntries(rows) };
+}
+
+/**
  * How the pod came to hold what What changed reads, from the rows of the imports, the revisions and the versions in
  * `answers`; none until the pod holds two imports.
  *
@@ -1783,17 +1802,25 @@ export function howOf(answers, findings) {
 const valuesSaid = (values) =>
   values.length === 0 ? "none" : values.join(", ");
 
-/** One pull as the mechanism lists it: when, from where, retrieved when, and what it brought in. */
+/** One pull as the mechanism lists it: from where, retrieved when (else the day it came in), and what it brought in. */
 function pullSaid({ label, started, hospital, retrieved, brought, revised }) {
   const records = `${brought} ${brought === 1 ? "record" : "records"}`;
-  return `${label ?? "Import"} on ${day(started)}${hospital === undefined ? "" : `, from ${hospitalName(hospital)}`}${retrieved === undefined ? "" : `, retrieved ${day(retrieved)}`}. It brought in ${records}${revised > 0 ? `, ${revised} of ${revised === 1 ? "them a new version of a record" : "them new versions of records"} the pod already held` : ""}.`;
+  const when =
+    retrieved === undefined ? day(started) : `retrieved ${day(retrieved)}`;
+  const newer =
+    revised === 0
+      ? ""
+      : revised === 1
+        ? ", 1 of them a new version of one the pod already held"
+        : `, ${revised} of them new versions of records the pod already held`;
+  return `From ${placeName(hospital ?? label)}, ${when}: ${records}${newer}.`;
 }
 
 /** The mechanism behind What changed, as `howOf` gives it: the pulls in order, and each medication's versions. */
 function How({ how, about }) {
   return html`<div class="how">
 <h3>Where this comes from</h3>
-<p>The pod was filled by ${how.pulls.length} imports, in this order:</p>
+<p>The pod's records came in ${how.pulls.length} imports, in this order:</p>
 <ol>${how.pulls.map((pull) => html`<li>${pullSaid(pull)}</li>`)}</ol>
 ${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, on ${day(step.arrived)}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
 </div>`;

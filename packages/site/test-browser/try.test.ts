@@ -2231,7 +2231,7 @@ test("in try/, the sample pod tamsin-vale draws What changed and, in its card, w
     story.pulls.forEach(({ asOf }, at) => {
       const said = pulls[at]!;
       assert.ok(
-        said.includes(`from ${view.hospitalName(north.hospital.name)}`),
+        said.includes(`From ${view.hospitalName(north.hospital.name)}`),
         said,
       );
       assert.ok(said.includes(`retrieved ${view.day(asOf)}`), said);
