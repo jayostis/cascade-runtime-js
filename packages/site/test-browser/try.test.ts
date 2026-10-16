@@ -2175,7 +2175,10 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
     await settled(page);
     await page.click('a[href="#new-pod"]');
     await page.check("#encrypt-pod");
-    await page.fill('#new-pod input[name="person"]', "Grace Hopper");
+    await page.fill(
+      '#new-pod input[aria-label="A person\'s name"]',
+      "Grace Hopper",
+    );
     await inPlace(page, () =>
       page.click('#new-pod button:has-text("Make the pod")'),
     );
