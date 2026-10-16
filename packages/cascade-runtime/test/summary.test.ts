@@ -2191,6 +2191,18 @@ test("an entry kept as one names the held table version whose rows joined it, an
     page,
   );
 
+  assert.ok(
+    render(
+      view.entryPage({
+        entry: only,
+        pod: "p",
+        back: "/",
+        tableHref: (series: { iri: string }) => series.iri,
+      }),
+    ).includes('Matched using Example names, <a href="urn:test:names">'),
+    "the version link follows the table's name after a space",
+  );
+
   const twice = view.entryOf(ENTRY_ANSWERS, "aa11", {
     held,
     joined: joined("urn:test:names-2", "urn:test:status-1"),
