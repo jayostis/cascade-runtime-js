@@ -40,11 +40,11 @@ names no record, a folder holding files but no pod, a call after `close`. Only
 ## The starter
 
 This app was made from a starter, a demonstration: rebuild it in any framework,
-keeping the package and the pods, under `pods/<name>/`. It is made with three,
-`alex-rivera`, `priya-natarajan` and `martin-okafor`.
+keeping the package and the pods, under `pods/<name>/`. It is made with four,
+`alex-rivera`, `priya-natarajan`, `martin-okafor` and `tamsin-vale`.
 
 - `npm run help` lists every command.
-- `npm run reset` removes every pod and loads those three again.
+- `npm run reset` removes every pod and loads those four again.
 - `npm run dev` serves the app as `npm start` does, restarting it on every save.
 - `npm start` serves the app; stop it with Ctrl+C or by its process, never by
   killing every Node process. A pod's page links to bringing in a record from a
@@ -63,9 +63,10 @@ keeping the package and the pods, under `pods/<name>/`. It is made with three,
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
   exports, `priya-natarajan` Priya Natarajan's, from exports and C-CDA files
-  together, and `martin-okafor` Martin Okafor's, two FHIR reports of one
-  variant beside what ClinVar says today, on the app's tables like any pod it
-  creates. `--through J1`
+  together, `martin-okafor` Martin Okafor's, two FHIR reports of one
+  variant beside what ClinVar says today, and `tamsin-vale` Tamsin Vale's, two
+  pulls from Cascade North a year apart with her metformin stopped between
+  them, on the app's tables like any pod it creates. `--through J1`
   stops Alex's after her first export, leaving the rest to `import`.
 - `npm run pod:new <name>` makes an empty pod.
 - `npm run pod:reset <name>` removes a pod.

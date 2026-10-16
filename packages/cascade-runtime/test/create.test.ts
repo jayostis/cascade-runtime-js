@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import { agentPrompt, create, type Terminal } from "../src/create.js";
+import { agentPrompt, create, KITS, type Terminal } from "../src/create.js";
 
 const ADDRESS =
   "https://example.org/releases/download/build-0/cascade-runtime-0.0.0.tgz";
@@ -94,9 +94,10 @@ test("given a folder, it makes the project and names it, with the view's package
     `load alex-rivera into ${join(folder, "pods", "alex-rivera")}`,
     `load priya-natarajan into ${join(folder, "pods", "priya-natarajan")}`,
     `load martin-okafor into ${join(folder, "pods", "martin-okafor")}`,
+    `load tamsin-vale into ${join(folder, "pods", "tamsin-vale")}`,
   ]);
   for (const line of [
-    "with the pods alex-rivera, priya-natarajan and martin-okafor.",
+    "with the pods alex-rivera, priya-natarajan, martin-okafor and tamsin-vale.",
     "npm start",
     "npm run help",
     agentPrompt("my-app"),
@@ -147,7 +148,7 @@ test("a terminal that sets up the tables reports each phase with its seconds, be
         text.indexOf("Loading the pod alex-rivera"),
       "a setup line came after the first kit's",
     );
-    assert.equal(terminal.done.length, 4, "the kits loaded");
+    assert.equal(terminal.done.length, 1 + KITS.length, "the kits loaded");
   }
 });
 
@@ -166,7 +167,7 @@ test("a terminal offers a model once the app is made, and says how to add one la
           offered.push(made);
           assert.equal(
             terminal.done.length,
-            4,
+            1 + KITS.length,
             "it offered once the pods were loaded",
           );
           return taken;
@@ -196,7 +197,7 @@ test("a pod that does not load leaves the app made, and says which", async () =>
   );
   assert.match(
     terminal.text(),
-    /with the pods alex-rivera and martin-okafor\./,
+    /with the pods alex-rivera, martin-okafor and tamsin-vale\./,
   );
 });
 

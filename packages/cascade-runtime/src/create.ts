@@ -17,6 +17,7 @@ export const KITS = [
   "alex-rivera",
   "priya-natarajan",
   "martin-okafor",
+  "tamsin-vale",
 ] as const;
 
 export interface Terminal {
