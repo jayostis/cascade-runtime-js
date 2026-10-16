@@ -23,6 +23,7 @@ import { Tables } from "../dist/src/tables.js";
 
 /** What the tables the app holds now name each code, set once the app is installed. */
 let heldNames = async () => new Map();
+let heldSeries = async () => [];
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
@@ -583,6 +584,7 @@ await behaviour("the command makes the app", async () => {
     preference: vocabulary.config.tables.preference,
   });
   heldNames = (codes) => heldTables.about(codes);
+  heldSeries = () => heldTables.held();
   const kit = (through) =>
     featureStory(
       vocabulary.files,
@@ -1319,11 +1321,23 @@ if (release === undefined) {
             heading(page).includes(named),
             `the MLH1 entry is not named by ClinVar: ${heading(page)}`,
           );
+          const origin = (
+            await heldNames([`http://www.ncbi.nlm.nih.gov/clinvar/${id}`])
+          ).get(`http://www.ncbi.nlm.nih.gov/clinvar/${id}`)?.name?.origin;
+          const series = (await heldSeries()).find(({ versions }) =>
+            versions.some(({ iri }) => iri === origin),
+          );
+          assert.ok(series, "no held series names the MLH1 variation");
+          const version = series.versions.find(({ iri }) => iri === origin);
+          const credit = lines.find((line) =>
+            line.startsWith(`ClinVar names this variation ${named}.`),
+          );
+          assert.ok(credit, "the entry does not say ClinVar names it");
           assert.ok(
-            lines.some((line) =>
-              line.startsWith(`ClinVar names this variation ${named}.`),
-            ),
-            "the entry does not say where ClinVar's name came from",
+            credit.includes(`From ${series.label}, `) &&
+              (version.label === undefined ||
+                credit.includes(`version ${version.label}`)),
+            `the entry does not credit the names series and version: ${credit}`,
           );
           assert.ok(
             heading(page).includes(DIFFERS),
