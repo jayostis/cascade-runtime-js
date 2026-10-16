@@ -629,14 +629,21 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
   await page.waitForSelector('body[data-tables="ready"]', {
     timeout: 120_000,
   });
-  // Node's look gives the lines that need no table; the shared-ingredient lines are the tables' to give.
+  // Node's look gives the lines that need no table; the tables add the one lisinopril line.
   const lines = await page.$$eval(".worth li", (found) =>
     found.map((each) => ({
       text: each.textContent ?? "",
       href: each.querySelector("a")?.getAttribute("href") ?? "",
     })),
   );
-  const own = lines.filter(({ text }) => !text.includes("share an ingredient"));
+  const lisinopril =
+    /lisinopril 10 .* and lisinopril 20 .* share an ingredient, lisinopril/i;
+  assert.equal(
+    lines.filter(({ text }) => lisinopril.test(text)).length,
+    1,
+    "Worth a look has no line, or two, for the two lisinopril doses",
+  );
+  const own = lines.filter(({ text }) => !lisinopril.test(text));
   assert.deepEqual(
     own.map(({ text }) => text),
     joined.worth,
@@ -660,19 +667,23 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     1,
     `the two amoxicillin allergies are one, among ${allergies.join("; ")}`,
   );
-  assert.ok(
-    allergies.length < (joined.held.get("AllergyIntolerance") ?? 0),
-    "the allergies were not joined",
+  assert.equal(
+    allergies.length,
+    (joined.held.get("AllergyIntolerance") ?? 0) - 1,
+    `exactly the two amoxicillin allergies join, among ${allergies.join("; ")}`,
   );
   assert.ok(
-    lines.some(({ text }) =>
-      /lisinopril 10 .* and lisinopril 20 .* share an ingredient, lisinopril/i.test(
-        text,
+    allergies.some((row) => /penicillin/i.test(row)) &&
+      !allergies.some(
+        (row) => /penicillin/i.test(row) && /amoxicillin/i.test(row),
       ),
-    ),
-    "Worth a look has no line for the two lisinopril doses",
+    `penicillin stays apart from amoxicillin, among ${allergies.join("; ")}`,
   );
-  for (const justification of ["SameBrandGeneric", "SameProductCode"])
+  for (const justification of [
+    "SameBrandGeneric",
+    "SameProductCode",
+    "SameMappedCode",
+  ])
     assert.ok(
       cites(joined.judged, justification),
       `no ${justification} judgment cites a table version`,
@@ -745,16 +756,23 @@ test("in try/, a new pod for Tobias Fenn signed in at North names his hip condit
     );
 
     const vaccines = await rowsIn("immunizations");
-    assert.ok(
-      vaccines.filter((row) => row.includes("Hep A")).every(retired) &&
-        vaccines.some(retired),
-      vaccines.join("; "),
-    );
+    const hepA = vaccines.filter((row) => row.includes("Hep A"));
+    assert.equal(hepA.length, 1, vaccines.join("; "));
+    assert.ok(retired(hepA[0] ?? ""), hepA.join("; "));
     const hdl = (await rowsIn("lab-results")).filter((row) =>
       /Cholesterol.in HDL/.test(row),
     );
     assert.equal(hdl.length, 2, hdl.join("; "));
-    assert.equal(hdl.filter(retired).length, 1, hdl.join("; "));
+    const [old, current] = [
+      hdl.filter((row) => /Deprecated/.test(row)),
+      hdl.filter((row) => !/Deprecated/.test(row)),
+    ];
+    assert.equal(old?.length, 1, hdl.join("; "));
+    assert.ok(old?.every(retired), `the Deprecated row is tagged: ${hdl}`);
+    assert.ok(
+      current?.every((row) => !retired(row)),
+      `the current row is untagged: ${hdl}`,
+    );
   } finally {
     await context.close();
   }
