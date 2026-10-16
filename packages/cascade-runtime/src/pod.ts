@@ -119,6 +119,16 @@ export interface Pod {
    * versions of the tables, reads the pod and writes nothing. A combination product is in no class: MED-RT classes none.
    */
   medicationClasses(): Promise<Row[]>;
+  /**
+   * The lab results of the pod in the LOINC panel with the code `panel`, which the person picked (`tables/panel-results.rq`
+   * asked of that panel): each member the panel lists, directly or through a panel nested in it, with its `sequence`,
+   * its `required` as LOINC writes it, the panel `via` whose row lists it, the version of the panel members table that
+   * holds the row (`origin`) and the `entry` of the pod's result for it. A required member the pod has no result for is a
+   * row with no `entry`. A member reached directly and through a nested panel is a row for each `via`, and a member with
+   * several results a row for each. It is answered over the current versions of the tables, reads the pod and writes
+   * nothing.
+   */
+  panelResults(panel: string): Promise<Row[]>;
   close(): Promise<void>;
 }
 
@@ -297,16 +307,26 @@ CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a clinical:Medication ; ?pr
 const SELECTED_CODE = `${REC}selectedCode`;
 const RXNORM_CODE = "https://ns.cascadeprotocol.org/clinical/v1#rxNormCode";
 
-const agreements = new WeakMap<Files, Promise<string>>();
-const classQueries = new WeakMap<Files, Promise<string>>();
+/** A person's results in a panel are asked of the tables the app holds the same way. */
+const PANEL_RESULTS_QUERY = `${QUERIES}tables/panel-results.rq`;
+/** The lab result entries `tables/panel-results.rq` reads of the pod: their test codes. */
+const LAB_ENTRIES = `PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
+PREFIX rec: <${REC}>
+CONSTRUCT { ?entry health:testCode ?code ; rec:latestMember ?latest }
+WHERE { ?entry health:testCode ?code ; rec:latestMember ?latest }`;
 
-/** The text of the vocabulary's medication classes query, read once. */
-function classesText(vocabulary: Files): Promise<string> {
-  let found = classQueries.get(vocabulary);
+const agreements = new WeakMap<Files, Promise<string>>();
+const tableQueries = new WeakMap<Files, Map<string, Promise<string>>>();
+
+/** The text of a query of the vocabulary's `tables/` folder, read once. */
+function tableQueryText(vocabulary: Files, path: string): Promise<string> {
+  const read = tableQueries.get(vocabulary) ?? new Map();
+  tableQueries.set(vocabulary, read);
+  let found = read.get(path);
   if (found === undefined) {
-    found = readText(vocabulary, CLASSES_QUERY);
-    classQueries.set(vocabulary, found);
-    found.catch(() => classQueries.delete(vocabulary));
+    found = readText(vocabulary, path);
+    read.set(path, found);
+    found.catch(() => read.delete(path));
   }
   return found;
 }
@@ -539,6 +559,10 @@ class OpenPod implements Pod {
 
   medicationClasses(): Promise<Row[]> {
     return this.#next(() => this.#medicationClasses());
+  }
+
+  panelResults(panel: string): Promise<Row[]> {
+    return this.#next(() => this.#panelResults(panel));
   }
 
   close(): Promise<void> {
@@ -863,7 +887,7 @@ class OpenPod implements Pod {
   async #medicationClasses(): Promise<Row[]> {
     const { vocabulary, lens, newStore, tables } = this.#parts;
     const [text, held, { codeSystems }] = await Promise.all([
-      classesText(vocabulary),
+      tableQueryText(vocabulary, CLASSES_QUERY),
       this.#core.dataset(lens),
       tableTerms(vocabulary, newStore),
     ]);
@@ -890,6 +914,35 @@ class OpenPod implements Pod {
     return rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
     );
+  }
+
+  /**
+   * The query over a dataset of its own: the pod's lab result entries, and the panel's rows and those of the panels
+   * nested in it in the panel members versions, which are all the query needs to answer for that panel. It answers for
+   * every panel it finds on the way down; the rows kept are the panel's.
+   */
+  async #panelResults(panel: string): Promise<Row[]> {
+    const { vocabulary, lens, newStore, tables } = this.#parts;
+    const [text, held] = await Promise.all([
+      tableQueryText(vocabulary, PANEL_RESULTS_QUERY),
+      this.#core.dataset(lens),
+    ]);
+    const entries = await held.construct(LAB_ENTRIES);
+    if (entries.length === 0) return [];
+    const union = new Union(newStore());
+    await union.add(entries, "urn:cascade:entries");
+    for (const { version, rows, description } of await tables.panelRows(
+      panel,
+    )) {
+      await union.add(rows, version);
+      await union.add(description, "urn:cascade:references");
+    }
+    const { rows } = await union.select(text);
+    return rows
+      .map((row) =>
+        Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
+      )
+      .filter((row) => row.panel === panel);
   }
 
   async #ask(

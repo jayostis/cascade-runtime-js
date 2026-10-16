@@ -1751,7 +1751,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
   }
 });
 
-test("in try/, Priya's pod, copied on a first visit, names her potassium result by LOINC once the tables are ready, and its class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous", async () => {
+test("in try/, Priya's pod, copied on a first visit, names her potassium result by LOINC once the tables are ready, her potassium result opens the electrolytes panel with her tests in LOINC's order and the required ones she has no result for, and its class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous", async () => {
   const context = await browser.newContext();
   await context.addInitScript(recordDraws);
   try {
@@ -1781,6 +1781,37 @@ test("in try/, Priya's pod, copied on a first visit, names her potassium result 
       !tests.includes("Potassium"),
       "a result keeps the record's own name",
     );
+    await inPlace(page, () =>
+      page
+        .locator("#see-lab-results tbody td:first-child a", {
+          hasText: "Potassium",
+        })
+        .first()
+        .click(),
+    );
+    await page.waitForSelector("text=In LOINC panels", { timeout: 60_000 });
+    await inPlace(page, () => page.locator('main a[href$="24326-1"]').click());
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("main h1")
+          ?.textContent?.startsWith("Your results in"),
+      undefined,
+      { timeout: 120_000 },
+    );
+    const panel = ((await page.locator("main").innerText()) ?? "").replace(
+      /\s+/g,
+      " ",
+    );
+    const at = (word: string): number => panel.lastIndexOf(word);
+    assert.ok(
+      at("Sodium") > -1 &&
+        at("Sodium") < at("Potassium") &&
+        at("Potassium") < at("Chloride"),
+      `her tests are not in LOINC's order in ${panel}`,
+    );
+    for (const said of ["required", "No result", "missing: "])
+      assert.ok(panel.includes(said), `${said} is not in ${panel}`);
     await page.goto(`${served.url}try/index.html?pod=priya-natarajan&classes`);
     await settled(page);
     await page.waitForFunction(

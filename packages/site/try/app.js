@@ -54,6 +54,9 @@ import {
   noPods,
   noTables,
   pageNumber,
+  panelPage,
+  panelSaid,
+  panelsOf,
   patientName,
   personName,
   podPage,
@@ -203,6 +206,10 @@ const trendHref = (pod, { test, medication }) =>
 const classesHref = (pod, picked) =>
   `${podHref(pod)}&classes${picked === undefined ? "" : `&${new URLSearchParams({ class: picked })}`}`;
 
+/** The address of a pod's results in the LOINC panel with the code `panel`. */
+const panelHref = (pod, panel) =>
+  `${podHref(pod)}&${new URLSearchParams({ panel })}`;
+
 /** The pages the model context offers as tools: the views of the page shown, and the changes of the pod shown. */
 const registry = toolRegistry(document.modelContext);
 /** The tools of the pod shown, and the controller whose signal ends them. */
@@ -243,7 +250,7 @@ function register(view) {
 
 /** The entry `state.page` names, as the pod's answers and what the tables say of its codes give it. */
 function entryShown() {
-  const { answers, about, said, entry } = state.page;
+  const { answers, about, said, entry, panels } = state.page;
   const { current } = state;
   const found = entryOf(answers, entry, { about, said, held: state.tables });
   const sources = sourcesOf(state.tables);
@@ -256,6 +263,8 @@ function entryShown() {
       codeHref: (series, notation) =>
         `${tableHref(sources.find((each) => each.series.includes(series)))}&${new URLSearchParams({ code: notation })}`,
       tableHref,
+      panels,
+      panelHref: (code) => panelHref(current, code),
     }),
   };
 }
@@ -432,9 +441,60 @@ async function showEntry(id) {
     aboutCodes(answers),
     variantsOf(answers),
   ]);
-  state.page = { answers, entry: id, about, said };
+  const shown = { answers, entry: id, about, said };
+  state.page = shown;
   state.doing = "ready";
   redraw();
+  shown.panels = await panelsShown(shown);
+  if (state.page === shown && shown.panels !== undefined) redraw();
+}
+
+/** The LOINC panels the entry `shown` is in; nothing before the engine is ready, or when the tables cannot say. */
+async function panelsShown({ answers, entry, about, said }) {
+  if (entry === undefined || document.body.dataset.engine !== "ready")
+    return undefined;
+  try {
+    const held = state.tables;
+    return await panelsOf(entryOf(answers, entry, { about, said, held }), {
+      tables: await appTables(),
+      held,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The pod's results in the LOINC panel with the code `panel`. They come from the engine and the tables, so the page
+ * waits for both.
+ */
+async function showPanel(panel) {
+  const { current } = state;
+  const [rows, labs] = await Promise.all([
+    pod.panelResults(panel),
+    pod.ask(LABS),
+  ]);
+  const tables = await appTables();
+  const [about] = await Promise.all([
+    panelSaid(panel, rows, { tables }).catch(() => undefined),
+    readTables(),
+  ]);
+  const sources = sourcesOf(state.tables);
+  render(
+    `Your results in ${about?.get(panel)?.name?.label ?? "a panel"}`,
+    panelPage({
+      pod: current,
+      back: podHref(current),
+      panel,
+      rows,
+      labs,
+      about,
+      held: state.tables,
+      entryHref: (entry) => entryHref(current, entry),
+      codeHref: (series, notation) =>
+        `${tableHref(sources.find((each) => each.series.includes(series)))}&${new URLSearchParams({ code: notation })}`,
+    }),
+  );
 }
 
 /**
@@ -682,6 +742,7 @@ async function route() {
   if (query.has("entry")) return showEntry(query.get("entry") ?? "");
   if (query.has("trend")) return showTrend(query);
   if (query.has("classes")) return showClasses(query.get("class") ?? undefined);
+  if (query.has("panel")) return showPanel(query.get("panel") ?? "");
   await showPod();
 }
 
@@ -1012,6 +1073,7 @@ busy(async () => {
         shown.said = await variantsOf(shown.answers);
         if (state.page === shown) redraw();
         shown.about = (await aboutCodes(shown.answers)) ?? new Map();
+        shown.panels = await panelsShown(shown);
       }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";

@@ -55,6 +55,9 @@ import {
   noPods,
   noTables,
   pageNumber,
+  panelPage,
+  panelSaid,
+  panelsOf,
   patientName,
   personName,
   podPage,
@@ -467,12 +470,20 @@ async function showEntry(response, name, id, names) {
     answers = await answersOf(await podNamed(name));
     lastShown.set(name, answers);
   }
-  const [about, held, said] = await Promise.all([
+  const [about, held, said, panels] = await Promise.all([
     aboutCodes(answers),
     tables()
       .then((kept) => kept.held())
       .catch(() => []),
     podNamed(name).then((pod) => variantsOf(answers, pod)),
+    tables()
+      .then(async (kept) =>
+        panelsOf(entryOf(answers, id), {
+          tables: kept,
+          held: await kept.held(),
+        }),
+      )
+      .catch(() => []),
   ]);
   const entry = entryOf(answers, id, { about, said, held });
   const sources = sourcesOf(held);
@@ -484,6 +495,8 @@ async function showEntry(response, name, id, names) {
       `${tablePath(sources.find((each) => each.series.includes(series)))}?${new URLSearchParams({ code: notation })}`,
     tableHref: tablePath,
     ask: model !== undefined,
+    panels,
+    panelHref: (code) => panelPath(name, code),
   });
   send(
     response,
@@ -583,6 +596,58 @@ async function showClasses(response, name, query, names) {
     response,
     200,
     await page("Medicines by class", body, { current: name, names }),
+  );
+}
+
+const panelPath = (name, code) =>
+  `${podPath(name)}panel?${new URLSearchParams({ panel: code })}`;
+
+/**
+ * The pod's results in the LOINC panel `query`'s `panel` names, the code a person picked from a lab result's page:
+ * `pod.panelResults(panel)` finds them, the tables name them. A panel is a code, so no panel is a 404.
+ */
+async function showPanel(response, name, query, names) {
+  const panel = query.get("panel");
+  if (panel === null)
+    return send(
+      response,
+      404,
+      await page("Not found", html`<h1>Not found</h1>`, { names }),
+    );
+  const pod = await podNamed(name);
+  const [rows, labs] = await Promise.all([
+    pod.panelResults(panel),
+    pod.ask(LABS),
+  ]);
+  const kept = await tables();
+  const [about, held] = await Promise.all([
+    panelSaid(panel, rows, { tables: kept }).catch(() => undefined),
+    kept.held(),
+  ]);
+  const sources = sourcesOf(held);
+  const body = panelPage({
+    pod: name,
+    back: podPath(name),
+    panel,
+    rows,
+    labs,
+    about,
+    held,
+    entryHref: (entry) => entryPath(name, entry),
+    codeHref: (series, notation) =>
+      `${tablePath(sources.find((each) => each.series.includes(series)))}?${new URLSearchParams({ code: notation })}`,
+  });
+  send(
+    response,
+    200,
+    await page(
+      `Your results in ${about?.get(panel)?.name?.label ?? "a panel"}`,
+      body,
+      {
+        current: name,
+        names,
+      },
+    ),
   );
 }
 
@@ -843,7 +908,7 @@ const server = createServer(async (request, response) => {
       );
     }
     const at =
-      /^\/pods\/([^/]+)\/(?:(hospitals|trend|classes)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
+      /^\/pods\/([^/]+)\/(?:(hospitals|trend|classes|panel)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
         pathname,
       );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
@@ -862,6 +927,8 @@ const server = createServer(async (request, response) => {
         return await showTrend(response, name, url.searchParams, names);
       if (view === "classes" && !post)
         return await showClasses(response, name, url.searchParams, names);
+      if (view === "panel" && !post)
+        return await showPanel(response, name, url.searchParams, names);
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,

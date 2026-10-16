@@ -1966,6 +1966,7 @@ export function entryOf(
               ...(series !== undefined && { series }),
             };
           }),
+    ...(section?.one === "lab result" && { testCodes: codes }),
     where: linesOf(ofEntry(sources), variant?.issued),
     known,
     credits: [
@@ -1975,13 +1976,38 @@ export function entryOf(
 }
 
 /**
+ * The LOINC panels the held panel members tables list the lab result `entry` (`entryOf`'s answer) in, as `entryPage`
+ * takes them: for each version among `held` that lists its test code in a panel, its series and version and the panels
+ * with their requirement. Nothing for an entry that is no lab result, or when the tables cannot say.
+ */
+export async function panelsOf(entry, { tables, held }) {
+  const found = await Promise.all(
+    (entry?.testCodes ?? []).map((code) => tables.inPanels(code)),
+  );
+  return found.flat().flatMap((each) => {
+    const at = heldAt(each.version, held);
+    return at === undefined ? [] : [{ ...each, ...at }];
+  });
+}
+
+/**
  * An entry's page, as a person reads it: its name and tags, what it is, where it came from and what else is known, each
  * part absent when it has nothing to say but where it came from. `entry` is `entryOf`'s answer, none when the entry is
  * not in the pod. `back` is the pod's address; a code with a series is a link to `codeHref(series, notation)`, and
  * the version a table's claim comes from a link to `tableHref(series)`. With `ask`, as `podPage` takes it, the page has
- * an "Ask about this" button for the entry.
+ * an "Ask about this" button for the entry. A lab result's `panels` (`panelsOf`'s answer, none until the tables can
+ * say) are the panels LOINC lists its test in, each a link to `panelHref(code)`.
  */
-export function entryPage({ entry, pod, back, codeHref, tableHref, ask }) {
+export function entryPage({
+  entry,
+  pod,
+  back,
+  codeHref,
+  tableHref,
+  ask,
+  panels = [],
+  panelHref,
+}) {
   const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
   if (entry === undefined)
     return html`${backLink}
@@ -2028,7 +2054,19 @@ ${known.map(
     html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">From ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
 )}
 </ul>${credits.map((credit) => html`<p class="muted">${credit}</p>`)}</div>`
-}`;
+}
+${panels.map(
+  ({ series, version, total, panels: listing }) =>
+    html`<div class="card entry"><h2>In LOINC panels</h2>
+<p>${series.label} lists this test in ${total === 1 ? "one panel" : `${total.toLocaleString("en")} panels`}. A panel's page shows the results you have in it; it does not say this result was drawn as part of one.</p>
+<ul class="members">${listing.map(
+      (each) =>
+        html`<li><a href=${panelHref(each.code)}>${each.about?.name?.label ?? each.notation}</a>${each.required !== undefined && html` <span class="muted">${REQUIRED[each.required] ?? each.required}</span>`}</li>`,
+    )}</ul>
+${total > listing.length && html`<p class="muted">and ${(total - listing.length).toLocaleString("en")} more.</p>`}
+${series.credit !== undefined && html`<p class="muted">${series.credit}</p>`}
+<p class="muted from">From ${series.label}, <a href=${tableHref(series)}>${versionName(version)}</a>.</p></div>`,
+)}`;
 }
 
 /** What an import is doing, as `pod.import`'s `onProgress` says it: `converting, 3 of 10 documents done`. */
@@ -2960,6 +2998,153 @@ ${
   html`<div class="card"><h2>Not in a class here</h2>
 <p>${listed(left.map(({ medication }) => medication))}. MED-RT classes single ingredients, not the combination of several, and gives some single ingredients no class; a drug the tables do not map to an ingredient has no class here.</p></div>`
 }`;
+}
+
+/**
+ * What the tables say of the panel and of the codes `rows` (`pod.panelResults(panel)`'s answer) hold: their names. Names
+ * nothing when the tables cannot say.
+ */
+export async function panelSaid(panel, rows, { tables }) {
+  return tables.about([
+    ...new Set([panel, ...rows.flatMap((row) => [row.member, row.via])]),
+  ]);
+}
+
+/**
+ * The page of a pod's results in the LOINC `panel` a person picked: `rows` is `pod.panelResults(panel)`'s answer, `labs`
+ * the rows of `pod/My lab results`, `about` is `panelSaid`'s answer, none until the tables can say, and `held` the
+ * tables' `held()`. Each test the panel lists is in LOINC's order with whether it is required and the pod's results of
+ * it, newest first, each a link to `entryHref(entry)`; a test of a panel nested in it is under that panel. The page says
+ * which required tests the pod has no result for, and which version of the tables says so. It never says a result was
+ * drawn as part of the panel: only that LOINC lists the test in it.
+ */
+export function panelPage({
+  pod,
+  back,
+  panel,
+  rows,
+  labs = [],
+  about = new Map(),
+  held = [],
+  entryHref,
+  codeHref,
+}) {
+  const nameOf = (code) =>
+    about.get(code)?.name?.label ??
+    about.get(code)?.notation ??
+    notationOf(code);
+  const results = new Map(labs.map((row) => [row.entry, row]));
+  const lines = new Map();
+  for (const row of rows) {
+    const key = `${row.via} ${row.member}`;
+    if (!lines.has(key))
+      lines.set(key, {
+        member: row.member,
+        via: row.via,
+        sequence: Number(row.sequence),
+        required: row.required,
+        results: [],
+      });
+    if (row.entry !== undefined)
+      lines
+        .get(key)
+        .results.push(results.get(row.entry) ?? { entry: row.entry });
+  }
+  const byPlace = (a, b) =>
+    a.sequence - b.sequence || nameOf(a.member).localeCompare(nameOf(b.member));
+  const own = [...lines.values()].filter((line) => line.via === panel);
+  const shownOwn = new Set(own.map((line) => line.member));
+  const nested = new Map();
+  for (const line of lines.values())
+    if (line.via !== panel && !shownOwn.has(line.member))
+      nested.set(line.via, [...(nested.get(line.via) ?? []), line]);
+  const groups = [
+    { via: panel, lines: own.sort(byPlace) },
+    ...[...nested]
+      .sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b)))
+      .map(([via, each]) => ({ via, lines: each.sort(byPlace) })),
+  ].filter((group) => group.lines.length > 0);
+  // The query's own answer: its missing rows are exact, and a held result is required in the panel when its row is one
+  // the panel lists itself and says R, or when a missing test sits in the same nested panel (the query puts one there
+  // only when every nesting row on the way says R). A held member of any other nested panel is not counted: its own
+  // row says nothing of its parent's requirement.
+  const missing = [
+    ...new Map(
+      [...lines.values()]
+        .filter((line) => line.results.length === 0 && line.required === "R")
+        .map((line) => [line.member, line]),
+    ).values(),
+  ];
+  const requiredVias = new Set([panel, ...missing.map((line) => line.via)]);
+  const required = [
+    ...new Map(
+      [...lines.values()]
+        .filter(
+          (line) =>
+            line.required === "R" &&
+            (line.results.length === 0 || requiredVias.has(line.via)),
+        )
+        .map((line) => [line.member, line]),
+    ).values(),
+  ];
+  const title = nameOf(panel);
+  const said =
+    rows.length === 0
+      ? "You have no results in this panel."
+      : required.length === 0
+        ? "LOINC requires none of this panel's tests."
+        : missing.length === 0
+          ? `You have ${required.length === 1 ? "the one required test" : `all ${required.length} required tests`}.`
+          : `You have ${required.length - missing.length} of ${required.length} required test${required.length === 1 ? "" : "s"}; missing: ${listed(missing.map((line) => nameOf(line.member)))}.`;
+  const requirement = (line) =>
+    line.required === undefined
+      ? undefined
+      : (REQUIRED[line.required] ?? line.required);
+  const listing = (group) =>
+    html`<ol class="members">${group.lines.map(
+      (line) =>
+        html`<li><strong>${nameOf(line.member)}</strong>${requirement(line) !== undefined && html` <span class="muted">${requirement(line)}</span>`}${
+          line.results.length === 0
+            ? html` <span class="tag warm">No result</span>`
+            : html`<ul>${line.results
+                .sort((a, b) =>
+                  compare("date", b.performed ?? "", a.performed ?? ""),
+                )
+                .map((result) => {
+                  const value =
+                    [result.value, result.unit].filter(Boolean).join(" ") ||
+                    "Result";
+                  return html`<li>${entryHref === undefined ? value : html`<a href=${entryHref(result.entry)}>${value}</a>`}${result.performed !== undefined && html` <span class="muted">${day(result.performed)}</span>`}</li>`;
+                })}</ul>`
+        }</li>`,
+    )}</ol>`;
+  const versions = [
+    ...new Set(
+      [
+        ...rows.map((row) => row.origin),
+        ...[...about.values()].map((said) => said?.name?.origin),
+      ].filter(Boolean),
+    ),
+  ].flatMap((origin) => heldAt(origin, held) ?? []);
+  const naming = about.get(panel)?.name?.origin;
+  const named = naming === undefined ? undefined : heldAt(naming, held);
+  return html`<p><a href=${back}>Back to ${personName(pod)}</a></p>
+<h1>Your results in ${title}</h1>
+<p class="lead">${said}</p>
+${
+  rows.length > 0 &&
+  html`<p class="muted">${
+    named !== undefined && codeHref !== undefined
+      ? html`LOINC <a href=${codeHref(named.series, about.get(panel).notation)}>${about.get(panel).notation}</a> lists`
+      : "LOINC lists"
+  } these tests in this panel; that does not say your results were drawn as part of it.</p>`
+}
+${groups.map(
+  (group) =>
+    html`<div class="card"><h2>${group.via === panel ? "Tests in the panel's order" : `Within ${nameOf(group.via)}`}</h2>${listing(group)}</div>`,
+)}
+${versions.length > 0 && html`<p class="muted from">From ${listed(versions.map(({ series, version }) => `${series.label}, ${versionName(version)}`))}.</p>`}
+${[...new Set(versions.flatMap(({ series }) => series.credit ?? []))].map((credit) => html`<p class="muted">${credit}</p>`)}`;
 }
 
 /** The page of reference tables when the app holds none. */
