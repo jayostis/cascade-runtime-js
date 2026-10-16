@@ -80,7 +80,6 @@ import {
   trendPage,
   trendTitle,
   variantsSaid,
-  WORDS_CHANGED,
 } from "./summary.mjs";
 import {
   answersOf,
@@ -746,7 +745,7 @@ async function showWords(response, name, words, problem) {
 /** Makes the encrypted pod whose six words the person has checked, and goes to it. */
 async function newEncryptedPod(request, response) {
   const form = await formOf(request);
-  const name = form.get("username") ?? "";
+  const name = form.get("pod") ?? "";
   const words = waiting.get(name);
   if (words === undefined)
     return send(
@@ -758,8 +757,6 @@ async function newEncryptedPod(request, response) {
 <p>These six words are not waiting any more. Make the pod again.</p>`,
       ),
     );
-  if (form.get("password") !== words)
-    return await showWords(response, name, words, WORDS_CHANGED);
   const asked = words.split(" ");
   if (
     typedWords(form.get("word2") ?? "") !== asked[1] ||

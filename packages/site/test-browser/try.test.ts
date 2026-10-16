@@ -2185,6 +2185,45 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
     const words = await page.locator(".words li").allTextContents();
     assert.equal(words.length, 6);
 
+    const confirm = page.locator("form", {
+      has: page.locator('input[name="word2"]'),
+    });
+    const signUp = await confirm.evaluate((form) => {
+      const named = (field: string) =>
+        form.querySelector<HTMLInputElement>(`input[name="${field}"]`)!;
+      return ["username", "password"].map((field) => {
+        const input = named(field);
+        return {
+          type: input.type,
+          autocomplete: input.autocomplete,
+          value: input.value,
+          hidden:
+            input.readOnly ||
+            input.closest("[aria-hidden]") !== null ||
+            input.offsetParent === null,
+        };
+      });
+    });
+    assert.deepEqual(signUp, [
+      {
+        type: "text",
+        autocomplete: "username",
+        value: "grace-hopper",
+        hidden: false,
+      },
+      {
+        type: "password",
+        autocomplete: "new-password",
+        value: words.join(" "),
+        hidden: false,
+      },
+    ]);
+    assert.equal(
+      page.url().includes(words[0]!),
+      false,
+      "the words are never in the address",
+    );
+
     await page.fill('input[name="word2"]', words[1]!);
     await page.fill('input[name="word5"]', "wrong");
     await inPlace(page, () =>

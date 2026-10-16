@@ -529,6 +529,45 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
     const words = await page.locator(".words li").allTextContents();
     assert.equal(words.length, 6);
 
+    const confirm = page.locator("form", {
+      has: page.locator('input[name="word2"]'),
+    });
+    const signUp = await confirm.evaluate((form) => {
+      const named = (field: string) =>
+        form.querySelector<HTMLInputElement>(`input[name="${field}"]`)!;
+      return ["username", "password"].map((field) => {
+        const input = named(field);
+        return {
+          type: input.type,
+          autocomplete: input.autocomplete,
+          value: input.value,
+          hidden:
+            input.readOnly ||
+            input.closest("[aria-hidden]") !== null ||
+            input.offsetParent === null,
+        };
+      });
+    });
+    assert.deepEqual(signUp, [
+      {
+        type: "text",
+        autocomplete: "username",
+        value: "grace-hopper",
+        hidden: false,
+      },
+      {
+        type: "password",
+        autocomplete: "new-password",
+        value: words.join(" "),
+        hidden: false,
+      },
+    ]);
+    assert.equal(
+      page.url().includes(words[0]!),
+      false,
+      "the words are never in the address",
+    );
+
     await page.getByLabel("Word 2").fill("not-a-word");
     await page.getByLabel("Word 5").fill(words[4]!);
     await page.getByRole("button", { name: "Make the encrypted pod" }).click();
