@@ -27,8 +27,8 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SOURCE = fileURLToPath(
   new URL("../../../../demo-hospital/dist/src/", import.meta.url),
 );
-/** The page side of the demo hospitals: their worker's registration, and the rule that names a pull after its hospital. */
-const PAGE_SIDE = `export { useDemoHospitals } from "./web/page.js";
+/** The page side of the demo hospitals: their worker's registration and world date, and the rule that names a pull after its hospital. */
+const PAGE_SIDE = `export { setWorldDate, useDemoHospitals, worldDate } from "./web/page.js";
 export { hospitalId } from "./route.js";
 `;
 

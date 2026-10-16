@@ -51,6 +51,13 @@ keeping the package and the pods, under `pods/<name>/`. It is made with three,
   hospital of the test directory: the app's `hospitals.mjs` signs in, receiving
   the redirect on `/callback`, and serves the demo hospitals' sign-in pages
   under `/demo-hospitals/`. An option to an npm script goes after `--`.
+- `npm start` with `CASCADE_WORLD_DATE` set (`YYYY-MM-DD`, or an instant with
+  its timezone) makes the demo hospitals answer with their records as they
+  stood at the end of that day, and say so on their sign-in page; without it
+  they answer with everything they hold. The variable is read once, when the
+  app starts. While it runs, a connection's box links to `/world-date`, where a
+  person moves the date, or takes it back to everything with Today; the next
+  sign-in and bring-in answer as of it.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
   exports, `priya-natarajan` Priya Natarajan's, from exports and C-CDA files

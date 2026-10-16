@@ -81,6 +81,8 @@ import {
   trendTitle,
   savedLoginChanged,
   variantsSaid,
+  worldDatePage,
+  worldInstant,
 } from "./summary.mjs";
 import {
   answersOf,
@@ -461,6 +463,7 @@ async function showPod(response, name, query, names) {
           back: podPath(name),
           connection: shown,
           bring: `${podPath(name)}connections/${shown.n}`,
+          world: { asOf: hospitals.worldDate(), href: WORLD_DATE_AT },
           ...(await connectionView(name, shown)),
         });
   const body = podPage(answers, {
@@ -931,6 +934,38 @@ async function imported(name, connection) {
   });
 }
 
+/** Where the world's date is shown and changed. */
+const WORLD_DATE_AT = "/world-date";
+
+/**
+ * The world's date: a page that says what the hospitals answer as of, and the post that sets it. A day or an instant
+ * sets it; an empty date, the Today button's, takes it back to every version; anything else answers 400 with the page
+ * and a sentence.
+ */
+async function worldDateRoute(request, response, url) {
+  const shown = (status, problem) =>
+    page(
+      "The world's date",
+      worldDatePage({
+        asOf: hospitals.worldDate(),
+        action: WORLD_DATE_AT,
+        problem,
+        done: url.searchParams.has("set") && status === 200,
+        back: "/",
+      }),
+    ).then((body) => send(response, status, body));
+  if (request.method !== "POST") return shown(200);
+  const text = (await formOf(request)).get("date") ?? "";
+  const asOf = worldInstant(text);
+  if (text.trim() !== "" && asOf === undefined)
+    return shown(
+      400,
+      `"${text}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
+    );
+  hospitals.setWorldDate(asOf);
+  return redirect(response, `${WORLD_DATE_AT}?set`);
+}
+
 /** A demo hospital's sign-in page, the form posted back to it included. */
 async function demoHospitalPage(request, response, url) {
   const body = request.method === "POST" ? await bodyOf(request) : undefined;
@@ -966,6 +1001,24 @@ function modelSet() {
   }
 }
 
+/**
+ * The world's date the app starts with: `CASCADE_WORLD_DATE`, a day (`YYYY-MM-DD`) or an instant, read once, here; none
+ * means the hospitals answer with every version they hold. A value that is neither stops the app, saying so.
+ */
+function startingDate() {
+  const text = env.CASCADE_WORLD_DATE;
+  if (text === undefined || text.trim() === "") return undefined;
+  const asOf = worldInstant(text);
+  if (asOf === undefined) {
+    stderr.write(
+      `CASCADE_WORLD_DATE is "${text}", which is neither a day as YYYY-MM-DD nor an instant with a timezone.\n`,
+    );
+    exit(1);
+  }
+  return asOf;
+}
+
+const startedAsOf = startingDate();
 const model = modelSet();
 /** The tools the chat reaches, over the pods this server holds open. */
 const chatting = chatTools(
@@ -1026,6 +1079,8 @@ const server = createServer(async (request, response) => {
       return await chatRoute(request, response, { model, tools: chatting });
     if (pathname.startsWith("/demo-hospitals/"))
       return await demoHospitalPage(request, response, url);
+    if (pathname === "/world-date")
+      return await worldDateRoute(request, response, url);
     if (!post && pathname === "/")
       return await home(response, url.searchParams);
     if (post && pathname === "/pods") return await newPod(request, response);
@@ -1140,7 +1195,7 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   const { port } = server.address();
   origin = `http://127.0.0.1:${port}`;
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
-  hospitals = hospitalsAt(origin, demo);
+  hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf });
   stdout.write(`${origin}/\n`);
 });
 

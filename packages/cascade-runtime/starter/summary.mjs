@@ -3388,11 +3388,106 @@ export function checkedNote(checked, held) {
 
 const BRINGING = "Bringing the record in…";
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+/** An instant as a program gives it: to the second, with a timezone, every part one the demo hospitals accept. */
+const WORLD_INSTANT =
+  /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,9})?(Z|[+-]((0\d|1[0-3]):[0-5]\d))$/;
+
+/** Whether `text`, as `YYYY-MM-DD`, names a day of the calendar. */
+function isDay(text) {
+  const day = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(text);
+}
+
+/**
+ * The world's date a person or a program gave, as the instant a hospital answers as of: a calendar day `D`
+ * (`YYYY-MM-DD`) is the end of that day in UTC, `D` and `T23:59:59Z`; an instant with a timezone is kept as it is.
+ * Undefined for anything else, empty text included.
+ */
+export function worldInstant(text) {
+  const given = String(text ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(given))
+    return isDay(given) ? `${given}T23:59:59Z` : undefined;
+  return WORLD_INSTANT.test(given) &&
+    isDay(given.slice(0, 10)) &&
+    !Number.isNaN(Date.parse(given))
+    ? given
+    : undefined;
+}
+
+/** What the hospitals answer as of, said in words: `Hospitals answer as of 1 February 2024.`, or with no date, with everything. */
+export function worldDateSaid(asOf) {
+  if (asOf === undefined) return "Hospitals answer with everything they hold.";
+  const day = new Date(Date.parse(asOf));
+  return `Hospitals answer as of ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${day.getUTCFullYear()}.`;
+}
+
+/**
+ * The form that sets the world's date: a day to pick and a Set button, and beside it a Today button that sends an
+ * empty date. Both post to `action`, the day field `date`.
+ */
+function worldDateForms({ asOf, action }) {
+  return html`<form method="post" action=${action} class="inline" data-doing="Setting the date…">
+<label>Date <input type="date" name="date" value=${asOf === undefined ? undefined : asOf.slice(0, 10)} required /></label>
+<button>Set</button>
+</form>
+${postButton(action, { date: "" }, "Today", "quiet", "Setting the date…")}`;
+}
+
+/**
+ * The line a connection's box has about the world's date: what the hospitals answer as of, `asOf`, and a way to change
+ * it, `world.href` a link to the page that does, else `world.action` where the line opens the forms in place.
+ */
+function worldDateLine({ asOf, href, action }) {
+  return html`<div class="world-date">
+<p class="muted">${worldDateSaid(asOf)}${href !== undefined && html` <a href=${href}>Change the world's date</a>`}</p>
+${
+  href === undefined &&
+  html`<details>
+<summary>Change the world's date</summary>
+${worldDateForms({ asOf, action })}
+</details>`
+}
+</div>`;
+}
+
+/**
+ * The page where the world's date is changed, on a host that has pages: the date the hospitals answer as of, `asOf`
+ * (an instant, or undefined for everything they hold), the forms that post to `action`, `problem` when the last date
+ * given was no date, `done` once it was set, and a link `back`.
+ */
+export function worldDatePage({ asOf, action, problem, done, back }) {
+  return html`<h1>The world's date</h1>
+<p class="lead">${worldDateSaid(asOf)}</p>
+${done === true && html`<p class="note">The world's date is set.</p>`}
+${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
+<div class="card world-date">
+<p>Pick a day: the hospitals then show their records as they stood at the end of it. Today puts the date back to now, with everything they hold.</p>
+${worldDateForms({ asOf, action })}
+</div>
+${back !== undefined && html`<p><a href=${back}>Back</a></p>`}`;
+}
+
 /**
  * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
  * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, a
  * sentence of why, with a Try again button when `retry`; else its steps, whose record `about` is when not the pod's
  * person, what each of `sources` (from `look`) holds, what `pulled` left out, and a button that posts to `bring`.
+ * With `world` (`{ asOf, href }` or `{ asOf, action }`, see `worldDateLine`), the box says what the hospitals answer as
+ * of and offers to change it.
  */
 export function connectionDialog({
   id,
@@ -3406,6 +3501,7 @@ export function connectionDialog({
   pulled,
   about,
   bring,
+  world,
 }) {
   const who = personName(pod);
   const name = hospitalName(hospital);
@@ -3440,6 +3536,7 @@ ${
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
+${world !== undefined && worldDateLine(world)}
 ${postButton(bring, {}, `Bring it into ${who}'s pod`, undefined, BRINGING)}
 </div>`);
 }
@@ -3563,6 +3660,9 @@ button.warm { background: var(--warm); border-color: var(--warm); color: var(--p
 .button.wide { display: block; text-align: center; }
 input { font: inherit; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); }
 form.inline { display: inline; }
+.world-date summary { cursor: pointer; color: var(--accent); }
+.world-date details { margin: 0 0 0.75rem; }
+.world-date form { margin: 0.4rem 0.4rem 0 0; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .row input { flex: 1; min-width: 10rem; }
 .encrypt { margin: 0.75rem 0; }

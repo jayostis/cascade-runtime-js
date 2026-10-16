@@ -24,12 +24,18 @@ function idOf(row) {
 /**
  * The hospitals as this app, at `origin`, reaches them, `demo` being the demo hospitals as `loadHospitals` gives them.
  * It receives each hospital's redirect on its own `/callback`, and serves the demo hospitals' sign-in pages under
- * `/demo-hospitals/`.
+ * `/demo-hospitals/`. The hospitals answer as of `asOf`, an instant, or with every version they hold when it is
+ * undefined; `worldDate()` gives it and `setWorldDate(asOf)` moves it, the next sign-in and the next request of a
+ * bring-in under way answering as of the new date.
  */
-export function hospitalsAt(origin, demo) {
-  const route = demoFetch(demo, {
-    authorizeBase: `${origin}/demo-hospitals/`,
-  });
+export function hospitalsAt(origin, demo, { asOf } = {}) {
+  const routeAt = (when) =>
+    demoFetch(
+      demo.map((each) => ({ ...each, asOf: when })),
+      { authorizeBase: `${origin}/demo-hospitals/` },
+    );
+  let world = asOf;
+  let route = routeAt(world);
   const registration = {
     clientId: "cascade-app",
     redirectUri: `${origin}/callback`,
@@ -85,6 +91,15 @@ export function hospitalsAt(origin, demo) {
 
   return {
     directory: (text) => searchDirectory(TEST_DIRECTORY, text),
+
+    /** The date the hospitals answer as of, an instant, or undefined when they answer with every version. */
+    worldDate: () => world,
+
+    /** Moves the world's date to `when`, an instant, or with undefined back to every version. */
+    setWorldDate(when) {
+      world = when;
+      route = routeAt(when);
+    },
 
     /**
      * Starts signing the pod's person in to the hospital whose FHIR base is given, and its pull after. Resolves where
