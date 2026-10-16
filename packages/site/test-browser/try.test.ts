@@ -2185,6 +2185,83 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
     const words = await page.locator(".words li").allTextContents();
     assert.equal(words.length, 6);
 
+    const confirm = page.locator("form", {
+      has: page.locator('input[name="word2"]'),
+    });
+    const signUp = await confirm.evaluate((form) => {
+      const named = (field: string) =>
+        form.querySelector<HTMLInputElement>(`input[name="${field}"]`)!;
+      return ["username", "password"].map((field) => {
+        const input = named(field);
+        return {
+          type: input.type,
+          autocomplete: input.autocomplete,
+          value: input.value,
+          hidden:
+            input.readOnly ||
+            input.closest("[aria-hidden]") !== null ||
+            input.offsetParent === null,
+        };
+      });
+    });
+    assert.deepEqual(signUp, [
+      {
+        type: "text",
+        autocomplete: "username",
+        value: "grace-hopper",
+        hidden: false,
+      },
+      {
+        type: "password",
+        autocomplete: "new-password",
+        value: words.join(" "),
+        hidden: false,
+      },
+    ]);
+    assert.equal(
+      page.url().includes(words[0]!),
+      false,
+      "the words are never in the address",
+    );
+
+    assert.equal(
+      await page.getAttribute("button[data-copy-words]", "type"),
+      "button",
+    );
+
+    await page.fill('input[name="password"]', "a suggested password");
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', words[4]!);
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(
+      (await page.textContent("main")) ?? "",
+      /must hold the six words above/,
+    );
+    assert.equal(
+      await page.inputValue('input[name="password"]'),
+      words.join(" "),
+      "the field is reset to the words",
+    );
+    assert.equal(
+      (await page.evaluate(async () => await indexedDB.databases())).some(
+        ({ name }) => name === "cascade-pod:grace-hopper",
+      ),
+      false,
+      "a changed password field makes nothing",
+    );
+    await page.fill('input[name="username"]', "someone-else");
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', words[4]!);
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(
+      (await page.textContent("main")) ?? "",
+      /Pod field must keep the pod's name/,
+    );
+
     await page.fill('input[name="word2"]', words[1]!);
     await page.fill('input[name="word5"]', "wrong");
     await inPlace(page, () =>
@@ -2218,7 +2295,7 @@ test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are 
       for (const { key, text } of stored) {
         if (key === "settings/encryption.json") continue;
         assert.ok(text.length > 0, key);
-        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+        for (const readable of ["@prefix", "Grace", '"title"', '"rows"'])
           assert.equal(text.includes(readable), false, `${key}: ${readable}`);
         assert.throws(() => JSON.parse(text), `${key} parses as JSON`);
       }

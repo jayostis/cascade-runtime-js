@@ -2276,13 +2276,52 @@ export const UNOPENED = {
 /** What the six-words page says when the check fails, by the way it failed. */
 export const NOT_WORDS = "Those aren't words 2 and 5.";
 export const WORDS_CHANGED =
-  "Your browser changed the words field; the six words above are still the ones to keep.";
+  "Don't change the Password field or take a suggested password: it must hold the six words above, so your password manager saves the words that open the pod.";
+export const POD_CHANGED =
+  "The Pod field must keep the pod's name, so the saved login matches the Open page.";
+
+/**
+ * What is wrong with the visible `password` and `username` of a submitted six-words form, or undefined when they are
+ * still the `words` shown (spaces compared as single ones) and the pod's name `pod`. Never repeats a submitted value.
+ */
+export function savedLoginChanged(fields, pod, words) {
+  const joined = String(fields.get("password") ?? "")
+    .trim()
+    .split(/\s+/)
+    .join(" ");
+  if (joined !== words) return WORDS_CHANGED;
+  if (String(fields.get("username") ?? "") !== pod) return POD_CHANGED;
+  return undefined;
+}
+
+/**
+ * On the document `page`, rendered to a string: a button marked `data-copy-words` copies the words in its form's
+ * password field to the clipboard and says so in the form's `data-copied` line; where the clipboard is not
+ * available it says to write the words down, and fails nowhere.
+ */
+export function copyWords(page) {
+  page.addEventListener("click", async (event) => {
+    const button = event.target.closest?.("[data-copy-words]");
+    if (!button) return;
+    const form = button.form;
+    const words = form?.querySelector('input[name="password"]')?.value;
+    const note = form?.querySelector("[data-copied]");
+    try {
+      await globalThis.navigator.clipboard.writeText(words);
+      if (note) note.textContent = "Copied";
+    } catch {
+      if (note)
+        note.textContent = "Copy isn't available here; write the words down.";
+    }
+  });
+}
 
 /**
  * The first step of making an encrypted pod for `pod`: the `words` (six, separated by spaces) large and numbered,
  * what to do with them, and a form posting to `action` that asks for words 2 and 5. The form carries the pod's name
- * and the words in fields a password manager reads (`username`, `password`); `problem`, when given, says what the last
- * try got wrong. Nothing is made until the form is answered.
+ * and, in two visible fields a password manager reads as a sign-up (`username`, `password`), the name and the words;
+ * the receiver refuses a form where either has changed. `problem`, when given, says what the last try got wrong.
+ * Nothing is made until the form is answered.
  */
 export function sixWordsPage({ pod, words, action, problem }) {
   return html`<h1>Your six words</h1>
@@ -2292,8 +2331,10 @@ export function sixWordsPage({ pod, words, action, problem }) {
 <p class="muted">Encryption hides what the records say. It does not hide that this pod exists, its name, how many files it has or their sizes.</p>
 ${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
 <form method="post" action=${action} class="stack" data-doing="Making the pod…" autocomplete="on">
-<input class="away" type="text" name="username" autocomplete="username" value=${pod} readonly tabindex="-1" aria-hidden="true" />
-<input class="away" type="password" name="password" autocomplete="new-password" value=${words} readonly tabindex="-1" aria-hidden="true" />
+<input type="hidden" name="pod" value=${pod} />
+<label>Pod <input type="text" name="username" autocomplete="username" value=${pod} /></label>
+<label>Password <input type="password" name="password" autocomplete="new-password" value=${words} /></label>
+<p class="muted">Your password manager can save these as the pod's password. <button type="button" data-copy-words>Copy words</button> <span data-copied role="status"></span></p>
 <p><strong>Check that you have them.</strong> Type the second and the fifth word.</p>
 <label>Word 2 <input name="word2" autocomplete="off" autocapitalize="none" spellcheck="false" required /></label>
 <label>Word 5 <input name="word5" autocomplete="off" autocapitalize="none" spellcheck="false" required /></label>
@@ -2318,7 +2359,7 @@ ${
   wordsHelp &&
   html`<form method="post" action=${action} class="stack" data-doing="Opening the pod…" autocomplete="on">
 <input type="hidden" name="next" value=${next} />
-<input class="away" type="text" name="username" autocomplete="username" value=${pod} readonly tabindex="-1" aria-hidden="true" />
+<label>Pod <input type="text" name="username" autocomplete="username" value=${pod} /></label>
 <label>Your six words <input type="password" name="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" required /></label>
 <p><button>Open this pod</button></p>
 </form>`
@@ -3522,7 +3563,6 @@ form.inline { display: inline; }
 .words li::before { content: counter(word); color: var(--muted); font-size: 0.8rem; font-weight: 400; margin-right: 0.6rem; }
 .stack { display: flex; flex-direction: column; gap: 0.6rem; max-width: 24rem; }
 .stack label { display: flex; flex-direction: column; gap: 0.25rem; }
-.away { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
 .row h2 { flex: 1; margin: 0; }
 .steps { list-style: none; padding: 0; margin: 0; }
 .steps li { padding: 0.15rem 0; color: var(--muted); }
@@ -4036,4 +4076,4 @@ export function firstQuestion(context) {
 }
 
 /** `closing`, `sortAndFilter`, `busyForms` and `chatStrip` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${encryptedChoice})(document);(${busyForms})(document);(${chatStrip})(document, 24000, ${firstQuestion});`;
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${encryptedChoice})(document);(${copyWords})(document);(${busyForms})(document);(${chatStrip})(document, 24000, ${firstQuestion});`;

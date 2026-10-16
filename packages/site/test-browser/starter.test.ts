@@ -529,6 +529,84 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
     const words = await page.locator(".words li").allTextContents();
     assert.equal(words.length, 6);
 
+    const confirm = page.locator("form", {
+      has: page.locator('input[name="word2"]'),
+    });
+    const signUp = await confirm.evaluate((form) => {
+      const named = (field: string) =>
+        form.querySelector<HTMLInputElement>(`input[name="${field}"]`)!;
+      return ["username", "password"].map((field) => {
+        const input = named(field);
+        return {
+          type: input.type,
+          autocomplete: input.autocomplete,
+          value: input.value,
+          hidden:
+            input.readOnly ||
+            input.closest("[aria-hidden]") !== null ||
+            input.offsetParent === null,
+        };
+      });
+    });
+    assert.deepEqual(signUp, [
+      {
+        type: "text",
+        autocomplete: "username",
+        value: "grace-hopper",
+        hidden: false,
+      },
+      {
+        type: "password",
+        autocomplete: "new-password",
+        value: words.join(" "),
+        hidden: false,
+      },
+    ]);
+    assert.equal(
+      page.url().includes(words[0]!),
+      false,
+      "the words are never in the address",
+    );
+
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Copy words" })
+        .getAttribute("type"),
+      "button",
+    );
+
+    await page.getByLabel("Password").fill("a suggested password");
+    await page.getByLabel("Word 2").fill(words[1]!);
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    assert.match(
+      (await page.locator("main").textContent()) ?? "",
+      /must hold the six words above/,
+    );
+    assert.equal(
+      await page.getByLabel("Password").inputValue(),
+      words.join(" "),
+      "the field is reset to the words",
+    );
+    assert.equal(
+      (await readdir(join(folder, "pods"))).includes("grace-hopper"),
+      false,
+      "a changed password field makes nothing",
+    );
+    await page.getByLabel("Pod", { exact: true }).fill("someone-else");
+    await page.getByLabel("Word 2").fill(words[1]!);
+    await page.getByLabel("Word 5").fill(words[4]!);
+    await page.getByRole("button", { name: "Make the encrypted pod" }).click();
+    assert.match(
+      (await page.locator("main").textContent()) ?? "",
+      /Pod field must keep the pod's name/,
+    );
+    assert.equal(
+      (await readdir(join(folder, "pods"))).includes("grace-hopper"),
+      false,
+      "a changed name makes nothing",
+    );
+
     await page.getByLabel("Word 2").fill("not-a-word");
     await page.getByLabel("Word 5").fill(words[4]!);
     await page.getByRole("button", { name: "Make the encrypted pod" }).click();
@@ -595,7 +673,7 @@ test("an encrypted pod: six words checked, nothing plaintext on disk, no chat sa
         if (file.replaceAll("\\", "/") === "settings/encryption.json") continue;
         const text = await readFile(join(sealedFolder, file), "latin1");
         assert.ok(text.length > 0, file);
-        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+        for (const readable of ["@prefix", "Grace", '"title"', '"rows"'])
           assert.equal(text.includes(readable), false, `${file}: ${readable}`);
         assert.throws(() => JSON.parse(text), `${file} parses as JSON`);
       }

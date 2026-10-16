@@ -40,6 +40,7 @@ import {
   classesSaid,
   closing,
   codePage,
+  copyWords,
   codesSaid,
   connectionDialog,
   didNote,
@@ -79,8 +80,8 @@ import {
   trendInput,
   trendPage,
   trendTitle,
+  savedLoginChanged,
   variantsSaid,
-  WORDS_CHANGED,
 } from "./summary.js";
 
 const DATABASE = "cascade-pod:";
@@ -997,8 +998,8 @@ async function confirmWords(fields) {
 <p>These six words are not waiting any more. Make the pod again.</p>`,
     );
   }
-  if (String(fields.get("password") ?? "") !== making.words)
-    return showWords(WORDS_CHANGED);
+  const changed = savedLoginChanged(fields, making.name, making.words);
+  if (changed !== undefined) return showWords(changed);
   const asked = making.words.split(" ");
   if (
     typedWords(String(fields.get("word2") ?? "")) !== asked[1] ||
@@ -1162,6 +1163,7 @@ function opening(query) {
 }
 
 closing(document);
+copyWords(document);
 document.addEventListener("click", (event) => {
   const link = event.target.closest?.("a[href]");
   if (link === null || link === undefined || event.defaultPrevented) return;
