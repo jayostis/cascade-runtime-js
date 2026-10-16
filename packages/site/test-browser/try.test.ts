@@ -1751,7 +1751,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
   }
 });
 
-test("in try/, Priya's pod, copied on a first visit, names her potassium result by LOINC once the tables are ready, her potassium result opens the electrolytes panel with her tests in LOINC's order and the required ones she has no result for, and its class page puts her lisinopril in the class FDA gives it, through lisinopril anhydrous", async () => {
+test("in try/, Priya's pod, copied on a first visit, names her potassium result by LOINC once the tables are ready, her potassium result opens the electrolytes panel with her tests in LOINC's order and the required ones she has no result for, and its class page puts her amlodipine in its ingredient's class and says FDA classes a different form of her lisinopril, so it has none", async () => {
   const context = await browser.newContext();
   await context.addInitScript(recordDraws);
   try {
@@ -1826,10 +1826,15 @@ test("in try/, Priya's pod, copied on a first visit, names her potassium result 
       " ",
     );
     for (const said of [
-      "Angiotensin Converting Enzyme Inhibitor [EPC]",
-      "lisinopril 10 MG Oral Tablet through lisinopril anhydrous",
+      "Calcium Channel Blocker [EPC]",
+      "amlodipine 5 MG Oral Tablet through amlodipine",
+      "lisinopril 10 MG Oral Tablet: FDA classes a different form of lisinopril; RxNorm does not tie this product to it.",
     ])
       assert.ok(body.includes(said), `${said} is not in ${body}`);
+    assert.ok(
+      !body.includes("Angiotensin Converting Enzyme Inhibitor [EPC]"),
+      "lisinopril is given the class FDA gives lisinopril anhydrous",
+    );
   } finally {
     await context.close();
   }
@@ -1940,6 +1945,24 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
       "a tool of the pod left is still registered",
     );
     assert.deepEqual(await live(), [...tools].sort());
+
+    await page.goto(`${served.url}try/index.html?pod=ines-calloway&classes`);
+    await settled(page);
+    await page.waitForFunction(
+      () =>
+        document.querySelector("main h1")?.textContent === "Medicines by class",
+      undefined,
+      { timeout: 120_000 },
+    );
+    await page.waitForSelector("main .card h2", { timeout: 120_000 });
+    const classes = (await page.locator("main").innerText()).replace(
+      /\s+/g,
+      " ",
+    );
+    assert.match(
+      classes,
+      /Estrogen \[EPC\] Established pharmacologic class .*stradiol 1 (mg tablet|MG Oral Tablet) through estradiol/i,
+    );
   } finally {
     await context.close();
   }
