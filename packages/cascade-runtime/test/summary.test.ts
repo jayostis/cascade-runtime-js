@@ -3192,3 +3192,65 @@ test("Ask about this: with a model set, each What changed card and each Worth a 
     { kind: "entry", id: view.entryId(entry!.entry!) },
   ]);
 });
+
+test("the new-pod box offers to encrypt; the six-words page shows the words numbered with the fields a password manager reads and asks for words 2 and 5; the open page says each outcome in its own sentence, with a field for the words only where words could open the pod; an encrypted pod's chat strip says so", () => {
+  const dialog = render(
+    view.newPodDialog({ people: [], pods: [], action: "/pods" }),
+  );
+  assert.match(dialog, /Encrypt this pod with six words/);
+
+  const words = "abacus abdomen abide abnormal abrasion abrupt";
+  const shown = render(
+    view.sixWordsPage({ pod: "grace-hopper", words, action: "/words" }),
+  );
+  assert.equal(shown.match(/<li>/g)?.length, 6);
+  assert.match(shown, /name="username"[^>]*value="grace-hopper"/);
+  assert.match(
+    shown,
+    /autoComplete="new-password"|autocomplete="new-password"/,
+  );
+  assert.match(shown, /Word 2/);
+  assert.match(shown, /Word 5/);
+  assert.match(shown, /does not hide that this pod exists/);
+  assert.equal(
+    render(
+      view.sixWordsPage({
+        pod: "grace-hopper",
+        words,
+        action: "/words",
+        problem: view.NOT_WORDS,
+      }),
+    ).includes("Those aren't words 2 and 5"),
+    true,
+  );
+
+  const outcomes: [string, RegExp, boolean][] = [
+    ["secret needed", /six words to open it/, true],
+    ["incorrect secret", /don't open this pod/, true],
+    ["malformed", /header is damaged or was changed/, false],
+    ["unsupported version", /newer version of Cascade/, false],
+    ["cannot open", /another way, not with six words/, false],
+  ];
+  for (const [outcome, said, field] of outcomes) {
+    const open = render(
+      view.openPodPage({
+        pod: "grace-hopper",
+        outcome,
+        action: "/pods/grace-hopper/open",
+        next: "/pods/grace-hopper/",
+      }),
+    );
+    assert.match(open, said, outcome);
+    assert.equal(open.includes("current-password"), field, outcome);
+  }
+
+  const model = { provider: "other", name: "m", local: true };
+  assert.match(
+    render(view.Chat({ model, pod: "grace-hopper", encrypted: true })),
+    /data-encrypted="true"/,
+  );
+  assert.doesNotMatch(
+    render(view.Chat({ model, pod: "alex-rivera" })),
+    /data-encrypted/,
+  );
+});

@@ -15,8 +15,11 @@ import {
   openPod,
   pullFiles,
   Refusal,
+  sixWords,
   tablesBeside,
   timelineIn,
+  typedWords,
+  Unopened,
 } from "cascade-runtime";
 import { render } from "preact-render-to-string";
 import { chatRoute, chatTools, entryPath } from "./chat.mjs";
@@ -56,6 +59,8 @@ import {
   newPodDialog,
   noPods,
   noTables,
+  NOT_WORDS,
+  openPodPage,
   pageNumber,
   panelPage,
   panelSaid,
@@ -66,6 +71,7 @@ import {
   postButton,
   slug,
   sourcePage,
+  sixWordsPage,
   sourcesOf,
   suggestedQuestions,
   tableId,
@@ -74,6 +80,7 @@ import {
   trendPage,
   trendTitle,
   variantsSaid,
+  WORDS_CHANGED,
 } from "./summary.mjs";
 import {
   answersOf,
@@ -88,13 +95,27 @@ const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
 
-function podNamed(name) {
+function podNamed(name, secret) {
   if (!open.has(name)) {
-    const opening = openPod(podFolder(name));
+    const opening = openPod(podFolder(name), { secret });
     opening.catch(() => open.delete(name));
     open.set(name, opening);
   }
   return open.get(name);
+}
+
+/** The six words of each encrypted pod being made, by its name, until the person has checked them. Kept in memory only. */
+const waiting = new Map();
+
+/** Why the pod could not be opened without words: an `Unopened` outcome; nothing when it is open. */
+async function lockedOutcome(name) {
+  try {
+    await podNamed(name);
+    return undefined;
+  } catch (error) {
+    if (error instanceof Unopened) return error.outcome;
+    throw error;
+  }
 }
 
 /** Each pod's answers, by question, as its page last showed them. */
@@ -147,9 +168,21 @@ let lastCheck;
 async function page(
   title,
   body,
-  { current, table, refresh, names, note, suggestions = [] } = {},
+  {
+    current,
+    table,
+    refresh,
+    names,
+    note,
+    suggestions = [],
+    locked = false,
+  } = {},
 ) {
   const pods = names ?? (await podNames());
+  const encrypted =
+    locked ||
+    (current !== undefined &&
+      (await open.get(current)?.catch(() => undefined))?.encrypted === true);
   const held = await tables()
     .then((kept) => kept.held())
     .catch(() => []);
@@ -173,6 +206,7 @@ async function page(
         },
         pod: current ?? "",
         suggestions,
+        encrypted,
       },
       tables: {
         series: sourcesOf(held),
@@ -288,26 +322,32 @@ async function showTable(response, id, query) {
   );
 }
 
-/** Check now: reads every feed past any cache; the pods held open close when it kept a version, to open with it. */
+/** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
   const kept = await tables();
   const checked = await kept.check({ cache: "no-cache" });
-  if (checked.some((each) => each.kept.length > 0)) await closePods();
+  if (checked.some((each) => each.kept.length > 0)) await closePods(true);
   lastCheck = checkedNote(checked, await kept.held());
   redirect(response, "/tables/?checked");
 }
 
-/** Closes every pod the server holds open, to be opened again on the next request for it. */
-async function closePods() {
-  const pods = [...open.values()];
-  open.clear();
+/** Closes every pod the server holds open, or with `plaintextOnly` only those not encrypted, to be opened again on the next request for it. */
+async function closePods(plaintextOnly = false) {
+  const closing = [];
+  for (const [name, opening] of [...open]) {
+    const pod = await opening.catch(() => undefined);
+    if (plaintextOnly && pod?.encrypted) continue;
+    open.delete(name);
+    if (pod !== undefined) closing.push(pod.close());
+  }
   lastShown.clear();
-  await Promise.allSettled(pods.map(async (pod) => (await pod).close()));
+  await Promise.allSettled(closing);
 }
 
 /** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
 async function closeAll() {
   hospitals?.forget();
+  waiting.clear();
   await closePods();
 }
 
@@ -662,7 +702,8 @@ async function showPanel(response, name, query, names) {
 
 /** Makes an empty pod named after the person given, unless it exists, and goes to it. */
 async function newPod(request, response) {
-  const name = slug((await formOf(request)).get("person") ?? "");
+  const form = await formOf(request);
+  const name = slug(form.get("person") ?? "");
   const refused = !POD_NAME.test(name)
     ? "Give a name with at least one letter from a to z, or a digit."
     : DEVICES.test(name)
@@ -678,12 +719,107 @@ async function newPod(request, response) {
 <p>${refused}</p>`,
       ),
     );
+  if (form.get("encrypt") === "on" && !(await podNames()).includes(name)) {
+    const words = sixWords();
+    waiting.set(name, words);
+    return await showWords(response, name, words);
+  }
   await podNamed(name);
   redirect(response, podPath(name));
 }
 
-function send(response, status, html) {
-  response.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+const WORDS_AT = "/encrypted-pods";
+
+/** The page that shows the six words and asks for words 2 and 5, never kept by a cache. */
+async function showWords(response, name, words, problem) {
+  send(
+    response,
+    problem === undefined ? 200 : 400,
+    await page(
+      "Your six words",
+      sixWordsPage({ pod: name, words, action: WORDS_AT, problem }),
+    ),
+    { "cache-control": "no-store" },
+  );
+}
+
+/** Makes the encrypted pod whose six words the person has checked, and goes to it. */
+async function newEncryptedPod(request, response) {
+  const form = await formOf(request);
+  const name = form.get("username") ?? "";
+  const words = waiting.get(name);
+  if (words === undefined)
+    return send(
+      response,
+      400,
+      await page(
+        "No pod made",
+        html`<h1>No pod made</h1>
+<p>These six words are not waiting any more. Make the pod again.</p>`,
+      ),
+    );
+  if (form.get("password") !== words)
+    return await showWords(response, name, words, WORDS_CHANGED);
+  const asked = words.split(" ");
+  if (
+    typedWords(form.get("word2") ?? "") !== asked[1] ||
+    typedWords(form.get("word5") ?? "") !== asked[4]
+  )
+    return await showWords(response, name, words, NOT_WORDS);
+  waiting.delete(name);
+  if ((await podNames()).includes(name))
+    return send(
+      response,
+      400,
+      await page(
+        "No pod made",
+        html`<h1>No pod made</h1>
+<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
+      ),
+    );
+  if (!(await podNamed(name, words)).encrypted)
+    throw new Error(`The pod ${name} was made without its words.`);
+  redirect(response, podPath(name));
+}
+
+/** The page of the pod `name` while it is locked, at the address `next`, which words will go to. */
+async function showLocked(response, name, outcome, next, names) {
+  send(
+    response,
+    200,
+    await page(
+      "Open this pod",
+      openPodPage({ pod: name, outcome, action: `${podPath(name)}open`, next }),
+      { current: name, names, locked: true },
+    ),
+    { "cache-control": "no-store" },
+  );
+}
+
+/** Opens the locked pod `name` with the words posted, then goes to the address asked for, or says why it did not open. */
+async function unlock(request, response, name, names) {
+  const form = await formOf(request);
+  const asked = form.get("next") ?? "";
+  const next = asked.startsWith(podPath(name)) ? asked : podPath(name);
+  if ((await lockedOutcome(name)) === undefined)
+    return redirect(response, next);
+  const secret = form.get("password") ?? "";
+  if (secret.trim() === "")
+    return await showLocked(response, name, "incorrect secret", next, names);
+  try {
+    await podNamed(name, secret);
+  } catch (error) {
+    if (!(error instanceof Unopened)) throw error;
+    return await showLocked(response, name, error.outcome, next, names);
+  }
+  redirect(response, next);
+}
+
+function send(response, status, html, headers = {}) {
+  response.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    ...headers,
+  });
   response.end(html);
 }
 
@@ -892,6 +1028,8 @@ const server = createServer(async (request, response) => {
     if (!post && pathname === "/")
       return await home(response, url.searchParams);
     if (post && pathname === "/pods") return await newPod(request, response);
+    if (post && pathname === WORDS_AT)
+      return await newEncryptedPod(request, response);
     if (post && pathname === "/delete-all")
       return await deleteEverything(response);
     if (post && pathname === "/reset-all")
@@ -917,13 +1055,26 @@ const server = createServer(async (request, response) => {
       );
     }
     const at =
-      /^\/pods\/([^/]+)\/(?:(hospitals|trend|classes|panel)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
+      /^\/pods\/([^/]+)\/(?:(hospitals|trend|classes|panel|open)|connections\/(\d+)|entries\/([^/]+))?$/.exec(
         pathname,
       );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
     const names = name === undefined ? undefined : await podNames();
     if (name !== undefined && names.includes(name)) {
       const [, , view, n, entry] = at;
+      const outcome = await lockedOutcome(name);
+      if (view === "open") {
+        if (post) return await unlock(request, response, name, names);
+        return redirect(response, podPath(name));
+      }
+      if (outcome !== undefined)
+        return await showLocked(
+          response,
+          name,
+          outcome,
+          post ? podPath(name) : `${url.pathname}${url.search}`,
+          names,
+        );
       const isHospitals = view === "hospitals" ? view : undefined;
       if (entry !== undefined && !post)
         return await showEntry(

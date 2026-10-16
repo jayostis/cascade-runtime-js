@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
@@ -22,9 +25,12 @@ const { podServer, QUESTIONS, WARNING } = (await import(
   QUESTIONS: string[];
   WARNING: string;
 };
-const { trendUrl } = (await import(
+const { openWithoutWords, trendUrl } = (await import(
   new URL("../../starter/pods.mjs", import.meta.url).href
-)) as { trendUrl: (pod: string, trend: object) => string };
+)) as {
+  openWithoutWords: (name: string, folder: string) => Promise<Pod>;
+  trendUrl: (pod: string, trend: object) => string;
+};
 
 const { worthLines } = (await import(
   new URL("../../starter/pod-tools.mjs", import.meta.url).href
@@ -261,4 +267,42 @@ test("an error that is not a refusal is logged and reaches the client as a fixed
   assert.doesNotMatch(first!.text, /private/);
   assert.equal(logged.mock.callCount(), 1);
   await other.close();
+});
+
+test("an encrypted pod is listed, and a tool asked about it says in one line that this server does not open it", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "t351-mcp-"));
+  const words = "abacus abdomen abide abnormal abrasion abrupt";
+  try {
+    await (await openPod(folder, { secret: words })).close();
+    const served = podServer({
+      names: async () => ["sealed"],
+      open: (name) => openWithoutWords(name, folder),
+    });
+    const [toServer, toClient] = InMemoryTransport.createLinkedPair();
+    await served.build().connect(toServer);
+    const sealed = new Client({ name: "test", version: "0.0.0" });
+    await sealed.connect(toClient);
+    try {
+      const listed = await sealed.callTool({
+        name: "list_pods",
+        arguments: {},
+      });
+      assert.deepEqual(
+        JSON.parse((listed.content as { text: string }[])[0]!.text),
+        ["sealed"],
+      );
+      const asked = await sealed.callTool({
+        name: "ask",
+        arguments: { pod: "sealed", question: QUESTIONS[0] },
+      });
+      assert.equal(asked.isError, true);
+      const [first] = asked.content as { text: string }[];
+      assert.match(first!.text, /^sealed is encrypted: open it in the app/);
+      assert.equal(first!.text.includes(words), false);
+    } finally {
+      await sealed.close();
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });

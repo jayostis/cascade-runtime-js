@@ -19,6 +19,8 @@ template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
 you like.
 `npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
 Claude Desktop, VS Code or any MCP client (the README says how to add it);
+an encrypted pod is opened only by the app, with its six words (`server.mjs`: `/encrypted-pods`,
+`/pods/<name>/open`), and the scripts and `mcp.mjs` refuse it through `openWithoutWords` in `pods.mjs`;
 `pod-tools.mjs` holds its tools, which are `changeTools` of `cascade-runtime`
 beside `list_pods`, `ask` and `worth_a_look` (`worthLines`: `worthALook` on the same
 inputs the page reads), each taking the pod's name; `chat.mjs`, the

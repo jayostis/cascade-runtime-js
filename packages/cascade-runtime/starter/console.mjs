@@ -2,8 +2,14 @@
 // `await pod.ask("pod/My active allergies")` prints its rows. `.exit` closes it.
 import { argv } from "node:process";
 import { start } from "node:repl";
-import { openPod } from "cascade-runtime";
-import { argumentsOf, choosePod, podFolder } from "./pods.mjs";
+import { Refusal } from "cascade-runtime";
+import {
+  argumentsOf,
+  choosePod,
+  openWithoutWords,
+  podFolder,
+  refuse,
+} from "./pods.mjs";
 
 const { values } = argumentsOf(
   argv.slice(2),
@@ -12,7 +18,13 @@ const { values } = argumentsOf(
   0,
 );
 const name = await choosePod(values.pod);
-const pod = await openPod(podFolder(name));
+let pod;
+try {
+  pod = await openWithoutWords(name, podFolder(name));
+} catch (error) {
+  if (!(error instanceof Refusal)) throw error;
+  refuse(error.message);
+}
 const repl = start({ prompt: `${name}> ` });
 repl.context.pod = pod;
 repl.on("exit", () => pod.close());

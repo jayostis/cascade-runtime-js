@@ -2240,6 +2240,91 @@ function choice({ label, note, action, fields = {}, href, doing }) {
   return html`<li>${href === undefined ? postButton(action, fields, inner, undefined, doing) : html`<a class="button" href=${href}>${inner}</a>`}</li>`;
 }
 
+/** The id of the new-pod box's checkbox, and the name of the field it adds to whichever form makes the pod. */
+export const ENCRYPT_BOX = "encrypt-pod";
+export const ENCRYPT_FIELD = "encrypt";
+
+/**
+ * On the document `page`, rendered to a string: a form of the new-pod box submitted with its checkbox ticked carries
+ * `encrypt=on`, so whichever way the pod is made says it is to be encrypted.
+ */
+export function encryptedChoice(page) {
+  page.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form.closest?.("#new-pod")) return;
+    form.querySelector('input[name="encrypt"]')?.remove();
+    if (!page.getElementById("encrypt-pod")?.checked) return;
+    const field = page.createElement("input");
+    field.type = "hidden";
+    field.name = "encrypt";
+    field.value = "on";
+    form.append(field);
+  });
+}
+
+/** What the person is told of each way a pod can fail to open, by `Unopened`'s outcome. */
+export const UNOPENED = {
+  "incorrect secret":
+    "Those words don't open this pod. Check each word and try again.",
+  malformed:
+    "This pod's encryption header is damaged or was changed, so no words were tried.",
+  "unsupported version":
+    "A newer version of Cascade encrypted this pod. Update the app to open it.",
+  "cannot open": "This pod can only be opened another way, not with six words.",
+};
+
+/** What the six-words page says when the check fails, by the way it failed. */
+export const NOT_WORDS = "Those aren't words 2 and 5.";
+export const WORDS_CHANGED =
+  "Your browser changed the words field; the six words above are still the ones to keep.";
+
+/**
+ * The first step of making an encrypted pod for `pod`: the `words` (six, separated by spaces) large and numbered,
+ * what to do with them, and a form posting to `action` that asks for words 2 and 5. The form carries the pod's name
+ * and the words in fields a password manager reads (`username`, `password`); `problem`, when given, says what the last
+ * try got wrong. Nothing is made until the form is answered.
+ */
+export function sixWordsPage({ pod, words, action, problem }) {
+  return html`<h1>Your six words</h1>
+<p class="lead">For ${personName(pod)}'s pod.</p>
+<ol class="words">${words.split(" ").map((word) => html`<li>${word}</li>`)}</ol>
+<p>Write these down, or save them in your password manager. They are the only way into this pod. Nobody can recover them: if you lose them, the pod's records are gone for good.</p>
+<p class="muted">Encryption hides what the records say. It does not hide that this pod exists, its name, how many files it has or their sizes.</p>
+${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
+<form method="post" action=${action} class="stack" data-doing="Making the pod…" autocomplete="on">
+<input class="away" type="text" name="username" autocomplete="username" value=${pod} readonly tabindex="-1" aria-hidden="true" />
+<input class="away" type="password" name="password" autocomplete="new-password" value=${words} readonly tabindex="-1" aria-hidden="true" />
+<p><strong>Check that you have them.</strong> Type the second and the fifth word.</p>
+<label>Word 2 <input name="word2" autocomplete="off" autocapitalize="none" spellcheck="false" required /></label>
+<label>Word 5 <input name="word5" autocomplete="off" autocapitalize="none" spellcheck="false" required /></label>
+<p><button>Make the encrypted pod</button></p>
+</form>`;
+}
+
+/**
+ * The page at any address of the encrypted pod `pod` while it is not open. `outcome` is how it last failed to open:
+ * "secret needed" before any words were given, else an `Unopened` outcome. Where words could still open it, the page
+ * has a form posting to `action` (with `next`, the address to go to once it opens), whose `username` and
+ * `current-password` fields a password manager fills; otherwise only the outcome's sentence.
+ */
+export function openPodPage({ pod, outcome, action, next }) {
+  const said = UNOPENED[outcome];
+  const wordsHelp =
+    outcome === "secret needed" || outcome === "incorrect secret";
+  return html`<h1>Open ${personName(pod)}'s pod</h1>
+${wordsHelp ? html`<p>This pod is encrypted. Type its six words to open it.</p>` : null}
+${said !== undefined && html`<p class="note" role="alert">${said}</p>`}
+${
+  wordsHelp &&
+  html`<form method="post" action=${action} class="stack" data-doing="Opening the pod…" autocomplete="on">
+<input type="hidden" name="next" value=${next} />
+<input class="away" type="text" name="username" autocomplete="username" value=${pod} readonly tabindex="-1" aria-hidden="true" />
+<label>Your six words <input type="password" name="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" required /></label>
+<p><button>Open this pod</button></p>
+</form>`
+}`;
+}
+
 /**
  * The box that makes a new pod, shown when the page's address ends `#new-pod`: what a pod is, a button for each demo
  * person in `people` with no pod among `pods` yet, `more` when given (`{ said, choices }`, each choice a `label`, a
@@ -2266,6 +2351,8 @@ export function newPodDialog({ people, pods, action, more }) {
     "new-pod",
     "Make a new pod",
     html`<p>A pod keeps one person's health records, wherever they come from: files they download, and hospitals they sign in to. It notices when two sources describe the same thing, and when they disagree.</p>
+<p class="encrypt"><label><input type="checkbox" id=${ENCRYPT_BOX} /> Encrypt this pod with six words</label>
+<span class="muted">You get six words to keep. Only they open the pod again.</span></p>
 ${list("Try someone with records waiting at the demo hospitals. They are made up, and signing in needs no password.", demo)}
 ${more !== undefined && list(more.said, more.choices.map(choice))}
 <p><strong>Or make one for anyone.</strong> You can bring in records afterwards.</p>
@@ -2406,12 +2493,13 @@ export function doing(said) {
 /**
  * The chat strip at the bottom of a page, which `chatStrip` fills in the browser. `model` is `{ provider, name, local }`
  * of the model the app was set up with, or nothing, when the strip only says how to set one; `pod` the name of the pod
- * the page is about, or ""; `suggestions` the questions offered in an empty chat, as texts.
+ * the page is about, or ""; `suggestions` the questions offered in an empty chat, as texts; `encrypted` that the pod is
+ * encrypted, so the strip keeps no chat of it beyond the page.
  */
-export function Chat({ model, pod, suggestions = [] }) {
+export function Chat({ model, pod, suggestions = [], encrypted = false }) {
   if (!model)
     return html`<section class="chat" aria-label="Chat"><p class="chat-off">To chat with a model about these pods, run <code>npm run model</code>.</p></section>`;
-  return html`<section class="chat" aria-label="Chat" data-pod=${pod}>
+  return html`<section class="chat" aria-label="Chat" data-pod=${pod} data-encrypted=${encrypted ? "true" : undefined}>
 <div class="chat-bar">
 <strong>Chat</strong>
 <span class="muted">${model.name}${model.local ? ", on this computer" : `, from ${model.provider}`}</span>
@@ -3427,6 +3515,14 @@ input { font: inherit; padding: 0.45rem 0.65rem; border: 1px solid var(--line); 
 form.inline { display: inline; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .row input { flex: 1; min-width: 10rem; }
+.encrypt { margin: 0.75rem 0; }
+.encrypt .muted { display: block; margin-left: 1.6rem; }
+.words { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; list-style: none; padding: 0; margin: 1rem 0; counter-reset: word; }
+.words li { counter-increment: word; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 0.8rem 1rem; font-size: 1.35rem; font-weight: 600; }
+.words li::before { content: counter(word); color: var(--muted); font-size: 0.8rem; font-weight: 400; margin-right: 0.6rem; }
+.stack { display: flex; flex-direction: column; gap: 0.6rem; max-width: 24rem; }
+.stack label { display: flex; flex-direction: column; gap: 0.25rem; }
+.away { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
 .row h2 { flex: 1; margin: 0; }
 .steps { list-style: none; padding: 0; margin: 0; }
 .steps li { padding: 0.15rem 0; color: var(--muted); }
@@ -3585,7 +3681,8 @@ export function busyForms(page) {
  * `kind` (a refusal or an error, which the model did not say) is sent, the newest within `budget` characters. Any
  * element with `data-ask` (a JSON context) starts a new chat with that context, and one with `data-ask-text` sends its
  * text as typed. A `data-ask` click also sends `first(context)`, when it names one, as the person's first question; a
- * turn still running is stopped first. The listeners are added once.
+ * turn still running is stopped first. The listeners are added once. A strip with `data-encrypted="true"` keeps its
+ * chats only in the page: nothing goes to `localStorage` or `sessionStorage`.
  */
 export function chatStrip(page, budget = 24000, first = undefined) {
   const strip = page.querySelector(".chat[data-pod]");
@@ -3615,7 +3712,10 @@ export function chatStrip(page, budget = 24000, first = undefined) {
       return undefined;
     }
   };
+  const sealed = strip.dataset.encrypted === "true";
+  let inPage = [];
   const load = () => {
+    if (sealed) return inPage;
     const saved = storing(() => JSON.parse(win.localStorage.getItem(SAVED)));
     return Array.isArray(saved) ? saved : [];
   };
@@ -3652,6 +3752,10 @@ export function chatStrip(page, budget = 24000, first = undefined) {
       .filter((each) => each.messages.length > 0)
       .sort((a, b) => b.updated - a.updated)
       .slice(0, ENTRIES);
+    if (sealed) {
+      inPage = chats;
+      return;
+    }
     storing(() => {
       win.localStorage.setItem(SAVED, JSON.stringify(chats));
       win.sessionStorage.setItem(OPEN, chat.id);
@@ -3932,4 +4036,4 @@ export function firstQuestion(context) {
 }
 
 /** `closing`, `sortAndFilter`, `busyForms` and `chatStrip` as a page's inline script, over the whole document. */
-export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${busyForms})(document);(${chatStrip})(document, 24000, ${firstQuestion});`;
+export const SCRIPT = `(${closing})(document);(${sortAndFilter})(document, ${compare});(${encryptedChoice})(document);(${busyForms})(document);(${chatStrip})(document, 24000, ${firstQuestion});`;

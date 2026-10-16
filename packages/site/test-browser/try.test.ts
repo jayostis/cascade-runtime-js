@@ -2124,3 +2124,115 @@ test("try/ ships the starter tables its published answers were computed with: af
     await context.close();
   }
 });
+
+/** Every value of every object store of the database `name`, as text, by key. */
+async function storedIn(
+  page: Page,
+  name: string,
+): Promise<{ key: string; text: string }[]> {
+  return page.evaluate(async (name) => {
+    const database = await new Promise<IDBDatabase>((done, failed) => {
+      const opening = indexedDB.open(name);
+      opening.onerror = () => failed(opening.error);
+      opening.onsuccess = () => done(opening.result);
+    });
+    const asked = <T>(request: IDBRequest<T>) =>
+      new Promise<T>((done, failed) => {
+        request.onerror = () => failed(request.error);
+        request.onsuccess = () => done(request.result);
+      });
+    const decoder = new TextDecoder("latin1");
+    const texted = (value: unknown): string =>
+      typeof value === "string"
+        ? value
+        : value instanceof ArrayBuffer || ArrayBuffer.isView(value)
+          ? decoder.decode(value)
+          : JSON.stringify(value);
+    const stores = [...database.objectStoreNames];
+    const transaction = database.transaction(stores, "readonly");
+    const reads = stores.map((store) => {
+      const objects = transaction.objectStore(store);
+      return Promise.all([
+        asked(objects.getAllKeys()),
+        asked(objects.getAll()),
+      ]);
+    });
+    const found: { key: string; text: string }[] = [];
+    for (const [keys, values] of await Promise.all(reads))
+      keys.forEach((key, at) =>
+        found.push({ key: String(key), text: texted(values[at]) }),
+      );
+    database.close();
+    return found;
+  }, name);
+}
+
+test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are typed, keeps nothing readable in the browser's storage, and after a reload opens only with the words", async () => {
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.click('a[href="#new-pod"]');
+    await page.check("#encrypt-pod");
+    await page.fill(
+      '#new-pod input[aria-label="A person\'s name"]',
+      "Grace Hopper",
+    );
+    await inPlace(page, () =>
+      page.click('#new-pod button:has-text("Make the pod")'),
+    );
+    const words = await page.locator(".words li").allTextContents();
+    assert.equal(words.length, 6);
+
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', "wrong");
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(
+      (await page.textContent("main")) ?? "",
+      /Those aren't words 2 and 5/,
+    );
+    assert.equal(
+      (await page.evaluate(async () => await indexedDB.databases())).some(
+        ({ name }) => name === "cascade-pod:grace-hopper",
+      ),
+      false,
+      "a wrong check makes nothing",
+    );
+
+    await page.fill('input[name="word2"]', words[1]!);
+    await page.fill('input[name="word5"]', words[4]!);
+    await inPlace(page, () =>
+      page.click('button:has-text("Make the encrypted pod")'),
+    );
+    assert.match(await page.url(), /pod=grace-hopper/);
+
+    for (const database of [
+      "cascade-pod:grace-hopper",
+      "cascade-answers:grace-hopper",
+    ]) {
+      const stored = await storedIn(page, database);
+      assert.ok(stored.length > 0, `${database} holds values`);
+      for (const { key, text } of stored) {
+        if (key === "settings/encryption.json") continue;
+        assert.ok(text.length > 0, key);
+        for (const readable of ['{"', "@prefix", "Grace", "title", "rows"])
+          assert.equal(text.includes(readable), false, `${key}: ${readable}`);
+        assert.throws(() => JSON.parse(text), `${key} parses as JSON`);
+      }
+    }
+
+    await page.goto(`${served.url}try/index.html?pod=grace-hopper`);
+    await settled(page);
+    await page.fill('input[name="password"]', "one two three four five six");
+    await inPlace(page, () => page.click('button:has-text("Open this pod")'));
+    assert.match((await page.textContent("main")) ?? "", /don't open this pod/);
+    await page.fill('input[name="password"]', words.join(" "));
+    await inPlace(page, () => page.click('button:has-text("Open this pod")'));
+    assert.match((await page.textContent("main")) ?? "", /Grace Hopper/);
+  } finally {
+    await context.close();
+  }
+});
