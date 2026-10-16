@@ -72,6 +72,11 @@ with made-up patients. They need no account and no network: this app serves
 their sign-in pages under `/demo-hospitals/`. The SMART Health IT Sandbox is a
 real test server and needs the network.
 
+To add a hospital of your own, make a folder under `hospitals/` with a
+`hospital.json` like Cascade North's (its `fhirBase` on a `.demo.invalid` host),
+then add its patients with `npm run patient:add -- hospitals/<folder> <file>`.
+The guide says what the file may hold, a stop's dates in short included.
+
 ## Chat with the pods in the app
 
 Run `npm run model` once, then `npm start`: every page has a chat strip at the

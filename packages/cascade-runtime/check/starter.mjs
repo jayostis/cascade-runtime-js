@@ -1938,6 +1938,99 @@ if (release === undefined) {
     }
   }
 
+  await behaviour(
+    "a hospital of the app's hospitals/ gets a patient from a checked file, once, and signs them in",
+    async () => {
+      const folder = join(app, "hospitals", "mercy-test");
+      await mkdir(folder, { recursive: true });
+      const fhirBase = "https://mercy-test.demo.invalid/fhir";
+      await writeFile(
+        join(folder, "hospital.json"),
+        JSON.stringify({
+          name: "Mercy Test Hospital",
+          fhirBase,
+          places: ["Springfield, WA"],
+          pageSize: 50,
+          key: "mercy-test-key-public-not-a-secret",
+          types: ["Patient", "MedicationStatement"],
+          hiddenFromSearch: [],
+        }),
+      );
+      const file = join(work, "tamsin-shorthand.json");
+      await writeFile(
+        file,
+        JSON.stringify({
+          resourceType: "Bundle",
+          type: "collection",
+          entry: [
+            {
+              resource: {
+                resourceType: "Patient",
+                id: "tamsin-vale",
+                name: [{ family: "Vale", given: ["Tamsin"] }],
+              },
+            },
+            {
+              resource: {
+                resourceType: "MedicationStatement",
+                id: "metformin",
+                status: "active",
+                medicationCodeableConcept: { text: "Metformin" },
+              },
+              shorthand: { active: "2022-03-01", stopped: "2024-04-15" },
+            },
+          ],
+        }),
+      );
+      const add = () =>
+        npm("run", "patient:add", "--", join("hospitals", "mercy-test"), file);
+      assert.equal((await add()).code, 0, "the patient was not added");
+      const written = JSON.parse(
+        await readFile(join(folder, "patients", "tamsin-vale.json"), "utf8"),
+      );
+      assert.equal(written.type, "history", "the shorthand was not compiled");
+      const again = await add();
+      assert.notEqual(again.code, 0, "the same patient was added twice");
+      assert.ok(again.err.includes("is already in this hospital"), again.err);
+      assert.equal((await npm("run", "pod:new", "own-hospital")).code, 0);
+
+      const server = await started();
+      try {
+        const origin = new URL(server.address).origin;
+        const found = async (text) =>
+          forms(
+            await served(server, `/pods/own-hospital/hospitals?q=${text}`),
+          ).flatMap((each) => each.fhirBase ?? []);
+        assert.deepEqual(await found("mercy"), [fhirBase]);
+        assert.equal((await found("north")).length, 1, "North is not listed");
+        assert.equal(
+          (await found("smart")).length,
+          1,
+          "the SMART sandbox is not listed",
+        );
+        const begun = await fetch(
+          new URL("/pods/own-hospital/hospitals", origin),
+          {
+            method: "POST",
+            redirect: "manual",
+            headers: {
+              origin,
+              "content-type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ fhirBase }),
+          },
+        );
+        assert.equal(begun.status, 303);
+        const picker = await (
+          await fetch(new URL(begun.headers.get("location"), origin))
+        ).text();
+        assert.ok(picker.includes('value="tamsin-vale"'), "no Tamsin to pick");
+      } finally {
+        await server.stop();
+      }
+    },
+  );
+
   await behaviour("the console evaluates await", async () => {
     const prompt = "alex-rivera> ";
     const child = spawn(

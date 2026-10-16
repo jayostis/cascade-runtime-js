@@ -2,11 +2,12 @@
 // this app, and the pull. The demo hospitals are pretend, answered here with no network.
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
-import { demoFetch } from "@cascade-runtime/demo-hospital";
+import { brandsBundle, demoFetch } from "@cascade-runtime/demo-hospital";
 import {
   connect,
   ConnectionFailure,
   DEMO_PLAN,
+  directoryOf,
   pull,
   searchDirectory,
   TEST_DIRECTORY,
@@ -36,6 +37,17 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
     );
   let world = asOf;
   let route = routeAt(world);
+  /** The hospitals `demo` holds, the app's own among them, then the test directory's rows that are not demo hospitals. */
+  const directory = [
+    ...directoryOf(
+      brandsBundle(
+        demo.map(({ hospital }) => hospital),
+        new Date().toISOString(),
+      ),
+      "demo",
+    ),
+    ...TEST_DIRECTORY.filter((row) => row.vendor !== "demo"),
+  ];
   const registration = {
     clientId: "cascade-app",
     redirectUri: `${origin}/callback`,
@@ -90,7 +102,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
   }
 
   return {
-    directory: (text) => searchDirectory(TEST_DIRECTORY, text),
+    directory: (text) => searchDirectory(directory, text),
 
     /** The date the hospitals answer as of, an instant, or undefined when they answer with every version. */
     worldDate: () => world,
@@ -107,7 +119,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
      * undefined for a hospital not in the directory.
      */
     async start(pod, fhirBase) {
-      const row = TEST_DIRECTORY.find((each) => each.fhirBase === fhirBase);
+      const row = directory.find((each) => each.fhirBase === fhirBase);
       if (row === undefined) return undefined;
       const n = ++count;
       const page = `/pods/${encodeURIComponent(pod)}/?connection=${n}#connection`;
