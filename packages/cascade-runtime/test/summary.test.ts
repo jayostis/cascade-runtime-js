@@ -1405,6 +1405,171 @@ test("the medicines by class page groups the pod's active medicines under each c
   assert.ok(none.includes("None of this pod's active medicines is in a class"));
 });
 
+test("a panel's page lists the pod's results in LOINC's order with each test's requirement, newest first, the required tests with no result, a nested panel's tests under it, and the version and credit; it never says a result was drawn in the panel", () => {
+  const LOINC = "http://loinc.org/rdf/";
+  const ORIGIN = "urn:x:panels-1";
+  const series = {
+    ...GROUPS,
+    iri: "urn:x:panels",
+    label: "Example panel members",
+    credit: "Panels: LOINC's credit.",
+    versions: [{ iri: ORIGIN, label: "2.83", issued: "2026-10-05" }],
+  };
+  const panel = `${LOINC}24326-1`;
+  const nested = `${LOINC}99999-2`;
+  const row = (
+    member: string,
+    sequence: number,
+    required: string,
+    entry?: string,
+    via = panel,
+  ) => ({
+    panel,
+    member: `${LOINC}${member}`,
+    sequence: String(sequence),
+    required,
+    via,
+    origin: ORIGIN,
+    ...(entry !== undefined && { entry }),
+  });
+  const rows = [
+    row("2951-2", 1, "R"),
+    row("2823-3", 2, "R", "k1"),
+    row("2823-3", 2, "R", "k2"),
+    row("2075-0", 3, "R"),
+    row("2028-9", 4, "O", "c1"),
+    row("6298-4", 1, "R", "n1", nested),
+    row("2823-3", 1, "R", "k1", nested),
+  ];
+  const name = (code: string, label: string): [string, object] => [
+    `${LOINC}${code}`,
+    { notation: code, name: { label, altLabels: [], origin: ORIGIN } },
+  ];
+  const props = {
+    pod: "rowan-marsh",
+    back: "/pods/rowan-marsh/",
+    panel,
+    rows,
+    labs: [
+      { entry: "k1", value: "4.1", unit: "mmol/L", performed: "2025-03-01" },
+      { entry: "k2", value: "4.6", unit: "mmol/L", performed: "2025-06-01" },
+      { entry: "c1", value: "24", unit: "mmol/L", performed: "2025-06-01" },
+      { entry: "n1", value: "3.9", unit: "mmol/L", performed: "2025-06-01" },
+    ],
+    about: new Map([
+      name("24326-1", "Electrolytes panel"),
+      name("2951-2", "Sodium"),
+      name("2823-3", "Potassium"),
+      name("2075-0", "Chloride"),
+      name("2028-9", "Carbon dioxide"),
+      name("6298-4", "Potassium in blood"),
+      name("99999-2", "Nested panel"),
+    ]),
+    held: [series],
+    entryHref: (entry: string) => `/entries/${entry}`,
+  };
+  const words = textOf(render(view.panelPage(props)));
+  assert.ok(
+    words.includes(
+      "Your results in Electrolytes panel You have 2 of 4 required tests; missing: Sodium and Chloride.",
+    ),
+    words,
+  );
+  const order = ["Sodium", "Potassium", "Chloride", "Carbon dioxide"].map(
+    (each) => words.indexOf(each, words.indexOf("Tests in the panel")),
+  );
+  assert.deepEqual(
+    order,
+    [...order].sort((a, b) => a - b),
+    "LOINC's order",
+  );
+  for (const said of [
+    "Sodium required No result",
+    "Potassium required 4.6 mmol/L Jun 1, 2025 4.1 mmol/L Mar 1, 2025",
+    "Carbon dioxide optional 24 mmol/L",
+    "Within Nested panel Potassium in blood required 3.9 mmol/L",
+    "From Example panel members, version 2.83, Oct 5, 2026.",
+    "Panels: LOINC's credit.",
+    "that does not say your results were drawn as part of it",
+  ])
+    assert.ok(words.includes(said), `${said} in ${words}`);
+  assert.equal(
+    words.split("Potassium required").length,
+    2,
+    "a test the panel lists itself is not repeated under a nested panel",
+  );
+  assert.ok(
+    textOf(render(view.panelPage({ ...props, rows: [] }))).includes(
+      "You have no results in this panel.",
+    ),
+  );
+});
+
+test("a lab result's page links the panels LOINC lists its test in, and a result whose test is in none has no such part", () => {
+  const series = {
+    ...GROUPS,
+    iri: "urn:x:panels",
+    label: "Example panel members",
+    credit: "Panels: LOINC's credit.",
+    versions: [{ iri: "urn:x:panels-1", label: "2.83", issued: "2026-10-05" }],
+  };
+  const labs = {
+    [view.SOURCES]: [
+      {
+        entry: "urn:e:k",
+        entryLabel: "Lab result entry · Potassium",
+        record: "r-k",
+        arrived: "2026-09-12T10:00:00Z",
+      },
+    ],
+    "pod/My lab results": [
+      {
+        entry: "urn:e:k",
+        entryLabel: "Lab result entry · Potassium",
+        test: "Potassium",
+        code: "http://loinc.org/rdf/2823-3",
+        value: "4.1",
+      },
+    ],
+  };
+  const entry = view.entryOf(labs, view.entryId("urn:e:k"), {
+    held: [series],
+  });
+  assert.deepEqual(entry.testCodes, ["http://loinc.org/rdf/2823-3"]);
+  const panels = [
+    {
+      series,
+      version: series.versions[0],
+      total: 3,
+      panels: [
+        {
+          code: "http://loinc.org/rdf/24326-1",
+          notation: "24326-1",
+          required: "R",
+          about: { notation: "24326-1", name: { label: "Electrolytes panel" } },
+        },
+      ],
+    },
+  ];
+  const props = {
+    entry,
+    pod: "rowan-marsh",
+    back: "/",
+    codeHref: () => "/code",
+    tableHref: () => "/table",
+    panelHref: (code: string) => `/panel?panel=${code}`,
+  };
+  const page = render(view.entryPage({ ...props, panels }));
+  const words = textOf(page);
+  assert.ok(words.includes("In LOINC panels"));
+  assert.ok(words.includes("Electrolytes panel required"));
+  assert.ok(words.includes("and 2 more."));
+  assert.ok(
+    page.includes('<a href="/panel?panel=http://loinc.org/rdf/24326-1">'),
+  );
+  assert.ok(!textOf(render(view.entryPage(props))).includes("In LOINC panels"));
+});
+
 test("what a check did, in one note", () => {
   const checked = (fields: object) => ({
     feed: "https://f.example/feed.ttl",

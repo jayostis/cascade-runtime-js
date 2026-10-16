@@ -512,6 +512,11 @@ class BrowserPod implements Pod {
     return (await this.#pod()).medicationClasses();
   }
 
+  async panelResults(panel: string): Promise<Row[]> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    return (await this.#pod()).panelResults(panel);
+  }
+
   async close(): Promise<void> {
     this.#closed = true;
     try {

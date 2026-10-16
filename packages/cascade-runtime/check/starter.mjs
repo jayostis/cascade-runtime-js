@@ -920,6 +920,34 @@ try {
         assert.ok(classes.includes(said), `${said} is not on ${classes}`);
     },
   );
+  await behaviour(
+    "from her potassium result a person opens the electrolytes panel and sees her potassium with its place and requirement, and the required tests she has no result for",
+    async () => {
+      const raw = await served(server, "/pods/priya-natarajan/");
+      const entry = /href="([^"]*\/entries\/[^"]+)"[^>]*>[^<]*Potassium/.exec(
+        raw,
+      )?.[1];
+      assert.ok(entry, "her page links no potassium result");
+      const result = await served(server, entry);
+      assert.ok(
+        readable(result).includes("In LOINC panels"),
+        "her potassium result names no panel",
+      );
+      const panel = /href="([^"]*\/panel\?panel=[^"]*24326-1)"/.exec(
+        result,
+      )?.[1];
+      assert.ok(panel, "her potassium result links no electrolytes panel");
+      const said = readable(await served(server, panel));
+      for (const expected of [
+        "Your results in",
+        "Potassium",
+        "required",
+        "missing: ",
+        "No result",
+      ])
+        assert.ok(said.includes(expected), `${expected} is not on ${said}`);
+    },
+  );
 } finally {
   await server.stop();
 }

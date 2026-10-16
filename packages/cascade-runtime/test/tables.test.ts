@@ -34,7 +34,7 @@ import {
   type ResolvedParts,
   resolved,
 } from "../src/node/resolved.js";
-import { openPodWith } from "../src/pod.js";
+import { openPodWith, type Row } from "../src/pod.js";
 import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
   type Checked,
@@ -1898,6 +1898,18 @@ test("a lab result's code is named by LOINC and gives the panels that hold it", 
     ]),
     [[1, [[PANEL, 1]]]],
   );
+  assert.deepEqual(
+    (await tables.inPanels(`${LOINC}2823-3`)).map(({ total, panels }) => [
+      total,
+      panels.map(({ notation, about, sequence }) => [
+        notation,
+        about?.name?.label,
+        sequence,
+      ]),
+    ]),
+    [[1, [[PANEL, "Comprehensive metabolic 2000 panel", 1]]]],
+  );
+  assert.deepEqual(await tables.inPanels(`${LOINC}9999-9`), []);
 });
 
 test("a drug is in the classes FDA gives its ingredient's only classed code, by relation, through the code the row is on", async () => {
@@ -2075,6 +2087,80 @@ ${Object.keys(names).map(medication).join("\n")}`);
         .map((row) => `${row.relation} ${row.class ?? ""}`);
       assert.deepEqual(said.sort(), asked.sort(), name);
     }
+  } finally {
+    await pod.close();
+  }
+});
+
+test("a person's results in the panel they pick are asked of the tables: in LOINC's order, the required tests missing, a nested panel's members once for each way they are reached, and no other panel", async () => {
+  const OTHER = "99999-1";
+  const NESTED = "99999-2";
+  const place: Record<string, [string, string, number, string]> = {
+    a: [PANEL, "2951-2", 1, "R"],
+    b: [PANEL, "2823-3", 2, "R"],
+    c: [PANEL, "2075-0", 3, "R"],
+    d: [PANEL, "2028-9", 4, "O"],
+    e: [PANEL, NESTED, 5, "O"],
+    f: [NESTED, "2823-3", 1, "R"],
+    g: [OTHER, "2823-3", 1, "R"],
+  };
+  const panels = await withMappings(
+    feed,
+    {
+      ...PANELS,
+      extra: (panel, member) => {
+        const [, , sequence, required] = Object.values(place).find(
+          ([of, each]) => of === panel && each === member,
+        )!;
+        return [
+          [`${REC}panelSequence`, literal(String(sequence), XSD_INTEGER)],
+          [`${REC}observationRequiredInPanel`, literal(required)],
+        ];
+      },
+    },
+    [Object.values(place).map(([panel, member]) => [panel, member])],
+  );
+  const tables = tablesOver(panels.served);
+  await tables.check();
+  const folder = join(scratch, "pods", "panel-results");
+  const pod = await openPodWith({ ...parts, tables }, folder);
+  try {
+    const result = (day: string, index: number): string =>
+      `<urn:cascade:output-${index}> a health:LabResultRecord .
+<urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
+  health:testCode <${LOINC}2823-3> ; health:testName "Potassium" ; health:resultValue "4.${index}" ;
+  health:performedDate "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ; rec:patient <${pod.subject}> .`;
+    const entered = await pod.enter(`${PREFIXES}
+<urn:cascade:this-entry> a prov:Activity ;
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+${["2025-03-01", "2025-06-01"].map(result).join("\n")}`);
+    assert.equal(entered.refused, undefined);
+    const said = (rows: Row[]): string[] =>
+      rows
+        .map(
+          (row) =>
+            `${row.member?.slice(LOINC.length)} ${row.required} ${row.sequence} via ${row.via?.slice(LOINC.length)} ${row.entry === undefined ? "missing" : "result"}`,
+        )
+        .sort();
+    const rows = await pod.panelResults(`${LOINC}${PANEL}`);
+    assert.deepEqual(said(rows), [
+      `2075-0 R 3 via ${PANEL} missing`,
+      `2823-3 R 1 via ${NESTED} result`,
+      `2823-3 R 1 via ${NESTED} result`,
+      `2823-3 R 2 via ${PANEL} result`,
+      `2823-3 R 2 via ${PANEL} result`,
+      `2951-2 R 1 via ${PANEL} missing`,
+    ]);
+    assert.ok(rows.every((row) => row.panel === `${LOINC}${PANEL}`));
+    assert.equal(
+      rows.every((row) => row.origin === panels.versions[0]),
+      true,
+    );
+    assert.deepEqual(said(await pod.panelResults(`${LOINC}${OTHER}`)), [
+      `2823-3 R 1 via ${OTHER} result`,
+      `2823-3 R 1 via ${OTHER} result`,
+    ]);
+    assert.deepEqual(await pod.panelResults(`${LOINC}2823-3`), []);
   } finally {
     await pod.close();
   }

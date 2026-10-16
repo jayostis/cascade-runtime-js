@@ -1345,6 +1345,102 @@ export class Tables {
   }
 
   /**
+   * The panels the current version of each panel members series lists the code in, at most a page of them by their
+   * codes, with the sequence and requirement of the row that lists it, and how many there are in all; a series that
+   * lists it in none is left out.
+   */
+  async inPanels(
+    code: string,
+  ): Promise<(Fact & { total: number; panels: readonly Placed[] })[]> {
+    const references = await this.references();
+    const held = this.#preferred(references, `${REC}PanelMembers`).map(
+      (series) => ({ series, version: references.fallback(series) }),
+    );
+    const found = (await this.#panels(code, held)).filter(
+      ({ heldBy }) => heldBy.total > 0,
+    );
+    const about = await this.about(
+      found.flatMap(({ heldBy }) => heldBy.panels.map((each) => each.code)),
+    );
+    return found.map(({ series, version, heldBy }) => ({
+      series,
+      version,
+      total: heldBy.total,
+      panels: heldBy.panels.map(({ code: panel, ...place }) => ({
+        code: panel,
+        notation: about.get(panel)!.notation,
+        about: about.get(panel),
+        ...place,
+      })),
+    }));
+  }
+
+  /**
+   * The rows `tables/panel-results.rq` reads of a panel: in the current version of each panel members series, the rows
+   * that list a member of the panel or of a panel nested in it, however deep, each with the descriptions of the version
+   * and its series. The rows of the panels that list the panel, or list a member of it, are left out: the query is
+   * asked of this panel alone.
+   */
+  async panelRows(
+    panel: string,
+  ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
+    const references = await this.references();
+    const terms = await tableTerms(
+      this.#options.vocabulary,
+      this.#options.newStore,
+    );
+    const versions = this.#preferred(references, `${REC}PanelMembers`).map(
+      (series) => references.fallback(series),
+    );
+    return Promise.all(
+      versions.map(async (version) => {
+        await this.#codesIn(version);
+        const nested = new Set([panel]);
+        const seen = new Set<string>();
+        const rows: Triple[] = [];
+        for (let level = [panel]; level.length > 0;) {
+          const bySubject = new Map<string, Triple[]>();
+          for (const triple of await references.rows(version, {
+            codes: new Set(level),
+            terms,
+          }))
+            bySubject.set(triple[0].value, [
+              ...(bySubject.get(triple[0].value) ?? []),
+              triple,
+            ]);
+          level = [];
+          for (const [subject, triples] of bySubject) {
+            const objectOf = (property: string): string | undefined =>
+              triples.find(([, each]) => each.value === property)?.[2].value;
+            const source = objectOf(`${OWL}annotatedSource`);
+            const member = objectOf(`${OWL}annotatedTarget`);
+            if (
+              source === undefined ||
+              !nested.has(source) ||
+              seen.has(subject)
+            )
+              continue;
+            seen.add(subject);
+            rows.push(...triples);
+            if (member !== undefined && !nested.has(member)) {
+              nested.add(member);
+              level.push(member);
+            }
+          }
+        }
+        return {
+          version,
+          rows,
+          description: [
+            ...references.description(version),
+            ...references.description(references.seriesOf(version) ?? ""),
+          ],
+        };
+      }),
+    );
+  }
+
+  /**
    * The rows a walk from these codes to their drug classes can read, for `tables/medication-classes.rq`: in the current
    * version of each drug classes series the rows of the codes and of every code sharing an ingredient with them, and in
    * the current version of each product ingredients series the rows of the codes and of the codes that bear those class
