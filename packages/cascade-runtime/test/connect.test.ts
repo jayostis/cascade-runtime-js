@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:net";
 import { before, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
-import { type Bundle } from "@cascade-runtime/demo-hospital";
+import { type Bundle, recordsAt } from "@cascade-runtime/demo-hospital";
 import { loadHospital } from "@cascade-runtime/demo-hospital/node";
 import {
   ConnectionFailure,
@@ -40,7 +40,7 @@ function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
 
 function keyed(bundle: Bundle): Map<string, unknown> {
   return new Map(
-    (bundle.entry ?? []).map(({ resource }) => [
+    recordsAt(bundle).map((resource) => [
       `${resource.resourceType}/${resource.id}`,
       resource,
     ]),

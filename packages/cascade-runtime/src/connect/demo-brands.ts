@@ -2,15 +2,16 @@
 export const DEMO_BRANDS = {
   resourceType: "Bundle",
   meta: {
-    lastUpdated: "2026-10-16T20:24:38.587Z",
+    lastUpdated: "2026-10-16T21:41:28.175Z",
     profile: [
       "http://hl7.org/fhir/smart-app-launch/StructureDefinition/user-access-brands-bundle",
     ],
   },
   type: "collection",
-  timestamp: "2026-10-16T20:24:38.587Z",
+  timestamp: "2026-10-16T21:41:28.175Z",
   entry: [
     {
+      fullUrl: "https://demo.invalid/brands/Organization/cascade-north",
       resource: {
         resourceType: "Organization",
         id: "cascade-north",
@@ -67,6 +68,7 @@ export const DEMO_BRANDS = {
       },
     },
     {
+      fullUrl: "https://demo.invalid/brands/Endpoint/cascade-north-fhir",
       resource: {
         resourceType: "Endpoint",
         id: "cascade-north-fhir",
@@ -108,6 +110,7 @@ export const DEMO_BRANDS = {
       },
     },
     {
+      fullUrl: "https://demo.invalid/brands/Organization/cascade-south",
       resource: {
         resourceType: "Organization",
         id: "cascade-south",
@@ -164,6 +167,7 @@ export const DEMO_BRANDS = {
       },
     },
     {
+      fullUrl: "https://demo.invalid/brands/Endpoint/cascade-south-fhir",
       resource: {
         resourceType: "Endpoint",
         id: "cascade-south-fhir",

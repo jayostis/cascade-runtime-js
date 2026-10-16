@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -91,6 +91,7 @@ function tokenForm(code: string, overrides: Record<string, string> = {}) {
 async function signIn(
   data: typeof north,
   patient: string,
+  scope?: string,
 ): Promise<{ hospital: DemoHospital; code: string; token: string }> {
   const base = data.hospital.fhirBase;
   const approving = demoHospital({
@@ -98,7 +99,10 @@ async function signIn(
     autoApprove: patient,
     now: after(0),
   });
-  const code = redirected(await authorize(approving, base)).get("code") ?? "";
+  const code =
+    redirected(
+      await authorize(approving, base, scope === undefined ? {} : { scope }),
+    ).get("code") ?? "";
   const hospital = demoHospital({ ...data, now: after(0) });
   const answer = await (await exchange(hospital, base, tokenForm(code))).json();
   return { hospital, code, token: answer.access_token };
@@ -112,9 +116,9 @@ function get(hospital: DemoHospital, url: string, token?: string) {
   );
 }
 
-function recordsOf(bundle: { entry?: { resource: Resource }[] }): string[] {
-  return (bundle.entry ?? []).map(
-    ({ resource }) => `${resource.resourceType}/${resource.id}`,
+function recordsOf(bundle: { entry?: { resource?: Resource }[] }): string[] {
+  return (bundle.entry ?? []).flatMap(({ resource }) =>
+    resource ? [`${resource.resourceType}/${resource.id}`] : [],
   );
 }
 
@@ -333,6 +337,21 @@ test("each bad request is refused as the protocol says", async () => {
   const { hospital, code, token } = await signIn(north, A_NORTH);
   const later = (seconds: number) =>
     demoHospital({ ...north, now: after(seconds) });
+  const observations = (
+    await signIn(north, A_NORTH, "patient/Observation.read")
+  ).token;
+  const unscoped = (await signIn(north, A_NORTH, "")).token;
+  const notReading = await Promise.all(
+    [
+      "patient/*.write",
+      "patient/Observation.s",
+      "patient/Observation.rs?category=laboratory",
+      "user/*.read",
+    ].map(
+      async (scope) =>
+        [scope, (await signIn(north, A_NORTH, scope)).token] as const,
+    ),
+  );
 
   const authorizeRows: [
     string,
@@ -427,14 +446,16 @@ test("each bad request is refused as the protocol says", async () => {
     assert.equal((await response.json()).error, error, name);
   }
 
-  const fhirRows: [
+  type FhirRow = [
     string,
     DemoHospital,
     string,
     string | undefined,
     number,
     string,
-  ][] = [
+    string?,
+  ];
+  const fhirRows: FhirRow[] = [
     [
       "no token",
       hospital,
@@ -494,6 +515,58 @@ test("each bad request is refused as the protocol says", async () => {
     ],
     ["an unknown id", hospital, "Condition/nope", token, 404, "not-found"],
     [
+      "another patient's version",
+      hospital,
+      "Condition/cond-3/_history/1",
+      token,
+      404,
+      "not-found",
+    ],
+    [
+      "another patient's history",
+      hospital,
+      "Condition/cond-3/_history",
+      token,
+      404,
+      "not-found",
+    ],
+    [
+      "a type's history",
+      hospital,
+      "Condition/_history",
+      token,
+      404,
+      "not-supported",
+      "A history is read for one record, as <type>/<id>/_history.",
+    ],
+    [
+      "a search the scopes do not cover",
+      hospital,
+      `Condition?patient=${A_NORTH}`,
+      observations,
+      403,
+      "forbidden",
+      "The token's scopes do not cover a search of Condition.",
+    ],
+    [
+      "a read with no scope",
+      hospital,
+      `Patient/${A_NORTH}`,
+      unscoped,
+      403,
+      "forbidden",
+      "The token's scopes do not cover a read of Patient.",
+    ],
+    ...notReading.map(([scope, bearer]): FhirRow => [
+      `a read under ${scope}`,
+      hospital,
+      "Observation/lab-1",
+      bearer,
+      403,
+      "forbidden",
+      "The token's scopes do not cover a read of Observation.",
+    ]),
+    [
       "a type not served",
       hospital,
       `DocumentReference?patient=${A_NORTH}`,
@@ -510,7 +583,7 @@ test("each bad request is refused as the protocol says", async () => {
       "not-found",
     ],
   ];
-  for (const [name, at, path, bearer, status, issue] of fhirRows) {
+  for (const [name, at, path, bearer, status, issue, said] of fhirRows) {
     const response = await get(at, `${NORTH}/${path}`, bearer);
     assert.equal(response.status, status, name);
     assert.equal(
@@ -521,6 +594,7 @@ test("each bad request is refused as the protocol says", async () => {
     const body = await response.json();
     assert.equal(body.resourceType, "OperationOutcome", name);
     assert.equal(body.issue[0].code, issue, name);
+    if (said !== undefined) assert.equal(body.issue[0].diagnostics, said, name);
     if (status === 401) {
       assert.match(
         response.headers.get("WWW-Authenticate") ?? "",
@@ -551,8 +625,9 @@ test("each bad request is refused as the protocol says", async () => {
   );
 });
 
-test("a patient file must hold the patient it is named for", async () => {
+test("a patient file must hold the patient it is named for", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "demo-hospital-"));
+  t.after(() => rm(folder, { recursive: true, force: true }));
   await mkdir(join(folder, "patients"));
   await writeFile(
     join(folder, "hospital.json"),

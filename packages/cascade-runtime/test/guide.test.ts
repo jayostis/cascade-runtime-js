@@ -26,6 +26,7 @@ import {
   type LocalVocabulary,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
+import { recordsAt } from "@cascade-runtime/demo-hospital";
 import { loadHospital } from "@cascade-runtime/demo-hospital/node";
 import {
   type ExportSource,
@@ -275,8 +276,8 @@ test("the hospital example brings patient A's North record into a pod of its own
     sources.map(({ server, claimed }) => ({ server, claimed })),
     [{ server: hospital.fhirBase, claimed: false }],
   );
-  const active = (patients[A_NORTH]!.entry ?? []).filter(
-    ({ resource }) =>
+  const active = recordsAt(patients[A_NORTH]!).filter(
+    (resource) =>
       resource.resourceType === "AllergyIntolerance" &&
       (
         resource.clinicalStatus as { coding?: { code?: string }[] } | undefined

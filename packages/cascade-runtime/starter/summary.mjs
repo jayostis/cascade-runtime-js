@@ -2206,10 +2206,19 @@ export function byFamily(people) {
   );
 }
 
+/** A patient file's Patient: its latest version, by record time, in a file that keeps versions. */
 function patientOf(bundle) {
-  return bundle.entry?.find(
-    ({ resource }) => resource.resourceType === "Patient",
-  )?.resource;
+  const recorded = (entry) =>
+    Date.parse(entry.response?.lastModified ?? "") || -Infinity;
+  return (bundle.entry ?? [])
+    .filter(({ resource }) => resource?.resourceType === "Patient")
+    .reduce(
+      (latest, entry) =>
+        latest === undefined || recorded(entry) >= recorded(latest)
+          ? entry
+          : latest,
+      undefined,
+    )?.resource;
 }
 
 /** The person a FHIR Bundle is about, as the hospital names them: `Rowan Ellery Marsh`; undefined when it names none. */
