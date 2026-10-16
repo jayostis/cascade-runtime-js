@@ -801,8 +801,11 @@ test("in the lab results' box of the joined pod, a heading sorts by its column o
     `${served.url}try/index.html?pod=${view.slug(joined.person.name)}`,
   );
   await settled(page);
+  await page.waitForSelector('body[data-tables="ready"]', {
+    timeout: 120_000,
+  });
   await page.click('a.tile[href="#see-lab-results"]');
-  const sort = (head: string): Promise<void> =>
+  const sort =(head: string): Promise<void> =>
     page.click(`#see-lab-results th button:has-text("${head}")`);
 
   const opened = await column(page, "Date");
