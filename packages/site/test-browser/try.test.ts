@@ -98,16 +98,31 @@ let browser: Browser;
 /** One browser profile for the tests that share its pods. */
 let profile: BrowserContext;
 let alex: Answers;
-/** The demo person at two hospitals, what Node's look says of each hospital's pull, and what both bring in. */
-let joined: {
+/** A demo person, what Node's look says of each hospital's pull, and what the pulls bring in. */
+interface Joined {
   person: Person;
   patients: Map<string, string>;
   has: Map<string, string[]>;
   worth: string[];
   worthLinks: string[];
+  /** Each judgment the pod holds, by its justification's name, with the table version it cites (none for a judgment citing none). */
+  judged: { justification: string; used: string }[];
+  /** How many records of each type the person's hospitals hold, before the pod joins any. */
+  held: Map<string, number>;
   /** The entry both hospitals recorded; its IRI comes from the records, so Node and the browser name it alike. */
   seenAtBoth: string | undefined;
-};
+}
+/** Rowan Marsh, whom both hospitals hold, and Tobias Fenn, whom only North does. */
+let joined: Joined;
+let tobias: Joined;
+
+/** Does a judgment of this justification cite a table version, a content-addressed `ni:` IRI beside the rule list it used? */
+const cites = (judged: Joined["judged"], justification: string): boolean =>
+  judged.some(
+    (judgment) =>
+      judgment.justification === justification &&
+      judgment.used.startsWith("ni:"),
+  );
 
 /** A Worth a look line as the page's text reads it: its sentence, then its tag. */
 const worthText = ({ sentence, tag }: { sentence: string; tag?: string }) =>
@@ -140,13 +155,14 @@ const pageTablesPod = async () =>
     }),
   );
 
-/** What Node pulls of the demo person at each of their hospitals, and the pod both pulls make. */
-async function nodeJoin(): Promise<typeof joined> {
+/** What Node pulls of the demo person with this family name at each of their hospitals, and the pod the pulls make. */
+async function nodeJoin(family: string): Promise<Joined> {
   const demo = await loadHospitals();
-  const person = view.demoPeople(demo).find(({ at }) => at.length > 1);
-  assert.ok(person, "no demo person is at two hospitals");
+  const person = view.demoPeople(demo).find((each) => each.family === family);
+  assert.ok(person, `no demo person is named ${family}`);
   const patients = new Map<string, string>();
   const has = new Map<string, string[]>();
+  const held = new Map<string, number>();
   const pod = await pageTablesPod();
   try {
     for (const hospital of person.at) {
@@ -159,6 +175,11 @@ async function nodeJoin(): Promise<typeof joined> {
       )?.[0];
       assert.ok(id);
       patients.set(hospital.name, id);
+      for (const { resource } of loaded.patients[id]?.entry ?? [])
+        held.set(
+          resource.resourceType,
+          (held.get(resource.resourceType) ?? 0) + 1,
+        );
       const fetch = demoFetch([{ ...loaded, autoApprove: id }]);
       const connection = await connect(
         { name: hospital.name, vendor: "demo", fhirBase: hospital.fhirBase },
@@ -190,11 +211,24 @@ async function nodeJoin(): Promise<typeof joined> {
     const seenAtBoth = [...view.seenAt(answers)].find(([, { places }]) =>
       both.every((name) => places.includes(name)),
     )?.[0];
+    const judged = (
+      await pod.ask({
+        query: `SELECT ?justification ?used WHERE {
+          ?judgment <https://ns.cascadeprotocol.org/judgments/v1-draft#justification> ?justification .
+          OPTIONAL { ?judgment <http://www.w3.org/ns/prov#used> ?used }
+        }`,
+      })
+    ).map(({ justification = "", used = "" }) => ({
+      justification: justification.replace(/^.*#/, ""),
+      used,
+    }));
     return {
       seenAtBoth,
       person,
       patients,
       has,
+      judged,
+      held,
       worth: view.worthALook(answers).map(worthText),
       worthLinks: view
         .worthALook(answers)
@@ -226,7 +260,8 @@ before(async () => {
   } finally {
     await rm(copy, { recursive: true, force: true });
   }
-  joined = await nodeJoin();
+  joined = await nodeJoin("Marsh");
+  tobias = await nodeJoin("Fenn");
   served = await servePages(PAGES);
   browser = await chromium.launch();
   profile = await browser.newContext();
@@ -591,13 +626,68 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       `the filter did not survive the import: ${String(text)}`,
     );
 
-  assert.deepEqual(await texts(page, ".worth li"), joined.worth);
+  await page.waitForSelector('body[data-tables="ready"]', {
+    timeout: 120_000,
+  });
+  // Node's look gives the lines that need no table; the tables add the one lisinopril line.
+  const lines = await page.$$eval(".worth li", (found) =>
+    found.map((each) => ({
+      text: each.textContent ?? "",
+      href: each.querySelector("a")?.getAttribute("href") ?? "",
+    })),
+  );
+  const lisinopril =
+    /lisinopril 10 .* and lisinopril 20 .* share an ingredient, lisinopril/i;
+  assert.equal(
+    lines.filter(({ text }) => lisinopril.test(text)).length,
+    1,
+    "Worth a look has no line, or two, for the two lisinopril doses",
+  );
+  const own = lines.filter(({ text }) => !lisinopril.test(text));
   assert.deepEqual(
-    await page.$$eval(".worth li a", (found) =>
-      found.map((each) => each.getAttribute("href")),
-    ),
+    own.map(({ text }) => text),
+    joined.worth,
+  );
+  assert.deepEqual(
+    own.map(({ href }) => href),
     joined.worthLinks,
   );
+  const rowsIn = (box: string): Promise<string[]> =>
+    texts(page, `#see-${box} tbody tr`);
+  const medicines = await rowsIn("medications");
+  assert.equal(
+    medicines.filter((row) => /loratadine/i.test(row)).length,
+    1,
+    `Claritin and loratadine are one medicine, among ${medicines.join("; ")}`,
+  );
+  assert.ok(!medicines.some((row) => /claritin/i.test(row)), "a brand row");
+  const allergies = await rowsIn("allergies");
+  assert.equal(
+    allergies.filter((row) => /amoxicillin/i.test(row)).length,
+    1,
+    `the two amoxicillin allergies are one, among ${allergies.join("; ")}`,
+  );
+  assert.equal(
+    allergies.length,
+    (joined.held.get("AllergyIntolerance") ?? 0) - 1,
+    `exactly the two amoxicillin allergies join, among ${allergies.join("; ")}`,
+  );
+  assert.ok(
+    allergies.some((row) => /penicillin/i.test(row)) &&
+      !allergies.some(
+        (row) => /penicillin/i.test(row) && /amoxicillin/i.test(row),
+      ),
+    `penicillin stays apart from amoxicillin, among ${allergies.join("; ")}`,
+  );
+  for (const justification of [
+    "SameBrandGeneric",
+    "SameProductCode",
+    "SameMappedCode",
+  ])
+    assert.ok(
+      cites(joined.judged, justification),
+      `no ${justification} judgment cites a table version`,
+    );
   assert.ok(secrets.size >= 2, "the test saw no token or no code");
   const shown = await page.content();
   for (const secret of secrets) {
@@ -623,6 +713,71 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     assert.ok(recorded.includes(name), `${name} is not in: ${recorded}`);
 });
 
+test("in try/, a new pod for Tobias Fenn signed in at North names his hip condition by ICD-10-CM once for the retired code and the one that replaced it, and tags a retired CVX code and a retired LOINC code, the code that replaced it beside it untagged", async () => {
+  const { person, patients, held, judged } = tobias;
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, view.familyFirst(person));
+    const [north = ""] = person.at.map(({ name }) => name);
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.click(`button:has-text("Sign in at ${view.hospitalName(north)}")`),
+    ]);
+    await popup.waitForSelector('button[value="allow"]');
+    await popup.check(`input[name="patient"][value="${patients.get(north)}"]`);
+    await popup.click('button[value="allow"]');
+    await settled(page);
+    await page.click("#connection button:has-text('Bring it into')");
+    await settled(page, 300_000);
+    await page.waitForSelector('body[data-tables="ready"]', {
+      timeout: 120_000,
+    });
+    const rowsIn = (box: string): Promise<string[]> =>
+      texts(page, `#see-${box} tbody tr`);
+    const retired = (row: string): boolean => row.includes("Retired code");
+
+    const conditions = await rowsIn("conditions");
+    const hip = conditions.filter((row) => row.includes("Periprosthetic"));
+    assert.equal(hip.length, 1, conditions.join("; "));
+    assert.ok(
+      !conditions.some((row) => row.includes("hip replacement")),
+      "a row keeps the record's own text, not ICD-10-CM's name",
+    );
+    assert.ok(
+      conditions.length < (held.get("Condition") ?? 0),
+      "the two codes of the hip condition were not joined into one entry",
+    );
+    assert.ok(
+      cites(judged, "SameConvertedCode"),
+      "no one-to-one conversion judgment cites a table version",
+    );
+
+    const vaccines = await rowsIn("immunizations");
+    const hepA = vaccines.filter((row) => row.includes("Hep A"));
+    assert.equal(hepA.length, 1, vaccines.join("; "));
+    assert.ok(retired(hepA[0] ?? ""), hepA.join("; "));
+    const hdl = (await rowsIn("lab-results")).filter((row) =>
+      /Cholesterol.in HDL/.test(row),
+    );
+    assert.equal(hdl.length, 2, hdl.join("; "));
+    const [old, current] = [
+      hdl.filter((row) => /Deprecated/.test(row)),
+      hdl.filter((row) => !/Deprecated/.test(row)),
+    ];
+    assert.equal(old?.length, 1, hdl.join("; "));
+    assert.ok(old?.every(retired), `the Deprecated row is tagged: ${hdl}`);
+    assert.ok(
+      current?.every((row) => !retired(row)),
+      `the current row is untagged: ${hdl}`,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 /** The `data-key` of each row the lab results' table shows, in the column headed `head`. */
 async function column(page: Page, head: string): Promise<string[]> {
   return page.$$eval(
@@ -646,6 +801,9 @@ test("in the lab results' box of the joined pod, a heading sorts by its column o
     `${served.url}try/index.html?pod=${view.slug(joined.person.name)}`,
   );
   await settled(page);
+  await page.waitForSelector('body[data-tables="ready"]', {
+    timeout: 120_000,
+  });
   await page.click('a.tile[href="#see-lab-results"]');
   const sort = (head: string): Promise<void> =>
     page.click(`#see-lab-results th button:has-text("${head}")`);
