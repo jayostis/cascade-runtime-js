@@ -206,12 +206,12 @@ function fetched(url) {
   });
 }
 
-/** `npm start` on a port the system gives, with its address once it serves. */
-async function started() {
+/** `npm start` on a port the system gives, with `settings` added to its environment, and its address once it serves. */
+async function started(settings = {}) {
   stdout.write("\n$ npm start (PORT=0)\n");
   const child = spawn(execPath, [NPM, "start"], {
     cwd: app,
-    env: { ...env, PORT: "0" },
+    env: { ...env, ...settings, PORT: "0" },
     detached: platform !== "win32",
   });
   let out = "";
@@ -1594,7 +1594,7 @@ if (release === undefined) {
       );
 
       await behaviour(
-        "the world's date is set by post, the hospital's sign-in page and the connection's box say so, a bad date is refused, and Today takes it away",
+        "the world's date is set by post, the hospital's sign-in page and the connection's box say so, a bad date is refused, Today takes it away, and the variable sets it at start",
         async () => {
           const pod = "hospital";
           const north = expected.row.fhirBase;
@@ -1655,6 +1655,18 @@ if (release === undefined) {
           const today = await send("/world-date", { date: "" });
           assert.equal(today.status, 303);
           assert.ok(!(await pickerNow()).includes('class="as-of"'));
+
+          const dated = await started({ CASCADE_WORLD_DATE: "2024-02-01" });
+          try {
+            assert.ok(
+              readable(await served(dated, "/world-date")).includes(
+                "Hospitals answer as of 1 February 2024.",
+              ),
+              "the variable set at start is not the world's date",
+            );
+          } finally {
+            await dated.stop();
+          }
         },
       );
 
