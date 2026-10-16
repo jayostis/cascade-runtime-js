@@ -50,6 +50,7 @@ const FEED = "https://tables.example/feed.ttl";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const SPDX = "http://spdx.org/rdf/terms#";
 const PROV = "http://www.w3.org/ns/prov#";
+const PAV = "http://purl.org/pav/";
 const CURRENT = `${DCAT}hasCurrentVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
@@ -1526,11 +1527,23 @@ test("a pod that joined two allergies through a product ingredients version writ
     mappingRows(INGREDIENTS, [advil, ibuprofen]),
   ]);
   // Version 8 of the rule list reads the relation as skos:broadMatch; the shipped one reads obo:RO_0002248.
-  const { index, shipped } = await ruleList();
-  const [, eighth] =
-    /<([^>]+)> a prov:Entity ;\s+prov:specializationOf <[^>]+> ;\s+pav:version "8"/.exec(
-      index,
-    ) ?? [];
+  const { index, shipped, series } = await ruleList();
+  const listed = await parts
+    .newStore()
+    .parse(index, `${parts.vocabulary.iri}${RULE_LIST}references.ttl`);
+  const [eighth] = listed
+    .filter(
+      ([subject, property, version]) =>
+        property.value === `${PAV}version` &&
+        version.value === "8" &&
+        listed.some(
+          ([of, kind, to]) =>
+            of.value === subject.value &&
+            kind.value === `${PROV}specializationOf` &&
+            to.value === series,
+        ),
+    )
+    .map(([subject]) => subject.value);
   assert.ok(eighth !== undefined);
   const { vocabulary } = parts;
   const before: Files = {
@@ -1739,96 +1752,121 @@ const named = (code: string, name: string): Triple => [
   literal(name),
 ];
 
-test("a code's page gives a panel's members in order with the one it requires and the panels that hold a member, a lab result's LOINC name, and a drug's classes by relation through the ingredient FDA gives them on, and the pod's medicines in a class are asked of the tables", async () => {
-  const panel = "24323-8";
-  const members: [string, string][] = [
-    [panel, "2951-2"],
-    [panel, "2823-3"],
-    [panel, "17861-6"],
-  ];
-  const place: Record<string, [number, string | undefined]> = {
-    "2951-2": [2, "R"],
-    "2823-3": [1, undefined],
-    "17861-6": [3, "O"],
-  };
-  const panels = await withMappings(
-    feed,
-    {
-      ...PANELS,
-      extra: (_, member) => [
-        [
-          `${REC}panelSequence`,
-          literal(String(place[member]![0]), XSD_INTEGER),
-        ],
-        ...(place[member]![1] === undefined
-          ? []
-          : [
-              [
-                `${REC}observationRequiredInPanel`,
-                literal(place[member]![1]),
-              ] as const,
-            ]),
-      ],
-    },
-    [members],
-  );
-  const lisinopril = "29046";
-  const ingredients = await withMappings(panels.served, INGREDIENTS, [
-    [
-      ["314076", lisinopril],
-      ["1546022", lisinopril],
-      [lisinopril, lisinopril],
-      // A combination maps to the multiple ingredient concept, which MED-RT classes none of.
-      ["206771", "214354"],
-    ],
-  ]);
-  const classes = await withMappings(
-    ingredients.served,
-    {
-      ...CLASSES,
-      predicateOf: (_, target) =>
-        target === "N0000000174"
-          ? `${REC}mechanismOfAction`
-          : CLASSES.predicate,
-    },
-    [
-      [
-        ["1546022", "N0000175562"],
-        ["1546022", "N0000000174"],
-      ],
-    ],
-  );
-  const loinc = await withVersions(
-    classes.served,
-    NAMES("urn:uuid:5c7e9a1b-4d6f-4b82-8c3d-4e5f6a7b8c9d", "LOINC names"),
-    [
-      [
-        named(`${LOINC}2823-3`, "Potassium [Moles/volume] in Serum or Plasma"),
-        named(`${LOINC}2951-2`, "Sodium [Moles/volume] in Serum or Plasma"),
-        named(`${LOINC}${panel}`, "Comprehensive metabolic 2000 panel"),
-      ],
-    ],
-  );
-  const medrt = await withVersions(
-    loinc.served,
-    NAMES("urn:uuid:6d8f0b2c-5e70-4c93-9d4e-5f6a7b8c9d0e", "MED-RT names"),
-    [
-      [
-        named(
-          `${MEDRT}N0000175562`,
-          "Angiotensin Converting Enzyme Inhibitor [EPC]",
-        ),
-        named(`${RXNORM}1546022`, "lisinopril anhydrous"),
-      ],
-    ],
-  );
-  const tables = tablesOver(medrt.served);
-  await tables.check();
+const PANEL = "24323-8";
+const LISINOPRIL = "29046";
+const ESTRADIOL = "4083";
+const FLUOROESTRADIOL = "2372221";
+const MECHANISMS = new Set(["N0000000174", "N0000000100", "N0000175869"]);
 
-  const cmp = await tables.facts(`${LOINC}${panel}`);
-  const [held] = cmp.panels;
+/**
+ * The feed the panel and class tests share, built once: a panel and its members; a tablet, its precise ingredient and
+ * lisinopril, FDA's class on the precise ingredient only; a combination, mapped to its multiple ingredient concept; and
+ * estradiol, whose tablet maps to it and whose precise ingredient fluoroestradiol F-18 maps to it too, each classed
+ * differently.
+ */
+let planted: Promise<{ tables: Tables; classes: string }> | undefined;
+
+function plantedTables(): Promise<{ tables: Tables; classes: string }> {
+  planted ??= (async () => {
+    const place: Record<string, [number, string | undefined]> = {
+      "2951-2": [2, "R"],
+      "2823-3": [1, undefined],
+      "17861-6": [3, "R-a"],
+    };
+    const panels = await withMappings(
+      feed,
+      {
+        ...PANELS,
+        extra: (_, member) => [
+          [
+            `${REC}panelSequence`,
+            literal(String(place[member]![0]), XSD_INTEGER),
+          ],
+          ...(place[member]![1] === undefined
+            ? []
+            : [
+                [
+                  `${REC}observationRequiredInPanel`,
+                  literal(place[member]![1]),
+                ] as const,
+              ]),
+        ],
+      },
+      [Object.keys(place).map((member): [string, string] => [PANEL, member])],
+    );
+    const ingredients = await withMappings(panels.served, INGREDIENTS, [
+      [
+        ["314076", LISINOPRIL],
+        ["1546022", LISINOPRIL],
+        [LISINOPRIL, LISINOPRIL],
+        // A combination maps to the multiple ingredient concept, which MED-RT classes none of.
+        ["197885", "214618"],
+        // A product maps to its ingredient, never to its own precise ingredient.
+        ["197658", ESTRADIOL],
+        [FLUOROESTRADIOL, ESTRADIOL],
+        [ESTRADIOL, ESTRADIOL],
+      ],
+    ]);
+    const classes = await withMappings(
+      ingredients.served,
+      {
+        ...CLASSES,
+        predicateOf: (_, target) =>
+          MECHANISMS.has(target)
+            ? `${REC}mechanismOfAction`
+            : CLASSES.predicate,
+      },
+      [
+        [
+          ["1546022", "N0000175562"],
+          ["1546022", "N0000000174"],
+          [ESTRADIOL, "N0000175825"],
+          [ESTRADIOL, "N0000000100"],
+          [FLUOROESTRADIOL, "N0000177914"],
+          [FLUOROESTRADIOL, "N0000175869"],
+        ],
+      ],
+    );
+    const loinc = await withVersions(
+      classes.served,
+      NAMES("urn:uuid:5c7e9a1b-4d6f-4b82-8c3d-4e5f6a7b8c9d", "LOINC names"),
+      [
+        [
+          named(
+            `${LOINC}2823-3`,
+            "Potassium [Moles/volume] in Serum or Plasma",
+          ),
+          named(`${LOINC}2951-2`, "Sodium [Moles/volume] in Serum or Plasma"),
+          named(`${LOINC}${PANEL}`, "Comprehensive metabolic 2000 panel"),
+        ],
+      ],
+    );
+    const medrt = await withVersions(
+      loinc.served,
+      NAMES("urn:uuid:6d8f0b2c-5e70-4c93-9d4e-5f6a7b8c9d0e", "MED-RT names"),
+      [
+        [
+          named(
+            `${MEDRT}N0000175562`,
+            "Angiotensin Converting Enzyme Inhibitor [EPC]",
+          ),
+          named(`${RXNORM}1546022`, "lisinopril anhydrous"),
+          named(`${RXNORM}${ESTRADIOL}`, "estradiol"),
+        ],
+      ],
+    );
+    const tables = tablesOver(medrt.served);
+    await tables.check();
+    return { tables, classes: classes.versions[0]! };
+  })();
+  return planted;
+}
+
+test("a panel's page gives its members in order with the ones it requires, and is no generic mapping", async () => {
+  const { tables } = await plantedTables();
+  const facts = await tables.facts(`${LOINC}${PANEL}`);
   assert.deepEqual(
-    held?.members.map(({ notation, sequence, required, about }) => [
+    facts.panels[0]?.members.map(({ notation, sequence, required, about }) => [
       notation,
       sequence,
       required,
@@ -1837,16 +1875,17 @@ test("a code's page gives a panel's members in order with the one it requires an
     [
       ["2823-3", 1, undefined, "Potassium [Moles/volume] in Serum or Plasma"],
       ["2951-2", 2, "R", "Sodium [Moles/volume] in Serum or Plasma"],
-      ["17861-6", 3, "O", undefined],
+      ["17861-6", 3, "R-a", undefined],
     ],
   );
   assert.deepEqual(
-    cmp.mappings
-      .map(({ series }) => series)
-      .filter((series) => series === PANELS.series),
+    facts.mappings.filter(({ series }) => series === PANELS.series),
     [],
-    "a panel is not listed as a generic mapping",
   );
+});
+
+test("a lab result's code is named by LOINC and gives the panels that hold it", async () => {
+  const { tables } = await plantedTables();
   const potassium = await tables.facts(`${LOINC}2823-3`);
   assert.equal(
     potassium.about?.name?.label,
@@ -1857,9 +1896,12 @@ test("a code's page gives a panel's members in order with the one it requires an
       heldBy.total,
       heldBy.panels.map(({ notation, sequence }) => [notation, sequence]),
     ]),
-    [[1, [[panel, 1]]]],
+    [[1, [[PANEL, 1]]]],
   );
+});
 
+test("a drug is in the classes FDA gives its ingredient's only classed code, by relation, through the code the row is on", async () => {
+  const { tables } = await plantedTables();
   const tablet = await tables.facts(`${RXNORM}314076`);
   assert.deepEqual(
     tablet.classes.map(({ in: each }) =>
@@ -1882,50 +1924,131 @@ test("a code's page gives a panel's members in order with the one it requires an
       ],
     ],
   );
+});
+
+test("a class on the code itself is not reached through another, and a combination has none", async () => {
+  const { tables } = await plantedTables();
   assert.deepEqual(
     (await tables.facts(`${RXNORM}1546022`)).classes.flatMap(({ in: each }) =>
       each.map(({ through }) => through),
     ),
     [undefined, undefined],
-    "a class on the code itself is not reached through another",
   );
-  assert.deepEqual((await tables.facts(`${RXNORM}206771`)).classes, []);
+  assert.deepEqual((await tables.facts(`${RXNORM}197885`)).classes, []);
+});
 
+test("precise ingredients classed differently give a product none of their classes, and each keeps its own", async () => {
+  const { tables } = await plantedTables();
+  const byCode = async (code: string) =>
+    (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
+      ({ in: each, withheld }) => [
+        ...each.map(
+          ({ relation, class: of, through }) =>
+            `${relation.slice(REC.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
+        ),
+        ...withheld.map(
+          ({ relation, ingredient }) =>
+            `${relation.slice(REC.length)} withheld, ${ingredient.about?.name?.label}`,
+        ),
+      ],
+    );
+  assert.deepEqual(await byCode("197658"), [
+    "establishedPharmacologicClass withheld, estradiol",
+    "mechanismOfAction withheld, estradiol",
+  ]);
+  assert.deepEqual(await byCode(FLUOROESTRADIOL), [
+    "establishedPharmacologicClass N0000177914",
+    "mechanismOfAction N0000175869",
+  ]);
+  assert.deepEqual(await byCode(ESTRADIOL), [
+    "establishedPharmacologicClass N0000175825",
+    "mechanismOfAction N0000000100",
+  ]);
+});
+
+test("the pod's medicines in a class are asked of the tables by the same rule as a code's page", async () => {
+  const { tables, classes } = await plantedTables();
   const folder = join(scratch, "pods", "classes");
   const pod = await openPodWith({ ...parts, tables }, folder);
   try {
-    const medication = (code: string, name: string, index: number): string =>
+    const names: Record<string, string> = {
+      "314076": "Lisinopril 10 MG Oral Tablet",
+      "197885": "Hydrochlorothiazide 12.5 MG / Lisinopril 10 MG Oral Tablet",
+      "197658": "Estradiol 1 MG Oral Tablet",
+      [FLUOROESTRADIOL]: "Fluoroestradiol F-18",
+    };
+    const medication = (code: string, index: number): string =>
       `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/clinical/v1#Medication> .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  <https://ns.cascadeprotocol.org/clinical/v1#drugName> "${name}" ;
+  <https://ns.cascadeprotocol.org/clinical/v1#drugName> "${names[code]}" ;
   <https://ns.cascadeprotocol.org/clinical/v1#rxNormCode> <${RXNORM}${code}> ;
   <https://ns.cascadeprotocol.org/clinical/v1#clinicalIntent> "prescribed" ;
   <https://ns.cascadeprotocol.org/clinical/v1#status> "active" ; rec:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
-${medication("314076", "Lisinopril 10 MG Oral Tablet", 0)}
-${medication("206771", "Lisinopril with hydrochlorothiazide", 1)}`);
+${Object.keys(names).map(medication).join("\n")}`);
     assert.equal(entered.refused, undefined);
     const rows = await pod.medicationClasses();
     assert.deepEqual(
       rows
         .map(
-          ({ medication, relation = "", class: of = "", through, origin }) => [
+          ({
+            medication,
+            relation = "",
+            class: of = "",
+            through,
+            stated,
+            origin,
+          }) => [
             medication,
             relation.slice(REC.length),
             of.slice(MEDRT.length),
             through?.slice(RXNORM.length),
-            origin === classes.versions[0],
+            stated,
+            origin === classes,
           ],
         )
         .sort(),
       [
         [
+          "Estradiol 1 MG Oral Tablet",
+          "establishedPharmacologicClass",
+          "",
+          ESTRADIOL,
+          "false",
+          true,
+        ],
+        [
+          "Estradiol 1 MG Oral Tablet",
+          "mechanismOfAction",
+          "",
+          ESTRADIOL,
+          "false",
+          true,
+        ],
+        [
+          "Fluoroestradiol F-18",
+          "establishedPharmacologicClass",
+          "N0000177914",
+          FLUOROESTRADIOL,
+          "true",
+          true,
+        ],
+        [
+          "Fluoroestradiol F-18",
+          "mechanismOfAction",
+          "N0000175869",
+          FLUOROESTRADIOL,
+          "true",
+          true,
+        ],
+        [
           "Lisinopril 10 MG Oral Tablet",
           "establishedPharmacologicClass",
           "N0000175562",
           "1546022",
+          "false",
           true,
         ],
         [
@@ -1933,10 +2056,25 @@ ${medication("206771", "Lisinopril with hydrochlorothiazide", 1)}`);
           "mechanismOfAction",
           "N0000000174",
           "1546022",
+          "false",
           true,
         ],
       ],
     );
+    for (const [code, name] of Object.entries(names)) {
+      const said = (await tables.facts(`${RXNORM}${code}`)).classes.flatMap(
+        ({ in: each, withheld }) => [
+          ...each.map(
+            ({ relation, class: of }) => `${relation} ${MEDRT}${of.notation}`,
+          ),
+          ...withheld.map(({ relation }) => `${relation} `),
+        ],
+      );
+      const asked = rows
+        .filter((row) => row.medication === name)
+        .map((row) => `${row.relation} ${row.class ?? ""}`);
+      assert.deepEqual(said.sort(), asked.sort(), name);
+    }
   } finally {
     await pod.close();
   }

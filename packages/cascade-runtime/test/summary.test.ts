@@ -1104,7 +1104,7 @@ test("tables are browsed by source: a source is named by the words its tables sh
               series: panelTable.iri,
               version: "ni:///v2",
               members: [
-                placed("2823-3", "Potassium", { sequence: 1 }),
+                placed("2823-3", "Potassium", { sequence: 1, required: "R-a" }),
                 placed("2951-2", "Sodium", { sequence: 2, required: "R" }),
                 placed("17861-6", "Calcium", { sequence: 3, required: "Rflx" }),
               ],
@@ -1129,6 +1129,12 @@ test("tables are browsed by source: a source is named by the words its tables sh
                   class: coded("M0014310", "Lisinopril"),
                 },
               ],
+              withheld: [
+                {
+                  relation: `${REC}mechanismOfAction`,
+                  ingredient: coded("4083", "estradiol"),
+                },
+              ],
             },
           ],
         },
@@ -1139,8 +1145,9 @@ test("tables are browsed by source: a source is named by the words its tables sh
   );
   for (const said of [
     "A panel of 3 members, in order:",
-    "2823-3 Potassium",
+    "2823-3 Potassium R-a",
     "2951-2 Sodium required",
+    "No mechanism of action is given: the forms of 4083 estradiol are classed differently.",
     "17861-6 Calcium Rflx",
     "Itself a member of 3 panels:",
     "34567-8 A larger panel",
@@ -1205,6 +1212,61 @@ test("tables are browsed by source: a source is named by the words its tables sh
     assert.ok(code.includes(said), `${said} in ${code}`);
 });
 
+test("a pod's page credits the table whose names it shows, once, and no other", () => {
+  const code = "http://loinc.org/rdf/2823-3";
+  const answers = {
+    [LABS]: [
+      { entry: "l1", test: "K+", code },
+      { entry: "l2", test: "K again", code },
+    ],
+  };
+  const about = new Map<string, object>([
+    [
+      code,
+      {
+        name: {
+          label: "Potassium [Moles/volume] in Serum or Plasma",
+          altLabels: [],
+          origin: "urn:x:loinc-1",
+        },
+      },
+    ],
+  ]);
+  const held = [
+    {
+      iri: "urn:x:loinc",
+      versions: [{ iri: "urn:x:loinc-1" }],
+      credit: "This material contains content from LOINC.",
+    },
+    {
+      iri: "urn:x:other",
+      versions: [{ iri: "urn:x:other-1" }],
+      credit: "Another table's credit.",
+    },
+  ];
+  const shown = (props: object) =>
+    textOf(
+      render(
+        view.podPage(answers, {
+          pod: "alex-rivera",
+          signIn: () => "",
+          findHospital: "",
+          ...props,
+        }),
+      ),
+    );
+  const credited = shown({ about, held });
+  assert.equal(
+    credited.split("This material contains content from LOINC.").length,
+    2,
+  );
+  assert.ok(!credited.includes("Another table's credit."));
+  assert.ok(
+    !shown({ about: new Map(), held }).includes("content from LOINC"),
+    "a name the tables did not give has no credit",
+  );
+});
+
 test("the medicines by class page groups the pod's active medicines under each class, one class alone when picked, with the table and version each came from and its credit, and says which medicines are in none and why", () => {
   const MEDRT = "https://ns.cascadeprotocol.org/codes/medrt/";
   const ORIGIN = "urn:x:classes-1";
@@ -1218,17 +1280,29 @@ test("the medicines by class page groups the pod's active medicines under each c
   const row = (
     entry: string,
     medication: string,
-    cls: string,
+    cls: string | undefined,
     relation = "establishedPharmacologicClass",
+    on = "1546022",
+    stated = "false",
   ) => ({
     entry,
     medication,
-    class: `${MEDRT}${cls}`,
+    ...(cls !== undefined && { class: `${MEDRT}${cls}` }),
     relation: `${REC}${relation}`,
     origin: ORIGIN,
-    through: "http://www.nlm.nih.gov/research/umls/rxnorm/1546022",
+    through: `http://www.nlm.nih.gov/research/umls/rxnorm/${on}`,
+    stated,
   });
   const rows = [
+    row("e4", "Estradiol 1 MG Oral Tablet", undefined, undefined, "4083"),
+    row(
+      "e5",
+      "Fluoroestradiol F-18",
+      "N0000177914",
+      undefined,
+      "2372221",
+      "true",
+    ),
     row("e1", "Lisinopril 10 MG Oral Tablet", "N0000175562"),
     row(
       "e1",
@@ -1242,6 +1316,8 @@ test("the medicines by class page groups the pod's active medicines under each c
     { entry: "e1", medication: "Lisinopril 10 MG Oral Tablet" },
     { entry: "e2", medication: "Enalapril" },
     { entry: "e3", medication: "Lisinopril with hydrochlorothiazide" },
+    { entry: "e4", medication: "Estradiol 1 MG Oral Tablet" },
+    { entry: "e5", medication: "Fluoroestradiol F-18" },
   ];
   const about = new Map<string, object>([
     [
@@ -1273,6 +1349,13 @@ test("the medicines by class page groups the pod's active medicines under each c
         name: { label: "lisinopril anhydrous", altLabels: [], origin: ORIGIN },
       },
     ],
+    [
+      "http://www.nlm.nih.gov/research/umls/rxnorm/4083",
+      {
+        notation: "4083",
+        name: { label: "estradiol", altLabels: [], origin: ORIGIN },
+      },
+    ],
   ]);
   const props = {
     pod: "priya-natarajan",
@@ -1295,8 +1378,19 @@ test("the medicines by class page groups the pod's active medicines under each c
     "Classes are FDA's.",
     "Not in a class here",
     "Lisinopril with hydrochlorothiazide. MED-RT classes single ingredients",
+    "Classes left out where the sources disagree",
+    "Estradiol 1 MG Oral Tablet: MED-RT gives the forms of estradiol different classes, so it gives the medicine no established pharmacologic class.",
   ])
     assert.ok(all.includes(said), `${said} in ${all}`);
+  assert.ok(
+    all.includes("Fluoroestradiol F-18") &&
+      !all.includes("Fluoroestradiol F-18 through"),
+    "a class on a code the entry states is not through anything",
+  );
+  assert.ok(
+    !all.includes("Estradiol 1 MG Oral Tablet through"),
+    "a class left out is not reached",
+  );
   assert.ok(
     all.indexOf("Established pharmacologic class") <
       all.indexOf("Mechanism of action"),

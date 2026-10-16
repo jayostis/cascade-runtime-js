@@ -90,8 +90,9 @@ it came from, beside what ClinVar says today (`variantClassification()`,
 app's current version of the series, with its credit; it records nothing in the
 pod. A pod with active medications links to `/pods/<name>/classes`, its medicines
 by class (`pod.medicationClasses()`, the classes named by `classesSaid`): the
-classes the tables give each, one class alone at `?class=<class IRI>`, and which
-medicines are in none; a lab result coded in LOINC is named by LOINC's long common
+classes the tables give each, one class alone at `?class=<class IRI>`, which
+medicines are in none, and which have a class left out because the sources class
+their ingredient's forms differently; a lab result coded in LOINC is named by LOINC's long common
 name, and a code's page in the tables shows a panel's members and the classes of a
 medication.
 Stop the app's server

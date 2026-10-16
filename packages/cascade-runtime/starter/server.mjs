@@ -395,9 +395,12 @@ async function showPod(response, name, query, names) {
       ? lastShown.get(name)
       : await answersOf(await podNamed(name));
   lastShown.set(name, answers);
-  const [about, said] = await Promise.all([
+  const [about, said, held] = await Promise.all([
     aboutCodes(answers),
     podNamed(name).then((pod) => variantsOf(answers, pod)),
+    tables()
+      .then((kept) => kept.held())
+      .catch(() => []),
   ]);
   const changes = changesIn(answers[HISTORY], answers[LABS], { limit: 20 });
   const from = query.get("from");
@@ -433,6 +436,7 @@ async function showPod(response, name, query, names) {
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
     about,
+    held,
     said,
     changes,
     trendHref: (trend) => trendPath(name, trend),

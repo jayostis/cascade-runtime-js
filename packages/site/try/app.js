@@ -292,6 +292,7 @@ function pageShown() {
       entryHref: (entry) => entryHref(current, entry),
       unheld: pod?.opened?.unheld,
       about,
+      held: state.tables,
       said,
       changes: (state.page.changes ??= changesIn(
         answers[HISTORY] ?? [],

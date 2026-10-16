@@ -73,6 +73,11 @@ interface ClassOf {
   readonly class: string;
   readonly through?: string;
 }
+/** A relation a code has no class for because the codes under its ingredient give different ones. */
+interface WithheldOf {
+  readonly relation: string;
+  readonly ingredient: string;
+}
 /** How many codes a page of a search shows. */
 export const PAGE_SIZE = 50;
 /** What follows a version's file stem in the name of its listing, which a search reads. */
@@ -234,6 +239,13 @@ export interface InClass {
   readonly through?: Coded;
 }
 
+/** A relation a code has no class for, because the codes under its ingredient are classed differently. */
+export interface WithheldClass {
+  readonly relation: string;
+  /** The ingredient whose forms (itself and its precise ingredients) the drug classes table classes differently. */
+  readonly ingredient: Coded;
+}
+
 /** Everything the held tables say of a code, each fact with its series and version. */
 export interface Facts extends Coded {
   /** From each names series that names it, in the order of preference. */
@@ -269,9 +281,13 @@ export interface Facts extends Coded {
   })[];
   /**
    * From each drug classes series whose current version holds a row on the code or on a code that shares an ingredient
-   * with it in a product ingredients series: each class by its relation.
+   * with it in a product ingredients series: each class by its relation, and each relation left out because the codes
+   * sharing the ingredient are classed differently.
    */
-  readonly classes: readonly (Fact & { readonly in: readonly InClass[] })[];
+  readonly classes: readonly (Fact & {
+    readonly in: readonly InClass[];
+    readonly withheld: readonly WithheldClass[];
+  })[];
   /** The code's own page at its code system's publisher, from the vocabulary's page template; none when the code system has none. */
   readonly page?: { readonly href: string; readonly system: string };
 }
@@ -1040,11 +1056,12 @@ export class Tables {
         ...members.map(({ code }) => code),
         ...heldBy.panels.map(({ code }) => code),
       ]),
-      ...classes.flatMap(({ in: each }) =>
-        each.flatMap(({ class: of, through }) =>
+      ...classes.flatMap(({ in: each, withheld }) => [
+        ...each.flatMap(({ class: of, through }) =>
           through === undefined ? [of] : [of, through],
         ),
-      ),
+        ...withheld.map(({ ingredient }) => ingredient),
+      ]),
     ]);
     const coded = (each: string): Coded => ({
       code: each,
@@ -1102,6 +1119,10 @@ export class Tables {
           relation,
           class: coded(of),
           ...(through !== undefined && { through: coded(through) }),
+        })),
+        withheld: fact.withheld.map(({ relation, ingredient }) => ({
+          relation,
+          ingredient: coded(ingredient),
         })),
       })),
     };
@@ -1177,19 +1198,27 @@ export class Tables {
   }
 
   /**
-   * In each drug classes version, the classes of the code and of every code that shares an ingredient with it in a
-   * product ingredients version: FDA classes an ingredient or a precise ingredient, and a product reaches the class
-   * through its ingredient. A class is listed once for each relation, on the code itself if it is there.
+   * In each drug classes version, the classes of the code, by `tables/medication-classes.rq`'s rule, relation by
+   * relation: a class row on the code itself is its class; else the codes that map to its ingredient in a product
+   * ingredients version (the ingredient among them) give theirs only when every one that bears a row of the relation
+   * gives the same classes, and when they differ the code has none and the relation is withheld, naming the
+   * ingredient. A product maps to its ingredient and never to its own precise ingredient, so a class FDA gives one
+   * precise ingredient is not the product's.
    */
   async #classes(
     code: string,
     held: readonly Fact[],
     ingredients: readonly Fact[],
-  ): Promise<(Fact & { in: ClassOf[] })[]> {
+  ): Promise<(Fact & { in: ClassOf[]; withheld: WithheldOf[] })[]> {
     if (held.length === 0) return [];
-    const sharing = await this.#sharing(
-      [code],
-      ingredients.map(({ version }) => version),
+    const maps = await Promise.all(
+      ingredients.map(async ({ version }) => {
+        const [{ mapsTo }, from] = await Promise.all([
+          this.#listed(version),
+          this.#mappedFrom(version),
+        ]);
+        return { mapsTo, from };
+      }),
     );
     return (
       await Promise.all(
@@ -1198,27 +1227,93 @@ export class Tables {
             this.#codesIn(fact.version),
             this.#text(fact.version),
           ]);
-          const found = new Map<string, ClassOf>();
-          for (const on of sharing)
+          const classesOf = (on: string): Map<string, Set<string>> => {
+            const byRelation = new Map<string, Set<string>>();
             for (const subject of index.get(on) ?? []) {
               const rows = rowsAbout(text, subject);
               const [relation] = values(rows, `${OWL}annotatedProperty`);
               const [target] = values(rows, `${OWL}annotatedTarget`);
-              if (relation === undefined || target === undefined) continue;
-              const key = `${relation} ${target}`;
-              if (!found.has(key))
-                found.set(key, {
+              if (relation !== undefined && target !== undefined)
+                byRelation.set(
+                  relation,
+                  (byRelation.get(relation) ?? new Set()).add(target),
+                );
+            }
+            return byRelation;
+          };
+          // The step a class was reached at (0 the code, 1 the ingredient, 2 a precise ingredient) and the code it is on.
+          const found = new Map<string, { step: number; of: ClassOf }>();
+          const keep = (
+            relation: string,
+            target: string,
+            step: number,
+            on: string,
+          ): void => {
+            const key = `${relation} ${target}`;
+            const before = found.get(key);
+            if (
+              before === undefined ||
+              step < before.step ||
+              (step === before.step && on < (before.of.through ?? code))
+            )
+              found.set(key, {
+                step,
+                of: {
                   relation,
                   class: target,
-                  ...(on !== code && { through: on }),
-                });
+                  ...(step > 0 && { through: on }),
+                },
+              });
+          };
+          const mine = classesOf(code);
+          for (const [relation, targets] of mine)
+            for (const target of targets) keep(relation, target, 0, code);
+          const withheld = new Map<string, WithheldOf>();
+          for (const { mapsTo, from } of maps)
+            for (const ingredient of Object.hasOwn(mapsTo, code)
+              ? mapsTo[code]!
+              : []) {
+              const bearing = new Map<string, Map<string, Set<string>>>();
+              for (const sibling of from.get(ingredient) ?? [])
+                for (const [relation, targets] of classesOf(sibling))
+                  bearing.set(
+                    relation,
+                    (bearing.get(relation) ?? new Map()).set(sibling, targets),
+                  );
+              for (const [relation, bearers] of bearing) {
+                if (mine.has(relation)) continue;
+                const sets = [...bearers.values()];
+                const agree = sets.every(
+                  (each) =>
+                    each.size === sets[0]!.size &&
+                    [...each].every((target) => sets[0]!.has(target)),
+                );
+                if (!agree) {
+                  withheld.set(`${relation} ${ingredient}`, {
+                    relation,
+                    ingredient,
+                  });
+                  continue;
+                }
+                for (const target of sets[0]!)
+                  for (const on of bearers.keys())
+                    keep(relation, target, on === ingredient ? 1 : 2, on);
+              }
             }
-          const each = [...found.values()].sort(
+          const each = [...found.values()]
+            .map(({ of }) => of)
+            .sort(
+              (a, b) =>
+                RELATIONS.indexOf(a.relation) - RELATIONS.indexOf(b.relation) ||
+                a.class.localeCompare(b.class),
+            );
+          const left = [...withheld.values()].sort(
             (a, b) =>
-              RELATIONS.indexOf(a.relation) - RELATIONS.indexOf(b.relation) ||
-              a.class.localeCompare(b.class),
+              RELATIONS.indexOf(a.relation) - RELATIONS.indexOf(b.relation),
           );
-          return each.length === 0 ? [] : [{ ...fact, in: each }];
+          return each.length === 0 && left.length === 0
+            ? []
+            : [{ ...fact, in: each, withheld: left }];
         }),
       )
     ).flat();
@@ -1251,9 +1346,11 @@ export class Tables {
 
   /**
    * The rows a walk from these codes to their drug classes can read, for `tables/medication-classes.rq`: in the current
-   * version of each product ingredients series the rows of the codes and of every code sharing an ingredient with
-   * them, and in the current version of each drug classes series the rows of those, each with the descriptions of the
-   * version and its series. A superset of what the query joins; the query says what is a class of what.
+   * version of each drug classes series the rows of the codes and of every code sharing an ingredient with them, and in
+   * the current version of each product ingredients series the rows of the codes and of the codes that bear those class
+   * rows (a code that bears none cannot change what its ingredient's other codes agree on, and an ingredient has
+   * hundreds of products), each with the descriptions of the version and its series. A superset of what the query
+   * joins; the query says what is a class of what.
    */
   async reached(
     codes: readonly string[],
@@ -1269,22 +1366,32 @@ export class Tables {
       );
     const ingredients = current(`${REC}ProductIngredients`);
     const sharing = await this.#sharing(codes, ingredients);
-    const read = async (version: string) => {
+    const read = async (version: string, among: ReadonlySet<string>) => {
       // The rows are found by an index beside them, which is made now if the version came without one.
       await this.#codesIn(version);
       return {
         version,
-        rows: await references.rows(version, { codes: sharing, terms }),
+        rows: await references.rows(version, { codes: among, terms }),
         description: [
           ...references.description(version),
           ...references.description(references.seriesOf(version) ?? ""),
         ],
       };
     };
-    return Promise.all([
-      ...ingredients.map(read),
-      ...current(`${REC}DrugClasses`).map(read),
-    ]);
+    const classes = await Promise.all(
+      current(`${REC}DrugClasses`).map((version) => read(version, sharing)),
+    );
+    const bearing = new Set(codes);
+    for (const { rows } of classes)
+      for (const [, property, value] of rows)
+        if (property.value === `${OWL}annotatedSource`)
+          bearing.add(value.value);
+    return [
+      ...(await Promise.all(
+        ingredients.map((version) => read(version, bearing)),
+      )),
+      ...classes,
+    ];
   }
 
   /**
