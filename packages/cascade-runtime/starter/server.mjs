@@ -50,6 +50,7 @@ import {
   hospitalName,
   hospitalsPage,
   html,
+  joinedBy,
   LABS,
   MEDICATIONS,
   newPodDialog,
@@ -471,7 +472,7 @@ async function showEntry(response, name, id, names) {
     answers = await answersOf(await podNamed(name));
     lastShown.set(name, answers);
   }
-  const [about, held, said, panels] = await Promise.all([
+  const [about, held, said, panels, joined] = await Promise.all([
     aboutCodes(answers),
     tables()
       .then((kept) => kept.held())
@@ -485,8 +486,11 @@ async function showEntry(response, name, id, names) {
         }),
       )
       .catch(() => []),
+    podNamed(name)
+      .then(joinedBy)
+      .catch(() => new Map()),
   ]);
-  const entry = entryOf(answers, id, { about, said, held });
+  const entry = entryOf(answers, id, { about, said, held, joined });
   const sources = sourcesOf(held);
   const body = entryPage({
     entry,

@@ -602,6 +602,45 @@ ${records.join("\n")}`);
       episodes.map(({ onsets = "" }) => onsets.split(" ").sort().join(" ")),
       ["2019-01-05 2019-01-07"],
     );
+    const { joinedBy } = (await import(
+      new URL("../../starter/summary.mjs", import.meta.url).href
+    )) as { joinedBy: (pod: object) => Promise<Map<string, string[]>> };
+    const joined = await joinedBy(pod);
+    const citedBy = async (field: string, value: string): Promise<string[]> => {
+      const entries = await pod.ask({
+        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/health:${field} ${value} ; rec:inEntry ?entry }`,
+      });
+      assert.equal(
+        entries.length,
+        1,
+        `${field} ${value} is in several entries`,
+      );
+      return joined.get(entries[0]?.entry ?? "") ?? [];
+    };
+    assert.deepEqual(
+      await citedBy("allergenCode", `<${RXNORM}5640>`),
+      [adopted],
+      "a brand join cites the version that counts, not the one that lapsed",
+    );
+    assert.deepEqual(await citedBy("vaccineCode", '"150"'), [groups.second]);
+    assert.deepEqual(await citedBy("vaccineCode", '"140"'), [groups.second]);
+    assert.deepEqual(
+      await citedBy("icd10Code", `<${ICD10CM}C88.00>`),
+      [converted],
+      "a conversion cites its table and not the rule list",
+    );
+    assert.deepEqual(
+      await citedBy(
+        "onsetDate",
+        '"2019-01-05"^^<http://www.w3.org/2001/XMLSchema#date>',
+      ),
+      [],
+      "a join by code and period cites no table",
+    );
+    assert.ok(
+      ![...joined.values()].flat().includes(shipped),
+      "the rule list is cited as a table",
+    );
   } finally {
     await pod.close();
   }

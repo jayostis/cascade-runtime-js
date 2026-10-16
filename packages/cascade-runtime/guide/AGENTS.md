@@ -174,6 +174,9 @@ MED-RT classes none, and the starter's page says so; it says too which medicine
 is in none because FDA classes a different form of its ingredient. A code's
 ingredients (`about().ingredients`) are its ingredient rows (`obo:RO_0002248`),
 never its precise ingredient rows.
+`pod.joinedBy()` says which table versions joined each entry's records
+(`entry`, `used`): those a counting machine Same cited, never the rule list or a
+record's version.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with

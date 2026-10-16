@@ -907,8 +907,8 @@ try {
         "her potassium result is not named by LOINC",
       );
       assert.ok(
-        pod.includes("Which of these medicines are in a class?"),
-        "her page does not offer the class question",
+        pod.includes("By class"),
+        "her Medications tile does not offer the class view",
       );
       const classes = readable(
         await served(server, "/pods/priya-natarajan/classes"),

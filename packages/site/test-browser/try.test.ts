@@ -464,6 +464,12 @@ test("a first visit copies Alex's, Martin's and Priya's pods and opens Alex's, w
       ]).filter(([, count]) => count > 0),
     ),
   );
+  const sidebar = (await page.textContent("aside section.tables")) ?? "";
+  assert.ok(
+    sidebar.includes("Loading the reference tables"),
+    `the sidebar does not say the tables are loading: ${sidebar}`,
+  );
+  assert.ok(!sidebar.includes("None yet"), sidebar);
 
   await inPlace(page, () => page.click('nav a:has-text("Priya Natarajan")'));
   assert.equal(await page.textContent("main h1"), "Priya Natarajan");
@@ -711,6 +717,30 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     .innerText({ timeout: 60_000 });
   for (const name of both)
     assert.ok(recorded.includes(name), `${name} is not in: ${recorded}`);
+
+  await page.goto(`${served.url}try/index.html?pod=${pod}`);
+  await settled(page);
+  await page.waitForSelector('body[data-tables="ready"]', {
+    timeout: 120_000,
+  });
+  await page.click('a.tile[href="#see-medications"]');
+  await inPlace(page, () =>
+    page
+      .locator("#see-medications tbody td:first-child a", {
+        hasText: "oratadine",
+      })
+      .first()
+      .click(),
+  );
+  const matched = await page
+    .locator("main li .from", { hasText: "Matched using" })
+    .first()
+    .innerText({ timeout: 60_000 });
+  assert.match(
+    matched,
+    /^Matched using .+, version \S+/,
+    `the joined medication does not name the table and version: ${matched}`,
+  );
 });
 
 test("in try/, a new pod for Tobias Fenn signed in at North names his hip condition by ICD-10-CM once for the retired code and the one that replaced it, and tags a retired CVX code and a retired LOINC code, the code that replaced it beside it untagged", async () => {
@@ -1812,8 +1842,17 @@ test("in try/, Priya's pod, copied on a first visit, names her potassium result 
     );
     for (const said of ["required", "No result", "missing: "])
       assert.ok(panel.includes(said), `${said} is not in ${panel}`);
-    await page.goto(`${served.url}try/index.html?pod=priya-natarajan&classes`);
+    assert.ok(
+      !((await page.textContent("aside section.tables")) ?? "").includes(
+        "Loading",
+      ),
+      "the sidebar still says the tables are loading",
+    );
+    await page.goto(`${served.url}try/index.html?pod=priya-natarajan`);
     await settled(page);
+    await inPlace(page, () =>
+      page.click(".tiles .tile-box:has(.kind:text-is('Medications')) a.by"),
+    );
     await page.waitForFunction(
       () =>
         document.querySelector("main h1")?.textContent === "Medicines by class",
@@ -2037,6 +2076,16 @@ test("try/ ships the starter tables its published answers were computed with: af
     assert.equal(await page.textContent("main h1"), "Alex Rivera");
     assert.ok((await tiles(page)).size > 0);
     assert.equal(await page.getAttribute("body", "data-engine"), null);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("aside section.tables")
+          ?.textContent?.includes("The reference tables could not be read."),
+      undefined,
+      { timeout: 30_000 },
+    );
+    const nav = (await page.textContent("aside section.tables")) ?? "";
+    assert.ok(!nav.includes("Loading") && !nav.includes("None yet"), nav);
 
     const sources = alex["entry/Where it came from"] ?? [];
     const penicillin = sources.filter(

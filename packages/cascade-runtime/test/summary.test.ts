@@ -2165,6 +2165,141 @@ test("before the tables can say, an entry shows the record's own name and each c
   assert.ok(!page.includes('<a href="/code'));
 });
 
+test("an entry kept as one names the held table version whose rows joined it, and says nothing of a version the app does not hold; another table that joined it has a line of its own", () => {
+  const joined = (...used: string[]) => new Map([[ASTHMA, used]]);
+  const held = [NAMES, STATUS];
+  const only = view.entryOf(ENTRY_ANSWERS, "aa11", {
+    held,
+    joined: joined("urn:test:names-2", "urn:test:rules", "urn:test:names-2"),
+  });
+  assert.equal(only.known.length, 1);
+  assert.equal(only.known[0].from.series, NAMES);
+  const page = textOf(
+    render(
+      view.entryPage({
+        entry: only,
+        pod: "alex-rivera",
+        back: "/",
+        tableHref: (series: { iri: string }) => `/table/${series.iri}`,
+      }),
+    ),
+  ).replace(/ \./g, ".");
+  assert.ok(
+    page.includes(
+      "and keeps it as one condition. Matched using Example names, version 2, Oct 1, 2026.",
+    ),
+    page,
+  );
+
+  assert.ok(
+    render(
+      view.entryPage({
+        entry: only,
+        pod: "p",
+        back: "/",
+        tableHref: (series: { iri: string }) => series.iri,
+      }),
+    ).includes('Matched using Example names, <a href="urn:test:names">'),
+    "the version link follows the table's name after a space",
+  );
+
+  const twice = view.entryOf(ENTRY_ANSWERS, "aa11", {
+    held,
+    joined: joined("urn:test:names-2", "urn:test:status-1"),
+  });
+  assert.deepEqual(
+    twice.known.map(({ from }: { from?: { series: object } }) => from?.series),
+    [NAMES, STATUS],
+  );
+  const twicePage = textOf(
+    render(
+      view.entryPage({
+        entry: twice,
+        pod: "p",
+        back: "/",
+        tableHref: (series: { iri: string }) => series.iri,
+      }),
+    ),
+  ).replace(/ \./g, ".");
+  assert.ok(
+    twicePage.includes("Also matched using Example status, version 1,"),
+    twicePage,
+  );
+  assert.ok(!twicePage.includes("Another reference table"), twicePage);
+
+  const none = view.entryOf(ENTRY_ANSWERS, "aa11", {
+    held,
+    joined: joined("urn:test:rules"),
+  });
+  assert.equal(none.known.length, 1);
+  assert.equal(none.known[0].from, undefined);
+});
+
+test("the Medications tile holds a By class link to the class view, and no other tile does; with no medication or no address there is none", () => {
+  const props = { pod: "alex-rivera", signIn: () => "", findHospital: "" };
+  const answers = {
+    [ALLERGIES]: [{ entry: "e1", allergen: "Penicillin" }],
+    [MEDICATIONS]: [
+      { entry: "e8", medication: "Lisinopril 10 MG Oral Tablet" },
+    ],
+  };
+  const page = render(
+    view.podPage(answers, {
+      ...props,
+      classesHref: "?pod=alex-rivera&classes",
+    }),
+  );
+  const boxes = [...page.matchAll(/<div class="tile-box">(.*?)<\/div>/g)];
+  assert.equal(boxes.length, 1);
+  const [, box = ""] = boxes[0] ?? [];
+  assert.match(box, /Medications/);
+  assert.match(
+    box,
+    /<a class="by" href="\?pod=alex-rivera&amp;classes"[^>]*>By class<\/a>/,
+  );
+  assert.equal((page.match(/By class/g) ?? []).length, 1);
+  assert.equal((page.match(/<a class="tile"/g) ?? []).length, 2);
+
+  const without = render(view.podPage(answers, props));
+  assert.ok(!without.includes("By class"));
+  const noMedicines = render(
+    view.podPage(
+      { [ALLERGIES]: answers[ALLERGIES] },
+      { ...props, classesHref: "?classes" },
+    ),
+  );
+  assert.ok(!noMedicines.includes("By class"));
+});
+
+test("the sidebar says the reference tables are loading until the app has read what it holds, says None yet only after a read that found none, and says they could not be read after one that failed", () => {
+  const nav = (state: "loading" | "none" | "failed", series: object[] = []) =>
+    textOf(
+      render(
+        view.tablesNav({
+          series,
+          href: () => "/",
+          check: "/check",
+          loading: state === "loading",
+          failed: state === "failed",
+        }),
+      ),
+    );
+  assert.ok(nav("loading").includes("Loading the reference tables"));
+  assert.ok(!nav("loading").includes("None yet"));
+  assert.ok(nav("none").includes("None yet"));
+  assert.ok(!nav("none").includes("Loading"));
+  const failed = nav("failed");
+  assert.ok(failed.includes("The reference tables could not be read."), failed);
+  assert.ok(
+    !failed.includes("None yet") && !failed.includes("Loading"),
+    failed,
+  );
+  assert.ok(failed.includes("Check now"), failed);
+  const some = [{ iri: "urn:test:a", label: "Example names" }];
+  assert.ok(nav("loading", some).includes("Example names"));
+  assert.ok(!nav("loading", some).includes("Loading"));
+});
+
 test("an entry no section shows is named and kinded from its label and says what a review line says; an address of no entry says so and links back", () => {
   const entry = view.entryOf(ENTRY_ANSWERS, "bb22");
   assert.equal(entry.name, "Latex");
