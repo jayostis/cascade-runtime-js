@@ -578,6 +578,15 @@ ${records.join("\n")}`);
       "adopted: 153010 5640",
       "held: 153010 5640",
     ]);
+    const { joinedBy } = (await import(
+      new URL("../../starter/summary.mjs", import.meta.url).href
+    )) as { joinedBy: (pod: object) => Promise<Map<string, string[]>> };
+    const cited = new Set([...(await joinedBy(pod)).values()].flat());
+    assert.ok(cited.has(adopted ?? ""), "a brand join does not cite its table");
+    assert.ok(
+      cited.has(groups.second),
+      "a vaccine join does not cite its table",
+    );
     const [converted] = later.versions;
     const { shipped } = await ruleList();
     const conversions = await pod.ask({

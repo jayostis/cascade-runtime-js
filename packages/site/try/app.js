@@ -48,6 +48,7 @@ import {
   hospitalName,
   hospitalsPage,
   html,
+  joinedBy,
   LABS,
   layout,
   MEDICATIONS,
@@ -121,6 +122,7 @@ const state = {
   pods: [],
   people: [],
   tables: [],
+  tablesRead: false,
   table: undefined,
   current: undefined,
   page: undefined,
@@ -251,9 +253,14 @@ function register(view) {
 
 /** The entry `state.page` names, as the pod's answers and what the tables say of its codes give it. */
 function entryShown() {
-  const { answers, about, said, entry, panels } = state.page;
+  const { answers, about, said, entry, panels, joined } = state.page;
   const { current } = state;
-  const found = entryOf(answers, entry, { about, said, held: state.tables });
+  const found = entryOf(answers, entry, {
+    about,
+    said,
+    held: state.tables,
+    joined,
+  });
   const sources = sourcesOf(state.tables);
   return {
     title: found?.name ?? "Not found",
@@ -337,6 +344,7 @@ function redraw() {
         current: state.table,
         href: tableHref,
         check: CHECK,
+        loading: !state.tablesRead,
       },
       dialog: newPodDialog({
         people,
@@ -447,7 +455,23 @@ async function showEntry(id) {
   state.doing = "ready";
   redraw();
   shown.panels = await panelsShown(shown);
-  if (state.page === shown && shown.panels !== undefined) redraw();
+  shown.joined = await joinedShown(shown);
+  if (
+    state.page === shown &&
+    (shown.panels !== undefined || shown.joined !== undefined)
+  )
+    redraw();
+}
+
+/** The table versions whose rows joined the entry `shown`; nothing before the engine is ready. */
+async function joinedShown({ entry }) {
+  if (entry === undefined || document.body.dataset.engine !== "ready")
+    return undefined;
+  try {
+    return await joinedBy(pod);
+  } catch {
+    return undefined;
+  }
 }
 
 /** The LOINC panels the entry `shown` is in; nothing before the engine is ready, or when the tables cannot say. */
@@ -594,7 +618,11 @@ function showHospitals(text) {
 
 /** Reads the reference tables this browser holds into `state.tables`. */
 async function readTables() {
-  state.tables = await (await appTables()).held();
+  try {
+    state.tables = await (await appTables()).held();
+  } finally {
+    state.tablesRead = true;
+  }
 }
 
 /**
@@ -1077,6 +1105,7 @@ busy(async () => {
         if (state.page === shown) redraw();
         shown.about = (await aboutCodes(shown.answers)) ?? new Map();
         shown.panels = await panelsShown(shown);
+        shown.joined = await joinedShown(shown);
       }
       if (state.page !== undefined) redraw();
       document.body.dataset.tables = "ready";

@@ -1037,12 +1037,16 @@ ${body}
  * The section's tile, a link that opens its dialog, and the dialog: its `Table`, whose rows each link to
  * `entryHref(row.entry)` when given.
  */
-export function tile(section, rows, entryHref) {
+export function tile(section, rows, entryHref, by) {
   const id = `see-${slug(section.title)}`;
   const opened = opening(section, rows);
   const names = opened.map((row) => row[section.field] ?? "").join(", ");
+  const opener = html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`;
   return {
-    tile: html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`,
+    tile:
+      by === undefined
+        ? opener
+        : html`<div class="tile-box" key=${id}>${opener}<a class="by" href=${by.href} title=${by.title}>${by.label}</a></div>`,
     dialog: box(
       id,
       html`${section.title} <span class="muted">${rows.length}</span>`,
@@ -1113,7 +1117,20 @@ export function podPage(
     sectionRows(section, answers, said),
   ])
     .filter(([, rows]) => rows.length > 0)
-    .map(([section, rows]) => tile(section, rows, entryHref));
+    .map(([section, rows]) =>
+      tile(
+        section,
+        rows,
+        entryHref,
+        section.question === MEDICATIONS && classesHref !== undefined
+          ? {
+              href: classesHref,
+              label: "By class",
+              title: "Which of these medicines are in a class?",
+            }
+          : undefined,
+      ),
+    );
   const lead =
     records === 0
       ? "Nothing here yet."
@@ -1127,7 +1144,6 @@ ${worth}
 ${changed}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
 ${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
-${classesHref !== undefined && (answers[MEDICATIONS] ?? []).length > 0 && html`<p><a href=${classesHref}>Which of these medicines are in a class?</a></p>`}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital })}`;
@@ -1704,6 +1720,28 @@ function seriesOf(said, held) {
   return undefined;
 }
 
+/**
+ * The table versions the matcher's counting Sames of each entry's records cite (`prov:used`), by the entry's IRI, as
+ * `pod.ask({ query })` rows. A version the app does not hold is left out by `entryOf`.
+ */
+export const JOINED_BY = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
+SELECT DISTINCT ?entry ?used WHERE {
+  ?judgment rec:counts true ; jdg:verdict jdg:Same ; prov:wasAttributedTo/a prov:SoftwareAgent ;
+            prov:hadMember ?member ; prov:used ?used .
+  ?member rec:inEntry ?entry .
+}
+ORDER BY ?entry ?used`;
+
+/** The pod's `JOINED_BY` rows as `entryOf` takes them: each entry's cited versions. */
+export async function joinedBy(pod) {
+  const joined = new Map();
+  for (const { entry, used } of await pod.ask({ query: JOINED_BY }))
+    joined.set(entry, [...(joined.get(entry) ?? []), used]);
+  return joined;
+}
+
 /** What Cascade did with an entry seen more than once, as `seenAt` gives it, in a sentence about the entry itself. */
 function seenSaid({ places, across }, one) {
   return across > 1
@@ -1847,7 +1885,8 @@ function variantFacts(answers, entry, said, held) {
 /**
  * The entry whose address part is `id` (see `entryId`), as its page reads it, or undefined when no row of "Where it
  * came from" has it. `answers` holds the rows of each of `QUESTIONS`, by question; `about` is `codesSaid`'s answer, and
- * `held` the tables' `held()`, both empty until the tables can say.
+ * `held` the tables' `held()`, both empty until the tables can say; `joined` is `joinedBy`'s answer, which names on the
+ * entry's seen-more-than-once line the held table version whose rows joined its records.
  *
  * - `entry`, `name`, `kind` (`allergy`) and `tags`, as a row of its section has them: `Retired code`, `Needs review`
  *   when What needs review names it (an entry no section shows too), and `Differs` when a report of a variant does;
@@ -1869,7 +1908,7 @@ function variantFacts(answers, entry, said, held) {
 export function entryOf(
   answers,
   id,
-  { about = new Map(), said, held = [] } = {},
+  { about = new Map(), said, held = [], joined = new Map() } = {},
 ) {
   const sources = answers[SOURCES] ?? [];
   const entry = sources.find((row) => entryId(row.entry) === id)?.entry;
@@ -1908,7 +1947,30 @@ export function entryOf(
 
   const known = [];
   const seen = seenAt(answers).get(entry);
-  if (seen !== undefined) known.push({ sentence: seenSaid(seen, kind) });
+  const matched = [
+    ...new Map(
+      (joined.get(entry) ?? []).flatMap((used) => {
+        const at = heldAt(used, held);
+        return at === undefined ? [] : [[used, at]];
+      }),
+    ).values(),
+  ];
+  const how = (at) => ({ from: at, fromLead: "Matched using" });
+  if (seen !== undefined)
+    known.push({
+      sentence: seenSaid(seen, kind),
+      ...(matched.length > 0 && how(matched.shift())),
+    });
+  else if (matched.length > 0)
+    known.push({
+      sentence: `Cascade keeps it as one ${kind}.`,
+      ...how(matched.shift()),
+    });
+  for (const at of matched)
+    known.push({
+      sentence: `Another reference table also joined it.`,
+      ...how(at),
+    });
   const reviews = new Map();
   for (const row of ofEntry(answers[REVIEW] ?? []))
     reviews.set(
@@ -2050,8 +2112,8 @@ ${
   known.length > 0 &&
   html`<div class="card entry"><h2>What else is known</h2><ul>
 ${known.map(
-  ({ sentence, tag, from }) =>
-    html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">From ${from.series.label}, <a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
+  ({ sentence, tag, from, fromLead = "From" }) =>
+    html`<li>${sentence}${tag !== undefined && tagged(tag)}${from !== undefined && html` <span class="muted from">${fromLead} ${from.series.label},<a href=${tableHref(from.series)}>${versionName(from.version)}</a>.</span>`}</li>`,
 )}
 </ul>${credits.map((credit) => html`<p class="muted">${credit}</p>`)}</div>`
 }
@@ -2488,13 +2550,14 @@ function versionName({ label, issued }) {
 
 /**
  * The sidebar's reference tables, under the pods: `series` the sources the app holds, as `sourcesOf` gives them, each a
- * link to `href(source)`, the one whose IRI is `current` marked; and a Check now button posting to `check`.
+ * link to `href(source)`, the one whose IRI is `current` marked; and a Check now button posting to `check`. While
+ * `loading`, a page that has not yet read what the app holds says so instead of "None yet", which says there are none.
  */
-export function tablesNav({ series, current, href, check }) {
+export function tablesNav({ series, current, href, check, loading = false }) {
   return html`<section class="tables" aria-label="Reference tables"><h2>Reference tables</h2>
 ${
   series.length === 0
-    ? html`<p class="muted">None yet.</p>`
+    ? html`<p class="muted">${loading ? "Loading the reference tables…" : "None yet."}</p>`
     : html`<ul>
 ${series.map((each) => html`<li><a href=${href(each)} aria-current=${each.iri === current ? "page" : undefined}>${each.label}</a></li>`)}
 </ul>`
@@ -3341,6 +3404,11 @@ a { color: var(--accent); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 1rem; margin: 0 0 1.25rem; }
 .tile { display: block; padding: 1rem 1.1rem; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; }
 .tile:hover { border-color: var(--accent); background: var(--tint); }
+.tile-box { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tile-box:hover { border-color: var(--accent); }
+.tile-box .tile { flex: 1; border: 0; border-radius: 0; }
+.tile-box .by { display: block; padding: 0.55rem 1.1rem; border-top: 1px solid var(--line); font-weight: 600; text-decoration: none; }
+.tile-box .by:hover { background: var(--tint); }
 .tile .kind { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .tile .count { display: block; font-size: 2rem; font-weight: 600; line-height: 1.2; color: var(--accent); }
 .tile .peek { display: block; font-size: 0.88rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.2rem; }
