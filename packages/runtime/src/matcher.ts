@@ -317,7 +317,9 @@ export async function podCodes(
 type Joins = ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>;
 
 /** The version of each series the pod names as current, by series. */
-async function namedVersions(union: Dataset): Promise<Map<string, string[]>> {
+export async function namedVersions(
+  union: Dataset,
+): Promise<Map<string, string[]>> {
   return grouped(
     await column(
       union,

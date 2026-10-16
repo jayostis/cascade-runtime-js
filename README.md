@@ -102,6 +102,9 @@ Code that needs a browser (IndexedDB, the Bridge's worker) is under
 
 Conformance is executable. Each rule of the vocabulary is a Gherkin `Rule:`
 with the examples that show it, and a runtime reports each example in EARL.
+An example reads the pod with the tables its story holds, each current version's
+rows a graph of its own, as the matcher's queries read them, so a kit can ask a
+published query by its file.
 
 ### Packages
 

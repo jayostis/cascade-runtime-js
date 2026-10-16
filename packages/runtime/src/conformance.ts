@@ -11,23 +11,89 @@ import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
 import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
+import { namedVersions } from "./matcher.js";
 import {
   compile,
   type Compiled,
   type Compiling,
   type Reading,
 } from "./phrases.js";
-import { blank, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
-import { referenceIndex } from "./references.js";
+import {
+  blank,
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  type Term,
+  type Triple,
+  written,
+} from "./rdf.js";
+import { referenceIndex, References } from "./references.js";
 import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import type { Dataset, StoreFactory } from "./store.js";
+import { Refusal, REC } from "./step.js";
+import type { Dataset, StoreFactory, Union } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
 const DOAP = "http://usefulinc.com/ns/doap#";
 const DCT = "http://purl.org/dc/terms/";
+const REFERENCES_GRAPH = "urn:cascade:references";
+
+/**
+ * Adds the tables to the pod as a `Then` reads it: the rows of each series' version current then as a graph named by
+ * the version, outside the default graph, and the descriptions of those versions and their series as
+ * `urn:cascade:references`, in it. A series with no one current version is left out, as the matcher leaves it.
+ */
+async function addTables(union: Union, tables: References): Promise<void> {
+  const named = await namedVersions(union);
+  for (const { value: series } of tables.index.subjects(
+    `${RDF}type`,
+    iri(`${REC}ReferenceSeries`),
+  )) {
+    let version: string | undefined;
+    try {
+      version = tables.current(series, named.get(series) ?? []);
+    } catch (error) {
+      if (error instanceof Refusal) continue;
+      throw error;
+    }
+    if (version === undefined) continue;
+    await union.store.add(await tables.rows(version), { graph: version });
+    await union.add(
+      await unstated(union, [
+        ...tables.description(version),
+        ...tables.description(series),
+      ]),
+      REFERENCES_GRAPH,
+    );
+  }
+}
+
+/**
+ * The triples the default graph does not yet hold: it is a set, and the store would answer a triple two graphs hold
+ * twice.
+ */
+async function unstated(
+  union: Union,
+  triples: readonly Triple[],
+): Promise<Triple[]> {
+  const key = (subject: string, predicate: Term, object: Term): string =>
+    `<${subject}> ${written(predicate)} ${written(object)}`;
+  const held = new Set<string>();
+  for (const subject of new Set(triples.map(([s]) => s.value))) {
+    const { rows } = await union.select(
+      `SELECT ?p ?o WHERE { <${subject}> ?p ?o }`,
+    );
+    for (const row of rows) {
+      const [predicate, object] = [row.get("p"), row.get("o")];
+      if (predicate !== undefined && object !== undefined)
+        held.add(key(subject, predicate, object));
+    }
+  }
+  return triples.filter(([s, p, o]) => !held.has(key(s.value, p, o)));
+}
 
 export type Outcome = "passed" | "failed" | "inapplicable";
 
@@ -236,6 +302,8 @@ class Run {
   readonly layout: Layout;
   readonly #references = new Map<string, Promise<Graph>>();
   readonly #handles = new Map<string, ReturnType<typeof Words.handlesOf>>();
+  /** Each folder of tables a story holds, read once. */
+  readonly #held = new Map<string, Promise<References | undefined>>();
 
   constructor(options: ConformanceOptions, layout: Layout) {
     this.#options = options;
@@ -247,13 +315,17 @@ class Run {
     return compilingOf(vocabulary, people, newStore, this.#references);
   }
 
-  /** The pod as it stood at the node, under the lens, its steps named as the example names them. */
+  /**
+   * The pod as it stood at the node, under the lens, its steps named as the example names them; with the tables the
+   * story then holds, given the folder of the person's scripted input.
+   */
   dataset(
     node: Node,
     lens: string,
     names?: readonly string[],
+    folder?: string,
   ): Promise<Dataset> {
-    const key = JSON.stringify([lens, names]);
+    const key = JSON.stringify([lens, names, folder]);
     let found = node.datasets.get(key);
     if (found === undefined) {
       const replayed = named(node.replayed, names);
@@ -268,9 +340,44 @@ class Run {
                 lens,
                 this.#options.newStore(),
                 this.#options.derive,
-              );
+              ).then(async (union) => {
+                const tables =
+                  folder === undefined
+                    ? undefined
+                    : await this.#tables(folder, replayed);
+                if (tables !== undefined) await addTables(union, tables);
+                return union;
+              });
       found.catch(() => undefined);
       node.datasets.set(key, found);
+    }
+    return found;
+  }
+
+  /** The tables the story holds after its last step: the last open's, or else the person's `references/`, if any. */
+  #tables(folder: string, replayed: Replayed): Promise<References | undefined> {
+    const opened = replayed.steps.findLast(
+      ({ step, refused }) =>
+        step.happened.kind === "open" && refused === undefined,
+    )?.step.happened;
+    const open = opened?.kind === "open" ? opened.tables : undefined;
+    const path = `${folder === "" ? "" : `${folder}/`}${open ?? "references/"}`;
+    let found = this.#held.get(path);
+    if (found === undefined) {
+      const { vocabulary, newStore } = this.#options;
+      found = vocabulary
+        .read(`${path}references.ttl`)
+        .then((bytes) =>
+          bytes === undefined
+            ? undefined
+            : References.of(
+                vocabulary,
+                path,
+                newStore,
+                open === undefined ? undefined : vocabulary,
+              ),
+        );
+      this.#held.set(path, found);
     }
     return found;
   }
@@ -310,14 +417,15 @@ class Run {
       compiled.steps.map(({ name }) => name),
     );
     if (replayed === undefined) throw new Error("the example was not replayed");
+    const { person } = compiled;
     const store = new LazyDataset(() =>
       this.dataset(
         node,
         lens,
         replayed.steps.map(({ step }) => step.name),
+        person.folder,
       ),
     );
-    const { person } = compiled;
     let handles = this.#handles.get(feature.folder);
     if (handles === undefined) {
       handles = Words.handlesOf(vocabulary, feature.folder);

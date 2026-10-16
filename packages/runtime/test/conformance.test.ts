@@ -27,6 +27,8 @@ const tested = new Map<string, string>();
 let broken: Map<string, readonly [string, string]>;
 /** The name of each example that run reported, once for each time it reported it. */
 let brokenNames: string[];
+/** The outcome and why of each example of a feature file reading a planted table, by its name, from one run. */
+let planted: Map<string, readonly [string, string]>;
 
 interface Outcome {
   readonly outcome: string;
@@ -95,18 +97,22 @@ async function readTested(): Promise<void> {
 }
 
 before(async () => {
-  const [reported, ranBroken] = await Promise.all([
+  const [reported, ranBroken, ranPlanted] = await Promise.all([
     report(),
     runBroken(),
+    runPlanted(),
     readTested(),
   ]);
   ({ found: outcomes, requires } = reported);
-  const named = ranBroken.map(
-    ({ test, outcome, why }) =>
-      [test.slice(test.indexOf("#") + 1), [outcome, why ?? ""]] as const,
-  );
+  const byName = (assertions: Awaited<ReturnType<typeof runConformance>>) =>
+    assertions.map(
+      ({ test, outcome, why }) =>
+        [test.slice(test.indexOf("#") + 1), [outcome, why ?? ""]] as const,
+    );
+  const named = byName(ranBroken);
   brokenNames = named.map(([name]) => name);
   broken = new Map(named);
+  planted = new Map(byName(ranPlanted));
 });
 
 test("the conformance command reports each example of every feature file and each kit's checks once, and nothing else", () => {
@@ -284,4 +290,111 @@ test("a pod read before a later step of the same name is read as it stood then",
     "passed",
     "",
   ]);
+});
+
+const PLANTED_VERSION = "urn:uuid:0b7c9e4a-3f21-4d8e-9a65-c2d4e8f1a730";
+
+/**
+ * Runs the conformance command, in memory, on a vocabulary whose one feature file reads a version that an open gives
+ * the pod, by a query the vocabulary holds.
+ */
+async function runPlanted(): ReturnType<typeof runConformance> {
+  const files = new MemoryFiles("https://vocabulary.example/");
+  const write = (path: string, text: string) =>
+    files.write(path, new TextEncoder().encode(text));
+  const ada = "runtime/scripted-input/ada";
+  await write(
+    "runtime/scripted-input/people.ttl",
+    `<urn:uuid:1b4e6a52-8c3f-4d71-9e0a-5f2c7d8b9a10> <http://xmlns.com/foaf/0.1/name> "Ada" ;
+       <http://www.w3.org/ns/pim/space#storage> <https://pod.example/> .`,
+  );
+  await write(
+    `${ada}/tables/names/references.ttl`,
+    `@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#> .
+     <urn:uuid:5e2a8c41-7d93-4b6f-a018-9c3e7f2d4b56> a rec:ReferenceSeries ;
+       <http://www.w3.org/2000/01/rdf-schema#label> "Names" ;
+       rec:tableKind rec:CodeNames ; rec:shipsWith <${PLANTED_VERSION}> .
+     <${PLANTED_VERSION}> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:5e2a8c41-7d93-4b6f-a018-9c3e7f2d4b56> ;
+       <http://purl.org/pav/version> "1" .`,
+  );
+  await write(
+    `${ada}/tables/names/${PLANTED_VERSION.slice("urn:uuid:".length)}.ttl`,
+    `<http://loinc.org/rdf/2823-3> <http://www.w3.org/2004/02/skos/core#prefLabel> "Potassium" .`,
+  );
+  await write(
+    "queries/v1-draft/tables/names.rq",
+    `# Every name a held version gives.
+     PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+     SELECT ?name ?version WHERE { GRAPH ?version { ?code skos:prefLabel ?name } }`,
+  );
+  await write(
+    "runtime/planted.feature",
+    `Feature: Planted
+  Rule: Z2. A rule
+    Background:
+      Given a new pod for Ada on 2026-01-01 at 09:00
+      And the pod is opened with the tables "names" on 2026-01-01 at 09:01
+
+    Example: after the open
+      When the query "tables/names.rq" is asked
+      Then it answers:
+        | name        | version            |
+        | "Potassium" | <${PLANTED_VERSION}> |
+
+    Example: before the open
+      When the pod is read as it stood after "pod"
+      And the query "tables/names.rq" is asked
+      Then it answers nothing
+
+    Example: in the default graph
+      When the query is:
+        """
+        SELECT ?thing WHERE {
+          { ?thing <http://www.w3.org/2004/02/skos/core#prefLabel> ?name }
+          UNION { ?thing prov:specializationOf/rec:tableKind rec:CodeNames }
+        }
+        """
+      Then it answers:
+        | thing              |
+        | <${PLANTED_VERSION}> |
+
+    Example: a query the vocabulary does not hold
+      When the query "tables/none.rq" is asked
+      Then it answers nothing
+`,
+  );
+  return runConformance({
+    vocabulary: files,
+    newStore: () => new OxigraphStore(),
+    newPod: (address) => new MemoryFiles(address),
+    layout: await layout(),
+    performers: {
+      creation: PERFORMERS.creation,
+      open: () => Promise.resolve({ wrote: [] }),
+    },
+  });
+}
+
+test("a query by file answers the rows of the version an open gave, from that step on", () => {
+  assert.deepEqual(
+    [planted.get("after-the-open"), planted.get("before-the-open")],
+    [
+      ["passed", ""],
+      ["passed", ""],
+    ],
+  );
+});
+
+test("a version's rows are outside the default graph, and its description in it", () => {
+  assert.deepEqual(planted.get("in-the-default-graph"), ["passed", ""]);
+});
+
+test("a query the vocabulary does not hold fails its example", () => {
+  const [outcome, why] =
+    planted.get("a-query-the-vocabulary-does-not-hold") ?? [];
+  assert.equal(outcome, "failed");
+  assert.match(
+    why ?? "",
+    /the vocabulary has no query queries\/v1-draft\/tables\/none\.rq/,
+  );
 });
