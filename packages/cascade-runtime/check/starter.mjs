@@ -1310,6 +1310,21 @@ if (release === undefined) {
           `${title}: the entry's heading`,
         );
         if (gene === "MLH1" && id !== undefined) {
+          const named = "NM_000249.4(MLH1):c.2042C>T (p.Ala681Val)";
+          assert.ok(
+            textOf(row).includes(named),
+            `the MLH1 row is not named by ClinVar: ${textOf(row)}`,
+          );
+          assert.ok(
+            heading(page).includes(named),
+            `the MLH1 entry is not named by ClinVar: ${heading(page)}`,
+          );
+          assert.ok(
+            lines.some((line) =>
+              line.startsWith(`ClinVar names this variation ${named}.`),
+            ),
+            "the entry does not say where ClinVar's name came from",
+          );
           assert.ok(
             heading(page).includes(DIFFERS),
             "the MLH1 variant does not differ",
