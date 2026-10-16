@@ -41,8 +41,12 @@ test("the generated brands bundle is the demo hospitals' folders as brandsBundle
   const fresh = brandsBundle(hospitals, "2026-01-01T00:00:00Z");
   assert.ok(Number.isFinite(Date.parse(DEMO_BRANDS.timestamp)));
   assert.deepEqual(
-    { ...DEMO_BRANDS, timestamp: "" },
-    { ...fresh, timestamp: "" },
+    {
+      ...DEMO_BRANDS,
+      timestamp: "",
+      meta: { ...DEMO_BRANDS.meta, lastUpdated: "" },
+    },
+    { ...fresh, timestamp: "", meta: { ...fresh.meta, lastUpdated: "" } },
   );
 });
 
@@ -73,6 +77,42 @@ function brands(endpoint: object, organization: object = {}) {
   };
 }
 
+function family(ids: { parent: string; endpoint: string }, child: object) {
+  const url = (id: string) => (id.startsWith("urn:") ? { fullUrl: id } : {});
+  return {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      {
+        ...url(ids.parent),
+        resource: {
+          resourceType: "Organization",
+          id: "p",
+          name: "Alder Health",
+          endpoint: [{ reference: ids.endpoint }],
+        },
+      },
+      {
+        ...url(ids.endpoint),
+        resource: {
+          resourceType: "Endpoint",
+          id: "a",
+          connectionType: { code: "hl7-fhir-rest" },
+          address: "https://alder.example/fhir",
+        },
+      },
+      {
+        resource: {
+          resourceType: "Organization",
+          name: "Alder Clinic",
+          address: [{ city: "Alder", state: "WA" }],
+          ...child,
+        },
+      },
+    ],
+  };
+}
+
 test("directoryOf gives a row for each Organization endpoint that is FHIR REST and skips what it cannot read", () => {
   const alder = {
     name: "Alder Clinic",
@@ -82,6 +122,9 @@ test("directoryOf gives a row for each Organization endpoint that is FHIR REST a
   };
   const unplaced = { ...alder, places: undefined };
   delete unplaced.places;
+  const parent = { ...unplaced, name: "Alder Health" };
+  const VERSION =
+    "http://hl7.org/fhir/StructureDefinition/endpoint-fhir-version";
   const cases: [string, unknown, unknown[]][] = [
     ["a good bundle", brands({}), [alder]],
     [
@@ -110,6 +153,44 @@ test("directoryOf gives a row for each Organization endpoint that is FHIR REST a
       "a city alone",
       brands({}, { address: [{ city: "Alder" }] }),
       [{ ...alder, places: ["Alder"] }],
+    ],
+    [
+      "an endpoint stating R2",
+      brands({
+        extension: [{ url: VERSION, valueCode: "1.0.2" }],
+      }),
+      [],
+    ],
+    [
+      "an endpoint stating R4",
+      brands({
+        extension: [{ url: VERSION, valueCode: "4.0.1" }],
+      }),
+      [alder],
+    ],
+    [
+      "a brand with no endpoint, part of one that has",
+      family(
+        { parent: "Organization/p", endpoint: "Endpoint/a" },
+        { partOf: { reference: "Organization/p" } },
+      ),
+      [parent, alder],
+    ],
+    [
+      "a brand with no endpoint, part of a parent reached by an entry's urn:uuid",
+      family(
+        { parent: "urn:uuid:p", endpoint: "urn:uuid:e" },
+        { partOf: { reference: "urn:uuid:p" } },
+      ),
+      [parent, alder],
+    ],
+    [
+      "a brand part of a parent not in the bundle",
+      family(
+        { parent: "Organization/p", endpoint: "Endpoint/a" },
+        { partOf: { reference: "Organization/q" } },
+      ),
+      [parent],
     ],
     ["not a bundle", { resourceType: "Patient" }, []],
     ["not an object", "bundle", []],

@@ -26,11 +26,22 @@ function place(address: Json): string | undefined {
   return where.length === 0 ? undefined : where.join(", ");
 }
 
+const FHIR_VERSION =
+  "http://hl7.org/fhir/StructureDefinition/endpoint-fhir-version";
+
+function isR4(endpoint: Json): boolean {
+  const versions = objects(endpoint.extension)
+    .filter((each) => each.url === FHIR_VERSION)
+    .map((each) => text(each.valueCode) ?? "");
+  return versions.length === 0 || versions.some((v) => v.startsWith("4.0"));
+}
+
 /**
  * The rows of a SMART User-access Brands Bundle: one per endpoint of an Organization whose Endpoint is
  * `hl7-fhir-rest`, in the bundle's order, with the Endpoint's address (without a trailing slash) as the FHIR base and
- * the Organization's addresses as `"City, ST"` places. A bundle names no vendor, so the caller does. What cannot be
- * read is skipped, never thrown on.
+ * the Organization's addresses as `"City, ST"` places. An Organization with no endpoint of its own uses its `partOf`
+ * parent's, one hop; an Endpoint that states a FHIR version other than R4 is skipped. A bundle names no vendor, so the
+ * caller does. What cannot be read is skipped, never thrown on.
  */
 export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
   const bundle = object(brands);
@@ -39,12 +50,13 @@ export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
     const resource = object(entry.resource);
     return resource === undefined ? [] : [{ resource, url: entry.fullUrl }];
   });
-  const endpoints = new Map<string, Json>();
+  const named = new Map<string, Json>();
   for (const { resource, url } of resources) {
-    if (resource.resourceType !== "Endpoint") continue;
-    endpoints.set(`Endpoint/${text(resource.id)}`, resource);
-    if (typeof url === "string") endpoints.set(url, resource);
+    const id = text(resource.id);
+    if (id !== undefined) named.set(`${resource.resourceType}/${id}`, resource);
+    if (typeof url === "string") named.set(url, resource);
   }
+  const referred = (reference: unknown) => named.get(String(reference));
   return resources.flatMap(({ resource }) => {
     const name = text(resource.name);
     if (resource.resourceType !== "Organization" || name === undefined)
@@ -52,11 +64,17 @@ export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
     const places = objects(resource.address).flatMap(
       (address) => place(address) ?? [],
     );
-    return objects(resource.endpoint).flatMap((reference) => {
-      const endpoint = endpoints.get(String(reference.reference));
+    const own = objects(resource.endpoint);
+    const parent = referred(object(resource.partOf)?.reference);
+    const references =
+      own.length > 0 || parent === undefined ? own : objects(parent.endpoint);
+    return references.flatMap((reference) => {
+      const endpoint = referred(reference.reference);
       const fhirBase = text(endpoint?.address)?.replace(/\/+$/, "");
       if (
-        object(endpoint?.connectionType)?.code !== "hl7-fhir-rest" ||
+        endpoint?.resourceType !== "Endpoint" ||
+        object(endpoint.connectionType)?.code !== "hl7-fhir-rest" ||
+        !isR4(endpoint) ||
         fhirBase === undefined
       )
         return [];
