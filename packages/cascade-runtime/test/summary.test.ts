@@ -1408,12 +1408,20 @@ test("the medicines by class page groups the pod's active medicines under each c
 test("a panel's page lists the pod's results in LOINC's order with each test's requirement, newest first, the required tests with no result, a nested panel's tests under it, and the version and credit; it never says a result was drawn in the panel", () => {
   const LOINC = "http://loinc.org/rdf/";
   const ORIGIN = "urn:x:panels-1";
+  const NAMES = "urn:x:names-1";
   const series = {
     ...GROUPS,
     iri: "urn:x:panels",
     label: "Example panel members",
     credit: "Panels: LOINC's credit.",
     versions: [{ iri: ORIGIN, label: "2.83", issued: "2026-10-05" }],
+  };
+  const names = {
+    ...GROUPS,
+    iri: "urn:x:names",
+    label: "Example LOINC names",
+    credit: "Names: LOINC's credit.",
+    versions: [{ iri: NAMES, label: "2.84", issued: "2026-10-06" }],
   };
   const panel = `${LOINC}24326-1`;
   const nested = `${LOINC}99999-2`;
@@ -1443,7 +1451,7 @@ test("a panel's page lists the pod's results in LOINC's order with each test's r
   ];
   const name = (code: string, label: string): [string, object] => [
     `${LOINC}${code}`,
-    { notation: code, name: { label, altLabels: [], origin: ORIGIN } },
+    { notation: code, name: { label, altLabels: [], origin: NAMES } },
   ];
   const props = {
     pod: "rowan-marsh",
@@ -1465,13 +1473,13 @@ test("a panel's page lists the pod's results in LOINC's order with each test's r
       name("6298-4", "Potassium in blood"),
       name("99999-2", "Nested panel"),
     ]),
-    held: [series],
+    held: [series, names],
     entryHref: (entry: string) => `/entries/${entry}`,
   };
   const words = textOf(render(view.panelPage(props)));
   assert.ok(
     words.includes(
-      "Your results in Electrolytes panel You have 2 of 4 required tests; missing: Sodium and Chloride.",
+      "Your results in Electrolytes panel You have 1 of 3 required tests; missing: Sodium and Chloride.",
     ),
     words,
   );
@@ -1488,8 +1496,9 @@ test("a panel's page lists the pod's results in LOINC's order with each test's r
     "Potassium required 4.6 mmol/L Jun 1, 2025 4.1 mmol/L Mar 1, 2025",
     "Carbon dioxide optional 24 mmol/L",
     "Within Nested panel Potassium in blood required 3.9 mmol/L",
-    "From Example panel members, version 2.83, Oct 5, 2026.",
+    "From Example panel members, version 2.83, Oct 5, 2026 and Example LOINC names, version 2.84, Oct 6, 2026.",
     "Panels: LOINC's credit.",
+    "Names: LOINC's credit.",
     "that does not say your results were drawn as part of it",
   ])
     assert.ok(words.includes(said), `${said} in ${words}`);
@@ -1497,6 +1506,21 @@ test("a panel's page lists the pod's results in LOINC's order with each test's r
     words.split("Potassium required").length,
     2,
     "a test the panel lists itself is not repeated under a nested panel",
+  );
+  const withMissingNested = textOf(
+    render(
+      view.panelPage({
+        ...props,
+        rows: [...rows, row("6299-2", 2, "R", undefined, nested)],
+        about: new Map([...props.about, name("6299-2", "Another test")]),
+      }),
+    ),
+  );
+  assert.ok(
+    withMissingNested.includes(
+      "You have 2 of 5 required tests; missing: Sodium, Chloride and Another test.",
+    ),
+    "a nested panel the query requires counts its held tests too",
   );
   assert.ok(
     textOf(render(view.panelPage({ ...props, rows: [] }))).includes(

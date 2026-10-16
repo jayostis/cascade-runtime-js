@@ -470,18 +470,23 @@ async function showEntry(response, name, id, names) {
     answers = await answersOf(await podNamed(name));
     lastShown.set(name, answers);
   }
-  const [about, held, said] = await Promise.all([
+  const [about, held, said, panels] = await Promise.all([
     aboutCodes(answers),
     tables()
       .then((kept) => kept.held())
       .catch(() => []),
     podNamed(name).then((pod) => variantsOf(answers, pod)),
+    tables()
+      .then(async (kept) =>
+        panelsOf(entryOf(answers, id), {
+          tables: kept,
+          held: await kept.held(),
+        }),
+      )
+      .catch(() => []),
   ]);
   const entry = entryOf(answers, id, { about, said, held });
   const sources = sourcesOf(held);
-  const panels = await tables()
-    .then((kept) => panelsOf(entry, { tables: kept, held }))
-    .catch(() => []);
   const body = entryPage({
     entry,
     pod: name,

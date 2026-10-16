@@ -3064,21 +3064,35 @@ export function panelPage({
       .sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b)))
       .map(([via, each]) => ({ via, lines: each.sort(byPlace) })),
   ].filter((group) => group.lines.length > 0);
-  const required = [
+  // The query's own answer: its missing rows are exact, and a held result is required in the panel when its row is one
+  // the panel lists itself and says R, or when a missing test sits in the same nested panel (the query puts one there
+  // only when every nesting row on the way says R). A held member of any other nested panel is not counted: its own
+  // row says nothing of its parent's requirement.
+  const missing = [
     ...new Map(
-      groups
-        .flatMap((group) => group.lines)
-        .filter((line) => line.required === "R")
+      [...lines.values()]
+        .filter((line) => line.results.length === 0 && line.required === "R")
         .map((line) => [line.member, line]),
     ).values(),
   ];
-  const missing = required.filter((line) => line.results.length === 0);
+  const requiredVias = new Set([panel, ...missing.map((line) => line.via)]);
+  const required = [
+    ...new Map(
+      [...lines.values()]
+        .filter(
+          (line) =>
+            line.required === "R" &&
+            (line.results.length === 0 || requiredVias.has(line.via)),
+        )
+        .map((line) => [line.member, line]),
+    ).values(),
+  ];
   const title = nameOf(panel);
   const said =
     rows.length === 0
       ? "You have no results in this panel."
       : required.length === 0
-        ? "This panel requires none of its tests."
+        ? "LOINC requires none of this panel's tests."
         : missing.length === 0
           ? `You have ${required.length === 1 ? "the one required test" : `all ${required.length} required tests`}.`
           : `You have ${required.length - missing.length} of ${required.length} required test${required.length === 1 ? "" : "s"}; missing: ${listed(missing.map((line) => nameOf(line.member)))}.`;
@@ -3105,7 +3119,12 @@ export function panelPage({
         }</li>`,
     )}</ol>`;
   const versions = [
-    ...new Set(rows.map((row) => row.origin).filter(Boolean)),
+    ...new Set(
+      [
+        ...rows.map((row) => row.origin),
+        ...[...about.values()].map((said) => said?.name?.origin),
+      ].filter(Boolean),
+    ),
   ].flatMap((origin) => heldAt(origin, held) ?? []);
   const naming = about.get(panel)?.name?.origin;
   const named = naming === undefined ? undefined : heldAt(naming, held);

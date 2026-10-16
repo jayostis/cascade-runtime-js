@@ -441,10 +441,12 @@ async function showEntry(id) {
     aboutCodes(answers),
     variantsOf(answers),
   ]);
-  state.page = { answers, entry: id, about, said };
-  state.page.panels = await panelsShown(state.page);
+  const shown = { answers, entry: id, about, said };
+  state.page = shown;
   state.doing = "ready";
   redraw();
+  shown.panels = await panelsShown(shown);
+  if (state.page === shown && shown.panels !== undefined) redraw();
 }
 
 /** The LOINC panels the entry `shown` is in; nothing before the engine is ready, or when the tables cannot say. */
