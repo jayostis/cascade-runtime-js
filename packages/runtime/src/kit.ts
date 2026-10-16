@@ -582,10 +582,13 @@ async function whereTheLayoutSays(
 ): Promise<string[]> {
   const query = await readText(run.vocabulary, OUT_OF_PLACE);
   const { rows } = await run.final.select(query);
-  const failures = rows.map(
-    (row) =>
-      `${row.get("file")?.value} holds ${row.get("thing")?.value}, which the layout files at ${row.get("place")?.value}`,
-  );
+  const address = run.replayed.story.address;
+  const failures = rows
+    .filter((row) => row.get("file")?.value.startsWith(address))
+    .map(
+      (row) =>
+        `${row.get("file")?.value} holds ${row.get("thing")?.value}, which the layout files at ${row.get("place")?.value}`,
+    );
   const stores = run.layout.placements.filter(({ storesBytes }) => storesBytes);
   for (const path of by.keys()) {
     if (run.layout.isRdf(path)) continue;

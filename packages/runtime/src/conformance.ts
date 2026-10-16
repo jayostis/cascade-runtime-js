@@ -44,7 +44,9 @@ const REFERENCES_GRAPH = "urn:cascade:references";
 /**
  * Adds the tables to the pod as a `Then` reads it: the rows of each series' version current then as a graph named by
  * the version, outside the default graph, and the descriptions of those versions and their series as
- * `urn:cascade:references`, in it. A series with no one current version is left out, as the matcher leaves it.
+ * `urn:cascade:references`, in it. A series whose current version is not in the folder is left out, as the matcher
+ * leaves it; so is a series the pod names several current versions of, which the matcher refuses its step over: a read
+ * refuses nothing.
  */
 async function addTables(
   union: Union,
@@ -329,7 +331,8 @@ class Run {
 
   /**
    * The pod as it stood at the node, under the lens, its steps named as the example names them; given the folder of the
-   * person's scripted input, with the tables the story then holds, which a kit's checks do not read.
+   * person's scripted input, with the tables the story then holds; a kit's checks read the same dataset and look only at
+   * the files under the pod's address.
    */
   dataset(
     node: Node,
@@ -636,7 +639,7 @@ export async function runConformance(
         kit: feature.folder,
         folder: person.folder,
         replayed,
-        final: await run.dataset(node, KIT_LENS, names),
+        final: await run.dataset(node, KIT_LENS, names, person.folder),
         newStore: options.newStore,
         layout,
         shapes: options.shapes as Shapes,
