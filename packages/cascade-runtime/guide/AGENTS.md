@@ -82,6 +82,18 @@ keeping the package and the pods, under `pods/<name>/`. It is made with four,
 - `npm run kit:export -- <kit> <download>` copies a download into the app, for
   `look`: `alex-rivera x-e12` as `apple_health_export`, and
   `priya-natarajan kestrel-harbor-health-summary.xml` as that file.
+- `npm run patient:add -- <hospital folder> <file>` checks a patient's file and
+  adds it to a hospital's `patients/`. The app's own hospitals are folders of
+  `hospitals/`, each a `hospital.json` (the package's `cascade-north` is the
+  model; its `fhirBase` must be on a `.demo.invalid` host) beside `patients/`,
+  and the app loads them at start with the package's. The file is a FHIR Bundle:
+  a `collection`, written as it is and present at every date; a `history`, one
+  entry per version with its `response.lastModified`; or a `collection` whose
+  entries carry `"shorthand": { "active": "2022-03-01", "stopped": "2024-04-15" }`
+  beside `resource`, which the command compiles to a `history`. A
+  `MedicationStatement` or a `Condition` with `stopped` becomes two versions,
+  and an entry without `shorthand` is placed at its own clinical date. It
+  refuses a stop it cannot date, and a patient already there.
 
 ## Open a pod
 

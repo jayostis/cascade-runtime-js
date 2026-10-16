@@ -25,6 +25,10 @@ const SAID = {
     "npm run kit:export -- <kit> <download>",
     "copy one of a kit's downloads into this folder, as its person saved it",
   ],
+  "patient:add": [
+    "npm run patient:add -- <hospital folder> <file>",
+    "check a patient's file, compiling its shorthand, and add it to a hospital of hospitals/",
+  ],
   ask: [
     'npm run ask -- [--pod <name>] "<question>"',
     "print a question's rows, as pod/My active allergies",

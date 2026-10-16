@@ -6,8 +6,12 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import process, { env, exit, stderr, stdout } from "node:process";
-import { URL, URLSearchParams } from "node:url";
-import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
+import { fileURLToPath, URL, URLSearchParams } from "node:url";
+import { HospitalDataError } from "@cascade-runtime/demo-hospital";
+import {
+  DATA_FOLDER,
+  loadHospitals,
+} from "@cascade-runtime/demo-hospital/node";
 import {
   changesIn,
   ConnectionFailure,
@@ -1010,7 +1014,20 @@ async function demoHospitalPage(request, response, url) {
   response.end(Buffer.from(await answer.arrayBuffer()));
 }
 
-const demo = await loadHospitals();
+/** The hospitals this app adds to the package's: a folder for each, as the package's own `data/` holds them. */
+const HOSPITALS = fileURLToPath(new URL("hospitals/", import.meta.url));
+/** The package's hospitals and this app's, or the app stopped with what is wrong with one of the app's. */
+async function hospitalsHeld() {
+  try {
+    return await loadHospitals([DATA_FOLDER, HOSPITALS]);
+  } catch (error) {
+    if (!(error instanceof HospitalDataError)) throw error;
+    stderr.write(`A hospital in hospitals/ cannot be used. ${error.message}\n`);
+    exit(1);
+  }
+}
+
+const demo = await hospitalsHeld();
 const people = demoPeople(demo);
 
 /**

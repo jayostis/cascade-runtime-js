@@ -15,6 +15,7 @@
     "pod:new": "node pod.mjs new",
     "pod:reset": "node pod.mjs reset",
     "kit:export": "node kit.mjs",
+    "patient:add": "node patient.mjs",
     "ask": "node ask.mjs",
     "console": "node console.mjs",
     "mcp": "node mcp.mjs",
