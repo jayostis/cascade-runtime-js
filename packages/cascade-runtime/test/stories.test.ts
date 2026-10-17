@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
-import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { Story, StoryFinding } from "@the-cascade-protocol/sandbox";
-import {
-  loadHospital,
-  loadStories,
-  STORIES,
-} from "@the-cascade-protocol/sandbox/node";
+import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
   changeTools,
   checkInput,
@@ -92,8 +87,8 @@ test("the stories are five, each naming a patient North holds", () => {
     assert.ok(north.patients[patient], patient);
   }
   assert.deepEqual(
-    stories.flatMap(({ ccda }) => ccda ?? []),
-    ["story-stopped.xml"],
+    stories.flatMap(({ ccdaFile, patient }) => (ccdaFile ? [patient] : [])),
+    ["story-stopped"],
   );
 });
 
@@ -150,8 +145,8 @@ test("each story patient's pull is denied nothing, and imports with every result
 });
 
 test("the stopped story's C-CDA copy joins its FHIR pull: the medication is one entry, each result one entry, both records ending on the day the answer names", async () => {
-  const story = stories.find(({ ccda }) => ccda !== undefined)!;
-  const file = join(STORIES, story.ccda!);
+  const story = stories.find(({ ccdaFile }) => ccdaFile !== undefined)!;
+  const file = story.ccdaFile!;
   await access(file);
   const pod = await openPod();
   try {

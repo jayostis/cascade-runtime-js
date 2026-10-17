@@ -16,6 +16,7 @@ import {
 import {
   type Alter,
   type Answer,
+  answering,
   direct,
   type Fetch,
   type Loaded,
@@ -244,17 +245,7 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       "the sign-in page's Cancel",
       () => ({
         autoApprove: undefined,
-        signIn: (fetch) => async (authorize) => {
-          const form = new URLSearchParams(authorize.searchParams);
-          form.set("patient", A_NORTH);
-          form.set("decision", "cancel");
-          const response = await fetch(authorize.origin + authorize.pathname, {
-            method: "POST",
-            body: form,
-            redirect: "manual",
-          });
-          return new URL(response.headers.get("Location")!);
-        },
+        signIn: answering(A_NORTH, "cancel"),
       }),
       "cancelled",
     ],

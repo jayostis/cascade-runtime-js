@@ -79,10 +79,12 @@ them on a loopback port of their own (the console says which), the app reaches
 them over it, and their sign-in pages are at that port. The SMART Health IT
 Sandbox is a real test server and needs the network.
 
-To add a hospital of your own, make a folder under `hospitals/` with a
-`hospital.json` like Cascade North's (its `fhirBase` on a `.demo.invalid` host),
-then add its patients with `npm run patient:add -- hospitals/<folder> <file>`.
-The guide says what the file may hold, a stop's dates in short included.
+To add a hospital of your own, make a folder under `hospitals/`, named for its
+`fhirBase` host's first label, with a `hospital.json` like Cascade North's (its
+`fhirBase` on a `.demo.invalid` host). Add a patient to it, or to Cascade
+North or South, with `npm run patient:add -- <hospital id> <file>`, which
+writes them under `people/`. The guide says what the file may hold, a stop's
+dates in short included.
 
 ## Chat with the pods in the app
 

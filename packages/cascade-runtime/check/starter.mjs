@@ -17,6 +17,7 @@ import {
   packed,
   vocabularyOf,
 } from "@cascade-runtime/runtime/node";
+import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import { tarballAddress } from "../dist/pack/address.js";
 import { agentPrompt, KITS, startLine } from "../dist/src/create.js";
 import { Tables } from "../dist/src/tables.js";
@@ -504,16 +505,17 @@ async function expectedPull() {
   const script = `
 import { brandsBundle, demoHospital, recordsAt } from "@the-cascade-protocol/sandbox";
 import { loadHospital } from "@the-cascade-protocol/sandbox/node";
+import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import { connect, DEMO_PLAN, directoryOf, openPod, pull, pullFiles } from "cascade-runtime";
 const patient = "pt-1001";
 const north = await loadHospital("cascade-north");
-const hospital = demoHospital({ ...north, autoApprove: patient });
+const hospital = demoHospital(north);
 const fetch = (input, init) => hospital(new Request(input, init));
 const [row] = directoryOf(brandsBundle([north.hospital], new Date().toISOString()), "demo");
 const connection = await connect(
   row,
   { clientId: "check", redirectUri: "http://127.0.0.1:1/callback", scopes: ["launch/patient", "patient/*.read"] },
-  { fetch, signIn: async (authorize) => new URL((await fetch(authorize)).headers.get("Location")) },
+  { fetch, signIn: (authorize) => answerSignIn(fetch, authorize, patient) },
 );
 const pod = await openPod();
 const files = pullFiles(await pull(connection, DEMO_PLAN), "expected");
@@ -1484,15 +1486,6 @@ if (release === undefined) {
         body: new URLSearchParams(form),
       });
 
-    /** Answers a hospital's sign-in page, which is the listener's, with `form`. */
-    const answer = (authorize, form) =>
-      fetch(new URL(authorize.pathname, authorize.origin), {
-        method: "POST",
-        redirect: "manual",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(form),
-      });
-
     /**
      * Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the pod's page with
      * the connection's box open.
@@ -1506,12 +1499,7 @@ if (release === undefined) {
       assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();
       assert.ok(picker.includes(`value="${patient}"`), patient);
-      const answered = await answer(authorize, {
-        ...Object.fromEntries(authorize.searchParams),
-        patient,
-        decision,
-      });
-      const back = new URL(answered.headers.get("location"));
+      const back = await answerSignIn(fetch, authorize, patient, decision);
       assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
       const callback = await fetch(back, { redirect: "manual" });
       assert.equal(callback.status, 303);
@@ -1667,14 +1655,10 @@ if (release === undefined) {
             });
             const authorize = new URL(begun.headers.get("location"));
             const picker = await (await fetch(authorize)).text();
-            const answered = await answer(authorize, {
-              ...Object.fromEntries(authorize.searchParams),
-              patient: expected.patient,
-              decision: "cancel",
-            });
-            await fetch(new URL(answered.headers.get("location")), {
-              redirect: "manual",
-            });
+            await fetch(
+              await answerSignIn(fetch, authorize, expected.patient, "cancel"),
+              { redirect: "manual" },
+            );
             return picker;
           };
           /** What the pod's page and the page that finds a hospital say, where a sign-in begins. */
@@ -2010,7 +1994,7 @@ if (release === undefined) {
   }
 
   await behaviour(
-    "a hospital of the app's hospitals/ gets a patient from a checked file, once, and signs them in",
+    "a hospital of the app's hospitals/ gets a patient from a checked file, once, as a person of the app's people/, and signs them in",
     async () => {
       const folder = join(app, "hospitals", "mercy-test");
       await mkdir(folder, { recursive: true });
@@ -2039,6 +2023,8 @@ if (release === undefined) {
                 resourceType: "Patient",
                 id: "hedda-quill",
                 name: [{ family: "Quill", given: ["Hedda"] }],
+                birthDate: "1971-05-02",
+                gender: "female",
               },
             },
             {
@@ -2053,16 +2039,30 @@ if (release === undefined) {
           ],
         }),
       );
-      const add = () =>
-        npm("run", "patient:add", "--", join("hospitals", "mercy-test"), file);
+      const add = () => npm("run", "patient:add", "--", "mercy-test", file);
       assert.equal((await add()).code, 0, "the patient was not added");
+      const person = join(app, "people", "hedda-quill");
       const written = JSON.parse(
-        await readFile(join(folder, "patients", "hedda-quill.json"), "utf8"),
+        await readFile(
+          join(person, "sources", "mercy-test", "fhir.json"),
+          "utf8",
+        ),
       );
       assert.equal(written.type, "history", "the shorthand was not compiled");
+      const { name, birthDate } = JSON.parse(
+        await readFile(join(person, "person.json"), "utf8"),
+      );
+      assert.deepEqual(
+        { name, birthDate },
+        {
+          name: { family: "Quill", given: ["Hedda"] },
+          birthDate: "1971-05-02",
+        },
+        "the person is not who the Patient says",
+      );
       const again = await add();
       assert.notEqual(again.code, 0, "the same patient was added twice");
-      assert.ok(again.err.includes("is already in this hospital"), again.err);
+      assert.ok(again.err.includes("is already at this hospital"), again.err);
       assert.equal((await npm("run", "pod:new", "own-hospital")).code, 0);
 
       const server = await started();

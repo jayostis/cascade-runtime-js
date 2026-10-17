@@ -2,6 +2,7 @@ import {
   demoFetch,
   type DemoHospitalOptions,
 } from "@the-cascade-protocol/sandbox";
+import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   connect,
   type ConnectOptions,
@@ -77,6 +78,15 @@ export function direct(fetch: Fetch): SignIn {
     const response = await fetch(authorize, { redirect: "manual" });
     return new URL(response.headers.get("Location")!);
   };
+}
+
+/** A sign-in that answers the hospital's sign-in page as `patient`, with `decision`, as the person would. */
+export function answering(
+  patient: string,
+  decision?: "allow" | "cancel",
+): (fetch: Fetch) => SignIn {
+  return (fetch) => (authorize) =>
+    answerSignIn(fetch, authorize, patient, decision);
 }
 
 export interface Setup {

@@ -175,6 +175,7 @@ function examples(blocks: readonly Block[]): string {
     ),
   );
   const prelude = `import { writeSync as __writeSync } from "node:fs";
+import { answerSignIn as __answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 let __example = "the stand-ins, before any example";
 process.on("exit", (code) => {
   if (code !== 0) __writeSync(2, \`\\nThe example that failed: \${__example}\\n\`);
@@ -189,17 +190,8 @@ function pickExport() {
  * The person, in their browser, signs in at North as patient A and presses Allow, on the page the app's server answers
  * with the example's \`demoHospitals\`.
  */
-async function openBrowser(authorize) {
-  const form = new URLSearchParams(authorize.searchParams);
-  form.set("patient", ${JSON.stringify(A_NORTH)});
-  form.set("decision", "allow");
-  const answer = await demoHospitals(\`\${authorize.origin}\${authorize.pathname}\`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form,
-    redirect: "manual",
-  });
-  return new URL(answer.headers.get("Location"));
+function openBrowser(authorize) {
+  return __answerSignIn(demoHospitals, authorize, ${JSON.stringify(A_NORTH)});
 }
 async function askPerson(question, shown) {
   process.stderr.write(\`\${JSON.stringify({ example: __example, asked: shown })}\\n\`);

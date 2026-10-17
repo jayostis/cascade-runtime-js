@@ -428,11 +428,15 @@ async function packDemoHospital(): Promise<void> {
   const manifest = await manifestOf(workspace);
   const starter = join(STAGE, "starter");
   const to = join(starter, DEMO_HOSPITAL);
-  await cp(join(workspace, "dist", "src"), join(to, "dist", "src"), {
-    recursive: true,
-    filter: compiled,
-  });
-  await cp(join(workspace, "data"), join(to, "data"), { recursive: true });
+  for (const path of manifest.files ?? [])
+    await cp(
+      join(workspace, ...path.split("/")),
+      join(to, ...path.split("/")),
+      {
+        recursive: true,
+        ...(path.startsWith("dist/") ? { filter: compiled } : {}),
+      },
+    );
   await writeJson(join(to, "package.json"), kept(manifest, KEPT_BY_BUNDLED));
   const app = await manifestOf(starter);
   await writeJson(join(starter, "package.json"), {
