@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -13,20 +13,18 @@ import { notIsomorphic, triples } from "./graphs.js";
 import { ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const KIT = "conformance/tamsin-vale";
+const CLI = join(ROOT, "packages/runtime/dist/src/node/cli.js");
 
-test("npm run kit:bridge saves what the kit saves: each document's graph and findings are isomorphic to the kit's, and an edited saved graph is not", async () => {
+const kitBridge = (out: string): Promise<unknown> =>
+  promisify(execFile)(process.execPath, [CLI, "kit-bridge", KIT, out], {
+    cwd: ROOT,
+    maxBuffer: 1 << 24,
+  });
+
+test("npm run kit:bridge makes what the kit saves: the same files, and each graph and findings isomorphic to the kit's", async () => {
   const out = await mkdtemp(join(tmpdir(), "kit-bridge-"));
   try {
-    await promisify(execFile)(
-      process.execPath,
-      [
-        join(ROOT, "packages/runtime/dist/src/node/cli.js"),
-        "kit-bridge",
-        KIT,
-        out,
-      ],
-      { cwd: ROOT, maxBuffer: 1 << 24 },
-    );
+    await kitBridge(out);
     const files = await vocabulary();
     const { story, folder } = await storyFrom(`${KIT}/tamsin-vale.feature`);
     const imports = await kitImports({
@@ -36,8 +34,14 @@ test("npm run kit:bridge saves what the kit saves: each document's graph and fin
       importers: importersNamed((await checkouts(ROOT)).config.importers),
       adaptersOf: () => [],
     });
+    const savedFiles: string[] = [];
     let compared = 0;
-    for (const { converted, documents } of imports)
+    for (const { converted, documents } of imports) {
+      savedFiles.push(
+        ...(await files.list(`${converted}/`))
+          .filter((path) => !path.endsWith("/unaccepted.txt"))
+          .map((path) => path.slice(folder.length + 1)),
+      );
       for (const { stem, path, iri: named } of documents) {
         const at = `${converted}/${stem}/`;
         const saved = await files.read(`${at}graph.ttl`);
@@ -46,8 +50,7 @@ test("npm run kit:bridge saves what the kit saves: each document's graph and fin
         const here = join(out, converted.slice(folder.length + 1), stem);
         const graph = await readFile(join(here, "graph.ttl"));
         const findings = await readFile(join(here, "findings.ttl"));
-        const savedGraph = triples(saved);
-        assert.equal(notIsomorphic(savedGraph, triples(graph)), undefined);
+        assert.equal(notIsomorphic(triples(saved), triples(graph)), undefined);
         const documentIri = `${files.iri}${path}`;
         assert.equal(
           notIsomorphic(
@@ -61,20 +64,31 @@ test("npm run kit:bridge saves what the kit saves: each document's graph and fin
           ),
           undefined,
         );
-        assert.notEqual(
-          notIsomorphic(
-            [
-              ...savedGraph,
-              [iri("urn:edited"), iri("urn:is"), iri("urn:so")] as Triple,
-            ],
-            triples(graph),
-          ),
-          undefined,
-        );
         compared++;
       }
+    }
     assert.equal(compared, 2);
+    const written = (
+      await readdir(out, { recursive: true, withFileTypes: true })
+    )
+      .filter((entry) => entry.isFile())
+      .map((entry) =>
+        join(entry.parentPath, entry.name)
+          .slice(out.length + 1)
+          .replaceAll("\\", "/"),
+      );
+    assert.deepEqual(written.sort(), savedFiles.sort());
   } finally {
     await rm(out, { recursive: true, force: true });
   }
+});
+
+test("npm run kit:bridge refuses a folder inside the vocabulary, and writes nothing there", async () => {
+  const files = await vocabulary();
+  const inside = join(files.folder, KIT, "kit-bridge-refused");
+  await assert.rejects(
+    kitBridge(inside),
+    (error: { code?: number }) => error.code === 1,
+  );
+  await assert.rejects(stat(inside), { code: "ENOENT" });
 });

@@ -208,6 +208,18 @@ async function differences(): Promise<{
         else skipped.push(`${kit} ${step.name}`);
         continue;
       }
+      const wanted = new Set(
+        documents.flatMap(({ stem }) =>
+          ["graph.ttl", "findings.ttl", "unaccepted.txt"].map(
+            (name) => `${saved}/${stem}/${name}`,
+          ),
+        ),
+      );
+      for (const stray of await files.list(`${saved}/`))
+        if (!wanted.has(stray))
+          differ.push(
+            `${kit} ${step.name}: ${stray} is saved, but no document of the import has such a file`,
+          );
       for (const {
         stem,
         path: documentPath,

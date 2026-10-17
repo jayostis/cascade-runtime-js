@@ -1,11 +1,18 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve as absolute } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve as absolute,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { vocabularyDerive } from "../build.js";
 import {
   type Assertion,
   earl,
+  featureStory,
   runConformance,
   type TestedWith,
 } from "../conformance.js";
@@ -16,7 +23,13 @@ import { Layout } from "../layout.js";
 import { FolderFiles } from "./folder-files.js";
 import { importersNamed } from "../importers.js";
 import { type Resolved, resolve } from "./resolver.js";
-import { BRIDGE_REPOSITORY, findBridgePackage } from "./wasm.js";
+import {
+  BRIDGE_REPOSITORY,
+  compiledBridge,
+  findBridgePackage,
+  inWorker,
+  loadConfiguredAdapters,
+} from "./wasm.js";
 import {
   findRoot,
   localVocabulary,
@@ -26,15 +39,14 @@ import {
 } from "./runtime.js";
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
-import { featureStory } from "../conformance.js";
 import { kitImports } from "../kit-bridge.js";
 import { ofMediaType } from "../load-adapter.js";
 import { WasmBridge } from "../wasm-bridge.js";
 import { checkouts } from "./components.js";
-import { compiledBridge, inWorker, loadConfiguredAdapters } from "./wasm.js";
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
+const SPEC = "https://github.com/jayostis/cascade-bridge-spec";
 const log = (line: string): void => console.error(line);
 
 function folderMap(pairs: readonly string[]): Map<string, string> {
@@ -171,11 +183,24 @@ async function saveKitBridge(args: string[]): Promise<number> {
   const story = `conformance/${name}/${name}.feature`;
   if ((await files.read(story)) === undefined)
     throw new Error(`the vocabulary has no ${story}`);
+  const inside = relative(vocabulary.folder, absolute(out));
+  if (inside === "" || (!inside.startsWith("..") && !isAbsolute(inside)))
+    throw new Error(
+      `usage: kit-bridge writes to a folder outside the vocabulary (${vocabulary.folder}), never over a kit; ${out} is inside it`,
+    );
   const found = await components.bridge();
+  const uncommitted = ({ uncommitted: count = 0 }: Resolved): string =>
+    count === 0 ? "" : ` (uncommitted: ${count} files)`;
+  const spec = await components.resolve({ repository: SPEC });
   console.error(
-    `cascade-bridge-rs ${found.release ?? found.source} commit ${found.commit}`,
+    `cascade-bridge-rs ${found.release ?? found.source} commit ${found.commit}${found.dirty ? " (uncommitted)" : ""}`,
   );
-  console.error(`cascade-vocabulary ${vocabulary.version}`);
+  console.error(
+    `cascade-bridge-spec conformsTo ${spec.iri}${uncommitted(spec)}`,
+  );
+  console.error(
+    `cascade-vocabulary ${vocabulary.iri}${uncommitted(vocabulary)}`,
+  );
   const bridge = new WasmBridge(inWorker(await compiledBridge(found.folder)));
   const configured = await loadConfiguredAdapters(
     bridge,
@@ -184,7 +209,7 @@ async function saveKitBridge(args: string[]): Promise<number> {
   );
   try {
     for (const { resolved } of configured)
-      console.error(`adapter ${resolved.iri} ${resolved.version}`);
+      console.error(`adapter ${resolved.iri}${uncommitted(resolved)}`);
     const { person, steps } = await featureStory(
       files,
       story,
