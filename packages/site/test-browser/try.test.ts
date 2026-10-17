@@ -2227,9 +2227,11 @@ test("in try/, the sample pod tamsin-vale draws What changed and, in its card, w
 
     const card = page.locator(".change");
     assert.equal(await card.count(), 1);
-    assert.match(
-      (await card.innerText()).replace(/\s+/g, " "),
-      /was higher after .+ stopped\./,
+    const said = (await card.innerText()).replace(/\s+/g, " ");
+    assert.match(said, /was higher after .+ stopped\./);
+    assert.ok(
+      !said.includes("Metformin 500 mg tablet"),
+      "the card is drawn by the record's own name, not the tables'",
     );
 
     const pulls = await texts(page, ".how li");

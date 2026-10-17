@@ -30,6 +30,24 @@ const number = (head, of) => ({
 
 const SEVERITY = { high: "High severity", low: "Low severity" };
 
+const STOPPED = "Stopped";
+
+/**
+ * A medication's status in a person's words: `Stopped` when its source states an end or a status of stopped or
+ * completed, else the status as the source writes it, `Unknown` when it writes none.
+ */
+function medicationStatus({ status, ended }) {
+  const written = String(status ?? "")
+    .trim()
+    .replaceAll("-", " ")
+    .toLowerCase();
+  if (ended !== undefined || ["stopped", "completed"].includes(written))
+    return STOPPED;
+  return written === ""
+    ? "Unknown"
+    : written[0].toUpperCase() + written.slice(1);
+}
+
 /**
  * One tile for each of these questions, in this order: its title, what one of its rows is called, the column of the
  * record's own name for it, the columns holding its codes in the order a name is taken from them, the table's columns,
@@ -67,11 +85,20 @@ export const SECTIONS = [
   {
     title: "Medications",
     one: "medication",
-    question: "pod/My active medications",
+    question: "pod/My medication history",
     field: "medication",
     codes: ["code"],
     columns: [
       text("Medication", (row) => row.medication),
+      {
+        head: "Status",
+        type: "text",
+        key: medicationStatus,
+        show: (row) =>
+          row.ended === undefined
+            ? medicationStatus(row)
+            : `${medicationStatus(row)} ${day(row.ended)}`,
+      },
       date("Since", (row) => row.started),
     ],
     sortBy: 0,
@@ -190,14 +217,16 @@ export const MECHANISM = [REVISIONS, VERSIONS];
 
 /** Every question `podPage` reads: ask each, and hand it the rows by question. */
 export const QUESTIONS = [
-  SOURCES,
-  SEEN,
-  REVIEW,
-  VARIANTS,
-  REPORTS,
-  HISTORY,
-  IMPORTS,
-  ...SECTIONS.flatMap(({ question }) => question ?? []),
+  ...new Set([
+    SOURCES,
+    SEEN,
+    REVIEW,
+    VARIANTS,
+    REPORTS,
+    HISTORY,
+    IMPORTS,
+    ...SECTIONS.flatMap(({ question }) => question ?? []),
+  ]),
 ];
 
 /**
@@ -602,12 +631,14 @@ function reviewSaid(row, item) {
  */
 function sharedIngredients(answers, about) {
   const medications = SECTIONS.find(({ one }) => one === "medication");
-  const rows = sectionRows(medications, answers).map((row) => ({
-    entry: row.entry,
-    name: row.medication || fromLabel(row.entryLabel).name,
-    code: row.code,
-    ingredients: about.get(row.code)?.ingredients?.codes ?? [],
-  }));
+  const rows = sectionRows(medications, answers)
+    .filter((row) => medicationStatus(row) !== STOPPED)
+    .map((row) => ({
+      entry: row.entry,
+      name: row.medication || fromLabel(row.entryLabel).name,
+      code: row.code,
+      ingredients: about.get(row.code)?.ingredients?.codes ?? [],
+    }));
   const same = new Set(
     rows.flatMap((one, at) =>
       rows
@@ -1101,7 +1132,8 @@ export function tile(section, rows, entryHref, by) {
  * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
  * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
- *   the rows by;
+ *   the rows by; an empty map when they cannot say. Undefined while they are still being asked, and What changed is
+ *   left out until it is known, so a card is drawn once, by one name, never by the record's own and then the tables';
  * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; no report
  *   is tagged `Differs`, on a row or in what is worth a look, until it does;
  * - `changes`: what changed after a medication started or stopped, as `changesIn` gives it over the pod's medication
@@ -1123,7 +1155,7 @@ export function podPage(
     connection,
     unheld = [],
     entryHref,
-    about = new Map(),
+    about,
     held = [],
     said,
     changes,
@@ -1133,19 +1165,21 @@ export function podPage(
     ask,
   },
 ) {
-  const answers = named(asked, about);
-  const credits = namingCredits(asked, about, held);
+  const names = about ?? new Map();
+  const answers = named(asked, names);
+  const credits = namingCredits(asked, names, held);
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const worth = worthPart(worthALook(answers, about, said), entryHref, ask);
+  const worth = worthPart(worthALook(answers, names, said), entryHref, ask);
   const changed =
+    about !== undefined &&
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
     (answers[LABS] ?? []).length > 0
       ? changedPart({
           changes,
-          about,
+          about: names,
           how: howOf(
             asked,
             changes.filter(
@@ -1168,7 +1202,7 @@ export function podPage(
         section,
         rows,
         entryHref,
-        section.question === MEDICATIONS && classesHref !== undefined
+        section.one === "medication" && classesHref !== undefined
           ? {
               href: classesHref,
               label: "By class",

@@ -25,7 +25,7 @@ const { trendPath } = (await import(
 const ALLERGIES = "pod/My active allergies";
 const CONDITIONS = "pod/My active conditions";
 const LABS = "pod/My lab results";
-const MEDICATIONS = "pod/My active medications";
+const MEDICATIONS = "pod/My medication history";
 const SEEN = "pod/What was seen more than once";
 const REVIEW = "entry/What needs review";
 
@@ -2293,6 +2293,42 @@ test("the Medications tile holds a By class link to the class view, and no other
   assert.ok(!noMedicines.includes("By class"));
 });
 
+test("the Medications tile reads the medication history: each medication's status, a stopped one with the day it ended, and every status counted", () => {
+  const rows = [
+    { entry: "e1", medication: "Lisinopril", status: "active" },
+    {
+      entry: "e2",
+      medication: "Metformin",
+      status: "completed",
+      started: "2022-03-01",
+      ended: "2024-04-15",
+    },
+    { entry: "e3", medication: "Atorvastatin", status: "on-hold" },
+    { entry: "e4", medication: "Aspirin" },
+  ];
+  const { tile, dialog } = view.tile(
+    view.SECTIONS.find(
+      ({ title }: { title: string }) => title === "Medications",
+    ),
+    rows,
+  );
+  assert.match(render(tile), /<span class="count">4<\/span>/);
+  const cells = [...render(dialog).matchAll(/<tr[^>]*>(.*?)<\/tr>/g)]
+    .map(([, row = ""]) =>
+      [...row.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(([, cell = ""]) =>
+        cell.replace(/<[^>]+>/g, ""),
+      ),
+    )
+    .filter((row) => row.length > 0);
+  const status = Object.fromEntries(cells.map(([name, said]) => [name, said]));
+  assert.deepEqual(status, {
+    Lisinopril: "Active",
+    Metformin: "Stopped Apr 15, 2024",
+    Atorvastatin: "On hold",
+    Aspirin: "Unknown",
+  });
+});
+
 test("the sidebar says the reference tables are loading until the app has read what it holds, says None yet only after a read that found none, and says they could not be read after one that failed", () => {
   const nav = (state: "loading" | "none" | "failed", series: object[] = []) =>
     textOf(
@@ -2361,10 +2397,8 @@ test("an entry no section shows is named and kinded from its label and says what
 test("what the tables say of the codes a pod holds includes the ingredients those codes map to", async () => {
   const RX = "urn:test:rxnorm/";
   const answers = {
-    "pod/My active medications": [
-      { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
-    ],
     "pod/My medication history": [
+      { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
       { entry: "m2", medication: "Old", code: `${RX}1`, ended: "2024-01-01" },
     ],
   };
@@ -2818,6 +2852,7 @@ function podOf(name: string, story: Story, answers = story.answers) {
       pod: name,
       signIn: () => null,
       entryHref: entryLink,
+      about: new Map(),
       changes: story.changes,
       trendHref: (trend: object) => trendPath(name, trend),
     }),
@@ -2886,6 +2921,29 @@ test("What changed on the statin story patient's page: one card in CHANGED's wor
   assert.deepEqual(hrefsOf(page, "Show the 6 results"), [
     "#change-start-617310-18262-6",
   ]);
+});
+
+test("a card is drawn once, by the tables' names: with the tables not yet asked the page has no card, and with their answer the card says the same as changeSaid does", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const props = {
+    pod: "ines-calloway",
+    signIn: () => null,
+    changes: story.changes,
+  };
+  const before = render(view.podPage(story.answers, props));
+  assert.equal(count(before, 'class="change"'), 0);
+
+  const about = new Map([
+    [
+      finding!.medication.code,
+      { name: { label: "Atorvastatin, per the tables", altLabels: [] } },
+    ],
+  ]);
+  const after = text(render(view.podPage(story.answers, { ...props, about })));
+  const said = view.changeSaid(finding, about);
+  assert.ok(said.includes("Atorvastatin, per the tables"), said);
+  assert.ok(after.includes(said), said);
 });
 
 test("What changed says nothing stands out when no pair does, counts a pair with too few results without a card, and is absent when the pod holds no lab row or no medication-history row", async () => {
@@ -3258,6 +3316,7 @@ test("Ask about this: with a model set, each What changed card and each Worth a 
         pod: "ines-calloway",
         signIn: () => null,
         entryHref: entryLink,
+        about: new Map(),
         changes: story.changes,
         trendHref: (trend: object) => trendPath("ines-calloway", trend),
         ...(ask ? { ask } : {}),
