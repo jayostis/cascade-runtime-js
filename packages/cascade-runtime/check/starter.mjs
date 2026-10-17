@@ -1490,7 +1490,7 @@ if (release === undefined) {
      * Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the pod's page with
      * the connection's box open.
      */
-    const signIn = async (pod, fhirBase, patient, decision) => {
+    const signIn = async (pod, fhirBase, patient, decision, simulate) => {
       const begun = await send(`/pods/${pod}/hospitals`, { fhirBase });
       assert.equal(begun.status, 303);
       const authorize = new URL(begun.headers.get("location"));
@@ -1499,6 +1499,7 @@ if (release === undefined) {
       assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();
       assert.ok(picker.includes(`value="${patient}"`), patient);
+      if (simulate) authorize.searchParams.set("simulate_error", simulate);
       const back = await answerSignIn(fetch, authorize, patient, decision);
       assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
       const callback = await fetch(back, { redirect: "manual" });
@@ -1573,6 +1574,23 @@ if (release === undefined) {
           const failed = await signIn(pod, north, expected.patient, "cancel");
           const cancelled = readable(await boxed(failed, "Hospital"));
           assert.ok(cancelled.includes("cancelled"), "Cancel is not cancelled");
+          assert.deepEqual(await asked(ALLERGIES, pod), []);
+          const expired = readable(
+            await boxed(
+              await signIn(
+                pod,
+                north,
+                expected.patient,
+                "allow",
+                "request_expired_token",
+              ),
+              "Hospital",
+            ),
+          );
+          assert.ok(
+            expired.includes("the access token expired"),
+            "an expired token does not say so",
+          );
           assert.deepEqual(await asked(ALLERGIES, pod), []);
           assert.equal(
             noteOf(

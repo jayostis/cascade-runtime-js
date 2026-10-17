@@ -93,12 +93,19 @@ export async function pull(
       follow: origin,
     });
     retrievedAt = now();
-    if (answer.status === 401)
+    if (answer.status === 401) {
+      const expired =
+        /expired/i.test(answer.headers.get("WWW-Authenticate") ?? "") ||
+        (connection.expiresAt !== undefined &&
+          connection.expiresAt.getTime() <= retrievedAt.getTime());
       throw new ConnectionFailure(
         "unauthorized",
-        `${origin} answered 401 to ${what}`,
+        expired
+          ? `${origin} refused ${what} with 401: the access token expired, so connect again`
+          : `${origin} refused ${what} with 401: it did not accept the access token, so connect again`,
         { origin, status: 401, resourceType: what },
       );
+    }
     return { answer, url };
   };
   const failed = (answer: Answer, what: string) =>
