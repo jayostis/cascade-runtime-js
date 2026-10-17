@@ -1222,8 +1222,11 @@ const server = createServer(async (request, response) => {
         n === undefined ? undefined : hospitals.connection(name, n);
       if (post && connection !== undefined)
         return bring(response, name, connection);
-      if (connection !== undefined)
-        return redirect(response, boxOf(name, connection));
+      if (!post && n !== undefined)
+        return redirect(
+          response,
+          connection === undefined ? podPath(name) : boxOf(name, connection),
+        );
       if (!post && n === undefined)
         return await showPod(response, name, url.searchParams, names);
     }

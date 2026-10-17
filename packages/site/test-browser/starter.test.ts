@@ -272,6 +272,14 @@ test("after Allow at a demo hospital the connection's box moves on by itself, to
     .locator("main .note", { hasText: /^Brought in the record from / })
     .waitFor({ timeout: 60_000 });
   await page.close();
+  for (const [path, status, to] of [
+    ["/pods/ines-calloway/connections/999", 303, "/pods/ines-calloway/"],
+    ["/pods/nobody-here/connections/1", 404, null],
+  ]) {
+    const gone = await fetch(bare.origin + path, { redirect: "manual" });
+    assert.equal(gone.status, status);
+    assert.equal(gone.headers.get("location"), to);
+  }
 });
 
 test("a finding the model's tool found is drawn as a card with the app's sentence, its numbers and row links, and Open the trend goes to the trend", async () => {
