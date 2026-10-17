@@ -16,6 +16,21 @@ import {
 } from "cascade-runtime";
 import { direct, pulled, REGISTRATION, rowOf } from "./hospitals.js";
 
+const { hospitalsAt } = (await import(
+  new URL("../../starter/hospitals.mjs", import.meta.url).href
+)) as {
+  hospitalsAt: (
+    origin: string,
+    demo: object[],
+    options: object,
+  ) => {
+    start: (pod: string, fhirBase: string) => Promise<string | undefined>;
+    back: (url: URL) => string | undefined;
+    connection: (pod: string, n: number) => { pulled: Promise<Pull> };
+    demo: (url: string) => Promise<Response>;
+  };
+};
+
 const PREFIXES = `PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
@@ -191,7 +206,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   assert.deepEqual(again.wrote, []);
 });
 
-test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route", async () => {
+test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route, and the starter's hospitals reach the listener", async () => {
   const data = await loadHospital("cascade-north");
   const listener = await serveDemo([{ ...data, autoApprove: "pt-1001" }]);
   try {
@@ -206,6 +221,24 @@ test("a pull through the listener and the remapping fetch returns the same recor
     assert.ok(names(through).length > 0);
     assert.deepEqual(names(through), names(north));
     assert.equal(through.fhirBase, north.fhirBase);
+
+    const origin = "http://127.0.0.1:3000";
+    const hospitals = hospitalsAt(
+      origin,
+      [{ ...data, autoApprove: "pt-1001" }],
+      {
+        listener,
+      },
+    );
+    const sentTo = await hospitals.start("pod", north.fhirBase);
+    assert.ok(sentTo?.startsWith(listener.origin), `sent to ${sentTo}`);
+    if (sentTo === undefined) return;
+    const approved = await globalThis.fetch(sentTo, { redirect: "manual" });
+    const back = new URL(approved.headers.get("location")!);
+    assert.equal(hospitals.back(back), "/pods/pod/?connection=1#connection");
+    const started = hospitals.connection("pod", 1);
+    assert.deepEqual(names(await started!.pulled), names(north));
+    assert.equal((await hospitals.demo(sentTo)).status, 404);
   } finally {
     await listener.close();
   }
