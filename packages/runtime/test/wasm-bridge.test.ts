@@ -13,8 +13,8 @@ import { MemoryFiles } from "../src/files.js";
 import { parseGraph } from "../src/graph.js";
 import { StoryTime } from "../src/ids.js";
 import { ofMediaType } from "../src/load-adapter.js";
-import { type Importer } from "../src/importer.js";
 import { importersNamed } from "../src/importers.js";
+import { kitImports } from "../src/kit-bridge.js";
 import { kitsOf } from "../src/kit.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
@@ -178,11 +178,6 @@ async function differences(): Promise<{
 }> {
   const files = await vocabulary();
   const importers = importersNamed(components.config.importers);
-  const stemOf = (path: string): string => {
-    const name = path.slice(path.lastIndexOf("/") + 1);
-    const dot = name.lastIndexOf(".");
-    return dot > 0 ? name.slice(0, dot) : name;
-  };
   const differ: string[] = [];
   const skipped: string[] = [];
   const seen = new Set<string>();
@@ -192,49 +187,53 @@ async function differences(): Promise<{
     const { story, folder } = await storyFrom(
       `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
     );
-    for (const step of story.steps) {
-      const { happened } = step;
-      if (happened.kind !== "import") continue;
-      const downloaded = `${folder}/${happened.export}`;
-      let documents: Awaited<ReturnType<Importer["documents"]>>;
-      try {
-        for (const importer of importers)
-          if ((documents = await importer.documents(files, downloaded))) break;
-      } catch (error) {
-        const saved = (await files.list(`${folder}/${happened.converted}/`))
-          .length;
-        if (saved > 0)
+    for (const {
+      step,
+      converted: saved,
+      failure,
+      documents,
+    } of await kitImports({
+      vocabulary: files,
+      folder,
+      steps: story.steps,
+      importers,
+      adaptersOf,
+    })) {
+      if (failure !== undefined) {
+        const count = (await files.list(`${saved}/`)).length;
+        if (count > 0)
           differ.push(
-            `${kit} ${step.name}: its importer failed (${String(error)}), but ${saved} files are saved`,
+            `${kit} ${step.name}: its importer failed (${String(failure)}), but ${count} files are saved`,
           );
         else skipped.push(`${kit} ${step.name}`);
         continue;
       }
-      for (const document of documents ?? []) {
-        const stem = stemOf(document.path);
-        const at = `${folder}/${happened.converted}/${stem}/`;
+      const wanted = new Set(
+        documents.flatMap(({ stem }) =>
+          ["graph.ttl", "findings.ttl", "unaccepted.txt"].map(
+            (name) => `${saved}/${stem}/${name}`,
+          ),
+        ),
+      );
+      for (const stray of await files.list(`${saved}/`))
+        if (!wanted.has(stray))
+          differ.push(
+            `${kit} ${step.name}: ${stray} is saved, but no document of the import has such a file`,
+          );
+      for (const {
+        stem,
+        path: documentPath,
+        iri: iriOf,
+        offered,
+        accepting,
+      } of documents) {
+        const at = `${saved}/${stem}/`;
         const named = `${kit} ${step.name} ${stem}`;
         const [graph, findings, refused] = await Promise.all([
           files.read(`${at}graph.ttl`),
           files.read(`${at}findings.ttl`),
           files.read(`${at}unaccepted.txt`),
         ]);
-        const iriOf = await documentName(document.bytes);
-        const offered: BridgeDocument = {
-          iri: iriOf,
-          bytes: document.bytes,
-          envelope: document.envelope,
-          facts: {
-            iri: `${iriOf}#facts`,
-            bytes: document.facts(step.when),
-          },
-        };
-        let accepting: LoadedAdapter | undefined;
-        for (const adapter of adaptersOf(document.mediaType))
-          if (await adapter.accepts(offered)) {
-            accepting = adapter;
-            break;
-          }
         const known = `${kit} ${iriOf}`;
         if (refused !== undefined) {
           seen.add(known);
@@ -257,7 +256,7 @@ async function differences(): Promise<{
           continue;
         }
         const made = await accepting.convert(offered);
-        const path = `${files.iri}${document.path}`;
+        const path = `${files.iri}${documentPath}`;
         const expectedFindings =
           findings === undefined
             ? []
