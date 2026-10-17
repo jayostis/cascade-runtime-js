@@ -511,11 +511,11 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
     const bearer = /^Bearer (.+)$/.exec(request.headers().authorization ?? "");
     if (bearer?.[1]) secrets.add(bearer[1]);
   });
-  const signIn = async (hospital: string): Promise<Page> => {
+  const signIn = async (hospital: string, again = false): Promise<Page> => {
     const [popup] = await Promise.all([
       page.waitForEvent("popup"),
       page.click(
-        `button:has-text("Sign in at ${view.hospitalName(hospital)}")`,
+        `button:has-text("Sign in ${again ? "again " : ""}at ${view.hospitalName(hospital)}")`,
       ),
     ]);
     popup.on("framenavigated", (frame) => {
@@ -533,7 +533,7 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
   };
   const failed = async (): Promise<string> => {
     await boxed();
-    const text = (await page.textContent("#connection .card p")) ?? "";
+    const text = (await page.textContent("#connection .card .detail")) ?? "";
     await page.goto(page.url().split("#")[0] ?? "");
     await settled(page);
     return text;
@@ -555,12 +555,21 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
   const cancelled = await signIn(north);
   const cancelledCloses = cancelled.waitForEvent("close");
   await cancelled.click('button[value="cancel"]');
-  assert.match(await failed(), /^Not connected: .*cancel/);
   await cancelledCloses;
+  await boxed();
+  assert.match(
+    (await page.textContent("#connection [role=alert]")) ?? "",
+    /Cascade North.*cancelled/,
+  );
+  const again = await signIn(north, true);
+  const againCloses = again.waitForEvent("close");
+  await again.click('button[value="cancel"]');
+  assert.match(await failed(), /cancel/);
+  await againCloses;
 
   const closed = await signIn(north);
   await closed.close();
-  assert.match(await failed(), /^Not connected: .*closed/);
+  assert.match(await failed(), /closed/);
 
   /** A box over the pod's page, by its address, and the text typed into its filter after the first record came in. */
   let box = "";
@@ -2249,7 +2258,12 @@ test("in try/, the sample pod tamsin-vale draws What changed and, in its card, w
       assert.ok(said.includes(`as of ${view.dayInWords(asOf)}`), said);
     });
     const how = (await page.locator(".how").innerText()).replace(/\s+/g, " ");
-    assert.match(how, /version 1 to version 2, in import 2/);
+    assert.ok(
+      how.includes(
+        `version 1 to version 2, in import 2, as of ${view.dayInWords(story.pulls[1]!.asOf)}`,
+      ),
+      how,
+    );
     assert.match(
       how,
       new RegExp(
@@ -2453,7 +2467,7 @@ test("in try/, a pod for Rowan Ellery Marsh signed in at North as Odalys Brandt 
     await popup.click('button[value="allow"]');
     await settled(page);
     assert.equal(
-      (await page.textContent("#connection .note"))?.trim(),
+      (await page.textContent("#connection .note.warm"))?.trim(),
       "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
     );
     assert.deepEqual(
@@ -2462,7 +2476,7 @@ test("in try/, a pod for Rowan Ellery Marsh signed in at North as Odalys Brandt 
       ),
       ["Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway"],
     );
-    await page.click("#connection button:has-text('anyway')");
+    await page.click("#connection button.quiet:has-text('anyway')");
     await settled(page, 300_000);
     assert.ok((await tiles(page)).size > 0, "the pod's page shows no record");
   } finally {
