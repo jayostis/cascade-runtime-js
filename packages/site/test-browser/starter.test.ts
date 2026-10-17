@@ -246,6 +246,34 @@ test("with no model set the strip says to run npm run model and has no form; wit
   assert.equal(shown.includes(stub.url), false);
 });
 
+test("after Allow at a demo hospital the connection's box moves on by itself, to Bring it in, and from bringing it in to the pod's page", async () => {
+  const made = await fetch(bare.origin + "/pods", {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      origin: bare.origin,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ person: "Ines Calloway" }),
+  });
+  assert.equal(made.status, 303);
+  const page = await browser.newPage();
+  await page.goto(`${bare.origin}/pods/ines-calloway/`);
+  await page
+    .getByRole("button", { name: /^Sign in at / })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Allow" }).click();
+  await page.waitForURL(/\?connection=\d+#connection$/);
+  const bring = page.getByRole("button", { name: /^Bring it into / });
+  await bring.waitFor({ timeout: 30_000 });
+  await bring.click();
+  await page
+    .locator("main .note", { hasText: /^Brought in the record from / })
+    .waitFor({ timeout: 60_000 });
+  await page.close();
+});
+
 test("a finding the model's tool found is drawn as a card with the app's sentence, its numbers and row links, and Open the trend goes to the trend", async () => {
   const view = "/pods/ines-calloway/trend?test=18262-6&medication=617310";
   const finding = {
