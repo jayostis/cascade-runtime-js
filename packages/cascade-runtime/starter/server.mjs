@@ -33,8 +33,9 @@ import {
   deleteAll,
   KITS,
   podFolder,
-  podNames,
+  podNames as listPods,
   podPath,
+  podTitle,
   POD_NAME,
   PODS,
   resetAll,
@@ -70,6 +71,7 @@ import {
   panelSaid,
   panelsOf,
   patientName,
+  knowTitle,
   personName,
   podPage,
   postButton,
@@ -101,9 +103,18 @@ const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
 
-function podNamed(name, secret) {
+/** The pods there are, each known to `personName` by the name typed when it was made. */
+async function podNames() {
+  const names = await listPods();
+  await Promise.all(
+    names.map(async (name) => knowTitle(name, await podTitle(name))),
+  );
+  return names;
+}
+
+function podNamed(name, secret, title) {
   if (!open.has(name)) {
-    const opening = openPod(podFolder(name), { secret });
+    const opening = openPod(podFolder(name), { secret, title });
     opening.catch(() => open.delete(name));
     open.set(name, opening);
   }
@@ -112,6 +123,9 @@ function podNamed(name, secret) {
 
 /** The six words of each encrypted pod being made, by its name, until the person has checked them. Kept in memory only. */
 const waiting = new Map();
+
+/** The name typed for each pod waiting on its six words, by the pod's name. */
+const typedFor = new Map();
 
 /** Why the pod could not be opened without words: an `Unopened` outcome; nothing when it is open. */
 async function lockedOutcome(name) {
@@ -354,6 +368,7 @@ async function closePods(plaintextOnly = false) {
 async function closeAll() {
   hospitals?.forget();
   waiting.clear();
+  typedFor.clear();
   await closePods();
 }
 
@@ -730,9 +745,10 @@ async function newPod(request, response) {
   if (form.get("encrypt") === "on" && !(await podNames()).includes(name)) {
     const words = sixWords();
     waiting.set(name, words);
+    typedFor.set(name, form.get("person")?.trim());
     return await showWords(response, name, words);
   }
-  await podNamed(name);
+  await podNamed(name, undefined, form.get("person")?.trim());
   redirect(response, podPath(name));
 }
 
@@ -776,6 +792,8 @@ async function newEncryptedPod(request, response) {
   )
     return await showWords(response, name, words, NOT_WORDS);
   waiting.delete(name);
+  const title = typedFor.get(name);
+  typedFor.delete(name);
   if ((await podNames()).includes(name))
     return send(
       response,
@@ -786,7 +804,7 @@ async function newEncryptedPod(request, response) {
 <p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
       ),
     );
-  if (!(await podNamed(name, words)).encrypted)
+  if (!(await podNamed(name, words, title)).encrypted)
     throw new Error(`The pod ${name} was made without its words.`);
   redirect(response, podPath(name));
 }

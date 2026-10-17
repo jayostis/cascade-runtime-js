@@ -1,6 +1,6 @@
 // What the scripts share: where pods live, what a pod may be called, which pod a script works on, and the addresses
 // the app's pages have.
-import { readdir, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { env, exit, stderr } from "node:process";
 import { performance } from "node:perf_hooks";
@@ -97,6 +97,18 @@ export async function podNames() {
 /** The folder the runtime keeps the pod's answers in. */
 export function answersFolder(name) {
   return join(PODS, ".answers", name);
+}
+
+/** The title `pod.json` keeps for the pod, the name typed when it was made; undefined where none is kept. */
+export async function podTitle(name) {
+  try {
+    const kept = JSON.parse(
+      await readFile(join(answersFolder(name), "pod.json"), "utf8"),
+    );
+    return typeof kept.title === "string" ? kept.title : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Removes the pod and its answers. */

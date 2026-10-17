@@ -58,6 +58,7 @@ import {
   hospitalsPage,
   html,
   joinedBy,
+  knowTitle,
   LABS,
   layout,
   MEDICATIONS,
@@ -202,6 +203,30 @@ function closeDialog() {
   if (location.hash === "") return;
   location.replace("#");
   replaceAddress(location.pathname + location.search);
+}
+
+const TITLES = "cascade-pod-titles";
+
+/** The names typed for the pods made here, by the pods' names, kept in this browser so the page shows them as typed. */
+function titlesKept() {
+  try {
+    return JSON.parse(globalThis.localStorage.getItem(TITLES) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+for (const [pod, title] of Object.entries(titlesKept())) knowTitle(pod, title);
+
+function keepTitle(pod, title) {
+  knowTitle(pod, title);
+  try {
+    globalThis.localStorage.setItem(
+      TITLES,
+      JSON.stringify({ ...titlesKept(), [pod]: title }),
+    );
+  } catch {
+    return;
+  }
 }
 
 const personOf = (name) =>
@@ -875,7 +900,7 @@ async function signIn(fhirBase, popup) {
   try {
     const signedIn = await connect(row, REGISTRATION, {
       signIn: (authorize, signal) => {
-        if (forPod !== undefined)
+        if (forPod !== undefined && row.vendor === "demo")
           authorize.searchParams.set("login_hint", forPod);
         return popupSignIn({ popup })(authorize, signal);
       },
@@ -1055,6 +1080,7 @@ async function confirmWords(fields) {
   }
   if (!(await podNamed(name, { title: person, secret: words })).encrypted)
     throw new Error(`The pod ${name} was made without its words.`);
+  keepTitle(name, person.trim());
   making = undefined;
   offerToSave(name, words);
   state.pods = await podsHere();
@@ -1091,8 +1117,10 @@ async function make(person, encrypt = false) {
 <p>Give a name with at least one letter from a to z, or a digit.</p>`,
     );
   }
-  if (!state.pods.includes(name))
+  if (!state.pods.includes(name)) {
     await podNamed(name, { title: person.trim() });
+    keepTitle(name, person.trim());
+  }
   state.pods = await podsHere();
   return go(podHref(name));
 }

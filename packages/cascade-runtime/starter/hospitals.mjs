@@ -59,13 +59,13 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
   let count = 0;
 
   /**
-   * Sends the person to the hospital's page with `sendTo`, and waits for `/callback` to bring them back. The page
-   * is told the pod's name as `login_hint`, so it can preselect the patient the pod is for.
+   * Sends the person to the hospital's page with `sendTo`, and waits for `/callback` to bring them back. A demo
+   * hospital's page is told the pod's name as `login_hint`, `hint`, so it can preselect the patient the pod is for.
    */
-  function signIn(sendTo, page, pod) {
+  function signIn(sendTo, page, hint) {
     return (authorize, signal) =>
       new Promise((resolve, reject) => {
-        authorize.searchParams.set("login_hint", pod);
+        if (hint !== undefined) authorize.searchParams.set("login_hint", hint);
         const state = authorize.searchParams.get("state");
         const finish = (then) => {
           clearTimeout(timer);
@@ -141,7 +141,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
         imported: undefined,
       };
       const connected = connect(row, registration, {
-        signIn: signIn(sendTo, page, pod),
+        signIn: signIn(sendTo, page, row.vendor === "demo" ? pod : undefined),
         fetch: async (url, init) => {
           const answer = await route(url, init);
           connection.requests += 1;

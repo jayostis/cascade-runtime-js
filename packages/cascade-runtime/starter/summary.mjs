@@ -373,22 +373,26 @@ export function slug(person) {
     .replace(/^-+|-+$/g, "");
 }
 
-const JOINERS = new Set(["and", "at", "de", "la", "of", "the", "van", "von"]);
+/** The name each pod was made under, as the person typed it, by the pod's name; `personName` shows it. */
+const typed = new Map();
 
-/**
- * A pod's name as a person's: `rowan-ellery-marsh` is `Rowan Ellery Marsh`. A joining word inside the name stays as
- * typed in lower case (`tamsin-at-north` is `Tamsin at North`), since the pod's name keeps no capitals to tell them by.
- */
+/** Tells `personName` the name the person typed for `pod`; the pod's own name, which holds no capitals, is no title. */
+export function knowTitle(pod, title) {
+  if (typeof title === "string" && title.trim() !== "" && title !== pod)
+    typed.set(pod, title.trim());
+  else typed.delete(pod);
+}
+
+/** A pod's name as a person's: the name typed when it was made; else `rowan-ellery-marsh` is `Rowan Ellery Marsh`. */
 export function personName(pod) {
-  return pod
-    .split(/[-_.]+/)
-    .filter(Boolean)
-    .map((word, index) =>
-      index > 0 && JOINERS.has(word)
-        ? word
-        : word[0].toUpperCase() + word.slice(1),
-    )
-    .join(" ");
+  return (
+    typed.get(pod) ??
+    pod
+      .split(/[-_.]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(" ")
+  );
 }
 
 /** A hospital's name as a person says it: `Cascade North Demo Hospital` is `Cascade North`. */

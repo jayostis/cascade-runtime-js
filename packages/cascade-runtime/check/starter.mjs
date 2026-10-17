@@ -1766,6 +1766,16 @@ if (release === undefined) {
         const page = await served(server, "/pods/ada-lovelace/");
         assert.equal(heading(page), "Ada Lovelace");
         assert.ok(page.includes("Nothing here yet"), "Ada's pod is not empty");
+        for (const [typed, folder] of [
+          ["Tamsin at North", "tamsin-at-north"],
+          ["O'Brien McDonald", "o-brien-mcdonald"],
+        ]) {
+          await send("/pods", { person: typed });
+          assert.equal(
+            heading(await served(server, `/pods/${folder}/`)),
+            typed,
+          );
+        }
       });
 
       await behaviour(
