@@ -389,20 +389,27 @@ export function slug(person) {
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * A pod's name as a person's: the title `titles` holds for it, as typed, when `slug` of it is the pod's name; else,
- * and where the title is the pod's name itself, as a pod made without one keeps, the pod's name capitalised:
- * `rowan-ellery-marsh` is `Rowan Ellery Marsh`.
- */
-export function personName(pod, titles) {
+/** The title `titles` holds for a pod, as typed, when `slug` of it is the pod's name; else undefined. */
+export function typedName(pod, titles) {
   const typed = titles?.get(pod)?.trim().replace(/\s+/g, " ");
   return typed !== undefined && typed !== pod && slug(typed) === pod
     ? typed
-    : pod
-        .split(/[-_.]+/)
-        .filter(Boolean)
-        .map((word) => word[0].toUpperCase() + word.slice(1))
-        .join(" ");
+    : undefined;
+}
+
+/**
+ * A pod's name as a person's: the title it was made under (`typedName`); else, and where the title is the pod's name
+ * itself, as a pod made without one keeps, the pod's name capitalised: `rowan-ellery-marsh` is `Rowan Ellery Marsh`.
+ */
+export function personName(pod, titles) {
+  return (
+    typedName(pod, titles) ??
+    pod
+      .split(/[-_.]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(" ")
+  );
 }
 
 /** A hospital's name as a person says it: `Cascade North Demo Hospital` is `Cascade North`. */
@@ -2466,10 +2473,53 @@ function patientOf(bundle) {
 
 /** The person a FHIR Bundle is about, as the hospital names them: `Rowan Ellery Marsh`; undefined when it names none. */
 export function patientName(bundle) {
-  const name = patientOf(bundle)?.name?.[0];
+  const name = officialName(bundle);
   return name === undefined
     ? undefined
     : [...(name.given ?? []), name.family].filter(Boolean).join(" ");
+}
+
+/** Every name the Patient of a FHIR Bundle holds (official, usual, maiden), as `{ name, family }`. */
+export function patientNames(bundle) {
+  return (patientOf(bundle)?.name ?? []).map((each) => ({
+    name: [...(each.given ?? []), each.family].filter(Boolean).join(" "),
+    family: each.family,
+  }));
+}
+
+function officialName(bundle) {
+  const names = patientOf(bundle)?.name ?? [];
+  return names.find(({ use }) => use === "official") ?? names[0];
+}
+
+const nameWords = (name) =>
+  String(name)
+    .normalize("NFC")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+const GRADES = ["certainly-not", "possible", "certain"];
+
+/**
+ * How sure it is that a record whose Patient holds `names` (`{ name, family }`, see `patientNames`) is about the person
+ * `subject`, by the best of the names: `certain` when a name is the same, `possible` when a family name is among the
+ * subject's words, else `certainly-not`; undefined when the subject or every name is blank. Case, the spaces at either
+ * end and the Unicode form of a letter do not count.
+ */
+export function gradePerson(subject, names) {
+  const mine = nameWords(subject ?? "");
+  const grades = names.flatMap(({ name, family }) => {
+    const theirs = nameWords(name ?? "");
+    if (mine.length === 0 || theirs.length === 0) return [];
+    if (mine.join(" ") === theirs.join(" ")) return ["certain"];
+    const surname = nameWords(family ?? "");
+    return surname.length > 0 && surname.every((word) => mine.includes(word))
+      ? ["possible"]
+      : ["certainly-not"];
+  });
+  return grades.sort((a, b) => GRADES.indexOf(b) - GRADES.indexOf(a))[0];
 }
 
 /**
@@ -3777,10 +3827,14 @@ export function connectionDialog({
   sources = [],
   pulled,
   about,
+  aboutNames,
   bring,
   pulledAsOf,
 }) {
   const who = personName(pod, titles);
+  const typed = typedName(pod, titles);
+  const grade =
+    typed === undefined ? undefined : gradePerson(typed, aboutNames ?? []);
   const name = hospitalName(hospital);
   const said = (body) => box(id, name, body, { back });
   if (connection.step === "bringing in")
@@ -3806,15 +3860,20 @@ export function connectionDialog({
   return said(html`<div class="card"><${Steps} connection=${connection} /></div>
 ${
   about !== undefined &&
-  slug(about) !== pod &&
-  html`<p class="note">This record is ${about}'s. Bringing it in makes this ${about}'s pod.</p>`
+  (grade === undefined
+    ? slug(about) !== pod &&
+      html`<p class="note">This record is ${about}'s. Bringing it in makes this ${about}'s pod.</p>`
+    : grade === "possible"
+      ? html`<p class="muted">This record is ${about}'s.</p>`
+      : grade === "certainly-not" &&
+        html`<p class="note" role="alert">This record is ${about}'s, not ${who}'s.</p>`)
 }
 <div class="card">
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
 ${pulledAsOfSaid(pulledAsOf) !== undefined && html`<p class="muted">${pulledAsOfSaid(pulledAsOf)}</p>`}
-${postButton(bring, {}, `Bring it into ${who}'s pod`, undefined, BRINGING)}
+${postButton(bring, {}, grade === "certainly-not" ? `Bring ${about}'s records into ${who}'s pod anyway` : grade === "possible" ? `Bring ${about}'s records into ${who}'s pod` : `Bring it into ${who}'s pod`, undefined, BRINGING)}
 </div>`);
 }
 

@@ -126,7 +126,7 @@ test("a new pod's person signs in at the SMART launcher in a popup, on its own p
     await popup.click("#approve");
     await settled(page);
     assert.ok(await page.isVisible("#connection"), "the box is not open");
-    const about = /^This record is (.+)'s\./.exec(
+    const about = /^This record is (.+?)'s[.,]/.exec(
       (await page.textContent("#connection .note")) ?? "",
     )?.[1];
     assert.ok(about, "the box names no patient");
@@ -137,7 +137,7 @@ test("a new pod's person signs in at the SMART launcher in a popup, on its own p
     );
 
     const began = Date.now();
-    await page.click("#connection button:has-text('Bring it into')");
+    await page.click("#connection button:has-text('Bring')");
     await settled(page, 300_000);
     console.log(`# brought in ${about}'s record in ${Date.now() - began} ms`);
     assert.equal(

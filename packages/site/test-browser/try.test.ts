@@ -2164,7 +2164,7 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
       await popup.check(`input[name="patient"][value="${story.patient}"]`);
       await popup.click('button[value="allow"]');
       await settled(page);
-      await page.click("#connection button:has-text('Bring it into')");
+      await page.click("#connection button:has-text('Bring')");
       await settled(page, 300_000);
     };
     const metformin = async () =>
@@ -2412,6 +2412,57 @@ async function storedIn(
     return found;
   }, name);
 }
+
+test("in try/, a pod for Rowan Ellery Marsh signed in at North as Odalys Brandt warns that the record is Odalys's, not Rowan's, and offers only a button that names both, which brings the record in", async () => {
+  const demo = await loadHospitals();
+  const people = view.demoPeople(demo);
+  const rowan = people.find(({ name }) => name === "Rowan Ellery Marsh");
+  const odalys = people.find(({ name }) => name === "Odalys Brandt");
+  assert.ok(rowan && odalys, "a demo person is missing");
+  const north = odalys.at[0];
+  assert.ok(north, "Odalys is at no hospital");
+  const loaded = demo.find((each) => each.hospital.fhirBase === north.fhirBase);
+  const patient = Object.entries(loaded?.patients ?? {}).find(
+    ([, bundle]) => view.patientName(bundle) === odalys.name,
+  )?.[0];
+  assert.ok(patient, "the hospital holds no patient Odalys Brandt");
+
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, view.familyFirst(rowan));
+    await page.waitForFunction(
+      () => navigator.serviceWorker.controller !== null,
+    );
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.click(
+        `button:has-text("Sign in at ${view.hospitalName(north.name)}")`,
+      ),
+    ]);
+    await popup.waitForSelector('button[value="allow"]');
+    await popup.check(`input[name="patient"][value="${patient}"]`);
+    await popup.click('button[value="allow"]');
+    await settled(page);
+    assert.equal(
+      (await page.textContent("#connection .note"))?.trim(),
+      "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
+    );
+    assert.deepEqual(
+      await page.$$eval("#connection button", (found) =>
+        found.map((each) => each.textContent?.trim()),
+      ),
+      ["Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway"],
+    );
+    await page.click("#connection button:has-text('anyway')");
+    await settled(page, 300_000);
+    assert.ok((await tiles(page)).size > 0, "the pod's page shows no record");
+  } finally {
+    await context.close();
+  }
+});
 
 test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are typed, keeps nothing readable in the browser's storage, and after a reload opens only with the words", async () => {
   const context = await browser.newContext();
