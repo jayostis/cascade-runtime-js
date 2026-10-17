@@ -1499,7 +1499,16 @@ if (release === undefined) {
       assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();
       assert.ok(picker.includes(`value="${patient}"`), patient);
-      if (simulate) authorize.searchParams.set("simulate_error", simulate);
+      if (simulate) {
+        assert.match(
+          picker,
+          new RegExp(
+            `<select[^>]*name="simulate_error"[\\s\\S]*value="${simulate}"`,
+          ),
+          `the sign-in page offers ${simulate}`,
+        );
+        authorize.searchParams.set("simulate_error", simulate);
+      }
       const back = await answerSignIn(fetch, authorize, patient, decision);
       assert.equal(`${back.origin}${back.pathname}`, at("/callback"));
       const callback = await fetch(back, { redirect: "manual" });

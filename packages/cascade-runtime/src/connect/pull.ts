@@ -52,6 +52,14 @@ function references(value: unknown, found: string[]): string[] {
   return found;
 }
 
+const EXPIRED_DESCRIPTION = /^the access token (has )?expired\.?$/i;
+
+const saysExpired = (challenge: string): boolean => {
+  const parameter =
+    /(?:^|[\s,])error_description=(?:"([^"]*)"|([^\s,"]*))/i.exec(challenge);
+  return EXPIRED_DESCRIPTION.test(parameter?.[1] ?? parameter?.[2] ?? "");
+};
+
 /**
  * Pulls the connected patient's records: the Patient read by id, one search per entry of the plan with each `next`
  * link followed as given, then each missing reference of a backfill type read by id. Every data request goes to the
@@ -95,14 +103,14 @@ export async function pull(
     retrievedAt = now();
     if (answer.status === 401) {
       const expired =
-        /expired/i.test(answer.headers.get("WWW-Authenticate") ?? "") ||
+        saysExpired(answer.headers.get("WWW-Authenticate") ?? "") ||
         (connection.expiresAt !== undefined &&
           connection.expiresAt.getTime() <= retrievedAt.getTime());
       throw new ConnectionFailure(
         "unauthorized",
         expired
           ? `${origin} refused ${what} with 401: the access token expired, so connect again`
-          : `${origin} refused ${what} with 401: it did not accept the access token, so connect again`,
+          : `${origin} refused ${what} with 401: the hospital did not accept the access token (it may have expired or been revoked), so connect again`,
         { origin, status: 401, resourceType: what },
       );
     }
