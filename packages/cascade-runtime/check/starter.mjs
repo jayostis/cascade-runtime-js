@@ -230,20 +230,27 @@ async function started(settings = {}) {
   });
   let out = "";
   child.stderr.on("data", (chunk) => stdout.write(`[server] ${chunk}`));
-  const address = await new Promise((done, failed) => {
-    child.stdout.on("data", (chunk) => {
-      out += chunk;
-      const found = /http:\/\/127\.0\.0\.1:\d+\//.exec(out);
-      if (found !== null) done(found[0]);
-    });
-    child.on("close", (code) =>
-      failed(new Error(`npm start exited ${code}: ${out}`)),
-    );
-  });
+  const { app: address, demo: listenerAddress } = await new Promise(
+    (done, failed) => {
+      child.stdout.on("data", (chunk) => {
+        out += chunk;
+        const app = /^(http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(out);
+        const demo =
+          /^The demo hospitals are listening at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(
+            out,
+          );
+        if (app !== null && demo !== null) done({ app: app[1], demo: demo[1] });
+      });
+      child.on("close", (code) =>
+        failed(new Error(`npm start exited ${code}: ${out}`)),
+      );
+    },
+  );
   stdout.write(`serving at ${address}\n`);
   const closed = new Promise((done) => child.on("close", done));
   return {
     address,
+    listenerAddress,
     stop: async () => {
       if (platform === "win32")
         execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
@@ -1494,6 +1501,7 @@ if (release === undefined) {
       const begun = await send(`/pods/${pod}/hospitals`, { fhirBase });
       assert.equal(begun.status, 303);
       const authorize = new URL(begun.headers.get("location"));
+      assert.equal(authorize.origin, new URL(server.listenerAddress).origin);
       assert.notEqual(authorize.origin, origin);
       assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();

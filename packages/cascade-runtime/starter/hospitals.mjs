@@ -1,5 +1,5 @@
 // Bringing a record in from a hospital: the directory, the sign-in on the hospital's own page, the redirect back to
-// this app, and the pull. The demo hospitals are pretend, answered here with no network.
+// this app, and the pull. The demo hospitals are pretend, answered by the sandbox's listener on a loopback port.
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
 import { brandsBundle, demoRemapFetch } from "@the-cascade-protocol/sandbox";
@@ -33,7 +33,7 @@ function idOf(row) {
 export function hospitalsAt(origin, demo, { asOf, listener }) {
   const route = demoRemapFetch(listener.origin);
   let world = asOf;
-  /** The hospitals `demo` holds, the app's own among them, then the test directory's rows that are not demo hospitals. */
+  /** The hospitals `demo` holds, the app's own among them, then the test directory's rows. */
   const directory = [
     ...directoryOf(
       brandsBundle(
@@ -42,7 +42,7 @@ export function hospitalsAt(origin, demo, { asOf, listener }) {
       ),
       "demo",
     ),
-    ...TEST_DIRECTORY.filter((row) => row.vendor !== "demo"),
+    ...TEST_DIRECTORY,
   ];
   const registration = {
     clientId: "cascade-app",

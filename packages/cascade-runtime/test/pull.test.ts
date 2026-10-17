@@ -27,7 +27,6 @@ const { hospitalsAt } = (await import(
     start: (pod: string, fhirBase: string) => Promise<string | undefined>;
     back: (url: URL) => string | undefined;
     connection: (pod: string, n: number) => { pulled: Promise<Pull> };
-    demo: (url: string) => Promise<Response>;
   };
 };
 
