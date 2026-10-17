@@ -72,6 +72,7 @@ import {
   panelPage,
   panelSaid,
   panelsOf,
+  patientNames,
   patientName,
   personName,
   podPage,
@@ -454,13 +455,17 @@ async function answered() {
   );
 }
 
-/** What the tables say of the codes `answers` hold; nothing before the engine is ready, or when they cannot say. */
+/**
+ * What the tables say of the codes `answers` hold: nothing while the engine is still warming, an empty map once they
+ * cannot say, the engine having failed or the tables' answer having thrown.
+ */
 async function aboutCodes(answers) {
-  if (document.body.dataset.engine !== "ready") return undefined;
+  if (document.body.dataset.engine !== "ready")
+    return state.tablesRead === "failed" ? new Map() : undefined;
   try {
     return await codesSaid(answers, { tables: await appTables() });
   } catch {
-    return undefined;
+    return new Map();
   }
 }
 
@@ -934,6 +939,7 @@ async function signIn(fhirBase, popup) {
         sources: await pod.look(shown.files),
         pulled,
         about: patientName(pulled.bundle),
+        aboutNames: patientNames(pulled.bundle),
       },
       "ready",
     );
@@ -1317,7 +1323,7 @@ busy(async () => {
       ) {
         shown.said = await variantsOf(shown.answers);
         if (state.page === shown) redraw();
-        shown.about = (await aboutCodes(shown.answers)) ?? new Map();
+        shown.about = await aboutCodes(shown.answers);
         shown.panels = await panelsShown(shown);
         shown.joined = await joinedShown(shown);
       }
@@ -1326,6 +1332,7 @@ busy(async () => {
     },
     () => {
       state.tablesRead ??= "failed";
+      if (state.page?.answers !== undefined) state.page.about ??= new Map();
       if (state.page !== undefined) redraw();
     },
   ),

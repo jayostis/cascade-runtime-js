@@ -71,6 +71,7 @@ import {
   panelPage,
   panelSaid,
   panelsOf,
+  patientNames,
   patientName,
   personName,
   podPage,
@@ -525,7 +526,7 @@ async function showPod(response, name, query, titles) {
     entryHref: (entry) => entryPath(name, entry),
     connection: box,
     unheld: (await podNamed(name)).opened?.unheld,
-    about,
+    about: about ?? new Map(),
     held,
     said,
     changes,
@@ -971,6 +972,7 @@ async function connectionView(name, connection) {
     sources: await (await podNamed(name)).look(files),
     pulled,
     about: patientName(pulled.bundle),
+    aboutNames: patientNames(pulled.bundle),
   };
 }
 
