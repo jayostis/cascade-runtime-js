@@ -1841,8 +1841,8 @@ function pullSaid({
     asOf !== undefined
       ? `as of ${dayInWords(asOf)}`
       : retrieved === undefined
-        ? localDay(started)
-        : `retrieved ${localDay(retrieved)}`;
+        ? localDayInWords(started)
+        : `retrieved ${localDayInWords(retrieved)}`;
   const newer =
     revised === 0
       ? ""
@@ -3661,6 +3661,21 @@ export function worldInstant(text) {
     !Number.isNaN(Date.parse(given))
     ? given
     : undefined;
+}
+
+/** An instant in UTC, as a pull.json states it: `2024-02-01T07:00:00Z` for `2024-02-01T09:00:00+02:00`; undefined stays undefined. */
+export function utcInstant(asOf) {
+  return asOf === undefined
+    ? undefined
+    : new Date(Date.parse(asOf)).toISOString().replace(".000Z", "Z");
+}
+
+/** A time of the app's clock as the person's own day, in the words `dayInWords` uses: `29 January 2024`. */
+function localDayInWords(text) {
+  const date = new Date(Date.parse(String(text)));
+  return Number.isNaN(date.getTime())
+    ? String(text)
+    : `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 /** The UTC day of an instant, in words: `1 February 2024`. */

@@ -131,7 +131,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
         n,
         name: `${idOf(row)}-${n}`,
         step: "signing in",
-        asOf: world,
+        asOf: row.vendor === "demo" ? world : undefined,
         requests: 0,
         pulled: undefined,
         imported: undefined,
@@ -172,7 +172,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
 
     /**
      * The pod's connection numbered `n`: its row, the name its pull is saved under, its step (`signing in`, `pulling`,
-     * `pulled` or `failed`), how many requests its hospital has answered, the pull, and its import; `asOf` is the world's date it was started under.
+     * `pulled` or `failed`), how many requests its hospital has answered, the pull, and its import; `asOf` is the world's date a demo hospital's pull was started under, and none for any other hospital, which answers with all it has.
      */
     connection(pod, n) {
       const found = connections.get(Number(n));

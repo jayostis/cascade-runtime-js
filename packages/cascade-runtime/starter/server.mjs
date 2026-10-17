@@ -86,6 +86,7 @@ import {
   savedLoginChanged,
   variantsSaid,
   worldDatePage,
+  utcInstant,
   worldInstant,
 } from "./summary.mjs";
 import {
@@ -877,7 +878,7 @@ async function filesOf(connection) {
   try {
     return {
       pulled,
-      files: pullFiles({ ...pulled, asOf: connection.asOf }, connection.name),
+      files: pullFiles({ ...pulled, asOf: utcInstant(connection.asOf) }, connection.name),
     };
   } catch (error) {
     return { failed: `Refused: ${error.message}` };

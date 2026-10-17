@@ -2967,7 +2967,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       arrival(1, record, "ni:first"),
       arrival(2, record, "ni:second", {
         previous: "ni:revision-1",
-        generated: "2025-02-01T23:59:59Z",
+        generated: "2025-02-01T00:00:00Z",
       }),
     ],
     [VERSIONS]: [
@@ -2989,7 +2989,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
   }
   assert.match(
     drawn,
-    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved Jan 29, 2024: 2 records\. From Cascade North, as of 1 February 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
+    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved 29 January 2024: 2 records\. From Cascade North, as of 1 February 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
   );
   assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
   assert.doesNotMatch(
@@ -3378,6 +3378,12 @@ test("the world's date: a calendar day is the end of that day in UTC, an instant
   ];
   for (const [text, instant] of instants)
     assert.equal(view.worldInstant(text), instant, JSON.stringify(text));
+  assert.equal(
+    view.utcInstant("2024-02-01T09:00:00+02:00"),
+    "2024-02-01T07:00:00Z",
+    "a world date with an offset is saved in UTC, which pull.json requires",
+  );
+  assert.equal(view.utcInstant(undefined), undefined);
 
   const text = (body: Parameters<typeof render>[0]) =>
     render(body).replace(/<[^>]*>/g, "");
