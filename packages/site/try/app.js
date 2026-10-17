@@ -72,6 +72,7 @@ import {
   panelPage,
   panelSaid,
   panelsOf,
+  patientFamily,
   patientName,
   personName,
   podPage,
@@ -934,6 +935,7 @@ async function signIn(fhirBase, popup) {
         sources: await pod.look(shown.files),
         pulled,
         about: patientName(pulled.bundle),
+        aboutFamily: patientFamily(pulled.bundle),
       },
       "ready",
     );

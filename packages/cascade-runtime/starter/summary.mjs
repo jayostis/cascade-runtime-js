@@ -2466,10 +2466,40 @@ function patientOf(bundle) {
 
 /** The person a FHIR Bundle is about, as the hospital names them: `Rowan Ellery Marsh`; undefined when it names none. */
 export function patientName(bundle) {
-  const name = patientOf(bundle)?.name?.[0];
+  const name = officialName(bundle);
   return name === undefined
     ? undefined
     : [...(name.given ?? []), name.family].filter(Boolean).join(" ");
+}
+
+/** The family name of the person a FHIR Bundle is about; undefined when it names none. */
+export function patientFamily(bundle) {
+  return officialName(bundle)?.family;
+}
+
+function officialName(bundle) {
+  const names = patientOf(bundle)?.name ?? [];
+  return names.find(({ use }) => use === "official") ?? names[0];
+}
+
+const nameWords = (name) =>
+  String(name).trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * How sure it is that a record naming `patient`, whose family name is `family`, is about the person `subject`:
+ * `certain` when the names are the same, `possible` when the family name is among the subject's words, else
+ * `certainly-not`; undefined when the subject or the patient is not named. Case and the spaces at either end do not
+ * count.
+ */
+export function gradePerson(subject, patient, family) {
+  const mine = nameWords(subject ?? "");
+  const theirs = nameWords(patient ?? "");
+  if (mine.length === 0 || theirs.length === 0) return undefined;
+  if (mine.join(" ") === theirs.join(" ")) return "certain";
+  const surname = nameWords(family ?? "");
+  return surname.length > 0 && surname.every((word) => mine.includes(word))
+    ? "possible"
+    : "certainly-not";
 }
 
 /**
@@ -3777,10 +3807,16 @@ export function connectionDialog({
   sources = [],
   pulled,
   about,
+  aboutFamily,
   bring,
   pulledAsOf,
 }) {
   const who = personName(pod, titles);
+  const typed = titles?.get(pod)?.trim().replace(/\s+/g, " ");
+  const grade =
+    typed !== undefined && typed !== pod && slug(typed) === pod
+      ? gradePerson(typed, about, aboutFamily)
+      : undefined;
   const name = hospitalName(hospital);
   const said = (body) => box(id, name, body, { back });
   if (connection.step === "bringing in")
@@ -3806,15 +3842,20 @@ export function connectionDialog({
   return said(html`<div class="card"><${Steps} connection=${connection} /></div>
 ${
   about !== undefined &&
-  slug(about) !== pod &&
-  html`<p class="note">This record is ${about}'s. Bringing it in makes this ${about}'s pod.</p>`
+  (grade === undefined
+    ? slug(about) !== pod &&
+      html`<p class="note">This record is ${about}'s. Bringing it in makes this ${about}'s pod.</p>`
+    : grade === "possible"
+      ? html`<p class="muted">This record is ${about}'s.</p>`
+      : grade === "certainly-not" &&
+        html`<p class="note" role="alert">This record is ${about}'s, not ${who}'s.</p>`)
 }
 <div class="card">
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
 ${pulledAsOfSaid(pulledAsOf) !== undefined && html`<p class="muted">${pulledAsOfSaid(pulledAsOf)}</p>`}
-${postButton(bring, {}, `Bring it into ${who}'s pod`, undefined, BRINGING)}
+${postButton(bring, {}, grade === "certainly-not" ? `Bring ${about}'s records into ${who}'s pod anyway` : `Bring it into ${who}'s pod`, undefined, BRINGING)}
 </div>`);
 }
 

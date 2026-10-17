@@ -456,6 +456,71 @@ test("a person's name is the one typed when the pod was made, else the pod's nam
   assert.equal(view.personName("tamsin-at-north"), "Tamsin At North");
 });
 
+test("a record's person against the pod's: the grade, and the box's words and button by grade", () => {
+  const subject = "Rowan Ellery Marsh";
+  for (const [patient, family, grade] of [
+    ["Rowan Ellery Marsh", "Marsh", "certain"],
+    ["  rowan  ellery MARSH ", "Marsh", "certain"],
+    ["Hedda Marsh", "Marsh", "possible"],
+    ["Odalys Brandt", "Brandt", "certainly-not"],
+    ["Rowan Ellery", undefined, "certainly-not"],
+  ])
+    assert.equal(view.gradePerson(subject, patient, family), grade, patient);
+  assert.equal(
+    view.gradePerson(undefined, "Odalys Brandt", "Brandt"),
+    undefined,
+  );
+  assert.equal(view.gradePerson(subject, undefined, undefined), undefined);
+
+  const titles = new Map([["rowan-ellery-marsh", subject]]);
+  const box = (about: string, family: string, withTitle = true) => {
+    const html = render(
+      view.connectionDialog({
+        id: "pulled",
+        pod: "rowan-ellery-marsh",
+        titles: withTitle ? titles : undefined,
+        hospital: "Cascade North Demo Hospital",
+        back: "#",
+        connection: { step: "pulled", requests: 3 },
+        sources: [],
+        pulled: { missing: [], denied: [] },
+        about,
+        aboutFamily: family,
+        bring: "bring",
+      }),
+    );
+    return {
+      said: html.replace(/<[^>]*>/g, ""),
+      button: /<button[^>]*>([^<]*)<\/button>/.exec(html)?.[1],
+      warns: html.includes('class="note"'),
+    };
+  };
+  const same = box(subject, "Marsh");
+  assert.ok(!same.said.includes("This record is"));
+  assert.equal(same.button, "Bring it into Rowan Ellery Marsh's pod");
+  const maybe = box("Hedda Marsh", "Marsh");
+  assert.ok(maybe.said.includes("This record is Hedda Marsh's."));
+  assert.ok(!maybe.warns && !maybe.said.includes("not Rowan"));
+  const other = box("Odalys Brandt", "Brandt");
+  assert.ok(
+    other.said.includes(
+      "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
+    ),
+  );
+  assert.ok(other.warns);
+  assert.equal(
+    other.button,
+    "Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway",
+  );
+  const untitled = box("Odalys Brandt", "Brandt", false);
+  assert.ok(
+    untitled.said.includes(
+      "This record is Odalys Brandt's. Bringing it in makes this Odalys Brandt's pod.",
+    ),
+  );
+  assert.equal(untitled.button, "Bring it into Rowan Ellery Marsh's pod");
+});
+
 test("a measurement, to three significant figures", () => {
   for (const [value, shown] of [
     ["60.967166143994106", "61"],
