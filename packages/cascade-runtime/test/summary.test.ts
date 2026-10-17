@@ -5,6 +5,7 @@ import { render } from "preact-render-to-string";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
   changesIn,
+  type FailureKind,
   type Finding,
   labSeriesIn,
   openPod,
@@ -544,7 +545,8 @@ test("a record's person against the pod's: the grade, and the box's words and bu
     return {
       said: html.replace(/<[^>]*>/g, ""),
       button: /<button[^>]*>([^<]*)<\/button>/.exec(html)?.[1],
-      warns: html.includes('class="note"'),
+      buttonClass: /<button class="([^"]*)"/.exec(html)?.[1],
+      note: /<p class="(note[^"]*)"/.exec(html)?.[1],
     };
   };
   const same = box("Rowan Ellery", "Marsh");
@@ -552,7 +554,8 @@ test("a record's person against the pod's: the grade, and the box's words and bu
   assert.equal(same.button, "Bring it into Rowan Ellery Marsh's pod");
   const maybe = box("Moss Avery", "Marsh");
   assert.ok(maybe.said.includes("This record is Moss Avery Marsh's."));
-  assert.ok(!maybe.warns && !maybe.said.includes("not Rowan"));
+  assert.ok(maybe.note === undefined && !maybe.said.includes("not Rowan"));
+  assert.equal(maybe.buttonClass, undefined);
   assert.equal(
     maybe.button,
     "Bring Moss Avery Marsh's records into Rowan Ellery Marsh's pod",
@@ -563,7 +566,12 @@ test("a record's person against the pod's: the grade, and the box's words and bu
       "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
     ),
   );
-  assert.ok(other.warns);
+  assert.equal(other.note, "note warm", "the warning is the warm kind");
+  assert.equal(
+    other.buttonClass,
+    "quiet",
+    "the anyway button is the quiet kind",
+  );
   assert.equal(
     other.button,
     "Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway",
@@ -575,6 +583,70 @@ test("a record's person against the pod's: the grade, and the box's words and bu
     ),
   );
   assert.equal(untitled.button, "Bring it into Rowan Ellery Marsh's pod");
+  assert.equal(untitled.note, "note", "an unknown pod's note stays plain");
+});
+
+test("a failed connection's box speaks to a person by the failure's kind, naming the hospital, and offers to sign in again, with the developer's detail in a smaller line", () => {
+  const north = "Cascade North Demo Hospital";
+  const detail =
+    "https://cascade-north.demo.invalid refused Patient with 401: invalid_client.";
+  const kinds: Record<FailureKind, RegExp> = {
+    cancelled: /cancelled.*Sign in again/,
+    "state-mismatch": /did not come back.*Sign in again/,
+    "host-not-allowed": /address it does not trust/,
+    "cap-exceeded": /more than the app takes in/,
+    unauthorized: /stopped accepting the sign-in.*Sign in again/,
+    "retries-exhausted": /did not answer after several tries.*sign in again/,
+    "sign-in-unavailable": /could not be opened.*sign in again/,
+    "hospital-error": /refused the sign-in.*Sign in again/,
+  };
+  for (const [kind, action] of Object.entries(kinds) as [
+    FailureKind,
+    RegExp,
+  ][]) {
+    const html = render(
+      view.connectionDialog({
+        id: "pulled",
+        pod: "rowan-ellery-marsh",
+        hospital: north,
+        back: "#",
+        connection: { step: "failed", requests: 3 },
+        failed: detail,
+        failure: kind,
+        signInAgain: (label: string) =>
+          view.postButton("sign-in", { fhirBase: "x" }, label),
+        bring: "bring",
+      }),
+    );
+    const first = /<p role="alert">(.*?)<\/p>/.exec(html)?.[1] ?? "";
+    assert.match(first, new RegExp(`Cascade North`), kind);
+    assert.match(first, action, kind);
+    assert.doesNotMatch(first, /401|invalid_client|https?:|\.invalid/, kind);
+    assert.equal(
+      /<button[^>]*>([^<]*)<\/button>/.exec(html)?.[1],
+      "Sign in again at Cascade North",
+      kind,
+    );
+    assert.match(
+      html,
+      /<p class="muted detail">https:\/\/cascade-north\.demo\.invalid refused Patient with 401/,
+      kind,
+    );
+  }
+  const plain = render(
+    view.connectionDialog({
+      id: "pulled",
+      pod: "rowan-ellery-marsh",
+      hospital: north,
+      back: "#",
+      connection: { step: "failed", requests: 3 },
+      failed: "Refused: nothing to bring in",
+      signInAgain: () => "no",
+      bring: "bring",
+    }),
+  );
+  assert.ok(plain.includes("Refused: nothing to bring in"));
+  assert.ok(!plain.includes("Sign in again"));
 });
 
 test("a measurement, to three significant figures", () => {
@@ -3191,6 +3263,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       arrival(1, record, "ni:first"),
       arrival(2, record, "ni:second", {
         previous: "ni:revision-1",
+        arrived: "2026-10-17T09:05:00Z",
         answeredAsOf: "2025-02-01T00:00:00Z",
       }),
     ],
@@ -3213,8 +3286,20 @@ test("a pod brought in twice says where What changed comes from: the imports in 
   }
   assert.match(
     drawn,
-    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved 29 January 2024: 2 records\. From Cascade North, as of 1 February 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
+    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved 29 January 2024: 2 records\. From Cascade North, as of 1 February 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, as of 1 February 2025\. Status active → completed; end date none → Apr 15, 2024\./,
   );
+  assert.doesNotMatch(drawn, /Oct 17, 2026/);
+  const undated = text(
+    podOf("pell-hargrove", story, {
+      ...twice,
+      [REVISIONS]: twice[REVISIONS]!.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).filter(([key]) => key !== "answeredAsOf"),
+        ),
+      ),
+    }),
+  );
+  assert.match(undated, /in import 2, on Oct 1[67], 2026\./);
   assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
   assert.doesNotMatch(
     drawn.slice(drawn.indexOf("Where this comes from")),

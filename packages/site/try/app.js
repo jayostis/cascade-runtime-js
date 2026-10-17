@@ -346,6 +346,7 @@ function pageShown() {
           connection,
           bring: "bring",
           pulledAsOf: connection.asOf,
+          signInAgain: (label) => signInButton(connection.row.fhirBase, label),
           ...connection.said,
         }),
       signIn: (hospital) =>
@@ -902,9 +903,9 @@ async function signIn(fhirBase, popup) {
     if (state.connection === shown) showConnection(said, doing);
   };
   now();
-  const failed = (said) => {
+  const failed = (said, failure) => {
     shown.step = "failed";
-    return now({ failed: said }, "ready");
+    return now({ failed: said, failure }, "ready");
   };
   const demo = row.vendor === "demo";
   try {
@@ -945,7 +946,7 @@ async function signIn(fhirBase, popup) {
     );
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    failed(`Not connected: ${error.message}.`);
+    failed(`${error.message}.`, error.kind);
   } finally {
     popup?.close();
   }

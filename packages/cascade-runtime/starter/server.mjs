@@ -934,7 +934,7 @@ async function filesOf(connection) {
     pulled = await connection.pulled;
   } catch (error) {
     if (!(error instanceof ConnectionFailure)) throw error;
-    return { failed: `Not connected: ${error.message}.` };
+    return { failed: `${error.message}.`, failure: error.kind };
   }
   try {
     return {
@@ -956,8 +956,13 @@ async function filesOf(connection) {
 async function connectionView(name, connection) {
   if (["signing in", "pulling", "bringing in"].includes(connection.step))
     return {};
-  const { failed, pulled, files } = await filesOf(connection);
-  if (failed !== undefined) return { failed };
+  const { failed, failure, pulled, files } = await filesOf(connection);
+  if (failed !== undefined)
+    return {
+      failed,
+      failure,
+      signInAgain: (label) => signIn(name, connection.row.fhirBase, label),
+    };
   let done;
   try {
     done = await connection.imported;
