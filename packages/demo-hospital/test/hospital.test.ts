@@ -333,6 +333,31 @@ test("a patient signs in through the page, which says what the app asks in words
   assert.equal(cancelled.get("code"), null);
 });
 
+test("the sign-in page preselects the patient its login_hint names, in either order of words, and no one otherwise", async () => {
+  const hospital = demoHospital(north);
+  const preselected = async (hint?: string) => {
+    const page = await (
+      await authorize(hospital, NORTH, { login_hint: hint })
+    ).text();
+    return [...page.matchAll(/<input [^>]*checked[^>]*> ([^<]*)</g)].map(
+      ([, name]) => name,
+    );
+  };
+  const page = await (await authorize(hospital, NORTH, {})).text();
+  const radios = page.match(/<input [^>]*name="patient"[^>]*>/g) ?? [];
+  assert.ok(
+    radios.length > 0 && radios.every((radio) => radio.includes(" required")),
+    radios.join(),
+  );
+  assert.match(page, /<button [^>]*value="cancel" formnovalidate>/);
+  assert.deepEqual(await preselected("rowan-ellery-marsh"), [
+    "Marsh, Rowan Ellery",
+  ]);
+  assert.deepEqual(await preselected("Fenn Tobias"), ["Fenn, Tobias"]);
+  for (const hint of [undefined, "", "tamsin-at-north", "rowan-marsh"])
+    assert.deepEqual(await preselected(hint), [], String(hint));
+});
+
 test("each bad request is refused as the protocol says", async () => {
   const { hospital, code, token } = await signIn(north, A_NORTH);
   const later = (seconds: number) =>

@@ -19,6 +19,7 @@ import {
   DEMO_PLAN,
   labSeriesIn,
   openPod,
+  podTitle,
   popupSignIn,
   pull,
   pullFiles,
@@ -135,6 +136,7 @@ const WORLD_DATE = "world-date";
  */
 const state = {
   pods: [],
+  titles: new Map(),
   people: [],
   world: undefined,
   tables: [],
@@ -170,6 +172,16 @@ async function databases(prefix) {
 }
 
 const podsHere = () => databases(DATABASE);
+
+/** Reads the pods there are into `state.pods`, and into `state.titles` the name each was made under; its own name where none can be read. */
+async function refreshPods() {
+  state.pods = await podsHere();
+  state.titles = new Map(
+    await Promise.all(
+      state.pods.map(async (pod) => [pod, await podTitle(pod)]),
+    ),
+  );
+}
 
 /** The pod named `name`, opened with `options` the first time it is asked for, and kept open. */
 function podNamed(name, options) {
@@ -281,6 +293,7 @@ function entryShown() {
   return {
     title: found?.name ?? "Not found",
     body: entryPage({
+      titles: state.titles,
       entry: found,
       pod: current,
       back: podHref(current),
@@ -300,14 +313,16 @@ function pageShown() {
   if (entry !== undefined) return entryShown();
   const { current, connection } = state;
   return {
-    title: personName(current),
+    title: personName(current, state.titles),
     body: podPage(answers, {
+      titles: state.titles,
       pod: current,
       person: personOf(current),
       from,
       connection:
         connection &&
         connectionDialog({
+          titles: state.titles,
           id: BOX,
           pod: current,
           hospital: connection.row.name,
@@ -350,6 +365,7 @@ function redraw() {
   if (!root.isConnected) document.body.replaceChildren(root, line);
   renderInto(
     layout({
+      titles: state.titles,
       body,
       pods,
       current,
@@ -532,6 +548,7 @@ async function showPanel(panel) {
   render(
     `Your results in ${about?.get(panel)?.name?.label ?? "a panel"}`,
     panelPage({
+      titles: state.titles,
       pod: current,
       back: podHref(current),
       panel,
@@ -573,6 +590,7 @@ async function showTrend(query) {
   render(
     series === undefined ? "Not found" : trendTitle(series, about),
     trendPage({
+      titles: state.titles,
       pod: current,
       back: podHref(current),
       labs,
@@ -607,6 +625,7 @@ async function showClasses(picked) {
   render(
     "Medicines by class",
     classesPage({
+      titles: state.titles,
       pod: current,
       back: podHref(current),
       rows,
@@ -629,6 +648,7 @@ function showHospitals(text) {
   render(
     "Find a hospital",
     hospitalsPage({
+      titles: state.titles,
       pod: current,
       rows: searchDirectory(TEST_DIRECTORY, text),
       text,
@@ -697,6 +717,7 @@ async function showTable(id, text, shown, code) {
     return render(
       series.label,
       tablePage({
+        titles: state.titles,
         ...searchedHere,
         series,
         codeHref,
@@ -849,6 +870,7 @@ async function signIn(fhirBase, popup) {
     throw new Error("That hospital is not in the directory.");
   }
   const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
+  const forPod = state.current;
   state.connection = shown;
   const answers = await answered();
   state.page = {
@@ -873,7 +895,11 @@ async function signIn(fhirBase, popup) {
   }
   try {
     const signedIn = await connect(row, REGISTRATION, {
-      signIn: popupSignIn({ popup }),
+      signIn: (authorize, signal) => {
+        if (forPod !== undefined && row.vendor === "demo")
+          authorize.searchParams.set("login_hint", forPod);
+        return popupSignIn({ popup })(authorize, signal);
+      },
       fetch: async (url, init) => {
         const answer = await globalThis.fetch(url, init);
         shown.requests += 1;
@@ -987,6 +1013,7 @@ function showWords(problem) {
     "Your six words",
     sixWordsPage({
       pod: making.name,
+      titles: new Map([[making.name, making.person]]),
       words: making.words,
       action: "confirm-words",
       problem,
@@ -999,6 +1026,7 @@ function showLocked(outcome) {
   return render(
     "Open this pod",
     openPodPage({
+      titles: state.titles,
       pod: state.current,
       outcome,
       action: "unlock",
@@ -1052,7 +1080,7 @@ async function confirmWords(fields) {
     throw new Error(`The pod ${name} was made without its words.`);
   making = undefined;
   offerToSave(name, words);
-  state.pods = await podsHere();
+  await refreshPods();
   return go(podHref(name));
 }
 
@@ -1086,9 +1114,10 @@ async function make(person, encrypt = false) {
 <p>Give a name with at least one letter from a to z, or a digit.</p>`,
     );
   }
-  if (!state.pods.includes(name))
+  if (!state.pods.includes(name)) {
     await podNamed(name, { title: person.trim() });
-  state.pods = await podsHere();
+  }
+  await refreshPods();
   return go(podHref(name));
 }
 
@@ -1102,7 +1131,7 @@ async function load(name) {
   if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
   markDeletedAll(false);
   if (!state.pods.includes(name)) await copy(name);
-  state.pods = await podsHere();
+  await refreshPods();
   return go(podHref(name));
 }
 
@@ -1124,7 +1153,7 @@ async function deleteAll() {
   }, 2000);
   const deleted = await Promise.allSettled([...all].map(deletePod));
   window.clearTimeout(waiting);
-  state.pods = await podsHere();
+  await refreshPods();
   const failed = deleted.find(({ status }) => status === "rejected");
   if (failed !== undefined) throw failed.reason;
   return names;
@@ -1142,7 +1171,7 @@ async function resetEverything() {
   markDeletedAll(false);
   await deleteAll();
   await Promise.all(SAMPLES.map(copy));
-  state.pods = await podsHere();
+  await refreshPods();
   return go(SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`);
 }
 
@@ -1152,7 +1181,7 @@ async function resetEverything() {
  */
 async function firstVisit() {
   const copies = await Promise.allSettled(SAMPLES.map(copy));
-  state.pods = await podsHere();
+  await refreshPods();
   const left = SAMPLES.findIndex(
     (name, at) => copies[at].status === "rejected" && state.pods.includes(name),
   );
@@ -1191,7 +1220,9 @@ async function busy(step, saying = "Working…") {
 /** What the page says while it goes to the address in `query`. */
 function opening(query) {
   const name = new URLSearchParams(query).get("pod");
-  return name === null ? "Opening…" : `Opening ${personName(name)}'s pod…`;
+  return name === null
+    ? "Opening…"
+    : `Opening ${personName(name, state.titles)}'s pod…`;
 }
 
 closing(document);
@@ -1250,11 +1281,11 @@ window.addEventListener("popstate", () => {
 });
 
 busy(async () => {
-  [state.pods, state.people, state.world] = await Promise.all([
-    podsHere(),
+  [state.people, state.world] = await Promise.all([
     demoPeople(),
     worldDate(WORKER).catch(() => undefined),
   ]);
+  await refreshPods();
   await route();
 }, "Opening…").then(() =>
   warm().then(

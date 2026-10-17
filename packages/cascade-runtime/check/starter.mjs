@@ -1688,13 +1688,12 @@ if (release === undefined) {
             date: "2024-02-01",
           });
           assert.equal(set.status, 303);
-          assert.equal(
-            set.headers.get("location"),
-            `/world-date?set&back=${FROM}`,
+          assert.equal(set.headers.get("location"), "/pods/hospital/");
+          assert.ok(
+            readable(
+              await served(server, set.headers.get("location")),
+            ).includes(AS_OF_SAID),
           );
-          const confirmed = await served(server, set.headers.get("location"));
-          assert.ok(readable(confirmed).includes(AS_OF_SAID));
-          assert.ok(confirmed.includes('<a href="/pods/hospital/">Back</a>'));
           assert.ok(
             (
               await served(server, "/world-date?back=%2F%2Fevil.test%2F")
@@ -1767,6 +1766,16 @@ if (release === undefined) {
         const page = await served(server, "/pods/ada-lovelace/");
         assert.equal(heading(page), "Ada Lovelace");
         assert.ok(page.includes("Nothing here yet"), "Ada's pod is not empty");
+        for (const [typed, folder] of [
+          ["Tamsin at North", "tamsin-at-north"],
+          ["O'Brien McDonald", "o-brien-mcdonald"],
+        ]) {
+          await send("/pods", { person: typed });
+          assert.equal(
+            heading(await served(server, `/pods/${folder}/`)),
+            typed,
+          );
+        }
       });
 
       await behaviour(
