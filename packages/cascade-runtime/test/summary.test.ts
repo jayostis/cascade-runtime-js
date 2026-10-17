@@ -25,7 +25,7 @@ const { trendPath } = (await import(
 const ALLERGIES = "pod/My active allergies";
 const CONDITIONS = "pod/My active conditions";
 const LABS = "pod/My lab results";
-const MEDICATIONS = "pod/My active medications";
+const MEDICATIONS = "pod/My medication history";
 const SEEN = "pod/What was seen more than once";
 const REVIEW = "entry/What needs review";
 
@@ -176,7 +176,7 @@ test("worth a look: each thing that needs review, with its entry and the Needs r
   assert.equal(view.worthPart([]), undefined);
 });
 
-test("worth a look: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows, a medication with no code or two entries that share a code give nothing, since What needs review lists those", () => {
+test("worth a look: two medications in two entries whose codes share an ingredient are shown apart, once for each pair in the order of the section even when an entry's rows are not adjacent, a combination of one MIN said as a combination, and one entry's own rows, a medication with no code or two entries that share a code give nothing, since What needs review lists those, and a medication stopped or paused shares with none", () => {
   const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
   const ingredients = (...codes: string[]) => ({
     ingredients: { codes: codes.map((code) => RXNORM + code), origin: "urn:v" },
@@ -190,14 +190,21 @@ test("worth a look: two medications in two entries whose codes share an ingredie
     [RXNORM + "10", ingredients("777")],
     [RXNORM + "20", ingredients("888")],
     [RXNORM + "21", ingredients("888")],
+    [RXNORM + "30", ingredients("17767")],
+    [RXNORM + "31", ingredients("17767")],
     [
       RXNORM + "777",
       { name: { label: "hydrochlorothiazide / lisinopril", altLabels: [] } },
     ],
     [RXNORM + "17767", { name: { label: "amlodipine", altLabels: [] } }],
   ]);
+  const LIFECYCLE =
+    "https://ns.cascadeprotocol.org/records/v1-draft#Medication";
   const answers = (...rows: Record<string, string>[]) => ({
-    [MEDICATIONS]: rows,
+    [MEDICATIONS]: rows.map((row): Record<string, string> => ({
+      ...row,
+      lifecycle: LIFECYCLE + (row.lifecycle ?? "Active"),
+    })),
   });
   const lines = (rows: object) =>
     view
@@ -226,6 +233,18 @@ test("worth a look: two medications in two entries whose codes share an ingredie
     { entry: "e8", medication: "Metformin", code: RXNORM + "20" },
     { entry: "e9", medication: "Glucophage XR", code: RXNORM + "21" },
     { entry: "e9", medication: "Glucophage", code: RXNORM + "20" },
+    {
+      entry: "e10",
+      medication: "Stopped amlodipine",
+      code: RXNORM + "30",
+      lifecycle: "Stopped",
+    },
+    {
+      entry: "e11",
+      medication: "Paused amlodipine",
+      code: RXNORM + "31",
+      lifecycle: "Paused",
+    },
   );
   assert.deepEqual(lines(all), [
     [
@@ -2395,6 +2414,65 @@ test("the Medications tile holds a By class link to the class view, and no other
   assert.ok(!noMedicines.includes("By class"));
 });
 
+test("the Medications tile says each medication's L1 lifecycle, current ones first and counted, then how many stopped, and leaves out one entered in error", () => {
+  const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+  const table: [string, Record<string, string>, string | undefined][] = [
+    ["MedicationStopped", { medication: "Warfarin" }, "Stopped"],
+    [
+      "MedicationStopped",
+      { medication: "Metformin", ended: "2024-04-15" },
+      "Stopped Apr 15, 2024",
+    ],
+    ["MedicationEnteredInError", { medication: "Mistaken" }, undefined],
+    ["MedicationUnknown", { medication: "Aspirin" }, "Unknown"],
+    ["MedicationPaused", { medication: "Atorvastatin" }, "Paused"],
+    ["MedicationActive", { medication: "Lisinopril" }, "Active"],
+    [
+      "MedicationActive",
+      { medication: "Amlodipine", ended: "2027-01-31" },
+      "Active, until Jan 31, 2027",
+    ],
+  ];
+  const section = view.SECTIONS.find(
+    ({ title }: { title: string }) => title === "Medications",
+  );
+  const rows = view.sectionRows(section, {
+    [MEDICATIONS]: table.map(([lifecycle, row], at) => ({
+      entry: `e${at}`,
+      lifecycle: REC + lifecycle,
+      ...row,
+    })),
+  });
+  const { tile, dialog } = view.tile(section, rows);
+  const cells = [...render(dialog).matchAll(/<tr[^>]*>(.*?)<\/tr>/g)]
+    .map(([, row = ""]) =>
+      [...row.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(([, cell = ""]) =>
+        cell.replace(/<[^>]+>/g, ""),
+      ),
+    )
+    .filter((row) => row.length > 0)
+    .map(([name, said]) => [name, said]);
+  assert.deepEqual(
+    cells,
+    [
+      "Amlodipine",
+      "Lisinopril",
+      "Atorvastatin",
+      "Aspirin",
+      "Warfarin",
+      "Metformin",
+    ].map((name) => [
+      name,
+      table.find(([, { medication }]) => medication === name)?.[2],
+    ]),
+  );
+  assert.match(render(tile), /<span class="count">4<\/span>/);
+  assert.match(
+    textOf(render(tile)),
+    /Amlodipine, Lisinopril, Atorvastatin, Aspirin, and 2 stopped/,
+  );
+});
+
 test("the sidebar says the reference tables are loading until the app has read what it holds, says None yet only after a read that found none, and says they could not be read after one that failed", () => {
   const nav = (state: "loading" | "none" | "failed", series: object[] = []) =>
     textOf(
@@ -2463,10 +2541,8 @@ test("an entry no section shows is named and kinded from its label and says what
 test("what the tables say of the codes a pod holds includes the ingredients those codes map to", async () => {
   const RX = "urn:test:rxnorm/";
   const answers = {
-    "pod/My active medications": [
-      { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
-    ],
     "pod/My medication history": [
+      { entry: "m1", medication: "Lisinopril", code: `${RX}314076` },
       { entry: "m2", medication: "Old", code: `${RX}1`, ended: "2024-01-01" },
     ],
   };
@@ -2920,6 +2996,7 @@ function podOf(name: string, story: Story, answers = story.answers) {
       pod: name,
       signIn: () => null,
       entryHref: entryLink,
+      about: new Map(),
       changes: story.changes,
       trendHref: (trend: object) => trendPath(name, trend),
     }),
@@ -2988,6 +3065,30 @@ test("What changed on the statin story patient's page: one card in CHANGED's wor
   assert.deepEqual(hrefsOf(page, "Show the 6 results"), [
     "#change-start-617310-18262-6",
   ]);
+});
+
+test("a card is drawn once, by the tables' names: with the tables not yet asked What changed has no card and says it is naming what changed, and with their answer the card says the same as changeSaid does", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const props = {
+    pod: "ines-calloway",
+    signIn: () => null,
+    changes: story.changes,
+  };
+  const before = render(view.podPage(story.answers, props));
+  assert.equal(count(before, 'class="change"'), 0);
+  assert.match(text(before), /What changed\s*Naming what changed…/);
+
+  const about = new Map([
+    [
+      finding!.medication.code,
+      { name: { label: "Atorvastatin, per the tables", altLabels: [] } },
+    ],
+  ]);
+  const after = text(render(view.podPage(story.answers, { ...props, about })));
+  const said = view.changeSaid(finding, about);
+  assert.ok(said.includes("Atorvastatin, per the tables"), said);
+  assert.ok(after.includes(said), said);
 });
 
 test("What changed says nothing stands out when no pair does, counts a pair with too few results without a card, and is absent when the pod holds no lab row or no medication-history row", async () => {
@@ -3360,6 +3461,7 @@ test("Ask about this: with a model set, each What changed card and each Worth a 
         pod: "ines-calloway",
         signIn: () => null,
         entryHref: entryLink,
+        about: new Map(),
         changes: story.changes,
         trendHref: (trend: object) => trendPath("ines-calloway", trend),
         ...(ask ? { ask } : {}),
