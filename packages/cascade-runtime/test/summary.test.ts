@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import process from "node:process";
 import { after, test } from "node:test";
 import { render } from "preact-render-to-string";
 import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
@@ -2923,7 +2924,7 @@ test("nothing What changed or the trend draws, for any of the five stories, nor 
   }
 });
 
-test("a pod brought in twice says where What changed comes from: the imports in order, each with its source, retrieved date and what it brought in, and the medication's new version with what differs; one import, or a medication of one version, says less", async () => {
+test("a pod brought in twice says where What changed comes from: the imports in order, each with its source, the world's date it answered as of (else the person's day it was retrieved) and what it brought in, and the medication's new version with what differs; one import, or a medication of one version, says less", async () => {
   const story = (await storyPods()).get("story-statin")!;
   const [finding] = story.changes;
   const entry = finding!.medication.entry;
@@ -2964,7 +2965,10 @@ test("a pod brought in twice says where What changed comes from: the imports in 
     [REVISIONS]: [
       arrival(1, "r-other", "ni:other"),
       arrival(1, record, "ni:first"),
-      arrival(2, record, "ni:second", { previous: "ni:revision-1" }),
+      arrival(2, record, "ni:second", {
+        previous: "ni:revision-1",
+        generated: "2025-02-01T23:59:59Z",
+      }),
     ],
     [VERSIONS]: [
       said("ni:first", "drugName", "Atorvastatin"),
@@ -2974,10 +2978,18 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       said("ni:second", "status", "completed"),
     ],
   };
-  const drawn = text(podOf("pell-hargrove", story, twice));
+  const zone = process.env.TZ;
+  process.env.TZ = "America/Los_Angeles";
+  let drawn: string;
+  try {
+    drawn = text(podOf("pell-hargrove", story, twice));
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
   assert.match(
     drawn,
-    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved Jan 30, 2024: 2 records\. From Cascade North, retrieved Jan 30, 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
+    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved Jan 29, 2024: 2 records\. From Cascade North, as of 1 February 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
   );
   assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
   assert.doesNotMatch(

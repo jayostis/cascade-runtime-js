@@ -90,6 +90,7 @@ interface View {
   counted(records: Readonly<Record<string, number>>): string;
   hospitalName(name: string): string;
   day(text: string): string;
+  dayInWords(asOf: string): string;
   demoPeople(demo: unknown): Person[];
   familyFirst(person: Person): string;
   patientName(bundle: unknown): string | undefined;
@@ -2204,7 +2205,7 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
   }
 });
 
-test("in try/, the sample pod tamsin-vale draws What changed and, in its card, where it comes from: the story's pulls in order, each with its source and retrieved date, and the metformin's two versions", async () => {
+test("in try/, the sample pod tamsin-vale draws What changed and, in its card, where it comes from: the story's pulls in order, each with its source and the date it answered as of, and the metformin's two versions", async () => {
   const story = (await loadStories()).find(({ pulls }) => pulls?.length);
   assert.ok(story?.pulls, "no story names its pulls");
   const [finding] = story.findings;
@@ -2234,7 +2235,7 @@ test("in try/, the sample pod tamsin-vale draws What changed and, in its card, w
         said.includes(`From ${view.hospitalName(north.hospital.name)}`),
         said,
       );
-      assert.ok(said.includes(`retrieved ${view.day(asOf)}`), said);
+      assert.ok(said.includes(`as of ${view.dayInWords(asOf)}`), said);
     });
     const how = (await page.locator(".how").innerText()).replace(/\s+/g, " ");
     assert.match(how, /version 1 to version 2, in import 2/);
