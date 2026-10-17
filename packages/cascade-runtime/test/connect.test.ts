@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
 import { type Bundle, recordsAt } from "@the-cascade-protocol/sandbox";
 import { loadHospital } from "@the-cascade-protocol/sandbox/node";
+import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   ConnectionFailure,
   type DirectoryRow,
@@ -237,10 +238,52 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
     back.searchParams.set("state", "another");
     return back;
   };
+  const switched = (simulateError: string): Setup => ({
+    autoApprove: undefined,
+    signIn: (fetch) => (authorize) => {
+      authorize.searchParams.set("simulate_error", simulateError);
+      return answerSignIn(fetch, authorize, A_NORTH);
+    },
+  });
   const occupied = await freePort();
   const spare = await freePort();
   await new Promise((resolve) => spare.server.close(resolve));
   const rows: [string, () => Setup, FailureKind, RegExp?][] = [
+    [
+      "the switch token_invalid_token",
+      () => switched("token_invalid_token"),
+      "hospital-error",
+      /refused the token exchange with 401: invalid_client/,
+    ],
+    [
+      "the switch token_invalid_scope",
+      () => switched("token_invalid_scope"),
+      "hospital-error",
+      /refused the token exchange with 401: invalid_scope/,
+    ],
+    [
+      "the switch request_invalid_token",
+      () => switched("request_invalid_token"),
+      "unauthorized",
+      /refused Patient with 401: the hospital did not accept the access token \(it may have expired or been revoked\), so connect again/,
+    ],
+    [
+      "the switch request_expired_token",
+      () => switched("request_expired_token"),
+      "unauthorized",
+      /refused Patient with 401: the access token expired, so connect again/,
+    ],
+    [
+      "a switch the sandbox does not know, which it answers with invalid_request",
+      () => ({
+        signIn: (fetch) => async (authorize) => {
+          authorize.searchParams.set("simulate_error", "no_such_switch");
+          return direct(fetch)(authorize);
+        },
+      }),
+      "hospital-error",
+      /the hospital refused the sign-in: invalid_request/,
+    ],
     [
       "the sign-in page's Cancel",
       () => ({
@@ -322,7 +365,12 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       () => ({ limits: { requests: 3 } }),
       "cap-exceeded",
     ],
-    ["the token's hour past before the pull", () => later, "unauthorized"],
+    [
+      "the token's hour past before the pull",
+      () => later,
+      "unauthorized",
+      /the access token expired, so connect again/,
+    ],
     [
       "a search always answered 503",
       () => ({
