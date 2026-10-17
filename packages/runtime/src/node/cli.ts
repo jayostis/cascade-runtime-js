@@ -26,6 +26,12 @@ import {
 } from "./runtime.js";
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
+import { featureStory } from "../conformance.js";
+import { kitImports } from "../kit-bridge.js";
+import { ofMediaType } from "../load-adapter.js";
+import { WasmBridge } from "../wasm-bridge.js";
+import { checkouts } from "./components.js";
+import { compiledBridge, inWorker, loadConfiguredAdapters } from "./wasm.js";
 
 const RUNTIME = "cascade-runtime-js";
 const KIT = "conformance/";
@@ -148,9 +154,81 @@ async function buildExamplePod(args: string[]): Promise<number> {
   return 0;
 }
 
+/**
+ * Saves the Bridge output of the kit `conformance/<name>/` into a folder, as `<converted folder>/<stem>/graph.ttl` and
+ * `findings.ttl` for each document an import step of its story hands on, and says the commits it converted with.
+ */
+async function saveKitBridge(args: string[]): Promise<number> {
+  const [kit, out] = args;
+  const named = /^conformance\/([^/]+)\/?$/.exec(kit ?? "");
+  if (named === null || out === undefined)
+    throw new Error("usage: kit-bridge conformance/<kit> <folder to write>");
+  const name = named[1] as string;
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const components = await checkouts(root, log);
+  const vocabulary = await components.resolve(components.config.vocabulary);
+  const files = new FolderFiles(vocabulary.folder, vocabulary.iri);
+  const story = `conformance/${name}/${name}.feature`;
+  if ((await files.read(story)) === undefined)
+    throw new Error(`the vocabulary has no ${story}`);
+  const found = await components.bridge();
+  console.error(
+    `cascade-bridge-rs ${found.release ?? found.source} commit ${found.commit}`,
+  );
+  console.error(`cascade-vocabulary ${vocabulary.version}`);
+  const bridge = new WasmBridge(inWorker(await compiledBridge(found.folder)));
+  const configured = await loadConfiguredAdapters(
+    bridge,
+    components.config.adapters,
+    components,
+  );
+  try {
+    for (const { resolved } of configured)
+      console.error(`adapter ${resolved.iri} ${resolved.version}`);
+    const { person, steps } = await featureStory(
+      files,
+      story,
+      () => new OxigraphStore(),
+    );
+    let written = 0;
+    for (const { step, converted, failure, documents } of await kitImports({
+      vocabulary: files,
+      folder: person.folder,
+      steps,
+      importers: importersNamed(components.config.importers),
+      adaptersOf: ofMediaType(configured),
+    })) {
+      const saved = converted.slice(person.folder.length + 1);
+      if (failure !== undefined)
+        console.error(
+          `${step.name}: its importer refuses it: ${String(failure)}`,
+        );
+      for (const { stem, offered, accepting, repeated } of documents) {
+        if (repeated) console.error(`${step.name} ${stem}: converted before`);
+        else if (accepting === undefined)
+          console.error(`${step.name} ${stem}: no adapter accepts it`);
+        else {
+          const made = await accepting.convert(offered);
+          const folder = join(out, saved, stem);
+          await mkdir(folder, { recursive: true });
+          await writeFile(join(folder, "graph.ttl"), made.graph);
+          await writeFile(join(folder, "findings.ttl"), made.findings);
+          written++;
+        }
+      }
+    }
+    console.error(`${written} documents written to ${out}`);
+  } finally {
+    for (const { adapter } of configured) await adapter.free();
+    bridge.close();
+  }
+  return 0;
+}
+
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   conformance,
   "build-example-pod": buildExamplePod,
+  "kit-bridge": saveKitBridge,
 };
 
 async function main(argv: string[]): Promise<number> {
