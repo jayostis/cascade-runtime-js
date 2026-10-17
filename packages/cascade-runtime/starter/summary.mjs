@@ -1736,7 +1736,7 @@ export async function withMechanism(answers, changes, ask) {
  *
  * - `pulls`: the imports, in the order they began, each `{ label, started, hospital, retrieved, asOf, brought, revised }`;
  *   `hospital`, `retrieved` and `asOf` (the world's date the hospital answered as of, its document's
- *   `prov:generatedAtTime`) only when a document says them, `brought` is how many records it brought in and `revised`
+ *   `rec:answeredAsOf`) only when a document says them, `brought` is how many records it brought in and `revised`
  *   how many of those were a new version of a record already held;
  * - `revisions`: for each medication of `findings` whose record has more than one version, `{ finding, steps }`, a step
  *   `{ from, to, pull, arrived, said }` for each arrival after the first: the versions numbered in the order they came,
@@ -1761,7 +1761,7 @@ export function howOf(answers, findings) {
       (row) =>
         row.hospital !== undefined ||
         row.retrieved !== undefined ||
-        row.generated !== undefined,
+        row.answeredAsOf !== undefined,
     );
     return {
       label: each.label,
@@ -1770,7 +1770,9 @@ export function howOf(answers, findings) {
       ...(document?.retrieved !== undefined && {
         retrieved: document.retrieved,
       }),
-      ...(document?.generated !== undefined && { asOf: document.generated }),
+      ...(document?.answeredAsOf !== undefined && {
+        asOf: document.answeredAsOf,
+      }),
       brought: each.records.size,
       revised: new Set(
         own

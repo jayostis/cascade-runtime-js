@@ -117,7 +117,7 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
       }`),
     true,
   );
-  const generated = async (pull: typeof PULL & { asOf?: string }) => {
+  const answeredAsOf = async (pull: typeof PULL & { asOf?: string }) => {
     const [document] = (await fhirPull.documents(
       filesOf(pullFiles(pull, "north")),
       "north",
@@ -128,15 +128,18 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
     });
     return (
       facts.query(
-        "SELECT ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> <http://www.w3.org/ns/prov#generatedAtTime> ?at }",
+        `SELECT ?p ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?at FILTER (?p IN (<https://ns.cascadeprotocol.org/records/v1-draft#answeredAsOf>, <http://www.w3.org/ns/prov#generatedAtTime>)) }`,
       ) as Map<string, oxigraph.Term>[]
-    ).map((row) => row.get("at")!.value);
+    ).map((row) => [
+      row.get("p")!.value.split(/[#/]/).pop(),
+      row.get("at")!.value,
+    ]);
   };
-  assert.deepEqual(await generated(PULL), [], "no world date, no as-of");
+  assert.deepEqual(await answeredAsOf(PULL), [], "no world date, no as-of");
   assert.deepEqual(
-    await generated({ ...PULL, asOf: "2024-02-01T23:59:59Z" }),
-    ["2024-02-01T23:59:59Z"],
-    "the world's date the hospital answered as of",
+    await answeredAsOf({ ...PULL, asOf: "2024-02-01T23:59:59Z" }),
+    [["answeredAsOf", "2024-02-01T23:59:59Z"]],
+    "the world's date the hospital answered as of, and never as the document's generatedAtTime",
   );
   assert.deepEqual(
     await fhirPull.index(files, "north"),

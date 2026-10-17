@@ -166,7 +166,7 @@ function facts(pull: Described, importStarted: string): Uint8Array {
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
     ...(pull.asOf === undefined
       ? []
-      : [`${document} <${PROV}generatedAtTime> ${dateTime(pull.asOf)} .`]),
+      : [`${document} <${REC}answeredAsOf> ${dateTime(pull.asOf)} .`]),
     `${document} <${BRIDGE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,

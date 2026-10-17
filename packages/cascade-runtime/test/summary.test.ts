@@ -2988,7 +2988,7 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       arrival(1, record, "ni:first"),
       arrival(2, record, "ni:second", {
         previous: "ni:revision-1",
-        generated: "2025-02-01T00:00:00Z",
+        answeredAsOf: "2025-02-01T00:00:00Z",
       }),
     ],
     [VERSIONS]: [
