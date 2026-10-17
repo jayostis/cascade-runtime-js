@@ -875,7 +875,7 @@ try {
       assert.match(how, /The pod's records came in 2 imports/);
       assert.match(
         how,
-        /From Cascade North, retrieved Feb 1, 2024: 5 records\..*From Cascade North, retrieved Feb 1, 2025: 4 records, 1 of them a new version of one the pod already held\./,
+        /From Cascade North, as of 1 February 2024: 5 records\..*From Cascade North, as of 1 February 2025: 4 records, 1 of them a new version of one the pod already held\./,
       );
       assert.match(how, /version 1 to version 2, in import 2/);
       assert.match(
@@ -1713,6 +1713,24 @@ if (release === undefined) {
           assert.ok(
             readable(await boxed(connection, "Hospital")).includes(pulledUnder),
           );
+
+          const offset = await send("/world-date", {
+            date: "2024-02-01T09:00:00+02:00",
+          });
+          assert.equal(offset.status, 303);
+          const offsetBox = readable(
+            await bringIn(
+              await boxed(
+                await signIn(pod, north, expected.patient, "allow"),
+                "Hospital",
+              ),
+            ),
+          );
+          assert.ok(
+            !offsetBox.includes("Refused"),
+            `a world date with an offset was refused: ${offsetBox}`,
+          );
+          await send("/world-date", { date: "2024-02-01" });
 
           const bad = await send("/world-date", { date: "soon" });
           assert.equal(bad.status, 400);

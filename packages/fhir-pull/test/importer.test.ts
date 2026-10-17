@@ -83,7 +83,7 @@ function withPull(changed: Record<string, unknown>): PullFiles {
   );
 }
 
-test("a saved pull is its Bundle as one document, stated with the hospital's base, the retrieval time, the patient and the hospital as author", async () => {
+test("a saved pull is its Bundle as one document, stated with the hospital's base, the retrieval time, the patient, the hospital as author and, when a world's date was set, the date it answered as of", async () => {
   const files = filesOf(pullFiles(PULL, "north"));
   const documents = (await fhirPull.documents(files, "north")) ?? [];
   assert.deepEqual(
@@ -116,6 +116,27 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
         FILTER NOT EXISTS { ?attribution prov:hadRole rec:transmitter }
       }`),
     true,
+  );
+  const generated = async (pull: typeof PULL & { asOf?: string }) => {
+    const [document] = (await fhirPull.documents(
+      filesOf(pullFiles(pull, "north")),
+      "north",
+    ))!;
+    const facts = new oxigraph.Store();
+    facts.load(document!.facts("2026-10-07T08:00:00Z"), {
+      format: "text/turtle",
+    });
+    return (
+      facts.query(
+        "SELECT ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> <http://www.w3.org/ns/prov#generatedAtTime> ?at }",
+      ) as Map<string, oxigraph.Term>[]
+    ).map((row) => row.get("at")!.value);
+  };
+  assert.deepEqual(await generated(PULL), [], "no world date, no as-of");
+  assert.deepEqual(
+    await generated({ ...PULL, asOf: "2024-02-01T23:59:59Z" }),
+    ["2024-02-01T23:59:59Z"],
+    "the world's date the hospital answered as of",
   );
   assert.deepEqual(
     await fhirPull.index(files, "north"),
@@ -169,6 +190,7 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           { retrievedAt: "2026-10-07T24:00:00Z" },
           "retrievedAt",
         ],
+        ["an as-of date with no time", { asOf: "2024-02-01" }, "asOf"],
       ] as const
     ).map(([name, changed, field]): [string, PullFiles, string] => {
       const why = {
@@ -177,6 +199,7 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
         patient: "pull.json's patient is not a FHIR id",
         source: "pull.json's source is not a name",
         retrievedAt: "pull.json's retrievedAt is not a time in UTC",
+        asOf: "pull.json's asOf is not a time in UTC",
       }[field];
       assert.throws(
         () => pullFiles({ ...PULL, ...changed } as typeof PULL, "north"),

@@ -18,6 +18,8 @@ export interface SavedPull {
   /** The hospital's name. */
   readonly source: string;
   readonly retrievedAt: string;
+  /** The world's date the hospital answered as of, when the host that made the hospital set one. */
+  readonly asOf?: string;
   readonly bundle: object;
 }
 
@@ -47,6 +49,7 @@ interface Described {
   readonly patient: string;
   readonly source: string;
   readonly retrievedAt: string;
+  readonly asOf?: string;
 }
 
 /** The word `rec:kind` gives each type of resource that is a record. */
@@ -101,7 +104,7 @@ function described(bytes: Uint8Array): Described {
 function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error(`${PULL} is not a JSON object`);
-  const { fhirBase, patient, source, retrievedAt } = value as Record<
+  const { fhirBase, patient, source, retrievedAt, asOf } = value as Record<
     string,
     unknown
   >;
@@ -128,18 +131,26 @@ function checked(value: unknown): Described {
     throw new Error(`${PULL}'s patient is not a FHIR id`);
   if (typeof source !== "string" || source.trim() === "")
     throw new Error(`${PULL}'s source is not a name`);
-  const at =
-    typeof retrievedAt === "string" && UTC.test(retrievedAt)
-      ? new Date(retrievedAt)
-      : undefined;
-  if (
-    typeof retrievedAt !== "string" ||
-    at === undefined ||
-    Number.isNaN(at.getTime()) ||
-    at.toISOString().slice(0, 19) !== retrievedAt.slice(0, 19)
-  )
+  if (!isUtc(retrievedAt))
     throw new Error(`${PULL}'s retrievedAt is not a time in UTC`);
-  return { fhirBase, patient, source, retrievedAt };
+  if (asOf !== undefined && !isUtc(asOf))
+    throw new Error(`${PULL}'s asOf is not a time in UTC`);
+  return {
+    fhirBase,
+    patient,
+    source,
+    retrievedAt,
+    ...(asOf !== undefined && { asOf }),
+  };
+}
+
+function isUtc(value: unknown): value is string {
+  if (typeof value !== "string" || !UTC.test(value)) return false;
+  const at = new Date(value);
+  return (
+    !Number.isNaN(at.getTime()) &&
+    at.toISOString().slice(0, 19) === value.slice(0, 19)
+  );
 }
 
 /** What the pull says of its document and of its import, as Turtle, for the Bridge to state. */
@@ -153,6 +164,9 @@ function facts(pull: Described, importStarted: string): Uint8Array {
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
     `${document} <${BRIDGE}serverBaseUrl> ${quoted(pull.fhirBase)} .`,
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
+    ...(pull.asOf === undefined
+      ? []
+      : [`${document} <${PROV}generatedAtTime> ${dateTime(pull.asOf)} .`]),
     `${document} <${BRIDGE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,

@@ -335,6 +335,22 @@ export function day(text) {
 }
 
 /**
+ * A time of the app's clock, as the day it fell on where the page is drawn: the person's own day. A date with no time
+ * is said as written, as `day` says it.
+ */
+export function localDay(text) {
+  if (text === undefined || !/T\d\d:\d\d/.test(String(text))) return day(text);
+  const date = new Date(Date.parse(String(text)));
+  return Number.isNaN(date.getTime())
+    ? String(text)
+    : date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+}
+
+/**
  * How two cells compare, by what they sort by: numbers and dates by value, and text as text. A cell with nothing to
  * sort by, or what is no number or date, comes after every other. The page's script runs this same function.
  */
@@ -1718,8 +1734,9 @@ export async function withMechanism(answers, changes, ask) {
  * How the pod came to hold what What changed reads, from the rows of the imports, the revisions and the versions in
  * `answers`; none until the pod holds two imports.
  *
- * - `pulls`: the imports, in the order they began, each `{ label, started, hospital, retrieved, brought, revised }`;
- *   `hospital` and `retrieved` only when a document says them, `brought` is how many records it brought in and `revised`
+ * - `pulls`: the imports, in the order they began, each `{ label, started, hospital, retrieved, asOf, brought, revised }`;
+ *   `hospital`, `retrieved` and `asOf` (the world's date the hospital answered as of, its document's
+ *   `prov:generatedAtTime`) only when a document says them, `brought` is how many records it brought in and `revised`
  *   how many of those were a new version of a record already held;
  * - `revisions`: for each medication of `findings` whose record has more than one version, `{ finding, steps }`, a step
  *   `{ from, to, pull, arrived, said }` for each arrival after the first: the versions numbered in the order they came,
@@ -1741,7 +1758,10 @@ export function howOf(answers, findings) {
   const pulls = [...imports].map(([id, each]) => {
     const own = arrivals.filter((row) => row.import === id);
     const document = own.find(
-      (row) => row.hospital !== undefined || row.retrieved !== undefined,
+      (row) =>
+        row.hospital !== undefined ||
+        row.retrieved !== undefined ||
+        row.generated !== undefined,
     );
     return {
       label: each.label,
@@ -1750,6 +1770,7 @@ export function howOf(answers, findings) {
       ...(document?.retrieved !== undefined && {
         retrieved: document.retrieved,
       }),
+      ...(document?.generated !== undefined && { asOf: document.generated }),
       brought: each.records.size,
       revised: new Set(
         own
@@ -1811,11 +1832,26 @@ export function howOf(answers, findings) {
 const valuesSaid = (values) =>
   values.length === 0 ? "none" : values.join(", ");
 
-/** One pull as the mechanism lists it: from where, retrieved when (else the day it came in), and what it brought in. */
-function pullSaid({ label, started, hospital, retrieved, brought, revised }) {
+/**
+ * One pull as the mechanism lists it: from where, as of the world's date it answered for (else retrieved when, else the
+ * day it came in), and what it brought in.
+ */
+function pullSaid({
+  label,
+  started,
+  hospital,
+  retrieved,
+  asOf,
+  brought,
+  revised,
+}) {
   const records = `${brought} ${brought === 1 ? "record" : "records"}`;
   const when =
-    retrieved === undefined ? day(started) : `retrieved ${day(retrieved)}`;
+    asOf !== undefined
+      ? `as of ${dayInWords(asOf)}`
+      : retrieved === undefined
+        ? localDayInWords(started)
+        : `retrieved ${localDayInWords(retrieved)}`;
   const newer =
     revised === 0
       ? ""
@@ -1831,7 +1867,7 @@ function How({ how, about }) {
 <h3>Where this comes from</h3>
 <p>The pod's records came in ${how.pulls.length} imports, in this order:</p>
 <ol>${how.pulls.map((pull) => html`<li>${pullSaid(pull)}</li>`)}</ol>
-${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, on ${day(step.arrived)}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
+${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, on ${localDay(step.arrived)}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
 </div>`;
 }
 
@@ -2290,9 +2326,9 @@ ${entry.where.map(
   ({ place, issued, retrieved, arrived, importLabel, records }) =>
     html`<li><strong>${place}</strong> <span class="muted">${[
       issued !== undefined && `report of ${day(issued)}`,
-      retrieved !== undefined && `retrieved ${day(retrieved)}`,
+      retrieved !== undefined && `retrieved ${localDay(retrieved)}`,
       arrived !== undefined &&
-        `arrived ${day(arrived)}${importLabel === undefined ? "" : ` through ${importLabel}`}`,
+        `arrived ${localDay(arrived)}${importLabel === undefined ? "" : ` through ${importLabel}`}`,
       records > 1 && `${records} records`,
     ]
       .filter(Boolean)
@@ -3643,8 +3679,23 @@ export function worldInstant(text) {
     : undefined;
 }
 
+/** An instant in UTC, as a pull.json states it: `2024-02-01T07:00:00Z` for `2024-02-01T09:00:00+02:00`; undefined stays undefined. */
+export function utcInstant(asOf) {
+  return asOf === undefined
+    ? undefined
+    : new Date(Date.parse(asOf)).toISOString().replace(".000Z", "Z");
+}
+
+/** A time of the app's clock as the person's own day, in the words `dayInWords` uses: `29 January 2024`. */
+function localDayInWords(text) {
+  const date = new Date(Date.parse(String(text)));
+  return Number.isNaN(date.getTime())
+    ? String(text)
+    : `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 /** The UTC day of an instant, in words: `1 February 2024`. */
-function dayInWords(asOf) {
+export function dayInWords(asOf) {
   const day = new Date(Date.parse(asOf));
   return `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${day.getUTCFullYear()}`;
 }

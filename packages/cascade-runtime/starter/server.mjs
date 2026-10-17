@@ -87,6 +87,7 @@ import {
   savedLoginChanged,
   variantsSaid,
   worldDatePage,
+  utcInstant,
   worldInstant,
 } from "./summary.mjs";
 import {
@@ -934,7 +935,13 @@ async function filesOf(connection) {
     return { failed: `Not connected: ${error.message}.` };
   }
   try {
-    return { pulled, files: pullFiles(pulled, connection.name) };
+    return {
+      pulled,
+      files: pullFiles(
+        { ...pulled, asOf: utcInstant(connection.asOf) },
+        connection.name,
+      ),
+    };
   } catch (error) {
     return { failed: `Refused: ${error.message}` };
   }

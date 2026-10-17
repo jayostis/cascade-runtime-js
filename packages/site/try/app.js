@@ -89,6 +89,7 @@ import {
   savedLoginChanged,
   variantsSaid,
   withMechanism,
+  utcInstant,
   worldInstant,
 } from "./summary.js";
 
@@ -910,7 +911,7 @@ async function signIn(fhirBase, popup) {
     now();
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(
-      pulled,
+      { ...pulled, asOf: demo ? utcInstant(shown.asOf) : undefined },
       `${demo ? hospitalId({ hospital: row }) : row.vendor}-${Date.now()}`,
     );
     shown.step = "pulled";
