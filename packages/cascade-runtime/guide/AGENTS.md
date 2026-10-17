@@ -224,8 +224,8 @@ its IndexedDB database, `cascade-pod:<name>`; `openPod(name, { from })` starts
 an empty one as a copy of the pod published at the URL `from`: from its pack,
 `<folder>.pack.json`, when one is published beside it, else as its `files.json`
 lists it, with the `answers.json` and `pod.json` published beside it. Its
-answers are kept in `cascade-answers:<name>`, and `deletePod(name)` deletes
-both. Its address is a name, never the page's. A browser may clear its storage,
+answers are kept in `cascade-answers:<name>`, `podTitle(name)` reads the title typed when
+it was made (undefined where none is kept), and `deletePod(name)` deletes both. Its address is a name, never the page's. A browser may clear its storage,
 and the pod with it. A pod with kept answers opens and answers its questions
 without the engine, a 4 MB module; the first call that computes loads it, and
 `warm()` loads it and compiles the Bridge ahead, so both are ready when a

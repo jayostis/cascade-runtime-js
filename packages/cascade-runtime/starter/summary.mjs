@@ -389,13 +389,20 @@ export function slug(person) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** A pod's name as a person's: `rowan-ellery-marsh` is `Rowan Ellery Marsh`. */
-export function personName(pod) {
-  return pod
-    .split(/[-_.]+/)
-    .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1))
-    .join(" ");
+/**
+ * A pod's name as a person's: the title `titles` holds for it, as typed, when `slug` of it is the pod's name; else,
+ * and where the title is the pod's name itself, as a pod made without one keeps, the pod's name capitalised:
+ * `rowan-ellery-marsh` is `Rowan Ellery Marsh`.
+ */
+export function personName(pod, titles) {
+  const typed = titles?.get(pod)?.trim().replace(/\s+/g, " ");
+  return typed !== undefined && typed !== pod && slug(typed) === pod
+    ? typed
+    : pod
+        .split(/[-_.]+/)
+        .filter(Boolean)
+        .map((word) => word[0].toUpperCase() + word.slice(1))
+        .join(" ");
 }
 
 /** A hospital's name as a person says it: `Cascade North Demo Hospital` is `Cascade North`. */
@@ -1107,6 +1114,7 @@ export function podPage(
   asked,
   {
     pod,
+    titles,
     person,
     from,
     signIn,
@@ -1173,7 +1181,7 @@ export function podPage(
     records === 0
       ? "Nothing here yet."
       : `${records} ${records === 1 ? "record" : "records"}, from ${places.length === 1 ? "one place" : `${places.length} places`}`;
-  return html`<h1>${personName(pod)}</h1>
+  return html`<h1>${personName(pod, titles)}</h1>
 <p class="lead">${lead}</p>
 ${places.length > 0 && html`<ul class="chips">${places.map((place) => html`<li>${place}</li>`)}</ul>`}
 ${from !== undefined && html`<p class="note">Brought in the record from ${hospitalName(from)}.</p>`}
@@ -1465,6 +1473,7 @@ function unitOf(results) {
 
 function Trend({
   pod,
+  titles,
   back,
   labs,
   series,
@@ -1477,7 +1486,7 @@ function Trend({
   ask,
 }) {
   useView(register, TREND_VIEW);
-  const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
+  const backLink = html`<p><a href=${back}>Back to ${personName(pod, titles)}</a></p>`;
   if (series === undefined)
     return html`${backLink}
 <h1>Not found</h1>
@@ -2280,6 +2289,7 @@ export async function panelsOf(entry, { tables, held }) {
 export function entryPage({
   entry,
   pod,
+  titles,
   back,
   codeHref,
   tableHref,
@@ -2287,7 +2297,7 @@ export function entryPage({
   panels = [],
   panelHref,
 }) {
-  const backLink = html`<p><a href=${back}>Back to ${personName(pod)}</a></p>`;
+  const backLink = html`<p><a href=${back}>Back to ${personName(pod, titles)}</a></p>`;
   if (entry === undefined)
     return html`${backLink}
 <h1>Not found</h1>
@@ -2563,9 +2573,9 @@ export function copyWords(page) {
  * the receiver refuses a form where either has changed. `problem`, when given, says what the last try got wrong.
  * Nothing is made until the form is answered.
  */
-export function sixWordsPage({ pod, words, action, problem }) {
+export function sixWordsPage({ pod, titles, words, action, problem }) {
   return html`<h1>Your six words</h1>
-<p class="lead">For ${personName(pod)}'s pod.</p>
+<p class="lead">For ${personName(pod, titles)}'s pod.</p>
 <ol class="words">${words.split(" ").map((word) => html`<li>${word}</li>`)}</ol>
 <p>Write these down, or save them in your password manager. They are the only way into this pod. Nobody can recover them: if you lose them, the pod's records are gone for good.</p>
 <p class="muted">Encryption hides what the records say. It does not hide that this pod exists, its name, how many files it has or their sizes.</p>
@@ -2588,11 +2598,11 @@ ${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
  * has a form posting to `action` (with `next`, the address to go to once it opens), whose `username` and
  * `current-password` fields a password manager fills; otherwise only the outcome's sentence.
  */
-export function openPodPage({ pod, outcome, action, next }) {
+export function openPodPage({ pod, titles, outcome, action, next }) {
   const said = UNOPENED[outcome];
   const wordsHelp =
     outcome === "secret needed" || outcome === "incorrect secret";
-  return html`<h1>Open ${personName(pod)}'s pod</h1>
+  return html`<h1>Open ${personName(pod, titles)}'s pod</h1>
 ${wordsHelp ? html`<p>This pod is encrypted. Type its six words to open it.</p>` : null}
 ${said !== undefined && html`<p class="note" role="alert">${said}</p>`}
 ${
@@ -2700,7 +2710,7 @@ export function didNote(query, kits) {
       : `Deleted ${count} ${count === 1 ? "pod" : "pods"}.`;
   }
   if (query.has("reset"))
-    return `Reset: ${listed(kits.map(personName))} ${kits.length === 1 ? "is" : "are"} back.`;
+    return `Reset: ${listed(kits.map((kit) => personName(kit)))} ${kits.length === 1 ? "is" : "are"} back.`;
   return undefined;
 }
 
@@ -2715,6 +2725,7 @@ export function didNote(query, kits) {
 export function layout({
   body,
   pods,
+  titles,
   current,
   href,
   home,
@@ -2729,7 +2740,7 @@ export function layout({
 <div class="layout">
 <aside>
 <nav><h2>Pods</h2><ul>
-${pods.map((pod) => html`<li><a href=${href(pod)} aria-current=${pod === current ? "page" : undefined}>${personName(pod)}</a></li>`)}
+${pods.map((pod) => html`<li><a href=${href(pod)} aria-current=${pod === current ? "page" : undefined}>${personName(pod, titles)}</a></li>`)}
 </ul></nav>
 <a class="button wide" href="#new-pod">+ New pod</a>
 ${tables !== undefined && tablesNav(tables)}
@@ -2818,6 +2829,7 @@ export function noPods() {
 export function hospitalsPage({
   world,
   pod,
+  titles,
   rows,
   text,
   search,
@@ -2825,7 +2837,7 @@ export function hospitalsPage({
   people,
   back,
 }) {
-  const who = personName(pod);
+  const who = personName(pod, titles);
   const cards = rows.map((row) => {
     const here = byFamily(people)
       .filter((person) =>
@@ -3066,6 +3078,7 @@ export function tablePage({
   codeHref,
   uses,
   pods,
+  titles,
   href,
   now,
 }) {
@@ -3096,7 +3109,7 @@ ${series.versions.map((version) => {
       ? html`<span class="muted">no pod</span>`
       : pods.map(
           (pod, index) =>
-            html`${index > 0 && ", "}<a href=${href(pod)}>${personName(pod)}</a>`,
+            html`${index > 0 && ", "}<a href=${href(pod)}>${personName(pod, titles)}</a>`,
         )
   }</li>`;
 })}
@@ -3328,6 +3341,7 @@ export async function classedElsewhere(rows, medications, { tables }) {
  */
 export function classesPage({
   pod,
+  titles,
   back,
   rows,
   medications = [],
@@ -3403,7 +3417,7 @@ export function classesPage({
       ),
     ),
   ];
-  return html`<p><a href=${back}>Back to ${personName(pod)}</a></p>
+  return html`<p><a href=${back}>Back to ${personName(pod, titles)}</a></p>
 <h1>Medicines by class</h1>
 <p class="lead">${classed.length === 0 ? "None of this pod's active medicines is in a class the app's tables know." : "Which of the active medicines of this pod are in a class, by the classes MED-RT gives the drug."}</p>
 ${
@@ -3461,6 +3475,7 @@ export async function panelSaid(panel, rows, { tables }) {
  */
 export function panelPage({
   pod,
+  titles,
   back,
   panel,
   rows,
@@ -3569,7 +3584,7 @@ export function panelPage({
   ].flatMap((origin) => heldAt(origin, held) ?? []);
   const naming = about.get(panel)?.name?.origin;
   const named = naming === undefined ? undefined : heldAt(naming, held);
-  return html`<p><a href=${back}>Back to ${personName(pod)}</a></p>
+  return html`<p><a href=${back}>Back to ${personName(pod, titles)}</a></p>
 <h1>Your results in ${title}</h1>
 <p class="lead">${said}</p>
 ${
@@ -3728,12 +3743,11 @@ ${worldDateForms({ asOf, action })}
 /**
  * The page where the world's date is changed, on a host that has pages: the date the hospitals answer as of, `asOf`
  * (an instant, or undefined for everything they hold), the forms that post to `action`, `problem` when the last date
- * given was no date, `done` once it was set, and a link `back`.
+ * given was no date, and a link `back`.
  */
-export function worldDatePage({ asOf, action, problem, done, back }) {
+export function worldDatePage({ asOf, action, problem, back }) {
   return html`<h1>The world's date</h1>
 <p class="lead">${worldDateSaid(asOf)}</p>
-${done === true && html`<p class="note">The world's date is set.</p>`}
 ${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
 <div class="card world-date">
 <p>Pick a day: the hospitals then show their records as they stood at the end of it. Today puts the date back to now, with everything they hold.</p>
@@ -3752,6 +3766,7 @@ ${back !== undefined && html`<p><a href=${back}>Back</a></p>`}`;
 export function connectionDialog({
   id,
   pod,
+  titles,
   hospital,
   back,
   connection,
@@ -3763,7 +3778,7 @@ export function connectionDialog({
   bring,
   pulledAsOf,
 }) {
-  const who = personName(pod);
+  const who = personName(pod, titles);
   const name = hospitalName(hospital);
   const said = (body) => box(id, name, body, { back });
   if (connection.step === "bringing in")

@@ -732,6 +732,27 @@ export async function openPod(
   }
 }
 
+/**
+ * The title `pod.json` keeps for the pod `name` in the browser's database `cascade-answers:<name>`, the name typed when
+ * it was made; undefined where none is kept, as for an encrypted pod, whose `pod.json` is sealed, or where there is no
+ * such database, which this never creates. A failure of IndexedDB itself is thrown.
+ */
+export async function podTitle(name: string): Promise<string | undefined> {
+  const here = (await indexedDB.databases()).some(
+    (each) => each.name === ANSWERS_DATABASE + name,
+  );
+  if (!here) return undefined;
+  const kept = await IndexedDbFiles.open(
+    ANSWERS_DATABASE + name,
+    `${ANSWERS_DATABASE}${name}/`,
+  );
+  try {
+    return (await new Answers(kept, "").described())?.title;
+  } finally {
+    kept.close();
+  }
+}
+
 /** Deletes the pod in the browser's database `cascade-pod:<name>` and its answers, once every connection to them is closed. */
 export async function deletePod(name: string): Promise<void> {
   await Promise.all(
