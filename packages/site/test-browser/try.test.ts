@@ -2164,7 +2164,7 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
       await popup.check(`input[name="patient"][value="${story.patient}"]`);
       await popup.click('button[value="allow"]');
       await settled(page);
-      await page.click("#connection button:has-text('Bring it into')");
+      await page.click("#connection button:has-text('Bring')");
       await settled(page, 300_000);
     };
     const metformin = async () =>
