@@ -8,7 +8,11 @@ import { createServer } from "node:http";
 import process, { env, exit, stderr, stdout } from "node:process";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { HospitalDataError } from "@the-cascade-protocol/sandbox";
-import { DATA_FOLDER, loadHospitals } from "@the-cascade-protocol/sandbox/node";
+import {
+  DATA_FOLDER,
+  loadHospitals,
+  serveDemo,
+} from "@the-cascade-protocol/sandbox/node";
 import {
   changesIn,
   ConnectionFailure,
@@ -1302,15 +1306,27 @@ const server = createServer(async (request, response) => {
   }
 });
 
+/**
+ * With `CASCADE_SANDBOX_LISTEN=1`, the demo hospitals are served on a loopback port of their own and reached over it,
+ * as an outside tool would; without it they answer in process.
+ */
+const listener =
+  env.CASCADE_SANDBOX_LISTEN === "1"
+    ? await serveDemo(demo, { asOf: startedAsOf })
+    : undefined;
+
 server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   const { port } = server.address();
   origin = `http://127.0.0.1:${port}`;
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
-  hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf });
+  hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
   stdout.write(`${origin}/\n`);
+  if (listener !== undefined)
+    stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
 });
 
 async function stop() {
+  await listener?.close();
   server.close();
   await closeAll();
   exit(0);

@@ -3,9 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
-import { loadHospital } from "@the-cascade-protocol/sandbox/node";
-import { openPod, type Pod, type Pull, pullFiles } from "cascade-runtime";
-import { pulled } from "./hospitals.js";
+import { demoRemapFetch } from "@the-cascade-protocol/sandbox";
+import { loadHospital, serveDemo } from "@the-cascade-protocol/sandbox/node";
+import {
+  connect,
+  DEMO_PLAN,
+  openPod,
+  type Pod,
+  type Pull,
+  pull,
+  pullFiles,
+} from "cascade-runtime";
+import { direct, pulled, REGISTRATION, rowOf } from "./hospitals.js";
 
 const PREFIXES = `PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
@@ -180,4 +189,24 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   const again = await pod.import(join(folder, "north"), { aboutSubject: true });
   assert.equal(again.refused, undefined);
   assert.deepEqual(again.wrote, []);
+});
+
+test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route", async () => {
+  const data = await loadHospital("cascade-north");
+  const listener = await serveDemo([{ ...data, autoApprove: "pt-1001" }]);
+  try {
+    const fetch = demoRemapFetch(listener.origin);
+    const connection = await connect(rowOf(data), REGISTRATION, {
+      signIn: direct(fetch),
+      fetch,
+    });
+    const through = await pull(connection, DEMO_PLAN);
+    const names = (from: Pull) =>
+      from.bundle.entry.map(({ fullUrl }) => fullUrl);
+    assert.ok(names(through).length > 0);
+    assert.deepEqual(names(through), names(north));
+    assert.equal(through.fhirBase, north.fhirBase);
+  } finally {
+    await listener.close();
+  }
 });

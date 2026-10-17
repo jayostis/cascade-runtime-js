@@ -60,6 +60,14 @@ keeping the package and the pods, under `pods/<name>/`. It is made with four,
   moves the date, or takes it back to everything with Today; the next sign-in
   and bring-in answer as of it, and a connection's box says what its pull
   answered as of.
+- `npm start` with `CASCADE_SANDBOX_LISTEN` set to `1` serves the demo hospitals on a
+  loopback port of their own, which the console line `The demo hospitals are
+listening at http://127.0.0.1:<port>/` names, and the app reaches them over
+  it, through the sandbox's `demoRemapFetch`; a hospital's sign-in page is then
+  at `http://127.0.0.1:<port>/<hospital>/authorize`, not under `/demo-hospitals/`.
+  The records are the same, still named under `https://<hospital>.demo.invalid`.
+  Another tool reaches a hospital only by sending a `Forwarded: host=<hospital>.demo.invalid`
+  header; called directly, the port answers the sign-in page and a 404.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
   exports, `priya-natarajan` Priya Natarajan's, from exports and C-CDA files
