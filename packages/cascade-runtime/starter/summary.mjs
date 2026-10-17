@@ -1813,8 +1813,8 @@ export async function withMechanism(answers, changes, ask) {
  *   `rec:answeredAsOf`) only when a document says them, `brought` is how many records it brought in and `revised`
  *   how many of those were a new version of a record already held;
  * - `revisions`: for each medication of `findings` whose record has more than one version, `{ finding, steps }`, a step
- *   `{ from, to, pull, arrived, said }` for each arrival after the first: the versions numbered in the order they came,
- *   the number of the pull that brought `to`, and `said`, what differs between the two, as `differences` gives it.
+ *   `{ from, to, pull, arrived, asOf, said }` for each arrival after the first: the versions numbered in the order they
+ *   came, the number of the pull that brought `to`, `asOf` (that pull's, only when it has one), and `said`, what differs between the two, as `differences` gives it.
  */
 export function howOf(answers, findings) {
   const imports = new Map();
@@ -1893,6 +1893,7 @@ export function howOf(answers, findings) {
         to: versions.indexOf(row.version) + 1,
         pull: ids.indexOf(row.import) + 1,
         arrived: row.arrived,
+        asOf: pulls[ids.indexOf(row.import)]?.asOf,
         said: differences(
           statements(arrived[at].version),
           statements(row.version),
@@ -1943,7 +1944,7 @@ function How({ how, about }) {
 <h3>Where this comes from</h3>
 <p>The pod's records came in ${how.pulls.length} imports, in this order:</p>
 <ol>${how.pulls.map((pull) => html`<li>${pullSaid(pull)}</li>`)}</ol>
-${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, on ${localDay(step.arrived)}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
+${how.revisions.flatMap(({ finding, steps }) => steps.map((step) => html`<p>${capitalised(changeNames(finding, about).medication)} came in a new version: version ${step.from} to version ${step.to}, in import ${step.pull}, ${step.asOf === undefined ? `on ${localDay(step.arrived)}` : `as of ${dayInWords(step.asOf)}`}.${step.said.length > 0 && html` ${capitalised(step.said.map(({ field, before, after }) => `${field} ${valuesSaid(before)} → ${valuesSaid(after)}`).join("; "))}.`}</p>`))}
 </div>`;
 }
 
@@ -3876,9 +3877,39 @@ ${back !== undefined && html`<p><a href=${back}>Back</a></p>`}`;
 }
 
 /**
+ * What to tell a person of a connection that ended early, by the `kind` of its `ConnectionFailure`: what happened at
+ * the hospital called `name`, and what to do. Never a host, a status or a code.
+ */
+const FAILURES = {
+  cancelled: (name) =>
+    `The sign-in at ${name} was cancelled, so nothing was brought in. Sign in again when you are ready.`,
+  "state-mismatch": (name) =>
+    `The sign-in at ${name} did not come back the way it was started, so it was dropped. Sign in again.`,
+  "host-not-allowed": (name) =>
+    `${name} sent the app to an address it does not trust, so nothing was fetched. Signing in again may help; if it keeps happening, the hospital's setup needs a look.`,
+  "cap-exceeded": (name) =>
+    `${name} sent more than the app takes in at once, so it stopped. Nothing was brought in. Signing in again tries once more.`,
+  unauthorized: (name) =>
+    `${name} stopped accepting the sign-in, most likely because it ran out. Sign in again to carry on.`,
+  "retries-exhausted": (name) =>
+    `${name} did not answer after several tries. Wait a little, then sign in again.`,
+  "sign-in-unavailable": (name) =>
+    `The sign-in window for ${name} could not be opened. Allow this page to open windows, then sign in again.`,
+  "hospital-error": (name) =>
+    `${name} refused the sign-in or sent something the app cannot read. Sign in again; if it keeps happening, the hospital's side needs a look.`,
+};
+
+/** The sentence for a person of a failed connection of `kind` at the hospital `name`; undefined for a kind not known. */
+export function failureSaid(kind, name) {
+  return FAILURES[kind]?.(name);
+}
+
+/**
  * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
- * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, a
- * sentence of why, with a Try again button when `retry`; else its steps, whose record `about` is when not the pod's
+ * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, the
+ * developer's detail of why, with a Try again button when `retry`. When `failure` (a `ConnectionFailure`'s kind) is
+ * given too, the box leads with a sentence for the person naming the hospital and what to do, and a button from
+ * `signInAgain(label)`, and keeps `failed` in a smaller line. Else its steps, whose record `about` is when not the pod's
  * person, what each of `sources` (from `look`) holds, what `pulled` left out, and a button that posts to `bring`.
  * With `pulledAsOf`, the instant the pull was made under (undefined: no date), the box says what the pull answered as of.
  */
@@ -3890,6 +3921,8 @@ export function connectionDialog({
   back,
   connection,
   failed,
+  failure,
+  signInAgain,
   retry,
   sources = [],
   pulled,
@@ -3912,10 +3945,17 @@ export function connectionDialog({
     return said(
       html`<div class="card"><${Steps} connection=${connection} /><p class="muted">This refreshes itself until the record is here.</p></div>`,
     );
-  if (failed !== undefined)
+  if (failed !== undefined) {
+    const person =
+      failure === undefined ? undefined : failureSaid(failure, name);
     return said(
-      html`<div class="card"><p>${failed}</p>${retry && postButton(bring, {}, "Try again", undefined, BRINGING)}</div>`,
+      html`<div class="card">${
+        person === undefined
+          ? html`<p>${failed}</p>`
+          : html`<p role="alert">${person}</p>${signInAgain?.(`Sign in again at ${name}`)}<p class="muted detail">${failed}</p>`
+      }${retry && postButton(bring, {}, "Try again", undefined, BRINGING)}</div>`,
     );
+  }
   const has = sources.map(
     (source) =>
       html`<p><strong>What ${name} has:</strong> ${counted(source.records) || "nothing"}.</p>
@@ -3933,14 +3973,14 @@ ${
     : grade === "possible"
       ? html`<p class="muted">This record is ${about}'s.</p>`
       : grade === "certainly-not" &&
-        html`<p class="note" role="alert">This record is ${about}'s, not ${who}'s.</p>`)
+        html`<p class="note warm" role="alert">This record is ${about}'s, not ${who}'s.</p>`)
 }
 <div class="card">
 ${has}
 ${pulled.missing.length > 0 && html`<p class="muted">Mentioned, but not sent: ${pulled.missing.join(", ")}</p>`}
 ${denied.length > 0 && html`<p class="muted">Not allowed to read: ${denied.join(", ")}</p>`}
 ${pulledAsOfSaid(pulledAsOf) !== undefined && html`<p class="muted">${pulledAsOfSaid(pulledAsOf)}</p>`}
-${postButton(bring, {}, grade === "certainly-not" ? `Bring ${about}'s records into ${who}'s pod anyway` : grade === "possible" ? `Bring ${about}'s records into ${who}'s pod` : `Bring it into ${who}'s pod`, undefined, BRINGING)}
+${postButton(bring, {}, grade === "certainly-not" ? `Bring ${about}'s records into ${who}'s pod anyway` : grade === "possible" ? `Bring ${about}'s records into ${who}'s pod` : `Bring it into ${who}'s pod`, grade === "certainly-not" ? "quiet" : undefined, BRINGING)}
 </div>`);
 }
 
@@ -4087,6 +4127,8 @@ form.inline { display: inline; }
 .steps li.now { color: var(--text); font-weight: 600; }
 .steps li.now::before { content: "…  "; }
 .note { border-left: 3px solid var(--accent); padding: 0.5rem 0.9rem; background: var(--tint); border-radius: 0 7px 7px 0; margin: 0 0 1.25rem; }
+.note.warm { border-left-color: var(--warm); background: var(--warm-bg); color: var(--warm); }
+.detail { font-size: 0.85rem; }
 .dialog { display: none; position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / 0.45); padding: 1rem; overflow: auto; }
 .dialog:target { display: grid; place-items: center; }
 .dialog .backdrop { position: fixed; inset: 0; }

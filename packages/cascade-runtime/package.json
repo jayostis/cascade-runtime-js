@@ -50,7 +50,7 @@
     "@anthropic-ai/sdk": "0.128.0",
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/server": "2.3.1",
-    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#29823080269de0ec7f1578fb9beecbd7416fb4b8",
+    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#a33529e58830cb8b9c04f9c19c9e666f45634e3c",
     "esbuild": "0.28.2",
     "htm": "3.1.1",
     "openai": "7.23.0",

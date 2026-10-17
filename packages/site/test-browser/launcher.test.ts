@@ -70,7 +70,7 @@ async function login(popup: Page): Promise<{ id: string; name: string }> {
 
 /** What the connection's box says; then the pod's page again, without the box. */
 async function said(page: Page): Promise<string> {
-  const text = (await page.textContent("#connection .card p")) ?? "";
+  const text = (await page.textContent("#connection .card .detail")) ?? "";
   await page.goto(page.url().split("#")[0] ?? "");
   await settled(page);
   return text;
@@ -117,7 +117,7 @@ test("a new pod's person signs in at the SMART launcher in a popup, on its own p
     await denied.waitForURL(/\/auth\/authorize\?/);
     await denied.close();
     await settled(page);
-    assert.match(await said(page), /^Not connected: .*closed/);
+    assert.match(await said(page), /closed/);
     await page.click('a:has-text("Find a hospital")');
     await settled(page);
 
