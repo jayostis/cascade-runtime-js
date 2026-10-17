@@ -437,6 +437,15 @@ test("a pod's name, from a person's", () => {
     assert.equal(view.slug(person), pod, person);
 });
 
+test("a person's name, from a pod's, keeps a joining word as typed", () => {
+  for (const [pod, person] of [
+    ["rowan-ellery-marsh", "Rowan Ellery Marsh"],
+    ["tamsin-at-north", "Tamsin at North"],
+    ["at-home", "At Home"],
+  ])
+    assert.equal(view.personName(pod), person, pod);
+});
+
 test("a measurement, to three significant figures", () => {
   for (const [value, shown] of [
     ["60.967166143994106", "61"],

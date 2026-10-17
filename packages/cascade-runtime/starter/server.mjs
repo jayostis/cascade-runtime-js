@@ -964,7 +964,7 @@ function worldDateBack(back) {
 
 /**
  * The world's date: a page that says what the hospitals answer as of, and the post that sets it. A day or an instant
- * sets it; an empty date, the Today button's, takes it back to every version; anything else answers 400 with the page
+ * sets it and goes back to the page it came from; an empty date, the Today button's, takes it back to every version; anything else answers 400 with the page
  * and a sentence.
  */
 async function worldDateRoute(request, response, url) {
@@ -977,7 +977,6 @@ async function worldDateRoute(request, response, url) {
         asOf: hospitals.worldDate(),
         action,
         problem,
-        done: url.searchParams.has("set") && status === 200,
         back,
       }),
     ).then((body) => send(response, status, body));
@@ -990,10 +989,7 @@ async function worldDateRoute(request, response, url) {
       `"${text}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
     );
   hospitals.setWorldDate(asOf);
-  return redirect(
-    response,
-    `${WORLD_DATE_AT}?set&back=${encodeURIComponent(back)}`,
-  );
+  return redirect(response, back);
 }
 
 /** A demo hospital's sign-in page, the form posted back to it included. */

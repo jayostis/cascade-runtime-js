@@ -373,12 +373,21 @@ export function slug(person) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** A pod's name as a person's: `rowan-ellery-marsh` is `Rowan Ellery Marsh`. */
+const JOINERS = new Set(["and", "at", "de", "la", "of", "the", "van", "von"]);
+
+/**
+ * A pod's name as a person's: `rowan-ellery-marsh` is `Rowan Ellery Marsh`. A joining word inside the name stays as
+ * typed in lower case (`tamsin-at-north` is `Tamsin at North`), since the pod's name keeps no capitals to tell them by.
+ */
 export function personName(pod) {
   return pod
     .split(/[-_.]+/)
     .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .map((word, index) =>
+      index > 0 && JOINERS.has(word)
+        ? word
+        : word[0].toUpperCase() + word.slice(1),
+    )
     .join(" ");
 }
 
@@ -3676,12 +3685,11 @@ ${worldDateForms({ asOf, action })}
 /**
  * The page where the world's date is changed, on a host that has pages: the date the hospitals answer as of, `asOf`
  * (an instant, or undefined for everything they hold), the forms that post to `action`, `problem` when the last date
- * given was no date, `done` once it was set, and a link `back`.
+ * given was no date, and a link `back`.
  */
-export function worldDatePage({ asOf, action, problem, done, back }) {
+export function worldDatePage({ asOf, action, problem, back }) {
   return html`<h1>The world's date</h1>
 <p class="lead">${worldDateSaid(asOf)}</p>
-${done === true && html`<p class="note">The world's date is set.</p>`}
 ${problem !== undefined && html`<p class="note" role="alert">${problem}</p>`}
 <div class="card world-date">
 <p>Pick a day: the hospitals then show their records as they stood at the end of it. Today puts the date back to now, with everything they hold.</p>
