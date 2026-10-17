@@ -58,10 +58,14 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
   const connections = new Map();
   let count = 0;
 
-  /** Sends the person to the hospital's page with `sendTo`, and waits for `/callback` to bring them back. */
-  function signIn(sendTo, page) {
+  /**
+   * Sends the person to the hospital's page with `sendTo`, and waits for `/callback` to bring them back. The page
+   * is told the pod's name as `login_hint`, so it can preselect the patient the pod is for.
+   */
+  function signIn(sendTo, page, pod) {
     return (authorize, signal) =>
       new Promise((resolve, reject) => {
+        authorize.searchParams.set("login_hint", pod);
         const state = authorize.searchParams.get("state");
         const finish = (then) => {
           clearTimeout(timer);
@@ -137,7 +141,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
         imported: undefined,
       };
       const connected = connect(row, registration, {
-        signIn: signIn(sendTo, page),
+        signIn: signIn(sendTo, page, pod),
         fetch: async (url, init) => {
           const answer = await route(url, init);
           connection.requests += 1;

@@ -849,6 +849,7 @@ async function signIn(fhirBase, popup) {
     throw new Error("That hospital is not in the directory.");
   }
   const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
+  const forPod = state.current;
   state.connection = shown;
   const answers = await answered();
   state.page = {
@@ -873,7 +874,11 @@ async function signIn(fhirBase, popup) {
   }
   try {
     const signedIn = await connect(row, REGISTRATION, {
-      signIn: popupSignIn({ popup }),
+      signIn: (authorize, signal) => {
+        if (forPod !== undefined)
+          authorize.searchParams.set("login_hint", forPod);
+        return popupSignIn({ popup })(authorize, signal);
+      },
       fetch: async (url, init) => {
         const answer = await globalThis.fetch(url, init);
         shown.requests += 1;
