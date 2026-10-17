@@ -67,7 +67,9 @@ and lists each demo hospital's sample patients. Press Sign in:
    over the pod's page.
 3. The box shows the connection's steps while the record is fetched, then what
    the hospital has, and whether the pod already has records from there.
-4. "Bring it into … pod" imports it as the pod's person's. The box says each
+4. "Bring it into … pod" imports it as the pod's person's; when the record names
+   another person, the box says so and the button names both people ("Bring
+   Odalys Brandt's records into Rowan Ellery Marsh's pod anyway"). The box says each
    part of the import as it goes, then closes, and the pod's page says what was
    brought in.
 
