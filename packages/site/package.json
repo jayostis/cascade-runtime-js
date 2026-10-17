@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0",
-    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#26a037695e3d9ed7c3c8f248145866c2d1307ccd"
+    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#75ec1dbf775c8bc60f7e51ee3c9844d5123f1441"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

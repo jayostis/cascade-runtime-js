@@ -9,7 +9,7 @@ import process, { env, exit, stderr, stdout } from "node:process";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { HospitalDataError } from "@the-cascade-protocol/sandbox";
 import {
-  DATA_FOLDER,
+  DEFAULT_ROOTS,
   loadHospitals,
   serveDemo,
 } from "@the-cascade-protocol/sandbox/node";
@@ -1063,15 +1063,22 @@ async function worldDateRoute(request, response, url) {
   return redirect(response, back);
 }
 
-/** The hospitals this app adds to the package's: a folder for each, as the package's own `data/` holds them. */
+/** The hospitals this app adds to the package's: a folder for each, holding its `hospital.json`. */
 const HOSPITALS = fileURLToPath(new URL("hospitals/", import.meta.url));
-/** The package's hospitals and this app's, or the app stopped with what is wrong with one of the app's. */
+/** The people this app adds to the package's: a folder for each, its `person.json` and each hospital's record of them. */
+const PEOPLE = fileURLToPath(new URL("people/", import.meta.url));
+/** The package's hospitals and people and this app's, or the app stopped with what is wrong with one of the app's. */
 async function hospitalsHeld() {
   try {
-    return await loadHospitals([DATA_FOLDER, HOSPITALS]);
+    return await loadHospitals({
+      hospitals: [...DEFAULT_ROOTS.hospitals, HOSPITALS],
+      people: [...DEFAULT_ROOTS.people, PEOPLE],
+    });
   } catch (error) {
     if (!(error instanceof HospitalDataError)) throw error;
-    stderr.write(`A hospital in hospitals/ cannot be used. ${error.message}\n`);
+    stderr.write(
+      `A hospital in hospitals/ or a person in people/ cannot be used. ${error.message}\n`,
+    );
     exit(1);
   }
 }

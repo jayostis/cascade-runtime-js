@@ -89,11 +89,15 @@ keeping the package and the pods, under `pods/<name>/`. It is made with four,
 - `npm run kit:export -- <kit> <download>` copies a download into the app, for
   `look`: `alex-rivera x-e12` as `apple_health_export`, and
   `priya-natarajan kestrel-harbor-health-summary.xml` as that file.
-- `npm run patient:add -- <hospital folder> <file>` checks a patient's file and
-  adds it to a hospital's `patients/`. The app's own hospitals are folders of
-  `hospitals/`, each a `hospital.json` (the package's `cascade-north` is the
-  model; its `fhirBase` must be on a `.demo.invalid` host) beside `patients/`,
-  and the app loads them at start with the package's. The file is a FHIR Bundle:
+- `npm run patient:add -- <hospital id> <file>` checks a patient's file and
+  writes it to `people/<patient id>/sources/<hospital id>/fhir.json`, with
+  the person's `person.json` (name, birth date and gender, from the Patient)
+  when they have none. The app's own hospitals are folders of `hospitals/`,
+  each named for its `fhirBase` host's first label and holding only its
+  `hospital.json` (the package's `cascade-north` is the model; its `fhirBase`
+  must be on a `.demo.invalid` host); its people are folders of `people/`. The
+  app loads both at start with the package's, and refuses a source whose
+  Patient disagrees with its `person.json`. The file is a FHIR Bundle:
   a `collection`, written as it is and present at every date; a `history`, one
   entry per version with its `response.lastModified`; or a `collection` whose
   entries carry `"shorthand": { "active": "2022-03-01", "stopped": "2024-04-15" }`

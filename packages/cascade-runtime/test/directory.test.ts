@@ -1,21 +1,14 @@
 import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { brandsBundle } from "@the-cascade-protocol/sandbox";
 import {
+  HOSPITALS_FOLDER,
   loadHospital,
   loadHospitals,
 } from "@the-cascade-protocol/sandbox/node";
 import { directoryOf, searchDirectory, TEST_DIRECTORY } from "cascade-runtime";
 import { launcherSettings } from "./launcher-settings.js";
-
-const DATA = fileURLToPath(
-  new URL(
-    "../../../data/",
-    import.meta.resolve("@the-cascade-protocol/sandbox/node"),
-  ),
-);
 
 const demo = directoryOf(
   brandsBundle(
@@ -27,7 +20,7 @@ const demo = directoryOf(
 const directory = [...demo, ...TEST_DIRECTORY];
 
 test("the demo rows are the demo hospitals, every one of them", async () => {
-  const folders = (await readdir(DATA, { withFileTypes: true }))
+  const folders = (await readdir(HOSPITALS_FOLDER, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
   const hospitals = await Promise.all(

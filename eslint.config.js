@@ -46,6 +46,7 @@ export default tseslint.config(
   {
     files: [
       "packages/cascade-runtime/test/**",
+      "packages/cascade-runtime/check/**",
       "packages/cascade-runtime/starter/**",
     ],
     rules: {

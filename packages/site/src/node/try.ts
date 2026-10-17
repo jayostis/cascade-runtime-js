@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { brandsBundle, hospitalId } from "@the-cascade-protocol/sandbox";
@@ -25,41 +24,24 @@ const VIEW = fileURLToPath(
   new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
 );
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SOURCE =
-  join(
-    dirname(
-      fileURLToPath(
-        import.meta.resolve("@the-cascade-protocol/sandbox/package.json"),
-      ),
-    ),
-    "dist",
-    "src",
-  ) + sep;
-/** The page side of the demo hospitals: their worker's registration and world date, and the rule that names a pull after its hospital. */
-const PAGE_SIDE = `export { setWorldDate, useDemoHospitals, worldDate } from "./web/page.js";
-export { hospitalId } from "./route.js";
-`;
+/** The demo hospitals' service worker, and their page side: the worker's registration, the world date, and the rule that names a pull after its hospital. */
+const SANDBOX_WEB = {
+  worker: "@the-cascade-protocol/sandbox/web/worker",
+  page: "@the-cascade-protocol/sandbox/web",
+};
 
 /**
- * The demo hospital's web code, `entry` or a module of the given contents, or a view package's browser build, bundled,
- * as a classic script or a module. A view package imports the others by name, as the import map serves them.
+ * A package's browser build, bundled as a classic script or a module. A view package imports the others by name, as
+ * the import map serves them.
  */
 async function bundled(
-  entry: string | { contents: string } | { package: string },
+  name: string,
   format: "iife" | "esm",
 ): Promise<Uint8Array> {
   const { outputFiles } = await build({
-    ...(typeof entry === "string"
-      ? { entryPoints: [join(SOURCE, "web", entry)] }
-      : "package" in entry
-        ? {
-            entryPoints: [entry.package],
-            absWorkingDir: HERE,
-            external: Object.keys(VIEW_PACKAGES).filter(
-              (name) => name !== entry.package,
-            ),
-          }
-        : { stdin: { contents: entry.contents, resolveDir: SOURCE } }),
+    entryPoints: [name],
+    absWorkingDir: HERE,
+    external: Object.keys(VIEW_PACKAGES).filter((other) => other !== name),
     bundle: true,
     format,
     platform: "browser",
@@ -68,10 +50,7 @@ async function bundled(
     logLevel: "warning",
   });
   const [output] = outputFiles;
-  if (output === undefined)
-    throw new Error(
-      `esbuild built nothing of ${typeof entry === "string" ? entry : "package" in entry ? entry.package : "the page side"}`,
-    );
+  if (output === undefined) throw new Error(`esbuild built nothing of ${name}`);
   return output.contents;
 }
 
@@ -99,8 +78,8 @@ export async function tryFiles(
     loadHospitals(),
     readFile(APP),
     readFile(VIEW),
-    bundled("worker.js", "iife"),
-    bundled({ contents: PAGE_SIDE }, "esm"),
+    bundled(SANDBOX_WEB.worker, "iife"),
+    bundled(SANDBOX_WEB.page, "esm"),
     import(pathToFileURL(VIEW).href) as Promise<{
       demoPeople(demo: unknown): unknown;
     }>,
@@ -109,8 +88,7 @@ export async function tryFiles(
     ),
     Promise.all(
       Object.entries(VIEW_PACKAGES).map(
-        async ([name, file]) =>
-          [file, await bundled({ package: name }, "esm")] as const,
+        async ([name, file]) => [file, await bundled(name, "esm")] as const,
       ),
     ),
   ]);
