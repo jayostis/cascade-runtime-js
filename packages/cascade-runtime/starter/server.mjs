@@ -1063,24 +1063,6 @@ async function worldDateRoute(request, response, url) {
   return redirect(response, back);
 }
 
-/** A demo hospital's sign-in page, the form posted back to it included. */
-async function demoHospitalPage(request, response, url) {
-  const body = request.method === "POST" ? await bodyOf(request) : undefined;
-  const type = request.headers["content-type"];
-  const answer = await hospitals.demo(url, {
-    method: request.method,
-    headers: type === undefined ? {} : { "content-type": type },
-    body,
-  });
-  const headers = {};
-  for (const name of ["content-type", "location"]) {
-    const value = answer.headers.get(name);
-    if (value !== null) headers[name] = value;
-  }
-  response.writeHead(answer.status, headers);
-  response.end(Buffer.from(await answer.arrayBuffer()));
-}
-
 /** The hospitals this app adds to the package's: a folder for each, as the package's own `data/` holds them. */
 const HOSPITALS = fileURLToPath(new URL("hospitals/", import.meta.url));
 /** The package's hospitals and this app's, or the app stopped with what is wrong with one of the app's. */
@@ -1187,8 +1169,6 @@ const server = createServer(async (request, response) => {
       );
     if (post && pathname === "/chat")
       return await chatRoute(request, response, { model, tools: chatting });
-    if (pathname.startsWith("/demo-hospitals/"))
-      return await demoHospitalPage(request, response, url);
     if (pathname === "/world-date")
       return await worldDateRoute(request, response, url);
     if (!post && pathname === "/")
@@ -1306,14 +1286,8 @@ const server = createServer(async (request, response) => {
   }
 });
 
-/**
- * With `CASCADE_SANDBOX_LISTEN=1`, the demo hospitals are served on a loopback port of their own and reached over it,
- * as an outside tool would; without it they answer in process.
- */
-const listener =
-  env.CASCADE_SANDBOX_LISTEN === "1"
-    ? await serveDemo(demo, { asOf: startedAsOf })
-    : undefined;
+/** The demo hospitals are served on a loopback port of their own and reached over it, as an outside tool would. */
+const listener = await serveDemo(demo, { asOf: startedAsOf });
 
 server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   const { port } = server.address();
@@ -1321,12 +1295,11 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
   hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
   stdout.write(`${origin}/\n`);
-  if (listener !== undefined)
-    stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
+  stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
 });
 
 async function stop() {
-  await listener?.close();
+  await listener.close();
   server.close();
   await closeAll();
   exit(0);

@@ -1477,6 +1477,15 @@ if (release === undefined) {
         body: new URLSearchParams(form),
       });
 
+    /** Answers a hospital's sign-in page, which is the listener's, with `form`. */
+    const answer = (authorize, form) =>
+      fetch(new URL(authorize.pathname, authorize.origin), {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(form),
+      });
+
     /**
      * Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the pod's page with
      * the connection's box open.
@@ -1485,10 +1494,11 @@ if (release === undefined) {
       const begun = await send(`/pods/${pod}/hospitals`, { fhirBase });
       assert.equal(begun.status, 303);
       const authorize = new URL(begun.headers.get("location"));
-      assert.equal(authorize.origin, origin);
+      assert.notEqual(authorize.origin, origin);
+      assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();
       assert.ok(picker.includes(`value="${patient}"`), patient);
-      const answered = await send(authorize.pathname, {
+      const answered = await answer(authorize, {
         ...Object.fromEntries(authorize.searchParams),
         patient,
         decision,
@@ -1649,7 +1659,7 @@ if (release === undefined) {
             });
             const authorize = new URL(begun.headers.get("location"));
             const picker = await (await fetch(authorize)).text();
-            const answered = await send(authorize.pathname, {
+            const answered = await answer(authorize, {
               ...Object.fromEntries(authorize.searchParams),
               patient: expected.patient,
               decision: "cancel",

@@ -2,11 +2,7 @@
 // this app, and the pull. The demo hospitals are pretend, answered here with no network.
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
-import {
-  brandsBundle,
-  demoFetch,
-  demoRemapFetch,
-} from "@the-cascade-protocol/sandbox";
+import { brandsBundle, demoRemapFetch } from "@the-cascade-protocol/sandbox";
 import {
   connect,
   ConnectionFailure,
@@ -27,25 +23,16 @@ function idOf(row) {
 }
 
 /**
- * The hospitals as this app, at `origin`, reaches them, `demo` being the demo hospitals as `loadHospitals` gives them.
- * It receives each hospital's redirect on its own `/callback`, and serves the demo hospitals' sign-in pages under
- * `/demo-hospitals/`. The hospitals answer as of `asOf`, an instant, or with every version they hold when it is
- * undefined; `worldDate()` gives it and `setWorldDate(asOf)` moves it, the next sign-in and the next request of a
- * bring-in under way answering as of the new date.
- *
- * With `listener`, a running `serveDemo` listener, the hospitals are reached over loopback instead of in process:
- * each request goes through `demoRemapFetch`, and the sign-in pages are the listener's, not this app's.
+ * The hospitals as this app, at `origin`, reaches them, `demo` being the demo hospitals as `loadHospitals` gives them
+ * and `listener` the running `serveDemo` listener that serves them. Each request goes to the listener through
+ * `demoRemapFetch`, and the sign-in pages are the listener's. This app receives each hospital's redirect on its own
+ * `/callback`. The hospitals answer as of `asOf`, an instant, or with every version they hold when it is undefined;
+ * `worldDate()` gives it and `setWorldDate(asOf)` moves it, the next sign-in and the next request of a bring-in under
+ * way answering as of the new date.
  */
-export function hospitalsAt(origin, demo, { asOf, listener } = {}) {
-  const routeAt = (when) =>
-    listener !== undefined
-      ? demoRemapFetch(listener.origin)
-      : demoFetch(
-          demo.map((each) => ({ ...each, asOf: when })),
-          { authorizeBase: `${origin}/demo-hospitals/` },
-        );
+export function hospitalsAt(origin, demo, { asOf, listener }) {
+  const route = demoRemapFetch(listener.origin);
   let world = asOf;
-  let route = routeAt(world);
   /** The hospitals `demo` holds, the app's own among them, then the test directory's rows that are not demo hospitals. */
   const directory = [
     ...directoryOf(
@@ -123,8 +110,7 @@ export function hospitalsAt(origin, demo, { asOf, listener } = {}) {
     /** Moves the world's date to `when`, an instant, or with undefined back to every version. */
     setWorldDate(when) {
       world = when;
-      listener?.setWorldDate(when);
-      route = routeAt(when);
+      listener.setWorldDate(when);
     },
 
     /**
@@ -195,15 +181,5 @@ export function hospitalsAt(origin, demo, { asOf, listener } = {}) {
 
     /** Forgets every connection, as when the pods they were for are gone. */
     forget: () => connections.clear(),
-
-    /** A demo hospital's answer to a request for its sign-in page. */
-    demo: (url, init) =>
-      listener === undefined
-        ? route(url, init)
-        : Promise.resolve(
-            new globalThis.Response("The sign-in pages are the listener's.", {
-              status: 404,
-            }),
-          ),
   };
 }

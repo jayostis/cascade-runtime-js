@@ -238,7 +238,6 @@ test("a pull through the listener and the remapping fetch returns the same recor
     assert.equal(hospitals.back(back), "/pods/pod/?connection=1#connection");
     const started = hospitals.connection("pod", 1);
     assert.deepEqual(names(await started!.pulled), names(north));
-    assert.equal((await hospitals.demo(sentTo)).status, 404);
   } finally {
     await listener.close();
   }
