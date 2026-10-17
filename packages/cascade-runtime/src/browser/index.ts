@@ -732,6 +732,24 @@ export async function openPod(
   }
 }
 
+/**
+ * The title `pod.json` keeps for the pod `name` in the browser's database `cascade-answers:<name>`, the name typed when
+ * it was made; undefined where none can be read, as for an encrypted pod, whose `pod.json` is sealed.
+ */
+export async function podTitle(name: string): Promise<string | undefined> {
+  const kept = await IndexedDbFiles.open(
+    ANSWERS_DATABASE + name,
+    `${ANSWERS_DATABASE}${name}/`,
+  );
+  try {
+    return (await new Answers(kept, "").described())?.title;
+  } catch {
+    return undefined;
+  } finally {
+    kept.close();
+  }
+}
+
 /** Deletes the pod in the browser's database `cascade-pod:<name>` and its answers, once every connection to them is closed. */
 export async function deletePod(name: string): Promise<void> {
   await Promise.all(

@@ -33,7 +33,7 @@ import {
   deleteAll,
   KITS,
   podFolder,
-  podNames as listPods,
+  podNames,
   podPath,
   podTitle,
   POD_NAME,
@@ -71,7 +71,6 @@ import {
   panelSaid,
   panelsOf,
   patientName,
-  knowTitle,
   personName,
   podPage,
   postButton,
@@ -103,13 +102,14 @@ const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
 
-/** The pods there are, each known to `personName` by the name typed when it was made. */
-async function podNames() {
-  const names = await listPods();
-  await Promise.all(
-    names.map(async (name) => knowTitle(name, await podTitle(name))),
+/** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
+async function podTitles() {
+  const names = await podNames();
+  return new Map(
+    await Promise.all(
+      names.map(async (name) => [name, (await podTitle(name)) ?? name]),
+    ),
   );
-  return names;
 }
 
 function podNamed(name, secret, title) {
@@ -182,7 +182,7 @@ async function variantsOf(answers, pod) {
 let lastCheck;
 
 /**
- * `body` in the frame, with the pods there are and the reference tables, as HTML; `names` given, it reads no pods.
+ * `body` in the frame, with the pods there are and the reference tables, as HTML; `titles` given, it reads no pods.
  * `current` is the pod shown, `table` the reference table's IRI; `note` says what was just done.
  */
 async function page(
@@ -192,13 +192,13 @@ async function page(
     current,
     table,
     refresh,
-    names,
+    titles,
     note,
     suggestions = [],
     locked = false,
   } = {},
 ) {
-  const pods = names ?? (await podNames());
+  const known = titles ?? (await podTitles());
   const encrypted =
     locked ||
     (current !== undefined &&
@@ -210,11 +210,16 @@ async function page(
     frame({
       title,
       body,
-      pods,
+      pods: [...known.keys()],
+      titles: known,
       current,
       href: podPath,
       home: "/",
-      dialog: newPodDialog({ people, pods, action: "/pods" }),
+      dialog: newPodDialog({
+        people,
+        pods: [...known.keys()],
+        action: "/pods",
+      }),
       menu: { deleteAll: "/delete-all", resetAll: "/reset-all", about },
       note,
       refresh,
@@ -278,7 +283,7 @@ async function showTable(response, id, query) {
       : notFound(`This app holds no reference table ${id}.`);
   const text = query.get("q") ?? "";
   const shown = pageNumber(query.get("page"));
-  const names = await podNames();
+  const titles = await podTitles();
   const at = series ?? source;
   const searchedHere = {
     text,
@@ -295,12 +300,13 @@ async function showTable(response, id, query) {
   if (series !== undefined) {
     title = series.label;
     body = tablePage({
+      titles,
       ...searchedHere,
       series,
       codeHref,
       searched: await kept.search(series.iri, text, shown),
       uses: await kept.uses(),
-      pods: names,
+      pods: [...titles.keys()],
       href: podPath,
     });
   } else if (query.has("code")) {
@@ -338,7 +344,7 @@ async function showTable(response, id, query) {
   send(
     response,
     200,
-    await page(title, body, { names, table: source.iri, note }),
+    await page(title, body, { titles, table: source.iri, note }),
   );
 }
 
@@ -398,12 +404,13 @@ function signIn(name, fhirBase, label) {
 }
 
 async function home(response, query) {
-  const names = await podNames();
-  if (names.length > 0) return redirect(response, podPath(names[0]), 302);
+  const titles = await podTitles();
+  if (titles.size > 0)
+    return redirect(response, podPath([...titles.keys()][0]), 302);
   send(
     response,
     200,
-    await page("No pods yet", noPods(), { names, note: didNote(query, KITS) }),
+    await page("No pods yet", noPods(), { titles, note: didNote(query, KITS) }),
   );
 }
 
@@ -438,7 +445,7 @@ async function suggested(name, known = {}) {
  * brought in when its import did; its `connection` is the number of one whose box the page holds, refreshing itself
  * while it signs in, fetches and brings the record in. Once the record is in, the box's address goes to the note.
  */
-async function showPod(response, name, query, names) {
+async function showPod(response, name, query, titles) {
   const found = query.has("connection")
     ? hospitals.connection(name, query.get("connection"))
     : undefined;
@@ -476,6 +483,7 @@ async function showPod(response, name, query, names) {
     shown === undefined
       ? undefined
       : connectionDialog({
+          titles,
           id: "connection",
           pod: name,
           hospital: shown.row.name,
@@ -486,6 +494,7 @@ async function showPod(response, name, query, names) {
           ...(await connectionView(name, shown)),
         });
   const body = podPage(answers, {
+    titles,
     pod: name,
     person: people.find((each) => slug(each.name) === name),
     from:
@@ -514,9 +523,9 @@ async function showPod(response, name, query, names) {
   send(
     response,
     200,
-    await page(personName(name), body, {
+    await page(personName(name, titles), body, {
       current: name,
-      names,
+      titles,
       note: didNote(query, KITS),
       refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
       suggestions: await suggested(name, { answers, about, changes, said }),
@@ -529,7 +538,7 @@ async function showPod(response, name, query, names) {
  * answers the pod's page last showed when they hold it, else the pod's answers now. An entry the pod does not hold is
  * 404.
  */
-async function showEntry(response, name, id, names) {
+async function showEntry(response, name, id, titles) {
   let answers = lastShown.get(name);
   if (answers === undefined || entryOf(answers, id) === undefined) {
     answers = await answersOf(await podNamed(name));
@@ -556,6 +565,7 @@ async function showEntry(response, name, id, names) {
   const entry = entryOf(answers, id, { about, said, held, joined });
   const sources = sourcesOf(held);
   const body = entryPage({
+    titles,
     entry,
     pod: name,
     back: podPath(name),
@@ -571,7 +581,7 @@ async function showEntry(response, name, id, names) {
     entry === undefined ? 404 : 200,
     await page(entry?.name ?? "Not found", body, {
       current: name,
-      names,
+      titles,
       suggestions: await suggested(name, { answers, about, said }),
     }),
   );
@@ -582,7 +592,7 @@ async function showEntry(response, name, id, names) {
  * test over time. With no `test` it is the strongest change's, else the pod's first. A test the pod holds no result of
  * is 404.
  */
-async function showTrend(response, name, query, names) {
+async function showTrend(response, name, query, titles) {
   const pod = await podNamed(name);
   const answers = await changeAnswers(pod);
   const { [HISTORY]: medications, [LABS]: labs } = answers;
@@ -600,6 +610,7 @@ async function showTrend(response, name, query, names) {
   }
   const about = await aboutCodes(answers);
   const body = trendPage({
+    titles,
     pod: name,
     back: podPath(name),
     labs,
@@ -619,7 +630,7 @@ async function showTrend(response, name, query, names) {
       body,
       {
         current: name,
-        names,
+        titles,
         suggestions: await suggested(name, { changes }),
       },
     ),
@@ -633,7 +644,7 @@ const classesPath = (name) => `${podPath(name)}classes`;
  * alone: `pod.medicationClasses()` names the classes, the tables their names. With no tables to name them the classes
  * are shown by their codes.
  */
-async function showClasses(response, name, query, names) {
+async function showClasses(response, name, query, titles) {
   const pod = await podNamed(name);
   const [rows, medications] = await Promise.all([
     pod.medicationClasses(),
@@ -649,6 +660,7 @@ async function showClasses(response, name, query, names) {
   ]);
   const sources = sourcesOf(held);
   const body = classesPage({
+    titles,
     pod: name,
     back: podPath(name),
     rows,
@@ -667,7 +679,7 @@ async function showClasses(response, name, query, names) {
   send(
     response,
     200,
-    await page("Medicines by class", body, { current: name, names }),
+    await page("Medicines by class", body, { current: name, titles }),
   );
 }
 
@@ -678,13 +690,13 @@ const panelPath = (name, code) =>
  * The pod's results in the LOINC panel `query`'s `panel` names, the code a person picked from a lab result's page:
  * `pod.panelResults(panel)` finds them, the tables name them. A panel is a code, so no panel is a 404.
  */
-async function showPanel(response, name, query, names) {
+async function showPanel(response, name, query, titles) {
   const panel = query.get("panel");
   if (panel === null)
     return send(
       response,
       404,
-      await page("Not found", html`<h1>Not found</h1>`, { names }),
+      await page("Not found", html`<h1>Not found</h1>`, { titles }),
     );
   const pod = await podNamed(name);
   const [rows, labs] = await Promise.all([
@@ -698,6 +710,7 @@ async function showPanel(response, name, query, names) {
   ]);
   const sources = sourcesOf(held);
   const body = panelPage({
+    titles,
     pod: name,
     back: podPath(name),
     panel,
@@ -717,7 +730,7 @@ async function showPanel(response, name, query, names) {
       body,
       {
         current: name,
-        names,
+        titles,
       },
     ),
   );
@@ -761,7 +774,13 @@ async function showWords(response, name, words, problem) {
     problem === undefined ? 200 : 400,
     await page(
       "Your six words",
-      sixWordsPage({ pod: name, words, action: WORDS_AT, problem }),
+      sixWordsPage({
+        pod: name,
+        titles: new Map([[name, typedFor.get(name)]]),
+        words,
+        action: WORDS_AT,
+        problem,
+      }),
     ),
     { "cache-control": "no-store" },
   );
@@ -810,21 +829,27 @@ async function newEncryptedPod(request, response) {
 }
 
 /** The page of the pod `name` while it is locked, at the address `next`, which words will go to. */
-async function showLocked(response, name, outcome, next, names) {
+async function showLocked(response, name, outcome, next, titles) {
   send(
     response,
     200,
     await page(
       "Open this pod",
-      openPodPage({ pod: name, outcome, action: `${podPath(name)}open`, next }),
-      { current: name, names, locked: true },
+      openPodPage({
+        pod: name,
+        titles,
+        outcome,
+        action: `${podPath(name)}open`,
+        next,
+      }),
+      { current: name, titles, locked: true },
     ),
     { "cache-control": "no-store" },
   );
 }
 
 /** Opens the locked pod `name` with the words posted, then goes to the address asked for, or says why it did not open. */
-async function unlock(request, response, name, names) {
+async function unlock(request, response, name, titles) {
   const form = await formOf(request);
   const asked = form.get("next") ?? "";
   const next = asked.startsWith(podPath(name)) ? asked : podPath(name);
@@ -832,12 +857,12 @@ async function unlock(request, response, name, names) {
     return redirect(response, next);
   const secret = form.get("password") ?? "";
   if (secret.trim() === "")
-    return await showLocked(response, name, "incorrect secret", next, names);
+    return await showLocked(response, name, "incorrect secret", next, titles);
   try {
     await podNamed(name, secret);
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
-    return await showLocked(response, name, error.outcome, next, names);
+    return await showLocked(response, name, error.outcome, next, titles);
   }
   redirect(response, next);
 }
@@ -865,8 +890,9 @@ async function formOf(request) {
   return new URLSearchParams((await bodyOf(request)).toString("utf8"));
 }
 
-async function findHospital(response, name, text, names) {
+async function findHospital(response, name, text, titles) {
   const body = hospitalsPage({
+    titles,
     pod: name,
     rows: hospitals.directory(text),
     text,
@@ -879,7 +905,7 @@ async function findHospital(response, name, text, names) {
   send(
     response,
     200,
-    await page("Find a hospital", body, { current: name, names }),
+    await page("Find a hospital", body, { current: name, titles }),
   );
 }
 
@@ -1172,12 +1198,12 @@ const server = createServer(async (request, response) => {
         pathname,
       );
     const name = at === null ? undefined : decodeURIComponent(at[1]);
-    const names = name === undefined ? undefined : await podNames();
-    if (name !== undefined && names.includes(name)) {
+    const titles = name === undefined ? undefined : await podTitles();
+    if (name !== undefined && titles.has(name)) {
       const [, , view, n, entry] = at;
       const outcome = await lockedOutcome(name);
       if (view === "open") {
-        if (post) return await unlock(request, response, name, names);
+        if (post) return await unlock(request, response, name, titles);
         return redirect(response, podPath(name));
       }
       if (outcome !== undefined)
@@ -1186,7 +1212,7 @@ const server = createServer(async (request, response) => {
           name,
           outcome,
           post ? podPath(name) : `${url.pathname}${url.search}`,
-          names,
+          titles,
         );
       const isHospitals = view === "hospitals" ? view : undefined;
       if (entry !== undefined && !post)
@@ -1194,20 +1220,20 @@ const server = createServer(async (request, response) => {
           response,
           name,
           decodeURIComponent(entry),
-          names,
+          titles,
         );
       if (view === "trend" && !post)
-        return await showTrend(response, name, url.searchParams, names);
+        return await showTrend(response, name, url.searchParams, titles);
       if (view === "classes" && !post)
-        return await showClasses(response, name, url.searchParams, names);
+        return await showClasses(response, name, url.searchParams, titles);
       if (view === "panel" && !post)
-        return await showPanel(response, name, url.searchParams, names);
+        return await showPanel(response, name, url.searchParams, titles);
       if (isHospitals !== undefined && !post)
         return await findHospital(
           response,
           name,
           url.searchParams.get("q") ?? "",
-          names,
+          titles,
         );
       if (isHospitals !== undefined) {
         const to = await hospitals.start(
@@ -1221,7 +1247,7 @@ const server = createServer(async (request, response) => {
           await page(
             "Unknown",
             html`<h1>That hospital is not in the directory</h1>`,
-            { names },
+            { titles },
           ),
         );
       }
@@ -1230,19 +1256,19 @@ const server = createServer(async (request, response) => {
       if (post && connection !== undefined)
         return bring(response, name, connection);
       if (!post && n === undefined)
-        return await showPod(response, name, url.searchParams, names);
+        return await showPod(response, name, url.searchParams, titles);
     }
     send(
       response,
       404,
-      await page("Not found", html`<h1>Not found</h1>`, { names }),
+      await page("Not found", html`<h1>Not found</h1>`, { titles }),
     );
   } catch (error) {
     send(
       response,
       500,
       await page("Error", html`<pre>${error?.message ?? String(error)}</pre>`, {
-        names: [],
+        titles: new Map(),
       }),
     );
   }

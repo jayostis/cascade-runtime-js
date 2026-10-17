@@ -438,15 +438,19 @@ test("a pod's name, from a person's", () => {
 });
 
 test("a person's name is the one typed when the pod was made, else the pod's name capitalised", () => {
-  for (const [pod, typed, person] of [
-    ["rowan-ellery-marsh", undefined, "Rowan Ellery Marsh"],
-    ["tamsin-at-north", "Tamsin at North", "Tamsin at North"],
-    ["o-brien-mcdonald", "O'Brien McDonald", "O'Brien McDonald"],
-    ["ada", "ada", "Ada"],
-  ]) {
-    view.knowTitle(pod, typed);
-    assert.equal(view.personName(pod), person, pod);
-  }
+  const titles = new Map([
+    ["tamsin-at-north", "Tamsin at North"],
+    ["o-brien-mcdonald", "O'Brien McDonald"],
+    ["ada", "ada"],
+  ]);
+  for (const [pod, person] of [
+    ["rowan-ellery-marsh", "Rowan Ellery Marsh"],
+    ["tamsin-at-north", "Tamsin at North"],
+    ["o-brien-mcdonald", "O'Brien McDonald"],
+    ["ada", "Ada"],
+  ])
+    assert.equal(view.personName(pod, titles), person, pod);
+  assert.equal(view.personName("tamsin-at-north"), "Tamsin At North");
 });
 
 test("a measurement, to three significant figures", () => {

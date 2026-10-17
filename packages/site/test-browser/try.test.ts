@@ -2184,6 +2184,11 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
       () => navigator.serviceWorker.controller !== null,
     );
 
+    assert.equal(
+      await page.locator("h1").first().innerText(),
+      "Tamsin at North",
+    );
+
     await world(first.asOf);
     await bringIn();
     assert.equal((await metformin()).length, 1, "metformin is not taken");
