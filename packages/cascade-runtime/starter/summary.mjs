@@ -3878,38 +3878,69 @@ ${back !== undefined && html`<p><a href=${back}>Back</a></p>`}`;
 
 /**
  * What to tell a person of a connection that ended early, by the `kind` of its `ConnectionFailure`: what happened at
- * the hospital called `name`, and what to do. Never a host, a status or a code.
+ * the hospital called `name`, and what to do. Never a host, a status or a code. `again` is whether signing in again
+ * can help: false for a failure that every try meets the same way.
  */
 const FAILURES = {
-  cancelled: (name) =>
-    `The sign-in at ${name} was cancelled, so nothing was brought in. Sign in again when you are ready.`,
-  "state-mismatch": (name) =>
-    `The sign-in at ${name} did not come back the way it was started, so it was dropped. Sign in again.`,
-  "host-not-allowed": (name) =>
-    `${name} sent the app to an address it does not trust, so nothing was fetched. Signing in again may help; if it keeps happening, the hospital's setup needs a look.`,
-  "cap-exceeded": (name) =>
-    `${name} sent more than the app takes in at once, so it stopped. Nothing was brought in. Signing in again tries once more.`,
-  unauthorized: (name) =>
-    `${name} stopped accepting the sign-in, most likely because it ran out. Sign in again to carry on.`,
-  "retries-exhausted": (name) =>
-    `${name} did not answer after several tries. Wait a little, then sign in again.`,
-  "sign-in-unavailable": (name) =>
-    `The sign-in window for ${name} could not be opened. Allow this page to open windows, then sign in again.`,
-  "hospital-error": (name) =>
-    `${name} refused the sign-in or sent something the app cannot read. Sign in again; if it keeps happening, the hospital's side needs a look.`,
+  cancelled: {
+    said: (name) =>
+      `The sign-in at ${name} was cancelled, so nothing was brought in. Sign in again when you are ready.`,
+    again: true,
+  },
+  "state-mismatch": {
+    said: (name) =>
+      `The sign-in at ${name} did not come back the way it was started, so it was dropped. Sign in again.`,
+    again: true,
+  },
+  "host-not-allowed": {
+    said: (name) =>
+      `${name}'s address is not one the app will talk to, so nothing was fetched.`,
+    again: false,
+  },
+  "cap-exceeded": {
+    said: (name) =>
+      `${name}'s record is larger than the app brings in at once, so it stopped. Nothing was brought in.`,
+    again: false,
+  },
+  unauthorized: {
+    said: (name) =>
+      `${name} did not accept the access token, so the record stopped coming in. Sign in again to carry on.`,
+    again: true,
+  },
+  "retries-exhausted": {
+    said: (name) =>
+      `${name} did not answer after several tries. Wait a little, then sign in again.`,
+    again: true,
+  },
+  "sign-in-unavailable": {
+    said: (name) =>
+      `The sign-in at ${name} could not be started, so nothing was brought in. If it keeps happening, the app's sign-in setup needs a look.`,
+    again: false,
+  },
+  "hospital-error": {
+    said: (name) =>
+      `${name} refused the sign-in or sent something the app cannot read. Sign in again; if it keeps happening, the hospital's side needs a look.`,
+    again: true,
+  },
 };
 
-/** The sentence for a person of a failed connection of `kind` at the hospital `name`; undefined for a kind not known. */
-export function failureSaid(kind, name) {
-  return FAILURES[kind]?.(name);
+/**
+ * What to say of a failed connection of `kind` at the hospital `name`, as `{ said, again }`; undefined for a kind not
+ * known. A surface whose cause differs gives `overrides`, a map of kind to the same `{ said, again }` shape.
+ */
+export function failureSaid(kind, name, overrides = {}) {
+  const row = overrides[kind] ?? FAILURES[kind];
+  return row === undefined
+    ? undefined
+    : { said: row.said(name), again: row.again };
 }
 
 /**
  * A connection to the hospital named `hospital`, for the pod `pod`, as a box over the pod's page with the id `id`,
  * which closes to `back`. While `connection.step` is `signing in` or `pulling`, its steps; else `failed` when given, the
  * developer's detail of why, with a Try again button when `retry`. When `failure` (a `ConnectionFailure`'s kind) is
- * given too, the box leads with a sentence for the person naming the hospital and what to do, and a button from
- * `signInAgain(label)`, and keeps `failed` in a smaller line. Else its steps, whose record `about` is when not the pod's
+ * given too, the box leads with a sentence for the person naming the hospital and what to do, and, when signing in again
+ * can help, a button from `signInAgain(label)`; `failureOverrides` replaces a kind's row for a surface. It keeps `failed` in a smaller line. Else its steps, whose record `about` is when not the pod's
  * person, what each of `sources` (from `look`) holds, what `pulled` left out, and a button that posts to `bring`.
  * With `pulledAsOf`, the instant the pull was made under (undefined: no date), the box says what the pull answered as of.
  */
@@ -3922,6 +3953,7 @@ export function connectionDialog({
   connection,
   failed,
   failure,
+  failureOverrides,
   signInAgain,
   retry,
   sources = [],
@@ -3947,12 +3979,14 @@ export function connectionDialog({
     );
   if (failed !== undefined) {
     const person =
-      failure === undefined ? undefined : failureSaid(failure, name);
+      failure === undefined
+        ? undefined
+        : failureSaid(failure, name, failureOverrides);
     return said(
       html`<div class="card">${
         person === undefined
           ? html`<p>${failed}</p>`
-          : html`<p role="alert">${person}</p>${signInAgain?.(`Sign in again at ${name}`)}<p class="muted detail">${failed}</p>`
+          : html`<p role="alert">${person.said}</p>${person.again && signInAgain?.(`Sign in again at ${name}`)}<p class="muted detail">${failed}</p>`
       }${retry && postButton(bring, {}, "Try again", undefined, BRINGING)}</div>`,
     );
   }

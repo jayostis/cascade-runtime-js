@@ -886,7 +886,10 @@ try {
         how,
         /From Cascade North, as of 1 February 2024: 5 records\..*From Cascade North, as of 1 February 2025: 4 records, 1 of them a new version of one the pod already held\./,
       );
-      assert.match(how, /version 1 to version 2, in import 2/);
+      assert.match(
+        how,
+        /version 1 to version 2, in import 2, as of 1 February 2025/,
+      );
       assert.match(
         how,
         /Status active → completed; end date none → Apr 15, 2024\./,

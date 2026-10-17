@@ -590,19 +590,25 @@ test("a failed connection's box speaks to a person by the failure's kind, naming
   const north = "Cascade North Demo Hospital";
   const detail =
     "https://cascade-north.demo.invalid refused Patient with 401: invalid_client.";
-  const kinds: Record<FailureKind, RegExp> = {
-    cancelled: /cancelled.*Sign in again/,
-    "state-mismatch": /did not come back.*Sign in again/,
-    "host-not-allowed": /address it does not trust/,
-    "cap-exceeded": /more than the app takes in/,
-    unauthorized: /stopped accepting the sign-in.*Sign in again/,
-    "retries-exhausted": /did not answer after several tries.*sign in again/,
-    "sign-in-unavailable": /could not be opened.*sign in again/,
-    "hospital-error": /refused the sign-in.*Sign in again/,
+  const kinds: Record<FailureKind, [said: RegExp, button: boolean]> = {
+    cancelled: [/cancelled.*Sign in again/, true],
+    "state-mismatch": [/did not come back.*Sign in again/, true],
+    "host-not-allowed": [/address is not one the app will talk to/, false],
+    "cap-exceeded": [/larger than the app brings in at once/, false],
+    unauthorized: [
+      /did not accept the access token(?!.*(ran out|expired))/,
+      true,
+    ],
+    "retries-exhausted": [
+      /did not answer after several tries.*sign in again/,
+      true,
+    ],
+    "sign-in-unavailable": [/could not be started/, false],
+    "hospital-error": [/refused the sign-in.*Sign in again/, true],
   };
-  for (const [kind, action] of Object.entries(kinds) as [
+  for (const [kind, [action, button]] of Object.entries(kinds) as [
     FailureKind,
-    RegExp,
+    [RegExp, boolean],
   ][]) {
     const html = render(
       view.connectionDialog({
@@ -624,7 +630,7 @@ test("a failed connection's box speaks to a person by the failure's kind, naming
     assert.doesNotMatch(first, /401|invalid_client|https?:|\.invalid/, kind);
     assert.equal(
       /<button[^>]*>([^<]*)<\/button>/.exec(html)?.[1],
-      "Sign in again at Cascade North",
+      button ? "Sign in again at Cascade North" : undefined,
       kind,
     );
     assert.match(
@@ -633,6 +639,28 @@ test("a failed connection's box speaks to a person by the failure's kind, naming
       kind,
     );
   }
+  const popup = render(
+    view.connectionDialog({
+      id: "pulled",
+      pod: "rowan-ellery-marsh",
+      hospital: north,
+      back: "#",
+      connection: { step: "failed", requests: 3 },
+      failed: detail,
+      failure: "sign-in-unavailable",
+      failureOverrides: {
+        "sign-in-unavailable": {
+          said: (name: string) => `Allow pop-ups for ${name}.`,
+          again: true,
+        },
+      },
+      signInAgain: (label: string) =>
+        view.postButton("sign-in", { fhirBase: "x" }, label),
+      bring: "bring",
+    }),
+  );
+  assert.match(popup, /Allow pop-ups for Cascade North/);
+  assert.match(popup, /Sign in again at Cascade North/);
   const plain = render(
     view.connectionDialog({
       id: "pulled",
@@ -3299,7 +3327,12 @@ test("a pod brought in twice says where What changed comes from: the imports in 
       ),
     }),
   );
-  assert.match(undated, /in import 2, on Oct 1[67], 2026\./);
+  assert.ok(
+    undated.includes(
+      `in import 2, on ${view.localDay("2026-10-17T09:05:00Z")}.`,
+    ),
+    undated,
+  );
   assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
   assert.doesNotMatch(
     drawn.slice(drawn.indexOf("Where this comes from")),

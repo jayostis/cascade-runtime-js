@@ -166,6 +166,15 @@ const style = document.createElement("style");
 style.textContent = STYLE;
 document.head.append(style);
 
+/** In try/ the sign-in is a popup, so a sign-in that cannot start means the browser blocked it. */
+const POPUP_BLOCKED = {
+  "sign-in-unavailable": {
+    said: (name) =>
+      `The sign-in window for ${name} could not be opened. Allow this page to open pop-ups, then sign in again.`,
+    again: true,
+  },
+};
+
 /** The names of the databases here whose name starts with `prefix`, without it. */
 async function databases(prefix) {
   return (await indexedDB.databases())
@@ -347,6 +356,7 @@ function pageShown() {
           bring: "bring",
           pulledAsOf: connection.asOf,
           signInAgain: (label) => signInButton(connection.row.fhirBase, label),
+          failureOverrides: POPUP_BLOCKED,
           ...connection.said,
         }),
       signIn: (hospital) =>
