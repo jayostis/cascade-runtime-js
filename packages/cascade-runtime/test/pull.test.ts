@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
-import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import { openPod, type Pod, type Pull, pullFiles } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 

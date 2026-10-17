@@ -7,9 +7,6 @@
   "include": ["src", "test", "test-browser"],
   "references": [
     {
-      "path": "../demo-hospital"
-    },
-    {
       "path": "../runtime"
     },
     {

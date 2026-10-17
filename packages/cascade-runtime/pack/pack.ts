@@ -9,7 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
@@ -420,7 +420,11 @@ async function packOwnFiles(
  * `file:`. The runtime reaches them only through a `fetch`, so the package itself names them nowhere.
  */
 async function packDemoHospital(): Promise<void> {
-  const workspace = join(ROOT, "packages", "demo-hospital");
+  const workspace = dirname(
+    fileURLToPath(
+      import.meta.resolve("@the-cascade-protocol/sandbox/package.json"),
+    ),
+  );
   const manifest = await manifestOf(workspace);
   const starter = join(STAGE, "starter");
   const to = join(starter, DEMO_HOSPITAL);

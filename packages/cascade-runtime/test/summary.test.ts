@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import process from "node:process";
 import { after, test } from "node:test";
 import { render } from "preact-render-to-string";
-import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
+import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
   changesIn,
   type Finding,

@@ -3,8 +3,8 @@ import { createServer, type Server } from "node:net";
 import { before, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
-import { type Bundle, recordsAt } from "@cascade-runtime/demo-hospital";
-import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import { type Bundle, recordsAt } from "@the-cascade-protocol/sandbox";
+import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import {
   ConnectionFailure,
   type DirectoryRow,

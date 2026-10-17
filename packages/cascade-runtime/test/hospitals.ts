@@ -1,7 +1,7 @@
 import {
   demoFetch,
   type DemoHospitalOptions,
-} from "@cascade-runtime/demo-hospital";
+} from "@the-cascade-protocol/sandbox";
 import {
   connect,
   type ConnectOptions,

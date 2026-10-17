@@ -2,7 +2,7 @@
 // this app, and the pull. The demo hospitals are pretend, answered here with no network.
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
-import { brandsBundle, demoFetch } from "@cascade-runtime/demo-hospital";
+import { brandsBundle, demoFetch } from "@the-cascade-protocol/sandbox";
 import {
   connect,
   ConnectionFailure,

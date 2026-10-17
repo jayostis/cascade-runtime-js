@@ -495,8 +495,8 @@ function loadedSteps(out) {
  */
 async function expectedPull() {
   const script = `
-import { demoHospital, recordsAt } from "@cascade-runtime/demo-hospital";
-import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import { demoHospital, recordsAt } from "@the-cascade-protocol/sandbox";
+import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import { connect, DEMO_PLAN, openPod, pull, pullFiles, TEST_DIRECTORY } from "cascade-runtime";
 const patient = "pt-1001";
 const north = await loadHospital("cascade-north");

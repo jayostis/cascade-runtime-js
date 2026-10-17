@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
-import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
+import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import { openPod, type Pod, pullFiles } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 

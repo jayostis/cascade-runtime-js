@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { brandsBundle } from "@cascade-runtime/demo-hospital";
+import { brandsBundle } from "@the-cascade-protocol/sandbox";
 import {
   loadHospital,
   loadHospitals,
-} from "@cascade-runtime/demo-hospital/node";
+} from "@the-cascade-protocol/sandbox/node";
 import { directoryOf, searchDirectory, TEST_DIRECTORY } from "cascade-runtime";
 import { DEMO_BRANDS } from "../src/connect/demo-brands.js";
 import { launcherSettings } from "./launcher-settings.js";
@@ -14,7 +14,7 @@ import { launcherSettings } from "./launcher-settings.js";
 const DATA = fileURLToPath(
   new URL(
     "../../../data/",
-    import.meta.resolve("@cascade-runtime/demo-hospital/node"),
+    import.meta.resolve("@the-cascade-protocol/sandbox/node"),
   ),
 );
 

@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { hospitalId } from "@cascade-runtime/demo-hospital";
-import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
+import { hospitalId } from "@the-cascade-protocol/sandbox";
+import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
   PEOPLE,
   SIGNED_IN,
@@ -24,9 +24,16 @@ const VIEW = fileURLToPath(
   new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
 );
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SOURCE = fileURLToPath(
-  new URL("../../../../demo-hospital/dist/src/", import.meta.url),
-);
+const SOURCE =
+  join(
+    dirname(
+      fileURLToPath(
+        import.meta.resolve("@the-cascade-protocol/sandbox/package.json"),
+      ),
+    ),
+    "dist",
+    "src",
+  ) + sep;
 /** The page side of the demo hospitals: their worker's registration and world date, and the rule that names a pull after its hospital. */
 const PAGE_SIDE = `export { setWorldDate, useDemoHospitals, worldDate } from "./web/page.js";
 export { hospitalId } from "./route.js";
