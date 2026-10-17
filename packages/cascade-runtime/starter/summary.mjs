@@ -30,28 +30,47 @@ const number = (head, of) => ({
 
 const SEVERITY = { high: "High severity", low: "Low severity" };
 
-const STOPPED = "Stopped";
+const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const ACTIVE = `${REC}MedicationActive`;
+const STOPPED = `${REC}MedicationStopped`;
+const UNKNOWN = `${REC}MedicationUnknown`;
+const ENTERED_IN_ERROR = `${REC}MedicationEnteredInError`;
 
 /**
- * A medication's status in a person's words: `Stopped` when its source states an end or a status of stopped or
- * completed, else the status as the source writes it, `Unknown` when it writes none.
+ * The lifecycle classes of rule L1 a person is shown, in the order the Medications table opens in, each with its word.
+ * A medication of any but the last is current. Entered in error is not among them: such a medication is not shown.
  */
-function medicationStatus({ status, ended }) {
-  const written = String(status ?? "")
-    .trim()
-    .replaceAll("-", " ")
-    .toLowerCase();
-  if (ended !== undefined || ["stopped", "completed"].includes(written))
-    return STOPPED;
-  return written === ""
-    ? "Unknown"
-    : written[0].toUpperCase() + written.slice(1);
+const LIFECYCLES = [
+  [ACTIVE, "Active"],
+  [`${REC}MedicationPaused`, "Paused"],
+  [UNKNOWN, "Unknown"],
+  [STOPPED, "Stopped"],
+].map(([lifecycle, said], order) => ({ lifecycle, said, order }));
+
+/** A medication row's lifecycle class, as `LIFECYCLES` holds it: unknown when the row states none. */
+const lifecycleOf = (row) =>
+  LIFECYCLES.find(({ lifecycle }) => lifecycle === row.lifecycle) ??
+  LIFECYCLES.find(({ lifecycle }) => lifecycle === UNKNOWN);
+
+const isCurrent = (row) => lifecycleOf(row).lifecycle !== STOPPED;
+
+/**
+ * A medication's status in a person's words: its lifecycle class, with the day it stopped, or, for one not stopped
+ * that states an end, the day it runs until.
+ */
+function medicationStatus(row) {
+  const { lifecycle, said } = lifecycleOf(row);
+  if (row.ended === undefined) return said;
+  return lifecycle === STOPPED
+    ? `${said} ${day(row.ended)}`
+    : `${said}, until ${day(row.ended)}`;
 }
 
 /**
  * One tile for each of these questions, in this order: its title, what one of its rows is called, the column of the
  * record's own name for it, the columns holding its codes in the order a name is taken from them, the table's columns,
- * the column the table opens sorted by, and whether it opens with the newest first.
+ * the column the table opens sorted by, and whether it opens with the newest first; and, for a section that has them,
+ * which of its question's rows it shows and which of those are current, the tile counting and naming the current ones.
  */
 export const SECTIONS = [
   {
@@ -88,20 +107,20 @@ export const SECTIONS = [
     question: "pod/My medication history",
     field: "medication",
     codes: ["code"],
+    shows: (row) => row.lifecycle !== ENTERED_IN_ERROR,
+    current: isCurrent,
     columns: [
       text("Medication", (row) => row.medication),
       {
         head: "Status",
         type: "text",
-        key: medicationStatus,
-        show: (row) =>
-          row.ended === undefined
-            ? medicationStatus(row)
-            : `${medicationStatus(row)} ${day(row.ended)}`,
+        key: (row) =>
+          `${lifecycleOf(row).order} ${isCurrent(row) ? "" : (row.ended ?? "")} ${row.medication ?? ""}`,
+        show: medicationStatus,
       },
       date("Since", (row) => row.started),
     ],
-    sortBy: 0,
+    sortBy: 1,
   },
   {
     title: "Conditions",
@@ -234,16 +253,17 @@ export const QUESTIONS = [
  * several questions and `said` (`variantsSaid`'s answer, none until the tables can say) rather than from one.
  */
 export function sectionRows(section, answers, said) {
-  return section.rows === undefined
-    ? (answers[section.question] ?? [])
-    : section.rows(answers, said);
+  if (section.rows !== undefined) return section.rows(answers, said);
+  const rows = answers[section.question] ?? [];
+  return section.shows === undefined ? rows : rows.filter(section.shows);
 }
 
 const isCode = (code) => /^[a-z][a-z\d+.-]*:/i.test(code ?? "");
 
 /**
- * The codes the sections' rows in `answers`, and the medication history's, hold, each once: what to ask the tables'
- * `about` of. The history is no section, but the change cards name their medication by it, stopped or not.
+ * The codes the sections' rows in `answers`, and every row of the medication history, hold, each once: what to ask the
+ * tables' `about` of. The Medications section is the history less the medications entered in error, and the change
+ * cards name their medication by any row of it.
  */
 export function codesOf(answers) {
   const codes = [
@@ -624,15 +644,15 @@ function reviewSaid(row, item) {
 }
 
 /**
- * A `{ sentence, entries }` for each pair of medications in two entries whose codes share an ingredient, in the order of
- * the section, once for the pair of entries whatever codes their rows show, and none for a pair whose rows share a
+ * A `{ sentence, entries }` for each pair of active medications (rule L1's class) in two entries whose codes share an
+ * ingredient, in the order of the section, once for the pair of entries whatever codes their rows show, and none for a pair whose rows share a
  * code, which What needs review lists. `entries` are the pair's `{ entry, origin }`, the first the sentence's subject and
  * `origin` the table version its code's ingredients were read from.
  */
 function sharedIngredients(answers, about) {
   const medications = SECTIONS.find(({ one }) => one === "medication");
   const rows = sectionRows(medications, answers)
-    .filter((row) => medicationStatus(row) !== STOPPED)
+    .filter((row) => row.lifecycle === ACTIVE)
     .map((row) => ({
       entry: row.entry,
       name: row.medication || fromLabel(row.entryLabel).name,
@@ -672,7 +692,6 @@ function sharedIngredients(answers, about) {
 }
 
 const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 /** The five ACMG values, in the order a classification names them. */
 const ACMG = [
   "Pathogenic",
@@ -1096,13 +1115,22 @@ ${body}
 
 /**
  * The section's tile, a link that opens its dialog, and the dialog: its `Table`, whose rows each link to
- * `entryHref(row.entry)` when given.
+ * `entryHref(row.entry)` when given. A section that says which rows are current counts and names those, then how many
+ * stopped.
  */
 export function tile(section, rows, entryHref, by) {
   const id = `see-${slug(section.title)}`;
   const opened = opening(section, rows);
-  const names = opened.map((row) => row[section.field] ?? "").join(", ");
-  const opener = html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${rows.length}</span><span class="peek">${names}</span></a>`;
+  const current =
+    section.current === undefined ? opened : opened.filter(section.current);
+  const stopped = opened.length - current.length;
+  const names = [
+    ...current.map((row) => row[section.field] ?? ""),
+    ...(stopped > 0
+      ? [`${current.length > 0 ? "and " : ""}${stopped} stopped`]
+      : []),
+  ].join(", ");
+  const opener = html`<a class="tile" key=${id} href="#${id}"><span class="kind">${section.title}</span><span class="count">${current.length}</span><span class="peek">${names}</span></a>`;
   return {
     tile:
       by === undefined
@@ -1132,8 +1160,9 @@ export function tile(section, rows, entryHref, by) {
  * - `unheld`: the table versions the pod names that the app does not hold, as `pod.opened.unheld` gives them;
  * - `entryHref(entry)`: the address of an entry's page, which each row of a tile's table links to; none, no link;
  * - `about`: what the tables say of the codes `codesOf(answers)` gives, as their `about` answers, which `named` names
- *   the rows by; an empty map when they cannot say. Undefined while they are still being asked, and What changed is
- *   left out until it is known, so a card is drawn once, by one name, never by the record's own and then the tables';
+ *   the rows by; an empty map when they cannot say. Undefined while they are still being asked, and What changed holds
+ *   only a line saying it is being named until it is known, so a card is drawn once, by one name, never by the record's
+ *   own and then the tables';
  * - `said`: what the tables say of the variants, as `variantsSaid` gives it, or undefined until they can say; no report
  *   is tagged `Differs`, on a row or in what is worth a look, until it does;
  * - `changes`: what changed after a medication started or stopped, as `changesIn` gives it over the pod's medication
@@ -1172,12 +1201,17 @@ export function podPage(
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
   const worth = worthPart(worthALook(answers, names, said), entryHref, ask);
-  const changed =
-    about !== undefined &&
+  const due =
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
-    (answers[LABS] ?? []).length > 0
-      ? changedPart({
+    (answers[LABS] ?? []).length > 0;
+  const changed = !due
+    ? undefined
+    : about === undefined
+      ? html`<div class="card changes"><h2>What changed</h2>
+<p class="naming" role="status"><span class="spinner" aria-hidden="true"></span>Naming what changed…</p>
+</div>`
+      : changedPart({
           changes,
           about: names,
           how: howOf(
@@ -1190,8 +1224,7 @@ export function podPage(
           trendHref,
           register,
           ask,
-        })
-      : undefined;
+        });
   const tiles = SECTIONS.map((section) => [
     section,
     sectionRows(section, answers, said),
@@ -4009,6 +4042,7 @@ form.inline { display: inline; }
 .people .muted { display: block; font-size: 0.8rem; }
 .doing { position: fixed; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 16px rgb(0 0 0 / 0.2); }
 .doing[hidden] { display: none; }
+.naming { display: flex; align-items: center; gap: 0.6rem; min-height: 6rem; margin: 0; color: var(--muted); }
 .spinner { width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 body[data-state="busy"] { cursor: progress; }

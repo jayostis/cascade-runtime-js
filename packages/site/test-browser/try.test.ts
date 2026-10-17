@@ -2192,12 +2192,16 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
 
     await world(first.asOf);
     await bringIn();
-    assert.equal((await metformin()).length, 1, "metformin is not taken");
+    const [taken, ...more] = await metformin();
+    assert.deepEqual(more, []);
+    assert.match(taken ?? "", /Active/, "metformin is not taken");
     assert.equal(await page.locator(".change").count(), 0);
 
     await world(undefined);
     await bringIn();
-    assert.deepEqual(await metformin(), [], "metformin is still taken");
+    const [stopped, ...others] = await metformin();
+    assert.deepEqual(others, []);
+    assert.match(stopped ?? "", /Stopped/, "metformin is still taken");
     const card = page.locator(".change");
     await card.first().waitFor({ timeout: 60_000 });
     assert.equal(await card.count(), 1);
