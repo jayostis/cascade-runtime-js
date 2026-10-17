@@ -230,20 +230,27 @@ async function started(settings = {}) {
   });
   let out = "";
   child.stderr.on("data", (chunk) => stdout.write(`[server] ${chunk}`));
-  const address = await new Promise((done, failed) => {
-    child.stdout.on("data", (chunk) => {
-      out += chunk;
-      const found = /http:\/\/127\.0\.0\.1:\d+\//.exec(out);
-      if (found !== null) done(found[0]);
-    });
-    child.on("close", (code) =>
-      failed(new Error(`npm start exited ${code}: ${out}`)),
-    );
-  });
+  const { app: address, demo: listenerAddress } = await new Promise(
+    (done, failed) => {
+      child.stdout.on("data", (chunk) => {
+        out += chunk;
+        const app = /^(http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(out);
+        const demo =
+          /^The demo hospitals are listening at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(
+            out,
+          );
+        if (app !== null && demo !== null) done({ app: app[1], demo: demo[1] });
+      });
+      child.on("close", (code) =>
+        failed(new Error(`npm start exited ${code}: ${out}`)),
+      );
+    },
+  );
   stdout.write(`serving at ${address}\n`);
   const closed = new Promise((done) => child.on("close", done));
   return {
     address,
+    listenerAddress,
     stop: async () => {
       if (platform === "win32")
         execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
@@ -1477,6 +1484,15 @@ if (release === undefined) {
         body: new URLSearchParams(form),
       });
 
+    /** Answers a hospital's sign-in page, which is the listener's, with `form`. */
+    const answer = (authorize, form) =>
+      fetch(new URL(authorize.pathname, authorize.origin), {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(form),
+      });
+
     /**
      * Sign the pod's person in at `fhirBase`, answering its page with `decision` as `patient`; gives the pod's page with
      * the connection's box open.
@@ -1485,10 +1501,12 @@ if (release === undefined) {
       const begun = await send(`/pods/${pod}/hospitals`, { fhirBase });
       assert.equal(begun.status, 303);
       const authorize = new URL(begun.headers.get("location"));
-      assert.equal(authorize.origin, origin);
+      assert.equal(authorize.origin, new URL(server.listenerAddress).origin);
+      assert.notEqual(authorize.origin, origin);
+      assert.equal(authorize.hostname, "127.0.0.1");
       const picker = await (await fetch(authorize)).text();
       assert.ok(picker.includes(`value="${patient}"`), patient);
-      const answered = await send(authorize.pathname, {
+      const answered = await answer(authorize, {
         ...Object.fromEntries(authorize.searchParams),
         patient,
         decision,
@@ -1649,7 +1667,7 @@ if (release === undefined) {
             });
             const authorize = new URL(begun.headers.get("location"));
             const picker = await (await fetch(authorize)).text();
-            const answered = await send(authorize.pathname, {
+            const answered = await answer(authorize, {
               ...Object.fromEntries(authorize.searchParams),
               patient: expected.patient,
               decision: "cancel",

@@ -41,7 +41,7 @@ HTML with `preact-render-to-string`. A pod's page also brings in a
 record from a hospital of the test directory: the person signs in on the
 hospital's own page, and `hospitals.mjs` receives the redirect on `/callback`,
 which goes back to the pod's page with the connection in a box over it
-(`?connection=<n>#connection`); the demo hospitals, in `demo-hospital/`, are pretend.
+(`?connection=<n>#connection`); the demo hospitals, in `demo-hospital/`, are pretend and answer on a loopback port of their own (`serveDemo`).
 The title bar's File menu posts to `/delete-all` and `/reset-all`, which call
 `deleteAll` and `resetAll` in `pods.mjs`, as `npm run reset` does; Help,
 About says the app's name and version and the `cascade-runtime` it runs on.
