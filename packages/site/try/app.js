@@ -884,7 +884,7 @@ async function signIn(fhirBase, popup) {
     now();
     const pulled = await pull(signedIn, DEMO_PLAN);
     shown.files = pullFiles(
-      pulled,
+      { ...pulled, asOf: demo ? shown.asOf : undefined },
       `${demo ? hospitalId({ hospital: row }) : row.vendor}-${Date.now()}`,
     );
     shown.step = "pulled";

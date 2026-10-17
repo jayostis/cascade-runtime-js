@@ -875,7 +875,10 @@ async function filesOf(connection) {
     return { failed: `Not connected: ${error.message}.` };
   }
   try {
-    return { pulled, files: pullFiles(pulled, connection.name) };
+    return {
+      pulled,
+      files: pullFiles({ ...pulled, asOf: connection.asOf }, connection.name),
+    };
   } catch (error) {
     return { failed: `Refused: ${error.message}` };
   }
