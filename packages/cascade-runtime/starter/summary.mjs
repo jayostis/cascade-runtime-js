@@ -374,9 +374,9 @@ export function slug(person) {
 }
 
 /**
- * A pod's name as a person's: the title `titles` (a Map of the pods' titles by their names) holds for it when that
- * is the name the pod was made under, that is, when `slug` of it is the pod's name, as typed; else the pod's own name
- * capitalised, `rowan-ellery-marsh` as `Rowan Ellery Marsh`.
+ * A pod's name as a person's: the title `titles` holds for it, as typed, when `slug` of it is the pod's name; else,
+ * and where the title is the pod's name itself, as a pod made without one keeps, the pod's name capitalised:
+ * `rowan-ellery-marsh` is `Rowan Ellery Marsh`.
  */
 export function personName(pod, titles) {
   const typed = titles?.get(pod)?.trim().replace(/\s+/g, " ");

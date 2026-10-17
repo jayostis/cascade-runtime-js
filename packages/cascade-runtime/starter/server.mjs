@@ -102,12 +102,21 @@ const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** Each pod opened on the first request for it, and kept open. */
 const open = new Map();
 
+/** The title each pod keeps, by its name: read once, set when a pod is made, cleared when the pods are deleted or reset. */
+const kept = new Map();
+
 /** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
 async function podTitles() {
   const names = await podNames();
   return new Map(
     await Promise.all(
-      names.map(async (name) => [name, (await podTitle(name)) ?? name]),
+      names.map(async (name) => {
+        if (!kept.has(name)) {
+          const title = await podTitle(name);
+          if (title !== undefined) kept.set(name, title);
+        }
+        return [name, kept.get(name) ?? name];
+      }),
     ),
   );
 }
@@ -375,6 +384,7 @@ async function closeAll() {
   hospitals?.forget();
   waiting.clear();
   typedFor.clear();
+  kept.clear();
   await closePods();
 }
 
@@ -764,7 +774,9 @@ async function newPod(request, response) {
     typedFor.set(name, form.get("person")?.trim());
     return await showWords(response, name, words);
   }
-  await podNamed(name, undefined, form.get("person")?.trim());
+  const title = form.get("person")?.trim();
+  await podNamed(name, undefined, title);
+  if (title) kept.set(name, title);
   redirect(response, podPath(name));
 }
 

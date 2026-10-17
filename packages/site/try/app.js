@@ -178,10 +178,7 @@ async function refreshPods() {
   state.pods = await podsHere();
   state.titles = new Map(
     await Promise.all(
-      state.pods.map(async (pod) => [
-        pod,
-        await podTitle(pod).catch(() => undefined),
-      ]),
+      state.pods.map(async (pod) => [pod, await podTitle(pod)]),
     ),
   );
 }
