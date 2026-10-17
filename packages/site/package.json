@@ -9,7 +9,8 @@
     ".": "./dist/src/index.js"
   },
   "dependencies": {
-    "@cascade-runtime/runtime": "0.0.0"
+    "@cascade-runtime/runtime": "0.0.0",
+    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#f35f0c7292bf6a7e465c06cf195c6d825d9aba68"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
