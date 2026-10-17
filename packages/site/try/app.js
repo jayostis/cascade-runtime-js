@@ -24,6 +24,7 @@ import {
   pull,
   pullFiles,
   Refusal,
+  directoryOf,
   searchDirectory,
   sixWords,
   TEST_DIRECTORY,
@@ -139,6 +140,7 @@ const state = {
   pods: [],
   titles: new Map(),
   people: [],
+  directory: TEST_DIRECTORY,
   world: undefined,
   tables: [],
   tablesRead: undefined,
@@ -201,6 +203,18 @@ async function demoPeople() {
     return answer.ok ? await answer.json() : [];
   } catch {
     return [];
+  }
+}
+
+/** The directory: the demo hospitals' rows, from the brands bundle the site was built with, then the test directory's; the test directory alone, when the bundle cannot be read. */
+async function demoDirectory() {
+  try {
+    const answer = await fetch("demo-brands.json");
+    return answer.ok
+      ? [...directoryOf(await answer.json(), "demo"), ...TEST_DIRECTORY]
+      : TEST_DIRECTORY;
+  } catch {
+    return TEST_DIRECTORY;
   }
 }
 
@@ -651,7 +665,7 @@ function showHospitals(text) {
     hospitalsPage({
       titles: state.titles,
       pod: current,
-      rows: searchDirectory(TEST_DIRECTORY, text),
+      rows: searchDirectory(state.directory, text),
       text,
       search: `${podHref(current)}&hospitals`,
       signIn: (row) => signInButton(row.fhirBase, "Sign in"),
@@ -865,7 +879,7 @@ function showConnection(said, doing) {
 
 /** Signs in at the hospital in `popup`, opened in the click, fetches the record, and shows what it has. */
 async function signIn(fhirBase, popup) {
-  const row = TEST_DIRECTORY.find((each) => each.fhirBase === fhirBase);
+  const row = state.directory.find((each) => each.fhirBase === fhirBase);
   if (row === undefined) {
     popup?.close();
     throw new Error("That hospital is not in the directory.");
@@ -1282,8 +1296,9 @@ window.addEventListener("popstate", () => {
 });
 
 busy(async () => {
-  [state.people, state.world] = await Promise.all([
+  [state.people, state.directory, state.world] = await Promise.all([
     demoPeople(),
+    demoDirectory(),
     worldDate(WORKER).catch(() => undefined),
   ]);
   await refreshPods();

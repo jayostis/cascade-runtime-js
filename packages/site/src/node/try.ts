@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { hospitalId } from "@the-cascade-protocol/sandbox";
+import { brandsBundle, hospitalId } from "@the-cascade-protocol/sandbox";
 import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
+  BRANDS,
   PEOPLE,
   SIGNED_IN,
   signedInPage,
@@ -76,7 +77,7 @@ async function bundled(
 
 /**
  * The files of `try/` but the package: the page, which offers the examples published in `samples` (their folders),
- * its app, the starter's view and the packages it imports, the demo people as the view names them, the redirect page, and the demo hospitals'
+ * its app, the starter's view and the packages it imports, the demo people as the view names them, the demo hospitals as a brands bundle, the redirect page, and the demo hospitals'
  * worker, its page side and one data file per hospital beside them. The page cannot read the data files itself: the
  * worker answers every address under them as a hospital's sign-in page. `version` is what the pages were built from.
  */
@@ -118,6 +119,17 @@ export async function tryFiles(
     ["app.js", app],
     [SUMMARY, view],
     [PEOPLE, encoder.encode(JSON.stringify(demoPeople(hospitals)))],
+    [
+      BRANDS,
+      encoder.encode(
+        JSON.stringify(
+          brandsBundle(
+            hospitals.map(({ hospital }) => hospital),
+            new Date().toISOString(),
+          ),
+        ),
+      ),
+    ],
     [SIGNED_IN, encoder.encode(signedInPage())],
     [WORKER, worker],
     [WORKER_PAGE, workerPage],
