@@ -2720,15 +2720,16 @@ ${boxes}
 }
 
 /**
- * A whole page: `layout` in a document titled `title`, with the stylesheet and the page's script. `refresh` makes the
- * page reload itself every second. Render it to a string after `<!doctype html>`.
+ * A whole page: `layout` in a document titled `title`, with the stylesheet and the page's script. `refresh`, an address
+ * with no fragment, makes the page go there every second: a refresh to the page's own address with a fragment only
+ * goes to the fragment. Render it to a string after `<!doctype html>`.
  */
 export function frame({ title, refresh, chat, ...shown }) {
   return html`<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-${refresh && html`<meta http-equiv="refresh" content="1" />`}
+${refresh && html`<meta http-equiv="refresh" content=${`1; url=${refresh}`} />`}
 <title>${title} · Cascade</title>
 <style dangerouslySetInnerHTML=${{ __html: STYLE + (chat === undefined ? "" : CHAT_STYLE) }}></style>
 </head>
