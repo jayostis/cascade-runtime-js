@@ -76,6 +76,11 @@ with made-up patients. They need no account and no network: this app serves
 their sign-in pages under `/demo-hospitals/`. The SMART Health IT Sandbox is a
 real test server and needs the network.
 
+With `CASCADE_SANDBOX_LISTEN=1` in the environment, `npm start` serves the
+demo hospitals on a loopback port of their own (the console says which) and
+the app reaches them over it; their sign-in pages are then at that port, and
+the records are the same.
+
 To add a hospital of your own, make a folder under `hospitals/` with a
 `hospital.json` like Cascade North's (its `fhirBase` on a `.demo.invalid` host),
 then add its patients with `npm run patient:add -- hospitals/<folder> <file>`.

@@ -2,7 +2,11 @@
 // this app, and the pull. The demo hospitals are pretend, answered here with no network.
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
-import { brandsBundle, demoFetch } from "@the-cascade-protocol/sandbox";
+import {
+  brandsBundle,
+  demoFetch,
+  demoRemapFetch,
+} from "@the-cascade-protocol/sandbox";
 import {
   connect,
   ConnectionFailure,
@@ -28,13 +32,18 @@ function idOf(row) {
  * `/demo-hospitals/`. The hospitals answer as of `asOf`, an instant, or with every version they hold when it is
  * undefined; `worldDate()` gives it and `setWorldDate(asOf)` moves it, the next sign-in and the next request of a
  * bring-in under way answering as of the new date.
+ *
+ * With `listener`, a running `serveDemo` listener, the hospitals are reached over loopback instead of in process:
+ * each request goes through `demoRemapFetch`, and the sign-in pages are the listener's, not this app's.
  */
-export function hospitalsAt(origin, demo, { asOf } = {}) {
+export function hospitalsAt(origin, demo, { asOf, listener } = {}) {
   const routeAt = (when) =>
-    demoFetch(
-      demo.map((each) => ({ ...each, asOf: when })),
-      { authorizeBase: `${origin}/demo-hospitals/` },
-    );
+    listener !== undefined
+      ? demoRemapFetch(listener.origin)
+      : demoFetch(
+          demo.map((each) => ({ ...each, asOf: when })),
+          { authorizeBase: `${origin}/demo-hospitals/` },
+        );
   let world = asOf;
   let route = routeAt(world);
   /** The hospitals `demo` holds, the app's own among them, then the test directory's rows that are not demo hospitals. */
@@ -114,6 +123,7 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
     /** Moves the world's date to `when`, an instant, or with undefined back to every version. */
     setWorldDate(when) {
       world = when;
+      listener?.setWorldDate(when);
       route = routeAt(when);
     },
 
@@ -187,6 +197,13 @@ export function hospitalsAt(origin, demo, { asOf } = {}) {
     forget: () => connections.clear(),
 
     /** A demo hospital's answer to a request for its sign-in page. */
-    demo: (url, init) => route(url, init),
+    demo: (url, init) =>
+      listener === undefined
+        ? route(url, init)
+        : Promise.resolve(
+            new globalThis.Response("The sign-in pages are the listener's.", {
+              status: 404,
+            }),
+          ),
   };
 }
