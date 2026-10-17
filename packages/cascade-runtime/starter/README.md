@@ -39,7 +39,9 @@ medication started or stopped, a card with the two means, a small chart, the
 results behind it and "Open the trend", a chart of that test over time with the
 medication's start and stop dashed across it, at
 `/pods/<name>/trend?test=<LOINC>&medication=<RxNorm>`. It states what changed
-after what, never why. Alex's, Priya's and Martin's pods hold too little to show a card.
+after what, never why. A pod brought in more than once also says where that
+comes from: the imports in order, with their source and retrieved date, and the
+medication's earlier and later version. Alex's, Priya's and Martin's pods hold too little to show a card.
 Ines Calloway, a made-up patient at Cascade North, does: her LDL is lower after
 atorvastatin started. "+ New pod", Ines Calloway, "Sign in at Cascade North" and
 "Bring it into … pod" make that pod.

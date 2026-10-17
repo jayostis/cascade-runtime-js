@@ -858,6 +858,32 @@ try {
       );
     },
   );
+  await behaviour(
+    "Tamsin's page says what changed after her metformin stopped, and where that comes from: the pulls in order and the medication's two versions",
+    async () => {
+      const found = await fetched(
+        new URL("/pods/tamsin-vale/", server.address),
+      );
+      assert.equal(found.status, 200);
+      const page = readable(found.body);
+      assert.match(page, /was higher after .+ stopped\./);
+      assert.doesNotMatch(page, /urn:/);
+      const from = page.indexOf("Where this comes from");
+      assert.ok(from >= 0, "the card does not say where it comes from");
+      const how = page.slice(from, page.indexOf("These say what", from));
+      assert.doesNotMatch(how, /urn:|https?:\/\//);
+      assert.match(how, /The pod's records came in 2 imports/);
+      assert.match(
+        how,
+        /From Cascade North, retrieved Feb 1, 2024: 5 records\..*From Cascade North, retrieved Feb 1, 2025: 4 records, 1 of them a new version of one the pod already held\./,
+      );
+      assert.match(how, /version 1 to version 2, in import 2/);
+      assert.match(
+        how,
+        /Status active → completed; end date none → Apr 15, 2024\./,
+      );
+    },
+  );
   if (release === undefined)
     await behaviour("a pod loaded through a step stops there", async () => {
       const pod = `alex-rivera-${story.through.toLowerCase()}`;

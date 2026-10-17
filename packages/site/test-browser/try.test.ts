@@ -89,6 +89,7 @@ interface View {
   placeOf(row: Row): string;
   counted(records: Readonly<Record<string, number>>): string;
   hospitalName(name: string): string;
+  day(text: string): string;
   demoPeople(demo: unknown): Person[];
   familyFirst(person: Person): string;
   patientName(bundle: unknown): string | undefined;
@@ -2198,6 +2199,52 @@ test("in try/, Tamsin Vale signed in at North with the world's date at her story
       (await card.innerText()).replace(/\s+/g, " "),
       /was higher after .+ stopped\./,
     );
+  } finally {
+    await context.close();
+  }
+});
+
+test("in try/, the sample pod tamsin-vale draws What changed and, in its card, where it comes from: the story's pulls in order, each with its source and retrieved date, and the metformin's two versions", async () => {
+  const story = (await loadStories()).find(({ pulls }) => pulls?.length);
+  assert.ok(story?.pulls, "no story names its pulls");
+  const [finding] = story.findings;
+  assert.ok(finding?.kind === "after stop", "the story's finding is no stop");
+  const north = await loadHospital(story.hospital);
+
+  const context = await browser.newContext();
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await page.goto(`${served.url}try/index.html?pod=tamsin-vale`);
+    await page.locator(".changes .how").waitFor({ timeout: 60_000 });
+
+    const card = page.locator(".change");
+    assert.equal(await card.count(), 1);
+    assert.match(
+      (await card.innerText()).replace(/\s+/g, " "),
+      /was higher after .+ stopped\./,
+    );
+
+    const pulls = await texts(page, ".how li");
+    assert.equal(pulls.length, story.pulls.length);
+    story.pulls.forEach(({ asOf }, at) => {
+      const said = pulls[at]!;
+      assert.ok(
+        said.includes(`From ${view.hospitalName(north.hospital.name)}`),
+        said,
+      );
+      assert.ok(said.includes(`retrieved ${view.day(asOf)}`), said);
+    });
+    const how = (await page.locator(".how").innerText()).replace(/\s+/g, " ");
+    assert.match(how, /version 1 to version 2, in import 2/);
+    assert.match(
+      how,
+      new RegExp(
+        `Status active → completed; end date none → ${view.day(finding.date)}`,
+      ),
+    );
+    assert.doesNotMatch(how, /urn:|https?:/);
   } finally {
     await context.close();
   }

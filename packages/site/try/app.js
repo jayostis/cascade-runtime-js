@@ -87,6 +87,7 @@ import {
   trendTitle,
   savedLoginChanged,
   variantsSaid,
+  withMechanism,
   worldInstant,
 } from "./summary.js";
 
@@ -410,10 +411,15 @@ function render(title, body, doing = "ready") {
 
 /** Every question's rows from the pod shown, by question. */
 async function answered() {
-  return Object.fromEntries(
+  const answers = Object.fromEntries(
     await Promise.all(
       QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
     ),
+  );
+  return withMechanism(
+    answers,
+    changesIn(answers[HISTORY] ?? [], answers[LABS] ?? [], { limit: 20 }),
+    (question) => pod.ask(question),
   );
 }
 

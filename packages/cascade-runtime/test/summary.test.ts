@@ -2923,6 +2923,100 @@ test("nothing What changed or the trend draws, for any of the five stories, nor 
   }
 });
 
+test("a pod brought in twice says where What changed comes from: the imports in order, each with its source, retrieved date and what it brought in, and the medication's new version with what differs; one import, or a medication of one version, says less", async () => {
+  const story = (await storyPods()).get("story-statin")!;
+  const [finding] = story.changes;
+  const entry = finding!.medication.entry;
+  const record = String(
+    story.answers[view.SOURCES]!.find((row: Row) => row.entry === entry)!
+      .record,
+  );
+  const IMPORTS = "pod/What each import brought in";
+  const REVISIONS = "record/Its revisions, in the order they arrived";
+  const VERSIONS = "record/What each version says";
+  const CLINICAL = "https://ns.cascadeprotocol.org/clinical/v1#";
+  const north = "Cascade North Demo Hospital";
+  const imported = (n: number, records: string[]) =>
+    records.map((each) => ({
+      started: `202${3 + n}-02-01T09:05:00Z`,
+      import: `urn:uuid:import-${n}`,
+      importLabel: "FHIR pull",
+      record: each,
+    }));
+  const arrival = (n: number, each: string, version: string, extra = {}) => ({
+    record: each,
+    revision: `ni:revision-${n}-${each}`,
+    version,
+    arrived: `202${3 + n}-02-01T09:05:00Z`,
+    import: `urn:uuid:import-${n}`,
+    hospital: north,
+    retrieved: `202${3 + n}-01-30T00:00:00Z`,
+    ...extra,
+  });
+  const said = (version: string, field: string, value: string) => ({
+    version,
+    field: `${CLINICAL}${field}`,
+    value,
+  });
+  const twice = {
+    ...story.answers,
+    [IMPORTS]: [...imported(1, ["r-other", record]), ...imported(2, [record])],
+    [REVISIONS]: [
+      arrival(1, "r-other", "ni:other"),
+      arrival(1, record, "ni:first"),
+      arrival(2, record, "ni:second", { previous: "ni:revision-1" }),
+    ],
+    [VERSIONS]: [
+      said("ni:first", "drugName", "Atorvastatin"),
+      said("ni:first", "status", "active"),
+      said("ni:second", "drugName", "Atorvastatin"),
+      said("ni:second", "endDate", "2024-04-15"),
+      said("ni:second", "status", "completed"),
+    ],
+  };
+  const drawn = text(podOf("pell-hargrove", story, twice));
+  assert.match(
+    drawn,
+    /Where this comes from The pod's records came in 2 imports, in this order: From Cascade North, retrieved Jan 30, 2024: 2 records\. From Cascade North, retrieved Jan 30, 2025: 1 record, 1 of them a new version of one the pod already held\. .+ came in a new version: version 1 to version 2, in import 2, on Feb 1, 2025\. Status active → completed; end date none → Apr 15, 2024\./,
+  );
+  assert.doesNotMatch(drawn, /urn:|ni:|https?:/);
+  assert.doesNotMatch(
+    drawn.slice(drawn.indexOf("Where this comes from")),
+    /because|caus|due to|effect|led to|improv|worsen|thanks to|\bworks?\b/i,
+  );
+
+  const once = text(podOf("pell-hargrove", story));
+  assert.match(once, /What changed/);
+  assert.doesNotMatch(once, /Where this comes from/);
+
+  const unrevised = text(
+    podOf("pell-hargrove", story, {
+      ...twice,
+      [REVISIONS]: twice[REVISIONS]!.slice(0, 2).concat(
+        arrival(2, "r-third", "ni:third"),
+      ),
+    }),
+  );
+  assert.match(unrevised, /The pod's records came in 2 imports/);
+  assert.doesNotMatch(unrevised, /came in a new version/);
+
+  const asked: string[] = [];
+  const ask = async (question: string) => {
+    asked.push(question);
+    return [];
+  };
+  const base = { ...story.answers, [IMPORTS]: twice[IMPORTS] };
+  await view.withMechanism(
+    { ...base, [IMPORTS]: twice[IMPORTS]!.slice(0, 2) },
+    story.changes,
+    ask,
+  );
+  await view.withMechanism(base, [], ask);
+  assert.deepEqual(asked, [], "asked for a block that would not show");
+  await view.withMechanism(base, story.changes, ask);
+  assert.deepEqual(asked, [REVISIONS, VERSIONS]);
+});
+
 test("the trend names its first date from the earliest result, and its test and medication by the tables where they name the code, else by the record's own text", () => {
   const series = {
     test: {
