@@ -379,7 +379,7 @@ export function slug(person) {
  * capitalised, `rowan-ellery-marsh` as `Rowan Ellery Marsh`.
  */
 export function personName(pod, titles) {
-  const typed = titles?.get(pod)?.trim();
+  const typed = titles?.get(pod)?.trim().replace(/s+/g, " ");
   return typed !== undefined && typed !== pod && slug(typed) === pod
     ? typed
     : pod
