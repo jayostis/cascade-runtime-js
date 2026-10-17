@@ -11,9 +11,6 @@
       "path": "packages/fhir-pull"
     },
     {
-      "path": "packages/demo-hospital"
-    },
-    {
       "path": "packages/runtime"
     },
     {

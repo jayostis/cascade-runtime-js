@@ -26,8 +26,8 @@ import {
   type LocalVocabulary,
   localVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { recordsAt } from "@cascade-runtime/demo-hospital";
-import { loadHospital } from "@cascade-runtime/demo-hospital/node";
+import { recordsAt } from "@the-cascade-protocol/sandbox";
+import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import {
   type ExportSource,
   openPod,

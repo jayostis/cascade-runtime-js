@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
+import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import { openPod, type Pod, pullFiles, Refusal } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 

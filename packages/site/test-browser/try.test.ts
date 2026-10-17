@@ -28,12 +28,12 @@ import {
   demoFetch,
   hospitalId,
   recordsAt,
-} from "@cascade-runtime/demo-hospital";
+} from "@the-cascade-protocol/sandbox";
 import {
   loadHospital,
   loadHospitals,
   loadStories,
-} from "@cascade-runtime/demo-hospital/node";
+} from "@the-cascade-protocol/sandbox/node";
 import {
   FILES_JSON,
   iri,

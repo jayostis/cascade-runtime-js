@@ -334,8 +334,8 @@ person said no or closed the sign-in.
 In Node, from finding the hospital to its record in a pod of its own:
 
 ```js
-import { demoFetch } from "@cascade-runtime/demo-hospital";
-import { loadHospitals } from "@cascade-runtime/demo-hospital/node";
+import { demoFetch } from "@the-cascade-protocol/sandbox";
+import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
   connect,
   DEMO_PLAN,

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadHospital, loadStories } from "@cascade-runtime/demo-hospital/node";
+import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import { pullFiles, TEST_DIRECTORY } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 

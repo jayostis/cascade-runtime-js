@@ -7,11 +7,8 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import process, { env, exit, stderr, stdout } from "node:process";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
-import { HospitalDataError } from "@cascade-runtime/demo-hospital";
-import {
-  DATA_FOLDER,
-  loadHospitals,
-} from "@cascade-runtime/demo-hospital/node";
+import { HospitalDataError } from "@the-cascade-protocol/sandbox";
+import { DATA_FOLDER, loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
   changesIn,
   ConnectionFailure,

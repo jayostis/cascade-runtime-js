@@ -12,7 +12,6 @@
     "packages/apple-health",
     "packages/ccda-download",
     "packages/fhir-pull",
-    "packages/demo-hospital",
     "packages/site",
     "packages/graphdb",
     "packages/cascade-runtime"
@@ -34,14 +33,14 @@
     "build:package": "tsc -b && node packages/cascade-runtime/dist/pack/pack.js",
     "serve:pages": "tsc -b && node packages/site/dist/src/node/cli.js serve-pages",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
-    "brands": "tsc -b && node packages/demo-hospital/dist/src/node/brands-cli.js packages/cascade-runtime/src/connect/demo-brands.ts",
+    "brands": "tsc -b && node node_modules/@the-cascade-protocol/sandbox/dist/src/node/brands-cli.js packages/cascade-runtime/src/connect/demo-brands.ts",
     "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js",
-    "story:pulls": "tsc -b && node packages/cascade-runtime/dist/test/story-pulls.js",
-    "validate:data": "tsc -b && node packages/demo-hospital/validator/validate.mjs"
+    "story:pulls": "tsc -b && node packages/cascade-runtime/dist/test/story-pulls.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
+    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#f35f0c7292bf6a7e465c06cf195c6d825d9aba68",
     "cascade-reference-tables": "github:jayostis/cascade-reference-tables#e0a351577b0ce6085b20e80355b54093edd79003",
     "eslint": "10.12.0",
     "eslint-config-prettier": "10.1.8",

@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import type { Story, StoryFinding } from "@cascade-runtime/demo-hospital";
+import type { Story, StoryFinding } from "@the-cascade-protocol/sandbox";
 import {
   loadHospital,
   loadStories,
   STORIES,
-} from "@cascade-runtime/demo-hospital/node";
+} from "@the-cascade-protocol/sandbox/node";
 import {
   changeTools,
   checkInput,

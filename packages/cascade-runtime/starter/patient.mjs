@@ -2,8 +2,8 @@
 // to that hospital's `patients/`. The file is a FHIR Bundle of the records, with their dates (a `history` Bundle), as
 // they are (a `collection` Bundle), or with `shorthand` to compile.
 import { argv, stdout } from "node:process";
-import { HospitalDataError } from "@cascade-runtime/demo-hospital";
-import { addPatient } from "@cascade-runtime/demo-hospital/node";
+import { HospitalDataError } from "@the-cascade-protocol/sandbox";
+import { addPatient } from "@the-cascade-protocol/sandbox/node";
 import { argumentsOf, refuse } from "./pods.mjs";
 
 const { positionals } = argumentsOf(

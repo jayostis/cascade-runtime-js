@@ -87,7 +87,7 @@ export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
 
 /**
  * Hospitals to develop and test against, none of them real: the demo hospitals, read from `DEMO_BRANDS`, whose
- * `.invalid` hosts answer only through `@cascade-runtime/demo-hospital`'s fetch, never the real one, and the SMART
+ * `.invalid` hosts answer only through `@the-cascade-protocol/sandbox`'s fetch, never the real one, and the SMART
  * Health IT launcher, whose settings in its base ask for a patient's own login and approval.
  */
 export const TEST_DIRECTORY: readonly DirectoryRow[] = [

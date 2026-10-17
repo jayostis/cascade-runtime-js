@@ -11,9 +11,6 @@
     },
     {
       "path": "../fhir-pull"
-    },
-    {
-      "path": "../demo-hospital"
     }
   ]
 }
