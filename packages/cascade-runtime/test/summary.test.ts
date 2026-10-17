@@ -457,23 +457,56 @@ test("a person's name is the one typed when the pod was made, else the pod's nam
 });
 
 test("a record's person against the pod's: the grade, and the box's words and button by grade", () => {
-  const subject = "Rowan Ellery Marsh";
-  for (const [patient, family, grade] of [
-    ["Rowan Ellery Marsh", "Marsh", "certain"],
-    ["  rowan  ellery MARSH ", "Marsh", "certain"],
-    ["Hedda Marsh", "Marsh", "possible"],
-    ["Odalys Brandt", "Brandt", "certainly-not"],
-    ["Rowan Ellery", undefined, "certainly-not"],
-  ])
-    assert.equal(view.gradePerson(subject, patient, family), grade, patient);
+  const named = (...names: [string, string, string?][]) =>
+    view.patientNames({
+      entry: [
+        {
+          resource: {
+            resourceType: "Patient",
+            name: names.map(([given, family, use]) => ({
+              given: [given],
+              family,
+              use,
+            })),
+          },
+        },
+      ],
+    });
+  const rowan = "Rowan Ellery Marsh";
+  for (const [subject, names, grade] of [
+    [rowan, named(["Rowan Ellery", "Marsh"]), "certain"],
+    [" rowan  ellery MARSH ", named(["Rowan Ellery", "Marsh"]), "certain"],
+    ["José García", named(["José", "García"]), "certain"],
+    [
+      "Blanche Weber",
+      named(
+        ["Blanche", "Hermiston", "official"],
+        ["Blanche", "Weber", "maiden"],
+      ),
+      "certain",
+    ],
+    [
+      "Bertie Predovic",
+      named(
+        ["Bertie", "Hackett", "official"],
+        ["Bertie", "Predovic", "maiden"],
+      ),
+      "certain",
+    ],
+    [rowan, named(["Hedda", "Marsh"]), "possible"],
+    [rowan, named(["Moss Avery", "Marsh"]), "possible"],
+    [rowan, named(["Odalys", "Brandt"]), "certainly-not"],
+    [rowan, named(["Rowan Ellery", ""]), "certainly-not"],
+  ] as const)
+    assert.equal(view.gradePerson(subject, names), grade, subject);
   assert.equal(
-    view.gradePerson(undefined, "Odalys Brandt", "Brandt"),
+    view.gradePerson(undefined, named(["Odalys", "Brandt"])),
     undefined,
   );
-  assert.equal(view.gradePerson(subject, undefined, undefined), undefined);
+  assert.equal(view.gradePerson(rowan, []), undefined);
 
-  const titles = new Map([["rowan-ellery-marsh", subject]]);
-  const box = (about: string, family: string, withTitle = true) => {
+  const titles = new Map([["rowan-ellery-marsh", rowan]]);
+  const box = (given: string, family: string, withTitle = true) => {
     const html = render(
       view.connectionDialog({
         id: "pulled",
@@ -484,8 +517,8 @@ test("a record's person against the pod's: the grade, and the box's words and bu
         connection: { step: "pulled", requests: 3 },
         sources: [],
         pulled: { missing: [], denied: [] },
-        about,
-        aboutFamily: family,
+        about: `${given} ${family}`,
+        aboutNames: named([given, family]),
         bring: "bring",
       }),
     );
@@ -495,13 +528,17 @@ test("a record's person against the pod's: the grade, and the box's words and bu
       warns: html.includes('class="note"'),
     };
   };
-  const same = box(subject, "Marsh");
+  const same = box("Rowan Ellery", "Marsh");
   assert.ok(!same.said.includes("This record is"));
   assert.equal(same.button, "Bring it into Rowan Ellery Marsh's pod");
-  const maybe = box("Hedda Marsh", "Marsh");
-  assert.ok(maybe.said.includes("This record is Hedda Marsh's."));
+  const maybe = box("Moss Avery", "Marsh");
+  assert.ok(maybe.said.includes("This record is Moss Avery Marsh's."));
   assert.ok(!maybe.warns && !maybe.said.includes("not Rowan"));
-  const other = box("Odalys Brandt", "Brandt");
+  assert.equal(
+    maybe.button,
+    "Bring Moss Avery Marsh's records into Rowan Ellery Marsh's pod",
+  );
+  const other = box("Odalys", "Brandt");
   assert.ok(
     other.said.includes(
       "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
@@ -512,7 +549,7 @@ test("a record's person against the pod's: the grade, and the box's words and bu
     other.button,
     "Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway",
   );
-  const untitled = box("Odalys Brandt", "Brandt", false);
+  const untitled = box("Odalys", "Brandt", false);
   assert.ok(
     untitled.said.includes(
       "This record is Odalys Brandt's. Bringing it in makes this Odalys Brandt's pod.",

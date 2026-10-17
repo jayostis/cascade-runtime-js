@@ -2464,7 +2464,7 @@ test("in try/, a pod for Rowan Ellery Marsh signed in at North as Odalys Brandt 
   }
 });
 
-test("in try/, an encrypted pod shows six words,is made once words 2 and 5 are typed, keeps nothing readable in the browser's storage, and after a reload opens only with the words", async () => {
+test("in try/, an encrypted pod shows six words, is made once words 2 and 5 are typed, keeps nothing readable in the browser's storage, and after a reload opens only with the words", async () => {
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());

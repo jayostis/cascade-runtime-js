@@ -71,7 +71,7 @@ import {
   panelPage,
   panelSaid,
   panelsOf,
-  patientFamily,
+  patientNames,
   patientName,
   personName,
   podPage,
@@ -972,7 +972,7 @@ async function connectionView(name, connection) {
     sources: await (await podNamed(name)).look(files),
     pulled,
     about: patientName(pulled.bundle),
-    aboutFamily: patientFamily(pulled.bundle),
+    aboutNames: patientNames(pulled.bundle),
   };
 }
 
