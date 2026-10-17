@@ -475,6 +475,108 @@ test("a person's name is the one typed when the pod was made, else the pod's nam
   assert.equal(view.personName("tamsin-at-north"), "Tamsin At North");
 });
 
+test("a record's person against the pod's: the grade, and the box's words and button by grade", () => {
+  const named = (...names: [string, string, string?][]) =>
+    view.patientNames({
+      entry: [
+        {
+          resource: {
+            resourceType: "Patient",
+            name: names.map(([given, family, use]) => ({
+              given: [given],
+              family,
+              use,
+            })),
+          },
+        },
+      ],
+    });
+  const rowan = "Rowan Ellery Marsh";
+  for (const [subject, names, grade] of [
+    [rowan, named(["Rowan Ellery", "Marsh"]), "certain"],
+    [" rowan  ellery MARSH ", named(["Rowan Ellery", "Marsh"]), "certain"],
+    ["José García", named(["José", "García"]), "certain"],
+    [
+      "Blanche Weber",
+      named(
+        ["Blanche", "Hermiston", "official"],
+        ["Blanche", "Weber", "maiden"],
+      ),
+      "certain",
+    ],
+    [
+      "Bertie Predovic",
+      named(
+        ["Bertie", "Hackett", "official"],
+        ["Bertie", "Predovic", "maiden"],
+      ),
+      "certain",
+    ],
+    [rowan, named(["Hedda", "Marsh"]), "possible"],
+    [rowan, named(["Moss Avery", "Marsh"]), "possible"],
+    [rowan, named(["Odalys", "Brandt"]), "certainly-not"],
+    [rowan, named(["Rowan Ellery", ""]), "certainly-not"],
+  ] as const)
+    assert.equal(view.gradePerson(subject, names), grade, subject);
+  assert.equal(
+    view.gradePerson(undefined, named(["Odalys", "Brandt"])),
+    undefined,
+  );
+  assert.equal(view.gradePerson(rowan, []), undefined);
+
+  const titles = new Map([["rowan-ellery-marsh", rowan]]);
+  const box = (given: string, family: string, withTitle = true) => {
+    const html = render(
+      view.connectionDialog({
+        id: "pulled",
+        pod: "rowan-ellery-marsh",
+        titles: withTitle ? titles : undefined,
+        hospital: "Cascade North Demo Hospital",
+        back: "#",
+        connection: { step: "pulled", requests: 3 },
+        sources: [],
+        pulled: { missing: [], denied: [] },
+        about: `${given} ${family}`,
+        aboutNames: named([given, family]),
+        bring: "bring",
+      }),
+    );
+    return {
+      said: html.replace(/<[^>]*>/g, ""),
+      button: /<button[^>]*>([^<]*)<\/button>/.exec(html)?.[1],
+      warns: html.includes('class="note"'),
+    };
+  };
+  const same = box("Rowan Ellery", "Marsh");
+  assert.ok(!same.said.includes("This record is"));
+  assert.equal(same.button, "Bring it into Rowan Ellery Marsh's pod");
+  const maybe = box("Moss Avery", "Marsh");
+  assert.ok(maybe.said.includes("This record is Moss Avery Marsh's."));
+  assert.ok(!maybe.warns && !maybe.said.includes("not Rowan"));
+  assert.equal(
+    maybe.button,
+    "Bring Moss Avery Marsh's records into Rowan Ellery Marsh's pod",
+  );
+  const other = box("Odalys", "Brandt");
+  assert.ok(
+    other.said.includes(
+      "This record is Odalys Brandt's, not Rowan Ellery Marsh's.",
+    ),
+  );
+  assert.ok(other.warns);
+  assert.equal(
+    other.button,
+    "Bring Odalys Brandt's records into Rowan Ellery Marsh's pod anyway",
+  );
+  const untitled = box("Odalys", "Brandt", false);
+  assert.ok(
+    untitled.said.includes(
+      "This record is Odalys Brandt's. Bringing it in makes this Odalys Brandt's pod.",
+    ),
+  );
+  assert.equal(untitled.button, "Bring it into Rowan Ellery Marsh's pod");
+});
+
 test("a measurement, to three significant figures", () => {
   for (const [value, shown] of [
     ["60.967166143994106", "61"],
