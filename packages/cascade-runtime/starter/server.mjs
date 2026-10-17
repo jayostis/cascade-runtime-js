@@ -422,7 +422,8 @@ async function suggested(name, known = {}) {
 /**
  * The pod as a person reads it. `query`'s `from` is the number of a connection, and the page notes the record it
  * brought in when its import did; its `connection` is the number of one whose box the page holds, refreshing itself
- * while it signs in, fetches and brings the record in. Once the record is in, the box's address goes to the note.
+ * by the connection's own address while it signs in, fetches and brings the record in. Once the record is in, the
+ * box's address goes to the note.
  */
 async function showPod(response, name, query, names) {
   const found = query.has("connection")
@@ -504,7 +505,9 @@ async function showPod(response, name, query, names) {
       current: name,
       names,
       note: didNote(query, KITS),
-      refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step),
+      refresh: ["signing in", "pulling", "bringing in"].includes(shown?.step)
+        ? `${podPath(name)}connections/${shown.n}`
+        : undefined,
       suggestions: await suggested(name, { answers, about, changes, said }),
     }),
   );
@@ -932,8 +935,12 @@ function bring(response, name, connection) {
       connection.failed = notBroughtIn(error);
     });
   }
-  redirect(response, `${podPath(name)}?connection=${connection.n}#connection`);
+  redirect(response, boxOf(name, connection));
 }
+
+/** The pod's page with the connection's box open. */
+const boxOf = (name, connection) =>
+  `${podPath(name)}?connection=${connection.n}#connection`;
 
 /** The import of a connection's pull into the pod, its parts in `connection.bringing`; it throws when there are no files. */
 async function imported(name, connection) {
@@ -1222,6 +1229,11 @@ const server = createServer(async (request, response) => {
         n === undefined ? undefined : hospitals.connection(name, n);
       if (post && connection !== undefined)
         return bring(response, name, connection);
+      if (!post && n !== undefined)
+        return redirect(
+          response,
+          connection === undefined ? podPath(name) : boxOf(name, connection),
+        );
       if (!post && n === undefined)
         return await showPod(response, name, url.searchParams, names);
     }
