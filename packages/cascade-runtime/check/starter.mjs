@@ -495,14 +495,14 @@ function loadedSteps(out) {
  */
 async function expectedPull() {
   const script = `
-import { demoHospital, recordsAt } from "@the-cascade-protocol/sandbox";
+import { brandsBundle, demoHospital, recordsAt } from "@the-cascade-protocol/sandbox";
 import { loadHospital } from "@the-cascade-protocol/sandbox/node";
-import { connect, DEMO_PLAN, openPod, pull, pullFiles, TEST_DIRECTORY } from "cascade-runtime";
+import { connect, DEMO_PLAN, directoryOf, openPod, pull, pullFiles } from "cascade-runtime";
 const patient = "pt-1001";
 const north = await loadHospital("cascade-north");
 const hospital = demoHospital({ ...north, autoApprove: patient });
 const fetch = (input, init) => hospital(new Request(input, init));
-const row = TEST_DIRECTORY.find(({ fhirBase }) => fhirBase === north.hospital.fhirBase);
+const [row] = directoryOf(brandsBundle([north.hospital], new Date().toISOString()), "demo");
 const connection = await connect(
   row,
   { clientId: "check", redirectUri: "http://127.0.0.1:1/callback", scopes: ["launch/patient", "patient/*.read"] },
@@ -2009,7 +2009,7 @@ if (release === undefined) {
           hiddenFromSearch: [],
         }),
       );
-      const file = join(work, "tamsin-shorthand.json");
+      const file = join(work, "hedda-shorthand.json");
       await writeFile(
         file,
         JSON.stringify({
@@ -2019,8 +2019,8 @@ if (release === undefined) {
             {
               resource: {
                 resourceType: "Patient",
-                id: "tamsin-vale",
-                name: [{ family: "Vale", given: ["Tamsin"] }],
+                id: "hedda-quill",
+                name: [{ family: "Quill", given: ["Hedda"] }],
               },
             },
             {
@@ -2039,7 +2039,7 @@ if (release === undefined) {
         npm("run", "patient:add", "--", join("hospitals", "mercy-test"), file);
       assert.equal((await add()).code, 0, "the patient was not added");
       const written = JSON.parse(
-        await readFile(join(folder, "patients", "tamsin-vale.json"), "utf8"),
+        await readFile(join(folder, "patients", "hedda-quill.json"), "utf8"),
       );
       assert.equal(written.type, "history", "the shorthand was not compiled");
       const again = await add();
@@ -2077,7 +2077,7 @@ if (release === undefined) {
         const picker = await (
           await fetch(new URL(begun.headers.get("location"), origin))
         ).text();
-        assert.ok(picker.includes('value="tamsin-vale"'), "no Tamsin to pick");
+        assert.ok(picker.includes('value="hedda-quill"'), "no Hedda to pick");
       } finally {
         await server.stop();
       }

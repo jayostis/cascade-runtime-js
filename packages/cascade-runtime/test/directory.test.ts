@@ -8,7 +8,6 @@ import {
   loadHospitals,
 } from "@the-cascade-protocol/sandbox/node";
 import { directoryOf, searchDirectory, TEST_DIRECTORY } from "cascade-runtime";
-import { DEMO_BRANDS } from "../src/connect/demo-brands.js";
 import { launcherSettings } from "./launcher-settings.js";
 
 const DATA = fileURLToPath(
@@ -18,8 +17,16 @@ const DATA = fileURLToPath(
   ),
 );
 
-test("the test directory's demo rows are the demo hospitals, every one of them", async () => {
-  const demo = TEST_DIRECTORY.filter(({ vendor }) => vendor === "demo");
+const demo = directoryOf(
+  brandsBundle(
+    (await loadHospitals()).map(({ hospital }) => hospital),
+    "2026-01-01T00:00:00Z",
+  ),
+  "demo",
+);
+const directory = [...demo, ...TEST_DIRECTORY];
+
+test("the demo rows are the demo hospitals, every one of them", async () => {
   const folders = (await readdir(DATA, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
@@ -33,20 +40,6 @@ test("the test directory's demo rows are the demo hospitals, every one of them",
     hospitals
       .map(({ name, fhirBase, places }) => ({ name, fhirBase, places }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-  );
-});
-
-test("the generated brands bundle is the demo hospitals' folders as brandsBundle gives them, its time apart", async () => {
-  const hospitals = (await loadHospitals()).map(({ hospital }) => hospital);
-  const fresh = brandsBundle(hospitals, "2026-01-01T00:00:00Z");
-  assert.ok(Number.isFinite(Date.parse(DEMO_BRANDS.timestamp)));
-  assert.deepEqual(
-    {
-      ...DEMO_BRANDS,
-      timestamp: "",
-      meta: { ...DEMO_BRANDS.meta, lastUpdated: "" },
-    },
-    { ...fresh, timestamp: "", meta: { ...fresh.meta, lastUpdated: "" } },
   );
 });
 
@@ -250,7 +243,7 @@ test("a search of the directory gives the rows whose name or places hold a word 
   ];
   for (const [text, names] of cases)
     assert.deepEqual(
-      searchDirectory(TEST_DIRECTORY, text).map(({ name }) => name),
+      searchDirectory(directory, text).map(({ name }) => name),
       names,
       text,
     );

@@ -342,22 +342,30 @@ person said no or closed the sign-in.
 In Node, from finding the hospital to its record in a pod of its own:
 
 ```js
-import { demoFetch } from "@the-cascade-protocol/sandbox";
+import { brandsBundle, demoFetch } from "@the-cascade-protocol/sandbox";
 import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
   connect,
   DEMO_PLAN,
+  directoryOf,
   pull,
   pullFiles,
   searchDirectory,
-  TEST_DIRECTORY,
 } from "cascade-runtime";
 
 const app = "http://127.0.0.1:3000";
-const demoHospitals = demoFetch(await loadHospitals(), {
+const hospitals = await loadHospitals();
+const demoHospitals = demoFetch(hospitals, {
   authorizeBase: `${app}/demo-hospitals/`,
 });
-const [north] = searchDirectory(TEST_DIRECTORY, "north");
+const directory = directoryOf(
+  brandsBundle(
+    hospitals.map(({ hospital }) => hospital),
+    new Date().toISOString(),
+  ),
+  "demo",
+);
+const [north] = searchDirectory(directory, "north");
 const connection = await connect(
   north,
   {

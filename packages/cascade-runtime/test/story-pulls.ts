@@ -3,8 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
-import { pullFiles, TEST_DIRECTORY } from "cascade-runtime";
-import { pulled } from "./hospitals.js";
+import { pullFiles } from "cascade-runtime";
+import { pulled, rowOf } from "./hospitals.js";
 
 /**
  * Each pull of a story, made through the real sign-in and pull from its hospital as the record stood at the pull's
@@ -19,11 +19,7 @@ export async function storyPulls(
   if (!story.pulls?.length)
     throw new Error(`the story of ${patient} names no pull`);
   const at = await loadHospital(story.hospital);
-  const row = TEST_DIRECTORY.find(
-    ({ fhirBase }) => fhirBase === at.hospital.fhirBase,
-  );
-  if (!row)
-    throw new Error(`the test directory has no row for ${at.hospital.name}`);
+  const row = rowOf(at);
   const files = new Map<string, Uint8Array>();
   for (const { name, asOf } of story.pulls) {
     const now = () => new Date(asOf);

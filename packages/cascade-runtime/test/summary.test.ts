@@ -362,17 +362,17 @@ test("a hospital's people are listed family name first and sorted by family name
     {
       hospital: north,
       patients: {
-        a: patient("Marsh", ["Rowan", "Ellery"], "1979-04-12"),
-        b: patient("Fenn", ["Tobias"], "1980-01-01"),
-        c: patient("Marsh", ["Anna"], "1990-02-02"),
+        a: patient("Thorne", ["Moss", "Avery"], "1979-04-12"),
+        b: patient("Abbot", ["Wren"], "1980-01-01"),
+        c: patient("Thorne", ["Lark"], "1990-02-02"),
       },
     },
     {
       hospital: south,
-      patients: { a: patient("Marsh", ["Rowan", "Ellery"], "1979-04-12") },
+      patients: { a: patient("Thorne", ["Moss", "Avery"], "1979-04-12") },
     },
   ]);
-  const expected = ["Fenn, Tobias", "Marsh, Anna", "Marsh, Rowan Ellery"];
+  const expected = ["Abbot, Wren", "Thorne, Lark", "Thorne, Moss Avery"];
   const asItems = (shown: unknown, selector: RegExp) =>
     [...render(shown as never).matchAll(selector)].map(([, text]) => text);
   assert.deepEqual(

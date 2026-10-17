@@ -1,4 +1,3 @@
-import { DEMO_BRANDS } from "./demo-brands.js";
 import type { DirectoryRow } from "./plan.js";
 
 type Json = Record<string, unknown>;
@@ -86,12 +85,10 @@ export function directoryOf(brands: unknown, vendor: string): DirectoryRow[] {
 }
 
 /**
- * Hospitals to develop and test against, none of them real: the demo hospitals, read from `DEMO_BRANDS`, whose
- * `.invalid` hosts answer only through `@the-cascade-protocol/sandbox`'s fetch, never the real one, and the SMART
- * Health IT launcher, whose settings in its base ask for a patient's own login and approval.
+ * Hospitals to test against that are not the demo hospitals: the SMART Health IT launcher, whose settings in its base
+ * ask for a patient's own login and approval. A caller adds the demo hospitals' rows with `directoryOf`.
  */
 export const TEST_DIRECTORY: readonly DirectoryRow[] = [
-  ...directoryOf(DEMO_BRANDS, "demo"),
   {
     name: "SMART Health IT Sandbox",
     vendor: "smart-launcher",
