@@ -1720,12 +1720,10 @@ if (release === undefined) {
           });
           assert.equal(offset.status, 303);
           const offsetBox = readable(
-            connectionBox(
-              await bringIn(
-                await boxed(
-                  await signIn(pod, north, expected.patient, "allow"),
-                  "Hospital",
-                ),
+            await bringIn(
+              await boxed(
+                await signIn(pod, north, expected.patient, "allow"),
+                "Hospital",
               ),
             ),
           );
