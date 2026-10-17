@@ -442,12 +442,14 @@ test("a person's name is the one typed when the pod was made, else the pod's nam
     ["tamsin-at-north", "Tamsin at North"],
     ["o-brien-mcdonald", "O'Brien McDonald"],
     ["ada", "ada"],
+    ["alex-rivera-j24", "Alex Rivera"],
   ]);
   for (const [pod, person] of [
     ["rowan-ellery-marsh", "Rowan Ellery Marsh"],
     ["tamsin-at-north", "Tamsin at North"],
     ["o-brien-mcdonald", "O'Brien McDonald"],
     ["ada", "Ada"],
+    ["alex-rivera-j24", "Alex Rivera J24"],
   ])
     assert.equal(view.personName(pod, titles), person, pod);
   assert.equal(view.personName("tamsin-at-north"), "Tamsin At North");
