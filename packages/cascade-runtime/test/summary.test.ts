@@ -730,7 +730,7 @@ test("the frame's title bar has File, whose two items open boxes that confirm wi
 });
 
 test("the chat strip says how to set a model when none is set, and otherwise holds the form, the suggestions and the model's name, and no strip on a page that reloads itself", () => {
-  const shown = (chat: object, refresh = false) =>
+  const shown = (chat: object, refresh?: string) =>
     render(
       view.frame({
         title: "Alex Rivera",
@@ -761,7 +761,10 @@ test("the chat strip says how to set a model when none is set, and otherwise hol
     /<div class="chat-chips" hidden><button [^>]*data-ask-text="Find anything interesting"/,
   );
   assert.match(on, /m-1/);
-  assert.doesNotMatch(shown(chat, true), /class="chat"/);
+  assert.doesNotMatch(
+    shown(chat, "/pods/alex-rivera/connections/1"),
+    /class="chat"/,
+  );
 });
 
 test("Escape closes an open menu and follows the open box's own close link, or with none clears the hash; a click closes every open menu but the one whose name it is on", () => {
