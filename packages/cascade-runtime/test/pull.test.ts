@@ -27,7 +27,6 @@ const { hospitalsAt } = (await import(
     start: (pod: string, fhirBase: string) => Promise<string | undefined>;
     back: (url: URL) => string | undefined;
     connection: (pod: string, n: number) => { pulled: Promise<Pull> };
-    demo: (url: string) => Promise<Response>;
   };
 };
 
@@ -238,7 +237,6 @@ test("a pull through the listener and the remapping fetch returns the same recor
     assert.equal(hospitals.back(back), "/pods/pod/?connection=1#connection");
     const started = hospitals.connection("pod", 1);
     assert.deepEqual(names(await started!.pulled), names(north));
-    assert.equal((await hospitals.demo(sentTo)).status, 404);
   } finally {
     await listener.close();
   }

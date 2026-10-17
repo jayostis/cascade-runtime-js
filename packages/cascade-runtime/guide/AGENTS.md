@@ -49,8 +49,7 @@ keeping the package and the pods, under `pods/<name>/`. It is made with four,
 - `npm start` serves the app; stop it with Ctrl+C or by its process, never by
   killing every Node process. A pod's page links to bringing in a record from a
   hospital of the test directory: the app's `hospitals.mjs` signs in, receiving
-  the redirect on `/callback`, and serves the demo hospitals' sign-in pages
-  under `/demo-hospitals/`. An option to an npm script goes after `--`.
+  the redirect on `/callback`. An option to an npm script goes after `--`.
 - `npm start` with `CASCADE_WORLD_DATE` set (`YYYY-MM-DD`, or an instant with
   its timezone) makes the demo hospitals answer with their records as they
   stood at the end of that day, and say so on their sign-in page; without it
@@ -60,11 +59,11 @@ keeping the package and the pods, under `pods/<name>/`. It is made with four,
   moves the date, or takes it back to everything with Today; the next sign-in
   and bring-in answer as of it, and a connection's box says what its pull
   answered as of.
-- `npm start` with `CASCADE_SANDBOX_LISTEN` set to `1` serves the demo hospitals on a
-  loopback port of their own, which the console line `The demo hospitals are
-listening at http://127.0.0.1:<port>/` names, and the app reaches them over
-  it, through the sandbox's `demoRemapFetch`; a hospital's sign-in page is then
-  at `http://127.0.0.1:<port>/<hospital>/authorize`, not under `/demo-hospitals/`.
+- `npm start` serves the demo hospitals on a loopback port of their own, which
+  the console line `The demo hospitals are listening at http://127.0.0.1:<port>/`
+  names, and the app reaches them over it, through the sandbox's
+  `demoRemapFetch`; a hospital's sign-in page is at
+  `http://127.0.0.1:<port>/<hospital>/authorize`.
   The records are the same, still named under `https://<hospital>.demo.invalid`.
   Another tool reaches a hospital only by sending a `Forwarded: host=<hospital>.demo.invalid`
   header; called directly, the port answers the sign-in page and a 404.
@@ -337,27 +336,36 @@ person said no or closed the sign-in.
 - A real browser cannot open a `.demo.invalid` address, so the app serves a
   demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
   hospital's page under the app's own origin, and the app hands every request
-  there to that `fetch`. The starter does, under `/demo-hospitals/`.
+  there to that `fetch`. The starter does not: it reaches the hospitals through
+  a listener instead (see "The starter").
 
 In Node, from finding the hospital to its record in a pod of its own:
 
 ```js
-import { demoFetch } from "@the-cascade-protocol/sandbox";
+import { brandsBundle, demoFetch } from "@the-cascade-protocol/sandbox";
 import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import {
   connect,
   DEMO_PLAN,
+  directoryOf,
   pull,
   pullFiles,
   searchDirectory,
-  TEST_DIRECTORY,
 } from "cascade-runtime";
 
 const app = "http://127.0.0.1:3000";
-const demoHospitals = demoFetch(await loadHospitals(), {
+const hospitals = await loadHospitals();
+const demoHospitals = demoFetch(hospitals, {
   authorizeBase: `${app}/demo-hospitals/`,
 });
-const [north] = searchDirectory(TEST_DIRECTORY, "north");
+const directory = directoryOf(
+  brandsBundle(
+    hospitals.map(({ hospital }) => hospital),
+    new Date().toISOString(),
+  ),
+  "demo",
+);
+const [north] = searchDirectory(directory, "north");
 const connection = await connect(
   north,
   {
