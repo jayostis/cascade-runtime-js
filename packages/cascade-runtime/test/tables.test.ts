@@ -711,7 +711,14 @@ ${records.join("\n")}`);
   const lagging = await checking.current();
   const check = checking.check();
   try {
-    await gated;
+    await Promise.race([
+      gated,
+      check.then(() =>
+        assert.fail(
+          "the check kept fewer than two versions, so it never reached the gate",
+        ),
+      ),
+    ]);
     const openedWith = currentOf(await checking.references());
     assert.notDeepEqual(lagging, openedWith);
     assert.deepEqual(
@@ -738,6 +745,16 @@ ${records.join("\n")}`);
       await read?.rows(QUESTION),
       asked,
       "a pod opened midway through a check keeps its answers under the versions it was opened with",
+    );
+    const stale = await keptPod(
+      { ...parts, tables: withCurrent(lagging) },
+      new FolderFiles(midway),
+      new Answers(answers, "test"),
+    );
+    assert.equal(
+      await stale?.rows(QUESTION),
+      undefined,
+      "the kept answers are a miss under the versions the pod did not open with",
     );
   } finally {
     release();
