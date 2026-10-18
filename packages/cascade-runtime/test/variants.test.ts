@@ -351,7 +351,7 @@ test("an index of rows by code that is missing or was built for other properties
   const { served, a } = await twoSeries();
   const files = new MemoryFiles("urn:test:app/");
   const app = await appOver(served, files);
-  await app.references();
+  await app.start();
   const path = (await files.list("")).find((each) =>
     each.endsWith(".codes.json"),
   );

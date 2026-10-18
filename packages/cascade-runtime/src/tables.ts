@@ -40,9 +40,9 @@ import {
   values,
 } from "./rows.js";
 import {
-  copyVersions,
   LISTED,
   PUBLISHED_ROWS,
+  StarterFiles,
   versionsIn,
 } from "./tables/starter.js";
 
@@ -396,7 +396,7 @@ export interface TablesOptions {
   /** The vocabulary, whose rule list every pod is given. */
   readonly vocabulary: Files;
   readonly newStore: StoreFactory;
-  /** The package's starter copies, a store an empty one starts from. */
+  /** The package's starter copies: what an empty store starts from, and where a version it lacks is first read from. */
   readonly starter?: Files;
   readonly fetch?: typeof fetch;
   /** For each table kind's IRI, the series a person reads it from, first first. */
@@ -613,6 +613,9 @@ function keptListing(
 /** An app's reference tables: the versions it keeps from its feeds, beside its pods, and the vocabulary's rule list. */
 export class Tables {
   readonly #options: TablesOptions;
+  /** The store, read through to the starter copies when there are some. */
+  readonly #files: Files;
+  readonly #starterFiles: StarterFiles | undefined;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
   #written = 0;
@@ -624,12 +627,20 @@ export class Tables {
     Promise<ReadonlyMap<string, readonly string[]>>
   >();
   #references: Promise<References> | undefined;
-  #storeIndex: Promise<Graph> | undefined;
   #concepts: Promise<ReadonlyMap<string, string>> | undefined;
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
   constructor(options: TablesOptions) {
     this.#options = options;
+    this.#starterFiles =
+      options.starter === undefined
+        ? undefined
+        : new StarterFiles(
+            options.files,
+            options.starter,
+            options.work ?? IN_THIS_THREAD,
+          );
+    this.#files = this.#starterFiles ?? options.files;
   }
 
   /**
@@ -675,13 +686,14 @@ export class Tables {
   }
 
   /**
-   * Copies the package's tables into the store when it is empty, which a first use does anyway: the bytes written, or
-   * 0 when the store held them already.
+   * Copies into the store every version of the package's tables it lacks, which a first use of each reads through to
+   * anyway; a copy cut short goes on from where it stopped. The bytes written, or 0 when the store held them already.
    */
   async start(): Promise<number> {
     const before = this.#written;
     await this.#start();
-    return this.#written - before;
+    const copied = (await this.#starterFiles?.copyAll()) ?? 0;
+    return this.#written - before + copied;
   }
 
   /**
@@ -781,9 +793,9 @@ export class Tables {
   /** The tables a pod is given now. */
   async references(): Promise<References> {
     await this.#start();
-    const { files, vocabulary, newStore } = this.#options;
+    const { vocabulary, newStore } = this.#options;
     const references = (this.#references ??= References.of(
-      new TablesFiles(files, vocabulary),
+      new TablesFiles(this.#files, vocabulary),
       "",
       newStore,
     ));
@@ -836,16 +848,19 @@ export class Tables {
     });
   }
 
-  /**
-   * Each series the app holds, in the order of its feeds and then by label; an empty store answers from the starter
-   * copies, as `current` does.
-   */
+  /** Each series the app holds, in the order of its feeds and then by label. */
   async held(): Promise<HeldSeries[]> {
-    const [index, kept] = await Promise.all([
-      this.#heldIndex(),
-      this.#readable(HELD),
-    ]);
-    const held = kept === undefined ? NOTHING_HELD : heldOf(kept);
+    const held = await this.#held();
+    let references = await this.references();
+    // What is held names the current versions after each index written, so another app on the store has changed the
+    // index when they differ.
+    if (
+      JSON.stringify(currentOf(references)) !== JSON.stringify(held.current)
+    ) {
+      this.#forgetIndex();
+      references = await this.references();
+    }
+    const { index } = references;
     return this.#ordered(index, held).map((series) => {
       const one = (subject: Term, predicate: string): string | undefined =>
         index.objects(subject, predicate)[0]?.value;
@@ -1721,7 +1736,7 @@ export class Tables {
   async #codesIn(
     version: string,
   ): Promise<ReadonlyMap<string, readonly string[]>> {
-    const { files, vocabulary, newStore } = this.#options;
+    const { vocabulary, newStore } = this.#options;
     const [references, { foundBy }] = await Promise.all([
       this.references(),
       tableTerms(vocabulary, newStore),
@@ -1734,7 +1749,7 @@ export class Tables {
     if (kept !== undefined) return kept;
     const made = rowsByCode(termsOfRows(await references.text(version)), by);
     if (made === undefined) return new Map();
-    await files.write(`${stemOf(version)}${CODES}`, made);
+    await this.#files.write(`${stemOf(version)}${CODES}`, made);
     return (await references.codes(version, by)) ?? new Map();
   }
 
@@ -1803,7 +1818,7 @@ export class Tables {
   /** A held version's N-Triples as they are kept. */
   async #rows(version: string): Promise<Uint8Array<ArrayBuffer>> {
     const bytes = await new TablesFiles(
-      this.#options.files,
+      this.#files,
       this.#options.vocabulary,
     ).read(`${stemOf(version)}.ttl`);
     if (bytes === undefined)
@@ -1817,7 +1832,7 @@ export class Tables {
    */
   #listed(version: string): Promise<Listed> {
     return once(this.#listings, version, async () => {
-      const { files } = this.#options;
+      const files = this.#files;
       const path = `${stemOf(version)}${LISTED}`;
       const [bytes, { uriSpaces }] = await Promise.all([
         files.read(path),
@@ -1871,9 +1886,9 @@ export class Tables {
   }
 
   /**
-   * An empty store starts from the starter copies, and again whenever it is emptied, as removing an app's pods does.
-   * A version's rows come as published and are written as its N-Triples, with no engine, so a first visit draws
-   * before one loads; what is held is written last, so a start cut short starts again.
+   * An empty store starts from the starter copies' index and what they hold, and again whenever it is emptied, as
+   * removing an app's pods does; their versions are read through on first use. What is held is written last, so a
+   * start cut short starts again.
    */
   #start(): Promise<void> {
     this.#started ??= (async () => {
@@ -1882,14 +1897,7 @@ export class Tables {
       if (empty) this.#forgetIndex();
       if (starter === undefined || !empty) return;
       const paths = await starter.list("");
-      const versions = versionsIn(paths);
-      this.#written += await copyVersions(
-        files,
-        starter,
-        this.#options.work ?? IN_THIS_THREAD,
-        versions,
-      );
-      const ofVersions = new Set([...versions.values()].flat());
+      const ofVersions = new Set([...versionsIn(paths).values()].flat());
       for (const path of [
         ...paths.filter((path) => !ofVersions.has(path) && path !== HELD),
         ...paths.filter((path) => path === HELD),
@@ -1908,39 +1916,24 @@ export class Tables {
 
   async #held(): Promise<Held> {
     await this.#start();
-    const bytes = await this.#options.files.read(HELD);
+    const bytes = await this.#files.read(HELD);
     return bytes === undefined ? NOTHING_HELD : heldOf(bytes);
   }
 
   #write(held: Held): Promise<void> {
-    return this.#options.files.write(
+    return this.#files.write(
       HELD,
       new TextEncoder().encode(`${JSON.stringify(held, null, 2)}\n`),
     );
   }
 
   async #index(): Promise<Graph> {
-    return this.#graph(await this.#options.files.read(INDEX));
-  }
-
-  /** The index `held()` reads: the store's, parsed once each time it is written, or, while the store holds nothing, the starter's. */
-  async #heldIndex(): Promise<Graph> {
-    const { files, starter } = this.#options;
-    if ((await files.read(HELD)) === undefined) {
-      this.#storeIndex = undefined;
-      return this.#graph(await (starter ?? files).read(INDEX));
-    }
-    const index = (this.#storeIndex ??= this.#index());
-    index.catch(() => {
-      if (this.#storeIndex === index) this.#storeIndex = undefined;
-    });
-    return index;
+    return this.#graph(await this.#files.read(INDEX));
   }
 
   /** Drops what was read of the store's index, once it is written. */
   #forgetIndex(): void {
     this.#references = undefined;
-    this.#storeIndex = undefined;
   }
 
   /** The store's file at `path`, or, while the store holds nothing, the starter copy it starts from. */
@@ -2053,10 +2046,10 @@ export class Tables {
         continue;
       }
       const stem = fileStem(version.value);
-      await this.#options.files.write(`${stem}.ttl`, rows.text);
+      await this.#files.write(`${stem}.ttl`, rows.text);
       if (rows.codes !== undefined)
-        await this.#options.files.write(stem + CODES, rows.codes);
-      await this.#options.files.write(stem + LISTED, rows.listed);
+        await this.#files.write(stem + CODES, rows.codes);
+      await this.#files.write(stem + LISTED, rows.listed);
       index = new Graph([
         ...index.triples.filter(
           ([subject, predicate]) =>
@@ -2076,7 +2069,7 @@ export class Tables {
               catalog.match(earlier, SPECIALIZATION_OF, series).length > 0,
           ),
       ]);
-      await this.#options.files.write(INDEX, ntriples(index.triples));
+      await this.#files.write(INDEX, ntriples(index.triples));
       this.#forgetIndex();
       await this.#write({ ...(await this.#held()), current: currentIn(index) });
       if (held !== undefined) {

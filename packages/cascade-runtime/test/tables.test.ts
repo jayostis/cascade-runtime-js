@@ -49,7 +49,7 @@ import {
   versionName,
   writeStarterCopies,
 } from "../src/tables.js";
-import { READ_AHEAD } from "../src/tables/starter.js";
+import { READ_AHEAD, versionsIn } from "../src/tables/starter.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const QUESTION = "pod/My active allergies";
@@ -764,7 +764,7 @@ ${records.join("\n")}`);
   }
 });
 
-test("the app tells what it holds: each series with its versions, credit and how fresh its feed is, the pods that use each version by name, and the codes a search finds by code or by name, named and mapped", async () => {
+test("the app tells what it holds, as does another app on the same store after a check: each series with its versions, credit and how fresh its feed is, the pods that use each version by name, and the codes a search finds by code or by name, named and mapped", async () => {
   const of = (subject: string, predicate: string): string | undefined =>
     feed.catalog.find(
       ([s, p]) => s.value === subject && p.value === predicate,
@@ -794,7 +794,15 @@ test("the app tells what it holds: each series with its versions, credit and how
     },
     store,
   );
+  const beside = tablesOver(first, store);
+  await beside.held();
   await tables.check();
+  assert.equal(
+    (await beside.held()).find((series) => series.iri === groups.series)
+      ?.current.iri,
+    groups.second,
+    "another app on the store is told what a check kept",
+  );
 
   const held = await tables.held();
   assert.deepEqual(
@@ -1030,7 +1038,7 @@ test("a version the tables name by no file is refused, by a search and by what t
   await assert.rejects(tables.about(["urn:test:code"]), Refusal);
 });
 
-test("the starter copies carry each version's rows as published, name the current versions before they are copied, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
+test("the starter copies carry each version's rows as published, name the current versions before they are copied, give a first use only the versions it reads, and are copied whole in the background, a copy cut short going on where it stopped; a version a newer starter no longer carries is refused until a check keeps the next; and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
   const starter = new MemoryFiles("urn:test:starter/");
   // One version more than are read ahead.
   const { served } = await withMappings(first, INGREDIENTS, [
@@ -1053,9 +1061,10 @@ test("the starter copies carry each version's rows as published, name the curren
   const app = join(scratch, "reset");
   const rowsCarried = carried.filter((path) => path.endsWith(PUBLISHED_ROWS));
   assert.ok(rowsCarried.length > READ_AHEAD);
+  let asked: string[] = [];
   let reading = 0;
   let mostRead = 0;
-  let failing: string | undefined = rowsCarried.at(-1);
+  let failing: string | undefined;
   let cut = false;
   let startedAgain = false;
   let convertedAfterCut = 0;
@@ -1064,6 +1073,7 @@ test("the starter copies carry each version's rows as published, name the curren
     list: (folder) => starter.list(folder),
     write: (path, bytes) => starter.write(path, bytes),
     read: async (path) => {
+      asked.push(path);
       if (!path.endsWith(PUBLISHED_ROWS)) return starter.read(path);
       reading += 1;
       mostRead = Math.max(mostRead, reading);
@@ -1080,41 +1090,95 @@ test("the starter copies carry each version's rows as published, name the curren
       }
     },
   };
-  const copiedTo = new FolderFiles(join(app, ".tables"));
-  const tables = new Tables({
-    files: copiedTo,
-    feeds: [FEED],
-    vocabulary: parts.vocabulary,
-    newStore: parts.newStore,
-    starter: counted,
-    work: {
-      ...IN_THIS_THREAD,
-      listed: () => Promise.reject(new Error("listed what came listed")),
-      published: (bytes) => {
-        if (cut && !startedAgain) convertedAfterCut += 1;
-        return IN_THIS_THREAD.published(bytes);
-      },
+  const work = {
+    ...IN_THIS_THREAD,
+    listed: () => Promise.reject(new Error("listed what came listed")),
+    published: (bytes: Uint8Array<ArrayBuffer>) => {
+      if (cut && !startedAgain) convertedAfterCut += 1;
+      return IN_THIS_THREAD.published(bytes);
     },
-  });
+  };
+  const tablesOn = (files: Files, from: Files = counted): Tables =>
+    new Tables({
+      files,
+      feeds: [FEED],
+      vocabulary: parts.vocabulary,
+      newStore: parts.newStore,
+      fetch: fetchOf(feed),
+      starter: from,
+      work,
+    });
+  const rowsRead = (): string[] =>
+    asked.filter((path) => path.endsWith(PUBLISHED_ROWS));
+  const copiedTo = new FolderFiles(join(app, ".tables"));
+  const tables = tablesOn(copiedTo);
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
-  await assert.rejects(tables.start());
-  assert.equal(
-    await copiedTo.read(HELD),
-    undefined,
-    "a copy cut short holds nothing",
+  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  assert.ok((await tables.about([cvx141])).get(cvx141)?.name !== undefined);
+  assert.deepEqual(
+    [...new Set(asked.filter((path) => versionsIn([path]).size === 0))].sort(),
+    [HELD, "references.ttl"].sort(),
+    "a first use reads of the starter what it holds and its index",
   );
+  assert.deepEqual(
+    [...versionsIn(asked).keys()].sort(),
+    [...versionsIn(carried).keys()].filter((each) => each !== stem).sort(),
+    "and the versions of the kinds it reads, names, status and ingredients, and not the vaccine groups'",
+  );
+  failing = `${stem}${PUBLISHED_ROWS}`;
+  await assert.rejects(tables.start());
+  asked = [];
+  assert.ok(
+    (await tables.start()) > 0,
+    "the versions are named before the copies are written",
+  );
+  assert.deepEqual(
+    rowsRead(),
+    [`${stem}${PUBLISHED_ROWS}`],
+    "a copy cut short goes on where it stopped",
+  );
+  assert.equal(await tables.start(), 0, "a store holding every version");
+  cut = false;
+  convertedAfterCut = 0;
+  mostRead = 0;
+  failing = rowsCarried.at(-1);
+  const whole = tablesOn(new MemoryFiles("urn:test:app-whole/"));
+  await assert.rejects(whole.start());
   assert.equal(
     convertedAfterCut,
     0,
     "a copy cut short converts no version after the cut",
   );
   startedAgain = true;
-  assert.ok(
-    (await tables.start()) > 0,
-    "the versions are named before the copies are written",
-  );
+  assert.ok((await whole.start()) > 0);
   assert.equal(mostRead, READ_AHEAD, "the starter is read ahead, bounded");
+  asked = [];
+  const both = tablesOn(new MemoryFiles("urn:test:app-both/"));
+  await Promise.all([both.start(), both.about([cvx141])]);
+  assert.deepEqual(
+    rowsRead().sort(),
+    [...rowsCarried].sort(),
+    "a copy and a read at once read each version once",
+  );
+  const movedOn = new MemoryFiles("urn:test:starter-moved-on/");
+  for (const path of carried)
+    if (!path.startsWith(stem))
+      await movedOn.write(path, (await starter.read(path)) as Uint8Array);
+  const stranded = new MemoryFiles("urn:test:app-stranded/");
+  await tablesOn(stranded).about([cvx141]);
+  const upgraded = tablesOn(stranded, movedOn);
+  await assert.rejects(
+    upgraded.search(groups.series, "141"),
+    (error) =>
+      error instanceof Refusal &&
+      error.message === `the tables hold no rows for ${groups.first}`,
+  );
+  await upgraded.check();
+  assert.ok(
+    (await upgraded.search(groups.series, "141")).found.length > 0,
+    "a check keeps the version a newer starter carries in place of the one it no longer does",
+  );
   assert.ok(
     (await tables.search(groups.series, "141")).found.length > 0,
     "a carried listing is read, not listed again",
