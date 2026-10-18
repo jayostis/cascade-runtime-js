@@ -894,7 +894,7 @@ test("a version the tables name by no file is refused, by a search and by what t
   await assert.rejects(tables.about(["urn:test:code"]), Refusal);
 });
 
-test("the starter copies carry each version's rows as published, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
+test("the starter copies carry each version's rows as published, name the current versions before they are copied, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
   const starter = new MemoryFiles("urn:test:starter/");
   await writeStarterCopies(
     {
@@ -924,6 +924,10 @@ test("the starter copies carry each version's rows as published, and a store emp
   });
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
+  assert.ok(
+    (await tables.start()) > 0,
+    "the versions are named before the copies are written",
+  );
   assert.equal(await tables.listing(), 0);
   assert.ok(
     (await tables.search(groups.series, "141")).found.length > 0,
@@ -947,7 +951,7 @@ test("the starter copies carry each version's rows as published, and a store emp
     newStore: parts.newStore,
     starter: stale,
   });
-  await old.current();
+  await old.start();
   assert.equal(await old.listing(), 1);
   const checked = tablesOver(first);
   await checked.check();

@@ -359,6 +359,18 @@ export interface Searched {
 
 const NOTHING_HELD: Held = { feeds: {}, current: [], pods: {} };
 
+function heldOf(bytes: Uint8Array): Held {
+  const held = JSON.parse(new TextDecoder().decode(bytes)) as Held;
+  return {
+    ...held,
+    pods: Object.fromEntries(
+      Object.entries(held.pods).filter(([, versions]) =>
+        Array.isArray(versions),
+      ),
+    ),
+  };
+}
+
 /** What a check of one feed did. */
 export interface Checked {
   readonly feed: string;
@@ -750,9 +762,14 @@ export class Tables {
     return references;
   }
 
-  /** The version of each held series a pod opened now is given. */
+  /**
+   * The version of each held series a pod opened now is given. An empty store answers from the starter copies it starts
+   * from, without waiting for them to be copied, so a pod's kept answers are read on a first visit before they are.
+   */
   async current(): Promise<readonly string[]> {
-    return (await this.#held()).current;
+    const { files, starter } = this.#options;
+    const bytes = (await files.read(HELD)) ?? (await starter?.read(HELD));
+    return bytes === undefined ? [] : heldOf(bytes).current;
   }
 
   /** The versions the pod was last opened with; none if it never was. */
@@ -1899,16 +1916,7 @@ export class Tables {
   async #held(): Promise<Held> {
     await this.#start();
     const bytes = await this.#options.files.read(HELD);
-    if (bytes === undefined) return NOTHING_HELD;
-    const held = JSON.parse(new TextDecoder().decode(bytes)) as Held;
-    return {
-      ...held,
-      pods: Object.fromEntries(
-        Object.entries(held.pods).filter(([, versions]) =>
-          Array.isArray(versions),
-        ),
-      ),
-    };
+    return bytes === undefined ? NOTHING_HELD : heldOf(bytes);
   }
 
   #write(held: Held): Promise<void> {
