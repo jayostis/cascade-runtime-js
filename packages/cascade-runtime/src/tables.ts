@@ -443,6 +443,15 @@ export function shipped(references: References): string[] {
     .sort();
 }
 
+/** The version each series of a kind ships with, in the references: what a pod opened with them is given, sorted. */
+export function currentOf(references: References): string[] {
+  return references.index
+    .match(undefined, SHIPS_WITH)
+    .filter(([series]) => references.kindOf(series.value) !== undefined)
+    .map(([, , version]) => version.value)
+    .sort();
+}
+
 /** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
 export const PUBLISHED_ROWS = ".nq.gz";
 

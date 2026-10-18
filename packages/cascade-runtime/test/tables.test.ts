@@ -35,10 +35,12 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { tablesBeside } from "../src/index.js";
-import { openPodWith, type Row } from "../src/pod.js";
+import { Answers } from "../src/answers.js";
+import { keptPod, openPodWith, type Row } from "../src/pod.js";
 import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
   type Checked,
+  currentOf,
   LISTED,
   PAGE_SIZE,
   PUBLISHED_ROWS,
@@ -48,6 +50,7 @@ import {
 } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
+const QUESTION = "pod/My active allergies";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const SPDX = "http://spdx.org/rdf/terms#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -662,6 +665,78 @@ ${records.join("\n")}`);
   const inMemory = await openPodWith({ ...parts, tables: after }, undefined);
   assert.equal(await after.openedWith(inMemory.address), undefined);
   await inMemory.close();
+
+  const racing = new MemoryFiles("urn:test:tables-racing/");
+  const midway = join(scratch, "pods", "midway");
+  const answers = new MemoryFiles("urn:test:answers-midway/");
+  const answering = {
+    ...parts,
+    answers: { runtime: "test", at: () => answers },
+  };
+  await tablesOver(ingredientsFirst.served, racing).check();
+  await (
+    await openPodWith(
+      { ...answering, tables: tablesOver(ingredientsFirst.served, racing) },
+      midway,
+    )
+  ).close();
+  let reached!: () => void;
+  const gated = new Promise<void>((resolve) => (reached = resolve));
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let downloads = 0;
+  const served = fetchOf(ingredientsLater.served);
+  const checking = new Tables({
+    files: racing,
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    fetch: async (input, init) => {
+      if (String(input).endsWith(PUBLISHED_ROWS) && ++downloads === 2) {
+        reached();
+        await released;
+      }
+      return served(input, init);
+    },
+  });
+  const check = checking.check();
+  try {
+    await gated;
+    const openedWith = currentOf(await checking.references());
+    assert.notDeepEqual(await checking.current(), openedWith);
+    const opened = await openPodWith(
+      { ...answering, tables: checking },
+      midway,
+      { adopt: false },
+    );
+    const asked = await opened.ask(QUESTION);
+    await opened.close();
+    release();
+    await check;
+    const read = await keptPod(
+      {
+        ...parts,
+        tables: new Proxy(checking, {
+          get: (target, property) =>
+            property === "current"
+              ? () => Promise.resolve(openedWith)
+              : (Reflect.get(target, property, target) as () => unknown).bind(
+                  target,
+                ),
+        }),
+      },
+      new FolderFiles(midway),
+      new Answers(answers, "test"),
+    );
+    assert.deepEqual(
+      await read?.rows(QUESTION),
+      asked,
+      "a pod opened midway through a check keeps its answers under the versions it was opened with",
+    );
+  } finally {
+    release();
+    await check;
+  }
 });
 
 test("the app tells what it holds: each series with its versions, credit and how fresh its feed is, the pods that use each version by name, and the codes a search finds by code or by name, named and mapped", async () => {
