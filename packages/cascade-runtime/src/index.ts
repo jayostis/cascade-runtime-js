@@ -51,7 +51,8 @@ const beside = new Map<string, Promise<Tables>>();
 
 /**
  * The tables an app keeps for the pods in the folder: `.tables/` in it, beside `.answers/`, checked against the feeds
- * when first asked for, unless `cascade-runtime.json` turns `checkOnOpen` off.
+ * in the background when first asked for, unless `cascade-runtime.json` turns `checkOnOpen` off; the first use answers
+ * with the tables held, and a later one with what the check kept. With a `phase`, the check is waited for and reported.
  */
 export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
   const folder = join(absolute(pods), ".tables");
@@ -61,7 +62,9 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
       const tables = parts.tablesIn(folder);
       if (phase === undefined) {
         if (parts.local.config.tables.checkOnOpen)
-          await tables.check({ signal: AbortSignal.timeout(CHECK_ON_OPEN_MS) });
+          void tables
+            .check({ signal: AbortSignal.timeout(CHECK_ON_OPEN_MS) })
+            .catch(() => undefined);
         return tables;
       }
       await phase(
