@@ -974,9 +974,11 @@ test("the starter copies carry each version's rows as published, name the curren
     [0, 0],
     "a check neither reads a listing nor lists",
   );
-  await old.search(groups.series, "141");
-  await old.search(groups.series, "141");
-  assert.equal(listings, 1, "a search lists the version it reads, once");
+  await Promise.all([
+    old.search(groups.series, "141"),
+    old.search(groups.series, "141"),
+  ]);
+  assert.equal(listings, 1, "two searches at once list the version it reads, once");
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>
@@ -1795,8 +1797,13 @@ test("an app's tables are answered with what they hold while the check on open i
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
     release();
-    // A second check is queued behind the one on open, as every write is.
-    await tables.check();
+    // A second check is queued behind the one on open, as every write is, and
+    // finds nothing left to keep because the one on open kept it.
+    assert.deepEqual(
+      (await tables.check()).flatMap(({ kept }) => kept),
+      [],
+      "the queued check kept a version the check on open had not",
+    );
     assert.ok((await tables.current()).includes(groups.second));
   } finally {
     release();
