@@ -46,7 +46,7 @@ import {
   type AnswerStore,
   type Described,
 } from "./answers.js";
-import { shipped, type Tables } from "./tables.js";
+import { currentOf, shipped, type Tables } from "./tables.js";
 
 const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -1095,7 +1095,7 @@ export async function openPodWith(
   const card =
     disk === undefined ? undefined : await disk.files.read(parts.layout.card);
   const references = await parts.tables.references();
-  const tables = await parts.tables.current();
+  const tables = currentOf(references);
   if (disk === undefined || folder === undefined || card === undefined) {
     if (disk !== undefined && (await disk.files.list("")).length > 0)
       throw new Error(
