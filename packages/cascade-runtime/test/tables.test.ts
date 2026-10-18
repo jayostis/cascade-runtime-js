@@ -777,20 +777,46 @@ test("a code's facts hold what each held kind says of it, each with its series a
     new Set(listed.flat()),
   );
   assert.equal(all.total, new Set(listed.flat()).size);
-  // Two codes whose notations collate equal, listed in either order.
-  const [a, b] = ["urn:test:a:7", "urn:test:b:07"];
-  assert.deepEqual(
+  // Notations that collate equal across lists (07 and 7) keep the earlier list first, whatever the count of lists.
+  const spaces = ["urn:test:a:", "urn:test:b:", "urn:test:c:"];
+  const [a1, a7, a11, b7, b07, b10, c07, c9] = [
+    "urn:test:a:1",
+    "urn:test:a:07",
+    "urn:test:a:11",
+    "urn:test:b:7",
+    "urn:test:b:07",
+    "urn:test:b:10",
+    "urn:test:c:07",
+    "urn:test:c:9",
+  ];
+  const [l0, l1, l2, l3, l4] = [
+    [a1, c07],
+    [b07, c9],
+    [a7, b10],
+    [b7],
+    [a7, a11],
+  ];
+  for (const [lists, expected] of [
+    [[], []],
+    [[l1], l1],
     [
-      ...merged(
-        [
-          [b, a],
-          [a, b],
-        ],
-        ["urn:test:a:", "urn:test:b:"],
-      ),
-    ].sort(),
-    [a, b],
-  );
+      [l0, l1, l2],
+      [a1, c07, b07, a7, c9, b10],
+    ],
+    [
+      [l0, l1, l2, l3],
+      [a1, c07, b07, a7, b7, c9, b10],
+    ],
+    [
+      [l0, l1, l2, l3, l4],
+      [a1, c07, b07, a7, b7, c9, b10, a11],
+    ],
+    [
+      [l2, [], l0],
+      [a1, a7, c07, b10],
+    ],
+  ] as const)
+    assert.deepEqual([...merged(lists, spaces)], expected);
 });
 
 test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to; a code they map to is found by its notation", async () => {
