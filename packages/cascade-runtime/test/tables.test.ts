@@ -969,9 +969,9 @@ test("the starter copies carry each version's rows as published, name the curren
       }
     },
   };
-  const store = new FolderFiles(join(app, ".tables"));
+  const copiedTo = new FolderFiles(join(app, ".tables"));
   const tables = new Tables({
-    files: store,
+    files: copiedTo,
     feeds: [FEED],
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
@@ -985,7 +985,7 @@ test("the starter copies carry each version's rows as published, name the curren
   assert.ok(shipped.includes(groups.first));
   await assert.rejects(tables.start());
   assert.equal(
-    await store.read(HELD),
+    await copiedTo.read(HELD),
     undefined,
     "a copy cut short holds nothing",
   );
