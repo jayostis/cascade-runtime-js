@@ -48,7 +48,7 @@ import {
 } from "../front-page.js";
 import { Site } from "../site.js";
 import { TRY_PACKAGE } from "../try-page.js";
-import { tryFiles } from "./try.js";
+import { tryFiles, tryLooks } from "./try.js";
 import { servePages } from "./serve.js";
 import { startOf } from "./start.js";
 
@@ -282,6 +282,7 @@ async function buildPages(): Promise<number> {
       name,
       podOf(site),
       staged.runtime,
+      tryLooks,
     ))
       site.set(path, bytes);
     examples.push({

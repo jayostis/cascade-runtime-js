@@ -46,6 +46,7 @@ import {
 } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
 import { Answers } from "../src/answers.js";
+import { LOOKUPS, lookupsOf, withLookups } from "../src/lookups.js";
 import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import { partsOf, publishedAnswers } from "../src/node/published.js";
@@ -729,7 +730,7 @@ test("a kit's download, a folder or a file, is found by name, or refused naming 
     await assert.rejects(kitDownload(kit, download), reason);
 });
 
-test("a published pod's answers, as the site computes them, are read back without the engine: every question under the lens as the pod answers it, and what the pod is", async () => {
+test("a published pod's answers, as the site computes them, are read back without the engine: every question under the lens as the pod answers it, what the pod is, and what the tables said of the codes its page asked, until the runtime or the tables are others", async () => {
   const files = new FolderFiles(folder);
   const published = new Map<string, Uint8Array>();
   for (const path of await files.list("")) {
@@ -739,13 +740,34 @@ test("a published pod's answers, as the site computes them, are read back withou
   const root = findRoot(dirname(fileURLToPath(import.meta.url)));
   const answers = new MemoryFiles("urn:test:answers/");
   const publishing = await partsOf(await checkouts(root));
+  const codes = (await pod.ask(QUESTION)).flatMap((row) =>
+    Object.values(row).filter((value) => value.startsWith("http")),
+  );
   for (const [path, bytes] of await publishedAnswers(
     publishing,
     "pod",
     published,
     "published",
+    (_pod, tables) => tables.about(codes),
   ))
     await answers.write(path, bytes);
+  assert.ok(codes.length > 0);
+  const lookups = lookupsOf(await answers.read(LOOKUPS));
+  assert.ok(lookups);
+  const unread = new Proxy(publishing.tables, {
+    get: (target, property) =>
+      property === "about"
+        ? () => Promise.reject(new Error("the tables were asked"))
+        : (Reflect.get(target, property, target) as () => unknown).bind(target),
+  });
+  assert.deepEqual(
+    await withLookups(unread, lookups, "published").about(codes),
+    await publishing.tables.about(codes),
+  );
+  await assert.rejects(
+    withLookups(unread, lookups, "another runtime").about(codes),
+    /the tables were asked/,
+  );
   assert.deepEqual(
     (await new Answers(answers, "published").described())?.tables,
     shipped(await publishing.tables.references()),

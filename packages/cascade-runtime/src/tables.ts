@@ -767,8 +767,7 @@ export class Tables {
    * from, without waiting for them to be copied, so a pod's kept answers are read on a first visit before they are.
    */
   async current(): Promise<readonly string[]> {
-    const { files, starter } = this.#options;
-    const bytes = (await files.read(HELD)) ?? (await starter?.read(HELD));
+    const bytes = await this.#readable(HELD);
     return bytes === undefined ? [] : heldOf(bytes).current;
   }
 
@@ -806,11 +805,17 @@ export class Tables {
     });
   }
 
-  /** Each series the app holds, in the order of its feeds and then by label. */
+  /**
+   * Each series the app holds, in the order of its feeds and then by label; an empty store answers from the starter
+   * copies, as `current` does.
+   */
   async held(): Promise<HeldSeries[]> {
-    // The store starts from the starter copies before its index is read.
-    await this.#start();
-    const [index, held] = await Promise.all([this.#index(), this.#held()]);
+    const [indexed, kept] = await Promise.all([
+      this.#readable(INDEX),
+      this.#readable(HELD),
+    ]);
+    const index = await this.#graph(indexed);
+    const held = kept === undefined ? NOTHING_HELD : heldOf(kept);
     return this.#ordered(index, held).map((series) => {
       const one = (subject: Term, predicate: string): string | undefined =>
         index.objects(subject, predicate)[0]?.value;
@@ -1927,7 +1932,19 @@ export class Tables {
   }
 
   async #index(): Promise<Graph> {
-    const bytes = await this.#options.files.read(INDEX);
+    return this.#graph(await this.#options.files.read(INDEX));
+  }
+
+  /** The store's file at `path`, or, while the store holds nothing, the starter copy it starts from. */
+  async #readable(path: string): Promise<Uint8Array | undefined> {
+    const { files, starter } = this.#options;
+    const held = (await files.read(HELD)) !== undefined;
+    return held || starter === undefined
+      ? files.read(path)
+      : starter.read(path);
+  }
+
+  async #graph(bytes: Uint8Array | undefined): Promise<Graph> {
     return new Graph(
       bytes === undefined
         ? []

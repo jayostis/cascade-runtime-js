@@ -474,7 +474,7 @@ async function aboutCodes(answers) {
   if (document.body.dataset.engine !== "ready")
     return state.tablesRead === "failed" ? new Map() : undefined;
   try {
-    return await codesSaid(answers, { tables: await appTables() });
+    return await codesSaid(answers, { tables: await appTables(pod) });
   } catch {
     return new Map();
   }
@@ -484,7 +484,7 @@ async function aboutCodes(answers) {
 async function variantsOf(answers) {
   if (document.body.dataset.engine !== "ready") return undefined;
   try {
-    return await variantsSaid(answers, { tables: await appTables(), pod });
+    return await variantsSaid(answers, { tables: await appTables(pod), pod });
   } catch {
     return undefined;
   }
@@ -1320,8 +1320,9 @@ busy(async () => {
   ]);
   await refreshPods();
   await route();
-}, "Opening…").then(() =>
-  warm().then(
+}, "Opening…").then(() => {
+  warm().catch(() => undefined);
+  return appTables().then(
     async () => {
       document.body.dataset.engine = "ready";
       await readTables().catch(() => undefined);
@@ -1346,5 +1347,5 @@ busy(async () => {
       if (state.page?.answers !== undefined) state.page.about ??= new Map();
       if (state.page !== undefined) redraw();
     },
-  ),
-);
+  );
+});

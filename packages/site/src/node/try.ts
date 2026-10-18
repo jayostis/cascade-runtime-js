@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { brandsBundle, hospitalId } from "@the-cascade-protocol/sandbox";
 import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
+import type { Pod, Tables } from "cascade-runtime/published";
 import {
   BRANDS,
   PEOPLE,
@@ -60,6 +61,30 @@ async function bundled(
  * worker, its page side and one data file per hospital beside them. The page cannot read the data files itself: the
  * worker answers every address under them as a hospital's sign-in page. `version` is what the pages were built from.
  */
+interface View {
+  readonly QUESTIONS: readonly string[];
+  codesSaid(answers: unknown, options: { tables: Tables }): Promise<unknown>;
+  variantsSaid(
+    answers: unknown,
+    options: { tables: Tables; pod: Pod },
+  ): Promise<unknown>;
+}
+
+/** What try/'s page for a pod asks the tables of it: the names of its codes, and what ClinVar says of its variants. */
+export async function tryLooks(pod: Pod, tables: Tables): Promise<void> {
+  const view = (await import(pathToFileURL(VIEW).href)) as View;
+  const answers = Object.fromEntries(
+    await Promise.all(
+      view.QUESTIONS.map(async (question) => [
+        question,
+        await pod.ask(question),
+      ]),
+    ),
+  );
+  await view.codesSaid(answers, { tables });
+  await view.variantsSaid(answers, { tables, pod });
+}
+
 export async function tryFiles(
   samples: readonly string[],
   version: string,
