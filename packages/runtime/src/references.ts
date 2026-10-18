@@ -102,7 +102,17 @@ async function readTableTerms(
   };
 }
 
-/** The index of a version's rows by each code they are found by, built for these properties; none for none. */
+const ROW_SUBJECT = `${REC}RowSubject`;
+
+/** Whether a kind's rows are found by their own subjects alone: the code is the subject, so no index is needed. */
+function bySubjectAlone(foundBy: readonly string[]): boolean {
+  return foundBy.length > 0 && foundBy.every((each) => each === ROW_SUBJECT);
+}
+
+/**
+ * The index of a version's rows by each code they are found by, built for these properties; none for none, and none
+ * for rows found by their own subjects alone, which canonical rows find by halving.
+ */
 export function rowsByCode(
   rows: readonly (readonly [
     { readonly value: string },
@@ -111,12 +121,12 @@ export function rowsByCode(
   ])[],
   foundBy: readonly string[],
 ): Uint8Array | undefined {
-  if (foundBy.length === 0) return undefined;
+  if (foundBy.length === 0 || bySubjectAlone(foundBy)) return undefined;
   const found = new Map<string, Set<string>>();
   const add = (code: string, row: string): void => {
     found.set(code, (found.get(code) ?? new Set()).add(row));
   };
-  if (foundBy.includes(`${REC}RowSubject`))
+  if (foundBy.includes(ROW_SUBJECT))
     for (const [subject] of rows) add(subject.value, subject.value);
   for (const [subject, predicate, object] of rows)
     if (foundBy.includes(predicate.value)) add(object.value, subject.value);
@@ -158,9 +168,9 @@ function indexed(
 
 /**
  * The lines of a subject in a version's N-Triples, found by halving: the lines are sorted, so a subject's are together.
- * The core relies on rows being in canonical order wherever a `.codes.json` exists: one is only ever written beside
- * rows in that order (`rowsOf` refuses any other), and a folder with an index and unsorted rows would lose rows
- * silently.
+ * The core relies on rows being in canonical order wherever a `.codes.json` exists or the references are `canonical`:
+ * an index is only ever written beside rows in that order (`rowsOf` refuses any other), and a folder with unsorted rows
+ * read so would lose rows silently.
  */
 export function linesAbout(text: string, subject: string): string[] {
   const prefix = `<${subject}> `;
@@ -190,6 +200,7 @@ export class References {
   readonly #folder: string;
   readonly #vocabulary: Files | undefined;
   readonly #parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>;
+  readonly #canonical: boolean;
   readonly #texts = new Map<string, Promise<string>>();
   readonly #indexes = new Map<
     string,
@@ -202,24 +213,29 @@ export class References {
     folder: string,
     vocabulary: Files | undefined,
     parse: (bytes: Uint8Array, base: string) => Promise<Triple[]>,
+    canonical: boolean,
     index: Graph,
   ) {
     this.#source = source;
     this.#folder = folder;
     this.#vocabulary = vocabulary;
     this.#parse = parse;
+    this.#canonical = canonical;
     this.index = index;
   }
 
   /**
    * The tables in `folder` of the files, which ends in a slash or is empty. Given the vocabulary, a version the
-   * folder holds no file for is read from the vocabulary's rule list, if that holds one.
+   * folder holds no file for is read from the vocabulary's rule list, if that holds one. `canonical` states that every
+   * version's rows in the folder are N-Triples, a line each, in canonical order, as a check keeps them; a version from elsewhere, such as the
+   * vocabulary's rule list, is told by its first character and parsed whole if it is Turtle.
    */
   static async of(
     files: Files,
     folder: string,
     newStore: StoreFactory,
     vocabulary?: Files,
+    options?: { readonly canonical?: boolean },
   ): Promise<References> {
     const path = `${folder}references.ttl`;
     const parse = (bytes: Uint8Array, base: string): Promise<Triple[]> =>
@@ -230,6 +246,7 @@ export class References {
       folder,
       vocabulary,
       parse,
+      options?.canonical ?? false,
       new Graph(await parse(turtle, files.iri + path)),
     );
   }
@@ -261,8 +278,10 @@ export class References {
   }
 
   /**
-   * The version's rows; given codes, and an index of its rows by code beside them (`<stem>.codes.json`, the rows
-   * N-Triples) built for the properties the vocabulary gives its kind, only the rows found by those codes.
+   * The version's rows; given codes, only the rows found by those codes: by halving the rows for the codes themselves
+   * when the references are canonical and its kind's rows are found by their own subjects alone, and otherwise by an
+   * index of its rows by code beside them (`<stem>.codes.json`, the rows N-Triples) built for the properties the
+   * vocabulary gives its kind.
    */
   async rows(
     version: string,
@@ -270,17 +289,10 @@ export class References {
   ): Promise<Triple[]> {
     const stem = this.#stem(version);
     const path = `${this.#folder}${stem}.ttl`;
-    const foundBy =
-      find?.terms.foundBy.get(
-        this.kindOf(this.seriesOf(version) ?? "") ?? "",
-      ) ?? [];
-    const found =
-      find === undefined ? undefined : await this.codes(version, foundBy);
-    if (find !== undefined && found !== undefined) {
+    const subjects =
+      find === undefined ? undefined : await this.#subjects(version, find);
+    if (subjects !== undefined) {
       const text = await this.text(version);
-      const subjects = new Set(
-        [...find.codes].flatMap((code) => found.get(code) ?? []),
-      );
       const lines = [...subjects]
         .sort((a, b) => (`<${a}> ` < `<${b}> ` ? -1 : 1))
         .flatMap((subject) => linesAbout(text, subject));
@@ -309,6 +321,24 @@ export class References {
         `${this.#folder} lists ${version}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /** The subjects of the version's rows the codes find; none when they can be found only by reading every row. */
+  async #subjects(
+    version: string,
+    find: { readonly codes: ReadonlySet<string>; readonly terms: TableTerms },
+  ): Promise<ReadonlySet<string> | undefined> {
+    const foundBy =
+      find.terms.foundBy.get(this.kindOf(this.seriesOf(version) ?? "") ?? "") ??
+      [];
+    if (this.#canonical && bySubjectAlone(foundBy)) {
+      const text = await this.text(version);
+      if (text === "" || text.startsWith("<")) return find.codes;
+    }
+    const found = await this.codes(version, foundBy);
+    return found === undefined
+      ? undefined
+      : new Set([...find.codes].flatMap((code) => found.get(code) ?? []));
   }
 
   /** A version's N-Triples, read once: a version's rows never change. A missing file is refused, and not remembered. */

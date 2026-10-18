@@ -1308,7 +1308,7 @@ test("the kinds an app keeps are those a rule list names and those the vocabular
   assert.deepEqual(genesOf(groups.series), []);
 });
 
-test("the rows a pod's codes find are those found by them, by the kind's property or the row's own code, and no others, each version's files read once", async () => {
+test("the rows a pod's codes find are those found by them, by the kind's property or by halving the rows for the row's own code, with no index of a kind found by that alone, and no others, each version's files read once", async () => {
   const reads: string[] = [];
   const inner = new MemoryFiles("urn:test:tables/");
   const counted: Files = {
@@ -1351,7 +1351,18 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
     subjects(await references.rows(groups.second)).length >
       subjects(found).length,
   );
+  assert.ok(
+    !(await inner.list("")).some(
+      (path) =>
+        path.startsWith(`${fileStem(names)}.`) && path.endsWith(".codes.json"),
+    ),
+  );
+  const halved = reads.length;
   assert.deepEqual(subjects(await references.rows(names, find)), [cvx141]);
+  assert.deepEqual(
+    reads.slice(halved).filter((path) => path.startsWith(fileStem(names))),
+    [`${fileStem(names)}.ttl`],
+  );
 
   const everything = await references.rows(names);
   const lines = (rows: readonly Triple[]): string[] =>
@@ -1376,6 +1387,44 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
   assert.deepEqual(
     reads.slice(before).filter((path) => path.startsWith(fileStem(names))),
     [],
+  );
+  await inner.write(
+    `${fileStem(names)}.codes.json`,
+    new TextEncoder().encode(
+      JSON.stringify({ foundBy: [`${REC}RowSubject`], rows: {} }),
+    ),
+  );
+  assert.deepEqual(
+    subjects(
+      await (await tablesOver(feed, inner).references()).rows(names, find),
+    ),
+    [cvx141],
+  );
+  const grouped = new Map<string, string[]>();
+  for (const line of new TextDecoder()
+    .decode(await inner.read(`${fileStem(names)}.ttl`))
+    .split("\n")
+    .filter((each) => each !== "")) {
+    const [subject = "", rest = ""] = line.split(/ (.*) \.$/s);
+    grouped.set(subject, [...(grouped.get(subject) ?? []), rest]);
+  }
+  const turtle = new MemoryFiles(inner.iri);
+  for (const path of await inner.list(""))
+    if (!path.endsWith(".codes.json"))
+      await turtle.write(path, (await inner.read(path)) ?? new Uint8Array());
+  await turtle.write(
+    `${fileStem(names)}.ttl`,
+    new TextEncoder().encode(
+      `@prefix x: <urn:test:x#> .\n${[...grouped]
+        .map(([subject, rest]) => `${subject} ${rest.join(" ;\n  ")} .`)
+        .join("\n")}\n`,
+    ),
+  );
+  assert.deepEqual(
+    lines(
+      await (await tablesOver(feed, turtle).references()).rows(names, find),
+    ).filter((line) => line.startsWith(`${cvx141} `)),
+    lines(await references.rows(names, find)),
   );
 
   let served = first;
