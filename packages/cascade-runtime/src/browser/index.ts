@@ -34,6 +34,7 @@ import {
   inWebWorker,
 } from "@cascade-runtime/runtime/web";
 import { ANSWERS, Answers, DESCRIBED, entryVersion } from "../answers.js";
+import { LOOKUPS, type Lookups, lookupsOf, withLookups } from "../lookups.js";
 import { podKey } from "../encrypted.js";
 import {
   bridgeLoaded,
@@ -325,9 +326,14 @@ export async function checkTables(): Promise<Checked[]> {
   return checkedAndKept((await resolved()).tables, { cache: "no-cache" });
 }
 
-/** The app's tables, as this site keeps them, once the engine that reads them is loaded. */
-export async function appTables(): Promise<Tables> {
-  return (await resolved()).tables;
+/**
+ * The app's tables, as this site keeps them, once the engine that reads them is loaded; given a pod copied from a
+ * published one, answering first from the lookups published with it.
+ */
+export async function appTables(pod?: Pod): Promise<Tables> {
+  const { tables, runtime } = await resolved();
+  const lookups = pod instanceof BrowserPod ? await pod.lookups() : undefined;
+  return lookups === undefined ? tables : withLookups(tables, lookups, runtime);
 }
 
 /** The parts, and the runtime's version: everything a pod reads with, and the engine. */
@@ -407,6 +413,7 @@ class BrowserPod implements Pod {
   readonly #kept: KeptPod | undefined;
   readonly #open: () => Promise<Pod>;
   readonly #databases: readonly IndexedDbFiles[];
+  readonly #lookups: () => Promise<Lookups | undefined>;
   #opened: Pod | undefined;
   #opening: Promise<Pod> | undefined;
   #closed = false;
@@ -416,6 +423,8 @@ class BrowserPod implements Pod {
     databases: readonly IndexedDbFiles[],
     readonly encrypted: boolean,
     kept?: KeptPod,
+    lookups: () => Promise<Lookups | undefined> = () =>
+      Promise.resolve(undefined),
   ) {
     if (typeof open === "function") this.#open = once(open);
     else {
@@ -424,6 +433,12 @@ class BrowserPod implements Pod {
     }
     this.#databases = databases;
     this.#kept = kept;
+    this.#lookups = lookups;
+  }
+
+  /** The lookups published with the pod it was copied from, if it was. */
+  lookups(): Promise<Lookups | undefined> {
+    return this.#lookups();
   }
 
   /** The pod, opened with the engine; one closed while it opened is closed by `close`. */
@@ -575,12 +590,12 @@ async function copied(folder: URL, database: IndexedDbFiles): Promise<void> {
   await database.writeAll(files);
 }
 
-/** The answers published beside the folder at the URL, `answers.json` and `pod.json`, those there are; a cache, so none on failure. */
+/** The answers published beside the folder at the URL, `answers.json`, `pod.json` and `lookups.json`, those there are; a cache, so none on failure. */
 async function answersBeside(
   folder: URL,
 ): Promise<(readonly [string, Uint8Array])[]> {
   const found = await Promise.all(
-    [ANSWERS, DESCRIBED].map(async (path) => {
+    [ANSWERS, DESCRIBED, LOOKUPS].map(async (path) => {
       try {
         const response = await fetch(new URL(`../${path}`, folder));
         return response.ok
@@ -704,6 +719,11 @@ export async function openPod(
       );
     const databases = [database, kept];
     const encrypted = key !== undefined;
+    const lookups = once(async () =>
+      encrypted
+        ? undefined
+        : lookupsOf(await kept.read(LOOKUPS).catch(() => undefined)),
+    );
     const pod =
       held.length === 0
         ? undefined
@@ -718,8 +738,8 @@ export async function openPod(
             ),
           );
     return pod === undefined
-      ? new BrowserPod(await open(), databases, encrypted)
-      : new BrowserPod(open, databases, encrypted, pod);
+      ? new BrowserPod(await open(), databases, encrypted, undefined, lookups)
+      : new BrowserPod(open, databases, encrypted, pod, lookups);
   } catch (error) {
     const empty =
       copying &&
