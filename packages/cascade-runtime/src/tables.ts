@@ -39,6 +39,14 @@ import {
   termsOfRows,
   values,
 } from "./rows.js";
+import {
+  copyVersions,
+  LISTED,
+  PUBLISHED_ROWS,
+  versionsIn,
+} from "./tables/starter.js";
+
+export { LISTED, PUBLISHED_ROWS } from "./tables/starter.js";
 
 const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const RECORDS = "ontologies/records/v1-draft/records.ttl";
@@ -81,8 +89,6 @@ interface WithheldOf {
 }
 /** How many codes a page of a search shows. */
 export const PAGE_SIZE = 50;
-/** What follows a version's file stem in the name of its listing, which a search reads. */
-export const LISTED = ".listed.json";
 const INDEX = "references.ttl";
 /** What the store holds that is not RDF: each feed's last check, the current versions, and each pod's. */
 export const HELD = "tables.json";
@@ -461,9 +467,6 @@ function currentIn(index: Graph): string[] {
 function ofAKind(index: Graph, series: Term): boolean {
   return index.objects(series, TABLE_KIND).length > 0;
 }
-
-/** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
-export const PUBLISHED_ROWS = ".nq.gz";
 
 /** The feed that last described the series. */
 function feedOf(held: Held, series: string): string | undefined {
@@ -1881,25 +1884,22 @@ export class Tables {
       if (empty) this.#forgetIndex();
       if (starter === undefined || !empty) return;
       const paths = await starter.list("");
+      const versions = versionsIn(paths);
+      this.#written += await copyVersions(
+        files,
+        starter,
+        this.#options.work ?? IN_THIS_THREAD,
+        versions,
+      );
+      const ofVersions = new Set([...versions.values()].flat());
       for (const path of [
-        ...paths.filter((path) => path !== HELD),
+        ...paths.filter((path) => !ofVersions.has(path) && path !== HELD),
         ...paths.filter((path) => path === HELD),
       ]) {
         const bytes = await starter.read(path);
         if (bytes === undefined) continue;
-        if (path.endsWith(PUBLISHED_ROWS)) {
-          const rows = await (this.#options.work ?? IN_THIS_THREAD).published(
-            new Uint8Array(bytes),
-          );
-          await files.write(
-            `${path.slice(0, -PUBLISHED_ROWS.length)}.ttl`,
-            rows,
-          );
-          this.#written += rows.byteLength;
-        } else {
-          await files.write(path, bytes);
-          this.#written += bytes.byteLength;
-        }
+        await files.write(path, bytes);
+        this.#written += bytes.byteLength;
       }
       this.#forgetIndex();
     })().finally(() => {

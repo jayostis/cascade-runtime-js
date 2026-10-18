@@ -12,6 +12,7 @@ import {
   type Locator,
   type Page,
   type Route,
+  type Worker as PageWorker,
 } from "playwright";
 import {
   changeTools,
@@ -1597,11 +1598,18 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
   await context.addInitScript(recordDraws);
   try {
     const page = watched(await context.newPage());
+    let tablesWorkers = 0;
+    const counted = (worker: PageWorker): void => {
+      if (worker.url().endsWith("/tables-worker.js")) tablesWorkers += 1;
+    };
+    page.on("worker", counted);
     await page.goto(`${served.url}try/index.html`);
     await settled(page);
     await page.waitForSelector('body[data-tables="ready"]', {
       timeout: 60_000,
     });
+    page.off("worker", counted);
+    assert.equal(tablesWorkers, 1, "the starter is copied in one worker");
     await page.goto(
       `${served.url}try/index.html?pod=martin-okafor#see-genetic-variants`,
     );
