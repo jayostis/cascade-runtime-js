@@ -274,26 +274,35 @@ export function merged(
   lists: readonly (readonly string[])[],
   uriSpaces: readonly string[],
 ): readonly string[] {
-  const [first = [], ...others] = lists;
-  if (others.length === 0) return first;
-  const all = others.reduce((one: readonly string[], other) => {
-    const both: string[] = [];
-    let [at, to] = [0, 0];
-    while (at < one.length || to < other.length)
-      both.push(
-        to === other.length ||
-          (at < one.length &&
-            ORDER.compare(
-              notation(uriSpaces, one[at]!),
-              notation(uriSpaces, other[to]!),
-            ) <= 0)
-          ? one[at++]!
-          : other[to++]!,
-      );
-    return both;
-  }, first);
+  if (lists.length <= 1) return lists[0] ?? [];
+  type Keyed = { readonly code: string; readonly key: string };
+  let level: (readonly Keyed[])[] = lists.map((list) =>
+    list.map((code) => ({ code, key: notation(uriSpaces, code) })),
+  );
+  while (level.length > 1) {
+    const next: (readonly Keyed[])[] = [];
+    for (let at = 0; at < level.length; at += 2) {
+      const [one, other] = [level[at]!, level[at + 1]];
+      if (other === undefined) {
+        next.push(one);
+        continue;
+      }
+      const both: Keyed[] = [];
+      let [i, j] = [0, 0];
+      while (i < one.length && j < other.length)
+        both.push(
+          ORDER.compare(one[i]!.key, other[j]!.key) <= 0
+            ? one[i++]!
+            : other[j++]!,
+        );
+      while (i < one.length) both.push(one[i++]!);
+      while (j < other.length) both.push(other[j++]!);
+      next.push(both);
+    }
+    level = next;
+  }
   // Codes whose notations collate equal need not meet head to head, so a repeat is dropped wherever it falls.
-  return [...new Set(all)];
+  return [...new Set(level[0]!.map(({ code }) => code))];
 }
 
 /** A version's listing, by the lines of its N-Triples, a subject's lines read together. */

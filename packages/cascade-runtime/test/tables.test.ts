@@ -35,10 +35,12 @@ import {
   resolved,
 } from "../src/node/resolved.js";
 import { tablesBeside } from "../src/index.js";
-import { openPodWith, type Row } from "../src/pod.js";
+import { Answers } from "../src/answers.js";
+import { keptPod, openPodWith, type Row } from "../src/pod.js";
 import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
   type Checked,
+  currentOf,
   LISTED,
   PAGE_SIZE,
   PUBLISHED_ROWS,
@@ -48,6 +50,7 @@ import {
 } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
+const QUESTION = "pod/My active allergies";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const SPDX = "http://spdx.org/rdf/terms#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -454,7 +457,7 @@ async function withVersions(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing; and opened while a check has kept one version and not yet the next, its answers are kept under the versions of the references it computes with, which what is held names after each version kept", async () => {
   const advil: [string, string] = ["153010", "5640"];
   const ibuprofen: [string, string] = ["5640", "5640"];
   const ingredientsFirst = await withMappings(first, INGREDIENTS, [
@@ -662,6 +665,101 @@ ${records.join("\n")}`);
   const inMemory = await openPodWith({ ...parts, tables: after }, undefined);
   assert.equal(await after.openedWith(inMemory.address), undefined);
   await inMemory.close();
+
+  const racing = new MemoryFiles("urn:test:tables-racing/");
+  const midway = join(scratch, "pods", "midway");
+  const answers = new MemoryFiles("urn:test:answers-midway/");
+  const answering = {
+    ...parts,
+    answers: { runtime: "test", at: () => answers },
+  };
+  await tablesOver(ingredientsFirst.served, racing).check();
+  await (
+    await openPodWith(
+      { ...answering, tables: tablesOver(ingredientsFirst.served, racing) },
+      midway,
+    )
+  ).close();
+  let reached!: () => void;
+  const gated = new Promise<void>((resolve) => (reached = resolve));
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let downloads = 0;
+  const served = fetchOf(ingredientsLater.served);
+  const checking = new Tables({
+    files: racing,
+    feeds: [FEED],
+    vocabulary: parts.vocabulary,
+    newStore: parts.newStore,
+    fetch: async (input, init) => {
+      if (String(input).endsWith(PUBLISHED_ROWS) && ++downloads === 2) {
+        reached();
+        await released;
+      }
+      return served(input, init);
+    },
+  });
+  const withCurrent = (current: readonly string[]): Tables =>
+    new Proxy(checking, {
+      get: (target, property) =>
+        property === "current"
+          ? () => Promise.resolve(current)
+          : (Reflect.get(target, property, target) as () => unknown).bind(
+              target,
+            ),
+    });
+  const lagging = await checking.current();
+  const check = checking.check();
+  try {
+    await Promise.race([
+      gated,
+      check.then(() =>
+        assert.fail(
+          "the check kept fewer than two versions, so it never reached the gate",
+        ),
+      ),
+    ]);
+    const openedWith = currentOf(await checking.references());
+    assert.notDeepEqual(lagging, openedWith);
+    assert.deepEqual(
+      await checking.current(),
+      openedWith,
+      "what is held names the current versions after each version a check keeps",
+    );
+    // As a pod is opened that reads the references after a check writes the index and what is held before it does.
+    const opened = await openPodWith(
+      { ...answering, tables: withCurrent(lagging) },
+      midway,
+      { adopt: false },
+    );
+    const asked = await opened.ask(QUESTION);
+    await opened.close();
+    release();
+    await check;
+    const read = await keptPod(
+      { ...parts, tables: withCurrent(openedWith) },
+      new FolderFiles(midway),
+      new Answers(answers, "test"),
+    );
+    assert.deepEqual(
+      await read?.rows(QUESTION),
+      asked,
+      "a pod opened midway through a check keeps its answers under the versions it was opened with",
+    );
+    const stale = await keptPod(
+      { ...parts, tables: withCurrent(lagging) },
+      new FolderFiles(midway),
+      new Answers(answers, "test"),
+    );
+    assert.equal(
+      await stale?.rows(QUESTION),
+      undefined,
+      "the kept answers are a miss under the versions the pod did not open with",
+    );
+  } finally {
+    release();
+    await check;
+  }
 });
 
 test("the app tells what it holds: each series with its versions, credit and how fresh its feed is, the pods that use each version by name, and the codes a search finds by code or by name, named and mapped", async () => {
@@ -697,6 +795,15 @@ test("the app tells what it holds: each series with its versions, credit and how
   await tables.check();
 
   const held = await tables.held();
+  assert.deepEqual(
+    held.filter((series) => series.kind === undefined),
+    [],
+    "the rule list's series is no table the app holds",
+  );
+  assert.deepEqual(
+    await tables.current(),
+    currentOf(await tables.references()),
+  );
   const label = (series: string): string =>
     of(series, `${RDFS}label`) ?? series;
   assert.deepEqual(
@@ -777,20 +884,46 @@ test("a code's facts hold what each held kind says of it, each with its series a
     new Set(listed.flat()),
   );
   assert.equal(all.total, new Set(listed.flat()).size);
-  // Two codes whose notations collate equal, listed in either order.
-  const [a, b] = ["urn:test:a:7", "urn:test:b:07"];
-  assert.deepEqual(
+  // Notations that collate equal across lists (07 and 7) keep the earlier list first, whatever the count of lists.
+  const spaces = ["urn:test:a:", "urn:test:b:", "urn:test:c:"];
+  const [a1, a7, a11, b7, b07, b10, c07, c9] = [
+    "urn:test:a:1",
+    "urn:test:a:07",
+    "urn:test:a:11",
+    "urn:test:b:7",
+    "urn:test:b:07",
+    "urn:test:b:10",
+    "urn:test:c:07",
+    "urn:test:c:9",
+  ];
+  const [l0, l1, l2, l3, l4] = [
+    [a1, c07],
+    [b07, c9],
+    [a7, b10],
+    [b7],
+    [a7, a11],
+  ];
+  for (const [lists, expected] of [
+    [[], []],
+    [[l1], l1],
     [
-      ...merged(
-        [
-          [b, a],
-          [a, b],
-        ],
-        ["urn:test:a:", "urn:test:b:"],
-      ),
-    ].sort(),
-    [a, b],
-  );
+      [l0, l1, l2],
+      [a1, c07, b07, a7, c9, b10],
+    ],
+    [
+      [l0, l1, l2, l3],
+      [a1, c07, b07, a7, b7, c9, b10],
+    ],
+    [
+      [l0, l1, l2, l3, l4],
+      [a1, c07, b07, a7, b7, c9, b10, a11],
+    ],
+    [
+      [l2, [], l0],
+      [a1, a7, c07, b10],
+    ],
+  ] as const)
+    assert.deepEqual([...merged(lists, spaces)], expected);
 });
 
 test("a search pages through a series of more codes than a page, in the order of their codes, asking the names and status of only the codes on the page and those they map to; a code they map to is found by its notation", async () => {
@@ -929,7 +1062,6 @@ test("the starter copies carry each version's rows as published, name the curren
     (await tables.start()) > 0,
     "the versions are named before the copies are written",
   );
-  assert.equal(await tables.listing(), 0);
   assert.ok(
     (await tables.search(groups.series, "141")).found.length > 0,
     "a carried listing is read, not listed again",
@@ -945,15 +1077,45 @@ test("the starter copies carry each version's rows as published, name the curren
     listed,
     new TextEncoder().encode(JSON.stringify({ ...kept, format: 0 })),
   );
+  let listings = 0;
+  let listingsRead = 0;
+  const store = new (class extends MemoryFiles {
+    override read(pathOrIri: string): Promise<Uint8Array | undefined> {
+      if (pathOrIri.endsWith(LISTED)) listingsRead += 1;
+      return super.read(pathOrIri);
+    }
+  })("urn:test:app-stale/");
   const old = new Tables({
-    files: new MemoryFiles("urn:test:app-stale/"),
+    files: store,
     feeds: [FEED],
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
+    fetch: fetchOf(first),
     starter: stale,
+    work: {
+      ...IN_THIS_THREAD,
+      listed: (...args) => {
+        listings += 1;
+        return IN_THIS_THREAD.listed(...args);
+      },
+    },
   });
   await old.start();
-  assert.equal(await old.listing(), 1);
+  await old.check();
+  assert.deepEqual(
+    [listingsRead, listings],
+    [0, 0],
+    "a check neither reads a listing nor lists",
+  );
+  await Promise.all([
+    old.search(groups.series, "141"),
+    old.search(groups.series, "141"),
+  ]);
+  assert.equal(
+    listings,
+    1,
+    "two searches at once list the version it reads, once",
+  );
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>
@@ -1821,8 +1983,13 @@ test("an app's tables are answered with what they hold while the check on open i
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
     release();
-    // A listing is queued behind the check, as every write is.
-    await tables.listing();
+    // A second check is queued behind the one on open, as every write is, and
+    // finds nothing left to keep because the one on open kept it.
+    assert.deepEqual(
+      (await tables.check()).flatMap(({ kept }) => kept),
+      [],
+      "the queued check kept a version the check on open had not",
+    );
     assert.ok((await tables.current()).includes(groups.second));
   } finally {
     release();

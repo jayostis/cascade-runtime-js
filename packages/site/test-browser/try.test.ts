@@ -1651,8 +1651,15 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
     const clicks: number[] = [];
     const requested: string[] = [];
+    const feedHome = new URL(
+      ".",
+      parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8")).tables
+        .feeds[0],
+    ).href;
     page.on("request", (request) => {
-      if (/^https?:/.test(request.url())) requested.push(request.url());
+      const url = request.url();
+      if (/^https?:/.test(url) && !url.startsWith(feedHome))
+        requested.push(url);
     });
     const opens = async (row: Locator): Promise<void> => {
       requested.length = 0;

@@ -49,6 +49,7 @@ const DCT = "http://purl.org/dc/terms/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const SPDX = "http://spdx.org/rdf/terms#";
 const SHIPS_WITH = `${REC}shipsWith`;
+const TABLE_KIND = `${REC}tableKind`;
 /** Beside a feed, when its watcher last checked each source. */
 const WATCHED = "checked.json";
 /** The kinds a code's page gives a section of their own, so its generic mappings do not list them. */
@@ -443,6 +444,24 @@ export function shipped(references: References): string[] {
     .sort();
 }
 
+/** The version each series of a kind ships with, in the references: what a pod opened with them is given, sorted. */
+export function currentOf(references: References): string[] {
+  return currentIn(references.index);
+}
+
+/** The version each series of a kind ships with in the index, sorted: the rule list's series has no kind. */
+function currentIn(index: Graph): string[] {
+  return index
+    .match(undefined, SHIPS_WITH)
+    .filter(([series]) => ofAKind(index, series))
+    .map(([, , version]) => version.value)
+    .sort();
+}
+
+function ofAKind(index: Graph, series: Term): boolean {
+  return index.objects(series, TABLE_KIND).length > 0;
+}
+
 /** In the starter copies, what follows a version's file stem in place of `.ttl`: its rows as the feed published them. */
 export const PUBLISHED_ROWS = ".nq.gz";
 
@@ -563,14 +582,37 @@ class TablesFiles implements Files {
   }
 }
 
+/** A listing kept beside a version, when it is one of this shape over these URI spaces. */
+function keptListing(
+  bytes: Uint8Array,
+  uriSpaces: readonly string[],
+): Listed | undefined {
+  let kept: Partial<Listed> | null;
+  try {
+    kept = JSON.parse(
+      new TextDecoder().decode(bytes),
+    ) as Partial<Listed> | null;
+  } catch {
+    return undefined;
+  }
+  return kept?.format === LISTING_FORMAT &&
+    JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
+    Array.isArray(kept.codes) &&
+    typeof kept.mapsTo === "object" &&
+    kept.mapsTo !== null &&
+    typeof kept.names === "object" &&
+    kept.names !== null &&
+    Object.values(kept.names).every((names) => typeof names === "string")
+    ? (kept as Listed)
+    : undefined;
+}
+
 /** An app's reference tables: the versions it keeps from its feeds, beside its pods, and the vocabulary's rule list. */
 export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
   #written = 0;
-  readonly #listing: Promise<void>[] = [];
-  #listedFromRows = 0;
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -579,6 +621,7 @@ export class Tables {
     Promise<ReadonlyMap<string, readonly string[]>>
   >();
   #references: Promise<References> | undefined;
+  #storeIndex: Promise<Graph> | undefined;
   #concepts: Promise<ReadonlyMap<string, string>> | undefined;
   #kinds: Promise<ReadonlySet<string>> | undefined;
 
@@ -624,34 +667,8 @@ export class Tables {
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
-      await this.#startListing();
       return checked;
     });
-  }
-
-  /** Starts listing every shipped version, which reads a valid listing kept beside it and lists again one that is not valid. */
-  async #startListing(): Promise<void> {
-    for (const [, , version] of (await this.#index()).match(
-      undefined,
-      SHIPS_WITH,
-    ))
-      this.#listing.push(
-        this.#listed(version.value).then(
-          () => undefined,
-          () => undefined,
-        ),
-      );
-  }
-
-  /**
-   * Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background.
-   * The number of versions it listed from their rows: 0 when each came listed, as the starter copies carry them.
-   */
-  async listing(): Promise<number> {
-    const before = this.#listedFromRows;
-    await this.#next(() => this.#startListing());
-    while (this.#listing.length > 0) await Promise.all(this.#listing.splice(0));
-    return this.#listedFromRows - before;
   }
 
   /**
@@ -747,6 +764,17 @@ export class Tables {
     return [...named, ...held.filter((series) => !named.includes(series))];
   }
 
+  /** The current version of each held series of the kind, or of those of them `among` names, in the order of preference. */
+  #currentOf(
+    references: References,
+    kind: string,
+    among?: readonly string[],
+  ): Fact[] {
+    return this.#preferred(references, kind)
+      .filter((series) => among === undefined || among.includes(series))
+      .map((series) => ({ series, version: references.fallback(series) }));
+  }
+
   /** The tables a pod is given now. */
   async references(): Promise<References> {
     await this.#start();
@@ -812,11 +840,10 @@ export class Tables {
    * copies, as `current` does.
    */
   async held(): Promise<HeldSeries[]> {
-    const [indexed, kept] = await Promise.all([
-      this.#readable(INDEX),
+    const [index, kept] = await Promise.all([
+      this.#heldIndex(),
       this.#readable(HELD),
     ]);
-    const index = await this.#graph(indexed);
     const held = kept === undefined ? NOTHING_HELD : heldOf(kept);
     return this.#ordered(index, held).map((series) => {
       const one = (subject: Term, predicate: string): string | undefined =>
@@ -958,18 +985,10 @@ export class Tables {
   async classedElsewhere(
     codes: readonly string[],
   ): Promise<Map<string, string[]>> {
-    const [references, index] = await Promise.all([
-      this.references(),
-      this.#index(),
-    ]);
-    const current = (kind: string): Fact[] =>
-      this.#preferred(references, kind).flatMap((series) => {
-        const version = index.objects(iri(series), SHIPS_WITH)[0]?.value;
-        return version === undefined ? [] : [{ series, version }];
-      });
+    const references = await this.references();
     const [held, ingredients] = [
-      current(`${REC}DrugClasses`),
-      current(`${REC}ProductIngredients`),
+      this.#currentOf(references, `${REC}DrugClasses`),
+      this.#currentOf(references, `${REC}ProductIngredients`),
     ];
     const found = new Map<string, string[]>();
     for (const code of codes) {
@@ -985,21 +1004,14 @@ export class Tables {
 
   /** What every held series says of the code, or each of `among`, from its current version. */
   async facts(code: string, among?: readonly string[]): Promise<Facts> {
-    // The store starts from the starter copies before its index is read.
-    const references = await this.references();
-    const [index, { uriSpaces, foundBy, codeSystems }] = await Promise.all([
-      this.#index(),
-      tableTerms(this.#options.vocabulary, this.#options.newStore),
-    ]);
-    const current = (series: string): string | undefined =>
-      among !== undefined && !among.includes(series)
-        ? undefined
-        : index.objects(iri(series), SHIPS_WITH)[0]?.value;
+    const [references, { uriSpaces, foundBy, codeSystems }] = await Promise.all(
+      [
+        this.references(),
+        tableTerms(this.#options.vocabulary, this.#options.newStore),
+      ],
+    );
     const held = (kind: string): Fact[] =>
-      this.#preferred(references, kind).flatMap((series) => {
-        const version = current(series);
-        return version === undefined ? [] : [{ series, version }];
-      });
+      this.#currentOf(references, kind, among);
     const rowsOf = (kind: string) =>
       Promise.all(
         held(kind).map(async (fact) => ({
@@ -1041,20 +1053,21 @@ export class Tables {
       rowsOf(`${REC}CodeNames`),
       rowsOf(`${REC}CodeStatus`),
       Promise.all(
-        index
+        references.index
           .subjects(SHIPS_WITH)
+          .filter((series) => ofAKind(references.index, series))
           .map(({ value }) => value)
           .filter(
             (series) =>
+              (among === undefined || among.includes(series)) &&
               !OWN_SECTIONS.includes(references.kindOf(series) ?? "") &&
               foundBy
                 .get(references.kindOf(series) ?? "")
                 ?.includes(`${OWL}annotatedSource`),
           )
-          .flatMap((series) => {
-            const version = current(series);
-            return version === undefined ? [] : [mapped({ series, version })];
-          }),
+          .map((series) =>
+            mapped({ series, version: references.fallback(series) }),
+          ),
       ).then((each) => each.flat()),
     ]);
     // Only a variation is a row's subject; a version's rows are not read for any other code.
@@ -1092,10 +1105,7 @@ export class Tables {
     });
     // A panel and a class are the code's whatever source's page asks: a medication's classes are MED-RT's, not RxNorm's.
     const anywhere = (kind: string): Fact[] =>
-      this.#preferred(references, kind).flatMap((series) => {
-        const version = index.objects(iri(series), SHIPS_WITH)[0]?.value;
-        return version === undefined ? [] : [{ series, version }];
-      });
+      this.#currentOf(references, kind);
     const [panels, classes] = await Promise.all([
       this.#panels(code, anywhere(`${REC}PanelMembers`)),
       this.#classes(
@@ -1430,9 +1440,7 @@ export class Tables {
     code: string,
   ): Promise<(Fact & { total: number; panels: readonly Placed[] })[]> {
     const references = await this.references();
-    const held = this.#preferred(references, `${REC}PanelMembers`).map(
-      (series) => ({ series, version: references.fallback(series) }),
-    );
+    const held = this.#currentOf(references, `${REC}PanelMembers`);
     const found = (await this.#panels(code, held)).filter(
       ({ heldBy }) => heldBy.total > 0,
     );
@@ -1466,8 +1474,8 @@ export class Tables {
       this.#options.vocabulary,
       this.#options.newStore,
     );
-    const versions = this.#preferred(references, `${REC}PanelMembers`).map(
-      (series) => references.fallback(series),
+    const versions = this.#currentOf(references, `${REC}PanelMembers`).map(
+      ({ version }) => version,
     );
     return Promise.all(
       versions.map(async (version) => {
@@ -1534,9 +1542,7 @@ export class Tables {
       this.#options.newStore,
     );
     const current = (kind: string): string[] =>
-      this.#preferred(references, kind).map((series) =>
-        references.fallback(series),
-      );
+      this.#currentOf(references, kind).map(({ version }) => version);
     const ingredients = current(`${REC}ProductIngredients`);
     const on = await this.#classedOn(codes, ingredients);
     const read = async (version: string, among: ReadonlySet<string>) => {
@@ -1573,16 +1579,12 @@ export class Tables {
       this.references(),
       tableTerms(this.#options.vocabulary, this.#options.newStore),
     ]);
-    const held = this.#preferred(references, CLASSIFICATIONS).map((series) => {
-      const version = references.fallback(series);
-      return {
-        series,
-        version,
-        genes: references.index
-          .objects(iri(version), `${REC}coversGene`)
-          .map(({ value }) => value),
-      };
-    });
+    const held = this.#currentOf(references, CLASSIFICATIONS).map((fact) => ({
+      ...fact,
+      genes: references.index
+        .objects(iri(fact.version), `${REC}coversGene`)
+        .map(({ value }) => value),
+    }));
     const [first] = held;
     if (first === undefined) return { found: "no series" };
     const stem = (system: string): string => {
@@ -1737,9 +1739,11 @@ export class Tables {
 
   /** The current version of each series given that the app holds. */
   async #versionsOf(series: string | readonly string[]): Promise<string[]> {
-    const index = await this.#index();
-    return (typeof series === "string" ? [series] : series).flatMap(
-      (each) => index.objects(iri(each), SHIPS_WITH)[0]?.value ?? [],
+    const { index } = await this.references();
+    return (typeof series === "string" ? [series] : series).flatMap((each) =>
+      ofAKind(index, iri(each))
+        ? (index.objects(iri(each), SHIPS_WITH)[0]?.value ?? [])
+        : [],
     );
   }
 
@@ -1818,30 +1822,14 @@ export class Tables {
         files.read(path),
         tableTerms(this.#options.vocabulary, this.#options.newStore),
       ]);
-      try {
-        const kept = JSON.parse(
-          new TextDecoder().decode(bytes),
-        ) as Partial<Listed> | null;
-        if (
-          kept?.format === LISTING_FORMAT &&
-          JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
-          Array.isArray(kept.codes) &&
-          typeof kept.mapsTo === "object" &&
-          kept.mapsTo !== null &&
-          typeof kept.names === "object" &&
-          kept.names !== null &&
-          Object.values(kept.names).every((names) => typeof names === "string")
-        )
-          return kept as Listed;
-      } catch {
-        // listed again below
-      }
+      const kept =
+        bytes === undefined ? undefined : keptListing(bytes, uriSpaces);
+      if (kept !== undefined) return kept;
       const listed = await (this.#options.work ?? IN_THIS_THREAD).listed(
         await this.#rows(version),
         uriSpaces,
       );
       await files.write(path, listed);
-      this.#listedFromRows += 1;
       return JSON.parse(new TextDecoder().decode(listed)) as Listed;
     });
   }
@@ -1850,9 +1838,8 @@ export class Tables {
   async #names(): Promise<Listed["names"][]> {
     const references = await this.references();
     return Promise.all(
-      this.#preferred(references, `${REC}CodeNames`).map(
-        async (series) =>
-          (await this.#listed(references.fallback(series))).names,
+      this.#currentOf(references, `${REC}CodeNames`).map(
+        async ({ version }) => (await this.#listed(version)).names,
       ),
     );
   }
@@ -1868,6 +1855,7 @@ export class Tables {
       index.objects(series, `${RDFS}label`)[0]?.value ?? series.value;
     return index
       .subjects(SHIPS_WITH)
+      .filter((series) => ofAKind(index, series))
       .sort((a, b) => place(a) - place(b) || label(a).localeCompare(label(b)));
   }
 
@@ -1890,7 +1878,7 @@ export class Tables {
     this.#started ??= (async () => {
       const { files, starter } = this.#options;
       const empty = (await files.read(HELD)) === undefined;
-      if (empty) this.#references = undefined;
+      if (empty) this.#forgetIndex();
       if (starter === undefined || !empty) return;
       const paths = await starter.list("");
       for (const path of [
@@ -1913,7 +1901,7 @@ export class Tables {
           this.#written += bytes.byteLength;
         }
       }
-      this.#references = undefined;
+      this.#forgetIndex();
     })().finally(() => {
       this.#started = undefined;
     });
@@ -1935,6 +1923,26 @@ export class Tables {
 
   async #index(): Promise<Graph> {
     return this.#graph(await this.#options.files.read(INDEX));
+  }
+
+  /** The index `held()` reads: the store's, parsed once each time it is written, or, while the store holds nothing, the starter's. */
+  async #heldIndex(): Promise<Graph> {
+    const { files, starter } = this.#options;
+    if ((await files.read(HELD)) === undefined) {
+      this.#storeIndex = undefined;
+      return this.#graph(await (starter ?? files).read(INDEX));
+    }
+    const index = (this.#storeIndex ??= this.#index());
+    index.catch(() => {
+      if (this.#storeIndex === index) this.#storeIndex = undefined;
+    });
+    return index;
+  }
+
+  /** Drops what was read of the store's index, once it is written. */
+  #forgetIndex(): void {
+    this.#references = undefined;
+    this.#storeIndex = undefined;
   }
 
   /** The store's file at `path`, or, while the store holds nothing, the starter copy it starts from. */
@@ -2071,7 +2079,8 @@ export class Tables {
           ),
       ]);
       await this.#options.files.write(INDEX, ntriples(index.triples));
-      this.#references = undefined;
+      this.#forgetIndex();
+      await this.#write({ ...(await this.#held()), current: currentIn(index) });
       if (held !== undefined) {
         this.#listings.delete(held.value);
         this.#inverses.delete(held.value);
@@ -2114,10 +2123,7 @@ export class Tables {
             held.feeds[feed]?.watched,
         },
       },
-      current: index
-        .match(undefined, `${REC}shipsWith`)
-        .map(([, , version]) => version.value)
-        .sort(),
+      current: currentIn(index),
     });
     return { feed, kept, ...(later === undefined ? {} : { later }), refused };
   }
