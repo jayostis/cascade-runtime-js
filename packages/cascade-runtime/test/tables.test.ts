@@ -1185,6 +1185,32 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
     ),
     [cvx141],
   );
+  const grouped = new Map<string, string[]>();
+  for (const line of new TextDecoder()
+    .decode(await inner.read(`${fileStem(names)}.ttl`))
+    .split("\n")
+    .filter((each) => each !== "")) {
+    const [subject = "", rest = ""] = line.split(/ (.*) \.$/s);
+    grouped.set(subject, [...(grouped.get(subject) ?? []), rest]);
+  }
+  const turtle = new MemoryFiles(inner.iri);
+  for (const path of await inner.list(""))
+    if (!path.endsWith(".codes.json"))
+      await turtle.write(path, (await inner.read(path)) ?? new Uint8Array());
+  await turtle.write(
+    `${fileStem(names)}.ttl`,
+    new TextEncoder().encode(
+      `@prefix x: <urn:test:x#> .\n${[...grouped]
+        .map(([subject, rest]) => `${subject} ${rest.join(" ;\n  ")} .`)
+        .join("\n")}\n`,
+    ),
+  );
+  assert.deepEqual(
+    lines(
+      await (await tablesOver(feed, turtle).references()).rows(names, find),
+    ).filter((line) => line.startsWith(`${cvx141} `)),
+    lines(await references.rows(names, find)),
+  );
 
   let served = first;
   const later = new Tables({

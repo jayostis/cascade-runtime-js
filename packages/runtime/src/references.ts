@@ -227,7 +227,8 @@ export class References {
   /**
    * The tables in `folder` of the files, which ends in a slash or is empty. Given the vocabulary, a version the
    * folder holds no file for is read from the vocabulary's rule list, if that holds one. `canonical` states that every
-   * version's rows in the folder are N-Triples, a line each, in canonical order, as a check keeps them.
+   * version's rows in the folder are N-Triples, a line each, in canonical order, as a check keeps them; a version from elsewhere, such as the
+   * vocabulary's rule list, is told by its first character and parsed whole if it is Turtle.
    */
   static async of(
     files: Files,
@@ -330,7 +331,10 @@ export class References {
     const foundBy =
       find.terms.foundBy.get(this.kindOf(this.seriesOf(version) ?? "") ?? "") ??
       [];
-    if (this.#canonical && bySubjectAlone(foundBy)) return find.codes;
+    if (this.#canonical && bySubjectAlone(foundBy)) {
+      const text = await this.text(version);
+      if (text === "" || text.startsWith("<")) return find.codes;
+    }
     const found = await this.codes(version, foundBy);
     return found === undefined
       ? undefined
