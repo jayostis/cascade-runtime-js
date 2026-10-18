@@ -978,7 +978,11 @@ test("the starter copies carry each version's rows as published, name the curren
     old.search(groups.series, "141"),
     old.search(groups.series, "141"),
   ]);
-  assert.equal(listings, 1, "two searches at once list the version it reads, once");
+  assert.equal(
+    listings,
+    1,
+    "two searches at once list the version it reads, once",
+  );
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>
