@@ -9,6 +9,13 @@ function settled<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+/** The bytes as stored: a structured clone copies a view's whole buffer, so only a view of a larger one is cut out. */
+function stored(bytes: Uint8Array): Uint8Array {
+  return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes
+    : bytes.slice();
+}
+
 function done(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
@@ -72,7 +79,7 @@ export class IndexedDbFiles implements Files {
     const transaction = this.#database.transaction(STORE, "readwrite");
     const store = transaction.objectStore(STORE);
     for (const [pathOrIri, bytes] of files)
-      store.put(bytes.slice(), relative(this, pathOrIri));
+      store.put(stored(bytes), relative(this, pathOrIri));
     await done(transaction);
   }
 
@@ -82,7 +89,7 @@ export class IndexedDbFiles implements Files {
     let created = true;
     const adding = transaction
       .objectStore(STORE)
-      .add(bytes.slice(), relative(this, pathOrIri));
+      .add(stored(bytes), relative(this, pathOrIri));
     adding.onerror = (event) => {
       if (adding.error?.name !== "ConstraintError") return;
       event.preventDefault();
