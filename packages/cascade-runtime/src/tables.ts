@@ -798,6 +798,8 @@ export class Tables {
       new TablesFiles(this.#files, vocabulary),
       "",
       newStore,
+      undefined,
+      { canonical: true },
     ));
     references.catch(() => {
       if (this.#references === references) this.#references = undefined;
