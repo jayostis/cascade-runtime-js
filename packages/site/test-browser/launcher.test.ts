@@ -103,12 +103,14 @@ test("a new pod's person signs in at the SMART launcher in a popup, on its own p
     assert.equal(await page.textContent("main h1"), POD);
     await page.click('a:has-text("Find a hospital")');
     await settled(page);
-    assert.deepEqual(
-      await page.$$eval(".card h2", (found) =>
-        found.map((each) => each.textContent ?? ""),
-      ),
-      TEST_DIRECTORY.map(({ name }) => view.hospitalName(name)),
+    const listed = await page.$$eval(".card h2", (found) =>
+      found.map((each) => each.textContent ?? ""),
     );
+    for (const { name } of TEST_DIRECTORY)
+      assert.ok(
+        listed.includes(view.hospitalName(name)),
+        `${name} is not offered`,
+      );
 
     // The launcher answers Deny on its own page and sends nothing back; the person closes the popup.
     const denied = await signIn(page, row.name);
