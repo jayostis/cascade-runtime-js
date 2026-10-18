@@ -1342,7 +1342,6 @@ busy(async () => {
       if (state.page !== undefined) redraw();
       const tables = await appTables();
       await tables.start().catch(() => undefined);
-      await tables.listing().catch(() => undefined);
       document.body.dataset.tables = "ready";
     },
     () => {

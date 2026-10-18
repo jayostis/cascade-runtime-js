@@ -582,14 +582,37 @@ class TablesFiles implements Files {
   }
 }
 
+/** A listing kept beside a version, when it is one of this shape over these URI spaces. */
+function keptListing(
+  bytes: Uint8Array,
+  uriSpaces: readonly string[],
+): Listed | undefined {
+  let kept: Partial<Listed> | null;
+  try {
+    kept = JSON.parse(
+      new TextDecoder().decode(bytes),
+    ) as Partial<Listed> | null;
+  } catch {
+    return undefined;
+  }
+  return kept?.format === LISTING_FORMAT &&
+    JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
+    Array.isArray(kept.codes) &&
+    typeof kept.mapsTo === "object" &&
+    kept.mapsTo !== null &&
+    typeof kept.names === "object" &&
+    kept.names !== null &&
+    Object.values(kept.names).every((names) => typeof names === "string")
+    ? (kept as Listed)
+    : undefined;
+}
+
 /** An app's reference tables: the versions it keeps from its feeds, beside its pods, and the vocabulary's rule list. */
 export class Tables {
   readonly #options: TablesOptions;
   #queue: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
   #written = 0;
-  readonly #listing: Promise<void>[] = [];
-  #listedFromRows = 0;
   readonly #listings = new Map<string, Promise<Listed>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
@@ -644,34 +667,8 @@ export class Tables {
       const checked: Checked[] = [];
       for (const feed of [...feeds, ...(builds?.feeds ?? [])])
         checked.push(withBuilt(await this.#checkFeed(feed, init), built));
-      await this.#startListing();
       return checked;
     });
-  }
-
-  /** Starts listing every shipped version, which reads a valid listing kept beside it and lists again one that is not valid. */
-  async #startListing(): Promise<void> {
-    for (const [, , version] of (await this.#index()).match(
-      undefined,
-      SHIPS_WITH,
-    ))
-      this.#listing.push(
-        this.#listed(version.value).then(
-          () => undefined,
-          () => undefined,
-        ),
-      );
-  }
-
-  /**
-   * Resolves when every shipped version is listed, or its listing has failed; a check does the same in the background.
-   * The number of versions it listed from their rows: 0 when each came listed, as the starter copies carry them.
-   */
-  async listing(): Promise<number> {
-    const before = this.#listedFromRows;
-    await this.#next(() => this.#startListing());
-    while (this.#listing.length > 0) await Promise.all(this.#listing.splice(0));
-    return this.#listedFromRows - before;
   }
 
   /**
@@ -1823,30 +1820,14 @@ export class Tables {
         files.read(path),
         tableTerms(this.#options.vocabulary, this.#options.newStore),
       ]);
-      try {
-        const kept = JSON.parse(
-          new TextDecoder().decode(bytes),
-        ) as Partial<Listed> | null;
-        if (
-          kept?.format === LISTING_FORMAT &&
-          JSON.stringify(kept.uriSpaces) === JSON.stringify(uriSpaces) &&
-          Array.isArray(kept.codes) &&
-          typeof kept.mapsTo === "object" &&
-          kept.mapsTo !== null &&
-          typeof kept.names === "object" &&
-          kept.names !== null &&
-          Object.values(kept.names).every((names) => typeof names === "string")
-        )
-          return kept as Listed;
-      } catch {
-        // listed again below
-      }
+      const kept =
+        bytes === undefined ? undefined : keptListing(bytes, uriSpaces);
+      if (kept !== undefined) return kept;
       const listed = await (this.#options.work ?? IN_THIS_THREAD).listed(
         await this.#rows(version),
         uriSpaces,
       );
       await files.write(path, listed);
-      this.#listedFromRows += 1;
       return JSON.parse(new TextDecoder().decode(listed)) as Listed;
     });
   }
