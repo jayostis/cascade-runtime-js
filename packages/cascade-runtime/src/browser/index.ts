@@ -736,8 +736,10 @@ export async function openPod(
     if (published !== undefined) {
       const described = await new Answers(kept, read.runtime).described();
       if (described?.tables !== undefined)
-        void read.tables
-          .opened(described.address, described.tables, name)
+        void resolved()
+          .then(({ tables }) =>
+            tables.opened(described.address, described.tables ?? [], name),
+          )
           .catch(() => undefined);
     }
     const open = async () =>

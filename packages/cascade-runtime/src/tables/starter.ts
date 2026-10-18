@@ -85,6 +85,7 @@ export async function copyVersions(
       ...work,
       published: (bytes) => {
         const rows = turn.then(() => {
+          if (failed) throw new Error("the copy was cut short");
           behind();
           return work.published(bytes);
         });
