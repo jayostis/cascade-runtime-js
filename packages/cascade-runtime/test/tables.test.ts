@@ -929,7 +929,6 @@ test("the starter copies carry each version's rows as published, name the curren
     (await tables.start()) > 0,
     "the versions are named before the copies are written",
   );
-  assert.equal(await tables.listing(), 0);
   assert.ok(
     (await tables.search(groups.series, "141")).found.length > 0,
     "a carried listing is read, not listed again",
@@ -945,15 +944,39 @@ test("the starter copies carry each version's rows as published, name the curren
     listed,
     new TextEncoder().encode(JSON.stringify({ ...kept, format: 0 })),
   );
+  let listings = 0;
+  let listingsRead = 0;
+  const store = new (class extends MemoryFiles {
+    override read(pathOrIri: string): Promise<Uint8Array | undefined> {
+      if (pathOrIri.endsWith(LISTED)) listingsRead += 1;
+      return super.read(pathOrIri);
+    }
+  })("urn:test:app-stale/");
   const old = new Tables({
-    files: new MemoryFiles("urn:test:app-stale/"),
+    files: store,
     feeds: [FEED],
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
+    fetch: fetchOf(first),
     starter: stale,
+    work: {
+      ...IN_THIS_THREAD,
+      listed: (...args) => {
+        listings += 1;
+        return IN_THIS_THREAD.listed(...args);
+      },
+    },
   });
   await old.start();
-  assert.equal(await old.listing(), 1);
+  await old.check();
+  assert.deepEqual(
+    [listingsRead, listings],
+    [0, 0],
+    "a check neither reads a listing nor lists",
+  );
+  await old.search(groups.series, "141");
+  await old.search(groups.series, "141");
+  assert.equal(listings, 1, "a search lists the version it reads, once");
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>
@@ -1772,8 +1795,8 @@ test("an app's tables are answered with what they hold while the check on open i
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
     release();
-    // A listing is queued behind the check, as every write is.
-    await tables.listing();
+    // A second check is queued behind the one on open, as every write is.
+    await tables.check();
     assert.ok((await tables.current()).includes(groups.second));
   } finally {
     release();
