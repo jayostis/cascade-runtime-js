@@ -1,6 +1,6 @@
 // connect and pull against the SMART Health IT launcher, a server this project did not write, over the network:
 // `npm run test:launcher`. Its data is shared and edited by anyone, so this asserts the protocol and the shape of what
-// came back, never which records beyond what PATIENT's comment says it holds.
+// came back, never which records: a type is expected only if the launcher itself counts records of it for PATIENT.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -19,7 +19,7 @@ import {
 } from "../test/launcher-settings.js";
 
 const LAUNCHER = "https://launch.smarthealthit.org";
-/** A Synthea patient of r4.smarthealthit.org with records of every type `DEMO_PLAN` searches, its vital signs paged. */
+/** A Synthea patient of r4.smarthealthit.org with a good many records, its vital signs paged. */
 const PATIENT = "523ce6ff-60bd-4d69-a8b4-9770f0e8e9f7";
 const REGISTRATION: Registration = {
   clientId: "cascade-runtime-check",
@@ -90,6 +90,25 @@ function direct(fetcher: typeof fetch): SignIn {
   };
 }
 
+/** How many records the launcher itself holds for PATIENT that `search` finds, asked with a count and no records. */
+async function held(
+  base: string,
+  token: string,
+  { type, category }: { type: string; category?: string },
+): Promise<number> {
+  const url = new URL(`${base}/${type}`);
+  url.searchParams.set("patient", PATIENT);
+  if (category !== undefined) url.searchParams.set("category", category);
+  url.searchParams.set("_summary", "count");
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.status, 200, url.href);
+  const { total } = (await response.json()) as { total?: number };
+  assert.equal(typeof total, "number", `no total from ${url.href}`);
+  return total!;
+}
+
 function referencedPatients(resource: Record<string, unknown>): string[] {
   return [resource.subject, resource.patient]
     .map((field) => (field as { reference?: string } | undefined)?.reference)
@@ -119,7 +138,13 @@ test("connect and pull sign in to the launcher's patient and pull every searched
       .map(({ id }) => id),
     [PATIENT],
   );
-  for (const { type, category } of DEMO_PLAN.searches)
+  const [bearer] = seen.tokens;
+  assert.ok(bearer);
+  let expected = 0;
+  for (const search of DEMO_PLAN.searches) {
+    if ((await held(row.fhirBase, bearer, search)) === 0) continue;
+    expected += 1;
+    const { type, category } = search;
     assert.ok(
       resources.some(
         (resource) =>
@@ -129,6 +154,8 @@ test("connect and pull sign in to the launcher's patient and pull every searched
       ),
       `no ${type}${category === undefined ? "" : ` of category ${category}`}`,
     );
+  }
+  assert.ok(expected > 0, "the launcher holds nothing of any searched type");
   for (const resource of resources)
     for (const reference of referencedPatients(resource))
       assert.equal(
