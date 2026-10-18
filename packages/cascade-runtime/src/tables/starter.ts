@@ -67,32 +67,42 @@ export async function copyVersions(
   versions: ReadonlyMap<string, readonly string[]>,
 ): Promise<number> {
   // A version's rows are read once the one before is, and once each write begun before they were asked has ended, so
-  // at most two versions' rows are held while a third is fetched.
+  // at most two versions' rows are held whole. A version is ahead until its rows' turn comes; then the next is fetched.
   let turn: Promise<void> = Promise.resolve();
-  const inTurn: RowsWork = {
-    ...work,
-    published: (bytes) => {
-      const rows = turn.then(() => work.published(bytes));
-      turn = settled(rows);
-      return rows;
-    },
-  };
   const queued = [...versions];
-  const ahead: Promise<(readonly [string, Uint8Array])[]>[] = [];
+  const copying: Promise<(readonly [string, Uint8Array])[]>[] = [];
+  let failed = false;
   const readNext = (): void => {
     const version = queued.shift();
-    if (version === undefined) return;
-    const files = versionFiles(starter, version[0], version[1], inTurn);
-    void settled(files);
-    ahead.push(files);
+    if (version === undefined || failed) return;
+    let ahead = true;
+    const behind = (): void => {
+      if (!ahead) return;
+      ahead = false;
+      readNext();
+    };
+    const files = versionFiles(starter, version[0], version[1], {
+      ...work,
+      published: (bytes) => {
+        const rows = turn.then(() => {
+          behind();
+          return work.published(bytes);
+        });
+        turn = settled(rows);
+        return rows;
+      },
+    });
+    void files.then(behind, () => {
+      failed = true;
+    });
+    copying.push(files);
   };
   for (let read = 0; read < READ_AHEAD; read += 1) readNext();
   let writing: Promise<void> = Promise.resolve();
   let written = 0;
   try {
-    for (let files = ahead.shift(); files; files = ahead.shift()) {
+    for (let files = copying.shift(); files; files = copying.shift()) {
       const copied = await files;
-      readNext();
       await writing;
       writing = writeAll(store, copied);
       turn = Promise.all([turn, settled(writing)]).then(() => undefined);
@@ -100,6 +110,7 @@ export async function copyVersions(
     }
     await writing;
   } catch (error) {
+    failed = true;
     await settled(writing);
     throw error;
   }
