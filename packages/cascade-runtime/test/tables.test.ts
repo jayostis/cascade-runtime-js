@@ -40,6 +40,7 @@ import { keptPod, openPodWith, type Row } from "../src/pod.js";
 import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
   type Checked,
+  HELD,
   currentOf,
   LISTED,
   PAGE_SIZE,
@@ -48,6 +49,7 @@ import {
   versionName,
   writeStarterCopies,
 } from "../src/tables.js";
+import { READ_AHEAD } from "../src/tables/starter.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const QUESTION = "pod/My active allergies";
@@ -1030,12 +1032,16 @@ test("a version the tables name by no file is refused, by a search and by what t
 
 test("the starter copies carry each version's rows as published, name the current versions before they are copied, and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
   const starter = new MemoryFiles("urn:test:starter/");
+  // One version more than are read ahead.
+  const { served } = await withMappings(first, INGREDIENTS, [
+    [["153010", "5640"]],
+  ]);
   await writeStarterCopies(
     {
       feeds: [FEED],
       vocabulary: parts.vocabulary,
       newStore: parts.newStore,
-      fetch: fetchOf(first),
+      fetch: fetchOf(served),
     },
     (path, bytes) => starter.write(path, bytes),
   );
@@ -1045,23 +1051,70 @@ test("the starter copies carry each version's rows as published, name the curren
   assert.ok(!carried.includes(`${stem}.ttl`));
   assert.ok(carried.includes(`${stem}${LISTED}`));
   const app = join(scratch, "reset");
+  const rowsCarried = carried.filter((path) => path.endsWith(PUBLISHED_ROWS));
+  assert.ok(rowsCarried.length > READ_AHEAD);
+  let reading = 0;
+  let mostRead = 0;
+  let failing: string | undefined = rowsCarried.at(-1);
+  let cut = false;
+  let startedAgain = false;
+  let convertedAfterCut = 0;
+  const counted: Files = {
+    iri: starter.iri,
+    list: (folder) => starter.list(folder),
+    write: (path, bytes) => starter.write(path, bytes),
+    read: async (path) => {
+      if (!path.endsWith(PUBLISHED_ROWS)) return starter.read(path);
+      reading += 1;
+      mostRead = Math.max(mostRead, reading);
+      try {
+        await new Promise((resolve) => setImmediate(resolve));
+        if (path === failing) {
+          failing = undefined;
+          cut = true;
+          throw new Error("the starter's network failed");
+        }
+        return await starter.read(path);
+      } finally {
+        reading -= 1;
+      }
+    },
+  };
+  const copiedTo = new FolderFiles(join(app, ".tables"));
   const tables = new Tables({
-    files: new FolderFiles(join(app, ".tables")),
+    files: copiedTo,
     feeds: [FEED],
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
-    starter,
+    starter: counted,
     work: {
       ...IN_THIS_THREAD,
       listed: () => Promise.reject(new Error("listed what came listed")),
+      published: (bytes) => {
+        if (cut && !startedAgain) convertedAfterCut += 1;
+        return IN_THIS_THREAD.published(bytes);
+      },
     },
   });
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
+  await assert.rejects(tables.start());
+  assert.equal(
+    await copiedTo.read(HELD),
+    undefined,
+    "a copy cut short holds nothing",
+  );
+  assert.equal(
+    convertedAfterCut,
+    0,
+    "a copy cut short converts no version after the cut",
+  );
+  startedAgain = true;
   assert.ok(
     (await tables.start()) > 0,
     "the versions are named before the copies are written",
   );
+  assert.equal(mostRead, READ_AHEAD, "the starter is read ahead, bounded");
   assert.ok(
     (await tables.search(groups.series, "141")).found.length > 0,
     "a carried listing is read, not listed again",

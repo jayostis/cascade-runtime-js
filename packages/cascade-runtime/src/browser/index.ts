@@ -52,7 +52,7 @@ import {
   type Row,
 } from "../pod.js";
 import { IN_THIS_THREAD, type RowsWork } from "../rows.js";
-import type { RowsCall } from "./tables-worker.js";
+import type { RowsAnswer, RowsCall } from "./tables-worker.js";
 import { CHECK_ON_OPEN_MS, type Checked, Tables } from "../tables.js";
 
 export type {
@@ -272,36 +272,72 @@ async function tablesOf(
   });
 }
 
-/**
- * Each call in a Web Worker of its own, so a page stays responsive while it reads a version's rows; in this thread
- * when no worker can start. The bytes go to the worker, never copied: the callers' are their own and not read again.
- */
-function inWorker<T>(
-  call: keyof RowsWork,
-  args: unknown[],
-  bytes: Uint8Array<ArrayBuffer>,
-): Promise<T> {
+interface Waiting {
+  resolve(answer: unknown): void;
+  reject(error: Error): void;
+}
+
+/** The page's one tables worker and the calls waiting on its answers, while it runs. */
+let tablesWorker: { worker: Worker; waiting: Map<number, Waiting> } | undefined;
+let lastCall = 0;
+
+/** The page's tables worker, started on first use; undefined when none can start. */
+function runningWorker(): typeof tablesWorker {
+  if (tablesWorker !== undefined) return tablesWorker;
   let worker: Worker;
   try {
     worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
       type: "module",
     });
   } catch {
+    return undefined;
+  }
+  const running = { worker, waiting: new Map<number, Waiting>() };
+  const failed = (error: Error): void => {
+    if (tablesWorker === running) tablesWorker = undefined;
+    worker.terminate();
+    for (const waiting of running.waiting.values()) waiting.reject(error);
+    running.waiting.clear();
+  };
+  worker.onmessage = ({ data }: MessageEvent<RowsAnswer>) => {
+    const waiting = running.waiting.get(data.id);
+    running.waiting.delete(data.id);
+    if ("failed" in data) waiting?.reject(new Error(data.failed));
+    else waiting?.resolve(data.answer);
+  };
+  worker.onerror = (event) =>
+    failed(new Error(`the tables' worker failed: ${event.message}`));
+  worker.onmessageerror = () =>
+    failed(new Error("the tables' worker answered what cannot be read"));
+  tablesWorker = running;
+  return running;
+}
+
+/**
+ * Each call in the page's one Web Worker, so a page stays responsive while it reads a version's rows; the worker
+ * answers in turn. In this thread when no worker can start. The bytes go to the worker, never copied: the callers' are
+ * their own and not read again.
+ */
+function inWorker<T>(
+  call: keyof RowsWork,
+  args: unknown[],
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<T> {
+  const running = runningWorker();
+  if (running === undefined)
     return (IN_THIS_THREAD[call] as (...args: unknown[]) => Promise<T>)(
       ...args,
     );
-  }
+  const id = (lastCall += 1);
   return new Promise<T>((resolve, reject) => {
-    worker.onmessage = ({
-      data,
-    }: MessageEvent<{ answer: T } | { failed: string }>) =>
-      "failed" in data ? reject(new Error(data.failed)) : resolve(data.answer);
-    worker.onerror = (event) =>
-      reject(new Error(`the tables' worker failed: ${event.message}`));
-    worker.onmessageerror = () =>
-      reject(new Error("the tables' worker answered what cannot be read"));
-    worker.postMessage({ call, args } satisfies RowsCall, [bytes.buffer]);
-  }).finally(() => worker.terminate());
+    running.waiting.set(id, {
+      resolve: (answer) => resolve(answer as T),
+      reject,
+    });
+    running.worker.postMessage({ id, call, args } satisfies RowsCall, [
+      bytes.buffer,
+    ]);
+  });
 }
 
 const IN_A_WORKER: RowsWork = {
@@ -700,8 +736,10 @@ export async function openPod(
     if (published !== undefined) {
       const described = await new Answers(kept, read.runtime).described();
       if (described?.tables !== undefined)
-        void read.tables
-          .opened(described.address, described.tables, name)
+        void resolved()
+          .then(({ tables }) =>
+            tables.opened(described.address, described.tables ?? [], name),
+          )
           .catch(() => undefined);
     }
     const open = async () =>
