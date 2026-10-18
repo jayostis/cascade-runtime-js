@@ -34,6 +34,7 @@ import {
   type ResolvedParts,
   resolved,
 } from "../src/node/resolved.js";
+import { tablesBeside } from "../src/index.js";
 import { openPodWith, type Row } from "../src/pod.js";
 import { IN_THIS_THREAD, listing, merged } from "../src/rows.js";
 import {
@@ -1753,6 +1754,32 @@ test("an app's tables are the package's with each field of its own file, then of
     () => configureTables({}),
     "configureTables after a start that failed",
   );
+});
+
+test("an app's tables are answered with what they hold while the check on open is still running, and the check keeps its versions after", async () => {
+  let release = (): void => undefined;
+  const gate = new Promise<void>((open) => (release = open));
+  const served = fetchOf(feed);
+  configureTables({
+    feeds: [FEED],
+    checkOnOpen: true,
+    fetch: async (input, init) => {
+      await gate;
+      return served(input, init);
+    },
+  });
+  try {
+    const tables = await tablesBeside(join(scratch, "opened"));
+    assert.ok(!(await tables.current()).includes(groups.second));
+    release();
+    for (let tries = 0; tries < 200; tries++) {
+      if ((await tables.current()).includes(groups.second)) return;
+      await new Promise((later) => setTimeout(later, 25));
+    }
+    assert.fail("the check on open kept nothing");
+  } finally {
+    release();
+  }
 });
 
 const LOINC = spaceOf("LOINC");
