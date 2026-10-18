@@ -1772,11 +1772,9 @@ test("an app's tables are answered with what they hold while the check on open i
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
     release();
-    for (let tries = 0; tries < 200; tries++) {
-      if ((await tables.current()).includes(groups.second)) return;
-      await new Promise((later) => setTimeout(later, 25));
-    }
-    assert.fail("the check on open kept nothing");
+    // A listing is queued behind the check, as every write is.
+    await tables.listing();
+    assert.ok((await tables.current()).includes(groups.second));
   } finally {
     release();
   }
