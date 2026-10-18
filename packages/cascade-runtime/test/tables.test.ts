@@ -457,7 +457,7 @@ async function withVersions(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing; and opened while a check has kept one version and not yet the next, its answers are kept under the versions of the references it computes with, which what is held names after each version kept", async () => {
   const advil: [string, string] = ["153010", "5640"];
   const ibuprofen: [string, string] = ["5640", "5640"];
   const ingredientsFirst = await withMappings(first, INGREDIENTS, [
@@ -699,13 +699,29 @@ ${records.join("\n")}`);
       return served(input, init);
     },
   });
+  const withCurrent = (current: readonly string[]): Tables =>
+    new Proxy(checking, {
+      get: (target, property) =>
+        property === "current"
+          ? () => Promise.resolve(current)
+          : (Reflect.get(target, property, target) as () => unknown).bind(
+              target,
+            ),
+    });
+  const lagging = await checking.current();
   const check = checking.check();
   try {
     await gated;
     const openedWith = currentOf(await checking.references());
-    assert.notDeepEqual(await checking.current(), openedWith);
+    assert.notDeepEqual(lagging, openedWith);
+    assert.deepEqual(
+      await checking.current(),
+      openedWith,
+      "what is held names the current versions after each version a check keeps",
+    );
+    // As a pod is opened that reads the references after a check writes the index and what is held before it does.
     const opened = await openPodWith(
-      { ...answering, tables: checking },
+      { ...answering, tables: withCurrent(lagging) },
       midway,
       { adopt: false },
     );
@@ -714,17 +730,7 @@ ${records.join("\n")}`);
     release();
     await check;
     const read = await keptPod(
-      {
-        ...parts,
-        tables: new Proxy(checking, {
-          get: (target, property) =>
-            property === "current"
-              ? () => Promise.resolve(openedWith)
-              : (Reflect.get(target, property, target) as () => unknown).bind(
-                  target,
-                ),
-        }),
-      },
+      { ...parts, tables: withCurrent(openedWith) },
       new FolderFiles(midway),
       new Answers(answers, "test"),
     );
@@ -772,6 +778,15 @@ test("the app tells what it holds: each series with its versions, credit and how
   await tables.check();
 
   const held = await tables.held();
+  assert.deepEqual(
+    held.filter((series) => series.kind === undefined),
+    [],
+    "the rule list's series is no table the app holds",
+  );
+  assert.deepEqual(
+    await tables.current(),
+    currentOf(await tables.references()),
+  );
   const label = (series: string): string =>
     of(series, `${RDFS}label`) ?? series;
   assert.deepEqual(
