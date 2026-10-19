@@ -538,6 +538,31 @@ function once<T>(
   return found;
 }
 
+/** What `make` gives, made at the first `get` and kept until `forget`; one that fails is made again at the next. */
+class Lazy<T> {
+  readonly #make: () => Promise<T>;
+  #made: Promise<T> | undefined;
+
+  constructor(make: () => Promise<T>) {
+    this.#make = make;
+  }
+
+  get(): Promise<T> {
+    if (this.#made === undefined) {
+      const made = this.#make();
+      made.catch(() => {
+        if (this.#made === made) this.#made = undefined;
+      });
+      this.#made = made;
+    }
+    return this.#made;
+  }
+
+  forget(): void {
+    this.#made = undefined;
+  }
+}
+
 /** The stem of a held version's files; a version named by no file is refused. */
 function stemOf(version: string): string {
   try {
@@ -627,9 +652,49 @@ export class Tables {
     string,
     Promise<ReadonlyMap<string, readonly string[]>>
   >();
-  #references: Promise<References> | undefined;
-  #concepts: Promise<ReadonlyMap<string, string>> | undefined;
-  #kinds: Promise<ReadonlySet<string>> | undefined;
+  readonly #references = new Lazy(() =>
+    References.of(
+      new TablesFiles(this.#files, this.#options.vocabulary),
+      "",
+      this.#options.newStore,
+      undefined,
+      { canonical: true },
+    ),
+  );
+  readonly #concepts = new Lazy<ReadonlyMap<string, string>>(async () => {
+    const { vocabulary, newStore } = this.#options;
+    const graph = new Graph(
+      await newStore().parse(
+        await readText(vocabulary, RECORDS),
+        vocabulary.iri + RECORDS,
+      ),
+    );
+    const labels = new Map<string, string>();
+    for (const predicate of [`${SKOS}prefLabel`, `${RDFS}label`])
+      for (const [subject, , label] of graph.match(undefined, predicate))
+        if (!labels.has(subject.value)) labels.set(subject.value, label.value);
+    return labels;
+  });
+  /**
+   * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and the kinds the
+   * vocabulary marks as read by pages. A series of any other kind is neither kept nor packed.
+   */
+  readonly #kinds = new Lazy<ReadonlySet<string>>(async () => {
+    const { vocabulary, newStore } = this.#options;
+    const kinds = new Set((await tableTerms(vocabulary, newStore)).readByPages);
+    for (const path of await vocabulary.list(RULE_LIST)) {
+      const bytes = path.endsWith(".ttl")
+        ? await vocabulary.read(path)
+        : undefined;
+      if (bytes === undefined) continue;
+      for (const [, predicate, object] of await newStore().parse(
+        bytes,
+        vocabulary.iri + path,
+      ))
+        if (predicate.value === `${REC}tableKind`) kinds.add(object.value);
+    }
+    return kinds;
+  });
 
   constructor(options: TablesOptions) {
     this.#options = options;
@@ -642,36 +707,6 @@ export class Tables {
             options.work ?? IN_THIS_THREAD,
           );
     this.#files = this.#starterFiles ?? options.files;
-  }
-
-  /**
-   * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and the kinds the
-   * vocabulary marks as read by pages. A series of any other kind is neither kept nor packed.
-   */
-  #kindsRead(): Promise<ReadonlySet<string>> {
-    this.#kinds ??= (async () => {
-      const { vocabulary, newStore } = this.#options;
-      const kinds = new Set(
-        (await tableTerms(vocabulary, newStore)).readByPages,
-      );
-      for (const path of await vocabulary.list(RULE_LIST)) {
-        const bytes = path.endsWith(".ttl")
-          ? await vocabulary.read(path)
-          : undefined;
-        if (bytes === undefined) continue;
-        for (const [, predicate, object] of await newStore().parse(
-          bytes,
-          vocabulary.iri + path,
-        ))
-          if (predicate.value === `${REC}tableKind`) kinds.add(object.value);
-      }
-      return kinds;
-    })();
-    const p = this.#kinds;
-    p.catch(() => {
-      if (this.#kinds === p) this.#kinds = undefined;
-    });
-    return p;
   }
 
   /** Runs the local builders, then reads each feed and keeps each current version it does not hold that verifies. */
@@ -795,18 +830,7 @@ export class Tables {
   /** The tables a pod is given now. */
   async references(): Promise<References> {
     await this.#start();
-    const { vocabulary, newStore } = this.#options;
-    const references = (this.#references ??= References.of(
-      new TablesFiles(this.#files, vocabulary),
-      "",
-      newStore,
-      undefined,
-      { canonical: true },
-    ));
-    references.catch(() => {
-      if (this.#references === references) this.#references = undefined;
-    });
-    return references;
+    return this.#references.get();
   }
 
   /**
@@ -1669,36 +1693,13 @@ export class Tables {
 
   /** Each concept's `skos:prefLabel`, else `rdfs:label`, in the vocabulary's records ontology; a concept with neither is left out. */
   async labels(concepts: readonly string[]): Promise<Map<string, string>> {
-    const known = await this.#labelled();
+    const known = await this.#concepts.get();
     return new Map(
       concepts.flatMap((concept) => {
         const label = known.get(concept);
         return label === undefined ? [] : [[concept, label] as const];
       }),
     );
-  }
-
-  #labelled(): Promise<ReadonlyMap<string, string>> {
-    this.#concepts ??= (async () => {
-      const { vocabulary, newStore } = this.#options;
-      const graph = new Graph(
-        await newStore().parse(
-          await readText(vocabulary, RECORDS),
-          vocabulary.iri + RECORDS,
-        ),
-      );
-      const labels = new Map<string, string>();
-      for (const predicate of [`${SKOS}prefLabel`, `${RDFS}label`])
-        for (const [subject, , label] of graph.match(undefined, predicate))
-          if (!labels.has(subject.value))
-            labels.set(subject.value, label.value);
-      return labels;
-    })();
-    const p = this.#concepts;
-    p.catch(() => {
-      if (this.#concepts === p) this.#concepts = undefined;
-    });
-    return p;
   }
 
   /** A variant classifications row, read from the lines of its subject. */
@@ -1955,7 +1956,7 @@ export class Tables {
 
   /** Drops what was read of the store's index, once it is written. */
   #forgetIndex(): void {
-    this.#references = undefined;
+    this.#references.forget();
   }
 
   /** The store's file at `path`, or, while the store holds nothing, the starter copy it starts from. */
@@ -2016,7 +2017,7 @@ export class Tables {
       if (
         version?.termType !== "NamedNode" ||
         index.match(version, SPECIALIZATION_OF).length > 0 ||
-        !(await this.#kindsRead()).has(kind)
+        !(await this.#kinds.get()).has(kind)
       )
         continue;
       const [held] = index.objects(series, `${REC}shipsWith`);
