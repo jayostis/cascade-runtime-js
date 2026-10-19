@@ -139,7 +139,8 @@ const state = {
   saying: undefined,
 };
 /** What the page reads of the pods and the tables; each pod it opens stays open until every pod is deleted. */
-const api = podApi(browserHost());
+const host = browserHost();
+const api = podApi(host);
 /** The pod shown, open. */
 let pod;
 /** The address's query, as `route()` last drew it. */
@@ -294,7 +295,8 @@ function entryShown() {
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, about, said, from, title, body, entry } = state.page;
+  const { answers, about, said, from, title, body, entry, unheld } =
+    state.page;
   if (answers === undefined) return { title, body };
   if (entry !== undefined) return entryShown();
   const { current, connection } = state;
@@ -328,7 +330,7 @@ function pageShown() {
       findHospital: `${podHref(current)}&hospitals`,
       world: { asOf: state.world, action: WORLD_DATE },
       entryHref: (entry) => entryHref(current, entry),
-      unheld: pod?.opened?.unheld,
+      unheld,
       about,
       held: state.tables,
       said,
@@ -409,30 +411,36 @@ function render(title, body, doing = "ready") {
   redraw();
 }
 
-/** The pod shown's answers by question, and the changes in them. */
-async function answered() {
-  const { answers, changes } = await api.answers({ pod: state.current });
-  return { answers, changes };
+/** The answers of the pod named `pod` by question, the changes in them, and the series its import left unheld. */
+async function answered(pod) {
+  return api.answers({ pod });
 }
 
 /**
- * What the tables say of the pod shown's codes (`about`) and variants (`said`), and with `entry`, the LOINC panels
- * that entry is in and the table versions whose rows joined it: nothing while the engine is still warming, no names
- * once the tables cannot say, the engine having failed or the tables' answer having thrown.
+ * What the tables say of the codes and variants of the pod `page` was drawn for (`about`, `said`), and with `entry`,
+ * the LOINC panels that entry is in and the table versions whose rows joined it: nothing while the engine is still
+ * warming, no names once the tables cannot say, the engine having failed, the tables' answer having thrown or the pod
+ * having been locked or closed since. It asks the pod the page was drawn for, never `state.current`, which a route
+ * sets before it replaces the page.
  */
-async function saidOf(entry) {
+async function saidOf(page, entry) {
   if (document.body.dataset.engine !== "ready")
     return state.tablesRead === "failed" ? { about: new Map() } : {};
-  const { about, said, panels, joined } = maps(
-    await api.said({ pod: state.current, entry }),
-  );
-  return { about: about ?? new Map(), said, panels, joined };
+  try {
+    const { about, said, panels, joined } = maps(
+      await api.said({ pod: page.pod, entry }),
+    );
+    return { about: about ?? new Map(), said, panels, joined };
+  } catch {
+    return { about: new Map() };
+  }
 }
 
 /** The pod's page as `state.page` holds it, the answers asked and what the tables say of them; `from` as `showPod`. */
 async function podShown(from) {
-  const page = { ...(await answered()), from, at: routed };
-  return Object.assign(page, await saidOf());
+  const { current } = state;
+  const page = { ...(await answered(current)), pod: current, from, at: routed };
+  return Object.assign(page, await saidOf(page));
 }
 
 /** Draws "Not found", saying `sentence`. */
@@ -478,8 +486,14 @@ function reopenBox() {
 
 /** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
 async function showEntry(id) {
-  const shown = { ...(await answered()), entry: id, at: routed };
-  Object.assign(shown, await saidOf());
+  const { current } = state;
+  const shown = {
+    ...(await answered(current)),
+    pod: current,
+    entry: id,
+    at: routed,
+  };
+  Object.assign(shown, await saidOf(shown));
   state.page = shown;
   state.doing = "ready";
   redraw();
@@ -496,7 +510,7 @@ async function panelsShown(shown) {
     entryOf(shown.answers, shown.entry) === undefined
   )
     return;
-  const { panels, joined } = await saidOf(shown.entry).catch(() => ({}));
+  const { panels, joined } = await saidOf(shown, shown.entry);
   shown.panels = panels;
   shown.joined = joined;
   if (state.page === shown && !left(shown)) redraw();
@@ -998,7 +1012,7 @@ async function confirmWords(fields) {
   )
     return showWords(NOT_WORDS);
   const { name, person, words } = making;
-  if ((await api.pods()).pods.some((each) => each.name === name)) {
+  if ((await host.pods.names()).includes(name)) {
     making = undefined;
     closeDialog();
     return render(
@@ -1074,7 +1088,7 @@ async function deleteAll() {
   pod = undefined;
   making = undefined;
   await api.closePods();
-  const names = (await api.pods()).pods.map(({ name }) => name);
+  const names = await host.pods.names();
   const all = new Set([...names, ...(await databases(ANSWERS))]);
   const waiting = window.setTimeout(() => {
     state.saying = "Waiting for the pods to close in your other tabs…";
@@ -1229,7 +1243,7 @@ busy(async () => {
         shown?.answers !== undefined && shown.about === undefined;
         shown = state.page
       ) {
-        Object.assign(shown, await saidOf());
+        Object.assign(shown, await saidOf(shown));
         if (state.page === shown && !left(shown)) redraw();
         if (shown.entry !== undefined) await panelsShown(shown);
       }
