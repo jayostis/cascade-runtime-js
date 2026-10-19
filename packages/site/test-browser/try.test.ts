@@ -303,6 +303,29 @@ const BUDGET_MS = {
 };
 const SAMPLES = 3;
 
+/**
+ * A fresh browser's first visit to try/, in ms from its navigation until the tables' names are drawn on Alex's page,
+ * its median at most twice the budget, as Martin's are.
+ */
+const FIRST_VISIT_NAMES_BUDGET_MS = 650;
+
+/** Prints each sample and the median, and fails a median over twice the budget. */
+function withinBudget(
+  what: string,
+  samples: readonly number[],
+  budget: number,
+): void {
+  for (const [at, ms] of samples.entries())
+    console.log(`# ${what} ${at + 1} ${Math.round(ms)} ms`);
+  console.log(
+    `# ${what}: median ${Math.round(median(samples))} ms, budget ${budget} ms`,
+  );
+  assert.ok(
+    median(samples) <= 2 * budget,
+    `${what}: median ${Math.round(median(samples))} ms is over twice its budget of ${budget} ms (${samples.map(Math.round).join(", ")})`,
+  );
+}
+
 interface Drawn {
   drawn: Record<string, number>;
   clicked?: number;
@@ -310,7 +333,8 @@ interface Drawn {
 
 /**
  * Records, in every page of the context, `performance.now()` when the line Worth a look has for MLH1's report, tagged
- * Differs (`differs`), and the entry's ClinVar sentence (`clinvar`), are first drawn; a click starts the count again.
+ * Differs (`differs`), the entry's ClinVar sentence (`clinvar`) and Alex's influenza vaccine named by CVX (`names`)
+ * are first drawn; a click starts the count again.
  * Playwright's waits and the test's round trips are not in the number.
  */
 function recordDraws(): void {
@@ -328,6 +352,10 @@ function recordDraws(): void {
     clinvar: () =>
       /ClinVar today (says|gives no classification)|ClinVar, as this app holds it|This app holds no ClinVar table/.test(
         document.querySelector("main")?.textContent ?? "",
+      ),
+    names: () =>
+      (document.querySelector("main")?.textContent ?? "").includes(
+        "split virus",
       ),
   };
   new MutationObserver(() => {
@@ -426,7 +454,7 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background, an entry opened and left for a code page before it does leaves the code page drawn when it lands", async () => {
+test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background, an entry opened and left for a code page before it does leaves the code page drawn when it lands; a fresh browser's first visit draws the tables' names within twice its budget", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
@@ -532,6 +560,24 @@ test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens
   await page.goto(`${served.url}try/index.html`);
   await page.waitForSelector('body[data-engine="ready"]', { timeout: 60_000 });
   await page.close();
+
+  const names: number[] = [];
+  for (let at = 0; at < SAMPLES; at += 1) {
+    const first = await browser.newContext();
+    try {
+      await first.addInitScript(recordDraws);
+      const fresh = watched(await first.newPage());
+      await fresh.goto(`${served.url}try/index.html`);
+      names.push(await drawnAt(fresh, "names"));
+    } finally {
+      await first.close();
+    }
+  }
+  withinBudget(
+    "a first visit, until the tables' names are drawn",
+    names,
+    FIRST_VISIT_NAMES_BUDGET_MS,
+  );
 });
 
 test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on, a box's filter kept as each record comes in", async () => {
@@ -1815,18 +1861,8 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       }
       await fresh.close();
     }
-    for (const [what, budget] of Object.entries(BUDGET_MS)) {
-      const samples = times[what as keyof typeof BUDGET_MS];
-      for (const [at, ms] of samples.entries())
-        console.log(`# ${what} ${at + 1} ${Math.round(ms)} ms`);
-      console.log(
-        `# ${what}: median ${Math.round(median(samples))} ms, budget ${budget} ms`,
-      );
-      assert.ok(
-        median(samples) <= 2 * budget,
-        `${what}: median ${Math.round(median(samples))} ms is over twice its budget of ${budget} ms (${samples.map(Math.round).join(", ")})`,
-      );
-    }
+    for (const [what, budget] of Object.entries(BUDGET_MS))
+      withinBudget(what, times[what as keyof typeof BUDGET_MS], budget);
 
     const shapes = async (
       fresh: Page,
