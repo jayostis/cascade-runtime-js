@@ -27,6 +27,7 @@ import { hospitalsAt } from "./hospitals.mjs";
 import { modelFrom } from "./model-client.mjs";
 import { nodeHost } from "./node-host.mjs";
 import { maps, podApi } from "./pod-api.mjs";
+import { apiRoute } from "./pod-api-http.mjs";
 import {
   deleteAll,
   KITS,
@@ -1055,6 +1056,8 @@ const server = createServer(async (request, response) => {
         403,
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
+    if (post && pathname.startsWith("/api/"))
+      return await apiRoute(api, request, response, { origins: ownOrigins });
     if (post && pathname === "/chat")
       return await chatRoute(request, response, { model, tools: chatting });
     if (pathname === "/world-date")

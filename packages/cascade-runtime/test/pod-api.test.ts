@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, test, type TestContext } from "node:test";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
   openPod,
@@ -42,6 +43,17 @@ const { podApi, maps, trendOf, notOpenedHere } = (await import(
   maps: (output: Output) => Output;
   trendOf: (finding: unknown) => Input;
   notOpenedHere: (name: string) => string;
+};
+const { apiRoute, podApiOver } = (await import(
+  new URL("../../starter/pod-api-http.mjs", import.meta.url).href
+)) as {
+  apiRoute: (
+    api: Api,
+    request: unknown,
+    response: unknown,
+    options: { origins: Set<string> },
+  ) => Promise<void>;
+  podApiOver: (origin: string) => Api;
 };
 const { nodeHost } = (await import(
   new URL("../../starter/node-host.mjs", import.meta.url).href
@@ -138,6 +150,59 @@ const host = () => ({
   tables: counted(async () => FAKE),
 });
 const made: Api[] = [];
+const servers: Server[] = [];
+
+/** Serves `built` at `POST /api/...` on an ephemeral port, and gives the address. */
+async function serve(built: Api): Promise<string> {
+  const origins = new Set<string>();
+  const server = createServer((request, response) => {
+    void apiRoute(built, request, response, { origins });
+  });
+  servers.push(server);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const { port } = server.address() as { port: number };
+  const origin = `http://127.0.0.1:${port}`;
+  origins.add(origin);
+  return origin;
+}
+
+/**
+ * `built` in-process, and over HTTP. Each call to the second also makes it to the first: what comes back must be
+ * the first one's after a JSON round trip, and what is thrown must be the same kind with the same message.
+ */
+async function both(built: Api): Promise<[string, Api][]> {
+  const remote = podApiOver(await serve(built));
+  const over = {} as Api;
+  for (const name of Object.keys(remote) as (keyof Api)[]) {
+    if (name === "close") continue;
+    over[name] = async (input: Input) => {
+      const [direct, crossed] = await Promise.allSettled([
+        built[name](input),
+        remote[name](input),
+      ]);
+      if (crossed.status === "fulfilled") {
+        assert.equal(direct.status, "fulfilled", `${name} over HTTP`);
+        assert.deepStrictEqual(
+          crossed.value,
+          JSON.parse(JSON.stringify(direct.value)),
+          `${name} over HTTP`,
+        );
+        return crossed.value;
+      }
+      assert.equal(direct.status, "rejected", `${name} over HTTP`);
+      const [was, is] = [direct.reason, crossed.reason];
+      assert.equal(is.constructor, was.constructor);
+      assert.equal(is.message, was.message);
+      if (was instanceof Unopened) assert.equal(is.outcome, was.outcome);
+      throw is;
+    };
+  }
+  over.close = async () => undefined;
+  return [
+    ["in-process", built],
+    ["http", over],
+  ];
+}
 function api(given: Host = host()) {
   const built = podApi(given);
   made.push(built);
@@ -174,20 +239,23 @@ before(async () => {
   const empty = await openPod(join(folder, EMPTY));
   const sealed = await openPod(join(folder, SEALED), { secret: sixWords() });
   await Promise.all([statin, empty, sealed].map((pod) => pod.close()));
-  for (const [via, fresh] of HOSTS) apis.set(via, fresh());
+  for (const [via, each] of await both(api())) apis.set(via, each);
 });
 
 after(async () => {
   await Promise.all(made.map((each) => each.close()));
+  await Promise.all(
+    servers.map((each) => new Promise((done) => each.close(done))),
+  );
   await settled(folder);
   await rm(folder, { recursive: true, force: true });
 });
 
-const HOSTS: [string, () => Api][] = [["in-process", () => api()]];
+const HOSTS = ["in-process", "http"];
 /** One instance per way in, shared by the tests, made once the pods are. */
 const apis = new Map<string, Api>();
 
-for (const [via] of HOSTS) {
+for (const via of HOSTS) {
   const shared = new Proxy({} as Api, {
     get: (_, operation: keyof Api) => apis.get(via)![operation],
   });
@@ -196,7 +264,7 @@ for (const [via] of HOSTS) {
 
   test(`${via}: pods lists every pod by its name, and a pod's answers are read without the tables`, async () => {
     const counting = host();
-    const first = api(counting);
+    const first = new Map(await both(api(counting))).get(via)!;
     assert.deepEqual(
       (await first.pods({})).pods,
       [EMPTY, SEALED, STATIN].map((name) => ({ name, title: name })),
@@ -289,9 +357,11 @@ for (const [via] of HOSTS) {
     assert.equal((await shared.pod({ pod: SEALED })).locked, "secret needed");
     await assert.rejects(
       shared.answers({ pod: SEALED }),
-      (error) => error instanceof Unopened,
+      (error) => error instanceof Unopened && error.outcome === "secret needed",
     );
-    const elsewhere = api({ ...host(), opensEncrypted: false });
+    const elsewhere = new Map(
+      await both(api({ ...host(), opensEncrypted: false })),
+    ).get(via)!;
     assert.equal(
       (await elsewhere.pod({ pod: SEALED })).locked,
       "secret needed",
@@ -335,3 +405,85 @@ for (const [via] of HOSTS) {
       );
   });
 }
+
+test("over HTTP, a request the route cannot take gets its status, and a broken runtime says nothing of itself", async (t: TestContext) => {
+  const origin = await serve(apis.get("in-process")!);
+  const post = (
+    base: string,
+    path: string,
+    headers: Record<string, string>,
+    body = "{}",
+  ) => fetch(`${base}${path}`, { method: "POST", headers, body });
+  const json = (base: string) => ({
+    "content-type": "application/json",
+    origin: base,
+  });
+  const statuses: [string, Promise<Response>, number][] = [
+    ["an unknown operation", post(origin, "/api/nothing", json(origin)), 404],
+    [
+      "podFor stays in the process",
+      post(origin, "/api/podFor", json(origin)),
+      404,
+    ],
+    [
+      "closePods stays in the process",
+      post(origin, "/api/closePods", json(origin)),
+      404,
+    ],
+    [
+      "close stays in the process",
+      post(origin, "/api/close", json(origin)),
+      404,
+    ],
+    [
+      "a body that is not JSON",
+      post(origin, "/api/pods", {
+        ...json(origin),
+        "content-type": "text/plain",
+      }),
+      415,
+    ],
+    [
+      "another site",
+      post(origin, "/api/pods", {
+        ...json(origin),
+        origin: "http://evil.example",
+      }),
+      403,
+    ],
+    [
+      "a body that is no object",
+      post(origin, "/api/pods", json(origin), "[]"),
+      400,
+    ],
+    [
+      "a body over 1 MiB",
+      post(origin, "/api/pods", json(origin), " ".repeat(1024 * 1024 + 1)),
+      400,
+    ],
+  ];
+  for (const [what, response, status] of statuses)
+    assert.equal((await response).status, status, what);
+
+  t.mock.method(console, "error", () => undefined);
+  const real = host();
+  const broken = await serve(
+    api({
+      ...real,
+      pods: {
+        ...((real as Record<string, unknown>).pods as object),
+        names: async () => {
+          throw new Error("/secret/path");
+        },
+      },
+    }),
+  );
+  const response = await post(broken, "/api/pods", json(broken));
+  const text = await response.text();
+  assert.equal(response.status, 500);
+  assert.equal(
+    text,
+    JSON.stringify({ error: "the server failed; its log says why" }),
+  );
+  assert.ok(!text.includes("/secret/path"));
+});
