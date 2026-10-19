@@ -83,6 +83,24 @@ function unsaid(kind, error) {
 const host = nodeHost({ folder: PODS, unsaid });
 const api = podApi(host);
 
+/** What `/api/` calls: the same operations, but the three whose effects the form handlers also carry out here do so, until connections move into PodApi. */
+const served = {
+  ...api,
+  async deleteAll(input) {
+    hospitals?.forget();
+    return await api.deleteAll(input);
+  },
+  async resetAll(input) {
+    hospitals?.forget();
+    return await api.resetAll(input);
+  },
+  async checkTables(input) {
+    const answer = await api.checkTables(input);
+    lastCheck = checkedNote(answer.checked, answer.held);
+    return answer;
+  },
+};
+
 /** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
 async function podTitles() {
   const { pods } = await api.pods({});
@@ -276,8 +294,7 @@ async function showTable(response, id, query) {
 
 /** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
-  const { checked, held } = await api.checkTables({});
-  lastCheck = checkedNote(checked, held);
+  await served.checkTables({});
   redirect(response, "/tables/?checked");
 }
 
@@ -1011,7 +1028,9 @@ const server = createServer(async (request, response) => {
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
     if (post && pathname.startsWith("/api/"))
-      return await apiRoute(api, request, response, { origins: ownOrigins });
+      return await apiRoute(served, request, response, {
+        origins: ownOrigins,
+      });
     if (post && pathname === "/chat")
       return await chatRoute(request, response, { model, tools: chatting });
     if (pathname === "/world-date")

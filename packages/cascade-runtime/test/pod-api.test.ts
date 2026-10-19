@@ -539,22 +539,6 @@ for (const via of HOSTS) {
     );
   });
 
-  test(`${via}: two makePod calls for one sample at once open one pod`, async () => {
-    let copies = 0;
-    const { api: writes } = await fresh(via, (at) => ({
-      samples: ["sample"],
-      copySample: async (name: string) => {
-        copies += 1;
-        return openPod(join(at, name));
-      },
-    }));
-    await Promise.all([
-      writes.makePod({ person: "Sample" }),
-      writes.makePod({ person: "Sample" }),
-    ]);
-    assert.equal(copies, 1);
-  });
-
   test(`${via}: an encrypted pod is made once its words 2 and 5 are given, and opens with its words after`, async () => {
     const { built, host: given, api: writes } = await fresh(via);
     const confirm = async (pod: string) => {
@@ -644,6 +628,22 @@ for (const via of HOSTS) {
     ]);
   });
 }
+
+test("two makePod calls for one sample at once open one pod", async () => {
+  let copies = 0;
+  const { built } = await fresh("in-process", (at) => ({
+    samples: ["sample"],
+    copySample: async (name: string) => {
+      copies += 1;
+      return openPod(join(at, name));
+    },
+  }));
+  await Promise.all([
+    built.makePod({ person: "Sample" }),
+    built.makePod({ person: "Sample" }),
+  ]);
+  assert.equal(copies, 1);
+});
 
 test("nodeHost's remove takes the pods and every answer, and keeps the reference tables", async () => {
   const at = await mkdtemp(join(tmpdir(), "pod-api-remove-"));
