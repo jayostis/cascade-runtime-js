@@ -88,6 +88,8 @@ export function podApi(host) {
   const titles = new Map();
   /** The last answers given for each pod, by name, as `answers` gave them. */
   const last = new Map();
+  /** The pods the folder was last seen to hold, so one page scans it once: a pod seen needs no second scan. */
+  const seen = new Set();
 
   function podFor(name, options) {
     if (!opened.has(name)) {
@@ -107,6 +109,7 @@ export function podApi(host) {
       if (pod !== undefined) closing.push(pod.close());
     }
     last.clear();
+    seen.clear();
     if (!plaintextOnly) titles.clear();
     await Promise.allSettled(closing);
   }
@@ -126,7 +129,10 @@ export function podApi(host) {
 
   /** The pod named, which must be one there is. */
   async function known(name) {
+    if (seen.has(name) || opened.has(name)) return;
     const names = await host.pods.names();
+    seen.clear();
+    for (const each of names) seen.add(each);
     if (!names.includes(name))
       throw new Refusal(
         names.length === 0
@@ -307,12 +313,12 @@ export function podApi(host) {
       pod.medicationClasses(),
       pod.ask(MEDICATIONS),
     ]);
-    const tables = host.tables();
+    const tables = await host.tables();
     const [about, elsewhere, heldNow] = await Promise.all([
-      tables.then((each) => classesSaid(rows, { tables: each })).catch(noop),
-      tables
-        .then((each) => classedElsewhere(rows, medications, { tables: each }))
-        .catch(noop),
+      (async () => classesSaid(rows, { tables }))().catch(noop),
+      (async () => classedElsewhere(rows, medications, { tables }))().catch(
+        noop,
+      ),
       held(tables).catch(() => []),
     ]);
     return {
@@ -332,11 +338,9 @@ export function podApi(host) {
       pod.panelResults(code),
       pod.ask(LABS),
     ]);
-    const tables = host.tables();
+    const tables = await host.tables();
     const [about, heldNow] = await Promise.all([
-      tables
-        .then((each) => panelSaid(code, rows, { tables: each }))
-        .catch(noop),
+      (async () => panelSaid(code, rows, { tables }))().catch(noop),
       held(tables).catch(() => []),
     ]);
     return {
@@ -416,10 +420,8 @@ export function podApi(host) {
     const pod = await podNamed(name);
     if (called === WORTH_A_LOOK.name) {
       checkInput(WORTH_A_LOOK.inputSchema, input);
-      const [given, { about, said: variants }] = await Promise.all([
-        answers({ pod: name, last: true }),
-        said({ pod: name }).then(maps),
-      ]);
+      const given = await answers({ pod: name, last: true });
+      const { about, said: variants } = maps(await said({ pod: name }));
       return {
         value: worthALook(given.answers, about, variants).map(
           ({ sentence, entry, tag }) => ({
@@ -440,6 +442,8 @@ export function podApi(host) {
   return {
     async pods() {
       const names = await host.pods.names();
+      seen.clear();
+      for (const each of names) seen.add(each);
       return {
         pods: await Promise.all(
           names.map(async (name) => ({ name, title: await titleOf(name) })),
