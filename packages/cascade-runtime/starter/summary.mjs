@@ -617,14 +617,15 @@ export function worthALook(answers, about = new Map(), said) {
 /**
  * The part of a pod's page that lists `lines`, as `worthALook` gives them: each line's sentence a link to
  * `entryHref(line.entry)`, or plain text with no `entryHref`, then its tag. Absent with no line. With `ask`, each line has
- * an "Ask about this" button naming its entry (`{ kind: "worth", entry }`), which `worth_a_look` reaches.
+ * an "Ask about this" button naming its entry (`{ kind: "worth", entry }`), which `worth_a_look` reaches. While `waiting`
+ * for a line that is still to come, the part holds the space of one.
  */
-export function worthPart(lines, entryHref, ask) {
-  if (lines.length === 0) return undefined;
+export function worthPart(lines, entryHref, ask, waiting = false) {
+  if (lines.length === 0 && !waiting) return undefined;
   return html`<div class="card worth"><h2>Worth a look</h2><ul>${lines.map(
     ({ sentence, entry, tag }) =>
-      html`<li>${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}${ask && askButton({ kind: "worth", entry: entryId(entry) }, sentence)}</li>`,
-  )}</ul></div>`;
+      html`<li class="arrive">${entryHref === undefined ? sentence : html`<a href=${entryHref(entry)}>${sentence}</a>`}${tag !== undefined && tagged(tag)}${ask && askButton({ kind: "worth", entry: entryId(entry) }, sentence)}</li>`,
+  )}</ul>${waiting && pending({ lines: 2, pitch: "1.8rem", said: "Checking ClinVar…" })}</div>`;
 }
 
 /**
@@ -1207,7 +1208,14 @@ export function podPage(
   const sources = answers[SOURCES] ?? [];
   const records = new Set(sources.map((row) => row.record)).size;
   const places = [...new Set(sources.map(placeOf))];
-  const worth = worthPart(worthALook(answers, names, said), entryHref, ask);
+  const worth = worthPart(
+    worthALook(answers, names, said),
+    entryHref,
+    ask,
+    about === undefined &&
+      said === undefined &&
+      (answers[REPORTS] ?? []).length > 0,
+  );
   const due =
     changes !== undefined &&
     (answers[HISTORY] ?? []).length > 0 &&
@@ -1216,7 +1224,7 @@ export function podPage(
     ? undefined
     : about === undefined
       ? html`<div class="card changes"><h2>What changed</h2>
-<p class="naming" role="status"><span class="spinner" aria-hidden="true"></span>Naming what changed…</p>
+${pending({ lines: 4, said: "Naming what changed…" })}
 </div>`
       : changedPart({
           changes,
@@ -1263,7 +1271,7 @@ ${unheld.length > 0 && html`<p class="note">This pod was matched with ${unheld.l
 ${worth}
 ${changed}
 ${tiles.length > 0 && html`<div class="tiles">${tiles.map(({ tile }) => tile)}</div>`}
-${credits.map((credit) => html`<p class="muted">${credit}</p>`)}
+${about === undefined && tiles.length > 0 ? [pending({ lines: 3, pitch: "2rem", said: "Loading the credits…" })] : credits.map((credit) => html`<p class="muted arrive">${credit}</p>`)}
 ${tiles.map(({ dialog }) => dialog)}
 ${connection}
 ${bringIn({ empty: records === 0, person, signIn, findHospital, world })}`;
@@ -2898,6 +2906,11 @@ ${doing()}
 </html>`;
 }
 
+/** A part that has not arrived: `lines` faint bars hold its space, `pitch` apart, and `said` is the one line a screen reader reads. */
+export function pending({ lines, said, pitch }) {
+  return html`<div class="pending" aria-busy="true" style=${pitch && `--pitch: ${pitch}`}><p role="status">${said}</p>${Array.from({ length: lines }, () => html`<span></span>`)}</div>`;
+}
+
 /** What a page says while it is busy: a spinner and `said`, one line; hidden while `said` is undefined. */
 export function doing(said) {
   return html`<p class="doing" role="status" hidden=${said === undefined}><span class="spinner" aria-hidden="true"></span><span class="said">${said}</span></p>`;
@@ -3055,11 +3068,19 @@ export function tablesNav({
 }) {
   return html`<section class="tables" aria-label="Reference tables"><h2>Reference tables</h2>
 ${
-  series.length === 0
-    ? html`<p class="muted">${failed ? "The reference tables could not be read." : loading ? "Loading the reference tables…" : "None yet."}</p>`
-    : html`<ul>
+  series.length > 0
+    ? html`<ul>
 ${series.map((each) => html`<li><a href=${href(each)} aria-current=${each.iri === current ? "page" : undefined}>${each.label}</a></li>`)}
 </ul>`
+    : failed
+      ? html`<p class="muted">The reference tables could not be read.</p>`
+      : loading
+        ? pending({
+            lines: 6,
+            pitch: "2.34rem",
+            said: "Loading the reference tables…",
+          })
+        : html`<p class="muted">None yet.</p>`
 }
 ${postButton(check, {}, "Check now", "quiet wide", "Checking the feeds…")}
 </section>`;
@@ -4177,7 +4198,14 @@ form.inline { display: inline; }
 .people .muted { display: block; font-size: 0.8rem; }
 .doing { position: fixed; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 16px rgb(0 0 0 / 0.2); }
 .doing[hidden] { display: none; }
-.naming { display: flex; align-items: center; gap: 0.6rem; min-height: 6rem; margin: 0; color: var(--muted); }
+.pending { position: relative; animation: arrive 0.15s 0.3s backwards; }
+.pending [role="status"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.pending span { display: block; height: 0.9rem; margin-block: calc((var(--pitch, 1.4rem) - 0.9rem) / 2); border-radius: 0.25rem; background: linear-gradient(90deg, var(--line) 35%, var(--soft) 50%, var(--line) 65%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
+.pending span:last-child { width: 60%; }
+.arrive { animation: arrive 0.15s; }
+@keyframes arrive { from { opacity: 0; } }
+@keyframes shimmer { to { background-position-x: -200%; } }
+@media (prefers-reduced-motion: reduce) { .pending { animation-duration: 0.01s; } .pending span, .arrive { animation: none; } }
 .spinner { width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 body[data-state="busy"] { cursor: progress; }
