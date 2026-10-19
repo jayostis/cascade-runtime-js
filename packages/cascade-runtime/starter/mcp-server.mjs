@@ -26,13 +26,12 @@ const content = ({ text, isError }) => ({
 });
 
 /**
- * The server over `pods`: `names()` gives the names of the pods there are, `open(name)` opens one. A pod is opened
- * when first asked about and kept until `close()`. `build()` gives a server for one connection, all sharing the pods.
- * `options.viewOf(pod, { test, medication })` gives the address of the page that draws a finding's results;
- * `options.worthOf(pod)` the lines of the pod's Worth a look, which `worth_a_look` gives.
+ * The server over the pods `api` (`podApi`'s) reaches; `api.close()` closes them. `build()` gives a server for one
+ * connection, all sharing `api`. `options.viewOf(pod, { test, medication })` gives the address of the page that draws
+ * a finding's results.
  */
-export function podServer(pods, { viewOf, worthOf } = {}) {
-  const shared = podTools(pods, { viewOf, worthOf });
+export function podServer(api, { viewOf } = {}) {
+  const shared = podTools(api, { viewOf });
 
   function build() {
     const server = new McpServer(
@@ -56,17 +55,11 @@ export function podServer(pods, { viewOf, worthOf } = {}) {
       server.registerTool(
         tool.name,
         { description: tool.description, inputSchema: fromJsonSchema(schema) },
-        async (input) =>
-          content(
-            await shared.answer(async () => {
-              const { pod, ...rest } = input;
-              return tool.run(await shared.podNamed(pod), rest, pod);
-            }),
-          ),
+        async (input) => content(await shared.answer(() => tool.run(input))),
       );
     }
     return server;
   }
 
-  return { build, close: shared.close };
+  return { build };
 }

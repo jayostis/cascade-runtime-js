@@ -3,50 +3,26 @@
 import { chdir, exit, stderr, stdin } from "node:process";
 import { fileURLToPath, URL } from "node:url";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { tablesBeside } from "cascade-runtime";
 import { podServer } from "./mcp-server.mjs";
-import { worthLines } from "./pod-tools.mjs";
-import {
-  openWithoutWords,
-  PODS,
-  podFolder,
-  podNames,
-  trendUrl,
-} from "./pods.mjs";
-import { codesSaid, variantsSaid } from "./summary.mjs";
+import { nodeHost } from "./node-host.mjs";
+import { podApi } from "./pod-api.mjs";
+import { PODS, trendUrl } from "./pods.mjs";
 
 chdir(fileURLToPath(new URL(".", import.meta.url)));
 
-/** What the tables kept in `pods/.tables/` say, as the app's pages read it; nothing when they cannot say, which stderr is told once. */
-let unsaid = false;
-async function said(read) {
-  try {
-    return await read(await tablesBeside(PODS));
-  } catch (error) {
-    if (!unsaid)
-      stderr.write(`What the tables say is not used: ${error.message}\n`);
-    unsaid = true;
-    return undefined;
-  }
+/** Tells stderr once that what the tables kept in `pods/.tables/` say is not used, as they cannot say it. */
+let told = false;
+function unsaid(_kind, error) {
+  if (!told)
+    stderr.write(`What the tables say is not used: ${error.message}\n`);
+  told = true;
 }
 
-const pods = podServer(
-  { names: podNames, open: (name) => openWithoutWords(name, podFolder(name)) },
-  {
-    viewOf: trendUrl,
-    worthOf: (pod) =>
-      worthLines(pod, {
-        aboutCodes: (answers) =>
-          said((tables) => codesSaid(answers, { tables })),
-        variantsOf: (answers, each) =>
-          said((tables) => variantsSaid(answers, { tables, pod: each })),
-      }),
-  },
-);
-const serving = serveStdio(() => pods.build());
+const api = podApi(nodeHost({ folder: PODS, opensEncrypted: false, unsaid }));
+const serving = serveStdio(() => podServer(api, { viewOf: trendUrl }).build());
 
 stdin.on("close", async () => {
   await serving.close();
-  await pods.close();
+  await api.close();
   exit(0);
 });

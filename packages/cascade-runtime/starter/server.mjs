@@ -25,7 +25,6 @@ import {
   checkedNote,
   classesPage,
   codePage,
-  codesSaid,
   connectionDialog,
   demoPeople,
   didNote,
@@ -52,11 +51,10 @@ import {
   tablePage,
   trendPage,
   trendTitle,
-  variantsSaid,
   worldDatePage,
   worldInstant,
 } from "./summary.mjs";
-import { changeAnswers, podTools, worthLines } from "./pod-tools.mjs";
+import { podTools } from "./pod-tools.mjs";
 
 const told = new Set();
 
@@ -97,27 +95,6 @@ async function lockedOutcome(name) {
 
 const tablePath = (series) =>
   `/tables/${encodeURIComponent(tableId(series.iri))}/`;
-
-/** For the chat: what the tables say of the codes `answers` hold; nothing when they cannot say. */
-function aboutCodes(answers) {
-  return host
-    .tables()
-    .then((kept) => codesSaid(answers, { tables: kept }))
-    .catch((error) => {
-      unsaid("names", error);
-      return undefined;
-    });
-}
-
-/** For the chat: what the tables say of the variants `answers` hold; nothing when they cannot say. */
-async function variantsOf(answers, pod) {
-  try {
-    return await variantsSaid(answers, { tables: await host.tables(), pod });
-  } catch (error) {
-    unsaid("variants", error);
-    return undefined;
-  }
-}
 
 /** What the last Check now did, which the page it goes to says. */
 let lastCheck;
@@ -849,19 +826,7 @@ function startingDate() {
 const startedAsOf = startingDate();
 const model = modelSet();
 /** The tools the chat reaches, over the pods this server holds open. */
-const chatting = chatTools(
-  podTools(
-    { names: () => host.pods.names(), open: (name) => api.podFor(name) },
-    {
-      viewOf: trendPath,
-      worthOf: (pod) => worthLines(pod, { aboutCodes, variantsOf }),
-      keep: false,
-    },
-  ),
-  {
-    namesFor: async (pod) => aboutCodes(await changeAnswers(pod)),
-  },
-);
+const chatting = chatTools(podTools(api, { viewOf: trendPath }), { api });
 const packageOf = async (path) =>
   JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 const [app, runtime] = await Promise.all([

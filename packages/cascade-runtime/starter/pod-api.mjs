@@ -170,7 +170,7 @@ const INPUTS = {
   bring: { pod: string, connection: positiveInteger },
 };
 
-/** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
+/** The operations a client may call, which is every member of `podApi(host)` but `close`. */
 export const OPERATIONS = Object.keys(INPUTS);
 
 /** `operation`, refusing an input that is no object or holds a field of the wrong type. */
@@ -207,7 +207,8 @@ export function podApi(host) {
       (each) => each.pod === name && each.bringing !== undefined,
     );
 
-  function podFor(name, options) {
+  /** The pod named, opened once with `options` and kept; a failed opening is forgotten. */
+  function openOnce(name, options) {
     if (!opened.has(name)) {
       const opening = host.pods.open(name, options);
       opening.catch(() => opened.delete(name));
@@ -225,7 +226,8 @@ export function podApi(host) {
     return opened.get(name);
   }
 
-  async function closePods({ plaintextOnly = false } = {}) {
+  /** Closes the pods this instance opened, the encrypted ones too unless `plaintextOnly`, and forgets the last answers. */
+  async function closeOpened({ plaintextOnly = false } = {}) {
     const closing = [];
     for (const [name, opening] of [...opened]) {
       const pod = await opening.catch(() => undefined);
@@ -270,7 +272,7 @@ export function podApi(host) {
   async function podNamed(name) {
     await known(name);
     try {
-      return await podFor(name);
+      return await openOnce(name);
     } catch (error) {
       if (error instanceof Unopened && !host.opensEncrypted)
         throw new Refusal(notOpenedHere(name));
@@ -580,7 +582,7 @@ export function podApi(host) {
       waiting.set(name, { words: sixWords(), person: person.trim() });
       return { pod: name, waiting: true };
     }
-    await podFor(name, { title: person.trim() });
+    await openOnce(name, { title: person.trim() });
     return { pod: name, made: true };
   }
 
@@ -607,7 +609,7 @@ export function podApi(host) {
       throw new Refusal(
         `A pod named ${name} exists already. Make the pod again under another name.`,
       );
-    if (!(await podFor(name, { secret: words, title: person })).encrypted)
+    if (!(await openOnce(name, { secret: words, title: person })).encrypted)
       throw new Error(`The pod ${name} was made without its words.`);
     return { pod: name, made: true };
   }
@@ -615,12 +617,12 @@ export function podApi(host) {
   async function unlock({ pod: name, secret = "" }) {
     await known(name);
     try {
-      await podFor(name);
+      await openOnce(name);
     } catch (error) {
       if (!(error instanceof Unopened)) throw error;
       if (secret.trim() === "")
         throw new Unopened("incorrect secret", "no secret was given");
-      await podFor(name, { secret });
+      await openOnce(name, { secret });
     }
     return { pod: name, opened: true };
   }
@@ -629,7 +631,7 @@ export function podApi(host) {
     const names = await host.pods.names();
     waiting.clear();
     forgetConnections();
-    await closePods();
+    await closeOpened();
     await host.pods.remove(names, { all: true });
     return { deleted: names };
   }
@@ -644,7 +646,7 @@ export function podApi(host) {
   async function checkTables() {
     const checked = await host.checkTables();
     if (checked.some(({ kept }) => kept.length > 0))
-      await closePods({ plaintextOnly: true });
+      await closeOpened({ plaintextOnly: true });
     last.clear();
     return { checked, held: await held() };
   }
@@ -904,7 +906,7 @@ export function podApi(host) {
       await known(name);
       const title = await titleOf(name);
       try {
-        const pod = await podFor(name);
+        const pod = await openOnce(name);
         return { name, title, encrypted: pod.encrypted === true };
       } catch (error) {
         if (!(error instanceof Unopened)) throw error;
@@ -945,11 +947,9 @@ export function podApi(host) {
     ...Object.fromEntries(
       OPERATIONS.map((name) => [name, typed(name, operations[name])]),
     ),
-    podFor,
-    closePods,
     close: async () => {
       forgetConnections();
-      await closePods();
+      await closeOpened();
     },
   };
 }

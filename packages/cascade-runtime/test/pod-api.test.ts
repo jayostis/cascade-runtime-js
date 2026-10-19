@@ -291,7 +291,7 @@ function api(given: Host = host()) {
   const checked = {} as Api;
   for (const [name, operation] of Object.entries(built))
     (checked as Record<string, unknown>)[name] =
-      name === "close" || name === "podFor"
+      name === "close"
         ? operation
         : async (input: Input) => {
             const output = await (operation as Operation)(input);
@@ -552,8 +552,16 @@ for (const via of HOSTS) {
       ["setWorldDate", { date: "soon" }, /"soon" is not a date/],
       ["answers", { pod: "nobody" }, /no pod nobody; the pods are/],
       ["said", { pod: STATIN, entry: "0" }, /holds no entry 0/],
-      ["trend", { pod: STATIN, test: "0000-0" }, /the tests it holds are/],
-      ["trend", { pod: STATIN, test: LDL, medication: "0" }, /no medication 0/],
+      [
+        "trend",
+        { pod: STATIN, test: "0000-0" },
+        /the tests it holds are .*18262-6/,
+      ],
+      [
+        "trend",
+        { pod: STATIN, test: LDL, medication: "0" },
+        /no medication 0 in the pod; the medications it holds are .*617310/,
+      ],
       ["trend", { pod: EMPTY }, /holds no test results/],
       ["panel", { pod: STATIN }, /a panel is a LOINC code/],
       ["panel", { pod: STATIN, panel: "" }, /a panel is a LOINC code/],
@@ -579,6 +587,26 @@ for (const via of HOSTS) {
         "tool",
         { pod: STATIN, tool: "find_changes", input: { test: "0000-0" } },
         /no test/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "lab_series", input: { test: "0000-0" } },
+        /no test/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "finding_rows", input: { key: "start:0:0" } },
+        /no finding start:0:0/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "timeline", input: { extra: true } },
+        /extra is not a property/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "worth_a_look", input: { extra: true } },
+        /extra is not a property/,
       ],
     ];
     for (const [operation, input, reason] of refused)
@@ -699,16 +727,30 @@ for (const via of HOSTS) {
   });
 
   test(`${via}: checkTables, when a version was kept, opens the plaintext pods anew and keeps an unlocked one open`, async () => {
-    const built = api(host());
-    const { podFor } = built as unknown as {
-      podFor(name: string): Promise<unknown>;
+    const given = host();
+    const pods = given.pods as unknown as {
+      open(...a: unknown[]): Promise<unknown>;
     };
-    const each = new Map(await both(built)).get(via)!;
+    const opens: unknown[] = [];
+    const counting = {
+      ...pods,
+      open: (...args: unknown[]) => {
+        opens.push(args[0]);
+        return pods.open(...args);
+      },
+    };
+    const each = new Map(await both(api({ ...given, pods: counting }))).get(
+      via,
+    )!;
     await each.unlock({ pod: SEALED, secret: SEALED_WORDS });
-    const before = await podFor(STATIN);
+    await each.pod({ pod: STATIN });
     const { checked } = await each.checkTables({});
     assert.deepEqual(checked, await FAKE.check());
-    assert.notEqual(await podFor(STATIN), before);
+    await each.pod({ pod: STATIN });
+    assert.deepEqual(
+      opens.filter((name) => name === STATIN),
+      [STATIN, STATIN],
+    );
     assert.equal((await each.pod({ pod: SEALED })).locked, undefined);
   });
 
@@ -944,16 +986,6 @@ test("over HTTP, a request the route cannot take gets its status, and a broken r
   });
   const statuses: [string, Promise<Response>, number][] = [
     ["an unknown operation", post(origin, "/api/nothing", json(origin)), 404],
-    [
-      "podFor stays in the process",
-      post(origin, "/api/podFor", json(origin)),
-      404,
-    ],
-    [
-      "closePods stays in the process",
-      post(origin, "/api/closePods", json(origin)),
-      404,
-    ],
     [
       "close stays in the process",
       post(origin, "/api/close", json(origin)),

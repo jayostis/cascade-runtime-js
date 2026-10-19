@@ -3,18 +3,16 @@
 // `chatRoute` is `POST /chat`; `runChat` the loop, which tells what happens as events.
 import { Buffer } from "node:buffer";
 import console from "node:console";
-import { checkInput, labSeriesIn, Refusal, timelineIn } from "cascade-runtime";
+import { checkInput, Refusal } from "cascade-runtime";
 import { callsMessage } from "./model-client.mjs";
+import { maps } from "./pod-api.mjs";
 import { podPath, trendPath } from "./pods.mjs";
 import { withPod } from "./pod-tools.mjs";
 import {
   CHANGED,
   changeSaid,
   entryId,
-  HISTORY,
-  LABS,
   SOURCES,
-  testsIn,
   TREND_VIEW,
 } from "./summary.mjs";
 
@@ -125,8 +123,6 @@ export function checkBody(body) {
 export const entryPath = (name, entry) =>
   `${podPath(name)}entries/${encodeURIComponent(entryId(entry))}`;
 
-const unique = (items) => [...new Set(items)];
-
 /** What the page says of a finding (`changeSaid`), named by `about`; nothing where there were not enough results. */
 function saidOf(finding, about) {
   return CHANGED[finding.kind]?.[finding.direction] === undefined
@@ -147,8 +143,8 @@ function rowsOf({ rows }) {
   );
 }
 
-/** The tools that move the app. A chat reaches them; an MCP client cannot move the app. */
-const OPEN_TOOLS = [
+/** The tools that move the app, over the pods `api` reaches. A chat reaches them; an MCP client cannot move the app. */
+const openTools = (api) => [
   {
     name: "open_pod",
     description: "Opens a pod's page in the app.",
@@ -157,54 +153,39 @@ const OPEN_TOOLS = [
       properties: {},
       additionalProperties: false,
     },
-    async run(_pod, _input, name) {
-      return { opened: podPath(name) };
+    async run({ pod }) {
+      await api.pod({ pod });
+      return { opened: podPath(pod) };
     },
   },
   {
     name: "open_trend",
     description: TREND_VIEW.description,
     inputSchema: TREND_VIEW.inputSchema,
-    async run(pod, { test, medication }, name) {
-      const [labs, medications] = await Promise.all([
-        pod.ask(LABS),
-        pod.ask(HISTORY),
-      ]);
-      let series;
-      try {
-        series = labSeriesIn(labs, test);
-      } catch (error) {
-        if (!(error instanceof Refusal)) throw error;
-        const held = testsIn(labs).map(
-          ({ code, notation, name: label }) =>
-            `${notation ?? code}${label === undefined ? "" : ` (${label})`}`,
-        );
-        throw new Refusal(
-          `${error.message}; ${held.length === 0 ? "it holds no test results" : `the tests it holds are ${held.join(", ")}`}`,
-        );
-      }
-      let drug;
-      if (medication !== undefined && medication !== "") {
-        const held = timelineIn(medications);
-        const wanted = medication.toLowerCase();
-        const found = held.find(
-          (each) =>
-            each.notation === medication ||
-            each.code === medication ||
-            each.name.toLowerCase() === wanted,
-        );
-        if (found === undefined) {
-          const names = unique(held.map((each) => each.notation ?? each.name));
-          throw new Refusal(
-            `no medication ${medication} in the pod; ${names.length === 0 ? "it holds no medications" : `the medications it holds are ${names.join(", ")}`}`,
-          );
-        }
-        drug = found.notation ?? found.name;
-      }
+    async run({ pod, test, medication }) {
+      const drug = medication === "" ? undefined : medication;
+      const { series, timeline } = await api.trend({
+        pod,
+        test,
+        medication: drug,
+        named: false,
+      });
+      const wanted = drug?.toLowerCase();
+      const found =
+        drug === undefined
+          ? undefined
+          : timeline.find(
+              (each) =>
+                each.notation === drug ||
+                each.code === drug ||
+                each.name.toLowerCase() === wanted,
+            );
       return {
-        opened: trendPath(name, {
+        opened: trendPath(pod, {
           test: series.test.notation ?? series.test.code,
-          ...(drug ? { medication: drug } : {}),
+          ...(found === undefined
+            ? {}
+            : { medication: found.notation ?? found.name }),
         }),
       };
     },
@@ -225,13 +206,13 @@ const OPEN_TOOLS = [
       required: ["entry"],
       additionalProperties: false,
     },
-    async run(pod, { entry }, name) {
-      const rows = await pod.ask(SOURCES);
+    async run({ pod, entry }) {
+      const { rows } = await api.ask({ pod, question: SOURCES });
       if (!rows.some((row) => entryId(row.entry) === entryId(entry)))
         throw new Refusal(
-          `the pod ${name} holds no entry ${entry}; ask's rows give each entry's ID in their entry column`,
+          `the pod ${pod} holds no entry ${entry}; ask's rows give each entry's ID in their entry column`,
         );
-      return { opened: entryPath(name, entry) };
+      return { opened: entryPath(pod, entry) };
     },
   },
 ];
@@ -239,14 +220,13 @@ const OPEN_TOOLS = [
 const toolError = (reason) => ({ text: reason, isError: true });
 
 /**
- * The tools a chat reaches: `shared` is `podTools(...)`. `specs` is what the model is told of them; `run(name,
- * rawArguments)` runs one call of the model and gives `{ text, isError, value, findings?, open? }`. Input the rules
- * refuse is `isError`, for the model to read; nothing here throws for it. `namesFor(pod, findings)` gives what the
- * tables say of the findings' codes (the page's `about`), so a finding says itself as the page does; without it, by the
- * records' own text.
+ * The tools a chat reaches: `shared` is `podTools(api, …)`, over the pods `api` reaches. `specs` is what the model is
+ * told of them; `run(name, rawArguments)` runs one call of the model and gives `{ text, isError, value, findings?,
+ * open? }`. Input the rules refuse is `isError`, for the model to read; nothing here throws for it. A finding says
+ * itself as the page does, named by what `api.said` says of the pod's codes.
  */
-export function chatTools(shared, { namesFor } = {}) {
-  const tools = [...shared.tools, ...OPEN_TOOLS].map((tool) => ({
+export function chatTools(shared, { api }) {
+  const tools = [...shared.tools, ...openTools(api)].map((tool) => ({
     ...tool,
     inputSchema: withPod(tool),
   }));
@@ -264,11 +244,12 @@ export function chatTools(shared, { namesFor } = {}) {
   ];
 
   async function runTool(tool, input) {
-    const { pod: name, ...rest } = input;
-    const pod = await shared.podNamed(name);
     if (tool.name === "find_changes") {
-      const { value, found } = await tool.findings(pod, rest, name);
-      const about = await namesFor?.(pod, found);
+      const [{ value, found }, said] = await Promise.all([
+        tool.findings(input),
+        api.said({ pod: input.pod }),
+      ]);
+      const { about } = maps(said);
       return {
         value,
         findings: value.map((finding) => {
@@ -281,7 +262,7 @@ export function chatTools(shared, { namesFor } = {}) {
         }),
       };
     }
-    const value = await tool.run(pod, rest, name);
+    const value = await tool.run(input);
     return {
       value,
       ...(tool.name.startsWith("open_") ? { open: value.opened } : {}),

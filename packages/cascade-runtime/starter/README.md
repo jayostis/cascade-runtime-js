@@ -180,8 +180,8 @@ script goes after `--`, or npm keeps it for itself.
 - `npm run dev` serves the app as `npm start` does, restarting it whenever a
   file is saved.
 - `npm run reset` removes every pod and loads Alex's, Priya's, Martin's and Tamsin's again, as
-  the File menu's "Reset all data" does, through the same function in
-  `pods.mjs`.
+  the File menu's "Reset all data" does: both load the kits through
+  `restoreKits` in `pods.mjs`.
 - `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
   story into `pods/<name>/`. One app can hold a kit at two points:
   `npm run pod:load -- alex-rivera --through J24 --as alex-rivera-j24` beside
@@ -204,10 +204,23 @@ script goes after `--`, or npm keeps it for itself.
 ## The files
 
 - `server.mjs`: the app, on `node:http`, with no build step: it answers
-  requests, reads the pods, and renders each page to HTML with
-  `preact-render-to-string`. Under the pods, the sidebar lists the reference
-  tables the pods are matched with, kept in `pods/.tables/`; `/tables/<id>/`
-  shows one with a search, and Check now reads their feeds again.
+  requests, reads the pods through `pod-api.mjs`, and renders each page to HTML
+  with `preact-render-to-string`. It also serves every operation of
+  `pod-api.mjs` as `POST /api/<operation>`, JSON in and out. Under the pods,
+  the sidebar lists the reference tables the pods are matched with, kept in
+  `pods/.tables/`; `/tables/<id>/` shows one with a search, and Check now
+  reads their feeds again.
+- `pod-api.mjs`: `podApi(host)`, every read and write the app makes of its
+  pods and its reference tables, plain JSON in and out, refusing bad input
+  with a `Refusal`. The server, the chat, the MCP server and `npm run ask` all
+  call it, and a browser can load the same file: it imports only
+  `cascade-runtime` and `summary.mjs`.
+- `node-host.mjs`: the host `podApi` reads on Node: the pods are folders in
+  `pods/`, with the reference tables beside them; `opensEncrypted: false`
+  refuses an encrypted pod, as the MCP server and `npm run ask` do. Also the
+  hospitals and the world's date the server gives it.
+- `pod-api-http.mjs`: `apiRoute`, which answers `POST /api/<operation>`, and
+  `podApiOver(origin)`, the same operations called over `fetch`.
 - `summary.mjs`: what the pages show, as [Preact](https://preactjs.com)
   components written with [`htm`](https://github.com/developit/htm), plain
   functions from a pod's answers to the page's elements, so a browser can
@@ -215,19 +228,21 @@ script goes after `--`, or npm keeps it for itself.
   `${…}` puts in a value, escaped, or more elements; close every tag, `<input />`
   too; a line break between two tags drops the spaces around it. Rewrite it
   freely.
-- `hospitals.mjs`: the sign-in to a hospital, the redirect back, and the pull.
+- `hospitals.mjs`: the sign-in at a hospital, which waits for the redirect
+  back to `/callback`, and the world's date the demo hospitals answer as of.
 - `demo-hospital/`: the pretend hospitals, a package of this app's own.
-- `pods.mjs`: what the commands and the server share: where pods live, which
-  one a command works on, deleting and resetting them all, and the addresses
-  of a pod's page and its trend.
+- `pods.mjs`: what the commands and the server share: where pods live and what
+  they are called, which one a command works on, deleting them and loading the
+  kits again, and the addresses of a pod's page and its trend.
 - `pod.mjs`, `kit.mjs`, `ask.mjs`, `console.mjs`: the commands, and
   `help.mjs`, which lists them.
 - `mcp.mjs`, `mcp-server.mjs`: the MCP server on stdio, and the tools it
   offers.
 - `model.mjs`, `model-client.mjs`: `npm run model`, and the one door to a
   model, whichever provider.
-- `pod-tools.mjs`: the tools over a pod, which the MCP server and the chat
-  share.
+- `pod-tools.mjs`: the tools over the pods as a tool client sees them, which
+  the MCP server and the chat share: their names, descriptions and schemas.
+  What each does is an operation of `pod-api.mjs`.
 - `chat.mjs`: `POST /chat`, the chat's loop: the model's tool calls run over
   the pods, with tools that open the app's own pages.
 - `AGENTS.md`: for a coding agent building on this app.

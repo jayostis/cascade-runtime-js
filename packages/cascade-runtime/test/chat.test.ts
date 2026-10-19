@@ -3,7 +3,13 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
-import { openPod, type Pod, pullFiles, Refusal } from "cascade-runtime";
+import {
+  openPod,
+  type Pod,
+  pullFiles,
+  Refusal,
+  timelineIn,
+} from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 
 type ChatEvent = { type: string; [key: string]: unknown };
@@ -46,28 +52,35 @@ const {
     emit: (event: ChatEvent) => void;
   }) => Promise<void>;
 };
-const { changeAnswers, podTools } = (await import(
-  new URL("../../starter/pod-tools.mjs", import.meta.url).href
-)) as {
-  changeAnswers: (pod: unknown) => Promise<Record<string, unknown[]>>;
-  podTools: (...options: unknown[]) => unknown;
+type Api = {
+  said(input: object): Promise<Record<string, unknown>>;
+  tool(input: object): Promise<{ found: { key: string }[] }>;
+  close(): Promise<void>;
 };
-const { changeSaid, codesSaid, entryId, SOURCES } = (await import(
+const { maps, podApi } = (await import(
+  new URL("../../starter/pod-api.mjs", import.meta.url).href
+)) as {
+  maps: (output: object) => { about: Map<string, unknown> };
+  podApi: (host: object) => Api;
+};
+const { podTools } = (await import(
+  new URL("../../starter/pod-tools.mjs", import.meta.url).href
+)) as { podTools: (...options: unknown[]) => unknown };
+const { changeSaid, entryId, HISTORY, SOURCES } = (await import(
   new URL("../../starter/summary.mjs", import.meta.url).href
 )) as {
   changeSaid: (finding: unknown, about: Map<string, unknown>) => string;
-  codesSaid: (
-    answers: Record<string, unknown[]>,
-    options: { tables: unknown },
-  ) => Promise<Map<string, unknown>>;
   entryId: (entry: string) => string;
+  HISTORY: string;
   SOURCES: string;
 };
 
 const STATIN = "story-statin";
+/** What the tables call atorvastatin, which no record of the pod calls it. */
+const TABLES_NAME = "the tables' atorvastatin";
 const pods = new Map<string, Pod>();
 let tools: Tools;
-let shared: unknown;
+let api: Api;
 
 before(async () => {
   const north = await loadHospital("cascade-north");
@@ -81,21 +94,41 @@ before(async () => {
   });
   assert.equal(imported.refused, undefined);
   pods.set(STATIN, statin);
-  shared = podTools(
-    {
+  const atorvastatin = timelineIn(await statin.ask(HISTORY)).find(
+    ({ notation }) => notation === "617310",
+  )!.code;
+  api = podApi({
+    pods: {
       names: async () => [...pods.keys()],
-      open: async (n: string) => pods.get(n),
+      title: async () => undefined,
+      open: async (name: string) => pods.get(name)!,
     },
-    {
+    tables: async () => ({
+      held: async () => [],
+      about: async (codes: string[]) =>
+        new Map(
+          codes
+            .filter((code) => code === atorvastatin)
+            .map((code) => [
+              code,
+              { name: { label: TABLES_NAME, altLabels: [] } },
+            ]),
+        ),
+    }),
+    opensEncrypted: true,
+    unsaid() {},
+  });
+  tools = chatTools(
+    podTools(api, {
       viewOf: (pod: string, { test, medication }: Record<string, string>) =>
         `/pods/${pod}/trend?test=${test}&medication=${medication}`,
-    },
+    }),
+    { api },
   );
-  tools = chatTools(shared);
 });
 
 after(async () => {
-  await Promise.all([...pods.values()].map((pod) => pod.close()));
+  await api.close();
 });
 
 const call = (id: string, name: string, input: unknown) => ({
@@ -205,61 +238,42 @@ test("a question that calls find_changes runs it: the model sees the compact fin
 });
 
 test("a finding says itself as the page does: named by what the tables say of its codes", async () => {
-  const tool = (
-    shared as {
-      tools: {
-        name: string;
-        findings: (...a: unknown[]) => Promise<{
-          found: { key: string; medication: { code: string } }[];
-        }>;
-      }[];
-    }
-  ).tools.find(({ name }) => name === "find_changes")!;
-  const { found: pageFindings } = await tool.findings(
-    pods.get(STATIN),
-    {},
-    STATIN,
-  );
+  const { found: pageFindings } = await api.tool({
+    pod: STATIN,
+    tool: "find_changes",
+    input: {},
+  });
   const [whole] = pageFindings;
-  const statin = pods.get(STATIN)!;
-  const tables = {
-    about: async (codes: string[]) =>
-      new Map(
-        codes
-          .filter((code) => code === whole!.medication.code)
-          .map((code) => [
-            code,
-            { name: { label: "atorvastatin 20 MG Oral Tablet" } },
-          ]),
-      ),
-  };
-  const names = await codesSaid(await changeAnswers(statin), { tables });
+  const names = maps(await api.said({ pod: STATIN })).about;
   const { model } = fakeModel([
     calling(call("c1", "find_changes", { pod: STATIN })),
     reply("Done."),
   ]);
-  const events = await chat(
-    model,
-    said("find anything"),
-    chatTools(shared, { namesFor: async () => names }),
-  );
+  const events = await chat(model, said("find anything"));
   const [found] = toolEvents(events);
   const finding = (found!.findings as { said: string; key: string }[]).find(
     ({ key }) => key === whole!.key,
   );
-  assert.match(finding!.said, /after atorvastatin 20 MG Oral Tablet started.$/);
+  assert.ok(
+    finding!.said.endsWith(`after ${TABLES_NAME} started.`),
+    finding!.said,
+  );
   assert.equal(finding!.said, changeSaid(whole, names));
 });
 
-test("open_pod, open_trend and open_entry give the address of a page that is there, and for input that names nothing there a tool error that lists what is", async () => {
+test("open_pod, open_trend and open_entry give the address of a page that is there, and open_entry for an entry the pod lacks a tool error that says where IDs are", async () => {
   const [source] = await pods.get(STATIN)!.ask(SOURCES);
   const entry = source!.entry!;
   const table: [string, Record<string, unknown>, string | RegExp][] = [
     ["open_pod", { pod: STATIN }, `/pods/${STATIN}/`],
-    ["open_pod", { pod: "nobody" }, /no pod nobody; the pods are story-statin/],
     [
       "open_trend",
       { pod: STATIN, test: "18262-6", medication: "617310" },
+      `/pods/${STATIN}/trend?test=18262-6&medication=617310`,
+    ],
+    [
+      "open_trend",
+      { pod: STATIN, test: "18262-6", medication: "Atorvastatin 20 mg tablet" },
       `/pods/${STATIN}/trend?test=18262-6&medication=617310`,
     ],
     [
@@ -268,21 +282,15 @@ test("open_pod, open_trend and open_entry give the address of a page that is the
       `/pods/${STATIN}/trend?test=18262-6`,
     ],
     [
-      "open_trend",
-      { pod: STATIN, test: "0000-0" },
-      /the tests it holds are .*18262-6/,
-    ],
-    [
-      "open_trend",
-      { pod: STATIN, test: "18262-6", medication: "aspirin" },
-      /the medications it holds are .*617310/,
-    ],
-    [
       "open_entry",
       { pod: STATIN, entry },
       `/pods/${STATIN}/entries/${encodeURIComponent(entryId(entry))}`,
     ],
-    ["open_entry", { pod: STATIN, entry: "nothing" }, /holds no entry nothing/],
+    [
+      "open_entry",
+      { pod: STATIN, entry: "nothing" },
+      /holds no entry nothing; ask's rows give each entry's ID/,
+    ],
   ];
   const { model } = fakeModel([
     calling(...table.map(([name, input], at) => call(`c${at}`, name, input))),
@@ -305,7 +313,7 @@ test("open_pod, open_trend and open_entry give the address of a page that is the
   assert.equal(events.at(-1)!.type, "done");
 });
 
-test("a tool call that cannot be run is reported to the model as a tool error, and the loop goes on: arguments that are not JSON, an unknown tool, a pod there is none of, input the schema refuses", async () => {
+test("a tool call that cannot be run is reported to the model as a tool error, and the loop goes on: arguments that are not JSON, an unknown tool, input the schema refuses, input the pod refuses", async () => {
   const table: [string, string | Record<string, unknown>, RegExp][] = [
     ["list_pods", "{not json", /not JSON/],
     ["list_pods", "[]", /must be an object/],
@@ -315,7 +323,6 @@ test("a tool call that cannot be run is reported to the model as a tool error, a
       /there is no tool delete_pod; the tools are/,
     ],
     ["find_changes", {}, /pod is required/],
-    ["find_changes", { pod: "nobody" }, /no pod nobody/],
     ["ask", { pod: STATIN, question: "SELECT * WHERE {}" }, /must be one of/],
     ["lab_series", { pod: STATIN, test: "0000-0" }, /no test 0000-0/],
   ];
