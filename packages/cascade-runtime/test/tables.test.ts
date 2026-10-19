@@ -49,7 +49,7 @@ import {
   versionName,
   writeStarterCopies,
 } from "../src/tables.js";
-import { READ_AHEAD, versionsIn } from "../src/tables/starter.js";
+import { READ_AHEAD, StarterFiles, versionsIn } from "../src/tables/starter.js";
 
 const FEED = "https://tables.example/feed.ttl";
 const QUESTION = "pod/My active allergies";
@@ -1153,6 +1153,39 @@ test("the starter copies carry each version's rows as published, name the curren
   startedAgain = true;
   assert.ok((await whole.start()) > 0);
   assert.equal(mostRead, READ_AHEAD, "the starter is read ahead, bounded");
+  const order = [...versionsIn(carried)]
+    .filter(([, paths]) => paths.some((path) => path.endsWith(PUBLISHED_ROWS)))
+    .map(([each]) => each);
+  const background = new MemoryFiles("urn:test:app-background/");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  cut = false;
+  failing = `${order[1]}${PUBLISHED_ROWS}`;
+  const behind = new StarterFiles(
+    {
+      iri: background.iri,
+      list: (folder) => background.list(folder),
+      read: (path) => background.read(path),
+      write: async (path, bytes) => {
+        if (path === `${order[0]}.ttl`) await gate;
+        return background.write(path, bytes);
+      },
+    },
+    counted,
+    work,
+  );
+  const copying = behind.copyAll().then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  while (!cut) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    (await behind.read(`${order[1]}.ttl`)) !== undefined,
+    "a read succeeds while the background copy has failed",
+  );
+  release();
+  assert.ok((await copying) instanceof Error);
+  cut = false;
   asked = [];
   const both = tablesOn(new MemoryFiles("urn:test:app-both/"));
   await Promise.all([both.start(), both.about([cvx141])]);
@@ -1160,6 +1193,24 @@ test("the starter copies carry each version's rows as published, name the curren
     rowsRead().sort(),
     [...rowsCarried].sort(),
     "a copy and a read at once read each version once",
+  );
+  assert.equal(await both.start(), 0, "the shared copy was written");
+  const extra = new MemoryFiles("urn:test:starter-extra/");
+  for (const path of carried)
+    await extra.write(path, (await starter.read(path)) as Uint8Array);
+  const unnamed = "version-the-index-does-not-name";
+  await extra.write(
+    `${unnamed}${PUBLISHED_ROWS}`,
+    (await starter.read(rowsCarried[0] as string)) as Uint8Array,
+  );
+  const named = new MemoryFiles("urn:test:app-named/");
+  await tablesOn(named, extra).start();
+  assert.deepEqual(
+    (await named.list(""))
+      .filter((path) => path.endsWith(".ttl") && path !== "references.ttl")
+      .sort(),
+    order.map((each) => `${each}.ttl`).sort(),
+    "a start copies the versions the index names and no other the starter carries",
   );
   const movedOn = new MemoryFiles("urn:test:starter-moved-on/");
   for (const path of carried)

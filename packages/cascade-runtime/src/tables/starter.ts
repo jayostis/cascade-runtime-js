@@ -46,14 +46,14 @@ export async function versionFiles(
     paths.map(async (path) => [path, await starter.read(path)] as const),
   );
   const files: Copied = [];
+  let rows: Copied[number] | undefined;
   for (const [path, bytes] of read) {
     if (bytes === undefined) continue;
-    files.push(
-      path === `${stem}${PUBLISHED_ROWS}`
-        ? [`${stem}.ttl`, await work.published(new Uint8Array(bytes))]
-        : [path, bytes],
-    );
+    if (path === `${stem}${PUBLISHED_ROWS}`)
+      rows = [`${stem}.ttl`, await work.published(new Uint8Array(bytes))];
+    else files.push([path, bytes]);
   }
+  if (rows !== undefined) files.push(rows);
   return files;
 }
 
@@ -196,15 +196,21 @@ export class StarterFiles implements Files {
     return this.#store.list(folder);
   }
 
-  /** Copies every version the starter carries and the store lacks, as `copyVersions` does: the bytes written. */
-  async copyAll(): Promise<number> {
+  /**
+   * Copies every version the starter carries and the store lacks, as `copyVersions` does: the bytes written. Only the
+   * versions of the stems given when there are any, so a version the store's index does not name is never fetched.
+   */
+  async copyAll(stems?: ReadonlySet<string>): Promise<number> {
     const [carried, held] = await Promise.all([
       this.#versions(),
       this.#store.list(""),
     ]);
     const kept = new Set(held);
     const missing = new Map(
-      [...carried].filter(([stem]) => !kept.has(`${stem}.ttl`)),
+      [...carried].filter(
+        ([stem]) =>
+          !kept.has(`${stem}.ttl`) && (stems === undefined || stems.has(stem)),
+      ),
     );
     for (const stem of missing.keys()) this.#readThrough.delete(stem);
     const began = new Map<string, Promise<Copied>>();
@@ -221,7 +227,7 @@ export class StarterFiles implements Files {
           if (this.#readThrough.has(stem)) return Promise.resolve([]);
           const files = versionFiles(this.#starter, stem, paths, work);
           began.set(stem, files);
-          this.#copies.set(stem, files);
+          this.#share(stem, files);
           return files;
         },
         async (files) => {
@@ -246,10 +252,13 @@ export class StarterFiles implements Files {
   ): Promise<Uint8Array | undefined> {
     const meanwhile = await this.#store.read(path);
     if (meanwhile !== undefined) return meanwhile;
-    const shared = this.#copies.get(stem);
-    if (shared !== undefined) return fileIn(await shared, path);
+    for (let shared = this.#copies.get(stem); shared;) {
+      const files = await shared.catch(() => undefined);
+      if (files !== undefined) return fileIn(files, path);
+      shared = this.#copies.get(stem);
+    }
     const files = versionFiles(this.#starter, stem, paths, this.#work);
-    this.#copies.set(stem, files);
+    this.#share(stem, files);
     try {
       await writeAll(this.#store, await files);
       this.#readThrough.add(stem);
@@ -257,6 +266,14 @@ export class StarterFiles implements Files {
       if (this.#copies.get(stem) === files) this.#copies.delete(stem);
     }
     return fileIn(await files, path);
+  }
+
+  /** Makes the copy the one reads and `copyAll` share, until it is written or rejected. */
+  #share(stem: string, files: Promise<Copied>): void {
+    this.#copies.set(stem, files);
+    files.catch(() => {
+      if (this.#copies.get(stem) === files) this.#copies.delete(stem);
+    });
   }
 
   #versions(): Promise<Map<string, string[]>> {

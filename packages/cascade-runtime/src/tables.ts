@@ -692,7 +692,8 @@ export class Tables {
   async start(): Promise<number> {
     const before = this.#written;
     await this.#start();
-    const copied = (await this.#starterFiles?.copyAll()) ?? 0;
+    const copied =
+      (await this.#starterFiles?.copyAll(await this.#shippedStems())) ?? 0;
     return this.#written - before + copied;
   }
 
@@ -1914,6 +1915,22 @@ export class Tables {
       this.#started = undefined;
     });
     return this.#started;
+  }
+
+  /** The file stems of the versions the store's index names, so a start copies no version nothing reads. */
+  async #shippedStems(): Promise<Set<string>> {
+    const stems = new Set<string>();
+    for (const [, , version] of (await this.#index()).match(
+      undefined,
+      SHIPS_WITH,
+    )) {
+      try {
+        stems.add(fileStem(version.value));
+      } catch {
+        continue;
+      }
+    }
+    return stems;
   }
 
   async #held(): Promise<Held> {
