@@ -41,7 +41,7 @@ import {
   openPod,
   type Pod,
   Refusal,
-  sixWords,
+  sixWordsOf as sixWords,
   tablesBeside,
   typedWords,
   Unopened,

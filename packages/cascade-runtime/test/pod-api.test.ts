@@ -11,7 +11,7 @@ import {
   openPod,
   pullFiles,
   Refusal,
-  sixWords,
+  sixWordsOf as sixWords,
   timelineIn,
   Unopened,
 } from "cascade-runtime";
