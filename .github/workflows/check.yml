@@ -215,9 +215,21 @@ jobs:
           fi
           git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
           if [ -n "$pair" ]; then
-            git -C "$starter" fetch --quiet origin "pull/${pair}/head"
-            git -C "$starter" checkout --quiet FETCH_HEAD
-            what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On"
+            state=$(gh api "repos/jayostis/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
+            case "$state" in
+              "open false")
+                git -C "$starter" fetch --quiet origin "pull/${pair}/head"
+                git -C "$starter" checkout --quiet FETCH_HEAD
+                what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On and open"
+                ;;
+              "closed true")
+                what="the main of jayostis/cascade-starter-kit, where jayostis/cascade-starter-kit#${pair}, named on Depends-On, has merged"
+                ;;
+              *)
+                echo "::error title=starter-kit::jayostis/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
+                exit 1
+                ;;
+            esac
           else
             what="the main of jayostis/cascade-starter-kit"
           fi
@@ -244,6 +256,12 @@ jobs:
             writeFileSync("package-lock.json", JSON.stringify(lockWithoutRuntime(lock), null, 2) + "\n");
           '
           npm install --no-audit --no-fund
+          packed=$(tar -xzOf "$TARBALL" package/package.json | node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')
+          installed=$(node -p 'require("./node_modules/cascade-runtime/package.json").version')
+          if [ "$packed" != "$installed" ]; then
+            echo "::error title=starter-kit::the starter resolved cascade-runtime ${installed}, not this tarball's ${packed}"
+            exit 1
+          fi
       - name: The starter's types and tests
         working-directory: ${{ steps.starter.outputs.path }}
         run: |
@@ -278,6 +296,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - name: try/ and the starter in Chromium
         if: ${{ !cancelled() }}
+        timeout-minutes: 15
         working-directory: ${{ steps.starter.outputs.path }}
         run: npm run test:browser
       # The command a person runs, on the app it makes, with the runtime from this tarball instead of the pin.
