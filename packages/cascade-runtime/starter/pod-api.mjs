@@ -62,7 +62,7 @@ export const SCOPES = ["launch/patient", "patient/*.read", "patient/*.rs"];
 const UNDER_WAY = ["signing in", "pulling", "bringing in"];
 
 /** Names Windows keeps for devices, which no folder may have. */
-const DEVICES = /^(con|prn|aux|nul|comd|lptd)$/;
+const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 
 const NOT_WAITING =
   "These six words are not waiting any more. Make the pod again.";
@@ -202,6 +202,15 @@ export function podApi(host) {
       const opening = host.pods.open(name, options);
       opening.catch(() => opened.delete(name));
       opened.set(name, opening);
+    }
+    return opened.get(name);
+  }
+
+  function sampleFor(name) {
+    if (!opened.has(name)) {
+      const copying = (async () => host.copySample(name))();
+      copying.catch(() => opened.delete(name));
+      opened.set(name, copying);
     }
     return opened.get(name);
   }
@@ -554,7 +563,7 @@ export function podApi(host) {
     if ((await host.pods.names()).includes(name))
       return { pod: name, made: false };
     if (host.samples?.includes(name)) {
-      opened.set(name, Promise.resolve(await host.copySample(name)));
+      await sampleFor(name);
       return { pod: name, loaded: true };
     }
     if (encrypt) {
@@ -618,8 +627,7 @@ export function podApi(host) {
   async function resetAll() {
     await deleteAll();
     if (!(host.samples?.length > 0)) return { pods: await host.restore() };
-    for (const name of host.samples)
-      opened.set(name, Promise.resolve(await host.copySample(name)));
+    for (const name of host.samples) await sampleFor(name);
     return { pods: [...host.samples] };
   }
 

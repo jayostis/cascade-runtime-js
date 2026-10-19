@@ -541,6 +541,8 @@ for (const via of HOSTS) {
       ],
       ["makePod", { person: "!!!" }, /at least one letter/],
       ["makePod", { person: "Con" }, /Windows keeps for itself/],
+      ["makePod", { person: "COM1" }, /Windows keeps for itself/],
+      ["makePod", { person: "lpt9" }, /Windows keeps for itself/],
       ["makePod", { person: "Ada", encrypt: "on" }, /encrypt must be true/],
       ["waitingWords", { pod: "nobody" }, /not waiting any more/],
       ["confirmWords", { ...typed, word2: "x" }, /aren't words 2 and 5/],
@@ -789,6 +791,22 @@ for (const via of HOSTS) {
     ]);
   });
 }
+
+test("two makePod calls for one sample at once open one pod", async () => {
+  let copies = 0;
+  const { built } = await fresh("in-process", (at) => ({
+    samples: ["sample"],
+    copySample: async (name: string) => {
+      copies += 1;
+      return openPod(join(at, name));
+    },
+  }));
+  await Promise.all([
+    built.makePod({ person: "Sample" }),
+    built.makePod({ person: "Sample" }),
+  ]);
+  assert.equal(copies, 1);
+});
 
 test("nodeHost's remove takes the pods and every answer, and keeps the reference tables", async () => {
   const at = await mkdtemp(join(tmpdir(), "pod-api-remove-"));
