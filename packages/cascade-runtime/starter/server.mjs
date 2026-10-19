@@ -74,17 +74,9 @@ function unsaid(kind, error) {
 const host = nodeHost({ folder: PODS, unsaid });
 const api = podApi(host);
 
-/** What `/api/` calls: the same operations, but the three whose effects the form handlers also carry out here do so, until connections move into PodApi. */
+/** What `/api/` calls: the same operations, Check now's also noting what it did for the page it goes to. */
 const served = {
   ...api,
-  async deleteAll(input) {
-    hospitals?.forget();
-    return await api.deleteAll(input);
-  },
-  async resetAll(input) {
-    hospitals?.forget();
-    return await api.resetAll(input);
-  },
   async checkTables(input) {
     const answer = await api.checkTables(input);
     lastCheck = checkedNote(answer.checked, answer.held);
