@@ -177,10 +177,125 @@ jobs:
             cascade-runtime-js/build/martin-okafor/site
           if-no-files-found: error
 
-  # The name branch protection requires. A part that was skipped is no pass: nothing but both succeeding reports success.
+  # The reverse check: the starter kit's own tests and checks, run on this commit's tarball. A change the starter must
+  # follow lands as a pair: this pull request's body carries `Depends-On: jayostis/cascade-starter-kit#<n>` (or that
+  # pull request's URL), and the starter is then taken at that pull request's head instead of its main.
+  starter-kit:
+    name: starter-kit
+    if: ${{ github.event_name != 'push' }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      # The body is read now, not from the event: a re-run after the body gained its Depends-On line sees the line.
+      - id: starter
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          starter="${GITHUB_WORKSPACE}/cascade-starter-kit"
+          pair=""
+          if [ -n "$PULL" ]; then
+            body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
+            pair=$(printf '%s\n' "$body" | tr -d '\r' \
+              | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?jayostis/cascade-starter-kit(#|/pull/)[0-9]+' \
+              | head -n 1 | grep -Eo '[0-9]+$' || true)
+          fi
+          git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
+          if [ -n "$pair" ]; then
+            git -C "$starter" fetch --quiet origin "pull/${pair}/head"
+            git -C "$starter" checkout --quiet FETCH_HEAD
+            what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On"
+          else
+            what="the main of jayostis/cascade-starter-kit"
+          fi
+          sha=$(git -C "$starter" rev-parse HEAD)
+          echo "::notice title=starter-kit::this tarball is checked against ${what} (${sha})"
+          echo "The starter kit at ${what}: ${sha}" >> "$GITHUB_STEP_SUMMARY"
+          tarball=$(ls "${RUNNER_TEMP}"/package/cascade-runtime-*.tgz)
+          echo "path=${starter}" >> "$GITHUB_OUTPUT"
+          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
+      # The pin is swapped in the checkout and never pushed. The lock forgets where the old runtime was, with the
+      # starter's own scripts/pin-lib.mjs, or npm installs the new one under app/ and the root resolves none.
+      - name: Pin the starter to this tarball
+        working-directory: ${{ steps.starter.outputs.path }}
+        env:
+          TARBALL: ${{ steps.starter.outputs.tarball }}
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            import { lockWithoutRuntime } from "./scripts/pin-lib.mjs";
+            const manifest = JSON.parse(readFileSync("app/package.json", "utf8"));
+            manifest.dependencies["cascade-runtime"] = `file:${process.env.TARBALL}`;
+            writeFileSync("app/package.json", JSON.stringify(manifest, null, 2) + "\n");
+            const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+            writeFileSync("package-lock.json", JSON.stringify(lockWithoutRuntime(lock), null, 2) + "\n");
+          '
+          npm install --no-audit --no-fund
+      - name: The starter's types and tests
+        working-directory: ${{ steps.starter.outputs.path }}
+        run: |
+          npm run typecheck
+          npm test
+      - name: Build try/ and the samples over this tarball
+        if: ${{ !cancelled() }}
+        working-directory: ${{ steps.starter.outputs.path }}
+        run: npm run build:try
+      - id: playwright
+        if: ${{ !cancelled() }}
+        working-directory: ${{ steps.starter.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('playwright/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache/restore@v6
+        if: ${{ !cancelled() }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
+      - id: install
+        if: ${{ !cancelled() }}
+        working-directory: ${{ steps.starter.outputs.path }}
+        run: npx playwright install --with-deps --only-shell chromium
+      - uses: actions/cache/save@v6
+        if: ${{ steps.install.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true' }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
+      - name: try/ and the starter in Chromium
+        if: ${{ !cancelled() }}
+        working-directory: ${{ steps.starter.outputs.path }}
+        run: npm run test:browser
+      # The command a person runs, on the app it makes, with the runtime from this tarball instead of the pin.
+      - name: create-cascade-app, on this tarball
+        if: ${{ !cancelled() }}
+        env:
+          STARTER: ${{ steps.starter.outputs.path }}
+          TARBALL: ${{ steps.starter.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          (cd "$STARTER" && npm run build:create)
+          cd "$RUNNER_TEMP"
+          node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+
+  # The name branch protection requires. A part that was skipped is no pass: nothing but all succeeding reports success.
   compatibility:
     name: compatibility
-    needs: [tests, browser]
+    needs: [tests, browser, starter-kit]
     if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions: {}
@@ -188,9 +303,10 @@ jobs:
       - env:
           TESTS: ${{ needs.tests.result }}
           BROWSER: ${{ needs.browser.result }}
+          STARTER: ${{ needs.starter-kit.result }}
         run: |
-          echo "tests and conformance: ${TESTS}; browser: ${BROWSER}"
-          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ]
+          echo "tests and conformance: ${TESTS}; browser: ${BROWSER}; starter-kit: ${STARTER}"
+          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] && [ "${STARTER}" = success ]
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
   build-pages:
