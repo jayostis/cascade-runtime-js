@@ -11,6 +11,11 @@ const BUNDLE = "bundle.json";
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
 
+/** What `pullFiles` throws for a pull whose content the import would refuse: bad input, never a broken runtime. */
+export class PullRefused extends Error {
+  override readonly name = "PullRefused";
+}
+
 /** A pull as `cascade-runtime`'s `pull()` returns it, as far as saving it needs. */
 export interface SavedPull {
   readonly fhirBase: string;
@@ -103,7 +108,7 @@ function described(bytes: Uint8Array): Described {
 
 function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error(`${PULL} is not a JSON object`);
+    throw new PullRefused(`${PULL} is not a JSON object`);
   const { fhirBase, patient, source, retrievedAt, asOf } = value as Record<
     string,
     unknown
@@ -124,17 +129,17 @@ function checked(value: unknown): Described {
     fhirBase.includes("?") ||
     fhirBase.includes("#")
   )
-    throw new Error(
+    throw new PullRefused(
       `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
     );
   if (typeof patient !== "string" || !FHIR_ID.test(patient))
-    throw new Error(`${PULL}'s patient is not a FHIR id`);
+    throw new PullRefused(`${PULL}'s patient is not a FHIR id`);
   if (typeof source !== "string" || source.trim() === "")
-    throw new Error(`${PULL}'s source is not a name`);
+    throw new PullRefused(`${PULL}'s source is not a name`);
   if (!isUtc(retrievedAt))
-    throw new Error(`${PULL}'s retrievedAt is not a time in UTC`);
+    throw new PullRefused(`${PULL}'s retrievedAt is not a time in UTC`);
   if (asOf !== undefined && !isUtc(asOf))
-    throw new Error(`${PULL}'s asOf is not a time in UTC`);
+    throw new PullRefused(`${PULL}'s asOf is not a time in UTC`);
   return {
     fhirBase,
     patient,

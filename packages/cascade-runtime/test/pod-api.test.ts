@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { after, before, test, type TestContext } from "node:test";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import {
+  ConnectionFailure,
   openPod,
   pullFiles,
   Refusal,
@@ -679,75 +680,21 @@ for (const via of HOSTS) {
     );
   });
 
-  test(`${via}: connect signs in with every scope and pulls, and bring brings the record into the pod`, async () => {
-    const authorized: URL[] = [];
-    const { api: writes } = await fresh(via, () => ({
-      hospitals: northHospitals(authorized),
-    }));
-    await writes.makePod({ person: "Ada" });
-    const { connection: n, authorize } = await writes.connect({
-      pod: "ada",
-      fhirBase: rowOf(north).fhirBase,
-    });
-    assert.equal(authorize, authorized[0]!.href);
-    assert.deepEqual(authorized[0]!.searchParams.get("scope")!.split(" "), [
-      "launch/patient",
-      "patient/*.read",
-      "patient/*.rs",
-    ]);
-    const at = { pod: "ada", connection: n };
-    const busy = (step: string) =>
-      ["signing in", "pulling", "bringing in"].includes(step);
-    const state = ({ step, requests, bringing }: Output) =>
-      JSON.stringify([step, requests, bringing]);
-    let shown = await writes.connection(at);
-    while (busy(shown.step)) {
-      const next = await writes.connection({ ...at, wait: "change" });
-      assert.notEqual(state(next), state(shown));
-      shown = next;
-    }
-    assert.equal(shown.step, "pulled");
-    assert.ok(shown.requests > 0);
-    assert.ok(
-      shown.sources.some(({ server }: Output) =>
-        rowOf(north).fhirBase.startsWith(server),
-      ),
-      JSON.stringify(shown.sources),
-    );
-    assert.equal(shown.patient, "Ines Calloway");
-    const keys = (value: unknown): string[] =>
-      value !== null && typeof value === "object"
-        ? Object.entries(value).flatMap(([key, each]) => [key, ...keys(each)])
-        : [];
-    assert.ok(!keys(shown).includes("bundle"), "the connection has its bundle");
-
-    assert.deepEqual(await writes.bring(at), { step: "bringing in" });
-    const done = await writes.connection({ ...at, wait: true });
-    assert.equal(done.broughtIn, true);
-    assert.ok(
-      (await writes.answers({ pod: "ada" })).changes.some(
-        ({ key }: Output) => key === `start:${ATORVASTATIN}:${LDL}`,
-      ),
-    );
-  });
-
   test(`${via}: a demo hospital's connection carries the world's date it was started under`, async () => {
-    const { api: writes } = await fresh(via);
-    await writes.makePod({ person: "Ada" });
-    await writes.setWorldDate({ date: "2024-02-01" });
+    await shared.setWorldDate({ date: "2024-02-01" });
     try {
-      const { connection } = await writes.connect({
-        pod: "ada",
+      const { connection } = await shared.connect({
+        pod: STATIN,
         fhirBase: rowOf(north).fhirBase,
       });
-      const done = await writes.connection({
-        pod: "ada",
+      const done = await shared.connection({
+        pod: STATIN,
         connection,
         wait: true,
       });
       assert.equal(done.asOf, "2024-02-01T23:59:59Z");
     } finally {
-      await writes.setWorldDate({ date: "" });
+      await shared.setWorldDate({ date: "" });
     }
   });
 
@@ -791,6 +738,155 @@ for (const via of HOSTS) {
     ]);
   });
 }
+
+test("connect signs in with every scope and pulls, bring brings the record in once, and the brought-in connection reads the same over HTTP", async () => {
+  const authorized: URL[] = [];
+  const at = await mkdtemp(join(tmpdir(), "pod-api-connect-"));
+  folders.push(at);
+  const built = api({ ...host(at), hospitals: northHospitals(authorized) });
+  const [local, remote] = (await both(built)).map(([, each]) => each) as [
+    Api,
+    Api,
+  ];
+  await local.makePod({ person: "Ada" });
+  const { connection: n, authorize } = await local.connect({
+    pod: "ada",
+    fhirBase: rowOf(north).fhirBase,
+  });
+  assert.equal(authorize, authorized[0]!.href);
+  assert.deepEqual(authorized[0]!.searchParams.get("scope")!.split(" "), [
+    "launch/patient",
+    "patient/*.read",
+    "patient/*.rs",
+  ]);
+  const connection = { pod: "ada", connection: n };
+  const busy = (step: string) =>
+    ["signing in", "pulling", "bringing in"].includes(step);
+  const state = ({ step, requests, bringing }: Output) =>
+    JSON.stringify([step, requests, bringing]);
+  let shown = await local.connection(connection);
+  while (busy(shown.step)) {
+    const next = await local.connection({ ...connection, wait: "change" });
+    assert.notEqual(state(next), state(shown));
+    shown = next;
+  }
+  assert.equal(shown.step, "pulled");
+  assert.ok(shown.requests > 0);
+  assert.ok(
+    shown.sources.some(({ server }: Output) =>
+      rowOf(north).fhirBase.startsWith(server),
+    ),
+    JSON.stringify(shown.sources),
+  );
+  assert.equal(shown.patient, "Ines Calloway");
+  const keys = (value: unknown): string[] =>
+    value !== null && typeof value === "object"
+      ? Object.entries(value).flatMap(([key, each]) => [key, ...keys(each)])
+      : [];
+  assert.ok(!keys(shown).includes("bundle"), "the connection has its bundle");
+
+  assert.deepEqual(await local.bring(connection), { step: "bringing in" });
+  assert.equal(
+    (await local.connection({ ...connection, wait: true })).broughtIn,
+    true,
+  );
+  assert.ok(
+    (await local.answers({ pod: "ada" })).changes.some(
+      ({ key }: Output) => key === `start:${ATORVASTATIN}:${LDL}`,
+    ),
+  );
+
+  assert.deepEqual(await remote.bring(connection), { step: "pulled" });
+  const brought = await remote.connection(connection);
+  assert.equal(brought.step, "pulled");
+  assert.equal(brought.broughtIn, true);
+  assert.equal(brought.failed, undefined);
+  assert.ok(brought.sources.length > 0);
+});
+
+test("a connection's wait answers as the connection is after its bound, and Delete all and close stop what is under way", async (t: TestContext) => {
+  const signals: AbortSignal[] = [];
+  const parked = {
+    ...northHospitals(),
+    signIn:
+      (_: unknown, __: unknown, report: (href: string) => void) =>
+      (authorize: URL, signal: AbortSignal) =>
+        new Promise<URL>((_, reject) => {
+          signals.push(signal);
+          report(authorize.href);
+          signal.addEventListener(
+            "abort",
+            () => reject(new ConnectionFailure("cancelled", "stopped")),
+            { once: true },
+          );
+        }),
+  };
+  const { built } = await fresh("in-process", () => ({ hospitals: parked }));
+  const start = async () => {
+    await built.makePod({ person: "Ada" });
+    return (
+      await built.connect({ pod: "ada", fhirBase: rowOf(north).fhirBase })
+    ).connection;
+  };
+
+  const first = await start();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let held: Output | undefined;
+  void built
+    .connection({ pod: "ada", connection: first, wait: true })
+    .then((shown) => (held = shown));
+  while (held === undefined) {
+    t.mock.timers.tick(25_000);
+    await new Promise((done) => setImmediate(done));
+  }
+  t.mock.timers.reset();
+  assert.equal(held.step, "signing in");
+
+  await built.deleteAll({});
+  assert.equal(signals[0]!.aborted, true, "Delete all left the sign-in open");
+  await start();
+  await built.close();
+  assert.equal(signals[1]!.aborted, true, "close left the sign-in open");
+});
+
+test("a bring-in that fails for the app's own reason is logged and says so in a fixed sentence", async (t: TestContext) => {
+  const logged = t.mock.method(console, "error", () => undefined);
+  const given = host();
+  const opening = given.pods as unknown as {
+    open(...a: unknown[]): Promise<object>;
+  };
+  const breaking = (pod: object) =>
+    new Proxy(pod, {
+      get(target, key) {
+        if (key === "import")
+          return async () => {
+            throw new Error("the pod at C:\\secret\\ada is closed");
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  const pods = new Proxy(opening, {
+    get: (target, key) =>
+      key === "open"
+        ? async (...args: unknown[]) => breaking(await target.open(...args))
+        : Reflect.get(target, key, target),
+  });
+  const built = api({ ...given, pods });
+  const { connection } = await built.connect({
+    pod: STATIN,
+    fhirBase: rowOf(north).fhirBase,
+  });
+  const at = { pod: STATIN, connection };
+  await built.connection({ ...at, wait: true });
+  await built.bring(at);
+  const failed = await built.connection({ ...at, wait: true });
+  assert.equal(failed.step, "pulled");
+  assert.equal(failed.retry, true);
+  assert.match(failed.failed, /^Not brought in: /);
+  assert.ok(!failed.failed.includes("secret"), failed.failed);
+  assert.equal(logged.mock.callCount(), 1);
+});
 
 test("two makePod calls for one sample at once open one pod", async () => {
   let copies = 0;

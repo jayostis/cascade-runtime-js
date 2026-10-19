@@ -38,6 +38,7 @@ export function signIns() {
               ),
             SIGN_IN_TIMEOUT_MS,
           );
+          timer.unref();
           signal?.addEventListener(
             "abort",
             () =>

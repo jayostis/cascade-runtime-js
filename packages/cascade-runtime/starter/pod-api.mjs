@@ -12,6 +12,7 @@ import {
   findChanges,
   labSeriesIn,
   pull,
+  PullRefused,
   pullFiles,
   Refusal,
   searchDirectory,
@@ -57,6 +58,15 @@ export function notOpenedHere(name) {
 
 /** What the app asks a hospital it signs in at to let it read. */
 export const SCOPES = ["launch/patient", "patient/*.read", "patient/*.rs"];
+
+/** How long a `connection` call with `wait` holds before it answers the connection as it is. */
+const WAIT_MS = 25_000;
+
+/** What a person is told when a bring-in or a pull's files fail for a reason that is the app's, not the record's. */
+const NOT_BROUGHT_IN =
+  "Not brought in: the app hit an error of its own. Try again, and if it happens again, restart the app.";
+const PULL_BROKEN =
+  "The pull could not be saved: the app hit an error of its own.";
 
 /** The steps of a connection that are under way. */
 const UNDER_WAY = ["signing in", "pulling", "bringing in"];
@@ -618,7 +628,7 @@ export function podApi(host) {
   async function deleteAll() {
     const names = await host.pods.names();
     waiting.clear();
-    connections.clear();
+    forgetConnections();
     await closePods();
     await host.pods.remove(names, { all: true });
     return { deleted: names };
@@ -660,6 +670,12 @@ export function podApi(host) {
       connection.bringing,
     ]);
 
+  /** Stops every connection's sign-in and pull, and forgets them. */
+  function forgetConnections() {
+    for (const each of connections.values()) each.stop.abort();
+    connections.clear();
+  }
+
   /** Wakes whoever waits for the connection to change. */
   function changed(connection) {
     for (const wake of connection.waiting.splice(0)) wake();
@@ -667,6 +683,26 @@ export function podApi(host) {
 
   const nextChange = (connection) =>
     new Promise((wake) => connection.waiting.push(wake));
+
+  /** Holds until the connection settles, or for `wait: "change"` changes, or `WAIT_MS` have passed. */
+  async function holdFor(connection, wait) {
+    const was = stateOf(connection);
+    const over = () =>
+      settled(connection) || (wait === "change" && stateOf(connection) !== was);
+    let timer;
+    const late = new Promise((done) => {
+      timer = globalThis.setTimeout(done, WAIT_MS, LATE);
+      timer.unref?.();
+    });
+    try {
+      while (
+        !over() &&
+        (await Promise.race([nextChange(connection), late])) !== LATE
+      );
+    } finally {
+      globalThis.clearTimeout(timer);
+    }
+  }
 
   async function connectTo({ pod: name, fhirBase }) {
     await podNamed(name);
@@ -686,6 +722,7 @@ export function podApi(host) {
       requests: 0,
       asOf: row.vendor === "demo" ? await host.world?.get() : undefined,
       waiting: [],
+      stop: new globalThis.AbortController(),
     };
     connections.set(n, connection);
     let report;
@@ -703,13 +740,14 @@ export function podApi(host) {
             changed(connection);
             return answer;
           },
+          signal: connection.stop.signal,
         },
       );
     })();
     connection.pulled = signedIn.then((signed) => {
       connection.step = "pulling";
       changed(connection);
-      return pull(signed, DEMO_PLAN);
+      return pull(signed, DEMO_PLAN, { signal: connection.stop.signal });
     });
     connection.pulled.then(
       () => {
@@ -753,7 +791,10 @@ export function podApi(host) {
           ),
         };
       } catch (error) {
-        return { failed: `Refused: ${error.message}` };
+        if (error instanceof PullRefused)
+          return { failed: `Refused: ${error.message}` };
+        globalThis.console.error(error);
+        return { failed: PULL_BROKEN };
       }
     })();
     return connection.files;
@@ -762,12 +803,7 @@ export function podApi(host) {
   async function connectionNow({ pod: name, connection: n, wait }) {
     await known(name);
     const connection = connectionOf(name, n);
-    if (wait === true)
-      while (!settled(connection)) await nextChange(connection);
-    if (wait === "change" && !settled(connection)) {
-      const was = stateOf(connection);
-      while (stateOf(connection) === was) await nextChange(connection);
-    }
+    if (wait !== undefined) await holdFor(connection, wait);
     const shown = {
       n,
       row: connection.row,
@@ -829,7 +865,8 @@ export function podApi(host) {
           last.delete(name);
         },
         (error) => {
-          connection.failed = `Not brought in: ${error.message}`;
+          globalThis.console.error(error);
+          connection.failed = NOT_BROUGHT_IN;
           connection.retry = true;
         },
       )
@@ -905,8 +942,12 @@ export function podApi(host) {
     ),
     podFor,
     closePods,
-    close: () => closePods(),
+    close: async () => {
+      forgetConnections();
+      await closePods();
+    },
   };
 }
 
 const noop = () => undefined;
+const LATE = Symbol("late");

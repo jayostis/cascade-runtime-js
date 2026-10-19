@@ -1003,6 +1003,14 @@ const server = createServer(async (request, response) => {
             fhirBase: (await formOf(request)).get("fhirBase") ?? "",
           });
         } catch (error) {
+          if (error instanceof Unopened)
+            return await showLocked(
+              response,
+              name,
+              error.outcome,
+              podPath(name),
+              titles,
+            );
           if (!(error instanceof Refusal)) throw error;
           return send(
             response,
