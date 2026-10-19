@@ -170,71 +170,16 @@ jobs:
         with:
           name: package
           path: ${{ runner.temp }}/package
-      # The body is read now, not from the event: a re-run after the body gained its Depends-On line sees the line.
+      # Only the action is checked out: the starter is cloned beside it.
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          sparse-checkout: .github/actions
+          persist-credentials: false
       - id: starter
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PULL: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          starter="${GITHUB_WORKSPACE}/cascade-starter-kit"
-          pair=""
-          if [ -n "$PULL" ]; then
-            body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
-            pair=$(printf '%s\n' "$body" | tr -d '\r' \
-              | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?jayostis/cascade-starter-kit(#|/pull/)[0-9]+' \
-              | head -n 1 | grep -Eo '[0-9]+$' || true)
-          fi
-          git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
-          if [ -n "$pair" ]; then
-            state=$(gh api "repos/jayostis/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
-            case "$state" in
-              "open false")
-                git -C "$starter" fetch --quiet origin "pull/${pair}/head"
-                git -C "$starter" checkout --quiet FETCH_HEAD
-                what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On and open"
-                ;;
-              "closed true")
-                what="the main of jayostis/cascade-starter-kit, where jayostis/cascade-starter-kit#${pair}, named on Depends-On, has merged"
-                ;;
-              *)
-                echo "::error title=starter-kit::jayostis/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
-                exit 1
-                ;;
-            esac
-          else
-            what="the main of jayostis/cascade-starter-kit"
-          fi
-          sha=$(git -C "$starter" rev-parse HEAD)
-          echo "::notice title=starter-kit::this tarball is checked against ${what} (${sha})"
-          echo "The starter kit at ${what}: ${sha}" >> "$GITHUB_STEP_SUMMARY"
-          tarball=$(ls "${RUNNER_TEMP}"/package/cascade-runtime-*.tgz)
-          echo "path=${starter}" >> "$GITHUB_OUTPUT"
-          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
-      # The pin is swapped in the checkout and never pushed. The lock forgets where the old runtime was, with the
-      # starter's own scripts/pin-lib.mjs, or npm installs the new one under app/ and the root resolves none.
-      - name: Pin the starter to this tarball
-        working-directory: ${{ steps.starter.outputs.path }}
-        env:
-          TARBALL: ${{ steps.starter.outputs.tarball }}
-        run: |
-          node --input-type=module -e '
-            import { readFileSync, writeFileSync } from "node:fs";
-            import { lockWithoutRuntime } from "./scripts/pin-lib.mjs";
-            const manifest = JSON.parse(readFileSync("app/package.json", "utf8"));
-            manifest.dependencies["cascade-runtime"] = `file:${process.env.TARBALL}`;
-            writeFileSync("app/package.json", JSON.stringify(manifest, null, 2) + "\n");
-            const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-            writeFileSync("package-lock.json", JSON.stringify(lockWithoutRuntime(lock), null, 2) + "\n");
-          '
-          npm install --no-audit --no-fund
-          packed=$(tar -xzOf "$TARBALL" package/package.json | node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')
-          installed=$(node -p 'require("./node_modules/cascade-runtime/package.json").version')
-          if [ "$packed" != "$installed" ]; then
-            echo "::error title=starter-kit::the starter resolved cascade-runtime ${installed}, not this tarball's ${packed}"
-            exit 1
-          fi
+        uses: ./cascade-runtime-js/.github/actions/starter
+        with:
+          package: ${{ runner.temp }}/package
       - name: The starter's types and tests
         working-directory: ${{ steps.starter.outputs.path }}
         run: |
@@ -275,6 +220,52 @@ jobs:
       # The command a person runs, on the app it makes, with the runtime from this tarball instead of the pin.
       - name: create-cascade-app, on this tarball
         if: ${{ !cancelled() }}
+        env:
+          STARTER: ${{ steps.starter.outputs.path }}
+          TARBALL: ${{ steps.starter.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          (cd "$STARTER" && npm run build:create)
+          cd "$RUNNER_TEMP"
+          node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+
+  # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
+  # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
+  # does not wait for it, so a slow system gates no merge, and a failure still fails the run. The starter is taken exactly
+  # as `starter-kit` takes it; only the build of the command and the app's check run, not the starter's suites.
+  starter-systems:
+    name: starter (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest"]' || '["windows-latest", "macos-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - id: starter
+        uses: ./cascade-runtime-js/.github/actions/starter
+        with:
+          package: ${{ runner.temp }}/package
+      - name: create-cascade-app, on this tarball
         env:
           STARTER: ${{ steps.starter.outputs.path }}
           TARBALL: ${{ steps.starter.outputs.tarball }}

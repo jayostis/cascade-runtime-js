@@ -185,7 +185,7 @@ function redirectPage(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cascade in your browser has moved</title>
 <link rel="canonical" href="${STARTER_TRY}">
-<meta http-equiv="refresh" content="2; url=${STARTER_TRY}">
+<meta http-equiv="refresh" content="5; url=${STARTER_TRY}">
 <script>
 (async () => {
   const to = new URL(${JSON.stringify(STARTER_TRY)});
@@ -193,13 +193,15 @@ function redirectPage(): string {
   to.hash = location.hash;
   try {
     const here = new URL("./", location.href).href;
-    const registered = await Promise.race([
-      navigator.serviceWorker?.getRegistrations() ?? [],
-      new Promise((done) => setTimeout(() => done([]), 1000)),
+    await Promise.race([
+      (async () => {
+        const registered = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+        await Promise.all(
+          registered.filter(({ scope }) => scope === here).map((r) => r.unregister()),
+        );
+      })(),
+      new Promise((done) => setTimeout(done, 1000)),
     ]);
-    await Promise.all(
-      registered.filter(({ scope }) => scope === here).map((r) => r.unregister()),
-    );
   } catch {}
   location.replace(to.href);
 })();

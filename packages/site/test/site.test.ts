@@ -431,7 +431,10 @@ test("try/'s old page unregisters the worker of its own folder and sends a visit
   const unregistered: string[] = [];
   const registration = (scope: string) => ({
     scope,
-    unregister: async () => unregistered.push(scope),
+    unregister: () => {
+      unregistered.push(scope);
+      return new Promise<never>(() => {});
+    },
   });
   const sent = await new Promise<string>((done) =>
     runInNewContext(script, {

@@ -1,0 +1,88 @@
+name: starter
+description: >
+  The starter kit checked out beside the workspace, taken as the pull request's Depends-On names it (its head while open,
+  its main once merged) or else at its main, and pinned to the runtime tarball in the downloaded `package` artifact.
+  The pin is swapped in the checkout and never pushed.
+inputs:
+  package:
+    description: The folder the `package` artifact was downloaded to.
+    required: true
+outputs:
+  path:
+    description: The starter kit's checkout.
+    value: ${{ steps.starter.outputs.path }}
+  tarball:
+    description: The runtime tarball, as an absolute path.
+    value: ${{ steps.starter.outputs.tarball }}
+
+runs:
+  using: composite
+  steps:
+    # The body is read now, not from the event: a re-run after the body gained its Depends-On line sees the line.
+    - id: starter
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PULL: ${{ github.event.pull_request.number }}
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        set -euo pipefail
+        starter="${GITHUB_WORKSPACE}/cascade-starter-kit"
+        pair=""
+        if [ -n "$PULL" ]; then
+          body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
+          pair=$(printf '%s\n' "$body" | tr -d '\r' \
+            | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?jayostis/cascade-starter-kit(#|/pull/)[0-9]+' \
+            | head -n 1 | grep -Eo '[0-9]+$' || true)
+        fi
+        git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
+        if [ -n "$pair" ]; then
+          state=$(gh api "repos/jayostis/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
+          case "$state" in
+            "open false")
+              git -C "$starter" fetch --quiet origin "pull/${pair}/head"
+              git -C "$starter" checkout --quiet FETCH_HEAD
+              what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On and open"
+              ;;
+            "closed true")
+              what="the main of jayostis/cascade-starter-kit, where jayostis/cascade-starter-kit#${pair}, named on Depends-On, has merged"
+              ;;
+            *)
+              echo "::error title=starter-kit::jayostis/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
+              exit 1
+              ;;
+          esac
+        else
+          what="the main of jayostis/cascade-starter-kit"
+        fi
+        sha=$(git -C "$starter" rev-parse HEAD)
+        echo "::notice title=starter-kit::this tarball is checked against ${what} (${sha})"
+        echo "The starter kit at ${what}: ${sha}" >> "$GITHUB_STEP_SUMMARY"
+        tarball=$(cd "$PACKAGE" && node -p "require('node:path').resolve(process.argv[1]).replaceAll('\\\\', '/')" cascade-runtime-*.tgz)
+        echo "path=${starter}" >> "$GITHUB_OUTPUT"
+        echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
+    # The lock forgets where the old runtime was, with the starter's own scripts/pin-lib.mjs, or npm installs the new one
+    # under app/ and the root resolves none.
+    - name: Pin the starter to this tarball
+      shell: bash
+      working-directory: ${{ steps.starter.outputs.path }}
+      env:
+        TARBALL: ${{ steps.starter.outputs.tarball }}
+      run: |
+        node --input-type=module -e '
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { lockWithoutRuntime } from "./scripts/pin-lib.mjs";
+          const manifest = JSON.parse(readFileSync("app/package.json", "utf8"));
+          manifest.dependencies["cascade-runtime"] = `file:${process.env.TARBALL}`;
+          writeFileSync("app/package.json", JSON.stringify(manifest, null, 2) + "\n");
+          const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+          writeFileSync("package-lock.json", JSON.stringify(lockWithoutRuntime(lock), null, 2) + "\n");
+        '
+        npm install --no-audit --no-fund
+        packed=$(basename "$TARBALL" .tgz)
+        packed=${packed#cascade-runtime-}
+        installed=$(node -p 'require("./node_modules/cascade-runtime/package.json").version')
+        if [ "$packed" != "$installed" ]; then
+          echo "::error title=starter-kit::the starter resolved cascade-runtime ${installed}, not this tarball's ${packed}"
+          exit 1
+        fi
