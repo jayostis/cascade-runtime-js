@@ -291,7 +291,7 @@ function api(given: Host = host()) {
   const checked = {} as Api;
   for (const [name, operation] of Object.entries(built))
     (checked as Record<string, unknown>)[name] =
-      name === "close" || name === "podFor"
+      name === "close"
         ? operation
         : async (input: Input) => {
             const output = await (operation as Operation)(input);
@@ -727,16 +727,30 @@ for (const via of HOSTS) {
   });
 
   test(`${via}: checkTables, when a version was kept, opens the plaintext pods anew and keeps an unlocked one open`, async () => {
-    const built = api(host());
-    const { podFor } = built as unknown as {
-      podFor(name: string): Promise<unknown>;
+    const given = host();
+    const pods = given.pods as unknown as {
+      open(...a: unknown[]): Promise<unknown>;
     };
-    const each = new Map(await both(built)).get(via)!;
+    const opens: unknown[] = [];
+    const counting = {
+      ...pods,
+      open: (...args: unknown[]) => {
+        opens.push(args[0]);
+        return pods.open(...args);
+      },
+    };
+    const each = new Map(await both(api({ ...given, pods: counting }))).get(
+      via,
+    )!;
     await each.unlock({ pod: SEALED, secret: SEALED_WORDS });
-    const before = await podFor(STATIN);
+    await each.pod({ pod: STATIN });
     const { checked } = await each.checkTables({});
     assert.deepEqual(checked, await FAKE.check());
-    assert.notEqual(await podFor(STATIN), before);
+    await each.pod({ pod: STATIN });
+    assert.deepEqual(
+      opens.filter((name) => name === STATIN),
+      [STATIN, STATIN],
+    );
     assert.equal((await each.pod({ pod: SEALED })).locked, undefined);
   });
 
@@ -972,16 +986,6 @@ test("over HTTP, a request the route cannot take gets its status, and a broken r
   });
   const statuses: [string, Promise<Response>, number][] = [
     ["an unknown operation", post(origin, "/api/nothing", json(origin)), 404],
-    [
-      "podFor stays in the process",
-      post(origin, "/api/podFor", json(origin)),
-      404,
-    ],
-    [
-      "closePods stays in the process",
-      post(origin, "/api/closePods", json(origin)),
-      404,
-    ],
     [
       "close stays in the process",
       post(origin, "/api/close", json(origin)),

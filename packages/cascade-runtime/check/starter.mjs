@@ -1808,7 +1808,7 @@ if (release === undefined) {
       );
 
       await behaviour(
-        "the pod API answers its own origin, refuses another, and has no podFor",
+        "the pod API answers its own origin, refuses another, and serves no close",
         async () => {
           const call = (operation, from) =>
             fetch(at(`/api/${operation}`), {
@@ -1820,7 +1820,7 @@ if (release === undefined) {
           assert.equal(own.status, 200);
           assert.ok(Array.isArray((await own.json()).pods));
           assert.equal((await call("pods", "http://evil.example")).status, 403);
-          assert.equal((await call("podFor", origin)).status, 404);
+          assert.equal((await call("close", origin)).status, 404);
         },
       );
 
