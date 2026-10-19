@@ -8,7 +8,7 @@ import {
   type Triple,
 } from "@cascade-runtime/runtime";
 import { INDEX, REC, SHIPS_WITH, TABLE_KIND } from "./constants.js";
-import type { Described } from "./types.js";
+import type { Described, Fact, TablesOptions } from "./types.js";
 
 /** The version each series of the tables ships with, the rule list's among them, sorted. */
 export function shipped(references: References): string[] {
@@ -90,4 +90,29 @@ export class TablesFiles implements Files {
   async list(folder: string): Promise<string[]> {
     return [...(await this.store.list(folder)), INDEX];
   }
+}
+
+/** The held series of the kind: those the order of preference names first, in its order, then the others. */
+export function preferred(
+  references: References,
+  preference: TablesOptions["preference"],
+  kind: string,
+): string[] {
+  const held = references.seriesOfKind(kind);
+  const named = (preference?.[kind] ?? []).filter((series) =>
+    held.includes(series),
+  );
+  return [...named, ...held.filter((series) => !named.includes(series))];
+}
+
+/** The current version of each held series of the kind, or of those of them `among` names, in the order of preference. */
+export function currentOfKind(
+  references: References,
+  preference: TablesOptions["preference"],
+  kind: string,
+  among?: readonly string[],
+): Fact[] {
+  return preferred(references, preference, kind)
+    .filter((series) => among === undefined || among.includes(series))
+    .map((series) => ({ series, version: references.fallback(series) }));
 }

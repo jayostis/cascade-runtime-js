@@ -1,5 +1,6 @@
 import { notation, OWL, type Row, rowsAbout, SKOS, values } from "../rows.js";
 import { DCT, REC } from "./constants.js";
+import { preferred } from "./references-index.js";
 import type { About, TablesContext } from "./types.js";
 
 /** A code's name, as the rows of a names version about it give it. */
@@ -41,7 +42,11 @@ export async function about(
     key: K,
     reading: (origin: string) => Promise<(code: string) => About[K]>,
   ): Promise<void> => {
-    for (const series of context.preferred(references, kind)) {
+    for (const series of preferred(
+      references,
+      context.options.preference,
+      kind,
+    )) {
       const left = codes.filter((code) => found.get(code)?.[key] === undefined);
       if (left.length === 0) return;
       const read = await reading(references.fallback(series));

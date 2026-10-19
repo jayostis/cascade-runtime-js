@@ -1,9 +1,9 @@
 import { notation, OWL, rowsAbout } from "../rows.js";
-import { nameOf, statusOf } from "./about.js";
+import { about, nameOf, statusOf } from "./about.js";
 import { CLASSIFICATIONS, PAGE_SIZE, REC } from "./constants.js";
 import { classes } from "./drug-classes.js";
 import { panels } from "./panels.js";
-import { seriesOfAKind } from "./references-index.js";
+import { currentOfKind, seriesOfAKind } from "./references-index.js";
 import type { Coded, Fact, Facts, TablesContext } from "./types.js";
 import { classificationRow } from "./variants.js";
 
@@ -20,7 +20,7 @@ export async function facts(
     context.terms(),
   ]);
   const held = (kind: string): Fact[] =>
-    context.currentOf(references, kind, among);
+    currentOfKind(references, context.options.preference, kind, among);
   const rowsOf = (kind: string) =>
     Promise.all(
       held(kind).map(async (fact) => ({
@@ -100,7 +100,7 @@ export async function facts(
   });
   // A panel and a class are the code's whatever source's page asks: a medication's classes are MED-RT's, not RxNorm's.
   const anywhere = (kind: string): Fact[] =>
-    context.currentOf(references, kind);
+    currentOfKind(references, context.options.preference, kind);
   const [inPanels, inClasses] = await Promise.all([
     panels(context, code, anywhere(`${REC}PanelMembers`)),
     classes(
@@ -110,7 +110,7 @@ export async function facts(
       anywhere(`${REC}ProductIngredients`),
     ),
   ]);
-  const about = await context.about([
+  const found = await about(context, [
     code,
     ...status.flatMap(({ replacedBy }) => replacedBy),
     ...mappings.flatMap(({ mapsTo, mappedFrom }) => [
@@ -131,7 +131,7 @@ export async function facts(
   const coded = (each: string): Coded => ({
     code: each,
     notation: notation(uriSpaces, each),
-    about: about.get(each),
+    about: found.get(each),
   });
   const codes = ({ total, codes }: { total: number; codes: string[] }) => ({
     total,

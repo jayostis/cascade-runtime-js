@@ -156,9 +156,6 @@ export class Tables {
     this.#context = {
       ...read,
       indexes: this.#indexes,
-      preferred: (references, kind) => this.#preferred(references, kind),
-      currentOf: (references, kind, among) =>
-        this.#currentOf(references, kind, among),
       about: (codes) => this.about(codes),
       labels: (concepts) => this.labels(concepts),
     };
@@ -206,26 +203,6 @@ export class Tables {
 
   #terms(): Promise<TableTerms> {
     return tableTerms(this.#options.vocabulary, this.#options.newStore);
-  }
-
-  /** The held series of the kind: those the order of preference names first, in its order, then the others. */
-  #preferred(references: References, kind: string): string[] {
-    const held = references.seriesOfKind(kind);
-    const named = (this.#options.preference?.[kind] ?? []).filter((series) =>
-      held.includes(series),
-    );
-    return [...named, ...held.filter((series) => !named.includes(series))];
-  }
-
-  /** The current version of each held series of the kind, or of those of them `among` names, in the order of preference. */
-  #currentOf(
-    references: References,
-    kind: string,
-    among?: readonly string[],
-  ): Fact[] {
-    return this.#preferred(references, kind)
-      .filter((series) => among === undefined || among.includes(series))
-      .map((series) => ({ series, version: references.fallback(series) }));
   }
 
   /** The tables a pod is given now. */

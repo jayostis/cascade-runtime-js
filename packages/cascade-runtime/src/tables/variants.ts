@@ -1,6 +1,7 @@
 import { codeIri, Graph, iri, readText } from "@cascade-runtime/runtime";
 import { type Row, rowsAbout, SKOS, values } from "../rows.js";
 import { CLASSIFICATIONS, RDFS, REC } from "./constants.js";
+import { currentOfKind } from "./references-index.js";
 import type {
   ClassificationRow,
   Concept,
@@ -20,7 +21,11 @@ export async function variantClassification(
     context.references(),
     context.terms(),
   ]);
-  const held = context.currentOf(references, CLASSIFICATIONS).map((fact) => ({
+  const held = currentOfKind(
+    references,
+    context.options.preference,
+    CLASSIFICATIONS,
+  ).map((fact) => ({
     ...fact,
     genes: references.index
       .objects(iri(fact.version), `${REC}coversGene`)

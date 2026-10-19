@@ -59,7 +59,6 @@ export interface FeedContext extends Pick<
   kindsRead(): Promise<ReadonlySet<string>>;
   /** The store's own index, without the rule list's. */
   index(): Promise<Graph>;
-  /** Drops what was read of the store's index, once it is written. */
   forgetIndex(): void;
 }
 

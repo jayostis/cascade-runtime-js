@@ -288,12 +288,6 @@ export interface TablesContext {
   readonly files: Files;
   references(): Promise<References>;
   terms(): Promise<TableTerms>;
-  preferred(references: References, kind: string): string[];
-  currentOf(
-    references: References,
-    kind: string,
-    among?: readonly string[],
-  ): Fact[];
   readonly indexes: VersionIndexes;
   about(codes: readonly string[]): Promise<Map<string, About>>;
   labels(concepts: readonly string[]): Promise<Map<string, string>>;

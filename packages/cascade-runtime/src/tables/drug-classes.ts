@@ -1,6 +1,6 @@
 import { OWL, rowsAbout, values } from "../rows.js";
 import { REC } from "./constants.js";
-import { described } from "./references-index.js";
+import { currentOfKind, described } from "./references-index.js";
 import type { Described, Fact, TablesContext } from "./types.js";
 
 /** The relations of a drug class row, in the order a code's page lists them. */
@@ -30,8 +30,12 @@ export async function classedElsewhere(
 ): Promise<Map<string, string[]>> {
   const references = await context.references();
   const [held, ingredients] = [
-    context.currentOf(references, `${REC}DrugClasses`),
-    context.currentOf(references, `${REC}ProductIngredients`),
+    currentOfKind(references, context.options.preference, `${REC}DrugClasses`),
+    currentOfKind(
+      references,
+      context.options.preference,
+      `${REC}ProductIngredients`,
+    ),
   ];
   const found = new Map<string, string[]>();
   for (const code of codes) {
@@ -217,7 +221,9 @@ export async function reached(
   const references = await context.references();
   const terms = await context.terms();
   const current = (kind: string): string[] =>
-    context.currentOf(references, kind).map(({ version }) => version);
+    currentOfKind(references, context.options.preference, kind).map(
+      ({ version }) => version,
+    );
   const ingredients = current(`${REC}ProductIngredients`);
   const on = await classedOn(context, codes, ingredients);
   const read = async (version: string, among: ReadonlySet<string>) => {

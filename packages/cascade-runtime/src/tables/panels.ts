@@ -1,7 +1,8 @@
 import type { Triple } from "@cascade-runtime/runtime";
 import { notation, OWL, rowsAbout, values } from "../rows.js";
 import { PAGE_SIZE, REC } from "./constants.js";
-import { described } from "./references-index.js";
+import { about } from "./about.js";
+import { described, currentOfKind } from "./references-index.js";
 import type { Described, Fact, Placed, TablesContext } from "./types.js";
 
 const NOTATIONS = new Intl.Collator("en", { numeric: true });
@@ -85,11 +86,16 @@ export async function inPanels(
   code: string,
 ): Promise<(Fact & { total: number; panels: readonly Placed[] })[]> {
   const references = await context.references();
-  const held = context.currentOf(references, `${REC}PanelMembers`);
+  const held = currentOfKind(
+    references,
+    context.options.preference,
+    `${REC}PanelMembers`,
+  );
   const found = (await panels(context, code, held)).filter(
     ({ heldBy }) => heldBy.total > 0,
   );
-  const about = await context.about(
+  const names = await about(
+    context,
     found.flatMap(({ heldBy }) => heldBy.panels.map((each) => each.code)),
   );
   return found.map(({ series, version, heldBy }) => ({
@@ -98,8 +104,8 @@ export async function inPanels(
     total: heldBy.total,
     panels: heldBy.panels.map(({ code: panel, ...place }) => ({
       code: panel,
-      notation: about.get(panel)!.notation,
-      about: about.get(panel),
+      notation: names.get(panel)!.notation,
+      about: names.get(panel),
       ...place,
     })),
   }));
@@ -111,9 +117,11 @@ export async function panelRows(
 ): Promise<Described[]> {
   const references = await context.references();
   const terms = await context.terms();
-  const versions = context
-    .currentOf(references, `${REC}PanelMembers`)
-    .map(({ version }) => version);
+  const versions = currentOfKind(
+    references,
+    context.options.preference,
+    `${REC}PanelMembers`,
+  ).map(({ version }) => version);
   return Promise.all(
     versions.map(async (version) => {
       await context.indexes.codesIn(version);

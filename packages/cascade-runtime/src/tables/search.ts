@@ -1,7 +1,7 @@
 import { iri } from "@cascade-runtime/runtime";
 import { type Listed, notation } from "../rows.js";
 import { PAGE_SIZE, REC, SHIPS_WITH } from "./constants.js";
-import { ofAKind } from "./references-index.js";
+import { currentOfKind, ofAKind } from "./references-index.js";
 import type { Searched, TablesContext } from "./types.js";
 
 export async function search(
@@ -90,10 +90,10 @@ async function versionsOf(
 async function namesListed(context: TablesContext): Promise<Listed["names"][]> {
   const references = await context.references();
   return Promise.all(
-    context
-      .currentOf(references, `${REC}CodeNames`)
-      .map(
-        async ({ version }) => (await context.indexes.listed(version)).names,
-      ),
+    currentOfKind(
+      references,
+      context.options.preference,
+      `${REC}CodeNames`,
+    ).map(async ({ version }) => (await context.indexes.listed(version)).names),
   );
 }
