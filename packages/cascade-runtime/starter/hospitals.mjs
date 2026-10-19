@@ -1,185 +1,84 @@
-// Bringing a record in from a hospital: the directory, the sign-in on the hospital's own page, the redirect back to
-// this app, and the pull. The demo hospitals are pretend, answered by the sandbox's listener on a loopback port.
+// The Node app's part of a sign-in at a hospital: the person goes to the hospital's own page, and the hospital sends
+// them back to this app's `/callback`. And the world's date, which the demo hospitals answer as of.
 import { clearTimeout, setTimeout } from "node:timers";
-import { URL } from "node:url";
-import { brandsBundle, demoRemapFetch } from "@the-cascade-protocol/sandbox";
-import {
-  connect,
-  ConnectionFailure,
-  DEMO_PLAN,
-  directoryOf,
-  pull,
-  searchDirectory,
-  TEST_DIRECTORY,
-} from "cascade-runtime";
+import { ConnectionFailure } from "cascade-runtime";
 
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** A hospital's short name: a demo hospital's host, as `cascade-north`, or else its vendor. */
-function idOf(row) {
-  return row.vendor === "demo"
-    ? new URL(row.fhirBase).hostname.split(".")[0]
-    : row.vendor;
-}
-
 /**
- * The hospitals as this app, at `origin`, reaches them, `demo` being the demo hospitals as `loadHospitals` gives them
- * and `listener` the running `serveDemo` listener that serves them. Each request goes to the listener through
- * `demoRemapFetch`, and the sign-in pages are the listener's. This app receives each hospital's redirect on its own
- * `/callback`. The hospitals answer as of `asOf`, an instant, or with every version they hold when it is undefined;
- * `worldDate()` gives it and `setWorldDate(asOf)` moves it, the next sign-in and the next request of a bring-in under
- * way answering as of the new date.
+ * The sign-ins waiting for `/callback`. `signIn(row, { pod, connection }, report)` is the `SignIn` of one: it hands
+ * the authorize URL to `report`, and waits for the redirect that `back(url)` hands it. A demo hospital's page is told
+ * the pod's name as `login_hint`, so it can preselect the patient the pod is for.
  */
-export function hospitalsAt(origin, demo, { asOf, listener }) {
-  const route = demoRemapFetch(listener.origin);
-  let world = asOf;
-  /** The hospitals `demo` holds, the app's own among them, then the test directory's rows. */
-  const directory = [
-    ...directoryOf(
-      brandsBundle(
-        demo.map(({ hospital }) => hospital),
-        new Date().toISOString(),
-      ),
-      "demo",
-    ),
-    ...TEST_DIRECTORY,
-  ];
-  const registration = {
-    clientId: "cascade-app",
-    redirectUri: `${origin}/callback`,
-    scopes: ["launch/patient", "patient/*.read", "patient/*.rs"],
-  };
+export function signIns() {
   /** Each sign-in waiting for its redirect, by the `state` it sent. */
   const waiting = new Map();
-  const connections = new Map();
-  let count = 0;
-
-  /**
-   * Sends the person to the hospital's page with `sendTo`, and waits for `/callback` to bring them back. A demo
-   * hospital's page is told the pod's name as `login_hint`, `hint`, so it can preselect the patient the pod is for.
-   */
-  function signIn(sendTo, page, hint) {
-    return (authorize, signal) =>
-      new Promise((resolve, reject) => {
-        if (hint !== undefined) authorize.searchParams.set("login_hint", hint);
-        const state = authorize.searchParams.get("state");
-        const finish = (then) => {
-          clearTimeout(timer);
-          waiting.delete(state);
-          then();
-        };
-        const timer = setTimeout(
-          () =>
-            finish(() =>
-              reject(
-                new ConnectionFailure(
-                  "cancelled",
-                  "the sign-in was not finished in time",
-                ),
-              ),
-            ),
-          SIGN_IN_TIMEOUT_MS,
-        );
-        signal?.addEventListener(
-          "abort",
-          () =>
-            finish(() =>
-              reject(
-                new ConnectionFailure(
-                  "cancelled",
-                  "the connection was cancelled",
-                ),
-              ),
-            ),
-          { once: true },
-        );
-        waiting.set(state, {
-          page,
-          back: (url) => finish(() => resolve(url)),
-        });
-        sendTo(authorize);
-      });
-  }
-
   return {
-    directory: (text) => searchDirectory(directory, text),
+    signIn:
+      (row, { pod, connection }, report) =>
+      (authorize, signal) =>
+        new Promise((resolve, reject) => {
+          if (row.vendor === "demo")
+            authorize.searchParams.set("login_hint", pod);
+          const state = authorize.searchParams.get("state");
+          const finish = (then) => {
+            clearTimeout(timer);
+            waiting.delete(state);
+            then();
+          };
+          const timer = setTimeout(
+            () =>
+              finish(() =>
+                reject(
+                  new ConnectionFailure(
+                    "cancelled",
+                    "the sign-in was not finished in time",
+                  ),
+                ),
+              ),
+            SIGN_IN_TIMEOUT_MS,
+          );
+          signal?.addEventListener(
+            "abort",
+            () =>
+              finish(() =>
+                reject(
+                  new ConnectionFailure(
+                    "cancelled",
+                    "the connection was cancelled",
+                  ),
+                ),
+              ),
+            { once: true },
+          );
+          waiting.set(state, {
+            at: { pod, connection },
+            back: (url) => finish(() => resolve(url)),
+          });
+          report(authorize.href);
+        }),
 
-    /** The date the hospitals answer as of, an instant, or undefined when they answer with every version. */
-    worldDate: () => world,
-
-    /** Moves the world's date to `when`, an instant, or with undefined back to every version. */
-    setWorldDate(when) {
-      world = when;
-      listener.setWorldDate(when);
-    },
-
-    /**
-     * Starts signing the pod's person in to the hospital whose FHIR base is given, and its pull after. Resolves where
-     * to send the person: the hospital's page, or the pod's with the connection's box open when it failed before that;
-     * undefined for a hospital not in the directory.
-     */
-    async start(pod, fhirBase) {
-      const row = directory.find((each) => each.fhirBase === fhirBase);
-      if (row === undefined) return undefined;
-      const n = ++count;
-      const page = `/pods/${encodeURIComponent(pod)}/?connection=${n}#connection`;
-      let sendTo;
-      const authorize = new Promise((resolve) => (sendTo = resolve));
-      const connection = {
-        pod,
-        row,
-        n,
-        name: `${idOf(row)}-${n}`,
-        step: "signing in",
-        asOf: row.vendor === "demo" ? world : undefined,
-        requests: 0,
-        pulled: undefined,
-        imported: undefined,
-      };
-      const connected = connect(row, registration, {
-        signIn: signIn(sendTo, page, row.vendor === "demo" ? pod : undefined),
-        fetch: async (url, init) => {
-          const answer = await route(url, init);
-          connection.requests += 1;
-          return answer;
-        },
-      });
-      connection.pulled = connected.then((signedIn) => {
-        connection.step = "pulling";
-        return pull(signedIn, DEMO_PLAN);
-      });
-      connection.pulled.then(
-        () => (connection.step = "pulled"),
-        () => (connection.step = "failed"),
-      );
-      connections.set(n, connection);
-      return Promise.race([
-        authorize.then((url) => url.href),
-        connected.then(
-          () => page,
-          () => page,
-        ),
-      ]);
-    },
-
-    /** Hands the redirect to the sign-in waiting for its `state`; gives that connection's page, or undefined. */
+    /** Hands the redirect to the sign-in waiting for its `state`; gives its `{ pod, connection }`, or undefined. */
     back(url) {
       const sign = waiting.get(url.searchParams.get("state"));
       if (sign === undefined) return undefined;
       sign.back(url);
-      return sign.page;
+      return sign.at;
     },
+  };
+}
 
-    /**
-     * The pod's connection numbered `n`: its row, the name its pull is saved under, its step (`signing in`, `pulling`,
-     * `pulled` or `failed`), how many requests its hospital has answered, the pull, and its import; `asOf` is the world's date a demo hospital's pull was started under, and none for any other hospital, which answers with all it has.
-     */
-    connection(pod, n) {
-      const found = connections.get(Number(n));
-      return found?.pod === pod ? found : undefined;
+/**
+ * The world's date the demo hospitals of `listener` answer as of, starting at `asOf`: an instant, or undefined for
+ * every version they hold.
+ */
+export function worldOf(listener, asOf) {
+  let world = asOf;
+  return {
+    get: () => world,
+    set(when) {
+      world = when;
+      listener.setWorldDate(when);
     },
-
-    /** Forgets every connection, as when the pods they were for are gone. */
-    forget: () => connections.clear(),
   };
 }

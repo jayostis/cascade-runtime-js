@@ -13,17 +13,11 @@ import {
   loadHospitals,
   serveDemo,
 } from "@the-cascade-protocol/sandbox/node";
-import {
-  ConnectionFailure,
-  pullFiles,
-  Refusal,
-  Unopened,
-} from "cascade-runtime";
+import { Refusal, Unopened } from "cascade-runtime";
 import { render } from "preact-render-to-string";
 import { chatRoute, chatTools, entryPath } from "./chat.mjs";
-import { hospitalsAt } from "./hospitals.mjs";
 import { modelFrom } from "./model-client.mjs";
-import { nodeHost } from "./node-host.mjs";
+import { nodeHospitals, nodeHost } from "./node-host.mjs";
 import { maps, podApi } from "./pod-api.mjs";
 import { apiRoute } from "./pod-api-http.mjs";
 import { KITS, podPath, PODS, trendPath } from "./pods.mjs";
@@ -46,8 +40,6 @@ import {
   openPodPage,
   pageNumber,
   panelPage,
-  patientNames,
-  patientName,
   personName,
   podPage,
   postButton,
@@ -62,7 +54,6 @@ import {
   trendTitle,
   variantsSaid,
   worldDatePage,
-  utcInstant,
   worldInstant,
 } from "./summary.mjs";
 import { changeAnswers, podTools, worthLines } from "./pod-tools.mjs";
@@ -283,14 +274,12 @@ async function checkNow(response) {
 
 /** File, Delete all data: every pod removed, the reference tables kept, then the home page says how many. */
 async function deleteEverything(response) {
-  hospitals?.forget();
   const { deleted } = await api.deleteAll({});
   redirect(response, `/?deleted=${deleted.length}`);
 }
 
 /** File, Reset all data: the kits' pods loaded again, then the first pod's page says which are back. */
 async function resetEverything(response) {
-  hospitals?.forget();
   await api.resetAll({});
   redirect(response, `${podPath(KITS[0])}?reset`);
 }
@@ -324,9 +313,7 @@ async function home(response, query) {
 async function suggested(name, known = {}) {
   if (model === undefined) return [];
   const given =
-    known.answers === undefined
-      ? await api.answers({ pod: name, last: true })
-      : known;
+    known.answers === undefined ? await api.answers({ pod: name }) : known;
   const { about, said } =
     "said" in known ? known : maps(await api.said({ pod: name }));
   return suggestedQuestions(given.answers, {
@@ -343,31 +330,12 @@ async function suggested(name, known = {}) {
  * box's address goes to the note.
  */
 async function showPod(response, name, query, titles) {
-  const found = query.has("connection")
-    ? hospitals.connection(name, query.get("connection"))
-    : undefined;
-  if (found?.imported !== undefined && found.bringing === undefined) {
-    const done = await found.imported.catch(() => undefined);
-    if (done !== undefined && done.refused === undefined)
-      return redirect(response, `${podPath(name)}?from=${found.n}`);
-  }
-  // As it is now, so that the box and whether the page refreshes agree on its step.
-  const shown =
-    found === undefined
-      ? undefined
-      : {
-          ...found,
-          ...(found.bringing !== undefined && { step: "bringing in" }),
-        };
-  // A pod answers once its import is done, so while one runs the page behind the box is the one last shown.
-  const { answers, changes, unheld } = await api.answers({
-    pod: name,
-    last: shown?.step === "bringing in",
-  });
+  const shown = await connectionAt(name, query.get("connection"));
+  if (shown?.broughtIn)
+    return redirect(response, `${podPath(name)}?from=${shown.n}`);
+  const { answers, changes, unheld } = await api.answers({ pod: name });
   const { about, said, held } = maps(await api.said({ pod: name }));
-  const from = query.get("from");
-  const noted = from === null ? undefined : hospitals.connection(name, from);
-  const broughtIn = await noted?.imported?.catch(() => undefined);
+  const noted = await connectionAt(name, query.get("from"));
   const box =
     shown === undefined
       ? undefined
@@ -380,16 +348,20 @@ async function showPod(response, name, query, titles) {
           connection: shown,
           bring: `${podPath(name)}connections/${shown.n}`,
           pulledAsOf: shown.asOf,
-          ...(await connectionView(name, shown)),
+          failed: shown.failed,
+          failure: shown.failure,
+          retry: shown.retry,
+          sources: shown.sources,
+          pulled: shown.pulled,
+          about: shown.patient,
+          aboutNames: shown.patientNames,
+          signInAgain: (label) => signIn(name, shown.row.fhirBase, label),
         });
   const body = podPage(answers, {
     titles,
     pod: name,
     person: people.find((each) => slug(each.name) === name),
-    from:
-      broughtIn === undefined || broughtIn.refused !== undefined
-        ? undefined
-        : noted.row.name,
+    from: noted?.broughtIn ? noted.row.name : undefined,
     signIn: (hospital) =>
       signIn(
         name,
@@ -422,6 +394,17 @@ async function showPod(response, name, query, titles) {
       suggestions: await suggested(name, { answers, about, changes, said }),
     }),
   );
+}
+
+/** The pod's connection whose number `n` is, as `connection` gives it; none for no number, or one it has not. */
+async function connectionAt(name, n) {
+  if (n === null || !/^\d+$/.test(n)) return undefined;
+  try {
+    return await api.connection({ pod: name, connection: Number(n) });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return undefined;
+  }
 }
 
 /**
@@ -732,7 +715,7 @@ async function findHospital(response, name, text, titles) {
   const body = hospitalsPage({
     titles,
     pod: name,
-    rows: hospitals.directory(text),
+    rows: (await api.hospitals({ q: text })).rows,
     text,
     search: `${podPath(name)}hospitals`,
     signIn: (row) => signIn(name, row.fhirBase, "Sign in"),
@@ -747,96 +730,8 @@ async function findHospital(response, name, text, titles) {
   );
 }
 
-/** The files a connection's pull is saved as, or why there are none: the sign-in or the pull failed, or was refused. */
-async function filesOf(connection) {
-  let pulled;
-  try {
-    pulled = await connection.pulled;
-  } catch (error) {
-    if (!(error instanceof ConnectionFailure)) throw error;
-    return { failed: `${error.message}.`, failure: error.kind };
-  }
-  try {
-    return {
-      pulled,
-      files: pullFiles(
-        { ...pulled, asOf: utcInstant(connection.asOf) },
-        connection.name,
-      ),
-    };
-  } catch (error) {
-    return { failed: `Refused: ${error.message}` };
-  }
-}
-
-/**
- * What a connection's box shows besides its steps: nothing while it signs in and fetches; then why it failed, or what
- * the hospital has, for the button that brings it in.
- */
-async function connectionView(name, connection) {
-  if (["signing in", "pulling", "bringing in"].includes(connection.step))
-    return {};
-  const { failed, failure, pulled, files } = await filesOf(connection);
-  if (failed !== undefined)
-    return {
-      failed,
-      failure,
-      signInAgain: (label) => signIn(name, connection.row.fhirBase, label),
-    };
-  let done;
-  try {
-    done = await connection.imported;
-  } catch (error) {
-    return { failed: notBroughtIn(error), retry: true };
-  }
-  if (connection.failed !== undefined)
-    return { failed: connection.failed, retry: true };
-  if (done?.refused !== undefined)
-    return { failed: `Refused: ${done.refused}` };
-  return {
-    sources: await (await api.podFor(name)).look(files),
-    pulled,
-    about: patientName(pulled.bundle),
-    aboutNames: patientNames(pulled.bundle),
-  };
-}
-
-const notBroughtIn = (error) => `Not brought in: ${error.message}`;
-
-/**
- * Starts bringing a connection's record into the pod, unless it is under way or done, and goes at once to its box,
- * which says each part of the import and, once the record is in, goes to the pod's page noting it.
- */
-function bring(response, name, connection) {
-  if (connection.step === "pulled" && connection.imported === undefined) {
-    connection.failed = undefined;
-    connection.bringing = { part: "loading the adapter" };
-    connection.imported = imported(name, connection).finally(() => {
-      connection.bringing = undefined;
-    });
-    connection.imported.catch((error) => {
-      connection.imported = undefined;
-      connection.failed = notBroughtIn(error);
-    });
-  }
-  redirect(response, boxOf(name, connection));
-}
-
 /** The pod's page with the connection's box open. */
-const boxOf = (name, connection) =>
-  `${podPath(name)}?connection=${connection.n}#connection`;
-
-/** The import of a connection's pull into the pod, its parts in `connection.bringing`; it throws when there are no files. */
-async function imported(name, connection) {
-  const { failed, files } = await filesOf(connection);
-  if (files === undefined) throw new Error(failed);
-  return (await api.podFor(name)).import(files, {
-    aboutSubject: true,
-    onProgress: (part) => {
-      connection.bringing = part;
-    },
-  });
-}
+const boxOf = (name, n) => `${podPath(name)}?connection=${n}#connection`;
 
 /** Where the world's date is shown and changed. */
 const WORLD_DATE_AT = "/world-date";
@@ -844,7 +739,7 @@ const WORLD_DATE_AT = "/world-date";
 /** The world's date as a page that comes from `back`, a path on this app, shows it, and its link to change it. */
 function worldDateAt(back) {
   return {
-    asOf: hospitals.worldDate(),
+    asOf: host.world.get(),
     href: `${WORLD_DATE_AT}?back=${encodeURIComponent(back)}`,
   };
 }
@@ -872,7 +767,7 @@ async function worldDateRoute(request, response, url) {
     page(
       "The world's date",
       worldDatePage({
-        asOf: hospitals.worldDate(),
+        asOf: host.world.get(),
         action,
         problem,
         back,
@@ -982,7 +877,8 @@ let origin;
 let ownOrigins;
 /** The `Host` a request to this server names: a page of another name that rebinds to this address names its own. */
 let ownHosts;
-let hospitals;
+/** Where `/callback` hands a hospital's redirect: the sign-in waiting for it, as `{ pod, connection }`. */
+let back;
 
 const server = createServer(async (request, response) => {
   try {
@@ -1034,8 +930,9 @@ const server = createServer(async (request, response) => {
         url.searchParams,
       );
     if (!post && pathname === "/callback") {
-      const back = hospitals.back(url);
-      if (back !== undefined) return redirect(response, back);
+      const at = back(url);
+      if (at !== undefined)
+        return redirect(response, boxOf(at.pod, at.connection));
       return send(
         response,
         400,
@@ -1088,29 +985,47 @@ const server = createServer(async (request, response) => {
           titles,
         );
       if (isHospitals !== undefined) {
-        const to = await hospitals.start(
-          name,
-          (await formOf(request)).get("fhirBase"),
-        );
-        if (to !== undefined) return redirect(response, to);
-        return send(
+        let begun;
+        try {
+          begun = await api.connect({
+            pod: name,
+            fhirBase: (await formOf(request)).get("fhirBase") ?? "",
+          });
+        } catch (error) {
+          if (!(error instanceof Refusal)) throw error;
+          return send(
+            response,
+            400,
+            await page("Unknown", html`<h1>${error.message}</h1>`, {
+              titles,
+            }),
+          );
+        }
+        return redirect(
           response,
-          400,
-          await page(
-            "Unknown",
-            html`<h1>That hospital is not in the directory</h1>`,
-            { titles },
-          ),
+          begun.authorize ?? boxOf(name, begun.connection),
         );
       }
-      const connection =
-        n === undefined ? undefined : hospitals.connection(name, n);
-      if (post && connection !== undefined)
-        return bring(response, name, connection);
+      const connection = await connectionAt(name, n ?? null);
+      if (post && connection !== undefined) {
+        try {
+          await api.bring({ pod: name, connection: connection.n });
+        } catch (error) {
+          if (!(error instanceof Refusal)) throw error;
+          return send(
+            response,
+            400,
+            await page("Not brought in", html`<h1>${error.message}</h1>`, {
+              titles,
+            }),
+          );
+        }
+        return redirect(response, boxOf(name, connection.n));
+      }
       if (!post && n !== undefined)
         return redirect(
           response,
-          connection === undefined ? podPath(name) : boxOf(name, connection),
+          connection === undefined ? podPath(name) : boxOf(name, connection.n),
         );
       if (!post && n === undefined)
         return await showPod(response, name, url.searchParams, titles);
@@ -1139,11 +1054,13 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   origin = `http://127.0.0.1:${port}`;
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
   ownHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
-  host.world = {
-    get: () => hospitals.worldDate(),
-    set: (asOf) => hospitals.setWorldDate(asOf),
-  };
+  const reached = nodeHospitals(origin, demo, {
+    asOf: startedAsOf,
+    listener,
+  });
+  host.hospitals = reached.hospitals;
+  host.world = reached.world;
+  back = reached.back;
   stdout.write(`${origin}/\n`);
   stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
 });
@@ -1151,7 +1068,6 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
 async function stop() {
   await listener.close();
   server.close();
-  hospitals?.forget();
   await api.close();
   exit(0);
 }

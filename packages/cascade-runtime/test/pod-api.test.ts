@@ -673,7 +673,7 @@ for (const via of HOSTS) {
     const { rows } = await shared.hospitals({ q: "north" });
     assert.deepEqual(
       rows.map(({ name }: Output) => name),
-      ["Cascade North"],
+      [rowOf(north).name],
     );
   });
 
@@ -712,7 +712,7 @@ for (const via of HOSTS) {
       ),
       JSON.stringify(shown.sources),
     );
-    assert.equal(shown.patient, "Statin Story"); // replaced below once known
+    assert.equal(shown.patient, "Ines Calloway");
     const keys = (value: unknown): string[] =>
       value !== null && typeof value === "object"
         ? Object.entries(value).flatMap(([key, each]) => [key, ...keys(each)])
