@@ -780,7 +780,11 @@ export function podApi(host) {
         pulled = await connection.pulled;
       } catch (error) {
         if (!(error instanceof ConnectionFailure)) throw error;
-        return { failed: `${error.message}.`, failure: error.kind };
+        const said = error.message;
+        return {
+          failed: said.endsWith(".") ? said : `${said}.`,
+          failure: error.kind,
+        };
       }
       try {
         return {
@@ -808,6 +812,7 @@ export function podApi(host) {
       n,
       row: connection.row,
       step: stepOf(connection),
+      settled: settled(connection),
       requests: connection.requests,
       ...(connection.asOf !== undefined && { asOf: connection.asOf }),
       ...(connection.bringing !== undefined && {

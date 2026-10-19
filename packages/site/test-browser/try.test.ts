@@ -580,7 +580,7 @@ test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens
   );
 });
 
-test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, fetches what Node fetches, and joins what they agree on, a box's filter kept as each record comes in", async () => {
+test("a demo person's new pod signs in at both hospitals in a popup through try/'s own service worker, asking for patient/*.rs as Node does, fetches what Node fetches, and joins what they agree on, a box's filter kept as each record comes in", async () => {
   const { person, patients, has } = joined;
   const page = watched(await profile.newPage());
   const said: string[] = [];
@@ -602,6 +602,11 @@ test("a demo person's new pod signs in at both hospitals in a popup through try/
       if (code) secrets.add(code);
     });
     await popup.waitForSelector('button[value="allow"]');
+    const scope = new URL(popup.url()).searchParams.get("scope") ?? "";
+    assert.ok(
+      scope.split(" ").includes("patient/*.rs"),
+      `the sign-in asks for ${scope}`,
+    );
     return popup;
   };
   /** Waits for the connection's box over the pod's page, open, with the pod's page behind it. */
@@ -2130,7 +2135,7 @@ test("in try/, Ines Calloway's new pod signed in at North says what changed afte
   }
 });
 
-test("in try/, the world's date set before a sign-in shows on the hospital's sign-in page and in the box as the date the pull was made under, survives the worker being stopped, and Today takes it away", async () => {
+test("in try/, the world's date set before a sign-in shows on the hospital's sign-in page and in the box as the date the pull was made under, survives the worker being stopped, and Today takes it away; a typed date that is no date and a pod named Con are each Not done, saying why", async () => {
   const demo = await loadHospitals();
   const ines = view
     .demoPeople(demo)
@@ -2222,6 +2227,64 @@ test("in try/, the world's date set before a sign-in shows on the hospital's sig
     await setDate(undefined);
     await worldSays("Hospitals answer with everything they hold.");
     assert.equal(await signInPage(false), undefined);
+
+    /** Waits for try/ to say "Not done" and why, as a page it drew ready, not as something gone wrong. */
+    const notDone = async (why: RegExp) => {
+      await settled(page);
+      assert.equal(await page.textContent("main h1"), "Not done");
+      assert.match((await page.textContent("main")) ?? "", why);
+    };
+    await settled(page);
+    await box.locator("a.close").click();
+    await world.locator("details").evaluate((details: HTMLDetailsElement) => {
+      details.open = true;
+    });
+    await world
+      .locator('input[type="date"]')
+      .evaluate((input: HTMLInputElement) => {
+        input.type = "text";
+        input.value = "soon";
+      });
+    await world.getByRole("button", { name: "Set", exact: true }).click();
+    await notDone(/"soon" is not a date/);
+    await page.click('a[href="#new-pod"]');
+    await page.fill(
+      '#new-pod input[name="person"]:not([type="hidden"])',
+      "Con",
+    );
+    await page.click('#new-pod button:has-text("Make the pod")');
+    await notDone(/Windows keeps for itself/);
+  } finally {
+    await context.close();
+  }
+});
+
+test("in try/, where the demo hospitals' service worker cannot run, a sign-in at North draws the worker's own sentence in the box, neither blaming the hospital nor offering Sign in again", async () => {
+  const demo = await loadHospitals();
+  const ines = view
+    .demoPeople(demo)
+    .find(({ name }) => name === "Ines Calloway");
+  assert.ok(ines, "no demo person is Ines Calloway");
+  const [north] = ines.at;
+  assert.ok(north && ines.at.length === 1, "Ines is not at North alone");
+
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, view.familyFirst(ines));
+    await page.click(
+      `button:has-text("Sign in at ${view.hospitalName(north.name)}")`,
+    );
+    const box = page.locator("#connection");
+    await box.waitFor();
+    await settled(page);
+    const said = (await box.textContent()) ?? "";
+    assert.ok(said.trim().length > 0, "the box says nothing");
+    assert.ok(!said.includes("refused the sign-in"), said);
+    assert.ok(!said.includes("Sign in again"), said);
+    assert.equal(await box.locator("button").count(), 0, said);
   } finally {
     await context.close();
   }

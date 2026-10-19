@@ -788,12 +788,10 @@ test("connect signs in with every scope and pulls, bring brings the record in on
     "patient/*.rs",
   ]);
   const connection = { pod: "ada", connection: n };
-  const busy = (step: string) =>
-    ["signing in", "pulling", "bringing in"].includes(step);
   const state = ({ step, requests, bringing }: Output) =>
     JSON.stringify([step, requests, bringing]);
   let shown = await local.connection(connection);
-  while (busy(shown.step)) {
+  while (!shown.settled) {
     const next = await local.connection({ ...connection, wait: "change" });
     assert.notEqual(state(next), state(shown));
     shown = next;
