@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -51,6 +51,11 @@ async function story(
   const folder = APP ?? (await mkdtemp(join(tmpdir(), "developer-story-")));
   if (APP === undefined && tables !== undefined)
     await cp(tables, join(folder, ".tables"), { recursive: true });
+  if (APP === undefined)
+    await writeFile(
+      join(folder, "cascade-runtime.json"),
+      JSON.stringify({ tables: { checkOnOpen: false } }),
+    );
   const permissions =
     APP === undefined
       ? []

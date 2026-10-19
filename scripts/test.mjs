@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const packages = readdirSync("packages", { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -35,7 +36,15 @@ if (missing.length > 0) {
 
 const run = spawnSync(
   process.execPath,
-  ["--test", ...process.argv.slice(2), ...compiled],
+  [
+    "--import",
+    pathToFileURL(
+      join("packages", "cascade-runtime", "dist", "test", "offline.js"),
+    ).href,
+    "--test",
+    ...process.argv.slice(2),
+    ...compiled,
+  ],
   { stdio: "inherit" },
 );
 if (run.error) throw run.error;

@@ -226,6 +226,10 @@ before(async () => {
   await mkdir(dirname(module), { recursive: true });
   await writeFile(module, examples(guide.blocks));
   folder = await mkdtemp(join(tmpdir(), "cascade-guide-"));
+  await writeFile(
+    join(folder, "cascade-runtime.json"),
+    JSON.stringify({ tables: { checkOnOpen: false } }),
+  );
   ran = await promisify(execFile)(process.execPath, [module], {
     cwd: folder,
     timeout: 300_000,

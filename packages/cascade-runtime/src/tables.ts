@@ -1935,10 +1935,7 @@ export class Tables {
     return bytes === undefined ? NOTHING_HELD : heldOf(bytes);
   }
 
-  /**
-   * Writes what is held as `change` makes it of what is held now, one change at a time and apart from `#queue`, so a
-   * pod's open is recorded while a check waits on the network, and neither loses the other's change.
-   */
+  /** Writes what is held as `change` makes it of what is held now, one change at a time and apart from `#queue`. */
   #change(change: (held: Held) => Held): Promise<void> {
     const run = async (): Promise<void> => {
       const held = change(await this.#held());
