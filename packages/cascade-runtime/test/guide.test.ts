@@ -33,6 +33,7 @@ import {
   openPod,
   type Pod,
   type Row,
+  tablesBeside,
 } from "cascade-runtime";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -241,7 +242,17 @@ before(async () => {
 
 after(async () => {
   await opened?.close();
-  if (folder !== undefined) await rm(folder, { recursive: true, force: true });
+  if (folder === undefined) return;
+  if (opened !== undefined) {
+    // The copy and the check on open go on writing the tables after a pod opens: the folder is removed once they end,
+    // the check waited for by one queued behind it that reads nothing.
+    const tables = await tablesBeside(join(folder, "pods"));
+    await Promise.all([
+      tables.start(),
+      tables.check({ signal: AbortSignal.abort() }),
+    ]);
+  }
+  await rm(folder, { recursive: true, force: true });
 });
 
 test("every example in the guide runs, in order", () => {
