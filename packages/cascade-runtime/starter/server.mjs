@@ -13,30 +13,14 @@ import {
   loadHospitals,
   serveDemo,
 } from "@the-cascade-protocol/sandbox/node";
-import {
-  ConnectionFailure,
-  pullFiles,
-  Refusal,
-  sixWords,
-  typedWords,
-  Unopened,
-} from "cascade-runtime";
+import { Refusal, Unopened } from "cascade-runtime";
 import { render } from "preact-render-to-string";
 import { chatRoute, chatTools, entryPath } from "./chat.mjs";
-import { hospitalsAt } from "./hospitals.mjs";
 import { modelFrom } from "./model-client.mjs";
-import { nodeHost } from "./node-host.mjs";
+import { nodeHospitals, nodeHost } from "./node-host.mjs";
 import { maps, podApi } from "./pod-api.mjs";
 import { apiRoute } from "./pod-api-http.mjs";
-import {
-  deleteAll,
-  KITS,
-  podPath,
-  POD_NAME,
-  PODS,
-  resetAll,
-  trendPath,
-} from "./pods.mjs";
+import { KITS, podPath, PODS, trendPath } from "./pods.mjs";
 import {
   checkedNote,
   classesPage,
@@ -53,12 +37,9 @@ import {
   newPodDialog,
   noPods,
   noTables,
-  NOT_WORDS,
   openPodPage,
   pageNumber,
   panelPage,
-  patientNames,
-  patientName,
   personName,
   podPage,
   postButton,
@@ -71,16 +52,11 @@ import {
   tablePage,
   trendPage,
   trendTitle,
-  savedLoginChanged,
   variantsSaid,
   worldDatePage,
-  utcInstant,
   worldInstant,
 } from "./summary.mjs";
 import { changeAnswers, podTools, worthLines } from "./pod-tools.mjs";
-
-/** Names Windows keeps for devices, which no folder may have. */
-const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 
 const told = new Set();
 
@@ -98,17 +74,21 @@ function unsaid(kind, error) {
 const host = nodeHost({ folder: PODS, unsaid });
 const api = podApi(host);
 
+/** What `/api/` calls: the same operations, Check now's also noting what it did for the page it goes to. */
+const served = {
+  ...api,
+  async checkTables(input) {
+    const answer = await api.checkTables(input);
+    lastCheck = checkedNote(answer.checked, answer.held);
+    return answer;
+  },
+};
+
 /** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
 async function podTitles() {
   const { pods } = await api.pods({});
   return new Map(pods.map(({ name, title }) => [name, title]));
 }
-
-/** The six words of each encrypted pod being made, by its name, until the person has checked them. Kept in memory only. */
-const waiting = new Map();
-
-/** The name typed for each pod waiting on its six words, by the pod's name. */
-const typedFor = new Map();
 
 /** Why the pod could not be opened without words: an `Unopened` outcome; nothing when it is open. */
 async function lockedOutcome(name) {
@@ -297,33 +277,19 @@ async function showTable(response, id, query) {
 
 /** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
-  const kept = await host.tables();
-  const checked = await kept.check({ cache: "no-cache" });
-  if (checked.some((each) => each.kept.length > 0))
-    await api.closePods({ plaintextOnly: true });
-  lastCheck = checkedNote(checked, await kept.held());
+  await served.checkTables({});
   redirect(response, "/tables/?checked");
 }
 
-/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
-async function closeAll() {
-  hospitals?.forget();
-  waiting.clear();
-  typedFor.clear();
-  await api.closePods();
-}
-
-/** File, Delete all data: every pod removed, then the home page says how many. */
+/** File, Delete all data: every pod removed, the reference tables kept, then the home page says how many. */
 async function deleteEverything(response) {
-  await closeAll();
-  const removed = await deleteAll();
-  redirect(response, `/?deleted=${removed.length}`);
+  const { deleted } = await api.deleteAll({});
+  redirect(response, `/?deleted=${deleted.length}`);
 }
 
-/** File, Reset all data: what `npm run reset` does, then the first pod's page says which are back. */
+/** File, Reset all data: the kits' pods loaded again, then the first pod's page says which are back. */
 async function resetEverything(response) {
-  await closeAll();
-  await resetAll();
+  await api.resetAll({});
   redirect(response, `${podPath(KITS[0])}?reset`);
 }
 
@@ -356,9 +322,7 @@ async function home(response, query) {
 async function suggested(name, known = {}) {
   if (model === undefined) return [];
   const given =
-    known.answers === undefined
-      ? await api.answers({ pod: name, last: true })
-      : known;
+    known.answers === undefined ? await api.answers({ pod: name }) : known;
   const { about, said } =
     "said" in known ? known : maps(await api.said({ pod: name }));
   return suggestedQuestions(given.answers, {
@@ -375,31 +339,12 @@ async function suggested(name, known = {}) {
  * box's address goes to the note.
  */
 async function showPod(response, name, query, titles) {
-  const found = query.has("connection")
-    ? hospitals.connection(name, query.get("connection"))
-    : undefined;
-  if (found?.imported !== undefined && found.bringing === undefined) {
-    const done = await found.imported.catch(() => undefined);
-    if (done !== undefined && done.refused === undefined)
-      return redirect(response, `${podPath(name)}?from=${found.n}`);
-  }
-  // As it is now, so that the box and whether the page refreshes agree on its step.
-  const shown =
-    found === undefined
-      ? undefined
-      : {
-          ...found,
-          ...(found.bringing !== undefined && { step: "bringing in" }),
-        };
-  // A pod answers once its import is done, so while one runs the page behind the box is the one last shown.
-  const { answers, changes, unheld } = await api.answers({
-    pod: name,
-    last: shown?.step === "bringing in",
-  });
+  const shown = await connectionAt(name, query.get("connection"));
+  if (shown?.broughtIn)
+    return redirect(response, `${podPath(name)}?from=${shown.n}`);
+  const { answers, changes, unheld } = await api.answers({ pod: name });
   const { about, said, held } = maps(await api.said({ pod: name }));
-  const from = query.get("from");
-  const noted = from === null ? undefined : hospitals.connection(name, from);
-  const broughtIn = await noted?.imported?.catch(() => undefined);
+  const noted = await connectionAt(name, query.get("from"));
   const box =
     shown === undefined
       ? undefined
@@ -412,16 +357,20 @@ async function showPod(response, name, query, titles) {
           connection: shown,
           bring: `${podPath(name)}connections/${shown.n}`,
           pulledAsOf: shown.asOf,
-          ...(await connectionView(name, shown)),
+          failed: shown.failed,
+          failure: shown.failure,
+          retry: shown.retry,
+          sources: shown.sources,
+          pulled: shown.pulled,
+          about: shown.patient,
+          aboutNames: shown.patientNames,
+          signInAgain: (label) => signIn(name, shown.row.fhirBase, label),
         });
   const body = podPage(answers, {
     titles,
     pod: name,
     person: people.find((each) => slug(each.name) === name),
-    from:
-      broughtIn === undefined || broughtIn.refused !== undefined
-        ? undefined
-        : noted.row.name,
+    from: noted?.broughtIn ? noted.row.name : undefined,
     signIn: (hospital) =>
       signIn(
         name,
@@ -454,6 +403,17 @@ async function showPod(response, name, query, titles) {
       suggestions: await suggested(name, { answers, about, changes, said }),
     }),
   );
+}
+
+/** The pod's connection whose number `n` is, as `connection` gives it; none for no number, or one it has not. */
+async function connectionAt(name, n) {
+  if (n === null || !/^\d+$/.test(n)) return undefined;
+  try {
+    return await api.connection({ pod: name, connection: Number(n) });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return undefined;
+  }
 }
 
 /**
@@ -626,42 +586,41 @@ async function showPanel(response, name, query, titles) {
   );
 }
 
-/** Makes an empty pod named after the person given, unless it exists, and goes to it. */
+/** The page that says no pod was made, 400, and `why`. */
+async function noPodMade(response, why) {
+  send(
+    response,
+    400,
+    await page(
+      "No pod made",
+      html`<h1>No pod made</h1>
+<p>${why}</p>`,
+    ),
+  );
+}
+
+/** Makes an empty pod named after the person given, unless it exists, and goes to it; or shows its six words. */
 async function newPod(request, response) {
   const form = await formOf(request);
-  const name = slug(form.get("person") ?? "");
-  const refused = !POD_NAME.test(name)
-    ? "Give a name with at least one letter from a to z, or a digit."
-    : DEVICES.test(name)
-      ? "That name is one Windows keeps for itself: add another word."
-      : undefined;
-  if (refused !== undefined)
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>${refused}</p>`,
-      ),
-    );
-  if (
-    form.get("encrypt") === "on" &&
-    !(await host.pods.names()).includes(name)
-  ) {
-    const words = sixWords();
-    waiting.set(name, words);
-    typedFor.set(name, form.get("person")?.trim());
-    return await showWords(response, name, words);
+  let made;
+  try {
+    made = await api.makePod({
+      person: form.get("person") ?? "",
+      encrypt: form.get("encrypt") === "on",
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return await noPodMade(response, error.message);
   }
-  await api.podFor(name, { title: form.get("person")?.trim() });
-  redirect(response, podPath(name));
+  if (made.waiting) return await showWords(response, made.pod);
+  redirect(response, podPath(made.pod));
 }
 
 const WORDS_AT = "/encrypted-pods";
 
-/** The page that shows the six words and asks for words 2 and 5, never kept by a cache. */
-async function showWords(response, name, words, problem) {
+/** The page that shows the six words waiting for the pod `name` and asks for words 2 and 5, never kept by a cache. */
+async function showWords(response, name, problem) {
+  const { person, words } = await api.waitingWords({ pod: name });
   send(
     response,
     problem === undefined ? 200 : 400,
@@ -669,7 +628,7 @@ async function showWords(response, name, words, problem) {
       "Your six words",
       sixWordsPage({
         pod: name,
-        titles: new Map([[name, typedFor.get(name)]]),
+        titles: new Map([[name, person]]),
         words,
         action: WORDS_AT,
         problem,
@@ -683,41 +642,24 @@ async function showWords(response, name, words, problem) {
 async function newEncryptedPod(request, response) {
   const form = await formOf(request);
   const name = form.get("pod") ?? "";
-  const words = waiting.get(name);
-  if (words === undefined)
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>These six words are not waiting any more. Make the pod again.</p>`,
+  try {
+    await api.confirmWords({
+      pod: name,
+      ...Object.fromEntries(
+        ["word2", "word5", "password", "username"].flatMap((field) =>
+          form.has(field) ? [[field, form.get(field)]] : [],
+        ),
       ),
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    const waiting = await api.waitingWords({ pod: name }).then(
+      () => true,
+      () => false,
     );
-  const changed = savedLoginChanged(form, name, words);
-  if (changed !== undefined)
-    return await showWords(response, name, words, changed);
-  const asked = words.split(" ");
-  if (
-    typedWords(form.get("word2") ?? "") !== asked[1] ||
-    typedWords(form.get("word5") ?? "") !== asked[4]
-  )
-    return await showWords(response, name, words, NOT_WORDS);
-  waiting.delete(name);
-  const title = typedFor.get(name);
-  typedFor.delete(name);
-  if ((await host.pods.names()).includes(name))
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
-      ),
-    );
-  if (!(await api.podFor(name, { secret: words, title })).encrypted)
-    throw new Error(`The pod ${name} was made without its words.`);
+    if (waiting) return await showWords(response, name, error.message);
+    return await noPodMade(response, error.message);
+  }
   redirect(response, podPath(name));
 }
 
@@ -746,13 +688,8 @@ async function unlock(request, response, name, titles) {
   const form = await formOf(request);
   const asked = form.get("next") ?? "";
   const next = asked.startsWith(podPath(name)) ? asked : podPath(name);
-  if ((await lockedOutcome(name)) === undefined)
-    return redirect(response, next);
-  const secret = form.get("password") ?? "";
-  if (secret.trim() === "")
-    return await showLocked(response, name, "incorrect secret", next, titles);
   try {
-    await api.podFor(name, { secret });
+    await api.unlock({ pod: name, secret: form.get("password") ?? "" });
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     return await showLocked(response, name, error.outcome, next, titles);
@@ -787,7 +724,7 @@ async function findHospital(response, name, text, titles) {
   const body = hospitalsPage({
     titles,
     pod: name,
-    rows: hospitals.directory(text),
+    rows: (await api.hospitals({ q: text })).rows,
     text,
     search: `${podPath(name)}hospitals`,
     signIn: (row) => signIn(name, row.fhirBase, "Sign in"),
@@ -802,96 +739,8 @@ async function findHospital(response, name, text, titles) {
   );
 }
 
-/** The files a connection's pull is saved as, or why there are none: the sign-in or the pull failed, or was refused. */
-async function filesOf(connection) {
-  let pulled;
-  try {
-    pulled = await connection.pulled;
-  } catch (error) {
-    if (!(error instanceof ConnectionFailure)) throw error;
-    return { failed: `${error.message}.`, failure: error.kind };
-  }
-  try {
-    return {
-      pulled,
-      files: pullFiles(
-        { ...pulled, asOf: utcInstant(connection.asOf) },
-        connection.name,
-      ),
-    };
-  } catch (error) {
-    return { failed: `Refused: ${error.message}` };
-  }
-}
-
-/**
- * What a connection's box shows besides its steps: nothing while it signs in and fetches; then why it failed, or what
- * the hospital has, for the button that brings it in.
- */
-async function connectionView(name, connection) {
-  if (["signing in", "pulling", "bringing in"].includes(connection.step))
-    return {};
-  const { failed, failure, pulled, files } = await filesOf(connection);
-  if (failed !== undefined)
-    return {
-      failed,
-      failure,
-      signInAgain: (label) => signIn(name, connection.row.fhirBase, label),
-    };
-  let done;
-  try {
-    done = await connection.imported;
-  } catch (error) {
-    return { failed: notBroughtIn(error), retry: true };
-  }
-  if (connection.failed !== undefined)
-    return { failed: connection.failed, retry: true };
-  if (done?.refused !== undefined)
-    return { failed: `Refused: ${done.refused}` };
-  return {
-    sources: await (await api.podFor(name)).look(files),
-    pulled,
-    about: patientName(pulled.bundle),
-    aboutNames: patientNames(pulled.bundle),
-  };
-}
-
-const notBroughtIn = (error) => `Not brought in: ${error.message}`;
-
-/**
- * Starts bringing a connection's record into the pod, unless it is under way or done, and goes at once to its box,
- * which says each part of the import and, once the record is in, goes to the pod's page noting it.
- */
-function bring(response, name, connection) {
-  if (connection.step === "pulled" && connection.imported === undefined) {
-    connection.failed = undefined;
-    connection.bringing = { part: "loading the adapter" };
-    connection.imported = imported(name, connection).finally(() => {
-      connection.bringing = undefined;
-    });
-    connection.imported.catch((error) => {
-      connection.imported = undefined;
-      connection.failed = notBroughtIn(error);
-    });
-  }
-  redirect(response, boxOf(name, connection));
-}
-
 /** The pod's page with the connection's box open. */
-const boxOf = (name, connection) =>
-  `${podPath(name)}?connection=${connection.n}#connection`;
-
-/** The import of a connection's pull into the pod, its parts in `connection.bringing`; it throws when there are no files. */
-async function imported(name, connection) {
-  const { failed, files } = await filesOf(connection);
-  if (files === undefined) throw new Error(failed);
-  return (await api.podFor(name)).import(files, {
-    aboutSubject: true,
-    onProgress: (part) => {
-      connection.bringing = part;
-    },
-  });
-}
+const boxOf = (name, n) => `${podPath(name)}?connection=${n}#connection`;
 
 /** Where the world's date is shown and changed. */
 const WORLD_DATE_AT = "/world-date";
@@ -899,7 +748,7 @@ const WORLD_DATE_AT = "/world-date";
 /** The world's date as a page that comes from `back`, a path on this app, shows it, and its link to change it. */
 function worldDateAt(back) {
   return {
-    asOf: hospitals.worldDate(),
+    asOf: host.world.get(),
     href: `${WORLD_DATE_AT}?back=${encodeURIComponent(back)}`,
   };
 }
@@ -927,21 +776,19 @@ async function worldDateRoute(request, response, url) {
     page(
       "The world's date",
       worldDatePage({
-        asOf: hospitals.worldDate(),
+        asOf: host.world.get(),
         action,
         problem,
         back,
       }),
     ).then((body) => send(response, status, body));
   if (request.method !== "POST") return shown(200);
-  const text = (await formOf(request)).get("date") ?? "";
-  const asOf = worldInstant(text);
-  if (text.trim() !== "" && asOf === undefined)
-    return shown(
-      400,
-      `"${text}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
-    );
-  hospitals.setWorldDate(asOf);
+  try {
+    await api.setWorldDate({ date: (await formOf(request)).get("date") ?? "" });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return shown(400, error.message);
+  }
   return redirect(response, back);
 }
 
@@ -1039,7 +886,8 @@ let origin;
 let ownOrigins;
 /** The `Host` a request to this server names: a page of another name that rebinds to this address names its own. */
 let ownHosts;
-let hospitals;
+/** Where `/callback` hands a hospital's redirect: the sign-in waiting for it, as `{ pod, connection }`. */
+let back;
 
 const server = createServer(async (request, response) => {
   try {
@@ -1068,7 +916,9 @@ const server = createServer(async (request, response) => {
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
     if (post && pathname.startsWith("/api/"))
-      return await apiRoute(api, request, response, { origins: ownOrigins });
+      return await apiRoute(served, request, response, {
+        origins: ownOrigins,
+      });
     if (post && pathname === "/chat")
       return await chatRoute(request, response, { model, tools: chatting });
     if (pathname === "/world-date")
@@ -1091,8 +941,9 @@ const server = createServer(async (request, response) => {
         url.searchParams,
       );
     if (!post && pathname === "/callback") {
-      const back = hospitals.back(url);
-      if (back !== undefined) return redirect(response, back);
+      const at = back(url);
+      if (at !== undefined)
+        return redirect(response, boxOf(at.pod, at.connection));
       return send(
         response,
         400,
@@ -1145,29 +996,55 @@ const server = createServer(async (request, response) => {
           titles,
         );
       if (isHospitals !== undefined) {
-        const to = await hospitals.start(
-          name,
-          (await formOf(request)).get("fhirBase"),
-        );
-        if (to !== undefined) return redirect(response, to);
-        return send(
+        let begun;
+        try {
+          begun = await api.connect({
+            pod: name,
+            fhirBase: (await formOf(request)).get("fhirBase") ?? "",
+          });
+        } catch (error) {
+          if (error instanceof Unopened)
+            return await showLocked(
+              response,
+              name,
+              error.outcome,
+              podPath(name),
+              titles,
+            );
+          if (!(error instanceof Refusal)) throw error;
+          return send(
+            response,
+            400,
+            await page("Unknown", html`<h1>${error.message}</h1>`, {
+              titles,
+            }),
+          );
+        }
+        return redirect(
           response,
-          400,
-          await page(
-            "Unknown",
-            html`<h1>That hospital is not in the directory</h1>`,
-            { titles },
-          ),
+          begun.authorize ?? boxOf(name, begun.connection),
         );
       }
-      const connection =
-        n === undefined ? undefined : hospitals.connection(name, n);
-      if (post && connection !== undefined)
-        return bring(response, name, connection);
+      const connection = await connectionAt(name, n ?? null);
+      if (post && connection !== undefined) {
+        try {
+          await api.bring({ pod: name, connection: connection.n });
+        } catch (error) {
+          if (!(error instanceof Refusal)) throw error;
+          return send(
+            response,
+            400,
+            await page("Not brought in", html`<h1>${error.message}</h1>`, {
+              titles,
+            }),
+          );
+        }
+        return redirect(response, boxOf(name, connection.n));
+      }
       if (!post && n !== undefined)
         return redirect(
           response,
-          connection === undefined ? podPath(name) : boxOf(name, connection),
+          connection === undefined ? podPath(name) : boxOf(name, connection.n),
         );
       if (!post && n === undefined)
         return await showPod(response, name, url.searchParams, titles);
@@ -1196,7 +1073,13 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   origin = `http://127.0.0.1:${port}`;
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
   ownHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
+  const reached = nodeHospitals(origin, demo, {
+    asOf: startedAsOf,
+    listener,
+  });
+  host.hospitals = reached.hospitals;
+  host.world = reached.world;
+  back = reached.back;
   stdout.write(`${origin}/\n`);
   stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
 });
@@ -1204,7 +1087,7 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
 async function stop() {
   await listener.close();
   server.close();
-  await closeAll();
+  await api.close();
   exit(0);
 }
 process.on("SIGINT", stop);

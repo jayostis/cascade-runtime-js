@@ -116,17 +116,44 @@ export async function deletePod(name, folder = PODS) {
   await rm(answersFolder(name, folder), { recursive: true, force: true });
 }
 
-/** Removes every pod; gives the names of those there were. */
+/** Removes every pod and every answer kept, and keeps the reference tables; gives the names of the pods there were. */
 export async function deleteAll() {
   const names = await podNames();
-  await rm(PODS, { recursive: true, force: true });
+  let entries;
+  try {
+    entries = await readdir(PODS);
+  } catch (error) {
+    if (error.code === "ENOENT") return names;
+    throw error;
+  }
+  for (const entry of entries)
+    if (entry !== ".tables")
+      await rm(join(PODS, entry), { recursive: true, force: true });
   return names;
 }
 
+/** Loads the kits' pods into `folder`; `out(text)`, when given, is told each kit with its seconds. Gives their names. */
+export async function restoreKits(folder = PODS, out) {
+  for (const kit of KITS) {
+    const started = performance.now();
+    out?.(`\nLoading the pod ${kit}, from the kit the package carries…`);
+    try {
+      await replayKit(kit, join(folder, kit));
+      out?.(` loaded in ${seconds(started)}\n`);
+    } catch (error) {
+      out?.("\n");
+      throw new Error(`the pod ${kit} did not load: ${error.message}`, {
+        cause: error,
+      });
+    }
+  }
+  return [...KITS];
+}
+
 /**
- * Removes every pod and loads the kits' pods again, the app as it was made: what `npm run reset` and the File menu's
- * Reset all data do. `out(text)`, when given, is told what is under way: the tables' setup as its own step with each
- * phase's seconds, then each kit with its own. Gives the names of the pods there were.
+ * Removes every pod and loads the kits' pods again, the app as it was made: what `npm run reset` does. `out(text)`,
+ * when given, is told what is under way: the tables' setup as its own step with each phase's seconds, then each kit
+ * with its own. Gives the names of the pods there were.
  */
 export async function resetAll(out) {
   const names = await deleteAll();
@@ -136,19 +163,7 @@ export async function resetAll(out) {
     } catch (error) {
       out(`\nthe app's tables could not be set up: ${error.message}\n`);
     }
-  for (const kit of KITS) {
-    const started = performance.now();
-    out?.(`\nLoading the pod ${kit}, from the kit the package carries…`);
-    try {
-      await replayKit(kit, podFolder(kit));
-      out?.(` loaded in ${seconds(started)}\n`);
-    } catch (error) {
-      out?.("\n");
-      throw new Error(`the pod ${kit} did not load: ${error.message}`, {
-        cause: error,
-      });
-    }
-  }
+  await restoreKits(PODS, out);
   return names;
 }
 

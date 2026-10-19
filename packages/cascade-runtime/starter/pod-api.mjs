@@ -6,10 +6,19 @@ import {
   changeTools,
   checkInput,
   compact,
+  connect,
+  ConnectionFailure,
+  DEMO_PLAN,
   findChanges,
   labSeriesIn,
+  pull,
+  PullRefused,
+  pullFiles,
   Refusal,
+  searchDirectory,
+  sixWords,
   timelineIn,
+  typedWords,
   Unopened,
 } from "cascade-runtime";
 import {
@@ -22,16 +31,23 @@ import {
   joinedBy,
   LABS,
   MEDICATIONS,
+  NOT_WORDS,
   pageNumber,
   panelSaid,
   panelsOf,
+  patientName,
+  patientNames,
   QUESTIONS,
+  savedLoginChanged,
+  slug,
   sourcesOf,
   tableId,
   testsIn,
   trendInput,
+  utcInstant,
   variantsSaid,
   withMechanism,
+  worldInstant,
   worthALook,
 } from "./summary.mjs";
 
@@ -39,6 +55,27 @@ import {
 export function notOpenedHere(name) {
   return `${name} is encrypted: open it in the app (\`npm start\`) with its six words; this command does not open encrypted pods`;
 }
+
+/** What the app asks a hospital it signs in at to let it read. */
+export const SCOPES = ["launch/patient", "patient/*.read", "patient/*.rs"];
+
+/** How long a `connection` call with `wait` holds before it answers the connection as it is. */
+const WAIT_MS = 25_000;
+
+/** What a person is told when a bring-in or a pull's files fail for a reason that is the app's, not the record's. */
+const NOT_BROUGHT_IN =
+  "Not brought in: the app hit an error of its own. Try again, and if it happens again, restart the app.";
+const PULL_BROKEN =
+  "The pull could not be saved: the app hit an error of its own.";
+
+/** The steps of a connection that are under way. */
+const UNDER_WAY = ["signing in", "pulling", "bringing in"];
+
+/** Names Windows keeps for devices, which no folder may have. */
+const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
+
+const NOT_WAITING =
+  "These six words are not waiting any more. Make the pod again.";
 
 /** The paths of an operation's output that hold a `Map` as `[key, value]` pairs. */
 const MAPPED = ["about", "joined", "elsewhere", "classes", "panelAbout"];
@@ -93,15 +130,19 @@ const CHECKS = {
     (value) =>
       value !== null && typeof value === "object" && !Array.isArray(value),
   ],
+  waitFor: [
+    'true or "change"',
+    (value) => value === true || value === "change",
+  ],
 };
-const { string, boolean, positiveInteger, object } = CHECKS;
+const { string, boolean, positiveInteger, object, waitFor } = CHECKS;
 
 /** The check each input a client may send must pass when it is given, by operation. */
 const INPUTS = {
   pods: {},
   held: {},
   pod: { pod: string },
-  answers: { pod: string, last: boolean },
+  answers: { pod: string },
   said: { pod: string, entry: string },
   trend: { pod: string, test: string, medication: string, named: boolean },
   classes: { pod: string },
@@ -109,6 +150,24 @@ const INPUTS = {
   table: { id: string, q: string, page: positiveInteger, code: string },
   ask: { pod: string, question: string, limit: positiveInteger },
   tool: { pod: string, tool: string, input: object },
+  makePod: { person: string, encrypt: boolean },
+  waitingWords: { pod: string },
+  confirmWords: {
+    pod: string,
+    word2: string,
+    word5: string,
+    password: string,
+    username: string,
+  },
+  unlock: { pod: string, secret: string },
+  deleteAll: {},
+  resetAll: {},
+  checkTables: {},
+  setWorldDate: { date: string },
+  hospitals: { q: string },
+  connect: { pod: string, fhirBase: string },
+  connection: { pod: string, connection: positiveInteger, wait: waitFor },
+  bring: { pod: string, connection: positiveInteger },
 };
 
 /** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
@@ -136,12 +195,32 @@ export function podApi(host) {
   const last = new Map();
   /** The pods the folder was last seen to hold, so one page scans it once: a pod seen needs no second scan. */
   const seen = new Set();
+  /** The six words of each encrypted pod being made, and the person's name as typed, by the pod's name, until checked. */
+  const waiting = new Map();
+  /** Each connection to a hospital, by its number; `count` numbers the next. */
+  const connections = new Map();
+  let count = 0;
+
+  /** Whether a record is being brought into the pod: its answers are then the ones last given, until it is in. */
+  const bringingInto = (name) =>
+    [...connections.values()].some(
+      (each) => each.pod === name && each.bringing !== undefined,
+    );
 
   function podFor(name, options) {
     if (!opened.has(name)) {
       const opening = host.pods.open(name, options);
       opening.catch(() => opened.delete(name));
       opened.set(name, opening);
+    }
+    return opened.get(name);
+  }
+
+  function sampleFor(name) {
+    if (!opened.has(name)) {
+      const copying = (async () => host.copySample(name))();
+      copying.catch(() => opened.delete(name));
+      opened.set(name, copying);
     }
     return opened.get(name);
   }
@@ -215,9 +294,9 @@ export function podApi(host) {
     };
   }
 
-  async function answers({ pod: name, last: recorded = false }) {
+  async function answers({ pod: name }) {
     const pod = await podNamed(name);
-    if (recorded && last.has(name)) return last.get(name);
+    if (bringingInto(name) && last.has(name)) return last.get(name);
     const given = await asked(pod);
     last.set(name, given);
     return given;
@@ -462,7 +541,7 @@ export function podApi(host) {
     const pod = await podNamed(name);
     if (called === WORTH_A_LOOK.name) {
       checkInput(WORTH_A_LOOK.inputSchema, input);
-      const given = await answers({ pod: name, last: true });
+      const given = last.get(name) ?? (await answers({ pod: name }));
       const { about, said: variants } = maps(await said({ pod: name }));
       return {
         value: worthALook(given.answers, about, variants).map(
@@ -479,6 +558,323 @@ export function podApi(host) {
     checkInput(run.inputSchema, input);
     const found = await findChanges(pod, input);
     return { value: found.map(compact), found };
+  }
+
+  async function makePod({ person = "", encrypt = false }) {
+    const name = slug(person);
+    if (name === "")
+      throw new Refusal(
+        "Give a name with at least one letter from a to z, or a digit.",
+      );
+    if (DEVICES.test(name))
+      throw new Refusal(
+        "That name is one Windows keeps for itself: add another word.",
+      );
+    if ((await host.pods.names()).includes(name))
+      return { pod: name, made: false };
+    if (host.samples?.includes(name)) {
+      await sampleFor(name);
+      return { pod: name, loaded: true };
+    }
+    if (encrypt) {
+      waiting.set(name, { words: sixWords(), person: person.trim() });
+      return { pod: name, waiting: true };
+    }
+    await podFor(name, { title: person.trim() });
+    return { pod: name, made: true };
+  }
+
+  function waitingFor(name) {
+    const words = waiting.get(name);
+    if (words === undefined) throw new Refusal(NOT_WAITING);
+    return words;
+  }
+
+  async function confirmWords(input) {
+    const { pod: name, word2 = "", word5 = "" } = input;
+    const { words, person } = waitingFor(name);
+    const changed = savedLoginChanged(
+      new Map(Object.entries(input)),
+      name,
+      words,
+    );
+    if (changed !== undefined) throw new Refusal(changed);
+    const asked = words.split(" ");
+    if (typedWords(word2) !== asked[1] || typedWords(word5) !== asked[4])
+      throw new Refusal(NOT_WORDS);
+    waiting.delete(name);
+    if ((await host.pods.names()).includes(name))
+      throw new Refusal(
+        `A pod named ${name} exists already. Make the pod again under another name.`,
+      );
+    if (!(await podFor(name, { secret: words, title: person })).encrypted)
+      throw new Error(`The pod ${name} was made without its words.`);
+    return { pod: name, made: true };
+  }
+
+  async function unlock({ pod: name, secret = "" }) {
+    await known(name);
+    try {
+      await podFor(name);
+    } catch (error) {
+      if (!(error instanceof Unopened)) throw error;
+      if (secret.trim() === "")
+        throw new Unopened("incorrect secret", "no secret was given");
+      await podFor(name, { secret });
+    }
+    return { pod: name, opened: true };
+  }
+
+  async function deleteAll() {
+    const names = await host.pods.names();
+    waiting.clear();
+    forgetConnections();
+    await closePods();
+    await host.pods.remove(names, { all: true });
+    return { deleted: names };
+  }
+
+  async function resetAll() {
+    await deleteAll();
+    if (!(host.samples?.length > 0)) return { pods: await host.restore() };
+    for (const name of host.samples) await sampleFor(name);
+    return { pods: [...host.samples] };
+  }
+
+  async function checkTables() {
+    const checked = await host.checkTables();
+    if (checked.some(({ kept }) => kept.length > 0))
+      await closePods({ plaintextOnly: true });
+    last.clear();
+    return { checked, held: await held() };
+  }
+
+  async function setWorldDate({ date = "" }) {
+    const asOf = worldInstant(date);
+    if (date.trim() !== "" && asOf === undefined)
+      throw new Refusal(
+        `"${date}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
+      );
+    await host.world.set(asOf);
+    return asOf === undefined ? {} : { asOf };
+  }
+
+  /** The step a connection is at; `bringing in` while its record is brought in. */
+  const stepOf = (connection) =>
+    connection.bringing === undefined ? connection.step : "bringing in";
+  const settled = (connection) => !UNDER_WAY.includes(stepOf(connection));
+  const stateOf = (connection) =>
+    JSON.stringify([
+      stepOf(connection),
+      connection.requests,
+      connection.bringing,
+    ]);
+
+  /** Stops every connection's sign-in and pull, and forgets them. */
+  function forgetConnections() {
+    for (const each of connections.values()) each.stop.abort();
+    connections.clear();
+  }
+
+  /** Wakes whoever waits for the connection to change. */
+  function changed(connection) {
+    for (const wake of connection.waiting.splice(0)) wake();
+  }
+
+  const nextChange = (connection) =>
+    new Promise((wake) => connection.waiting.push(wake));
+
+  /** Holds until the connection settles, or for `wait: "change"` changes, or `WAIT_MS` have passed. */
+  async function holdFor(connection, wait) {
+    const was = stateOf(connection);
+    const over = () =>
+      settled(connection) || (wait === "change" && stateOf(connection) !== was);
+    let timer;
+    const late = new Promise((done) => {
+      timer = globalThis.setTimeout(done, WAIT_MS, LATE);
+      timer.unref?.();
+    });
+    try {
+      while (
+        !over() &&
+        (await Promise.race([nextChange(connection), late])) !== LATE
+      );
+    } finally {
+      globalThis.clearTimeout(timer);
+    }
+  }
+
+  async function connectTo({ pod: name, fhirBase }) {
+    await podNamed(name);
+    const { hospitals } = host;
+    const row = (await hospitals.directory()).find(
+      (each) => each.fhirBase === fhirBase,
+    );
+    if (row === undefined)
+      throw new Refusal("That hospital is not in the directory.");
+    const n = ++count;
+    const connection = {
+      pod: name,
+      row,
+      n,
+      name: `${hospitals.pullName(row)}-${n}`,
+      step: "signing in",
+      requests: 0,
+      asOf: row.vendor === "demo" ? await host.world?.get() : undefined,
+      waiting: [],
+      stop: new globalThis.AbortController(),
+    };
+    connections.set(n, connection);
+    let report;
+    const reported = new Promise((resolve) => (report = resolve));
+    const signedIn = (async () => {
+      await hospitals.ready(row);
+      return connect(
+        row,
+        { ...hospitals.registration, scopes: SCOPES },
+        {
+          signIn: hospitals.signIn(row, { pod: name, connection: n }, report),
+          fetch: async (url, init) => {
+            const answer = await hospitals.fetch(url, init);
+            connection.requests += 1;
+            changed(connection);
+            return answer;
+          },
+          signal: connection.stop.signal,
+        },
+      );
+    })();
+    connection.pulled = signedIn.then((signed) => {
+      connection.step = "pulling";
+      changed(connection);
+      return pull(signed, DEMO_PLAN, { signal: connection.stop.signal });
+    });
+    connection.pulled.then(
+      () => {
+        connection.step = "pulled";
+        changed(connection);
+      },
+      () => {
+        connection.step = "failed";
+        changed(connection);
+      },
+    );
+    const authorize = await Promise.race([reported, signedIn.then(noop, noop)]);
+    return authorize === undefined
+      ? { connection: n }
+      : { connection: n, authorize };
+  }
+
+  function connectionOf(name, n) {
+    const found = connections.get(n);
+    if (found?.pod !== name)
+      throw new Refusal(`no connection ${n} for the pod ${name}`);
+    return found;
+  }
+
+  /** The files a connection's pull is saved as, read once, or why there are none: it failed, or was refused. */
+  function filesOf(connection) {
+    connection.files ??= (async () => {
+      let pulled;
+      try {
+        pulled = await connection.pulled;
+      } catch (error) {
+        if (!(error instanceof ConnectionFailure)) throw error;
+        return { failed: `${error.message}.`, failure: error.kind };
+      }
+      try {
+        return {
+          pulled,
+          files: pullFiles(
+            { ...pulled, asOf: utcInstant(connection.asOf) },
+            connection.name,
+          ),
+        };
+      } catch (error) {
+        if (error instanceof PullRefused)
+          return { failed: `Refused: ${error.message}` };
+        globalThis.console.error(error);
+        return { failed: PULL_BROKEN };
+      }
+    })();
+    return connection.files;
+  }
+
+  async function connectionNow({ pod: name, connection: n, wait }) {
+    await known(name);
+    const connection = connectionOf(name, n);
+    if (wait !== undefined) await holdFor(connection, wait);
+    const shown = {
+      n,
+      row: connection.row,
+      step: stepOf(connection),
+      requests: connection.requests,
+      ...(connection.asOf !== undefined && { asOf: connection.asOf }),
+      ...(connection.bringing !== undefined && {
+        bringing: connection.bringing,
+      }),
+    };
+    if (!settled(connection)) return shown;
+    const { failed, failure, pulled, files } = await filesOf(connection);
+    if (failed !== undefined)
+      return { ...shown, failed, ...(failure !== undefined && { failure }) };
+    if (connection.failed !== undefined)
+      return {
+        ...shown,
+        failed: connection.failed,
+        ...(connection.retry && { retry: true }),
+      };
+    const patient = patientName(pulled.bundle);
+    return {
+      ...shown,
+      sources: await (await podNamed(name)).look(files),
+      pulled: { denied: pulled.denied, missing: pulled.missing },
+      ...(patient !== undefined && { patient }),
+      patientNames: patientNames(pulled.bundle),
+      ...(connection.broughtIn && { broughtIn: true }),
+    };
+  }
+
+  async function bring({ pod: name, connection: n }) {
+    await known(name);
+    const connection = connectionOf(name, n);
+    if (connection.bringing !== undefined) return { step: "bringing in" };
+    const { files } =
+      connection.step === "pulled" ? await filesOf(connection) : {};
+    if (files === undefined) throw new Refusal("nothing pulled to bring in");
+    const pod = await podNamed(name);
+    if (connection.bringing !== undefined || connection.imported)
+      return { step: stepOf(connection) };
+    connection.failed = undefined;
+    connection.retry = undefined;
+    connection.bringing = { part: "loading the adapter" };
+    changed(connection);
+    pod
+      .import(files, {
+        aboutSubject: true,
+        onProgress: (part) => {
+          connection.bringing = part;
+          changed(connection);
+        },
+      })
+      .then(
+        (done) => {
+          connection.imported = true;
+          if (done.refused === undefined) connection.broughtIn = true;
+          else connection.failed = `Refused: ${done.refused}`;
+          last.delete(name);
+        },
+        (error) => {
+          globalThis.console.error(error);
+          connection.failed = NOT_BROUGHT_IN;
+          connection.retry = true;
+        },
+      )
+      .finally(() => {
+        connection.bringing = undefined;
+        changed(connection);
+      });
+    return { step: "bringing in" };
   }
 
   const operations = {
@@ -518,6 +914,27 @@ export function podApi(host) {
     table,
     ask,
     tool,
+    makePod,
+    waitingWords: async ({ pod: name }) => ({
+      pod: name,
+      ...waitingFor(name),
+    }),
+    confirmWords,
+    unlock,
+    deleteAll,
+    resetAll,
+    checkTables,
+    setWorldDate,
+    async hospitals({ q = "" }) {
+      const asOf = await host.world?.get();
+      return {
+        rows: searchDirectory(await host.hospitals.directory(), q),
+        ...(asOf !== undefined && { asOf }),
+      };
+    },
+    connect: connectTo,
+    connection: connectionNow,
+    bring,
   };
   return {
     ...Object.fromEntries(
@@ -525,8 +942,12 @@ export function podApi(host) {
     ),
     podFor,
     closePods,
-    close: () => closePods(),
+    close: async () => {
+      forgetConnections();
+      await closePods();
+    },
   };
 }
 
 const noop = () => undefined;
+const LATE = Symbol("late");
