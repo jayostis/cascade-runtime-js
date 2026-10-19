@@ -68,32 +68,3 @@ jobs:
             if (elsewhere.length > 0) process.exit(1);
             console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
           '
-
-  # The starter made by the command from the same tarball, and used as a person would, on each system.
-  starter:
-    name: starter (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(inputs.systems) }}
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/download-artifact@v7
-        with:
-          name: package
-          path: ${{ runner.temp }}/package
-      - name: The starter's check, against the tarball
-        working-directory: ${{ runner.temp }}
-        run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" package/cascade-runtime-*.tgz
