@@ -16,7 +16,7 @@ import {
   pullFiles,
   Refusal,
   searchDirectory,
-  sixWords,
+  sixWordsOf,
   timelineIn,
   typedWords,
   Unopened,
@@ -579,7 +579,7 @@ export function podApi(host) {
       return { pod: name, loaded: true };
     }
     if (encrypt) {
-      waiting.set(name, { words: sixWords(), person: person.trim() });
+      waiting.set(name, { words: sixWordsOf(), person: person.trim() });
       return { pod: name, waiting: true };
     }
     await openOnce(name, { title: person.trim() });
