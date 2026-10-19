@@ -43,7 +43,7 @@ export {
   Unopened,
   type UnopenedOutcome,
 } from "@cascade-runtime/runtime";
-export { sixWords, typedWords } from "./six-words.js";
+export { sixWords as sixWordsOf, typedWords } from "./six-words.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";
 export { configureTables } from "./node/resolved.js";
 
