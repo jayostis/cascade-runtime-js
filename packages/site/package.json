@@ -9,14 +9,9 @@
     ".": "./dist/src/index.js"
   },
   "dependencies": {
-    "@cascade-runtime/runtime": "0.0.0",
-    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#a33529e58830cb8b9c04f9c19c9e666f45634e3c"
+    "@cascade-runtime/runtime": "0.0.0"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
-    "htm": "3.1.1",
-    "oxigraph": "0.5.11",
-    "playwright": "1.63.0",
-    "preact": "11.0.0"
+    "playwright": "1.63.0"
   }
 }

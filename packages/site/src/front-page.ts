@@ -7,8 +7,11 @@ import { COPY } from "./terms.js";
 export const FRONT_PAGE = "index.html";
 export const START_PAGE = "start.html";
 export const EXAMPLES_PAGE = "examples.html";
-export const TRY = "try/";
-export const TRY_PAGE = `${TRY}index.html`;
+/** Where try/ was: a page that sends a visitor on to the starter kit's, with the pod or table they were sent to. */
+export const TRY_PAGE = "try/index.html";
+/** The page that keeps pods in the browser, published by the starter kit, on the same origin as these pages. */
+export const STARTER_TRY =
+  "https://jayostis.github.io/cascade-starter-kit/try/";
 const POD_ENTRY = "manifest.ttl";
 
 /** An example's site, placed in the folder named after its kit. */
@@ -81,7 +84,7 @@ export interface Start {
   readonly prompt: string;
   /** The title of each kind of record a pod holds. */
   readonly kinds: readonly string[];
-  /** The folder of the example the quick start and try/ name. */
+  /** The folder of the example the quick start names. */
   readonly example: string;
 }
 
@@ -94,11 +97,7 @@ export function viewTitles(layout: Layout): string[] {
   });
 }
 
-function frontPage(
-  { kinds }: Start,
-  examples: readonly Example[],
-  tried: boolean,
-): string {
+function frontPage({ kinds }: Start, examples: readonly Example[]): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -116,11 +115,8 @@ function frontPage(
 <p class="prose">One command makes a working app on a pod, and a coding agent builds your idea on it.</p>
 <ul>
 <li><a href="${START_PAGE}">Quick start</a></li>
-${
-  tried &&
-  markup`<li><a href="${TRY_PAGE}">See an app running in your browser, nothing to install</a></li>
-`
-}</ul>
+<li><a href="${STARTER_TRY}">See an app running in your browser, nothing to install</a></li>
+</ul>
 <h2 class="part">Explore a pod</h2>
 <p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
 question that reads it is a SPARQL query.</p>
@@ -146,7 +142,6 @@ so a real export shows fewer automatic joins than the example pods.</p>
 function startPage(
   { command, app, prompt }: Start,
   { title }: Example,
-  tried: boolean,
 ): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
@@ -170,14 +165,53 @@ its last line, <code>My idea: …</code>, replaced by your idea:</p>
 <pre class="command"><code>${prompt}</code></pre>
 <p class="prose">The agent learns how from the <code>AGENTS.md</code> at the app's root and the full guide that comes with the
 installed package, and loads a pod, such as ${title}'s, when your idea needs one.</p>
-${
-  tried &&
-  markup`<p class="prose"><a href="${TRY_PAGE}">See an app running in your browser, nothing to install</a></p>
-`
-}</main>
+<p class="prose"><a href="${STARTER_TRY}">See an app running in your browser, nothing to install</a></p>
+</main>
 </body>
 </html>
 `.text;
+}
+
+/**
+ * try/'s old page: it sends the visitor on to the starter kit's try/ with the query and fragment they came with, which
+ * name a pod or a table. The old page's demo hospitals' worker, registered for this folder, is unregistered first: its
+ * script is gone, so it would otherwise stay registered here for good.
+ */
+function redirectPage(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cascade in your browser has moved</title>
+<link rel="canonical" href="${STARTER_TRY}">
+<meta http-equiv="refresh" content="2; url=${STARTER_TRY}">
+<script>
+(async () => {
+  const to = new URL(${JSON.stringify(STARTER_TRY)});
+  to.search = location.search;
+  to.hash = location.hash;
+  try {
+    const here = new URL("./", location.href).href;
+    const registered = await Promise.race([
+      navigator.serviceWorker?.getRegistrations() ?? [],
+      new Promise((done) => setTimeout(() => done([]), 1000)),
+    ]);
+    await Promise.all(
+      registered.filter(({ scope }) => scope === here).map((r) => r.unregister()),
+    );
+  } catch {}
+  location.replace(to.href);
+})();
+</script>
+</head>
+<body>
+<main>
+<p>This page has moved to <a href="${STARTER_TRY}">${STARTER_TRY}</a>.</p>
+</main>
+</body>
+</html>
+`;
 }
 
 /** The pack of an example's pod beside its folder, which a browser copies the pod from in one request. */
@@ -198,13 +232,12 @@ export function podOf(
 
 /**
  * The Pages tree: the newcomer's front page, the quick start, the examples' page, each example's site in its folder with its pod's
- * files listed and packed beside it, and the page that keeps pods in a browser, `tried`, under `try/`.
+ * files listed and packed beside it, and try/'s old page, which sends a visitor on to the starter kit's.
  */
 export function pagesTree(
   examples: readonly Example[],
   built: BuiltFrom,
   start: Start,
-  tried: ReadonlyMap<string, Uint8Array>,
 ): Map<string, Uint8Array> {
   const shown = examples.find(({ folder }) => folder === start.example);
   if (shown === undefined)
@@ -227,9 +260,8 @@ export function pagesTree(
       encoder.encode(JSON.stringify(packFolder(paths, pod))),
     );
   }
-  for (const [path, bytes] of tried) tree.set(TRY + path, bytes);
-  const hasTry = tree.has(TRY_PAGE);
-  tree.set(START_PAGE, encoder.encode(startPage(start, shown, hasTry)));
-  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, examples, hasTry)));
+  tree.set(TRY_PAGE, encoder.encode(redirectPage()));
+  tree.set(START_PAGE, encoder.encode(startPage(start, shown)));
+  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, examples)));
   return tree;
 }
