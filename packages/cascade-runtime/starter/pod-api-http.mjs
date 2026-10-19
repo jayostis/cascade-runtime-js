@@ -1,21 +1,7 @@
 // PodApi over HTTP: `apiRoute` answers `POST /api/<operation>` with JSON, and `podApiOver(origin)` is the same
 // operations called through `fetch`, throwing what the in-process ones throw.
 import { Refusal, Unopened } from "cascade-runtime";
-
-/** The operations that cross; `podFor`, `closePods` and `close` stay in the process. */
-export const OPERATIONS = [
-  "pods",
-  "held",
-  "pod",
-  "answers",
-  "said",
-  "trend",
-  "classes",
-  "panel",
-  "table",
-  "ask",
-  "tool",
-];
+import { OPERATIONS } from "./pod-api.mjs";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FAILED = "the server failed; its log says why";

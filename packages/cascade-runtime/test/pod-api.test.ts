@@ -419,6 +419,17 @@ for (const via of HOSTS) {
       ["table", { id: "loinc", code: "0000-0" }, /holds no code 0000-0/],
       ["ask", { pod: STATIN, question: "pod/No such question" }, /no question/],
       ["ask", { pod: STATIN, question: LABS, limit: 0 }, /limit/],
+      ["trend", { pod: STATIN, medication: 5 }, /medication must be a string/],
+      ["pod", { pod: 5 }, /pod must be a string/],
+      ["said", { pod: STATIN, entry: 5 }, /entry must be a string/],
+      ["answers", { pod: STATIN, last: "yes" }, /last must be true or false/],
+      ["table", { page: "2" }, /page must be a number/],
+      ["ask", { pod: STATIN, question: 5 }, /question must be a string/],
+      [
+        "tool",
+        { pod: STATIN, tool: "find_changes", input: "x" },
+        /input must be an object/,
+      ],
       ["tool", { pod: STATIN, tool: "nothing" }, /no tool nothing/],
       [
         "tool",

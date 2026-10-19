@@ -80,6 +80,59 @@ export function trendOf({ test, medication }) {
   };
 }
 
+/** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
+export const OPERATIONS = [
+  "pods",
+  "held",
+  "pod",
+  "answers",
+  "said",
+  "trend",
+  "classes",
+  "panel",
+  "table",
+  "ask",
+  "tool",
+];
+
+/** The type each input a client may send must have when it is given: s string, b boolean, n number, o object. */
+const INPUTS = {
+  pods: {},
+  held: {},
+  pod: { pod: "s" },
+  answers: { pod: "s", last: "b" },
+  said: { pod: "s", entry: "s" },
+  trend: { pod: "s", test: "s", medication: "s", named: "b" },
+  classes: { pod: "s" },
+  panel: { pod: "s", panel: "s" },
+  table: { id: "s", q: "s", page: "n", code: "s" },
+  ask: { pod: "s", question: "s", limit: "n" },
+  tool: { pod: "s", tool: "s", input: "o" },
+};
+const TYPES = {
+  s: ["a string", (value) => typeof value === "string"],
+  b: ["true or false", (value) => typeof value === "boolean"],
+  n: ["a number", (value) => typeof value === "number"],
+  o: [
+    "an object",
+    (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value),
+  ],
+};
+
+/** `operation`, refusing an input that is no object or holds a field of the wrong type. */
+function typed(name, operation) {
+  return async (input = {}) => {
+    if (!TYPES.o[1](input)) throw new Refusal("the input must be an object");
+    for (const [field, type] of Object.entries(INPUTS[name])) {
+      const [what, is] = TYPES[type];
+      if (input[field] !== undefined && !is(input[field]))
+        throw new Refusal(`${field} must be ${what}`);
+    }
+    return operation(input);
+  };
+}
+
 /** The operations over the pods and tables `host` gives; `host.hospitals` and `host.world` are read at each call. */
 export function podApi(host) {
   /** Each pod this instance opened, by name, as the promise of its opening. */
@@ -439,7 +492,7 @@ export function podApi(host) {
     return { value: found.map(compact), found };
   }
 
-  return {
+  const operations = {
     async pods() {
       const names = await host.pods.names();
       seen.clear();
@@ -476,6 +529,11 @@ export function podApi(host) {
     table,
     ask,
     tool,
+  };
+  return {
+    ...Object.fromEntries(
+      OPERATIONS.map((name) => [name, typed(name, operations[name])]),
+    ),
     podFor,
     closePods,
     close: () => closePods(),
