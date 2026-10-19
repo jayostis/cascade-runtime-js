@@ -39,6 +39,7 @@ import * as oxigraph from "oxigraph";
 import type * as Fixtures from "cascade-runtime/fixtures";
 import type * as Published from "cascade-runtime/published";
 import { type Served, servePages } from "../src/node/serve.js";
+import { assertStagedCurrent } from "../src/node/staged.js";
 import { inPlace, newPod, settled, tiles, watched } from "./shown.js";
 
 const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -191,6 +192,7 @@ const hasLines = (
 
 /** A Node pod in memory, opened by the installed package over the starter tables it carries, which the page ships. */
 async function pageTablesPod(): Promise<Pod> {
+  assertStagedCurrent(INSTALLED, ROOT);
   const from = (path: string) =>
     import(
       pathToFileURL(join(INSTALLED, "dist", "src", ...path.split("/"))).href

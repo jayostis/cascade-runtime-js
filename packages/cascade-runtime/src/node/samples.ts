@@ -40,9 +40,30 @@ export interface Samples {
   readonly files: ReadonlyMap<string, Uint8Array>;
 }
 
+/** The steps a story says are refused: those of its examples that read the pod after a step and then say "that step is refused". */
+async function refusalsExpected(
+  files: Files,
+  feature: string,
+): Promise<ReadonlySet<string>> {
+  const bytes = await files.read(feature);
+  if (bytes === undefined) throw new Error(`${feature} does not exist`);
+  const expected = new Set<string>();
+  for (const example of new TextDecoder()
+    .decode(bytes)
+    .split(/^\s*Example:/m)) {
+    const step = /When the pod is read as it stood after "([^"]+)"/.exec(
+      example,
+    );
+    if (step !== null && /^\s*Then that step is refused\s*$/m.test(example))
+      expected.add(step[1]!);
+  }
+  return expected;
+}
+
 /**
- * Each kit's published sample, as a browser copies it. The kit's story is replayed on the starter copies, a step the
- * story refuses writing nothing; its pod's files are under `<kit>/pod/` with their list, `files.json`, and their pack
+ * Each kit's published sample, as a browser copies it. The kit's story is replayed on the starter copies, and a step
+ * its story says is refused writes nothing; a step refused that the story does not say so of is a plain error, since
+ * the install is then broken, not the sample short; its pod's files are under `<kit>/pod/` with their list, `files.json`, and their pack
  * beside the folder, `<kit>/pod.pack.json`; what a copy reads without the engine is `<kit>/answers.json`,
  * `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the vocabulary does not carry is refused.
  */
@@ -56,8 +77,11 @@ export async function samplesOf(
   );
   const { local } = parts;
   const kits = new Map<string, string>();
-  for (const { name, folder } of await kitsIn(local))
+  const folders = new Map<string, string>();
+  for (const { name, folder } of await kitsIn(local)) {
     kits.set(name, await titleOf(local.files, folder));
+    folders.set(name, folder);
+  }
   const chosen = options.kits ?? [...kits.keys()];
   for (const kit of chosen) await withKit(local, kit);
   const files = new Map<string, Uint8Array>();
@@ -66,7 +90,18 @@ export async function samplesOf(
   try {
     for (const kit of chosen) {
       const folder = join(replays, kit);
-      await replayKitFrom(local, kit, folder, { tables: parts.tables });
+      const steps = await replayKitFrom(local, kit, folder, {
+        tables: parts.tables,
+      });
+      const expected = await refusalsExpected(
+        local.files,
+        `${folders.get(kit)}/${kit}.feature`,
+      );
+      for (const { step, refused } of steps)
+        if (refused !== undefined && !expected.has(step))
+          throw new Error(
+            `the kit ${kit} is broken: its step ${step} was refused, which its story does not expect: ${refused}`,
+          );
       const replayed = new FolderFiles(folder);
       const paths = await replayed.list("");
       const pod = new Map<string, Uint8Array>();

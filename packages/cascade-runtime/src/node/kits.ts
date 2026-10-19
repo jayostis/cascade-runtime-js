@@ -105,6 +105,11 @@ export async function heldTables(folder: string): Promise<Tables> {
   });
 }
 
+/** The folder of a kit in the vocabulary the package carries; a kit it does not carry is refused, naming those it does. */
+export async function kitFolder(kit: string): Promise<string> {
+  return join((await kitVocabulary(kit)).files.folder, `${KITS}${kit}`);
+}
+
 /**
  * The path of a kit's download: a folder, as `x-e12`, which holds what a person's phone exported, or a file, as a
  * C-CDA a portal handed out.
@@ -122,12 +127,16 @@ export async function kitDownload(
   for (const person of await entries(input))
     for (const name of await entries(join(input, person, "downloads"), true))
       downloads.push({ name, folder: join(input, person, "downloads", name) });
+  if (downloads.length === 0)
+    throw new Error(`the kit ${kit} carries no downloads`);
   const found = downloads.filter(({ name }) => name === download);
-  if (found.length !== 1)
+  if (found.length === 0)
     throw new Refusal(
-      found.length === 0
-        ? `the kit ${kit} has no download ${download}; it has ${[...new Set(downloads.map(({ name }) => name))].join(", ")}`
-        : `the kit ${kit} has several downloads ${download}, one a person`,
+      `the kit ${kit} has no download ${download}; it has ${[...new Set(downloads.map(({ name }) => name))].join(", ")}`,
+    );
+  if (found.length > 1)
+    throw new Error(
+      `the kit ${kit} carries several downloads ${download}, one a person`,
     );
   return found[0]!.folder;
 }

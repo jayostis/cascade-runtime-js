@@ -42,6 +42,7 @@ import { COPY } from "../terms.js";
 import { TRY_PACKAGE } from "../try-page.js";
 import { tryFiles, tryLooks } from "./try.js";
 import { servePages } from "./serve.js";
+import { assertStagedCurrent } from "./staged.js";
 import { startOf } from "./start.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -185,6 +186,7 @@ async function stagedPackage(): Promise<{
     throw new Error(
       `${STAGE} holds no package; run npm run build:package first`,
     );
+  assertStagedCurrent(STAGE, ROOT);
   const config = parseConfig(
     await readFile(join(components, CONFIG_FILE), "utf8"),
   );

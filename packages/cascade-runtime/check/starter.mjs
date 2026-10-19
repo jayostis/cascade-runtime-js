@@ -608,7 +608,11 @@ await behaviour("the command makes the app", async () => {
   const held = await fixtures.heldTables(join(app, "pods", ".tables"));
   heldNames = (codes) => held.about(codes);
   heldSeries = () => held.held();
-  const vocabulary = (await fixtures.installedParts()).local.files.folder;
+  const vocabulary = resolve(
+    await fixtures.kitFolder("alex-rivera"),
+    "..",
+    "..",
+  );
   const kit = (through) =>
     fixtures.kitStory("alex-rivera", through === undefined ? {} : { through });
   const whole = await kit();

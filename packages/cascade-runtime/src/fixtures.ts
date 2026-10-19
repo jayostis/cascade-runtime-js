@@ -1,6 +1,7 @@
 export {
   heldTables,
   kitDownload,
+  kitFolder,
   type KitStep,
   kitStory,
   replayKit,
