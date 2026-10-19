@@ -992,10 +992,14 @@ test("a search lists a version again when the listing kept beside it is not one,
     const files = new MemoryFiles("urn:test:tables/");
     await tablesOver(feed, files).check();
     await files.write(path, new TextEncoder().encode(kept));
-    const { found } = await tablesOver(feed, files).search(
-      groups.series,
-      "141",
+    const again = tablesOver(feed, files);
+    await again.start();
+    assert.deepEqual(
+      JSON.parse(new TextDecoder().decode(await files.read(path))),
+      valid,
+      `a start lists it again: ${kept}`,
     );
+    const { found } = await again.search(groups.series, "141");
     assert.deepEqual(
       found.map(({ notation }) => notation),
       ["141"],
@@ -1271,12 +1275,17 @@ test("the starter copies carry each version's rows as published, name the curren
       },
     },
   });
-  await old.start();
+  const started = old.start();
+  await Promise.all([
+    old.search(groups.series, "141"),
+    old.search(groups.series, "141"),
+  ]);
+  await started;
   const current = (await old.current()).length;
   assert.deepEqual(
-    [listings, mostListing],
-    [current, 1],
-    "a start lists each current version, one at a time",
+    [listings, mostListing <= 2],
+    [current, true],
+    "a start and two searches during it list each current version once, a read listing beside the start's one at a time",
   );
   listingsRead = 0;
   await old.check();
