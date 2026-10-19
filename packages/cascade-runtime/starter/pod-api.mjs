@@ -1,0 +1,481 @@
+// What the starter reads of its pods and its reference tables, once, for every host: the Node server, try/ in a
+// browser, the chat, the MCP server and `npm run ask`. A host gives the pods, the tables and what only it knows;
+// every operation takes and gives plain JSON, and refuses bad input with a `Refusal`.
+import {
+  changesIn,
+  changeTools,
+  checkInput,
+  compact,
+  findChanges,
+  labSeriesIn,
+  Refusal,
+  timelineIn,
+  Unopened,
+} from "cascade-runtime";
+import {
+  classedElsewhere,
+  classesSaid,
+  codesSaid,
+  entryId,
+  entryOf,
+  HISTORY,
+  joinedBy,
+  LABS,
+  MEDICATIONS,
+  pageNumber,
+  panelSaid,
+  panelsOf,
+  QUESTIONS,
+  sourcesOf,
+  tableId,
+  testsIn,
+  trendInput,
+  variantsSaid,
+  withMechanism,
+  worthALook,
+} from "./summary.mjs";
+
+/** Why a host that opens no encrypted pod refuses the pod `name`, in one line. */
+export function notOpenedHere(name) {
+  return `${name} is encrypted: open it in the app (\`npm start\`) with its six words; this command does not open encrypted pods`;
+}
+
+/** The paths of an operation's output that hold a `Map` as `[key, value]` pairs. */
+const MAPPED = ["about", "joined", "elsewhere", "classes", "panelAbout"];
+const MAPPED_SAID = ["says", "labels", "names"];
+
+/** An operation's `output` with each of its pairs a `Map` again, as the view takes them. */
+export function maps(output) {
+  const mapped = { ...output };
+  for (const key of MAPPED)
+    if (output[key] !== undefined) mapped[key] = new Map(output[key]);
+  if (output.said !== undefined) {
+    mapped.said = { ...output.said };
+    for (const key of MAPPED_SAID)
+      if (output.said[key] !== undefined)
+        mapped.said[key] = new Map(output.said[key]);
+  }
+  return mapped;
+}
+
+const pairs = (map) => (map === undefined ? undefined : [...map]);
+
+const WORTH_A_LOOK = {
+  name: "worth_a_look",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+};
+
+/** The names of the tools `tool` runs: the change tools, then `worth_a_look`. */
+const TOOLS = [
+  ...changeTools({ ask: async () => [] }).map(({ name }) => name),
+  WORTH_A_LOOK.name,
+];
+
+/** The test and medication codes of the trend a finding is about, the medication's name where it has no code. */
+export function trendOf({ test, medication }) {
+  const drug = medication.notation ?? medication.name;
+  return {
+    test: test.notation ?? test.code,
+    ...(drug === "" ? {} : { medication: drug }),
+  };
+}
+
+/** The operations over the pods and tables `host` gives; `host.hospitals` and `host.world` are read at each call. */
+export function podApi(host) {
+  /** Each pod this instance opened, by name, as the promise of its opening. */
+  const opened = new Map();
+  /** The title each pod keeps, by name, once read. */
+  const titles = new Map();
+  /** The last answers given for each pod, by name, as `answers` gave them. */
+  const last = new Map();
+
+  function podFor(name, options) {
+    if (!opened.has(name)) {
+      const opening = host.pods.open(name, options);
+      opening.catch(() => opened.delete(name));
+      opened.set(name, opening);
+    }
+    return opened.get(name);
+  }
+
+  async function closePods({ plaintextOnly = false } = {}) {
+    const closing = [];
+    for (const [name, opening] of [...opened]) {
+      const pod = await opening.catch(() => undefined);
+      if (plaintextOnly && pod?.encrypted) continue;
+      opened.delete(name);
+      if (pod !== undefined) closing.push(pod.close());
+    }
+    last.clear();
+    if (!plaintextOnly) titles.clear();
+    await Promise.allSettled(closing);
+  }
+
+  /** The title the pod keeps, read once, else its name. */
+  async function titleOf(name) {
+    if (!titles.has(name)) {
+      const title = await host.pods.title(name);
+      if (title !== undefined) titles.set(name, title);
+    }
+    return titles.get(name) ?? name;
+  }
+
+  async function held(tables = host.tables()) {
+    return (await tables).held();
+  }
+
+  /** The pod named, which must be one there is. */
+  async function known(name) {
+    const names = await host.pods.names();
+    if (!names.includes(name))
+      throw new Refusal(
+        names.length === 0
+          ? `there is no pod ${name}, and no pod at all`
+          : `there is no pod ${name}; the pods are ${names.join(", ")}`,
+      );
+  }
+
+  /** The pod named, opened; a host that opens no encrypted pod refuses one. */
+  async function podNamed(name) {
+    await known(name);
+    try {
+      return await podFor(name);
+    } catch (error) {
+      if (error instanceof Unopened && !host.opensEncrypted)
+        throw new Refusal(notOpenedHere(name));
+      throw error;
+    }
+  }
+
+  async function asked(pod) {
+    const answers = Object.fromEntries(
+      await Promise.all(
+        QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
+      ),
+    );
+    const changes = changesIn(answers[HISTORY], answers[LABS], { limit: 20 });
+    return {
+      answers: await withMechanism(answers, changes, (question) =>
+        pod.ask(question),
+      ),
+      changes,
+      unheld: pod.opened?.unheld,
+    };
+  }
+
+  async function answers({ pod: name, last: recorded = false }) {
+    const pod = await podNamed(name);
+    if (recorded && last.has(name)) return last.get(name);
+    const given = await asked(pod);
+    last.set(name, given);
+    return given;
+  }
+
+  /** What the tables say of the codes `answered` holds; nothing when they cannot say, which the host is told. */
+  function aboutCodes(answered, pod) {
+    return host
+      .tables(pod)
+      .then((tables) => codesSaid(answered, { tables }))
+      .catch((error) => {
+        host.unsaid?.("names", error);
+        return undefined;
+      });
+  }
+
+  async function variantsOf(answered, pod) {
+    try {
+      return await variantsSaid(answered, {
+        tables: await host.tables(pod),
+        pod,
+      });
+    } catch (error) {
+      host.unsaid?.("variants", error);
+      return undefined;
+    }
+  }
+
+  async function said({ pod: name, entry: id }) {
+    const pod = await podNamed(name);
+    let given = last.get(name) ?? (await answers({ pod: name }));
+    if (id !== undefined && entryOf(given.answers, id) === undefined) {
+      given = await answers({ pod: name });
+      if (entryOf(given.answers, id) === undefined)
+        throw new Refusal(`the pod ${name} holds no entry ${id}`);
+    }
+    const [about, variants, heldNow] = await Promise.all([
+      aboutCodes(given.answers, pod),
+      variantsOf(given.answers, pod),
+      held().catch(() => []),
+    ]);
+    const output = {
+      ...(about !== undefined && { about: pairs(about) }),
+      ...(variants !== undefined && {
+        said: {
+          ...variants,
+          says: pairs(variants.says),
+          labels: pairs(variants.labels),
+          names: pairs(variants.names),
+        },
+      }),
+      held: heldNow,
+    };
+    if (id === undefined) return output;
+    const [panels, joined] = await Promise.all([
+      host
+        .tables()
+        .then(async (tables) =>
+          panelsOf(entryOf(given.answers, id), {
+            tables,
+            held: await tables.held(),
+          }),
+        )
+        .catch(() => []),
+      joinedBy(pod).catch(() => new Map()),
+    ]);
+    return {
+      ...output,
+      entry: entryOf(given.answers, id, {
+        about,
+        said: variants,
+        held: heldNow,
+        joined,
+      }),
+      panels,
+      joined: pairs(joined),
+    };
+  }
+
+  async function trend({ pod: name, test, medication, named = true }) {
+    const pod = await podNamed(name);
+    const [medications, labs] = await Promise.all([
+      pod.ask(HISTORY),
+      pod.ask(LABS),
+    ]);
+    const input = trendInput(
+      { changes: changesIn(medications, labs, { limit: 20 }), labs },
+      { test, medication },
+    );
+    if (input === undefined)
+      throw new Refusal(`the pod ${name} holds no test results`);
+    let series;
+    try {
+      series = labSeriesIn(labs, input.test);
+    } catch (error) {
+      if (!(error instanceof Refusal)) throw error;
+      const tests = testsIn(labs).map(
+        ({ code, notation, name: label }) =>
+          `${notation ?? code}${label === undefined ? "" : ` (${label})`}`,
+      );
+      throw new Refusal(
+        `${error.message}; ${tests.length === 0 ? "it holds no test results" : `the tests it holds are ${tests.join(", ")}`}`,
+      );
+    }
+    const timeline = timelineIn(medications);
+    if (input.medication !== undefined) {
+      const wanted = input.medication.toLowerCase();
+      const found = timeline.find(
+        (each) =>
+          each.notation === input.medication ||
+          each.code === input.medication ||
+          each.name.toLowerCase() === wanted,
+      );
+      if (found === undefined) {
+        const drugs = [
+          ...new Set(timeline.map((each) => each.notation ?? each.name)),
+        ];
+        throw new Refusal(
+          `no medication ${input.medication} in the pod; ${drugs.length === 0 ? "it holds no medications" : `the medications it holds are ${drugs.join(", ")}`}`,
+        );
+      }
+    }
+    const about = named
+      ? await aboutCodes({ [HISTORY]: medications, [LABS]: labs }, pod)
+      : undefined;
+    return {
+      labs,
+      timeline,
+      series,
+      test: input.test,
+      ...(input.medication !== undefined && { medication: input.medication }),
+      ...(about !== undefined && { about: pairs(about) }),
+    };
+  }
+
+  async function classes({ pod: name }) {
+    const pod = await podNamed(name);
+    const [rows, medications] = await Promise.all([
+      pod.medicationClasses(),
+      pod.ask(MEDICATIONS),
+    ]);
+    const tables = host.tables();
+    const [about, elsewhere, heldNow] = await Promise.all([
+      tables.then((each) => classesSaid(rows, { tables: each })).catch(noop),
+      tables
+        .then((each) => classedElsewhere(rows, medications, { tables: each }))
+        .catch(noop),
+      held(tables).catch(() => []),
+    ]);
+    return {
+      rows,
+      medications,
+      ...(about !== undefined && { classes: pairs(about) }),
+      ...(elsewhere !== undefined && { elsewhere: pairs(elsewhere) }),
+      held: heldNow,
+    };
+  }
+
+  async function panel({ pod: name, panel: code }) {
+    const pod = await podNamed(name);
+    if (typeof code !== "string" || code === "")
+      throw new Refusal("a panel is a LOINC code: name one");
+    const [rows, labs] = await Promise.all([
+      pod.panelResults(code),
+      pod.ask(LABS),
+    ]);
+    const tables = host.tables();
+    const [about, heldNow] = await Promise.all([
+      tables
+        .then((each) => panelSaid(code, rows, { tables: each }))
+        .catch(noop),
+      held(tables).catch(() => []),
+    ]);
+    return {
+      panel: code,
+      rows,
+      labs,
+      ...(about !== undefined && { panelAbout: pairs(about) }),
+      held: heldNow,
+    };
+  }
+
+  async function table({ id, q = "", page, code }) {
+    const tables = await host.tables();
+    const heldNow = await tables.held();
+    const sources = sourcesOf(heldNow);
+    const series =
+      id === undefined || code !== undefined
+        ? undefined
+        : heldNow.find((each) => tableId(each.iri) === id);
+    const source =
+      series !== undefined
+        ? sources.find((each) => each.series.includes(series))
+        : id === undefined
+          ? sources[0]
+          : sources.find((each) => tableId(each.iri) === id);
+    if (source === undefined) {
+      if (id === undefined) return { held: heldNow };
+      throw new Refusal(`no reference table ${id} is held`);
+    }
+    const shown = pageNumber(page === undefined ? null : String(page));
+    if (series !== undefined)
+      return {
+        held: heldNow,
+        source,
+        series,
+        searched: await tables.search(series.iri, q, shown),
+        uses: await tables.uses(),
+      };
+    const all = source.series.map(({ iri }) => iri);
+    if (code !== undefined) {
+      const found = await tables.codeNamed(
+        [...new Set([...all, ...heldNow.map(({ iri }) => iri)])],
+        code,
+      );
+      if (found === undefined)
+        throw new Refusal(`${source.label} holds no code ${code}`);
+      return {
+        held: heldNow,
+        source,
+        facts: await tables.facts(found, all),
+      };
+    }
+    return {
+      held: heldNow,
+      source,
+      searched: await tables.search(all, q, shown),
+    };
+  }
+
+  async function ask({ pod: name, question, limit }) {
+    if (limit !== undefined && !(Number.isSafeInteger(limit) && limit > 0))
+      throw new Refusal(
+        `the limit is a whole number of rows from 1, or left out for every row; not ${limit}`,
+      );
+    const pod = await podNamed(name);
+    const rows = await pod.ask(question);
+    return {
+      question,
+      total: rows.length,
+      rows: limit === undefined ? rows : rows.slice(0, limit),
+    };
+  }
+
+  async function tool({ pod: name, tool: called, input = {} }) {
+    if (!TOOLS.includes(called))
+      throw new Refusal(`no tool ${called}; the tools are ${TOOLS.join(", ")}`);
+    const pod = await podNamed(name);
+    if (called === WORTH_A_LOOK.name) {
+      checkInput(WORTH_A_LOOK.inputSchema, input);
+      const [given, { about, said: variants }] = await Promise.all([
+        answers({ pod: name, last: true }),
+        said({ pod: name }).then(maps),
+      ]);
+      return {
+        value: worthALook(given.answers, about, variants).map(
+          ({ sentence, entry, tag }) => ({
+            sentence,
+            entry: entryId(entry),
+            ...(tag === undefined ? {} : { tag }),
+          }),
+        ),
+      };
+    }
+    const run = changeTools(pod).find((each) => each.name === called);
+    if (called !== "find_changes") return { value: await run.execute(input) };
+    checkInput(run.inputSchema, input);
+    const found = await findChanges(pod, input);
+    return { value: found.map(compact), found };
+  }
+
+  return {
+    async pods() {
+      const names = await host.pods.names();
+      return {
+        pods: await Promise.all(
+          names.map(async (name) => ({ name, title: await titleOf(name) })),
+        ),
+      };
+    },
+    async held() {
+      try {
+        return { held: await held() };
+      } catch {
+        return { held: [], failed: true };
+      }
+    },
+    async pod({ pod: name }) {
+      await known(name);
+      const title = await titleOf(name);
+      try {
+        const pod = await podFor(name);
+        return { name, title, encrypted: pod.encrypted === true };
+      } catch (error) {
+        if (!(error instanceof Unopened)) throw error;
+        return { name, title, encrypted: true, locked: error.outcome };
+      }
+    },
+    answers,
+    said,
+    trend,
+    classes,
+    panel,
+    table,
+    ask,
+    tool,
+    podFor,
+    closePods,
+    close: () => closePods(),
+  };
+}
+
+const noop = () => undefined;

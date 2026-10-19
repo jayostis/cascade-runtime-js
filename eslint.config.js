@@ -68,6 +68,20 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/cascade-runtime/starter/pod-api.mjs"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ImportDeclaration[source.value!=/^(cascade-runtime|\\.\\/summary\\.mjs)$/], ImportExpression",
+          message:
+            "PodApi runs in a browser too: it imports only cascade-runtime and ./summary.mjs.",
+        },
+      ],
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
