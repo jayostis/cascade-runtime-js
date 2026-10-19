@@ -14,15 +14,10 @@ import {
   serveDemo,
 } from "@the-cascade-protocol/sandbox/node";
 import {
-  changesIn,
   ConnectionFailure,
-  labSeriesIn,
-  openPod,
   pullFiles,
   Refusal,
   sixWords,
-  tablesBeside,
-  timelineIn,
   typedWords,
   Unopened,
 } from "cascade-runtime";
@@ -30,13 +25,12 @@ import { render } from "preact-render-to-string";
 import { chatRoute, chatTools, entryPath } from "./chat.mjs";
 import { hospitalsAt } from "./hospitals.mjs";
 import { modelFrom } from "./model-client.mjs";
+import { nodeHost } from "./node-host.mjs";
+import { maps, podApi } from "./pod-api.mjs";
 import {
   deleteAll,
   KITS,
-  podFolder,
-  podNames,
   podPath,
-  podTitle,
   POD_NAME,
   PODS,
   resetAll,
@@ -44,24 +38,17 @@ import {
 } from "./pods.mjs";
 import {
   checkedNote,
-  classedElsewhere,
   classesPage,
-  classesSaid,
   codePage,
   codesSaid,
   connectionDialog,
   demoPeople,
   didNote,
-  entryOf,
   entryPage,
   frame,
-  HISTORY,
   hospitalName,
   hospitalsPage,
   html,
-  joinedBy,
-  LABS,
-  MEDICATIONS,
   newPodDialog,
   noPods,
   noTables,
@@ -69,8 +56,6 @@ import {
   openPodPage,
   pageNumber,
   panelPage,
-  panelSaid,
-  panelsOf,
   patientNames,
   patientName,
   personName,
@@ -83,7 +68,6 @@ import {
   suggestedQuestions,
   tableId,
   tablePage,
-  trendInput,
   trendPage,
   trendTitle,
   savedLoginChanged,
@@ -92,45 +76,31 @@ import {
   utcInstant,
   worldInstant,
 } from "./summary.mjs";
-import {
-  answersOf,
-  changeAnswers,
-  podTools,
-  worthLines,
-} from "./pod-tools.mjs";
+import { changeAnswers, podTools, worthLines } from "./pod-tools.mjs";
 
 /** Names Windows keeps for devices, which no folder may have. */
 const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 
-/** Each pod opened on the first request for it, and kept open. */
-const open = new Map();
+const told = new Set();
 
-/** The title each pod keeps, by its name: read once, set when a pod is made, cleared when the pods are deleted or reset. */
-const kept = new Map();
-
-/** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
-async function podTitles() {
-  const names = await podNames();
-  return new Map(
-    await Promise.all(
-      names.map(async (name) => {
-        if (!kept.has(name)) {
-          const title = await podTitle(name);
-          if (title !== undefined) kept.set(name, title);
-        }
-        return [name, kept.get(name) ?? name];
-      }),
-    ),
+/** Says once on the console, for each kind, that the tables could not say what the pages would name. */
+function unsaid(kind, error) {
+  if (told.has(kind)) return;
+  told.add(kind);
+  stderr.write(
+    kind === "names"
+      ? `Records are shown by their own names: ${error.message}\n`
+      : `What ClinVar says is not shown: ${error.message}\n`,
   );
 }
 
-function podNamed(name, secret, title) {
-  if (!open.has(name)) {
-    const opening = openPod(podFolder(name), { secret, title });
-    opening.catch(() => open.delete(name));
-    open.set(name, opening);
-  }
-  return open.get(name);
+const host = nodeHost({ folder: PODS, unsaid });
+const api = podApi(host);
+
+/** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
+async function podTitles() {
+  const { pods } = await api.pods({});
+  return new Map(pods.map(({ name, title }) => [name, title]));
 }
 
 /** The six words of each encrypted pod being made, by its name, until the person has checked them. Kept in memory only. */
@@ -141,51 +111,29 @@ const typedFor = new Map();
 
 /** Why the pod could not be opened without words: an `Unopened` outcome; nothing when it is open. */
 async function lockedOutcome(name) {
-  try {
-    await podNamed(name);
-    return undefined;
-  } catch (error) {
-    if (error instanceof Unopened) return error.outcome;
-    throw error;
-  }
+  return (await api.pod({ pod: name })).locked;
 }
 
-/** Each pod's answers, by question, as its page last showed them. */
-const lastShown = new Map();
-
-/** The reference tables the pods are matched with, kept in `pods/.tables/`. */
-const tables = () => tablesBeside(PODS);
 const tablePath = (series) =>
   `/tables/${encodeURIComponent(tableId(series.iri))}/`;
 
-let unnamedSaid = false;
-
-function sayUnnamed(error) {
-  if (!unnamedSaid)
-    stderr.write(`Records are shown by their own names: ${error.message}
-`);
-  unnamedSaid = true;
-}
-
-/** What the tables say of the codes `answers` hold and of their ingredients; nothing when they cannot say, which the console is told once. */
+/** For the chat: what the tables say of the codes `answers` hold; nothing when they cannot say. */
 function aboutCodes(answers) {
-  return tables()
+  return host
+    .tables()
     .then((kept) => codesSaid(answers, { tables: kept }))
     .catch((error) => {
-      sayUnnamed(error);
+      unsaid("names", error);
       return undefined;
     });
 }
-let variantsUnsaid = false;
 
-/** What the tables say of the variants `answers` hold; nothing when they cannot say, which the console is told once. */
+/** For the chat: what the tables say of the variants `answers` hold; nothing when they cannot say. */
 async function variantsOf(answers, pod) {
   try {
-    return await variantsSaid(answers, { tables: await tables(), pod });
+    return await variantsSaid(answers, { tables: await host.tables(), pod });
   } catch (error) {
-    if (!variantsUnsaid)
-      stderr.write(`What ClinVar says is not shown: ${error.message}\n`);
-    variantsUnsaid = true;
+    unsaid("variants", error);
     return undefined;
   }
 }
@@ -214,10 +162,9 @@ async function page(
   const encrypted =
     locked ||
     (current !== undefined &&
-      (await open.get(current)?.catch(() => undefined))?.encrypted === true);
-  const held = await tables()
-    .then((kept) => kept.held())
-    .catch(() => []);
+      (await api.pod({ pod: current }).catch(() => undefined))?.encrypted ===
+        true);
+  const { held } = await api.held({});
   return `<!doctype html>\n${render(
     frame({
       title,
@@ -255,46 +202,48 @@ async function page(
   )}`;
 }
 
+/** The Not found page, 404, saying `said`: what a read refused. */
+async function notFound(response, said, options) {
+  send(
+    response,
+    404,
+    await page(
+      "Not found",
+      html`<h1>Not found</h1>
+<p>${said}</p>`,
+      options,
+    ),
+  );
+}
+
 /**
  * A reference source or table, by its id, or the first source with none. A source's page searches all its tables,
  * `query`'s `q` for what and `page` for which page, or with `code` shows that code's page; a table's page searches it
  * alone. `checked` says the page tells what the last Check now did.
  */
 async function showTable(response, id, query) {
-  const kept = await tables();
-  const held = await kept.held();
-  const sources = sourcesOf(held);
-  const series =
-    id === undefined || query.has("code")
-      ? undefined
-      : held.find((each) => tableId(each.iri) === id);
-  const source =
-    series !== undefined
-      ? sources.find((each) => each.series.includes(series))
-      : id === undefined
-        ? sources[0]
-        : sources.find((each) => tableId(each.iri) === id);
-  const note = query.has("checked") ? lastCheck : undefined;
-  const notFound = async (said) =>
-    send(
-      response,
-      404,
-      await page(
-        "Not found",
-        html`<h1>Not found</h1>
-<p>${said}</p>`,
-      ),
-    );
-  if (source === undefined)
-    return id === undefined
-      ? send(
-          response,
-          200,
-          await page("Reference tables", noTables(), { note }),
-        )
-      : notFound(`This app holds no reference table ${id}.`);
   const text = query.get("q") ?? "";
   const shown = pageNumber(query.get("page"));
+  let found;
+  try {
+    found = await api.table({
+      id,
+      q: text,
+      page: shown,
+      code: query.has("code") ? (query.get("code") ?? "") : undefined,
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return notFound(response, error.message);
+  }
+  const { held, source, series, searched, uses, facts } = found;
+  const note = query.has("checked") ? lastCheck : undefined;
+  if (source === undefined)
+    return send(
+      response,
+      200,
+      await page("Reference tables", noTables(), { note }),
+    );
   const titles = await podTitles();
   const at = series ?? source;
   const searchedHere = {
@@ -316,23 +265,12 @@ async function showTable(response, id, query) {
       ...searchedHere,
       series,
       codeHref,
-      searched: await kept.search(series.iri, text, shown),
-      uses: await kept.uses(),
+      searched,
+      uses,
       pods: [...titles.keys()],
       href: podPath,
     });
-  } else if (query.has("code")) {
-    const written = query.get("code") ?? "";
-    const code = await kept.codeNamed(
-      [...new Set([...source.series, ...held].map(({ iri }) => iri))],
-      written,
-    );
-    if (code === undefined)
-      return notFound(`${source.label} holds no code ${written}.`);
-    const facts = await kept.facts(
-      code,
-      source.series.map(({ iri }) => iri),
-    );
+  } else if (facts !== undefined) {
     title = `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim();
     body = codePage({
       source,
@@ -345,11 +283,7 @@ async function showTable(response, id, query) {
     body = sourcePage({
       ...searchedHere,
       source,
-      searched: await kept.search(
-        source.series.map(({ iri }) => iri),
-        text,
-        shown,
-      ),
+      searched,
       codeHref,
       tableHref: tablePath,
     });
@@ -362,24 +296,12 @@ async function showTable(response, id, query) {
 
 /** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
-  const kept = await tables();
+  const kept = await host.tables();
   const checked = await kept.check({ cache: "no-cache" });
-  if (checked.some((each) => each.kept.length > 0)) await closePods(true);
+  if (checked.some((each) => each.kept.length > 0))
+    await api.closePods({ plaintextOnly: true });
   lastCheck = checkedNote(checked, await kept.held());
   redirect(response, "/tables/?checked");
-}
-
-/** Closes every pod the server holds open, or with `plaintextOnly` only those not encrypted, to be opened again on the next request for it. */
-async function closePods(plaintextOnly = false) {
-  const closing = [];
-  for (const [name, opening] of [...open]) {
-    const pod = await opening.catch(() => undefined);
-    if (plaintextOnly && pod?.encrypted) continue;
-    open.delete(name);
-    if (pod !== undefined) closing.push(pod.close());
-  }
-  lastShown.clear();
-  await Promise.allSettled(closing);
 }
 
 /** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
@@ -387,8 +309,7 @@ async function closeAll() {
   hospitals?.forget();
   waiting.clear();
   typedFor.clear();
-  kept.clear();
-  await closePods();
+  await api.closePods();
 }
 
 /** File, Delete all data: every pod removed, then the home page says how many. */
@@ -431,25 +352,18 @@ async function home(response, query) {
  * The questions an empty chat offers on a page of the pod `name`, none with no model set. What the caller already has of
  * the pod's `answers`, what the tables say of them (`about`) and `changes` is used; the rest is read.
  */
-async function remembered(name) {
-  const answers = await answersOf(await podNamed(name));
-  lastShown.set(name, answers);
-  return answers;
-}
-
 async function suggested(name, known = {}) {
   if (model === undefined) return [];
-  const answers =
-    known.answers ?? lastShown.get(name) ?? (await remembered(name));
-  return suggestedQuestions(answers, {
-    changes:
-      known.changes ??
-      changesIn(answers[HISTORY], answers[LABS], { limit: 20 }),
-    about: known.about ?? (await aboutCodes(answers)),
-    said:
-      "said" in known
-        ? known.said
-        : await variantsOf(answers, await podNamed(name)),
+  const given =
+    known.answers === undefined
+      ? await api.answers({ pod: name, last: true })
+      : known;
+  const { about, said } =
+    "said" in known ? known : maps(await api.said({ pod: name }));
+  return suggestedQuestions(given.answers, {
+    changes: known.changes ?? given.changes,
+    about,
+    said,
   });
 }
 
@@ -477,19 +391,11 @@ async function showPod(response, name, query, titles) {
           ...(found.bringing !== undefined && { step: "bringing in" }),
         };
   // A pod answers once its import is done, so while one runs the page behind the box is the one last shown.
-  const answers =
-    shown?.step === "bringing in" && lastShown.has(name)
-      ? lastShown.get(name)
-      : await answersOf(await podNamed(name));
-  lastShown.set(name, answers);
-  const [about, said, held] = await Promise.all([
-    aboutCodes(answers),
-    podNamed(name).then((pod) => variantsOf(answers, pod)),
-    tables()
-      .then((kept) => kept.held())
-      .catch(() => []),
-  ]);
-  const changes = changesIn(answers[HISTORY], answers[LABS], { limit: 20 });
+  const { answers, changes, unheld } = await api.answers({
+    pod: name,
+    last: shown?.step === "bringing in",
+  });
+  const { about, said, held } = maps(await api.said({ pod: name }));
   const from = query.get("from");
   const noted = from === null ? undefined : hospitals.connection(name, from);
   const broughtIn = await noted?.imported?.catch(() => undefined);
@@ -525,7 +431,7 @@ async function showPod(response, name, query, titles) {
     world: worldDateAt(podPath(name)),
     entryHref: (entry) => entryPath(name, entry),
     connection: box,
-    unheld: (await podNamed(name)).opened?.unheld,
+    unheld,
     about: about ?? new Map(),
     held,
     said,
@@ -555,30 +461,13 @@ async function showPod(response, name, query, titles) {
  * 404.
  */
 async function showEntry(response, name, id, titles) {
-  let answers = lastShown.get(name);
-  if (answers === undefined || entryOf(answers, id) === undefined) {
-    answers = await answersOf(await podNamed(name));
-    lastShown.set(name, answers);
+  let found;
+  try {
+    found = maps(await api.said({ pod: name, entry: id }));
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
   }
-  const [about, held, said, panels, joined] = await Promise.all([
-    aboutCodes(answers),
-    tables()
-      .then((kept) => kept.held())
-      .catch(() => []),
-    podNamed(name).then((pod) => variantsOf(answers, pod)),
-    tables()
-      .then(async (kept) =>
-        panelsOf(entryOf(answers, id), {
-          tables: kept,
-          held: await kept.held(),
-        }),
-      )
-      .catch(() => []),
-    podNamed(name)
-      .then(joinedBy)
-      .catch(() => new Map()),
-  ]);
-  const entry = entryOf(answers, id, { about, said, held, joined });
+  const { entry, panels = [], held = [] } = found ?? {};
   const sources = sourcesOf(held);
   const body = entryPage({
     titles,
@@ -598,58 +487,55 @@ async function showEntry(response, name, id, titles) {
     await page(entry?.name ?? "Not found", body, {
       current: name,
       titles,
-      suggestions: await suggested(name, { answers, about, said }),
+      suggestions: await suggested(
+        name,
+        found && { about: found.about, said: found.said },
+      ),
     }),
   );
 }
 
 /**
  * The trend of the test `query`'s `test` names, the medication `medication` names marked: the pod's results of one
- * test over time. With no `test` it is the strongest change's, else the pod's first. A test the pod holds no result of
- * is 404.
+ * test over time. With no `test` it is the strongest change's, else the pod's first. A pod with no test result, a test
+ * it holds no result of and a medication it lacks are each 404.
  */
 async function showTrend(response, name, query, titles) {
-  const pod = await podNamed(name);
-  const answers = await changeAnswers(pod);
-  const { [HISTORY]: medications, [LABS]: labs } = answers;
-  const asked = {
-    test: query.get("test") ?? undefined,
-    medication: query.get("medication") ?? undefined,
-  };
-  const changes = changesIn(medications, labs, { limit: 20 });
-  const input = trendInput({ changes, labs }, asked);
-  let series;
+  let found;
   try {
-    series = input === undefined ? undefined : labSeriesIn(labs, input.test);
+    found = maps(
+      await api.trend({
+        pod: name,
+        test: query.get("test") || undefined,
+        medication: query.get("medication") || undefined,
+      }),
+    );
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
+    return notFound(response, error.message, { current: name, titles });
   }
-  const about = await aboutCodes(answers);
+  const { labs, series, timeline, test, medication, about } = found;
   const body = trendPage({
     titles,
     pod: name,
     back: podPath(name),
     labs,
     series,
-    timeline: timelineIn(medications),
-    test: input?.test,
-    medication: input?.medication,
+    timeline,
+    test,
+    medication,
     trendHref: (trend) => trendPath(name, trend),
     about,
     ask: model !== undefined,
   });
   send(
     response,
-    series === undefined ? 404 : 200,
-    await page(
-      series === undefined ? "Not found" : trendTitle(series, about),
-      body,
-      {
-        current: name,
-        titles,
-        suggestions: await suggested(name, { changes }),
-      },
-    ),
+    200,
+    await page(trendTitle(series, about), body, {
+      current: name,
+      titles,
+      suggestions: await suggested(name),
+    }),
   );
 }
 
@@ -661,19 +547,13 @@ const classesPath = (name) => `${podPath(name)}classes`;
  * are shown by their codes.
  */
 async function showClasses(response, name, query, titles) {
-  const pod = await podNamed(name);
-  const [rows, medications] = await Promise.all([
-    pod.medicationClasses(),
-    pod.ask(MEDICATIONS),
-  ]);
-  const kept = await tables();
-  const [about, elsewhere, held] = await Promise.all([
-    classesSaid(rows, { tables: kept }).catch(() => undefined),
-    classedElsewhere(rows, medications, { tables: kept }).catch(
-      () => undefined,
-    ),
-    kept.held(),
-  ]);
+  const {
+    rows,
+    medications,
+    classes: about,
+    elsewhere,
+    held,
+  } = maps(await api.classes({ pod: name }));
   const sources = sourcesOf(held);
   const body = classesPage({
     titles,
@@ -707,23 +587,16 @@ const panelPath = (name, code) =>
  * `pod.panelResults(panel)` finds them, the tables name them. A panel is a code, so no panel is a 404.
  */
 async function showPanel(response, name, query, titles) {
-  const panel = query.get("panel");
-  if (panel === null)
-    return send(
-      response,
-      404,
-      await page("Not found", html`<h1>Not found</h1>`, { titles }),
+  let found;
+  try {
+    found = maps(
+      await api.panel({ pod: name, panel: query.get("panel") ?? undefined }),
     );
-  const pod = await podNamed(name);
-  const [rows, labs] = await Promise.all([
-    pod.panelResults(panel),
-    pod.ask(LABS),
-  ]);
-  const kept = await tables();
-  const [about, held] = await Promise.all([
-    panelSaid(panel, rows, { tables: kept }).catch(() => undefined),
-    kept.held(),
-  ]);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return notFound(response, error.message, { titles });
+  }
+  const { panel, rows, labs, panelAbout: about, held } = found;
   const sources = sourcesOf(held);
   const body = panelPage({
     titles,
@@ -771,15 +644,16 @@ async function newPod(request, response) {
 <p>${refused}</p>`,
       ),
     );
-  if (form.get("encrypt") === "on" && !(await podNames()).includes(name)) {
+  if (
+    form.get("encrypt") === "on" &&
+    !(await host.pods.names()).includes(name)
+  ) {
     const words = sixWords();
     waiting.set(name, words);
     typedFor.set(name, form.get("person")?.trim());
     return await showWords(response, name, words);
   }
-  const title = form.get("person")?.trim();
-  await podNamed(name, undefined, title);
-  if (title) kept.set(name, title);
+  await api.podFor(name, { title: form.get("person")?.trim() });
   redirect(response, podPath(name));
 }
 
@@ -831,7 +705,7 @@ async function newEncryptedPod(request, response) {
   waiting.delete(name);
   const title = typedFor.get(name);
   typedFor.delete(name);
-  if ((await podNames()).includes(name))
+  if ((await host.pods.names()).includes(name))
     return send(
       response,
       400,
@@ -841,7 +715,7 @@ async function newEncryptedPod(request, response) {
 <p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
       ),
     );
-  if (!(await podNamed(name, words, title)).encrypted)
+  if (!(await api.podFor(name, { secret: words, title })).encrypted)
     throw new Error(`The pod ${name} was made without its words.`);
   redirect(response, podPath(name));
 }
@@ -877,7 +751,7 @@ async function unlock(request, response, name, titles) {
   if (secret.trim() === "")
     return await showLocked(response, name, "incorrect secret", next, titles);
   try {
-    await podNamed(name, secret);
+    await api.podFor(name, { secret });
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     return await showLocked(response, name, error.outcome, next, titles);
@@ -974,7 +848,7 @@ async function connectionView(name, connection) {
   if (done?.refused !== undefined)
     return { failed: `Refused: ${done.refused}` };
   return {
-    sources: await (await podNamed(name)).look(files),
+    sources: await (await api.podFor(name)).look(files),
     pulled,
     about: patientName(pulled.bundle),
     aboutNames: patientNames(pulled.bundle),
@@ -1010,7 +884,7 @@ const boxOf = (name, connection) =>
 async function imported(name, connection) {
   const { failed, files } = await filesOf(connection);
   if (files === undefined) throw new Error(failed);
-  return (await podNamed(name)).import(files, {
+  return (await api.podFor(name)).import(files, {
     aboutSubject: true,
     onProgress: (part) => {
       connection.bringing = part;
@@ -1129,7 +1003,7 @@ const model = modelSet();
 /** The tools the chat reaches, over the pods this server holds open. */
 const chatting = chatTools(
   podTools(
-    { names: podNames, open: podNamed },
+    { names: () => host.pods.names(), open: (name) => api.podFor(name) },
     {
       viewOf: trendPath,
       worthOf: (pod) => worthLines(pod, { aboutCodes, variantsOf }),

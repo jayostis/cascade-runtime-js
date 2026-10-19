@@ -68,6 +68,26 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/cascade-runtime/starter/pod-api.mjs"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ImportDeclaration[source.value!=/^(cascade-runtime|\\.\\/summary\\.mjs)$/], ImportExpression, ExportNamedDeclaration[source], ExportAllDeclaration",
+          message:
+            "PodApi runs in a browser too: it imports only cascade-runtime and ./summary.mjs, and re-exports nothing.",
+        },
+        {
+          selector:
+            'ImportDeclaration[source.value="cascade-runtime"] > ImportSpecifier[imported.name=/^(tablesBeside|loopbackSignIn|configureTables|finishSignIn|popupSignIn|appTables|checkTables|warm|podTitle|deletePod)$/]',
+          message:
+            "PodApi imports only what cascade-runtime exports in both conditions: not tablesBeside, loopbackSignIn, configureTables or the browser-only exports.",
+        },
+      ],
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",

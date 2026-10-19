@@ -7,6 +7,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath, URL, URLSearchParams } from "node:url";
 import { parseArgs } from "node:util";
 import { openPod, Refusal, Unopened } from "cascade-runtime";
+import { notOpenedHere } from "./pod-api.mjs";
 import {
   phaseOn,
   replayKit,
@@ -40,9 +41,7 @@ export async function openWithoutWords(name, folder) {
     return await openPod(folder);
   } catch (error) {
     if (error instanceof Unopened && error.outcome === "secret needed")
-      throw new Refusal(
-        `${name} is encrypted: open it in the app (\`npm start\`) with its six words; this command does not open encrypted pods`,
-      );
+      throw new Refusal(notOpenedHere(name));
     throw error;
   }
 }
@@ -76,15 +75,15 @@ export function trendUrl(name, trend) {
  * The pods there are, by name: a folder still empty is none, so reading it never makes a pod, and neither is
  * `.answers`, where the runtime keeps each pod's answers.
  */
-export async function podNames() {
+export async function podNames(folder = PODS) {
   try {
-    const entries = await readdir(PODS, { withFileTypes: true });
+    const entries = await readdir(folder, { withFileTypes: true });
     const names = [];
     for (const entry of entries)
       if (
         entry.isDirectory() &&
         !entry.name.startsWith(".") &&
-        (await readdir(podFolder(entry.name))).length > 0
+        (await readdir(join(folder, entry.name))).length > 0
       )
         names.push(entry.name);
     return names.sort();
@@ -95,15 +94,15 @@ export async function podNames() {
 }
 
 /** The folder the runtime keeps the pod's answers in. */
-export function answersFolder(name) {
-  return join(PODS, ".answers", name);
+export function answersFolder(name, folder = PODS) {
+  return join(folder, ".answers", name);
 }
 
 /** The title `pod.json` keeps for the pod, the name typed when it was made; undefined where none is kept. */
-export async function podTitle(name) {
+export async function podTitle(name, folder = PODS) {
   try {
     const kept = JSON.parse(
-      await readFile(join(answersFolder(name), "pod.json"), "utf8"),
+      await readFile(join(answersFolder(name, folder), "pod.json"), "utf8"),
     );
     return typeof kept.title === "string" ? kept.title : undefined;
   } catch {
@@ -112,9 +111,9 @@ export async function podTitle(name) {
 }
 
 /** Removes the pod and its answers. */
-export async function deletePod(name) {
-  await rm(podFolder(name), { recursive: true, force: true });
-  await rm(answersFolder(name), { recursive: true, force: true });
+export async function deletePod(name, folder = PODS) {
+  await rm(join(folder, name), { recursive: true, force: true });
+  await rm(answersFolder(name, folder), { recursive: true, force: true });
 }
 
 /** Removes every pod; gives the names of those there were. */

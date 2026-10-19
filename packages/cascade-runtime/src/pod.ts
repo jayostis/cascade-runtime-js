@@ -32,6 +32,7 @@ import {
   RDF,
   readText,
   type References,
+  Refusal,
   type StoreFactory,
   tableTerms,
   type Triple,
@@ -362,14 +363,16 @@ function agreementText(vocabulary: Files): Promise<string> {
 
 function offeredLens(offered: Askable, lens: string): void {
   if (!offered.lenses.includes(lens))
-    throw new Error(`no lens ${lens}; there are ${offered.lenses.join(", ")}`);
+    throw new Refusal(
+      `no lens ${lens}; there are ${offered.lenses.join(", ")}`,
+    );
 }
 
 /** The text of the question the vocabulary offers by the name; none offered throws. */
 function questionText(offered: Askable, question: string): string {
   const found = offered.questions.get(question);
   if (found === undefined)
-    throw new Error(
+    throw new Refusal(
       `no question ${question}; there are ${[...offered.questions.keys()].join(", ")}`,
     );
   return found.text;

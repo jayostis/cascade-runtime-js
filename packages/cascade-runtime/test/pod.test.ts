@@ -794,8 +794,14 @@ test("a published pod's answers, as the site computes them, are read back withou
   );
   for (const question of (await questions(vocabulary)).keys())
     assert.deepEqual(await read.rows(question), await pod.ask(question));
-  await assert.rejects(read.rows("pod/No such question"), /no question/);
-  await assert.rejects(read.rows(QUESTION, "no such lens"), /no lens/);
+  await assert.rejects(
+    read.rows("pod/No such question"),
+    (error) => error instanceof Refusal && /no question/.test(error.message),
+  );
+  await assert.rejects(
+    read.rows(QUESTION, "no such lens"),
+    (error) => error instanceof Refusal && /no lens/.test(error.message),
+  );
 });
 
 const WORDS = "t-shirt abacus yo-yo zoom drop-down felt-tip";
