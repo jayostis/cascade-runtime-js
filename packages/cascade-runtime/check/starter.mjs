@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
-import { get } from "node:http";
+import { get, request } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
 import { URL, URLSearchParams } from "node:url";
@@ -1821,6 +1821,25 @@ if (release === undefined) {
           assert.ok(Array.isArray((await own.json()).pods));
           assert.equal((await call("pods", "http://evil.example")).status, 403);
           assert.equal((await call("podFor", origin)).status, 404);
+        },
+      );
+
+      await behaviour(
+        "a request naming a host other than the app's own is refused",
+        async () => {
+          const status = await new Promise((done, fail) => {
+            request(
+              at("/"),
+              { headers: { host: "rebound.example" } },
+              (response) => {
+                response.resume();
+                done(response.statusCode);
+              },
+            )
+              .on("error", fail)
+              .end();
+          });
+          assert.equal(status, 403);
         },
       );
 

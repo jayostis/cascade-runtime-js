@@ -1037,10 +1037,21 @@ const about = {
 let origin;
 /** The origins a browser gives this server's own forms: it answers as `localhost` too. */
 let ownOrigins;
+/** The `Host` a request to this server names: a page of another name that rebinds to this address names its own. */
+let ownHosts;
 let hospitals;
 
 const server = createServer(async (request, response) => {
   try {
+    if (!ownHosts.has(request.headers.host))
+      return send(
+        response,
+        403,
+        await page(
+          "Refused",
+          html`<h1>Refused: not this server's address</h1>`,
+        ),
+      );
     const url = new URL(request.url, origin);
     const { pathname } = url;
     const post = request.method === "POST";
@@ -1184,6 +1195,7 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   const { port } = server.address();
   origin = `http://127.0.0.1:${port}`;
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
+  ownHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
   stdout.write(`${origin}/\n`);
   stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
