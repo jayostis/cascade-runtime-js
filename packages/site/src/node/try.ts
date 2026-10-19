@@ -72,17 +72,20 @@ interface PodApi {
     };
     tables(): Promise<Tables>;
     opensEncrypted: boolean;
-    unsaid(): void;
+    unsaid(kind: string, error: unknown): void;
   }): { said(input: { pod: string }): Promise<unknown> };
 }
 
 /**
  * What try/'s page for a pod asks the tables of it, the names of its codes and what ClinVar says of its variants, asked
- * as the page asks them, through PodApi. The pod stays open: its caller closes it.
+ * as the page asks them, through PodApi. The pod stays open: its caller closes it. PodApi swallows a lookup that fails
+ * into `unsaid`, so each failure is recorded there and thrown together once `said` has settled: throwing inside
+ * `unsaid` would reject `said` while the other lookup still runs against a pod its caller is closing.
  */
 export async function tryLooks(pod: Pod, tables: Tables): Promise<void> {
   const { podApi } = (await import(pathToFileURL(API).href)) as PodApi;
   const NAME = "pod";
+  const failed: unknown[] = [];
   await podApi({
     pods: {
       names: async () => [NAME],
@@ -91,8 +94,15 @@ export async function tryLooks(pod: Pod, tables: Tables): Promise<void> {
     },
     tables: async () => tables,
     opensEncrypted: true,
-    unsaid() {},
+    unsaid: (_kind, error) => {
+      failed.push(error);
+    },
   }).said({ pod: NAME });
+  if (failed.length > 0)
+    throw new AggregateError(
+      failed,
+      "try/'s first-paint lookups could not be recorded",
+    );
 }
 
 /**
