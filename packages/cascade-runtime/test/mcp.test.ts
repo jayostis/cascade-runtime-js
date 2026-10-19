@@ -8,74 +8,48 @@ import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { loadHospital, loadStories } from "@the-cascade-protocol/sandbox/node";
 import { openPod, type Pod, pullFiles } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
+import { settled } from "./settled.js";
+
+type Api = { close(): Promise<void> };
 
 const { podServer, QUESTIONS, WARNING } = (await import(
   new URL("../../starter/mcp-server.mjs", import.meta.url).href
 )) as {
   podServer: (
-    pods: {
-      names(): Promise<string[]>;
-      open(name: string): Promise<Pod>;
-    },
-    options?: {
-      viewOf(pod: string, trend: object): string;
-      worthOf(pod: Pod): Promise<unknown[]>;
-    },
+    api: Api,
+    options?: { viewOf(pod: string, trend: object): string },
   ) => { build(): { connect(transport: unknown): Promise<void> } };
   QUESTIONS: string[];
   WARNING: string;
 };
-const { openWithoutWords, trendUrl } = (await import(
+const { podApi } = (await import(
+  new URL("../../starter/pod-api.mjs", import.meta.url).href
+)) as { podApi: (host: object) => Api };
+const { nodeHost } = (await import(
+  new URL("../../starter/node-host.mjs", import.meta.url).href
+)) as {
+  nodeHost: (options: { folder: string; opensEncrypted: boolean }) => object;
+};
+const { trendUrl } = (await import(
   new URL("../../starter/pods.mjs", import.meta.url).href
-)) as {
-  openWithoutWords: (name: string, folder: string) => Promise<Pod>;
-  trendUrl: (pod: string, trend: object) => string;
-};
-
-const { worthLines } = (await import(
-  new URL("../../starter/pod-tools.mjs", import.meta.url).href
-)) as {
-  worthLines: (
-    pod: unknown,
-    tables: {
-      aboutCodes(answers: unknown): Promise<undefined>;
-      variantsOf(answers: unknown, pod: unknown): Promise<undefined>;
-    },
-  ) => Promise<unknown[]>;
-};
-const { entryId, worthALook } = (await import(
-  new URL("../../starter/summary.mjs", import.meta.url).href
-)) as {
-  entryId: (entry: string) => string;
-  worthALook: (answers: Record<string, unknown[]>) => {
-    sentence: string;
-    entry: string;
-    tag?: string;
-  }[];
-};
+)) as { trendUrl: (pod: string, trend: object) => string };
 
 const STATIN = "story-statin";
-/** A pod whose answers hold one entry that needs review, so its page has a line of Worth a look; it reads nothing else. */
-const REVIEWED = "reviewed";
-const REVIEW_ANSWERS: Record<string, unknown[]> = {
-  "entry/What needs review": [
-    {
-      entry: "urn:uuid:0e1f",
-      entryLabel: "Allergy entry · Latex",
-      needs: "judged different, still joined",
-    },
-  ],
-};
-const reviewed = {
-  ask: async (question: string) => REVIEW_ANSWERS[question] ?? [],
-  close: async () => {},
-} as unknown as Pod;
-const unsaid = {
-  aboutCodes: async () => undefined,
-  variantsOf: async () => undefined,
-};
 const pods = new Map<string, Pod>();
+let api: Api;
 let client: Client;
+
+/** A client connected to `podServer(served, options)`, in memory. */
+async function clientOf(
+  served: Api,
+  options?: { viewOf(pod: string, trend: object): string },
+) {
+  const [toServer, toClient] = InMemoryTransport.createLinkedPair();
+  await podServer(served, options).build().connect(toServer);
+  const connected = new Client({ name: "test", version: "0.0.0" });
+  await connected.connect(toClient);
+  return connected;
+}
 
 /** What a tool call gave: its text read as JSON, and whether it was a tool error. */
 async function call(name: string, args: Record<string, unknown>) {
@@ -97,28 +71,25 @@ before(async () => {
   });
   assert.equal(imported.refused, undefined);
   pods.set(STATIN, statin);
-  pods.set("empty", await openPod());
-  pods.set(REVIEWED, reviewed);
 
-  const served = podServer(
-    {
+  api = podApi({
+    pods: {
       names: async () => [...pods.keys()],
-      open: async (name) => pods.get(name)!,
+      title: async () => undefined,
+      open: async (name: string) => pods.get(name)!,
     },
-    {
-      viewOf: trendUrl,
-      worthOf: (pod) => worthLines(pod, unsaid),
+    tables: async () => {
+      throw new Error("no tables here");
     },
-  );
-  const [toServer, toClient] = InMemoryTransport.createLinkedPair();
-  await served.build().connect(toServer);
-  client = new Client({ name: "test", version: "0.0.0" });
-  await client.connect(toClient);
+    opensEncrypted: false,
+    unsaid() {},
+  });
+  client = await clientOf(api, { viewOf: trendUrl });
 });
 
 after(async () => {
   await client.close();
-  await Promise.all([...pods.values()].map((pod) => pod.close()));
+  await api.close();
 });
 
 test("a client lists the pods and the tools, each but the list taking the pod's name, and is warned that a hosted client sends the answers to its provider", async () => {
@@ -150,25 +121,13 @@ test("a client lists the pods and the tools, each but the list taking the pod's 
     /worth_a_look is a good first call/,
   );
 
-  assert.deepEqual(JSON.parse((await call("list_pods", {})).text), [
-    STATIN,
-    "empty",
-    REVIEWED,
-  ]);
+  assert.deepEqual(JSON.parse((await call("list_pods", {})).text), [STATIN]);
 });
 
-test("find_changes on the statin story patient's pod gives the LDL finding with its numbers; ask gives a question's rows, a capped few of them", async () => {
+test("each finding of find_changes carries the address of the app's trend page for it", async () => {
   const found = await call("find_changes", { pod: STATIN });
   assert.equal(found.error, false);
-  const [finding] = JSON.parse(found.text) as {
-    key: string;
-    view: string;
-    kind: string;
-    direction: string;
-    test: { notation: string };
-    before: { count: number; mean: number };
-    after: { count: number; mean: number };
-  }[];
+  const [finding] = JSON.parse(found.text) as { key: string; view: string }[];
   assert.equal(finding!.key, "start:617310:18262-6");
   const view = new URL(finding!.view);
   assert.match(view.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -176,48 +135,9 @@ test("find_changes on the statin story patient's pod gives the LDL finding with 
     view.pathname + view.search,
     "/pods/story-statin/trend?test=18262-6&medication=617310",
   );
-  assert.deepEqual(
-    [finding!.kind, finding!.test.notation, finding!.direction],
-    ["after start", "18262-6", "down"],
-  );
-  assert.deepEqual([finding!.before.count, finding!.after.count], [3, 3]);
-  assert.ok(finding!.after.mean < finding!.before.mean);
-
-  const asked = JSON.parse(
-    (
-      await call("ask", {
-        pod: STATIN,
-        question: "pod/My lab results",
-        limit: 2,
-      })
-    ).text,
-  ) as { total: number; rows: unknown[] };
-  assert.equal(
-    asked.total,
-    (await pods.get(STATIN)!.ask("pod/My lab results")).length,
-  );
-  assert.equal(asked.rows.length, 2);
 });
 
-test("worth_a_look gives a pod's Worth a look lines as its page does, each with its sentence, its entry's ID and its tag, and none for a pod with no line", async () => {
-  const expected = worthALook(REVIEW_ANSWERS).map(
-    ({ sentence, entry, tag }) => ({
-      sentence,
-      entry: entryId(entry),
-      tag,
-    }),
-  );
-  assert.equal(expected.length, 1);
-  const lines = await call("worth_a_look", { pod: REVIEWED });
-  assert.equal(lines.error, false);
-  assert.deepEqual(JSON.parse(lines.text), expected);
-  assert.deepEqual(
-    JSON.parse((await call("worth_a_look", { pod: "empty" })).text),
-    [],
-  );
-});
-
-test("input the rules refuse is a tool error that says why, never a crash: a question outside the list, a pod there is none of, a missing pod, a test the pod lacks", async () => {
+test("input the tool's schema refuses is a tool error that says why, never a crash: a question outside the list, a missing pod, a property it does not take", async () => {
   const refused: [string, Record<string, unknown>, RegExp][] = [
     [
       "ask",
@@ -229,15 +149,8 @@ test("input the rules refuse is a tool error that says why, never a crash: a que
       { pod: STATIN, question: "SELECT * WHERE { ?s ?p ?o }" },
       /data\/question must be equal to one of the allowed values/,
     ],
-    ["ask", { pod: STATIN, question: QUESTIONS[0], limit: 0 }, /limit/],
-    ["find_changes", { pod: "nobody" }, /no pod nobody; the pods are/],
     ["find_changes", {}, /required property 'pod'/],
-    ["find_changes", { pod: STATIN, test: "0000-0" }, /no test/],
-    ["lab_series", { pod: STATIN, test: "0000-0" }, /no test/],
-    ["finding_rows", { pod: STATIN, key: "start:0:0" }, /no finding/],
     ["timeline", { pod: STATIN, extra: true }, /additional properties/],
-    ["worth_a_look", { pod: "nobody" }, /no pod nobody; the pods are/],
-    ["worth_a_look", { pod: STATIN, extra: true }, /additional properties/],
   ];
   for (const [name, args, reason] of refused) {
     const { error, text } = await call(name, args);
@@ -248,16 +161,17 @@ test("input the rules refuse is a tool error that says why, never a crash: a que
 
 test("an error that is not a refusal is logged and reaches the client as a fixed message, never its own, so a path in it does not leave", async (t) => {
   const logged = t.mock.method(console, "error", () => {});
-  const broken = podServer({
-    names: async () => ["broken"],
-    open: async () => {
-      throw new Error("ENOENT: open 'C:/private/path'");
+  const broken = podApi({
+    pods: {
+      names: async () => ["broken"],
+      title: async () => undefined,
+      open: async () => {
+        throw new Error("ENOENT: open 'C:/private/path'");
+      },
     },
+    opensEncrypted: false,
   });
-  const [toServer, toClient] = InMemoryTransport.createLinkedPair();
-  await broken.build().connect(toServer);
-  const other = new Client({ name: "test", version: "0.0.0" });
-  await other.connect(toClient);
+  const other = await clientOf(broken);
   const result = await other.callTool({
     name: "find_changes",
     arguments: { pod: "broken" },
@@ -273,15 +187,9 @@ test("an encrypted pod is listed, and a tool asked about it says in one line tha
   const folder = await mkdtemp(join(tmpdir(), "t351-mcp-"));
   const words = "abacus abdomen abide abnormal abrasion abrupt";
   try {
-    await (await openPod(folder, { secret: words })).close();
-    const served = podServer({
-      names: async () => ["sealed"],
-      open: (name) => openWithoutWords(name, folder),
-    });
-    const [toServer, toClient] = InMemoryTransport.createLinkedPair();
-    await served.build().connect(toServer);
-    const sealed = new Client({ name: "test", version: "0.0.0" });
-    await sealed.connect(toClient);
+    await (await openPod(join(folder, "sealed"), { secret: words })).close();
+    const elsewhere = podApi(nodeHost({ folder, opensEncrypted: false }));
+    const sealed = await clientOf(elsewhere);
     try {
       const listed = await sealed.callTool({
         name: "list_pods",
@@ -301,8 +209,10 @@ test("an encrypted pod is listed, and a tool asked about it says in one line tha
       assert.equal(first!.text.includes(words), false);
     } finally {
       await sealed.close();
+      await elsewhere.close();
     }
   } finally {
+    await settled(folder);
     await rm(folder, { recursive: true, force: true });
   }
 });

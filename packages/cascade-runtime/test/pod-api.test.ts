@@ -552,8 +552,16 @@ for (const via of HOSTS) {
       ["setWorldDate", { date: "soon" }, /"soon" is not a date/],
       ["answers", { pod: "nobody" }, /no pod nobody; the pods are/],
       ["said", { pod: STATIN, entry: "0" }, /holds no entry 0/],
-      ["trend", { pod: STATIN, test: "0000-0" }, /the tests it holds are/],
-      ["trend", { pod: STATIN, test: LDL, medication: "0" }, /no medication 0/],
+      [
+        "trend",
+        { pod: STATIN, test: "0000-0" },
+        /the tests it holds are .*18262-6/,
+      ],
+      [
+        "trend",
+        { pod: STATIN, test: LDL, medication: "0" },
+        /no medication 0 in the pod; the medications it holds are .*617310/,
+      ],
       ["trend", { pod: EMPTY }, /holds no test results/],
       ["panel", { pod: STATIN }, /a panel is a LOINC code/],
       ["panel", { pod: STATIN, panel: "" }, /a panel is a LOINC code/],
@@ -579,6 +587,26 @@ for (const via of HOSTS) {
         "tool",
         { pod: STATIN, tool: "find_changes", input: { test: "0000-0" } },
         /no test/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "lab_series", input: { test: "0000-0" } },
+        /no test/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "finding_rows", input: { key: "start:0:0" } },
+        /no finding start:0:0/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "timeline", input: { extra: true } },
+        /extra is not a property/,
+      ],
+      [
+        "tool",
+        { pod: STATIN, tool: "worth_a_look", input: { extra: true } },
+        /extra is not a property/,
       ],
     ];
     for (const [operation, input, reason] of refused)
