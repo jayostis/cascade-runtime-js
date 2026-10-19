@@ -17,8 +17,6 @@ import {
   ConnectionFailure,
   pullFiles,
   Refusal,
-  sixWords,
-  typedWords,
   Unopened,
 } from "cascade-runtime";
 import { render } from "preact-render-to-string";
@@ -28,15 +26,7 @@ import { modelFrom } from "./model-client.mjs";
 import { nodeHost } from "./node-host.mjs";
 import { maps, podApi } from "./pod-api.mjs";
 import { apiRoute } from "./pod-api-http.mjs";
-import {
-  deleteAll,
-  KITS,
-  podPath,
-  POD_NAME,
-  PODS,
-  resetAll,
-  trendPath,
-} from "./pods.mjs";
+import { KITS, podPath, PODS, trendPath } from "./pods.mjs";
 import {
   checkedNote,
   classesPage,
@@ -53,7 +43,6 @@ import {
   newPodDialog,
   noPods,
   noTables,
-  NOT_WORDS,
   openPodPage,
   pageNumber,
   panelPage,
@@ -71,16 +60,12 @@ import {
   tablePage,
   trendPage,
   trendTitle,
-  savedLoginChanged,
   variantsSaid,
   worldDatePage,
   utcInstant,
   worldInstant,
 } from "./summary.mjs";
 import { changeAnswers, podTools, worthLines } from "./pod-tools.mjs";
-
-/** Names Windows keeps for devices, which no folder may have. */
-const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 
 const told = new Set();
 
@@ -98,17 +83,29 @@ function unsaid(kind, error) {
 const host = nodeHost({ folder: PODS, unsaid });
 const api = podApi(host);
 
+/** What `/api/` calls: the same operations, but the three whose effects the form handlers also carry out here do so, until connections move into PodApi. */
+const served = {
+  ...api,
+  async deleteAll(input) {
+    hospitals?.forget();
+    return await api.deleteAll(input);
+  },
+  async resetAll(input) {
+    hospitals?.forget();
+    return await api.resetAll(input);
+  },
+  async checkTables(input) {
+    const answer = await api.checkTables(input);
+    lastCheck = checkedNote(answer.checked, answer.held);
+    return answer;
+  },
+};
+
 /** The pods there are, each by the name typed when it was made; by its own name where none is kept. */
 async function podTitles() {
   const { pods } = await api.pods({});
   return new Map(pods.map(({ name, title }) => [name, title]));
 }
-
-/** The six words of each encrypted pod being made, by its name, until the person has checked them. Kept in memory only. */
-const waiting = new Map();
-
-/** The name typed for each pod waiting on its six words, by the pod's name. */
-const typedFor = new Map();
 
 /** Why the pod could not be opened without words: an `Unopened` outcome; nothing when it is open. */
 async function lockedOutcome(name) {
@@ -297,33 +294,21 @@ async function showTable(response, id, query) {
 
 /** Check now: reads every feed past any cache; the plaintext pods held open close when it kept a version, to open with it. An encrypted pod stays open, so it stays unlocked and an import into it goes on; it reads the new tables when next opened. */
 async function checkNow(response) {
-  const kept = await host.tables();
-  const checked = await kept.check({ cache: "no-cache" });
-  if (checked.some((each) => each.kept.length > 0))
-    await api.closePods({ plaintextOnly: true });
-  lastCheck = checkedNote(checked, await kept.held());
+  await served.checkTables({});
   redirect(response, "/tables/?checked");
 }
 
-/** Closes every pod the server holds open, so that their folders can go, and forgets every connection to a hospital. */
-async function closeAll() {
-  hospitals?.forget();
-  waiting.clear();
-  typedFor.clear();
-  await api.closePods();
-}
-
-/** File, Delete all data: every pod removed, then the home page says how many. */
+/** File, Delete all data: every pod removed, the reference tables kept, then the home page says how many. */
 async function deleteEverything(response) {
-  await closeAll();
-  const removed = await deleteAll();
-  redirect(response, `/?deleted=${removed.length}`);
+  hospitals?.forget();
+  const { deleted } = await api.deleteAll({});
+  redirect(response, `/?deleted=${deleted.length}`);
 }
 
-/** File, Reset all data: what `npm run reset` does, then the first pod's page says which are back. */
+/** File, Reset all data: the kits' pods loaded again, then the first pod's page says which are back. */
 async function resetEverything(response) {
-  await closeAll();
-  await resetAll();
+  hospitals?.forget();
+  await api.resetAll({});
   redirect(response, `${podPath(KITS[0])}?reset`);
 }
 
@@ -626,42 +611,41 @@ async function showPanel(response, name, query, titles) {
   );
 }
 
-/** Makes an empty pod named after the person given, unless it exists, and goes to it. */
+/** The page that says no pod was made, 400, and `why`. */
+async function noPodMade(response, why) {
+  send(
+    response,
+    400,
+    await page(
+      "No pod made",
+      html`<h1>No pod made</h1>
+<p>${why}</p>`,
+    ),
+  );
+}
+
+/** Makes an empty pod named after the person given, unless it exists, and goes to it; or shows its six words. */
 async function newPod(request, response) {
   const form = await formOf(request);
-  const name = slug(form.get("person") ?? "");
-  const refused = !POD_NAME.test(name)
-    ? "Give a name with at least one letter from a to z, or a digit."
-    : DEVICES.test(name)
-      ? "That name is one Windows keeps for itself: add another word."
-      : undefined;
-  if (refused !== undefined)
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>${refused}</p>`,
-      ),
-    );
-  if (
-    form.get("encrypt") === "on" &&
-    !(await host.pods.names()).includes(name)
-  ) {
-    const words = sixWords();
-    waiting.set(name, words);
-    typedFor.set(name, form.get("person")?.trim());
-    return await showWords(response, name, words);
+  let made;
+  try {
+    made = await api.makePod({
+      person: form.get("person") ?? "",
+      encrypt: form.get("encrypt") === "on",
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return await noPodMade(response, error.message);
   }
-  await api.podFor(name, { title: form.get("person")?.trim() });
-  redirect(response, podPath(name));
+  if (made.waiting) return await showWords(response, made.pod);
+  redirect(response, podPath(made.pod));
 }
 
 const WORDS_AT = "/encrypted-pods";
 
-/** The page that shows the six words and asks for words 2 and 5, never kept by a cache. */
-async function showWords(response, name, words, problem) {
+/** The page that shows the six words waiting for the pod `name` and asks for words 2 and 5, never kept by a cache. */
+async function showWords(response, name, problem) {
+  const { person, words } = await api.waitingWords({ pod: name });
   send(
     response,
     problem === undefined ? 200 : 400,
@@ -669,7 +653,7 @@ async function showWords(response, name, words, problem) {
       "Your six words",
       sixWordsPage({
         pod: name,
-        titles: new Map([[name, typedFor.get(name)]]),
+        titles: new Map([[name, person]]),
         words,
         action: WORDS_AT,
         problem,
@@ -683,41 +667,24 @@ async function showWords(response, name, words, problem) {
 async function newEncryptedPod(request, response) {
   const form = await formOf(request);
   const name = form.get("pod") ?? "";
-  const words = waiting.get(name);
-  if (words === undefined)
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>These six words are not waiting any more. Make the pod again.</p>`,
+  try {
+    await api.confirmWords({
+      pod: name,
+      ...Object.fromEntries(
+        ["word2", "word5", "password", "username"].flatMap((field) =>
+          form.has(field) ? [[field, form.get(field)]] : [],
+        ),
       ),
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    const waiting = await api.waitingWords({ pod: name }).then(
+      () => true,
+      () => false,
     );
-  const changed = savedLoginChanged(form, name, words);
-  if (changed !== undefined)
-    return await showWords(response, name, words, changed);
-  const asked = words.split(" ");
-  if (
-    typedWords(form.get("word2") ?? "") !== asked[1] ||
-    typedWords(form.get("word5") ?? "") !== asked[4]
-  )
-    return await showWords(response, name, words, NOT_WORDS);
-  waiting.delete(name);
-  const title = typedFor.get(name);
-  typedFor.delete(name);
-  if ((await host.pods.names()).includes(name))
-    return send(
-      response,
-      400,
-      await page(
-        "No pod made",
-        html`<h1>No pod made</h1>
-<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
-      ),
-    );
-  if (!(await api.podFor(name, { secret: words, title })).encrypted)
-    throw new Error(`The pod ${name} was made without its words.`);
+    if (waiting) return await showWords(response, name, error.message);
+    return await noPodMade(response, error.message);
+  }
   redirect(response, podPath(name));
 }
 
@@ -746,13 +713,8 @@ async function unlock(request, response, name, titles) {
   const form = await formOf(request);
   const asked = form.get("next") ?? "";
   const next = asked.startsWith(podPath(name)) ? asked : podPath(name);
-  if ((await lockedOutcome(name)) === undefined)
-    return redirect(response, next);
-  const secret = form.get("password") ?? "";
-  if (secret.trim() === "")
-    return await showLocked(response, name, "incorrect secret", next, titles);
   try {
-    await api.podFor(name, { secret });
+    await api.unlock({ pod: name, secret: form.get("password") ?? "" });
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     return await showLocked(response, name, error.outcome, next, titles);
@@ -934,14 +896,12 @@ async function worldDateRoute(request, response, url) {
       }),
     ).then((body) => send(response, status, body));
   if (request.method !== "POST") return shown(200);
-  const text = (await formOf(request)).get("date") ?? "";
-  const asOf = worldInstant(text);
-  if (text.trim() !== "" && asOf === undefined)
-    return shown(
-      400,
-      `"${text}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
-    );
-  hospitals.setWorldDate(asOf);
+  try {
+    await api.setWorldDate({ date: (await formOf(request)).get("date") ?? "" });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return shown(400, error.message);
+  }
   return redirect(response, back);
 }
 
@@ -1068,7 +1028,9 @@ const server = createServer(async (request, response) => {
         await page("Refused", html`<h1>Refused: a form from another site</h1>`),
       );
     if (post && pathname.startsWith("/api/"))
-      return await apiRoute(api, request, response, { origins: ownOrigins });
+      return await apiRoute(served, request, response, {
+        origins: ownOrigins,
+      });
     if (post && pathname === "/chat")
       return await chatRoute(request, response, { model, tools: chatting });
     if (pathname === "/world-date")
@@ -1197,6 +1159,10 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
   ownOrigins = new Set([origin, `http://localhost:${port}`]);
   ownHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   hospitals = hospitalsAt(origin, demo, { asOf: startedAsOf, listener });
+  host.world = {
+    get: () => hospitals.worldDate(),
+    set: (asOf) => hospitals.setWorldDate(asOf),
+  };
   stdout.write(`${origin}/\n`);
   stdout.write(`The demo hospitals are listening at ${listener.origin}/\n`);
 });
@@ -1204,7 +1170,8 @@ server.listen(Number(env.PORT || 3000), "127.0.0.1", () => {
 async function stop() {
   await listener.close();
   server.close();
-  await closeAll();
+  hospitals?.forget();
+  await api.close();
   exit(0);
 }
 process.on("SIGINT", stop);

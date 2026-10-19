@@ -9,7 +9,9 @@ import {
   findChanges,
   labSeriesIn,
   Refusal,
+  sixWords,
   timelineIn,
+  typedWords,
   Unopened,
 } from "cascade-runtime";
 import {
@@ -22,16 +24,20 @@ import {
   joinedBy,
   LABS,
   MEDICATIONS,
+  NOT_WORDS,
   pageNumber,
   panelSaid,
   panelsOf,
   QUESTIONS,
+  savedLoginChanged,
+  slug,
   sourcesOf,
   tableId,
   testsIn,
   trendInput,
   variantsSaid,
   withMechanism,
+  worldInstant,
   worthALook,
 } from "./summary.mjs";
 
@@ -39,6 +45,12 @@ import {
 export function notOpenedHere(name) {
   return `${name} is encrypted: open it in the app (\`npm start\`) with its six words; this command does not open encrypted pods`;
 }
+
+/** Names Windows keeps for devices, which no folder may have. */
+const DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
+
+const NOT_WAITING =
+  "These six words are not waiting any more. Make the pod again.";
 
 /** The paths of an operation's output that hold a `Map` as `[key, value]` pairs. */
 const MAPPED = ["about", "joined", "elsewhere", "classes", "panelAbout"];
@@ -109,6 +121,20 @@ const INPUTS = {
   table: { id: string, q: string, page: positiveInteger, code: string },
   ask: { pod: string, question: string, limit: positiveInteger },
   tool: { pod: string, tool: string, input: object },
+  makePod: { person: string, encrypt: boolean },
+  waitingWords: { pod: string },
+  confirmWords: {
+    pod: string,
+    word2: string,
+    word5: string,
+    password: string,
+    username: string,
+  },
+  unlock: { pod: string, secret: string },
+  deleteAll: {},
+  resetAll: {},
+  checkTables: {},
+  setWorldDate: { date: string },
 };
 
 /** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
@@ -136,12 +162,23 @@ export function podApi(host) {
   const last = new Map();
   /** The pods the folder was last seen to hold, so one page scans it once: a pod seen needs no second scan. */
   const seen = new Set();
+  /** The six words of each encrypted pod being made, and the person's name as typed, by the pod's name, until checked. */
+  const waiting = new Map();
 
   function podFor(name, options) {
     if (!opened.has(name)) {
       const opening = host.pods.open(name, options);
       opening.catch(() => opened.delete(name));
       opened.set(name, opening);
+    }
+    return opened.get(name);
+  }
+
+  function sampleFor(name) {
+    if (!opened.has(name)) {
+      const copying = (async () => host.copySample(name))();
+      copying.catch(() => opened.delete(name));
+      opened.set(name, copying);
     }
     return opened.get(name);
   }
@@ -481,6 +518,104 @@ export function podApi(host) {
     return { value: found.map(compact), found };
   }
 
+  async function makePod({ person = "", encrypt = false }) {
+    const name = slug(person);
+    if (name === "")
+      throw new Refusal(
+        "Give a name with at least one letter from a to z, or a digit.",
+      );
+    if (DEVICES.test(name))
+      throw new Refusal(
+        "That name is one Windows keeps for itself: add another word.",
+      );
+    if ((await host.pods.names()).includes(name))
+      return { pod: name, made: false };
+    if (host.samples?.includes(name)) {
+      await sampleFor(name);
+      return { pod: name, loaded: true };
+    }
+    if (encrypt) {
+      waiting.set(name, { words: sixWords(), person: person.trim() });
+      return { pod: name, waiting: true };
+    }
+    await podFor(name, { title: person.trim() });
+    return { pod: name, made: true };
+  }
+
+  function waitingFor(name) {
+    const words = waiting.get(name);
+    if (words === undefined) throw new Refusal(NOT_WAITING);
+    return words;
+  }
+
+  async function confirmWords(input) {
+    const { pod: name, word2 = "", word5 = "" } = input;
+    const { words, person } = waitingFor(name);
+    const changed = savedLoginChanged(
+      new Map(Object.entries(input)),
+      name,
+      words,
+    );
+    if (changed !== undefined) throw new Refusal(changed);
+    const asked = words.split(" ");
+    if (typedWords(word2) !== asked[1] || typedWords(word5) !== asked[4])
+      throw new Refusal(NOT_WORDS);
+    waiting.delete(name);
+    if ((await host.pods.names()).includes(name))
+      throw new Refusal(
+        `A pod named ${name} exists already. Make the pod again under another name.`,
+      );
+    if (!(await podFor(name, { secret: words, title: person })).encrypted)
+      throw new Error(`The pod ${name} was made without its words.`);
+    return { pod: name, made: true };
+  }
+
+  async function unlock({ pod: name, secret = "" }) {
+    await known(name);
+    try {
+      await podFor(name);
+    } catch (error) {
+      if (!(error instanceof Unopened)) throw error;
+      if (secret.trim() === "")
+        throw new Unopened("incorrect secret", "no secret was given");
+      await podFor(name, { secret });
+    }
+    return { pod: name, opened: true };
+  }
+
+  async function deleteAll() {
+    const names = await host.pods.names();
+    waiting.clear();
+    await closePods();
+    await host.pods.remove(names, { all: true });
+    return { deleted: names };
+  }
+
+  async function resetAll() {
+    await deleteAll();
+    if (!(host.samples?.length > 0)) return { pods: await host.restore() };
+    for (const name of host.samples) await sampleFor(name);
+    return { pods: [...host.samples] };
+  }
+
+  async function checkTables() {
+    const checked = await host.checkTables();
+    if (checked.some(({ kept }) => kept.length > 0))
+      await closePods({ plaintextOnly: true });
+    last.clear();
+    return { checked, held: await held() };
+  }
+
+  async function setWorldDate({ date = "" }) {
+    const asOf = worldInstant(date);
+    if (date.trim() !== "" && asOf === undefined)
+      throw new Refusal(
+        `"${date}" is not a date: give a day as YYYY-MM-DD, or an instant with its timezone.`,
+      );
+    await host.world.set(asOf);
+    return asOf === undefined ? {} : { asOf };
+  }
+
   const operations = {
     async pods() {
       const names = await host.pods.names();
@@ -518,6 +653,17 @@ export function podApi(host) {
     table,
     ask,
     tool,
+    makePod,
+    waitingWords: async ({ pod: name }) => ({
+      pod: name,
+      ...waitingFor(name),
+    }),
+    confirmWords,
+    unlock,
+    deleteAll,
+    resetAll,
+    checkTables,
+    setWorldDate,
   };
   return {
     ...Object.fromEntries(
