@@ -7,6 +7,7 @@ import type { Story } from "@the-cascade-protocol/sandbox";
 import { loadStories } from "@the-cascade-protocol/sandbox/node";
 import { findChanges, openPod } from "cascade-runtime";
 import { kitDownload, replayKit } from "cascade-runtime/fixtures";
+import { settled } from "./settled.js";
 import { storyPulls } from "./story-pulls.js";
 
 const KIT = "tamsin-vale";
@@ -101,6 +102,7 @@ test("the kit's pod, replayed from its story as the starter loads it, gives the 
       await pod.close();
     }
   } finally {
+    await settled(at);
     await rm(at, { recursive: true, force: true });
   }
 });

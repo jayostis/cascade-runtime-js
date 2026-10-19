@@ -34,6 +34,7 @@ import {
   type Pod,
   type Row,
 } from "cascade-runtime";
+import { settled } from "./settled.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE = join(ROOT, "packages", "cascade-runtime");
@@ -225,6 +226,10 @@ before(async () => {
   await mkdir(dirname(module), { recursive: true });
   await writeFile(module, examples(guide.blocks));
   folder = await mkdtemp(join(tmpdir(), "cascade-guide-"));
+  await writeFile(
+    join(folder, "cascade-runtime.json"),
+    JSON.stringify({ tables: { checkOnOpen: false } }),
+  );
   ran = await promisify(execFile)(process.execPath, [module], {
     cwd: folder,
     timeout: 300_000,
@@ -241,7 +246,9 @@ before(async () => {
 
 after(async () => {
   await opened?.close();
-  if (folder !== undefined) await rm(folder, { recursive: true, force: true });
+  if (folder === undefined) return;
+  if (opened !== undefined) await settled(join(folder, "pods"));
+  await rm(folder, { recursive: true, force: true });
 });
 
 test("every example in the guide runs, in order", () => {

@@ -617,6 +617,7 @@ export class Tables {
   readonly #files: Files;
   readonly #starterFiles: StarterFiles | undefined;
   #queue: Promise<unknown> = Promise.resolve();
+  #changes: Promise<unknown> = Promise.resolve();
   #started: Promise<void> | undefined;
   #written = 0;
   readonly #listings = new Map<string, Promise<Listed>>();
@@ -830,25 +831,20 @@ export class Tables {
     versions: readonly string[],
     name?: string,
   ): Promise<void> {
-    return this.#next(async () => {
-      const held = await this.#held();
-      await this.#write({
-        ...held,
-        pods: { ...held.pods, [pod]: versions },
-        ...(name === undefined
-          ? {}
-          : { names: { ...held.names, [pod]: name } }),
-      });
-    });
+    return this.#change((held) => ({
+      ...held,
+      pods: { ...held.pods, [pod]: versions },
+      ...(name === undefined ? {} : { names: { ...held.names, [pod]: name } }),
+    }));
   }
 
   /** Records the name the app opens the pod by, when it is not the one recorded. */
   async named(pod: string, name: string): Promise<void> {
     if ((await this.#held()).names?.[pod] === name) return;
-    await this.#next(async () => {
-      const held = await this.#held();
-      await this.#write({ ...held, names: { ...held.names, [pod]: name } });
-    });
+    await this.#change((held) => ({
+      ...held,
+      names: { ...held.names, [pod]: name },
+    }));
   }
 
   /** Each series the app holds, in the order of its feeds and then by label. */
@@ -1939,11 +1935,18 @@ export class Tables {
     return bytes === undefined ? NOTHING_HELD : heldOf(bytes);
   }
 
-  #write(held: Held): Promise<void> {
-    return this.#files.write(
-      HELD,
-      new TextEncoder().encode(`${JSON.stringify(held, null, 2)}\n`),
-    );
+  /** Writes what is held as `change` makes it of what is held now, one change at a time and apart from `#queue`. */
+  #change(change: (held: Held) => Held): Promise<void> {
+    const run = async (): Promise<void> => {
+      const held = change(await this.#held());
+      await this.#files.write(
+        HELD,
+        new TextEncoder().encode(`${JSON.stringify(held, null, 2)}\n`),
+      );
+    };
+    const next = this.#changes.then(run, run);
+    this.#changes = next.catch(() => undefined);
+    return next;
   }
 
   async #index(): Promise<Graph> {
@@ -2090,7 +2093,8 @@ export class Tables {
       ]);
       await this.#files.write(INDEX, ntriples(index.triples));
       this.#forgetIndex();
-      await this.#write({ ...(await this.#held()), current: currentIn(index) });
+      const current = currentIn(index);
+      await this.#change((held) => ({ ...held, current }));
       if (held !== undefined) {
         this.#listings.delete(held.value);
         this.#inverses.delete(held.value);
@@ -2101,9 +2105,9 @@ export class Tables {
       kept.push(version.value);
     }
     const watched = await answer(new URL(WATCHED, feed).href);
-    const held = await this.#held();
     const modified = catalog.objects(iri(feed), `${DCT}modified`)[0]?.value;
-    await this.#write({
+    const current = currentIn(index);
+    await this.#change((held) => ({
       ...held,
       feeds: {
         ...held.feeds,
@@ -2133,8 +2137,8 @@ export class Tables {
             held.feeds[feed]?.watched,
         },
       },
-      current: currentIn(index),
-    });
+      current,
+    }));
     return { feed, kept, ...(later === undefined ? {} : { later }), refused };
   }
 }

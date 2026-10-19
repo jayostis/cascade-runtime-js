@@ -2135,23 +2135,41 @@ test("an app's tables are the package's with each field of its own file, then of
   );
 });
 
-test("an app's tables are answered with what they hold while the check on open is still running, and the check keeps its versions after", async () => {
+test("an app's tables are answered with what they hold while the check on open is still running, a pod's open is recorded without waiting for it, and the check keeps its versions after without losing that record", async () => {
   let release = (): void => undefined;
   const gate = new Promise<void>((open) => (release = open));
+  let fetched = false;
   const served = fetchOf(feed);
   configureTables({
     feeds: [FEED],
     checkOnOpen: true,
     fetch: async (input, init) => {
-      await gate;
+      // The check on open gives up when its signal aborts: a record that waits for it is made only after this passes.
+      await Promise.race([
+        gate,
+        new Promise<void>((aborted) =>
+          init?.signal?.aborted
+            ? aborted()
+            : init?.signal?.addEventListener("abort", () => aborted()),
+        ),
+      ]);
+      fetched = true;
       return served(input, init);
     },
   });
+  const pod = "urn:uuid:5f0c2a64-8e1b-4d3a-9c7e-2b6a4f1d8e03";
   try {
     const tables = await tablesBeside(join(scratch, "opened"));
     assert.ok(!(await tables.current()).includes(groups.second));
+    await tables.opened(pod, [groups.first], "alex");
+    assert.equal(
+      fetched,
+      false,
+      "the pod's open was recorded only once the check on open went on",
+    );
+    assert.deepEqual(await tables.openedWith(pod), [groups.first]);
     release();
-    // A second check is queued behind the one on open, as every write is, and
+    // A second check is queued behind the one on open, as every check is, and
     // finds nothing left to keep because the one on open kept it.
     assert.deepEqual(
       (await tables.check()).flatMap(({ kept }) => kept),
@@ -2159,6 +2177,11 @@ test("an app's tables are answered with what they hold while the check on open i
       "the queued check kept a version the check on open had not",
     );
     assert.ok((await tables.current()).includes(groups.second));
+    assert.deepEqual(
+      await tables.openedWith(pod),
+      [groups.first],
+      "the check's record of what is held lost the pod's open",
+    );
   } finally {
     release();
   }
