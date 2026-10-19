@@ -1807,6 +1807,23 @@ if (release === undefined) {
         },
       );
 
+      await behaviour(
+        "the pod API answers its own origin, refuses another, and has no podFor",
+        async () => {
+          const call = (operation, from) =>
+            fetch(at(`/api/${operation}`), {
+              method: "POST",
+              headers: { origin: from, "content-type": "application/json" },
+              body: "{}",
+            });
+          const own = await call("pods", origin);
+          assert.equal(own.status, 200);
+          assert.ok(Array.isArray((await own.json()).pods));
+          assert.equal((await call("pods", "http://evil.example")).status, 403);
+          assert.equal((await call("podFor", origin)).status, 404);
+        },
+      );
+
       await behaviour("a new pod is made from a person's name", async () => {
         for (let time = 0; time < 2; time += 1) {
           const made = await send("/pods", { person: "Ada  Lovelace" });
