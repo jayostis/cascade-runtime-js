@@ -20,11 +20,14 @@ template; it imports only `preact`, `preact/hooks` and `htm`. Rewrite it as
 you like.
 `npm run mcp` runs `mcp.mjs`, an MCP server on stdio over the pods, for
 Claude Desktop, VS Code or any MCP client (the README says how to add it);
-every read and write of the pods goes through `podApi(host)` in `pod-api.mjs`,
-plain JSON in and out, which the server also serves as `POST /api/<operation>`;
+the app, the chat, the MCP server and `npm run ask` reach the pods through
+`podApi(host)` in `pod-api.mjs`, plain JSON in and out, which the server also
+serves as `POST /api/<operation>`; `pod.mjs` (`npm run pod:load`, and `npm run reset`
+through `resetAll` in `pods.mjs`) writes pods with `openPod` and `replayKit` directly,
+and `console.mjs` opens a raw `Pod` through `openWithoutWords`;
 an encrypted pod is opened only by the app, with its six words (`server.mjs`: `/encrypted-pods`,
 `/pods/<name>/open`), and `mcp.mjs` and `npm run ask` refuse it, as their host is
-`nodeHost({ opensEncrypted: false })` (`node-host.mjs`);
+`nodeHost({ opensEncrypted: false })` (`node-host.mjs`), and `console.mjs` refuses it too;
 `pod-tools.mjs` holds the tools as a client sees them, which are `changeTools` of `cascade-runtime`
 beside `list_pods`, `ask` and `worth_a_look` (`worthALook` on the same
 inputs the page reads), each taking the pod's name and each run by `podApi`'s `tool` or `ask`; `chat.mjs`, the
@@ -46,8 +49,8 @@ hospital's own page, and `hospitals.mjs` receives the redirect on `/callback`,
 which goes back to the pod's page with the connection in a box over it
 (`?connection=<n>#connection`); the demo hospitals, in `demo-hospital/`, are pretend and answer on a loopback port of their own (`serveDemo`).
 The title bar's File menu posts to `/delete-all` and `/reset-all`, which call
-`podApi`'s `deleteAll` and `resetAll`; these keep the reference tables and load the kits
-through `restoreKits` in `pods.mjs`, as `npm run reset` does; Help,
+`podApi`'s `deleteAll` and `resetAll`; both keep the reference tables, and `resetAll`
+then loads the kits through `restoreKits` in `pods.mjs`, as `npm run reset` does; Help,
 About says the app's name and version and the `cascade-runtime` it runs on.
 Under the pods, the sidebar lists the sources of the reference tables the pods
 are matched with (`sourcesOf(held())`, from `tablesBeside`). `/tables/<id>/`

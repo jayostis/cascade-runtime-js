@@ -164,16 +164,28 @@ const openTools = (api) => [
     inputSchema: TREND_VIEW.inputSchema,
     async run({ pod, test, medication }) {
       const drug = medication === "" ? undefined : medication;
-      const { series } = await api.trend({
+      const { series, timeline } = await api.trend({
         pod,
         test,
         medication: drug,
         named: false,
       });
+      const wanted = drug?.toLowerCase();
+      const found =
+        drug === undefined
+          ? undefined
+          : timeline.find(
+              (each) =>
+                each.notation === drug ||
+                each.code === drug ||
+                each.name.toLowerCase() === wanted,
+            );
       return {
         opened: trendPath(pod, {
           test: series.test.notation ?? series.test.code,
-          ...(drug === undefined ? {} : { medication: drug }),
+          ...(found === undefined
+            ? {}
+            : { medication: found.notation ?? found.name }),
         }),
       };
     },

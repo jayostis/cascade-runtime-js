@@ -273,6 +273,11 @@ test("open_pod, open_trend and open_entry give the address of a page that is the
     ],
     [
       "open_trend",
+      { pod: STATIN, test: "18262-6", medication: "Atorvastatin 20 mg tablet" },
+      `/pods/${STATIN}/trend?test=18262-6&medication=617310`,
+    ],
+    [
+      "open_trend",
       { pod: STATIN, test: "18262-6" },
       `/pods/${STATIN}/trend?test=18262-6`,
     ],
