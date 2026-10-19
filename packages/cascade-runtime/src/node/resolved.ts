@@ -98,26 +98,44 @@ export function answersBeside(path: string): FolderFiles {
   return new FolderFiles(join(dirname(folder), ".answers", basename(folder)));
 }
 
+const PACKAGE = fileURLToPath(new URL("../../../", import.meta.url));
+const STARTER = join(PACKAGE, "components", "tables");
+
+const carriedStarter = (): PartsOptions =>
+  existsSync(STARTER) ? { starter: new FolderFiles(STARTER) } : {};
+
+let installed: Promise<ResolvedParts> | undefined;
+
+/** What a pod is opened with from what the package carries alone, its components and its starter copies, as no app's settings change them; resolved once per process. */
+export function installedParts(): Promise<ResolvedParts> {
+  if (installed === undefined) {
+    const resolving = componentsOf(PACKAGE).then((components) =>
+      partsOf(components, carriedStarter()),
+    );
+    installed = resolving;
+    resolving.catch(() => {
+      if (installed === resolving) installed = undefined;
+    });
+  }
+  return installed;
+}
+
 async function resolve(): Promise<ResolvedParts> {
-  const packageFolder = fileURLToPath(new URL("../../../", import.meta.url));
-  const starter = join(packageFolder, "components", "tables");
-  const carried = join(packageFolder, "components", CONFIG_FILE);
+  const carried = join(PACKAGE, "components", CONFIG_FILE);
   tablesMade = true;
-  const parts = await partsOf(await componentsOf(packageFolder), {
-    ...(existsSync(starter) ? { starter: new FolderFiles(starter) } : {}),
+  const parts = await partsOf(await componentsOf(PACKAGE), {
+    ...carriedStarter(),
     ...(configuredFetch === undefined ? {} : { fetch: configuredFetch }),
     tables: {
       ...(await appSettings(
         process.cwd(),
-        existsSync(carried)
-          ? carried
-          : join(findRoot(packageFolder), CONFIG_FILE),
+        existsSync(carried) ? carried : join(findRoot(PACKAGE), CONFIG_FILE),
       )),
       ...configured,
     },
   });
   const { version } = JSON.parse(
-    await readFile(join(packageFolder, "package.json"), "utf8"),
+    await readFile(join(PACKAGE, "package.json"), "utf8"),
   ) as { version: string };
   const stored =
     /-commit-[0-9a-f]+$/.test(version) &&

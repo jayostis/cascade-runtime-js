@@ -1,11 +1,20 @@
 import { readdir } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
-import { featureStory, kitsOf, OxigraphStore } from "@cascade-runtime/runtime";
-import { featurePod, FolderFiles } from "@cascade-runtime/runtime/node";
+import {
+  featureStory,
+  kitsOf,
+  OxigraphStore,
+  Refusal,
+} from "@cascade-runtime/runtime";
+import {
+  featurePod,
+  FolderFiles,
+  type LocalVocabulary,
+} from "@cascade-runtime/runtime/node";
 import { tablesBeside } from "../index.js";
 import type { Phase } from "../phase.js";
-import { shipped, type Tables } from "../tables.js";
-import { resolved } from "./resolved.js";
+import { shipped, Tables } from "../tables.js";
+import { installedParts, resolved } from "./resolved.js";
 
 const KITS = "conformance/";
 
@@ -46,14 +55,54 @@ async function entries(path: string, files = false): Promise<string[]> {
   }
 }
 
-async function kitVocabulary(kit: string) {
-  const { local } = await resolved();
-  const kits = (await kitsOf(local.files)).map((path) =>
-    path.slice(KITS.length),
-  );
+/** The names of the kits the vocabulary carries, as `alex-rivera`, each with its folder under `conformance/`. */
+export async function kitsIn(
+  local: LocalVocabulary,
+): Promise<{ readonly name: string; readonly folder: string }[]> {
+  return (await kitsOf(local.files)).map((folder) => ({
+    name: folder.slice(KITS.length),
+    folder,
+  }));
+}
+
+/** The vocabulary, which carries the kit; a kit it does not carry is refused, naming those it does. */
+export async function withKit(
+  local: LocalVocabulary,
+  kit: string,
+): Promise<LocalVocabulary> {
+  const kits = (await kitsIn(local)).map(({ name }) => name);
   if (!kits.includes(kit))
-    throw new Error(`there is no kit ${kit}; there are ${kits.join(", ")}`);
+    throw new Refusal(`there is no kit ${kit}; there are ${kits.join(", ")}`);
   return local;
+}
+
+async function kitVocabulary(kit: string): Promise<LocalVocabulary> {
+  return withKit((await resolved()).local, kit);
+}
+
+/** A kit's story as the package carries its feature file, through the step named or to the end. */
+export async function kitStory(
+  kit: string,
+  options: { through?: string } = {},
+) {
+  return featureStory(
+    (await withKit((await installedParts()).local, kit)).files,
+    `${KITS}${kit}/${kit}.feature`,
+    () => new OxigraphStore(),
+    options.through === undefined ? {} : { through: options.through },
+  );
+}
+
+/** The tables held in a folder, as an app's `pods/.tables`, read as they stand: nothing is copied in and no feed is asked. */
+export async function heldTables(folder: string): Promise<Tables> {
+  const { local, newStore } = await installedParts();
+  return new Tables({
+    files: new FolderFiles(absolute(folder)),
+    feeds: [],
+    vocabulary: local.files,
+    newStore,
+    preference: local.config.tables.preference,
+  });
 }
 
 /**
@@ -75,7 +124,7 @@ export async function kitDownload(
       downloads.push({ name, folder: join(input, person, "downloads", name) });
   const found = downloads.filter(({ name }) => name === download);
   if (found.length !== 1)
-    throw new Error(
+    throw new Refusal(
       found.length === 0
         ? `the kit ${kit} has no download ${download}; it has ${[...new Set(downloads.map(({ name }) => name))].join(", ")}`
         : `the kit ${kit} has several downloads ${download}, one a person`,
@@ -102,7 +151,16 @@ export async function replayKit(
   folder: string,
   options: { through?: string; tables?: Tables } = {},
 ): Promise<readonly KitStep[]> {
-  const local = await kitVocabulary(kit);
+  return replayKitFrom(await kitVocabulary(kit), kit, folder, options);
+}
+
+/** `replayKit` from the vocabulary given, which carries the kit. */
+export async function replayKitFrom(
+  local: LocalVocabulary,
+  kit: string,
+  folder: string,
+  options: { through?: string; tables?: Tables } = {},
+): Promise<readonly KitStep[]> {
   const target = absolute(folder);
   if (await holdsAnything(target))
     throw new Error(`${target} holds files already`);

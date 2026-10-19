@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -35,29 +35,59 @@ import {
   loadHospitals,
   loadStories,
 } from "@the-cascade-protocol/sandbox/node";
-import {
-  FILES_JSON,
-  iri,
-  ntriples,
-  OxigraphStore,
-  parseConfig,
-  repositoryName,
-  treeIri,
-} from "@cascade-runtime/runtime";
-import {
-  checkouts,
-  CONFIG_FILE,
-  findRoot,
-  FolderFiles,
-  PACKED,
-  type Packed,
-} from "@cascade-runtime/runtime/node";
-import { openPodWith, partsOf } from "cascade-runtime/published";
+import * as oxigraph from "oxigraph";
+import type * as Fixtures from "cascade-runtime/fixtures";
+import type * as Published from "cascade-runtime/published";
 import { type Served, servePages } from "../src/node/serve.js";
 import { inPlace, newPod, settled, tiles, watched } from "./shown.js";
 
-const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
+const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const PAGES = join(ROOT, "build", "pages");
+/** The package as an app installs it: in this repository, the one `npm run build:package` staged. */
+const INSTALLED = join(ROOT, "build", "package");
+/** The components try/ serves, as the package carries them. */
+const SERVED = join(PAGES, "try", "cascade-runtime", "components");
+
+interface Followed {
+  readonly repository: string;
+}
+
+interface Config {
+  readonly vocabulary: Followed;
+  readonly adapters: readonly Followed[];
+  readonly tables: { readonly feeds: readonly string[] };
+}
+
+/** The cascade-runtime.json try/ serves. */
+const servedConfig = async (): Promise<Config> =>
+  JSON.parse(
+    await readFile(join(SERVED, "cascade-runtime.json"), "utf8"),
+  ) as Config;
+
+type Triple = readonly [
+  oxigraph.Quad_Subject,
+  oxigraph.Quad_Predicate,
+  oxigraph.Quad_Object,
+];
+
+/** A Turtle document's triples, each as its subject, predicate and object. */
+const turtle = (bytes: Uint8Array, base: string): Triple[] =>
+  oxigraph
+    .parse(bytes, { format: "text/turtle", base_iri: base })
+    .map(
+      ({ subject, predicate, object }) => [subject, predicate, object] as const,
+    );
+
+/** The triples as N-Triples. */
+const ntriples = (triples: readonly Triple[]): string =>
+  new oxigraph.Store(
+    triples.map(([subject, predicate, object]) =>
+      oxigraph.quad(subject, predicate, object),
+    ),
+  ).dump({
+    format: "application/n-triples",
+    from_graph_name: oxigraph.defaultGraph(),
+  });
 const ALEX = "alex-rivera";
 const DCAT = "http://www.w3.org/ns/dcat#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -159,15 +189,16 @@ const hasLines = (
       `What ${view.hospitalName(hospital)} has: ${view.counted(source.records) || "nothing"}.`,
   );
 
-/** A Node pod over the starter tables the page ships, as the page opens its own. */
-const pageTablesPod = async () =>
-  openPodWith(
-    await partsOf(await checkouts(ROOT), {
-      starter: new FolderFiles(
-        join(PAGES, "try", "cascade-runtime", "components", "tables"),
-      ),
-    }),
-  );
+/** A Node pod in memory, opened by the installed package over the starter tables it carries, which the page ships. */
+async function pageTablesPod(): Promise<Pod> {
+  const from = (path: string) =>
+    import(
+      pathToFileURL(join(INSTALLED, "dist", "src", ...path.split("/"))).href
+    );
+  const { installedParts } = (await from("fixtures.js")) as typeof Fixtures;
+  const { openPodWith } = (await from("node/published.js")) as typeof Published;
+  return openPodWith(await installedParts());
+}
 
 /** What Node pulls of the demo person with this family name at each of their hospitals, and the pod the pulls make. */
 async function nodeJoin(family: string): Promise<Joined> {
@@ -264,7 +295,7 @@ before(async () => {
   const copy = await mkdtemp(join(tmpdir(), "try-"));
   try {
     await cp(join(PAGES, ALEX, "pod"), copy, { recursive: true });
-    await rm(join(copy, FILES_JSON));
+    await rm(join(copy, "files.json"));
     const pod = await openPod(copy);
     try {
       alex = await answersOf(pod);
@@ -1207,23 +1238,26 @@ async function shownAfter(
 }
 
 test("in the browser, look and import read the files a person picks as Node reads them by path, the Bridge in a Web Worker started by the first import, each import loading only the adapter of its documents", async () => {
-  const components = join(PAGES, "try", "cascade-runtime", "components");
-  const config = parseConfig(
-    await readFile(join(components, CONFIG_FILE), "utf8"),
-  );
+  const config = await servedConfig();
   const packed = JSON.parse(
-    await readFile(join(components, PACKED), "utf8"),
-  ) as Packed;
-  const carried = packed.components.map(({ repository, commit }) =>
-    treeIri({ repository }, commit),
+    await readFile(join(SERVED, "packed.json"), "utf8"),
+  ) as {
+    readonly components: readonly {
+      readonly repository: string;
+      readonly commit: string;
+    }[];
+  };
+  const carried = packed.components.map(
+    ({ repository, commit }) => `${repository}/tree/${commit}/`,
   );
   const vocabulary = packed.components.find(
     ({ repository }) => repository === config.vocabulary.repository,
   );
   assert.ok(vocabulary);
+  const { repository } = config.vocabulary;
   const kits = join(
-    components,
-    repositoryName(config.vocabulary),
+    SERVED,
+    repository.slice(repository.lastIndexOf("/") + 1),
     vocabulary.commit,
     "conformance",
   );
@@ -1382,17 +1416,17 @@ test("in the browser, look and import read the files a person picks as Node read
 });
 
 test("in the browser, a check keeps the test feed's planted newer version in the app's own database, and a pod opened after it adopts it: the version is recorded, the Same it newly joins is filed and the one that used the replaced version filed again", async () => {
-  const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
-  const [feedUrl] = config.tables.feeds;
+  const [feedUrl] = (await servedConfig()).tables.feeds;
   assert.ok(feedUrl);
-  const { folder } = await (
-    await checkouts(ROOT)
-  ).resolve(config.tables.repository);
-  const valid = join(folder, "fixtures", "feeds", "valid");
-  const catalog = await new OxigraphStore().parse(
-    await readFile(join(valid, "feed.ttl")),
-    feedUrl,
+  const valid = join(
+    ROOT,
+    "node_modules",
+    "cascade-reference-tables",
+    "fixtures",
+    "feeds",
+    "valid",
   );
+  const catalog = turtle(await readFile(join(valid, "feed.ttl")), feedUrl);
   const of = (subject: string, predicate: string): string | undefined =>
     catalog.find(([s, p]) => s.value === subject && p.value === predicate)?.[2]
       .value;
@@ -1412,13 +1446,11 @@ test("in the browser, a check keeps the test feed's planted newer version in the
         ),
       );
   const feedOf = (current: (version: string) => string): string =>
-    new TextDecoder().decode(
-      ntriples(
-        catalog.map(([s, p, o]) =>
-          p.value === `${DCAT}hasCurrentVersion`
-            ? [s, p, iri(current(o.value))]
-            : [s, p, o],
-        ),
+    ntriples(
+      catalog.map(([s, p, o]) =>
+        p.value === `${DCAT}hasCurrentVersion`
+          ? [s, p, oxigraph.namedNode(current(o.value))]
+          : [s, p, o],
       ),
     );
   let feed = feedOf(
@@ -1755,11 +1787,7 @@ test("in try/, Martin's pod, copied on a first visit, has a Genetic variants til
       ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
     const clicks: number[] = [];
     const requested: string[] = [];
-    const feedHome = new URL(
-      ".",
-      parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8")).tables
-        .feeds[0],
-    ).href;
+    const feedHome = new URL(".", (await servedConfig()).tables.feeds[0]).href;
     page.on("request", (request) => {
       const url = request.url();
       if (/^https?:/.test(url) && !url.startsWith(feedHome))
@@ -2436,37 +2464,23 @@ test("in try/, the sample pod tamsin-vale draws What changed and, in its card, w
 });
 
 test("try/ ships the starter tables its published answers were computed with: after a check that finds nothing new, a visit draws a copied pod from its kept answers, the engine held back", async () => {
-  const config = parseConfig(await readFile(join(ROOT, CONFIG_FILE), "utf8"));
-  const [feedUrl] = config.tables.feeds;
+  const [feedUrl] = (await servedConfig()).tables.feeds;
   assert.ok(feedUrl);
   const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-  const shipped = (
-    await new OxigraphStore().parse(
-      await readFile(
-        join(
-          PAGES,
-          "try",
-          "cascade-runtime",
-          "components",
-          "tables",
-          "references.ttl",
-        ),
-      ),
-      "urn:test:starter/",
-    )
+  const shipped = turtle(
+    await readFile(join(SERVED, "tables", "references.ttl")),
+    "urn:test:starter/",
   ).filter(([, predicate]) => predicate.value === `${REC}shipsWith`);
   assert.ok(shipped.length > 0, "try/ ships no starter tables");
-  const feed = new TextDecoder().decode(
-    ntriples(
-      shipped.flatMap(([series, , version]) => [
-        [
-          series,
-          iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
-          iri(`${REC}ReferenceSeries`),
-        ],
-        [series, iri(`${DCAT}hasCurrentVersion`), version],
-      ]),
-    ),
+  const feed = ntriples(
+    shipped.flatMap(([series, , version]): Triple[] => [
+      [
+        series,
+        oxigraph.namedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
+        oxigraph.namedNode(`${REC}ReferenceSeries`),
+      ],
+      [series, oxigraph.namedNode(`${DCAT}hasCurrentVersion`), version],
+    ]),
   );
   const context = await browser.newContext();
   try {
