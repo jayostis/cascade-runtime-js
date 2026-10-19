@@ -632,6 +632,11 @@ test("a new pod is named from a base of its own, and the vocabulary's queries fi
 test("a kit's story replayed through a step is a pod openPod continues", async () => {
   const at = await mkdtemp(join(tmpdir(), "cascade-runtime-kit-"));
   try {
+    // The check on open may keep newer versions while the story replays, and the pod would then adopt them: it is
+    // waited for by a check queued behind it that reads nothing.
+    await (
+      await tablesBeside(dirname(at))
+    ).check({ signal: AbortSignal.abort() });
     const steps = await replayKit("alex-rivera", at, { through: "E9" });
     assert.deepEqual(
       steps.map(({ step, kind }) => [step, kind]),
