@@ -252,7 +252,8 @@ It reads the feeds once the engine loads, and `checkTables()` is "Check now".
 `configureTables` also takes `feeds`, `preference` and `checkOnOpen`, as Node
 does; a browser runs no builder and reads no file of the app's.
 An empty database starts from the package's starter copies, as a folder does:
-each version is copied in when first read, and `start()` copies the rest.
+each version is copied in when first read, and `start()` copies the rest
+and then lists them for search, one at a time.
 A pod copied with `from` is taken as published: its first open records the
 tables the browser then holds without adopting them, and a later open adopts
 only tables newer than those.
