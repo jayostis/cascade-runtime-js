@@ -178,8 +178,8 @@ jobs:
           if-no-files-found: error
 
   # The reverse check: the starter kit's own tests and checks, run on this commit's tarball. A change the starter must
-  # follow lands as a pair: this pull request's body carries `Depends-On: jayostis/cascade-starter-kit#<n>` (or that
-  # pull request's URL), and the starter is then taken at that pull request's head instead of its main.
+  # follow lands as a pair: this pull request's body carries `Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/<n>`
+  # (the start action refuses the short form), and the starter is then taken at that pull request's head instead of its main.
   starter-kit:
     name: starter-kit
     if: ${{ github.event_name != 'push' }}
