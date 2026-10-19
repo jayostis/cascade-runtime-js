@@ -490,6 +490,14 @@ async function variantsOf(answers) {
   }
 }
 
+/**
+ * Whether `page` was drawn for an address the app has since left. The next route clears what a pod's page needs
+ * (`state.current`) before it replaces `state.page`, so a late redraw of `page` would draw it with no pod.
+ */
+function left(page) {
+  return page?.at !== undefined && page.at !== routed;
+}
+
 /** The pod's page; `from` names the hospital a record was just brought in from. */
 async function showPod(from) {
   const answers = await answered();
@@ -498,6 +506,7 @@ async function showPod(from) {
     about: await aboutCodes(answers),
     said: await variantsOf(answers),
     from,
+    at: routed,
   };
   state.doing = "ready";
   redraw();
@@ -521,7 +530,7 @@ async function showEntry(id) {
     aboutCodes(answers),
     variantsOf(answers),
   ]);
-  const shown = { answers, entry: id, about, said };
+  const shown = { answers, entry: id, about, said, at: routed };
   state.page = shown;
   state.doing = "ready";
   redraw();
@@ -529,6 +538,7 @@ async function showEntry(id) {
   shown.joined = await joinedShown(shown);
   if (
     state.page === shown &&
+    !left(shown) &&
     (shown.panels !== undefined || shown.joined !== undefined)
   )
     redraw();
@@ -908,6 +918,7 @@ async function signIn(fhirBase, popup) {
     answers,
     about: await aboutCodes(answers),
     said: await variantsOf(answers),
+    at: routed,
   };
   const now = (said = {}, doing = "busy") => {
     if (state.connection === shown) showConnection(said, doing);
@@ -1334,12 +1345,12 @@ busy(async () => {
         shown = state.page
       ) {
         shown.said = await variantsOf(shown.answers);
-        if (state.page === shown) redraw();
+        if (state.page === shown && !left(shown)) redraw();
         shown.about = await aboutCodes(shown.answers);
         shown.panels = await panelsShown(shown);
         shown.joined = await joinedShown(shown);
       }
-      if (state.page !== undefined) redraw();
+      if (state.page !== undefined && !left(state.page)) redraw();
       const tables = await appTables();
       await tables.start().catch(() => undefined);
       document.body.dataset.tables = "ready";
@@ -1347,7 +1358,7 @@ busy(async () => {
     () => {
       state.tablesRead ??= "failed";
       if (state.page?.answers !== undefined) state.page.about ??= new Map();
-      if (state.page !== undefined) redraw();
+      if (state.page !== undefined && !left(state.page)) redraw();
     },
   );
 });
