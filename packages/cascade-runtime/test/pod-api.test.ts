@@ -465,6 +465,8 @@ for (const via of HOSTS) {
     const refused: [keyof Api, Input, RegExp][] = [
       ["makePod", { person: "!!!" }, /at least one letter/],
       ["makePod", { person: "Con" }, /Windows keeps for itself/],
+      ["makePod", { person: "COM1" }, /Windows keeps for itself/],
+      ["makePod", { person: "lpt9" }, /Windows keeps for itself/],
       ["makePod", { person: "Ada", encrypt: "on" }, /encrypt must be true/],
       ["waitingWords", { pod: "nobody" }, /not waiting any more/],
       ["confirmWords", { ...typed, word2: "x" }, /aren't words 2 and 5/],
@@ -535,6 +537,22 @@ for (const via of HOSTS) {
       (await writes.pods({})).pods.map(({ name }: Output) => name),
       ["rowan-ellery-marsh", "sample"],
     );
+  });
+
+  test(`${via}: two makePod calls for one sample at once open one pod`, async () => {
+    let copies = 0;
+    const { api: writes } = await fresh(via, (at) => ({
+      samples: ["sample"],
+      copySample: async (name: string) => {
+        copies += 1;
+        return openPod(join(at, name));
+      },
+    }));
+    await Promise.all([
+      writes.makePod({ person: "Sample" }),
+      writes.makePod({ person: "Sample" }),
+    ]);
+    assert.equal(copies, 1);
   });
 
   test(`${via}: an encrypted pod is made once its words 2 and 5 are given, and opens with its words after`, async () => {
