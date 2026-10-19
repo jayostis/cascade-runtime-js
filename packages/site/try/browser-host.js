@@ -100,7 +100,7 @@ export function browserHost({ waiting = () => {} } = {}) {
         redirectUri: new URL("signed-in.html", location.href).href,
       },
       fetch: (url, init) => fetch(url, init),
-      /** Resolves once the service worker answers a demo hospital; else rejects as a hospital that cannot answer. */
+      /** Resolves once the service worker answers a demo hospital; else rejects with try/'s own kind, which the box draws as the worker's sentence alone. */
       async ready(row) {
         if (row.vendor !== "demo") return;
         try {
@@ -108,7 +108,7 @@ export function browserHost({ waiting = () => {} } = {}) {
         } catch (error) {
           host.popup?.close();
           host.popup = undefined;
-          throw new ConnectionFailure("hospital-error", error.message);
+          throw new ConnectionFailure("demo-unavailable", error.message);
         }
       },
       signIn(row, { pod }, report) {

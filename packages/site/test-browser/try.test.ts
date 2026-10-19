@@ -2259,6 +2259,37 @@ test("in try/, the world's date set before a sign-in shows on the hospital's sig
   }
 });
 
+test("in try/, where the demo hospitals' service worker cannot run, a sign-in at North draws the worker's own sentence in the box, neither blaming the hospital nor offering Sign in again", async () => {
+  const demo = await loadHospitals();
+  const ines = view
+    .demoPeople(demo)
+    .find(({ name }) => name === "Ines Calloway");
+  assert.ok(ines, "no demo person is Ines Calloway");
+  const [north] = ines.at;
+  assert.ok(north && ines.at.length === 1, "Ines is not at North alone");
+
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const page = watched(await context.newPage());
+    await page.goto(`${served.url}try/index.html`);
+    await settled(page);
+    await newPod(page, view.familyFirst(ines));
+    await page.click(
+      `button:has-text("Sign in at ${view.hospitalName(north.name)}")`,
+    );
+    const box = page.locator("#connection");
+    await box.waitFor();
+    await settled(page);
+    const said = (await box.textContent()) ?? "";
+    assert.ok(said.trim().length > 0, "the box says nothing");
+    assert.ok(!said.includes("refused the sign-in"), said);
+    assert.ok(!said.includes("Sign in again"), said);
+    assert.equal(await box.locator("button").count(), 0, said);
+  } finally {
+    await context.close();
+  }
+});
+
 test("in try/, Tamsin Vale signed in at North with the world's date at her story's first pull has metformin among her medications; with the date back at today, brought in again, it has stopped and the pod says what changed after", async () => {
   const story = (await loadStories()).find(({ pulls }) => pulls?.length);
   assert.ok(story?.pulls, "no story names its pulls");

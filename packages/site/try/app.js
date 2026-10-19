@@ -56,8 +56,6 @@ import { maps, podApi } from "./pod-api.js";
 import { browserHost, warmEngine } from "./browser-host.js";
 
 const BOX = "connection";
-/** The steps of a connection that are under way, which its box follows. */
-const UNDER_WAY = ["signing in", "pulling", "bringing in"];
 /** What the File menu's items do, through the `submit` listener, and what Help, About says. */
 const MENU = {
   deleteAll: "delete-all",
@@ -780,7 +778,7 @@ async function follow(followed) {
       connection: followed.n,
       wait,
     });
-    const done = !UNDER_WAY.includes(now.step);
+    const done = now.settled;
     if (state.connection === followed && !now.broughtIn) {
       followed.now = now;
       showConnection(done ? (now.retry ? "error" : "ready") : "busy");
