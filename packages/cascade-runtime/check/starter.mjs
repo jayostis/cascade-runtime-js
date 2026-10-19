@@ -2026,13 +2026,22 @@ if (release === undefined) {
         async () => {
           const before = await podsOf();
           const page = await served(server, `/pods/${before[0]}/`);
-          const listsSources = async (after) =>
+          const tables = join(app, "pods", ".tables");
+          const held = await readdir(tables);
+          const tablesKept = async (after) => {
             assert.ok(
               linksOf(await served(server, "/tables/")).hrefs.some((href) =>
                 /^\/tables\/[^/?]+\/$/.test(href),
               ),
               `/tables/ lists no source after ${after}`,
             );
+            const now = new Set(await readdir(tables).catch(() => []));
+            assert.deepEqual(
+              held.filter((file) => !now.has(file)),
+              [],
+              `${after} removed reference tables`,
+            );
+          };
           for (const action of ["/delete-all", "/reset-all"])
             assert.ok(page.includes(`action="${action}"`), `no ${action}`);
           const deleted = await send("/delete-all", {});
@@ -2044,7 +2053,7 @@ if (release === undefined) {
             readable(home).includes(`Deleted ${before.length} pods.`),
             "the page does not say how many pods went",
           );
-          await listsSources("/delete-all");
+          await tablesKept("/delete-all");
           const reset = await send("/reset-all", {});
           assert.equal(reset.status, 303);
           assert.deepEqual(await podsOf(), [...KITS].sort());
@@ -2056,7 +2065,7 @@ if (release === undefined) {
             ),
             "the page does not say which pods are back",
           );
-          await listsSources("/reset-all");
+          await tablesKept("/reset-all");
           assert.equal(
             (await send("/delete-all", {}, "http://elsewhere.example")).status,
             403,
