@@ -38,12 +38,13 @@ agent. The person runs the command in it, so the app is `my-app/`.
 
 - **Round 1:** the command exactly as https://jayostis.github.io/cascade-runtime-js/start.html
   gives it, of the form
-  `npx --yes --package=<tarball address> create-cascade-app my-app`.
-- **A later round** (after a change to the guide, the starter's files or the
-  prompt): at the pull request's head, `npm run build:package`, which writes
+  `npx --yes --package=<the starter kit's release address> create-cascade-app my-app`.
+- **A later round** (after a change to the guide or the prompt): at the pull
+  request's head, `npm run build:package`, which writes
   `build/cascade-runtime-0.0.0-commit-<sha>.tgz`. That commit has no release, so
-  give its path twice:
-  `npx --yes --package=<path to the .tgz> create-cascade-app my-app --tarball <path to the .tgz>`.
+  make the app with Round 1's command, then in `my-app/` run
+  `npm install <path to the .tgz>`. A change to the starter's files is a round
+  of the starter kit's own.
 
 Then, per idea:
 

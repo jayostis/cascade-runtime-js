@@ -40,7 +40,9 @@ what a pod is, the command that starts an app, and the prompt to hand a coding
 agent.
 
 - [The quick start](https://jayostis.github.io/cascade-runtime-js/start.html)
-- [An app running in the browser](https://jayostis.github.io/cascade-runtime-js/try/index.html)
+- [An app running in the browser](https://jayostis.github.io/cascade-starter-kit/try/)
+- [The starter kit](https://github.com/jayostis/cascade-starter-kit): the app
+  `create-cascade-app` makes, the command itself, and the page in the browser
 - [The example pods](https://jayostis.github.io/cascade-runtime-js/examples.html):
   Alex Rivera's, from Apple Health exports, Priya Natarajan's, from an
   export and C-CDA downloads together, and Martin Okafor's, two FHIR reports of

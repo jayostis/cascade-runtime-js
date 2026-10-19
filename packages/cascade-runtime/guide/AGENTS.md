@@ -39,72 +39,9 @@ names no record, a folder holding files but no pod, a call after `close`. Only
 
 ## The starter
 
-This app was made from a starter, a demonstration: rebuild it in any framework,
-keeping the package and the pods, under `pods/<name>/`. It is made with four,
-`alex-rivera`, `priya-natarajan`, `martin-okafor` and `tamsin-vale`.
-
-- `npm run help` lists every command.
-- `npm run reset` removes every pod and loads those four again.
-- `npm run dev` serves the app as `npm start` does, restarting it on every save.
-- `npm start` serves the app; stop it with Ctrl+C or by its process, never by
-  killing every Node process. A pod's page links to bringing in a record from a
-  hospital of the test directory: the app's `hospitals.mjs` signs in, receiving
-  the redirect on `/callback`. An option to an npm script goes after `--`.
-- `npm start` with `CASCADE_WORLD_DATE` set (`YYYY-MM-DD`, or an instant with
-  its timezone) makes the demo hospitals answer with their records as they
-  stood at the end of that day, and say so on their sign-in page; without it
-  they answer with everything they hold. The variable is read once, when the
-  app starts. While it runs, a pod's page and the page that finds a hospital say
-  what the hospitals answer as of, and link to `/world-date`, where a person
-  moves the date, or takes it back to everything with Today; the next sign-in
-  and bring-in answer as of it, and a connection's box says what its pull
-  answered as of.
-- `npm start` serves the demo hospitals on a loopback port of their own, which
-  the console line `The demo hospitals are listening at http://127.0.0.1:<port>/`
-  names, and the app reaches them over it, through the sandbox's
-  `demoRemapFetch`; a hospital's sign-in page is at
-  `http://127.0.0.1:<port>/<hospital>/authorize`.
-  The records are the same, still named under `https://<hospital>.demo.invalid`.
-  Another tool reaches a hospital only by sending a `Forwarded: host=<hospital>.demo.invalid`
-  header; called directly, the port answers the sign-in page and a 404.
-- `npm run pod:load -- <kit> [--through <step>] [--as <name>]` replays a kit's
-  story into `pods/<name>/`: `alex-rivera` is Alex Rivera's, from Apple Health
-  exports, `priya-natarajan` Priya Natarajan's, from exports and C-CDA files
-  together, `martin-okafor` Martin Okafor's, two FHIR reports of one
-  variant beside what ClinVar says today, and `tamsin-vale` Tamsin Vale's, two
-  pulls from Cascade North a year apart with her metformin stopped between
-  them, on the app's tables like any pod it creates. `--through J1`
-  stops Alex's after her first export, leaving the rest to `import`.
-- `npm run pod:new <name>` makes an empty pod.
-- `npm run pod:reset <name>` removes a pod.
-- `npm run ask -- [--pod <name>] "<question>"` prints a question's rows.
-- `npm run console -- [--pod <name>]` opens a REPL with the pod as `pod`.
-- `npm run mcp` is an MCP server on stdio over every pod, for a client such as
-  Claude Desktop to start (the starter's README says how). A hosted client
-  sends what the tools return to its provider.
-- `npm run model [-- --off]` asks which model the app's chat uses (a free
-  hosted key, a model on this computer, or a paid one), checks that it calls a
-  tool and keeps the choice, key included, in the app's untracked `.env`.
-  `--off` removes it. Without `.env` the app runs as it did.
-- `npm run kit:export -- <kit> <download>` copies a download into the app, for
-  `look`: `alex-rivera x-e12` as `apple_health_export`, and
-  `priya-natarajan kestrel-harbor-health-summary.xml` as that file.
-- `npm run patient:add -- <hospital id> <file>` checks a patient's file and
-  writes it to `people/<patient id>/sources/<hospital id>/fhir.json`, with
-  the person's `person.json` (name, birth date and gender, from the Patient)
-  when they have none. The app's own hospitals are folders of `hospitals/`,
-  each named for its `fhirBase` host's first label and holding only its
-  `hospital.json` (the package's `cascade-north` is the model; its `fhirBase`
-  must be on a `.demo.invalid` host); its people are folders of `people/`. The
-  app loads both at start with the package's, and refuses a source whose
-  Patient disagrees with its `person.json`. The file is a FHIR Bundle:
-  a `collection`, written as it is and present at every date; a `history`, one
-  entry per version with its `response.lastModified`; or a `collection` whose
-  entries carry `"shorthand": { "active": "2022-03-01", "stopped": "2024-04-15" }`
-  beside `resource`, which the command compiles to a `history`. A
-  `MedicationStatement` or a `Condition` with `stopped` becomes two versions,
-  and an entry without `shorthand` is placed at its own clinical date. It
-  refuses a stop it cannot date, and a patient already there.
+An app made with `create-cascade-app` comes from the starter kit,
+<https://github.com/jayostis/cascade-starter-kit>, and the `AGENTS.md` at its
+root lists the starter's scripts and the variables its server reads.
 
 ## Open a pod
 
@@ -337,13 +274,13 @@ person said no or closed the sign-in.
   connecting.
 - Their addresses are `https:`, so a CSP's `connect-src` must allow
   `https://*.demo.invalid`.
-- A hard reload bypasses the worker. The site's `try/` page shows all of
-  this.
+- A hard reload bypasses the worker. The starter kit's `try/` page,
+  <https://jayostis.github.io/cascade-starter-kit/try/>, shows all of this.
 - A real browser cannot open a `.demo.invalid` address, so the app serves a
   demo hospital's sign-in page itself: `demoFetch`'s `authorizeBase` puts each
   hospital's page under the app's own origin, and the app hands every request
   there to that `fetch`. The starter does not: it reaches the hospitals through
-  a listener instead (see "The starter").
+  a listener instead, as its `AGENTS.md` says.
 
 In Node, from finding the hospital to its record in a pod of its own:
 
