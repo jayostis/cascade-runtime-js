@@ -295,8 +295,7 @@ function entryShown() {
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, about, said, from, title, body, entry, unheld } =
-    state.page;
+  const { answers, about, said, from, title, body, entry, unheld } = state.page;
   if (answers === undefined) return { title, body };
   if (entry !== undefined) return entryShown();
   const { current, connection } = state;
