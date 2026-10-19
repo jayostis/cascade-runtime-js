@@ -14,7 +14,7 @@ import {
   timelineIn,
   Unopened,
 } from "cascade-runtime";
-import { pulled } from "./hospitals.js";
+import { answering, type Loaded, pulled, routed, rowOf } from "./hospitals.js";
 import { settled } from "./settled.js";
 
 type Input = Record<string, unknown>;
@@ -40,7 +40,11 @@ type Api = Record<
   | "deleteAll"
   | "resetAll"
   | "checkTables"
-  | "setWorldDate",
+  | "setWorldDate"
+  | "hospitals"
+  | "connect"
+  | "connection"
+  | "bring",
   Operation
 > & { close(): Promise<void> };
 type Host = Record<string, unknown> & { tables: unknown };
@@ -155,10 +159,55 @@ function plainJson(value: unknown, at = "output"): void {
     plainJson(each, `${at}.${key}`);
 }
 
+let north: Loaded;
+/** The world's date the test hosts' hospitals answer as of. */
+const world = {
+  asOf: undefined as string | undefined,
+  get() {
+    return this.asOf;
+  },
+  set(asOf: string | undefined) {
+    this.asOf = asOf;
+  },
+};
+
+/**
+ * Cascade North, in the process, as a host's hospitals: its sign-in page answered as the statin pod's patient, who
+ * cancels it when the pod is the empty one. `seen` gets each authorize URL the sign-in is given.
+ */
+function northHospitals(seen: URL[] = []) {
+  const fetch = routed([{ ...north, autoApprove: undefined }], {
+    requests: [],
+    secrets: new Set(),
+  });
+  return {
+    directory: async () => [rowOf(north)],
+    registration: {
+      clientId: "cascade-app",
+      redirectUri: "https://app.test.invalid/callback",
+    },
+    fetch,
+    ready: async () => undefined,
+    signIn:
+      (_: unknown, { pod }: { pod: string }, report: (href: string) => void) =>
+      async (authorize: URL, signal?: AbortSignal) => {
+        seen.push(new URL(authorize));
+        report(authorize.href);
+        return answering(STATIN, pod === EMPTY ? "cancel" : "allow")(fetch)(
+          authorize,
+          signal,
+        );
+      },
+    pullName: () => "north",
+  };
+}
+
 const host = (at = folder) => ({
   ...nodeHost({ folder: at }),
   tables: counted(async () => FAKE),
   checkTables: async () => FAKE.check(),
+  hospitals: northHospitals(),
+  world,
 });
 const made: Api[] = [];
 const servers: Server[] = [];
@@ -253,7 +302,7 @@ function api(given: Host = host()) {
 
 before(async () => {
   folder = await mkdtemp(join(tmpdir(), "pod-api-"));
-  const north = await loadHospital("cascade-north");
+  north = await loadHospital("cascade-north");
   const story = (await loadStories()).find(
     ({ patient }) => patient === STATIN,
   )!;
@@ -462,7 +511,34 @@ for (const via of HOSTS) {
       password: words,
       username: "waiting",
     };
+    const { connection: cancelled } = await shared.connect({
+      pod: EMPTY,
+      fhirBase: rowOf(north).fhirBase,
+    });
+    const failed = await shared.connection({
+      pod: EMPTY,
+      connection: cancelled,
+      wait: true,
+    });
+    assert.equal(failed.step, "failed");
+    assert.equal(failed.failure, "cancelled");
     const refused: [keyof Api, Input, RegExp][] = [
+      [
+        "connect",
+        { pod: STATIN, fhirBase: "https://nowhere.invalid/fhir" },
+        /not in the directory/,
+      ],
+      ["connection", { pod: STATIN, connection: 999 }, /no connection 999/],
+      [
+        "connection",
+        { pod: STATIN, connection: 1, wait: "soon" },
+        /wait must be true or "change"/,
+      ],
+      [
+        "bring",
+        { pod: EMPTY, connection: cancelled },
+        /nothing pulled to bring in/,
+      ],
       ["makePod", { person: "!!!" }, /at least one letter/],
       ["makePod", { person: "Con" }, /Windows keeps for itself/],
       ["makePod", { person: "Ada", encrypt: "on" }, /encrypt must be true/],
@@ -485,7 +561,6 @@ for (const via of HOSTS) {
       ["trend", { pod: STATIN, medication: 5 }, /medication must be a string/],
       ["pod", { pod: 5 }, /pod must be a string/],
       ["said", { pod: STATIN, entry: 5 }, /entry must be a string/],
-      ["answers", { pod: STATIN, last: "yes" }, /last must be true or false/],
       ["table", { page: "2" }, /page must be a whole number from 1/],
       ["table", { page: 1.5 }, /page must be a whole number from 1/],
       ["ask", { pod: STATIN, question: LABS, limit: -1 }, /limit must be/],
@@ -594,6 +669,86 @@ for (const via of HOSTS) {
     assert.equal(asOf, undefined);
   });
 
+  test(`${via}: hospitals finds a hospital of the directory by its name`, async () => {
+    const { rows } = await shared.hospitals({ q: "north" });
+    assert.deepEqual(
+      rows.map(({ name }: Output) => name),
+      ["Cascade North"],
+    );
+  });
+
+  test(`${via}: connect signs in with every scope and pulls, and bring brings the record into the pod`, async () => {
+    const authorized: URL[] = [];
+    const { api: writes } = await fresh(via, () => ({
+      hospitals: northHospitals(authorized),
+    }));
+    await writes.makePod({ person: "Ada" });
+    const { connection: n, authorize } = await writes.connect({
+      pod: "ada",
+      fhirBase: rowOf(north).fhirBase,
+    });
+    assert.equal(authorize, authorized[0]!.href);
+    assert.deepEqual(authorized[0]!.searchParams.get("scope")!.split(" "), [
+      "launch/patient",
+      "patient/*.read",
+      "patient/*.rs",
+    ]);
+    const at = { pod: "ada", connection: n };
+    const busy = (step: string) =>
+      ["signing in", "pulling", "bringing in"].includes(step);
+    const state = ({ step, requests, bringing }: Output) =>
+      JSON.stringify([step, requests, bringing]);
+    let shown = await writes.connection(at);
+    while (busy(shown.step)) {
+      const next = await writes.connection({ ...at, wait: "change" });
+      assert.notEqual(state(next), state(shown));
+      shown = next;
+    }
+    assert.equal(shown.step, "pulled");
+    assert.ok(shown.requests > 0);
+    assert.ok(
+      shown.sources.some(({ server }: Output) =>
+        rowOf(north).fhirBase.startsWith(server),
+      ),
+      JSON.stringify(shown.sources),
+    );
+    assert.equal(shown.patient, "Statin Story"); // replaced below once known
+    const keys = (value: unknown): string[] =>
+      value !== null && typeof value === "object"
+        ? Object.entries(value).flatMap(([key, each]) => [key, ...keys(each)])
+        : [];
+    assert.ok(!keys(shown).includes("bundle"), "the connection has its bundle");
+
+    assert.deepEqual(await writes.bring(at), { step: "bringing in" });
+    const done = await writes.connection({ ...at, wait: true });
+    assert.equal(done.broughtIn, true);
+    assert.ok(
+      (await writes.answers({ pod: "ada" })).changes.some(
+        ({ key }: Output) => key === `start:${ATORVASTATIN}:${LDL}`,
+      ),
+    );
+  });
+
+  test(`${via}: a demo hospital's connection carries the world's date it was started under`, async () => {
+    const { api: writes } = await fresh(via);
+    await writes.makePod({ person: "Ada" });
+    await writes.setWorldDate({ date: "2024-02-01" });
+    try {
+      const { connection } = await writes.connect({
+        pod: "ada",
+        fhirBase: rowOf(north).fhirBase,
+      });
+      const done = await writes.connection({
+        pod: "ada",
+        connection,
+        wait: true,
+      });
+      assert.equal(done.asOf, "2024-02-01T23:59:59Z");
+    } finally {
+      await writes.setWorldDate({ date: "" });
+    }
+  });
+
   test(`${via}: checkTables, when a version was kept, opens the plaintext pods anew and keeps an unlocked one open`, async () => {
     const built = api(host());
     const { podFor } = built as unknown as {
@@ -617,9 +772,17 @@ for (const via of HOSTS) {
     }));
     for (const person of ["One", "Two"]) await writes.makePod({ person });
     await writes.makePod({ person: "Three", encrypt: true });
+    const one = { pod: "one", connection: 0 };
+    one.connection = (
+      await writes.connect({ pod: "one", fhirBase: rowOf(north).fhirBase })
+    ).connection;
+    await writes.connection({ ...one, wait: true });
     assert.deepEqual(await writes.deleteAll({}), { deleted: ["one", "two"] });
     assert.deepEqual((await writes.pods({})).pods, []);
     await assert.rejects(writes.waitingWords({ pod: "three" }), /not waiting/);
+    await writes.makePod({ person: "One" });
+    await assert.rejects(writes.bring(one), /no connection/);
+    await writes.deleteAll({});
     assert.deepEqual(await writes.resetAll({}), { pods: ["restored"] });
     assert.deepEqual((await writes.pods({})).pods, [
       { name: "restored", title: "restored" },
