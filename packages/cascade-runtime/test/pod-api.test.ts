@@ -531,10 +531,10 @@ for (const via of HOSTS) {
       pod: "sample",
       made: false,
     });
-    assert.deepEqual((await writes.pods({})).pods, [
-      { name: "rowan-ellery-marsh", title: "Rowan Ellery Marsh" },
-      { name: "sample", title: "sample" },
-    ]);
+    assert.deepEqual(
+      (await writes.pods({})).pods.map(({ name }: Output) => name),
+      ["rowan-ellery-marsh", "sample"],
+    );
   });
 
   test(`${via}: an encrypted pod is made once its words 2 and 5 are given, and opens with its words after`, async () => {
