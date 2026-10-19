@@ -995,7 +995,20 @@ test("File, Delete all data empties the pods column, leaves no pod nor answers i
   }
 });
 
-test("a first visit where no sample copies leaves no database, says there are no pods yet, and offers each sample to load, which loads it", async () => {
+test("a first visit where no sample copies leaves no database, says there are no pods yet, and offers each sample to load, which loads it; a first visit to a sample's link copies them all and opens that sample, and to any other pod's link says it is not found", async () => {
+  const link = await browser.newContext();
+  try {
+    const page = watched(await link.newPage());
+    await page.goto(`${served.url}try/index.html?pod=martin-okafor`);
+    await settled(page);
+    assert.equal(await page.textContent("main h1"), "Martin Okafor");
+    assert.equal((await texts(page, "nav a")).length, 4);
+    await page.goto(`${served.url}try/index.html?pod=nobody`);
+    await settled(page);
+    assert.equal(await page.textContent("main h1"), "Not found");
+  } finally {
+    await link.close();
+  }
   const context = await browser.newContext();
   try {
     const page = watched(await context.newPage());

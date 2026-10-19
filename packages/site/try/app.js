@@ -843,10 +843,11 @@ async function route() {
   }
   const asked = query.get("pod");
   state.current = asked ?? undefined;
-  if (asked === null && state.pods.length === 0) {
+  if (state.pods.length === 0) {
     offerTools(undefined);
     if (!query.has("deleted") && !deletedAll()) await firstVisit();
-    if (state.pods.length === 0) return render("No pods yet", noPods());
+    if (state.pods.length === 0 && asked === null)
+      return render("No pods yet", noPods());
   }
   if (asked !== null && !state.pods.includes(asked)) {
     offerTools(undefined);
