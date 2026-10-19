@@ -1,7 +1,8 @@
 // The starter's view, in the browser: pods kept in this browser's own storage, each shown as a person reads it, a way
 // to make one or load a published one, and a sign-in at a test hospital that brings a record in. The view is the
-// starter's `summary.mjs`, served beside it as `summary.js`; the pods and the tables are read through the starter's
-// PodApi, served as `pod-api.js` over `browser-host.js`; this file routes, and hands the view the addresses of this page.
+// starter's `summary.mjs`, served beside it as `summary.js`; the pods, the tables and the hospitals are read and
+// written through the starter's PodApi, served as `pod-api.js` over `browser-host.js`; this file routes, draws what
+// PodApi answers, and hands the view the addresses of this page.
 // What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
 // filter and a scroll stay as they were. A pod's page is drawn from its kept answers; once it is, the engine loads in
 // the background, and `data-engine` on the body says when it is ready.
@@ -9,34 +10,13 @@
 // names; a `#…` link is the browser's, which opens and closes the boxes. Each pod opened stays open.
 import { render as renderInto } from "preact";
 import {
-  appTables,
   changeTools,
   checkInput,
-  checkTables,
-  connect,
-  ConnectionFailure,
-  deletePod,
-  DEMO_PLAN,
-  openPod,
-  popupSignIn,
-  pull,
-  pullFiles,
   Refusal,
-  directoryOf,
-  searchDirectory,
-  sixWords,
-  TEST_DIRECTORY,
   toolRegistry,
-  typedWords,
   Unopened,
   warm,
 } from "cascade-runtime";
-import {
-  hospitalId,
-  setWorldDate,
-  useDemoHospitals,
-  worldDate,
-} from "./demo-hospitals.js";
 import {
   checkedNote,
   classesPage,
@@ -56,12 +36,9 @@ import {
   newPodDialog,
   noPods,
   noTables,
-  NOT_WORDS,
   openPodPage,
   pageNumber,
   panelPage,
-  patientNames,
-  patientName,
   personName,
   podPage,
   postButton,
@@ -74,23 +51,13 @@ import {
   tablePage,
   trendPage,
   trendTitle,
-  savedLoginChanged,
-  utcInstant,
-  worldInstant,
 } from "./summary.js";
 import { maps, podApi } from "./pod-api.js";
-import { browserHost, databases } from "./browser-host.js";
+import { browserHost, warmEngine } from "./browser-host.js";
 
-const ANSWERS = "cascade-answers:";
 const BOX = "connection";
-const REGISTRATION = {
-  clientId: "cascade-runtime-demo",
-  redirectUri: new URL("signed-in.html", location.href).href,
-  scopes: ["launch/patient", "patient/*.read"],
-};
-const SAMPLES = (document.body.dataset.samples ?? "")
-  .split(" ")
-  .filter(Boolean);
+/** The steps of a connection that are under way, which its box follows. */
+const UNDER_WAY = ["signing in", "pulling", "bringing in"];
 /** What the File menu's items do, through the `submit` listener, and what Help, About says. */
 const MENU = {
   deleteAll: "delete-all",
@@ -107,18 +74,13 @@ const podHref = (name) => `?pod=${encodeURIComponent(name)}`;
 const tableHref = (series) =>
   `?table=${encodeURIComponent(tableId(series.iri))}`;
 const CHECK = "check-tables";
-
-const WORKER = new URL("demo-hospital-worker.js", location.href);
-const hospitalsReady = useDemoHospitals(WORKER);
-hospitalsReady.catch(() => undefined);
 const WORLD_DATE = "world-date";
 
 /**
  * What the page shows: the pods here and the demo people; the pod shown, by name; `page`, the pod's page as its
  * `answers`, what the tables say of their codes (`about`, once the engine is ready) and the hospital a record was just
- * brought in `from`, or another page's `title` and `body`; the
- * `connection` under way or done, with its row, step, requests answered, once pulled the files to import, and what its
- * box says (`said`); what the File menu just did (`note`), as the address said when the page opened; what the page
+ * brought in `from`, or another page's `title` and `body`; the `connection` its box follows, `{ n, pod }` and `now`,
+ * what PodApi last said of it; what the File menu just did (`note`), as the address said when the page opened; what the page
  * is doing (`doing`), in `data-state` on the body, and while it is busy, what it says it is doing (`saying`); the
  * reference tables this browser holds (`tables`), read once the engine is ready, and the one shown (`table`), by IRI.
  */
@@ -126,7 +88,6 @@ const state = {
   pods: [],
   titles: new Map(),
   people: [],
-  directory: TEST_DIRECTORY,
   world: undefined,
   tables: [],
   tablesRead: undefined,
@@ -138,11 +99,14 @@ const state = {
   doing: "opening",
   saying: undefined,
 };
-/** What the page reads of the pods and the tables; each pod it opens stays open until every pod is deleted. */
-const host = browserHost();
+/** What the page reads and writes of the pods, the tables and the hospitals; a deletion held up says so. */
+const host = browserHost({
+  waiting: (text) => {
+    state.saying = text;
+    showDoing();
+  },
+});
 const api = podApi(host);
-/** The pod shown, open. */
-let pod;
 /** The address's query, as `route()` last drew it. */
 let routed;
 
@@ -175,18 +139,6 @@ async function demoPeople() {
     return answer.ok ? await answer.json() : [];
   } catch {
     return [];
-  }
-}
-
-/** The directory: the demo hospitals' rows, from the brands bundle the site was built with, then the test directory's; the test directory alone, when the bundle cannot be read. */
-async function demoDirectory() {
-  try {
-    const answer = await fetch("demo-brands.json");
-    return answer.ok
-      ? [...directoryOf(await answer.json(), "demo"), ...TEST_DIRECTORY]
-      : TEST_DIRECTORY;
-  } catch {
-    return TEST_DIRECTORY;
   }
 }
 
@@ -240,7 +192,9 @@ function offerTools(shown) {
   podTools = undefined;
   if (shown === undefined) return;
   const controller = new AbortController();
-  for (const tool of changeTools(shown))
+  const ask = (question) =>
+    api.ask({ pod: shown, question }).then(({ rows }) => rows);
+  for (const tool of changeTools({ ask }))
     registry.register(tool, { signal: controller.signal });
   podTools = { pod: shown, controller };
 }
@@ -293,6 +247,30 @@ function entryShown() {
   };
 }
 
+/** The box of the connection PodApi said is `now`, over the pod's page. */
+function box(now) {
+  const { current } = state;
+  return connectionDialog({
+    titles: state.titles,
+    id: BOX,
+    pod: current,
+    hospital: now.row.name,
+    back: podHref(current),
+    connection: now,
+    bring: "bring",
+    pulledAsOf: now.asOf,
+    failed: now.failed,
+    failure: now.failure,
+    retry: now.retry,
+    sources: now.sources,
+    pulled: now.pulled,
+    about: now.patient,
+    aboutNames: now.patientNames,
+    signInAgain: (label) => signInButton(now.row.fhirBase, label),
+    failureOverrides: POPUP_BLOCKED,
+  });
+}
+
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
   const { answers, about, said, from, title, body, entry, unheld } = state.page;
@@ -306,21 +284,7 @@ function pageShown() {
       pod: current,
       person: personOf(current),
       from,
-      connection:
-        connection &&
-        connectionDialog({
-          titles: state.titles,
-          id: BOX,
-          pod: current,
-          hospital: connection.row.name,
-          back: podHref(current),
-          connection,
-          bring: "bring",
-          pulledAsOf: connection.asOf,
-          signInAgain: (label) => signInButton(connection.row.fhirBase, label),
-          failureOverrides: POPUP_BLOCKED,
-          ...connection.said,
-        }),
+      connection: connection?.now && box(connection.now),
       signIn: (hospital) =>
         signInButton(
           hospital.fhirBase,
@@ -345,7 +309,7 @@ function pageShown() {
 function redraw() {
   const { pods, people, current, note } = state;
   const { title, body } = pageShown();
-  const samples = SAMPLES.filter((name) => !pods.includes(name));
+  const samples = host.samples.filter((name) => !pods.includes(name));
   document.title = `${title} · Cascade`;
   if (!root.isConnected) document.body.replaceChildren(root, line);
   renderInto(
@@ -617,14 +581,15 @@ async function showClasses(picked) {
   );
 }
 
-function showHospitals(text) {
+async function showHospitals(text) {
   const { current, people } = state;
+  const { rows } = await api.hospitals({ q: text });
   render(
     "Find a hospital",
     hospitalsPage({
       titles: state.titles,
       pod: current,
-      rows: searchDirectory(state.directory, text),
+      rows,
       text,
       search: `${podHref(current)}&hospitals`,
       signIn: (row) => signInButton(row.fhirBase, "Sign in"),
@@ -713,12 +678,9 @@ async function showTable(id, text, shown, code) {
 
 /** Check now: reads every feed past any cache, opens the plaintext pods again with what it kept, and says what it did; an encrypted pod stays open and unlocked, and reads the new tables when next opened. */
 async function checkNow() {
-  const checked = await checkTables();
-  if (checked.some(({ kept }) => kept.length > 0)) {
-    await api.closePods({ plaintextOnly: true });
-    if (!pod?.encrypted) pod = undefined;
-  }
-  await readTables();
+  const { checked, held } = await api.checkTables();
+  state.tables = held;
+  state.tablesRead = "read";
   const note = checkedNote(checked, state.tables);
   await go("?table=");
   state.note = note;
@@ -730,7 +692,7 @@ async function route() {
   routed = location.search;
   const query = new URLSearchParams(location.search);
   state.connection = undefined;
-  state.note = didNote(query, SAMPLES);
+  state.note = didNote(query, host.samples);
   if (state.note !== undefined) {
     const rest = new URLSearchParams(query);
     rest.delete("deleted");
@@ -766,15 +728,12 @@ async function route() {
   }
   state.current = asked ?? state.pods[0];
   if (asked === null) replaceAddress(podHref(state.current));
-  try {
-    pod = await api.podFor(state.current);
-  } catch (error) {
-    if (!(error instanceof Unopened)) throw error;
-    pod = undefined;
+  const { locked } = await api.pod({ pod: state.current });
+  if (locked !== undefined) {
     offerTools(undefined);
-    return showLocked(error.outcome);
+    return showLocked(locked);
   }
-  offerTools(pod);
+  offerTools(state.current);
   if (query.has("hospitals")) return showHospitals(query.get("q") ?? "");
   if (query.has("entry")) return showEntry(query.get("entry") ?? "");
   if (query.has("trend")) return showTrend(query);
@@ -797,12 +756,11 @@ function go(href, keep = false) {
 }
 
 /**
- * Shows the connection in its box over the pod's page, saying `said`, and opens the box by its hash if it is not open.
- * Once Back or Forward has moved the address under the step, the box is not opened: the page follows the address
- * when the step ends.
+ * Shows the connection in its box over the pod's page, and opens the box by its hash if it is not open. Once Back or
+ * Forward has moved the address under the step, the box is not opened: the page follows the address when the step
+ * ends.
  */
-function showConnection(said, doing) {
-  state.connection.said = said;
+function showConnection(doing) {
   state.doing = doing;
   redraw();
   if (location.hash === `#${BOX}` || location.search !== routed) return;
@@ -810,65 +768,36 @@ function showConnection(said, doing) {
   location.replace(`#${BOX}`);
 }
 
-/** Signs in at the hospital in `popup`, opened in the click, fetches the record, and shows what it has. */
-async function signIn(fhirBase, popup) {
-  const row = state.directory.find((each) => each.fhirBase === fhirBase);
-  if (row === undefined) {
-    popup?.close();
-    throw new Error("That hospital is not in the directory.");
-  }
-  const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
-  const forPod = state.current;
-  state.connection = shown;
-  state.page = await podShown();
-  const now = (said = {}, doing = "busy") => {
-    if (state.connection === shown) showConnection(said, doing);
-  };
-  now();
-  const failed = (said, failure) => {
-    shown.step = "failed";
-    return now({ failed: said, failure }, "ready");
-  };
-  const demo = row.vendor === "demo";
-  try {
-    if (demo) await hospitalsReady;
-  } catch (error) {
-    popup?.close();
-    return failed(error.message);
-  }
-  try {
-    const signedIn = await connect(row, REGISTRATION, {
-      signIn: (authorize, signal) => {
-        if (forPod !== undefined && row.vendor === "demo")
-          authorize.searchParams.set("login_hint", forPod);
-        return popupSignIn({ popup })(authorize, signal);
-      },
-      fetch: async (url, init) => {
-        const answer = await globalThis.fetch(url, init);
-        shown.requests += 1;
-        return answer;
-      },
+/**
+ * Follows the connection `followed` in its box: draws it as it is, then again each time its step, its requests or the
+ * part being brought in change, until the step settles, and gives it as it ended. Once the page has left it, it is no
+ * longer drawn; nor is a record brought in, whose box the pod's page then replaces.
+ */
+async function follow(followed) {
+  for (let wait; ; wait = "change") {
+    const now = await api.connection({
+      pod: followed.pod,
+      connection: followed.n,
+      wait,
     });
-    shown.step = "pulling";
-    now();
-    const pulled = await pull(signedIn, DEMO_PLAN);
-    shown.files = pullFiles(
-      { ...pulled, asOf: demo ? utcInstant(shown.asOf) : undefined },
-      `${demo ? hospitalId({ hospital: row }) : row.vendor}-${Date.now()}`,
-    );
-    shown.step = "pulled";
-    now(
-      {
-        sources: await pod.look(shown.files),
-        pulled,
-        about: patientName(pulled.bundle),
-        aboutNames: patientNames(pulled.bundle),
-      },
-      "ready",
-    );
-  } catch (error) {
-    if (!(error instanceof ConnectionFailure)) throw error;
-    failed(`${error.message}.`, error.kind);
+    const done = !UNDER_WAY.includes(now.step);
+    if (state.connection === followed && !now.broughtIn) {
+      followed.now = now;
+      showConnection(done ? (now.retry ? "error" : "ready") : "busy");
+    }
+    if (done) return now;
+  }
+}
+
+/** Signs in at the hospital at `fhirBase` in `popup`, opened in the click, and follows the connection in its box. */
+async function signIn(fhirBase, popup) {
+  const { current } = state;
+  try {
+    const { connection } = await api.connect({ pod: current, fhirBase });
+    const followed = { n: connection, pod: current };
+    state.connection = followed;
+    state.page = await podShown();
+    await follow(followed);
   } finally {
     popup?.close();
   }
@@ -879,14 +808,9 @@ async function signIn(fhirBase, popup) {
  * hold, and draws the box again. The next sign-in answers as of it.
  */
 async function changeWorld(text) {
-  const asOf = worldInstant(text);
-  if (text.trim() !== "" && asOf === undefined)
-    throw new Error(`"${text}" is not a date.`);
-  await hospitalsReady;
-  await setWorldDate(WORKER, asOf);
-  state.world = asOf;
+  ({ asOf: state.world } = await api.setWorldDate({ date: text }));
   const search = new URLSearchParams(location.search);
-  if (search.has("hospitals")) showHospitals(search.get("q") ?? "");
+  if (search.has("hospitals")) await showHospitals(search.get("q") ?? "");
   else redraw();
 }
 
@@ -895,33 +819,14 @@ async function changeWorld(text) {
  * where the record came from.
  */
 async function bring() {
-  const shown = state.connection;
-  if (shown?.files === undefined) return showPod();
-  shown.step = "bringing in";
-  shown.bringing = undefined;
-  let done;
-  showConnection({}, "busy");
-  try {
-    done = await pod.import(shown.files, {
-      aboutSubject: true,
-      onProgress: (part) => {
-        shown.bringing = part;
-      },
-    });
-  } catch (error) {
-    shown.step = "failed";
-    return showConnection(
-      { failed: `Not brought in: ${error.message}`, retry: true },
-      "error",
-    );
-  }
-  if (done.refused !== undefined) {
-    shown.step = "failed";
-    return showConnection({ failed: `Refused: ${done.refused}` }, "ready");
-  }
+  const followed = state.connection;
+  if (followed === undefined) return showPod();
+  await api.bring({ pod: followed.pod, connection: followed.n });
+  const now = await follow(followed);
+  if (!now.broughtIn || state.connection !== followed) return;
   state.connection = undefined;
   if (location.hash === `#${BOX}`) closeDialog();
-  await showPod(shown.row.name);
+  await showPod(now.row.name);
 }
 
 /** In this browser's storage while Delete all data is the last thing done, so that a later visit copies no sample in. */
@@ -946,19 +851,20 @@ function markDeletedAll(deleted) {
   }
 }
 
-/** The encrypted pod being made, `{ name, person, words }`, until its words are checked. Kept in memory only. */
+/** The name of the encrypted pod being made, whose words PodApi holds until they are checked. */
 let making;
 
 /** The six-words page for the pod being made, saying `problem` when the last check failed. */
-function showWords(problem) {
+async function showWords(problem) {
+  const { pod, person, words } = await api.waitingWords({ pod: making });
   closeDialog();
   state.current = undefined;
   return render(
     "Your six words",
     sixWordsPage({
-      pod: making.name,
-      titles: new Map([[making.name, making.person]]),
-      words: making.words,
+      pod,
+      titles: new Map([[pod, person]]),
+      words,
       action: "confirm-words",
       problem,
     }),
@@ -992,36 +898,30 @@ function offerToSave(name, words) {
   }
 }
 
-/** Makes the encrypted pod whose words were checked, and goes to it; else shows the page again, saying why not. */
+/**
+ * Makes the encrypted pod whose words were checked, and goes to it; else, while its words still wait, shows the page
+ * again saying why not.
+ */
 async function confirmWords(fields) {
-  if (making === undefined) {
-    closeDialog();
-    return render(
-      "No pod made",
-      html`<h1>No pod made</h1>
-<p>These six words are not waiting any more. Make the pod again.</p>`,
+  const name = making;
+  const { words } = await api.waitingWords({ pod: name });
+  const typed = (field) => String(fields.get(field) ?? "");
+  try {
+    await api.confirmWords({
+      pod: name,
+      word2: typed("word2"),
+      word5: typed("word5"),
+      password: typed("password"),
+      username: typed("username"),
+    });
+  } catch (error) {
+    const waits = await api.waitingWords({ pod: name }).then(
+      () => true,
+      () => false,
     );
+    if (!(error instanceof Refusal) || !waits) throw error;
+    return showWords(error.message);
   }
-  const changed = savedLoginChanged(fields, making.name, making.words);
-  if (changed !== undefined) return showWords(changed);
-  const asked = making.words.split(" ");
-  if (
-    typedWords(String(fields.get("word2") ?? "")) !== asked[1] ||
-    typedWords(String(fields.get("word5") ?? "")) !== asked[4]
-  )
-    return showWords(NOT_WORDS);
-  const { name, person, words } = making;
-  if ((await host.pods.names()).includes(name)) {
-    making = undefined;
-    closeDialog();
-    return render(
-      "No pod made",
-      html`<h1>No pod made</h1>
-<p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
-    );
-  }
-  if (!(await api.podFor(name, { title: person, secret: words })).encrypted)
-    throw new Error(`The pod ${name} was made without its words.`);
   making = undefined;
   offerToSave(name, words);
   await refreshPods();
@@ -1030,10 +930,11 @@ async function confirmWords(fields) {
 
 /** Opens the locked pod shown with the words typed, and draws it; else says why it did not open. */
 async function unlock(fields) {
-  const secret = String(fields.get("password") ?? "");
-  if (secret.trim() === "") return showLocked("incorrect secret");
   try {
-    pod = await api.podFor(state.current, { secret });
+    await api.unlock({
+      pod: state.current,
+      secret: String(fields.get("password") ?? ""),
+    });
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     return showLocked(error.outcome);
@@ -1043,78 +944,38 @@ async function unlock(fields) {
 
 /** Makes an empty pod named after the person, unless it exists or is a sample's, which it loads, and goes to it; with `encrypt`, asks for words first. */
 async function make(person, encrypt = false) {
+  const made = await api.makePod({ person, encrypt });
   markDeletedAll(false);
-  const name = slug(person);
-  if (SAMPLES.includes(name)) return load(name);
-  if (encrypt && name !== "" && !state.pods.includes(name)) {
-    making = { name, person: person.trim(), words: sixWords() };
+  if (made.waiting) {
+    making = made.pod;
     return showWords();
   }
-  if (name === "") {
-    closeDialog();
-    return render(
-      "No pod made",
-      html`<h1>No pod made</h1>
-<p>Give a name with at least one letter from a to z, or a digit.</p>`,
-    );
-  }
-  if (!state.pods.includes(name)) {
-    await api.podFor(name, { title: person.trim() });
-  }
   await refreshPods();
-  return go(podHref(name));
+  return go(podHref(made.pod));
 }
 
-/** Copies the published example pod into this browser, and keeps it open. */
-async function copy(name) {
-  await api.podFor(name, { from: `../${name}/pod/` });
-}
-
-/** Copies the published example pod into this browser, unless it is here already, and goes to it. */
-async function load(name) {
-  if (!SAMPLES.includes(name)) throw new Error(`No sample pod ${name}.`);
-  markDeletedAll(false);
-  if (!state.pods.includes(name)) await copy(name);
-  await refreshPods();
-  return go(podHref(name));
-}
-
-/**
- * Closes every pod open and deletes every pod and its answers, saying so when another tab keeps one open; gives the
- * names of the pods there were.
- */
-async function deleteAll() {
-  pod = undefined;
-  making = undefined;
-  await api.closePods();
-  const names = await host.pods.names();
-  const all = new Set([...names, ...(await databases(ANSWERS))]);
-  const waiting = window.setTimeout(() => {
-    state.saying = "Waiting for the pods to close in your other tabs…";
-    showDoing();
-  }, 2000);
-  const deleted = await Promise.allSettled([...all].map(deletePod));
-  window.clearTimeout(waiting);
-  await refreshPods();
-  const failed = deleted.find(({ status }) => status === "rejected");
-  if (failed !== undefined) throw failed.reason;
-  return names;
+/** Copies the published example pod `name` into this browser, unless it is here already, and goes to it. */
+function load(name) {
+  if (!host.samples.includes(name))
+    throw new Refusal(`there is no sample pod ${name}`);
+  return make(name);
 }
 
 /** File, Delete all data: then the page says how many went, and no visit copies a sample in until a pod is made again. */
 async function deleteEverything() {
-  const names = await deleteAll();
+  making = undefined;
+  const { deleted } = await api.deleteAll().finally(refreshPods);
   markDeletedAll(true);
-  return go(`?deleted=${names.length}`);
+  return go(`?deleted=${deleted.length}`);
 }
 
 /** File, Reset all data: every pod deleted and every sample copied again, then the first sample's page says so. */
 async function resetEverything() {
   markDeletedAll(false);
-  await deleteAll();
-  await Promise.all(SAMPLES.map(copy));
-  await refreshPods();
-  return go(SAMPLES.length === 0 ? "?reset" : `${podHref(SAMPLES[0])}&reset`);
+  making = undefined;
+  await api.resetAll().finally(refreshPods);
+  const [first] = host.samples;
+  return go(first === undefined ? "?reset" : `${podHref(first)}&reset`);
 }
 
 /**
@@ -1122,19 +983,22 @@ async function resetEverything() {
  * choice in the new-pod box. One that leaves its database behind, or none copying because the runtime fails, throws.
  */
 async function firstVisit() {
-  const copies = await Promise.allSettled(SAMPLES.map(copy));
+  const { samples } = host;
+  const copies = await Promise.allSettled(
+    samples.map((name) => api.makePod({ person: name })),
+  );
   await refreshPods();
-  const left = SAMPLES.findIndex(
+  const left = samples.findIndex(
     (name, at) => copies[at].status === "rejected" && state.pods.includes(name),
   );
   if (left !== -1) throw copies[left].reason;
-  if (state.pods.length === 0) await (await openPod()).close();
+  if (state.pods.length === 0) await warmEngine();
 }
 
 /**
  * Runs the step with the page busy, saying `saying`; while the page is busy, another step does not start. Back or
- * Forward pressed meanwhile moves the address, and the page follows it once the step ends. Anything the step did not
- * expect, it shows.
+ * Forward pressed meanwhile moves the address, and the page follows it once the step ends. What the rules refused
+ * says "Not done" and why; anything else the step did not expect, it shows as gone wrong.
  */
 async function busy(step, saying = "Working…") {
   if (state.doing === "busy") return;
@@ -1146,12 +1010,19 @@ async function busy(step, saying = "Working…") {
     if (location.search !== routed) await route();
   } catch (error) {
     closeDialog();
-    render(
-      "Something went wrong",
-      html`<h1>Something went wrong</h1>
+    if (error instanceof Refusal)
+      render(
+        "Not done",
+        html`<h1>Not done</h1>
+<p>${error.message}</p>`,
+      );
+    else
+      render(
+        "Something went wrong",
+        html`<h1>Something went wrong</h1>
 <p>${error?.message ?? String(error)}</p>`,
-      "error",
-    );
+        "error",
+      );
   }
   if (state.doing === "busy") {
     state.doing = "ready";
@@ -1197,6 +1068,7 @@ document.addEventListener("submit", (event) => {
       "cascade-sign-in",
       "popup,width=520,height=720",
     );
+    host.popup = popup;
     busy(() => signIn(String(fields.get("fhirBase")), popup), saying);
   } else if (action === WORLD_DATE)
     busy(() => changeWorld(String(fields.get("date") ?? "")), saying);
@@ -1223,16 +1095,15 @@ window.addEventListener("popstate", () => {
 });
 
 busy(async () => {
-  [state.people, state.directory, state.world] = await Promise.all([
+  [state.people, state.world] = await Promise.all([
     demoPeople(),
-    demoDirectory(),
-    worldDate(WORKER).catch(() => undefined),
+    host.world.get(),
   ]);
   await refreshPods();
   await route();
 }, "Opening…").then(() => {
   warm().catch(() => undefined);
-  return appTables().then(
+  return host.tables().then(
     async () => {
       document.body.dataset.engine = "ready";
       await readTables();
@@ -1247,7 +1118,7 @@ busy(async () => {
         if (shown.entry !== undefined) await panelsShown(shown);
       }
       if (state.page !== undefined && !left(state.page)) redraw();
-      const tables = await appTables();
+      const tables = await host.tables();
       await tables.start().catch(() => undefined);
       document.body.dataset.tables = "ready";
     },
