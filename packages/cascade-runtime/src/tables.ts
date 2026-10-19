@@ -469,6 +469,11 @@ function ofAKind(index: Graph, series: Term): boolean {
   return index.objects(series, TABLE_KIND).length > 0;
 }
 
+/** The series the index says ship with a version, the rule list's left out. */
+function seriesOfAKind(index: Graph): Term[] {
+  return index.subjects(SHIPS_WITH).filter((series) => ofAKind(index, series));
+}
+
 /** The feed that last described the series. */
 function feedOf(held: Held, series: string): string | undefined {
   return Object.entries(held.feeds).find(
@@ -537,6 +542,51 @@ function once<T>(
     made.set(key, found);
   }
   return found;
+}
+
+/** Rows of a version, for a query, with the descriptions of the version and its series. */
+interface Described {
+  version: string;
+  rows: Triple[];
+  description: Triple[];
+}
+
+function described(
+  references: References,
+  version: string,
+  rows: Triple[],
+): Described {
+  return {
+    version,
+    rows,
+    description: [
+      ...references.description(version),
+      ...references.description(references.seriesOf(version) ?? ""),
+    ],
+  };
+}
+
+/** A code's name, as the rows of a names version about it give it. */
+function nameOf(
+  rows: readonly Row[],
+): { label: string; altLabels: string[] } | undefined {
+  const [label] = values(rows, `${SKOS}prefLabel`);
+  return label === undefined
+    ? undefined
+    : { label, altLabels: values(rows, `${SKOS}altLabel`) };
+}
+
+/** A code's status, as the rows of a status version about it give it. */
+function statusOf(
+  rows: readonly Row[],
+): { deprecated: boolean; replacedBy: string[] } | undefined {
+  const [deprecated] = values(rows, `${OWL}deprecated`);
+  return deprecated === undefined
+    ? undefined
+    : {
+        deprecated: deprecated === "true",
+        replacedBy: values(rows, `${DCT}isReplacedBy`),
+      };
 }
 
 /** What `make` gives, made at the first `get` and kept until `forget`; one that fails is made again at the next. */
@@ -777,24 +827,16 @@ export class Tables {
       `${REC}CodeNames`,
       "name",
       fromRows<"name">((rows, origin) => {
-        const [label] = values(rows, `${SKOS}prefLabel`);
-        return label === undefined
-          ? undefined
-          : { label, altLabels: values(rows, `${SKOS}altLabel`), origin };
+        const name = nameOf(rows);
+        return name === undefined ? undefined : { ...name, origin };
       }),
     );
     await fill(
       `${REC}CodeStatus`,
       "status",
       fromRows<"status">((rows, origin) => {
-        const [deprecated] = values(rows, `${OWL}deprecated`);
-        return deprecated === undefined
-          ? undefined
-          : {
-              deprecated: deprecated === "true",
-              replacedBy: values(rows, `${DCT}isReplacedBy`),
-              origin,
-            };
+        const status = statusOf(rows);
+        return status === undefined ? undefined : { ...status, origin };
       }),
     );
     // A mapping row is named by a urn:uuid, so the rows about a code are found in the version's listing.
@@ -1094,9 +1136,7 @@ export class Tables {
       rowsOf(`${REC}CodeNames`),
       rowsOf(`${REC}CodeStatus`),
       Promise.all(
-        references.index
-          .subjects(SHIPS_WITH)
-          .filter((series) => ofAKind(references.index, series))
+        seriesOfAKind(references.index)
           .map(({ value }) => value)
           .filter(
             (series) =>
@@ -1127,22 +1167,12 @@ export class Tables {
       )
     ).flat();
     const names = named.flatMap(({ fact, rows }) => {
-      const [label] = values(rows, `${SKOS}prefLabel`);
-      return label === undefined
-        ? []
-        : [{ ...fact, label, altLabels: values(rows, `${SKOS}altLabel`) }];
+      const name = nameOf(rows);
+      return name === undefined ? [] : [{ ...fact, ...name }];
     });
     const status = statuses.flatMap(({ fact, rows }) => {
-      const [deprecated] = values(rows, `${OWL}deprecated`);
-      return deprecated === undefined
-        ? []
-        : [
-            {
-              ...fact,
-              deprecated: deprecated === "true",
-              replacedBy: values(rows, `${DCT}isReplacedBy`),
-            },
-          ];
+      const each = statusOf(rows);
+      return each === undefined ? [] : [{ ...fact, ...each }];
     });
     // A panel and a class are the code's whatever source's page asks: a medication's classes are MED-RT's, not RxNorm's.
     const anywhere = (kind: string): Fact[] =>
@@ -1504,9 +1534,7 @@ export class Tables {
    * and its series. The rows of the panels that list the panel, or list a member of it, are left out: the query is
    * asked of this panel alone.
    */
-  async panelRows(
-    panel: string,
-  ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
+  async panelRows(panel: string): Promise<Described[]> {
     const references = await this.references();
     const terms = await this.#terms();
     const versions = this.#currentOf(references, `${REC}PanelMembers`).map(
@@ -1548,14 +1576,7 @@ export class Tables {
             }
           }
         }
-        return {
-          version,
-          rows,
-          description: [
-            ...references.description(version),
-            ...references.description(references.seriesOf(version) ?? ""),
-          ],
-        };
+        return described(references, version, rows);
       }),
     );
   }
@@ -1568,9 +1589,7 @@ export class Tables {
    * where the version holds any, which says the version states them. Each comes with the descriptions of the version
    * and its series. A superset of what the query joins; the query says what is a class of what.
    */
-  async reached(
-    codes: readonly string[],
-  ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
+  async reached(codes: readonly string[]): Promise<Described[]> {
     const references = await this.references();
     const terms = await this.#terms();
     const current = (kind: string): string[] =>
@@ -1580,14 +1599,11 @@ export class Tables {
     const read = async (version: string, among: ReadonlySet<string>) => {
       // The rows are found by an index beside them, which is made now if the version came without one.
       await this.#codesIn(version);
-      return {
+      return described(
+        references,
         version,
-        rows: await references.rows(version, { codes: among, terms }),
-        description: [
-          ...references.description(version),
-          ...references.description(references.seriesOf(version) ?? ""),
-        ],
-      };
+        await references.rows(version, { codes: among, terms }),
+      );
     };
     return Promise.all([
       ...ingredients.map(async (version) => {
@@ -1861,10 +1877,9 @@ export class Tables {
     };
     const label = (series: Term): string =>
       index.objects(series, `${RDFS}label`)[0]?.value ?? series.value;
-    return index
-      .subjects(SHIPS_WITH)
-      .filter((series) => ofAKind(index, series))
-      .sort((a, b) => place(a) - place(b) || label(a).localeCompare(label(b)));
+    return seriesOfAKind(index).sort(
+      (a, b) => place(a) - place(b) || label(a).localeCompare(label(b)),
+    );
   }
 
   #next<T>(call: () => Promise<T>): Promise<T> {
