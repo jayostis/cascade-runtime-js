@@ -539,7 +539,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   );
 });
 
-test("the guide's lists are the vocabulary's and the starter's", async () => {
+test("the guide's lists are the vocabulary's", async () => {
   const { sections } = guide;
   assert.deepEqual(
     sorted(itemsUnder(sections, "Questions")),
@@ -553,36 +553,6 @@ test("the guide's lists are the vocabulary's and the starter's", async () => {
     sorted(itemsUnder(sections, "What a pod holds")),
     sorted(vocabulary.layout.views.flatMap(({ title }) => title ?? [])),
   );
-  const starter = JSON.parse(
-    await readFile(join(PACKAGE, "starter", "package.json"), "utf8"),
-  ) as { scripts: Record<string, string> };
-  assert.deepEqual(
-    sorted(
-      itemsUnder(sections, "The starter").map((command) => {
-        const script = /^npm (?:run (\S+)|(start))/.exec(command);
-        assert.ok(script, `"${command}" runs no npm script`);
-        return script[1] ?? script[2] ?? "";
-      }),
-    ),
-    sorted(Object.keys(starter.scripts)),
-  );
-  const server = await readFile(join(PACKAGE, "starter", "server.mjs"), "utf8");
-  const stated = (sections.get("The starter") ?? []).join("\n");
-  for (const [, name] of server.matchAll(/env\.(CASCADE_[A-Z_]+)/g))
-    assert.ok(
-      stated.includes(`\`${name}\``),
-      `no item under "The starter" names ${name}`,
-    );
-});
-
-test("the starter's AGENTS.md points at the guide that ships", async () => {
-  const agents = await readFile(join(PACKAGE, "starter", "AGENTS.md"), "utf8");
-  const path = /node_modules\/cascade-runtime\/([^\s`]+)/.exec(agents)?.[1];
-  assert.equal(path, "guide/AGENTS.md");
-  const { files } = JSON.parse(
-    await readFile(join(PACKAGE, "package.json"), "utf8"),
-  ) as { files: string[] };
-  assert.ok(files.includes(path), `the package's files leave out ${path}`);
 });
 
 test("the guide installs the cascade-reference-tables the runtime is tested with", async () => {

@@ -9,7 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
@@ -73,8 +73,6 @@ const VOCABULARY = [
 const TABLES_FOLDER = "tables";
 /** What an adapter reads of another vocabulary repository it names. */
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];
-/** The folder of the starter that holds the demo hospitals. */
-const DEMO_HOSPITAL = "demo-hospital";
 const KEPT_BY_BUNDLED = ["name", "version", "type", "exports", "license"];
 const KEPT_BY_PACKAGE = [
   "name",
@@ -84,7 +82,6 @@ const KEPT_BY_PACKAGE = [
   "engines",
   "type",
   "exports",
-  "bin",
   "files",
 ];
 
@@ -415,39 +412,6 @@ async function packOwnFiles(
   }
 }
 
-/**
- * The demo hospitals inside the staged starter, as a package of the app's own that its `package.json` names by
- * `file:`. The runtime reaches them only through a `fetch`, so the package itself names them nowhere.
- */
-async function packDemoHospital(): Promise<void> {
-  const workspace = dirname(
-    fileURLToPath(
-      import.meta.resolve("@the-cascade-protocol/sandbox/package.json"),
-    ),
-  );
-  const manifest = await manifestOf(workspace);
-  const starter = join(STAGE, "starter");
-  const to = join(starter, DEMO_HOSPITAL);
-  for (const path of manifest.files ?? [])
-    await cp(
-      join(workspace, ...path.split("/")),
-      join(to, ...path.split("/")),
-      {
-        recursive: true,
-        ...(path.startsWith("dist/") ? { filter: compiled } : {}),
-      },
-    );
-  await writeJson(join(to, "package.json"), kept(manifest, KEPT_BY_BUNDLED));
-  const app = await manifestOf(starter);
-  await writeJson(join(starter, "package.json"), {
-    ...app,
-    dependencies: {
-      ...app.dependencies,
-      [manifest.name]: `file:${DEMO_HOSPITAL}`,
-    },
-  });
-}
-
 async function npmPack(): Promise<{ filename: string; integrity: string }> {
   const args = ["pack", "--json", "--pack-destination", BUILD];
   const npm = process.env.npm_execpath;
@@ -508,7 +472,6 @@ async function main(): Promise<void> {
   const { bundled, dependencies } = await packCode(bridgeFolder);
   await bundleBrowser(bridgeFolder);
   await packOwnFiles(manifest, address);
-  await packDemoHospital();
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
     version: packageVersion(commit),

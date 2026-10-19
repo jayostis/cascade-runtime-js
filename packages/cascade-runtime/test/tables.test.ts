@@ -608,10 +608,9 @@ ${records.join("\n")}`);
       episodes.map(({ onsets = "" }) => onsets.split(" ").sort().join(" ")),
       ["2019-01-05 2019-01-07"],
     );
-    const { joinedBy } = (await import(
-      new URL("../../starter/summary.mjs", import.meta.url).href
-    )) as { joinedBy: (pod: object) => Promise<Map<string, string[]>> };
-    const joined = await joinedBy(pod);
+    const joined = new Map<string, string[]>();
+    for (const { entry = "", used = "" } of await pod.joinedBy())
+      joined.set(entry, [...(joined.get(entry) ?? []), used]);
     const citedBy = async (field: string, value: string): Promise<string[]> => {
       const entries = await pod.ask({
         query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/health:${field} ${value} ; rec:inEntry ?entry }`,

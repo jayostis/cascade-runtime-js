@@ -30,16 +30,13 @@ async function filesIn(folder: string, ending: string): Promise<string[]> {
 }
 
 test("no source writes a code system's IRI stem: the runtime reads each from the vocabulary", async () => {
-  const sources = [
-    ...(
-      await Promise.all(
-        (await readdir(join(ROOT, "packages"))).map((name) =>
-          filesIn(`packages/${name}/src`, ".ts").catch(() => []),
-        ),
-      )
-    ).flat(),
-    ...(await filesIn("packages/cascade-runtime/starter", ".mjs")),
-  ];
+  const sources = (
+    await Promise.all(
+      (await readdir(join(ROOT, "packages"))).map((name) =>
+        filesIn(`packages/${name}/src`, ".ts").catch(() => []),
+      ),
+    )
+  ).flat();
   assert.ok(sources.some((path) => path.endsWith("/words.ts")));
   const registered = (
     await tableTerms(await vocabulary(), () => new OxigraphStore())

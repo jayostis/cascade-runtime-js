@@ -13,9 +13,6 @@
   "engines": {
     "node": ">=22"
   },
-  "bin": {
-    "create-cascade-app": "dist/src/create-cli.js"
-  },
   "exports": {
     ".": {
       "browser": {
@@ -38,7 +35,6 @@
     "dist/src",
     "dist/browser",
     "README.md",
-    "starter",
     "guide/AGENTS.md"
   ],
   "dependencies": {
@@ -47,14 +43,7 @@
     "oxigraph": "0.5.11"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "0.128.0",
-    "@modelcontextprotocol/client": "2.3.1",
-    "@modelcontextprotocol/server": "2.3.1",
     "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#a33529e58830cb8b9c04f9c19c9e666f45634e3c",
-    "esbuild": "0.28.2",
-    "htm": "3.1.1",
-    "openai": "7.23.0",
-    "preact": "11.0.0",
-    "preact-render-to-string": "6.8.0"
+    "esbuild": "0.28.2"
   }
 }
