@@ -182,14 +182,16 @@ export class Tables {
 
   /**
    * Copies into the store every version of the package's tables it lacks, which a first use of each reads through to
-   * anyway; a copy cut short goes on from where it stopped. The bytes written, or 0 when the store held them already.
+   * anyway, then lists each current version the copies carry no listing of, so a first search or lookup lists none; a
+   * start cut short goes on from where it stopped. The bytes written, or 0 when the store held them already.
    */
   async start(): Promise<number> {
     const before = this.#written;
     await this.#start();
     const copied =
       (await this.#starterFiles?.copyAll(await this.#shippedStems())) ?? 0;
-    return this.#written - before + copied;
+    const listed = await this.#indexes.keep(currentOf(await this.references()));
+    return this.#written - before + copied + listed;
   }
 
   /**

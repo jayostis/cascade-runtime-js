@@ -1038,7 +1038,7 @@ test("a version the tables name by no file is refused, by a search and by what t
   await assert.rejects(tables.about(["urn:test:code"]), Refusal);
 });
 
-test("the starter copies carry each version's rows as published, name the current versions before they are copied, give a first use only the versions it reads, and are copied whole in the background, a copy cut short going on where it stopped; a version a newer starter no longer carries is refused until a check keeps the next; and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
+test("the starter copies carry each version's rows as published, name the current versions before they are copied, give a first use only the versions it reads, and are copied whole in the background, then listed one at a time, a copy cut short going on where it stopped; a version a newer starter no longer carries is refused until a check keeps the next; and a store emptied while the app runs, as Reset all data empties it, starts again from them with the rows a check keeps", async () => {
   const starter = new MemoryFiles("urn:test:starter/");
   // One version more than are read ahead.
   const { served } = await withMappings(first, INGREDIENTS, [
@@ -1234,56 +1234,62 @@ test("the starter copies carry each version's rows as published, name the curren
     (await tables.search(groups.series, "141")).found.length > 0,
     "a carried listing is read, not listed again",
   );
-  const stale = new MemoryFiles("urn:test:starter-stale/");
+  // As a browser's starter carries them: without listings.
+  const unlisted = new MemoryFiles("urn:test:starter-unlisted/");
   for (const path of carried)
-    await stale.write(path, (await starter.read(path)) as Uint8Array);
-  const listed = `${stem}${LISTED}`;
-  const kept = JSON.parse(
-    new TextDecoder().decode(await stale.read(listed)),
-  ) as Record<string, unknown>;
-  await stale.write(
-    listed,
-    new TextEncoder().encode(JSON.stringify({ ...kept, format: 0 })),
-  );
+    if (!path.endsWith(LISTED))
+      await unlisted.write(path, (await starter.read(path)) as Uint8Array);
   let listings = 0;
+  let listing = 0;
+  let mostListing = 0;
   let listingsRead = 0;
   const store = new (class extends MemoryFiles {
     override read(pathOrIri: string): Promise<Uint8Array | undefined> {
       if (pathOrIri.endsWith(LISTED)) listingsRead += 1;
       return super.read(pathOrIri);
     }
-  })("urn:test:app-stale/");
+  })("urn:test:app-unlisted/");
   const old = new Tables({
     files: store,
     feeds: [FEED],
     vocabulary: parts.vocabulary,
     newStore: parts.newStore,
     fetch: fetchOf(first),
-    starter: stale,
+    starter: unlisted,
     work: {
       ...IN_THIS_THREAD,
-      listed: (...args) => {
+      listed: async (...args) => {
         listings += 1;
-        return IN_THIS_THREAD.listed(...args);
+        listing += 1;
+        mostListing = Math.max(mostListing, listing);
+        try {
+          await new Promise((resolve) => setImmediate(resolve));
+          return await IN_THIS_THREAD.listed(...args);
+        } finally {
+          listing -= 1;
+        }
       },
     },
   });
   await old.start();
+  const current = (await old.current()).length;
+  assert.deepEqual(
+    [listings, mostListing],
+    [current, 1],
+    "a start lists each current version, one at a time",
+  );
+  listingsRead = 0;
   await old.check();
   assert.deepEqual(
     [listingsRead, listings],
-    [0, 0],
+    [0, current],
     "a check neither reads a listing nor lists",
   );
   await Promise.all([
     old.search(groups.series, "141"),
     old.search(groups.series, "141"),
   ]);
-  assert.equal(
-    listings,
-    1,
-    "two searches at once list the version it reads, once",
-  );
+  assert.equal(listings, current, "a search after the start lists nothing");
   const checked = tablesOver(first);
   await checked.check();
   const rows = async (from: Tables) =>

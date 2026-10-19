@@ -69,6 +69,8 @@ export class VersionIndexes {
     "options" | "files" | "references" | "terms"
   >;
   readonly #listings = new Map<string, Promise<Listed>>();
+  /** Each version being listed and kept beside it, until it is: what a read and `keep` share. */
+  readonly #listing = new Map<string, Promise<Uint8Array>>();
   readonly #merges = new Map<string, Promise<readonly string[]>>();
   readonly #notations = new Map<string, Promise<ReadonlyMap<string, string>>>();
   readonly #inverses = new Map<
@@ -190,11 +192,53 @@ export class VersionIndexes {
       const kept =
         bytes === undefined ? undefined : keptListing(bytes, uriSpaces);
       if (kept !== undefined) return kept;
-      const listed = await (
-        this.#context.options.work ?? IN_THIS_THREAD
-      ).listed(await this.#rows(version), uriSpaces);
-      await files.write(path, listed);
-      return JSON.parse(new TextDecoder().decode(listed)) as Listed;
+      return JSON.parse(
+        new TextDecoder().decode(await this.#list(version, uriSpaces)),
+      ) as Listed;
     });
+  }
+
+  /**
+   * Lists each version whose listing is not kept beside it, one at a time, and keeps it there, so a first read of it
+   * waits for none; a version whose rows the tables do not hold is left to its read. The bytes written.
+   */
+  async keep(versions: readonly string[]): Promise<number> {
+    const [held, { uriSpaces }] = await Promise.all([
+      this.#context.files.list(""),
+      this.#context.terms(),
+    ]);
+    const kept = new Set(held);
+    let written = 0;
+    for (const version of versions) {
+      if (this.#listings.has(version)) continue;
+      try {
+        if (kept.has(`${stemOf(version)}${LISTED}`)) continue;
+        written += (await this.#list(version, uriSpaces)).byteLength;
+      } catch (error) {
+        if (!(error instanceof Refusal)) throw error;
+      }
+    }
+    return written;
+  }
+
+  /** A version's listing, listed from its rows and kept beside it; one listing of a version at a time. */
+  #list(version: string, uriSpaces: readonly string[]): Promise<Uint8Array> {
+    let listing = this.#listing.get(version);
+    if (listing === undefined) {
+      listing = (async () => {
+        const listed = await (
+          this.#context.options.work ?? IN_THIS_THREAD
+        ).listed(await this.#rows(version), uriSpaces);
+        await this.#context.files.write(`${stemOf(version)}${LISTED}`, listed);
+        return listed;
+      })();
+      const made = listing;
+      const drop = (): void => {
+        if (this.#listing.get(version) === made) this.#listing.delete(version);
+      };
+      made.then(drop, drop);
+      this.#listing.set(version, made);
+    }
+    return listing;
   }
 }
