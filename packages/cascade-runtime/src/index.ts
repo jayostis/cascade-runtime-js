@@ -50,9 +50,10 @@ export { configureTables } from "./node/resolved.js";
 const beside = new Map<string, Promise<Tables>>();
 
 /**
- * The tables an app keeps for the pods in the folder: `.tables/` in it, beside `.answers/`, checked against the feeds
- * in the background when first asked for, unless `cascade-runtime.json` turns `checkOnOpen` off; the first use answers
- * with the tables held, and a later one with what the check kept. With a `phase`, the check is waited for and reported.
+ * The tables an app keeps for the pods in the folder: `.tables/` in it, beside `.answers/`, copied whole from the
+ * starter copies and checked against the feeds in the background when first asked for, unless `cascade-runtime.json`
+ * turns `checkOnOpen` off; the first use answers with the tables held, and a later one with what the check kept. With a
+ * `phase`, the copy and the check are waited for and reported.
  */
 export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
   const folder = join(absolute(pods), ".tables");
@@ -61,6 +62,7 @@ export function tablesBeside(pods = "pods", phase?: Phase): Promise<Tables> {
     const finding = resolved().then(async (parts) => {
       const tables = parts.tablesIn(folder);
       if (phase === undefined) {
+        void tables.start().catch(() => undefined);
         if (parts.local.config.tables.checkOnOpen)
           void tables
             .check({ signal: AbortSignal.timeout(CHECK_ON_OPEN_MS) })
