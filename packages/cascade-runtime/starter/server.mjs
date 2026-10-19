@@ -498,8 +498,8 @@ async function showEntry(response, name, id, titles) {
 
 /**
  * The trend of the test `query`'s `test` names, the medication `medication` names marked: the pod's results of one
- * test over time. With no `test` it is the strongest change's, else the pod's first. A test the pod holds no result of
- * is 404.
+ * test over time. With no `test` it is the strongest change's, else the pod's first. A pod with no test result, a test
+ * it holds no result of and a medication it lacks are each 404.
  */
 async function showTrend(response, name, query, titles) {
   let found;

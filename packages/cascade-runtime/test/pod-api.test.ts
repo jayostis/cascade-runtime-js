@@ -60,16 +60,11 @@ const { nodeHost } = (await import(
 )) as {
   nodeHost: (options: { folder: string; opensEncrypted?: boolean }) => Host;
 };
-const { entryId, testsIn, worthALook } = (await import(
+const { entryId, testsIn } = (await import(
   new URL("../../starter/summary.mjs", import.meta.url).href
 )) as {
   entryId: (entry: string) => string;
   testsIn: (labs: unknown[]) => { code: string; notation?: string }[];
-  worthALook: (
-    answers: unknown,
-    about: unknown,
-    said: unknown,
-  ) => { sentence: string; entry: string; tag?: string }[];
 };
 
 const STATIN = "story-statin";
@@ -340,17 +335,53 @@ for (const via of HOSTS) {
     assert.ok(
       value.some(({ key }: Output) => key === `start:${ATORVASTATIN}:${LDL}`),
     );
-    const lines = await shared.tool({ pod: STATIN, tool: "worth_a_look" });
-    const { about, said } = maps(await shared.said({ pod: STATIN }));
-    const { answers } = await shared.answers({ pod: STATIN });
+    const answered: Record<string, unknown[]> = {
+      "entry/What needs review": [
+        {
+          entry: "urn:uuid:0e1f",
+          entryLabel: "Allergy entry · Latex",
+          needs: "judged different, still joined",
+        },
+      ],
+    };
+    const reviewed = api({
+      ...host(),
+      pods: {
+        names: async () => ["reviewed"],
+        title: async () => undefined,
+        open: async () => ({
+          ask: async (question: string) => answered[question] ?? [],
+          close: async () => {},
+        }),
+      },
+    });
+    const lines = await reviewed.tool({
+      pod: "reviewed",
+      tool: "worth_a_look",
+    });
+    assert.equal(lines.value.length, 1);
+    assert.match(lines.value[0].sentence, /Latex/);
+    assert.equal(lines.value[0].entry, entryId("urn:uuid:0e1f"));
+    assert.ok(lines.value[0].tag);
     assert.deepEqual(
-      lines.value,
-      worthALook(answers, about, said).map(({ sentence, entry, tag }) => ({
-        sentence,
-        entry: entryId(entry),
-        ...(tag === undefined ? {} : { tag }),
-      })),
+      (await shared.tool({ pod: STATIN, tool: "worth_a_look" })).value,
+      [],
     );
+  });
+
+  test(`${via}: classes and panel let a rejecting host.tables() reject, and held says it failed`, async () => {
+    const broken = api({
+      ...host(),
+      tables: async () => {
+        throw new Error("tables are broken");
+      },
+    });
+    await assert.rejects(broken.classes({ pod: STATIN }), /tables are broken/);
+    await assert.rejects(
+      broken.panel({ pod: STATIN, panel: LDL }),
+      /tables are broken/,
+    );
+    assert.deepEqual(await broken.held({}), { held: [], failed: true });
   });
 
   test(`${via}: an encrypted pod is locked until its words are given, and refused where no words are asked`, async () => {
@@ -381,6 +412,7 @@ for (const via of HOSTS) {
       ["said", { pod: STATIN, entry: "0" }, /holds no entry 0/],
       ["trend", { pod: STATIN, test: "0000-0" }, /the tests it holds are/],
       ["trend", { pod: STATIN, test: LDL, medication: "0" }, /no medication 0/],
+      ["trend", { pod: EMPTY }, /holds no test results/],
       ["panel", { pod: STATIN }, /a panel is a LOINC code/],
       ["panel", { pod: STATIN, panel: "" }, /a panel is a LOINC code/],
       ["table", { id: "nothing" }, /no reference table nothing/],
