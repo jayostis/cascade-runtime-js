@@ -147,34 +147,53 @@ const host = () => ({
 const made: Api[] = [];
 const servers: Server[] = [];
 
-/** Serves `built` at `POST /api/...` on an ephemeral port, and gives the address. */
-async function serve(built: Api): Promise<string> {
+/** What each call that reached the server's instance came back with, in order, for `both()` to compare. */
+type Call = PromiseSettledResult<Output>;
+
+/** Serves `built` at `POST /api/...` on an ephemeral port, and gives the address and what `built` answered each call. */
+async function serve(built: Api): Promise<[string, Call[]]> {
   const origins = new Set<string>();
+  const calls: Call[] = [];
+  const recording = { ...built } as Api;
+  for (const name of Object.keys(built) as (keyof Api)[]) {
+    if (name === "close") continue;
+    recording[name] = async (input: Input) => {
+      try {
+        const value = await built[name](input);
+        calls.push({ status: "fulfilled", value });
+        return value;
+      } catch (reason) {
+        calls.push({ status: "rejected", reason });
+        throw reason;
+      }
+    };
+  }
   const server = createServer((request, response) => {
-    void apiRoute(built, request, response, { origins });
+    void apiRoute(recording, request, response, { origins });
   });
   servers.push(server);
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const { port } = server.address() as { port: number };
   const origin = `http://127.0.0.1:${port}`;
   origins.add(origin);
-  return origin;
+  return [origin, calls];
 }
 
 /**
- * `built` in-process, and over HTTP. Each call to the second also makes it to the first: what comes back must be
- * the first one's after a JSON round trip, and what is thrown must be the same kind with the same message.
+ * `built` in-process, and over HTTP. A call over HTTP runs once, on `built`; what comes back must be what `built`
+ * answered that call, after a JSON round trip, and what is thrown the same kind with the same message. What `built`
+ * threw other than a `Refusal` crosses as a 500 naming the operation.
  */
 async function both(built: Api): Promise<[string, Api][]> {
-  const remote = podApiOver(await serve(built));
+  const [origin, calls] = await serve(built);
+  const remote = podApiOver(origin);
   const over = {} as Api;
   for (const name of Object.keys(remote) as (keyof Api)[]) {
     if (name === "close") continue;
     over[name] = async (input: Input) => {
-      const [direct, crossed] = await Promise.allSettled([
-        built[name](input),
-        remote[name](input),
-      ]);
+      const [crossed] = await Promise.allSettled([remote[name](input)]);
+      const direct = calls.pop()!;
+      assert.equal(calls.length, 0, `${name} ran once`);
       if (crossed.status === "fulfilled") {
         assert.equal(direct.status, "fulfilled", `${name} over HTTP`);
         assert.deepStrictEqual(
@@ -186,9 +205,11 @@ async function both(built: Api): Promise<[string, Api][]> {
       }
       assert.equal(direct.status, "rejected", `${name} over HTTP`);
       const [was, is] = [direct.reason, crossed.reason];
-      assert.equal(is.constructor, was.constructor);
-      assert.equal(is.message, was.message);
-      if (was instanceof Unopened) assert.equal(is.outcome, was.outcome);
+      if (was instanceof Refusal) {
+        assert.equal(is.constructor, was.constructor);
+        assert.equal(is.message, was.message);
+        if (was instanceof Unopened) assert.equal(is.outcome, was.outcome);
+      } else assert.equal(is.message, `${name}: the server answered 500`);
       throw is;
     };
   }
@@ -344,17 +365,21 @@ for (const via of HOSTS) {
         },
       ],
     };
-    const reviewed = api({
-      ...host(),
-      pods: {
-        names: async () => ["reviewed"],
-        title: async () => undefined,
-        open: async () => ({
-          ask: async (question: string) => answered[question] ?? [],
-          close: async () => {},
+    const reviewed = new Map(
+      await both(
+        api({
+          ...host(),
+          pods: {
+            names: async () => ["reviewed"],
+            title: async () => undefined,
+            open: async () => ({
+              ask: async (question: string) => answered[question] ?? [],
+              close: async () => {},
+            }),
+          },
         }),
-      },
-    });
+      ),
+    ).get(via)!;
     const lines = await reviewed.tool({
       pod: "reviewed",
       tool: "worth_a_look",
@@ -367,21 +392,6 @@ for (const via of HOSTS) {
       (await shared.tool({ pod: STATIN, tool: "worth_a_look" })).value,
       [],
     );
-  });
-
-  test(`${via}: classes and panel let a rejecting host.tables() reject, and held says it failed`, async () => {
-    const broken = api({
-      ...host(),
-      tables: async () => {
-        throw new Error("tables are broken");
-      },
-    });
-    await assert.rejects(broken.classes({ pod: STATIN }), /tables are broken/);
-    await assert.rejects(
-      broken.panel({ pod: STATIN, panel: LDL }),
-      /tables are broken/,
-    );
-    assert.deepEqual(await broken.held({}), { held: [], failed: true });
   });
 
   test(`${via}: an encrypted pod is locked until its words are given, and refused where no words are asked`, async () => {
@@ -423,7 +433,10 @@ for (const via of HOSTS) {
       ["pod", { pod: 5 }, /pod must be a string/],
       ["said", { pod: STATIN, entry: 5 }, /entry must be a string/],
       ["answers", { pod: STATIN, last: "yes" }, /last must be true or false/],
-      ["table", { page: "2" }, /page must be a number/],
+      ["table", { page: "2" }, /page must be a whole number from 1/],
+      ["table", { page: 1.5 }, /page must be a whole number from 1/],
+      ["ask", { pod: STATIN, question: LABS, limit: -1 }, /limit must be/],
+      ["ask", { pod: STATIN, question: LABS, limit: NaN }, /limit must be/],
       ["ask", { pod: STATIN, question: 5 }, /question must be a string/],
       [
         "tool",
@@ -449,8 +462,24 @@ for (const via of HOSTS) {
   });
 }
 
+test("classes and panel let a rejecting host.tables() reject, in the process as itself and over HTTP as a 500, and held says it failed", async (t: TestContext) => {
+  t.mock.method(console, "error", () => undefined);
+  const broken = api({
+    ...host(),
+    tables: async () => {
+      throw new Error("tables are broken");
+    },
+  });
+  for (const [via, each] of await both(broken)) {
+    const failure = via === "http" ? /answered 500/ : /tables are broken/;
+    await assert.rejects(each.classes({ pod: STATIN }), failure, via);
+    await assert.rejects(each.panel({ pod: STATIN, panel: LDL }), failure, via);
+    assert.deepEqual(await each.held({}), { held: [], failed: true }, via);
+  }
+});
+
 test("over HTTP, a request the route cannot take gets its status, and a broken runtime says nothing of itself", async (t: TestContext) => {
-  const origin = await serve(apis.get("in-process")!);
+  const [origin] = await serve(apis.get("in-process")!);
   const post = (
     base: string,
     path: string,
@@ -510,7 +539,7 @@ test("over HTTP, a request the route cannot take gets its status, and a broken r
 
   t.mock.method(console, "error", () => undefined);
   const real = host();
-  const broken = await serve(
+  const [broken] = await serve(
     api({
       ...real,
       pods: {

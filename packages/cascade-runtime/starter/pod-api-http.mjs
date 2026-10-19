@@ -76,7 +76,7 @@ export async function apiRoute(api, request, response, { origins }) {
       });
     if (error instanceof Refusal)
       return send(response, 400, { refused: error.message });
-    globalThis.console.error(error);
+    globalThis.console.error(`/api/${operation} failed:`, error);
     send(response, 500, { error: FAILED });
   }
 }
@@ -93,9 +93,11 @@ export function podApiOver(origin) {
       });
       const body = await response.json().catch(() => ({}));
       if (response.ok) return body;
-      if (response.status === 423)
-        throw new Unopened(body.unopened, body.refused);
-      if (response.status === 400) throw new Refusal(body.refused);
+      if (typeof body.refused === "string") {
+        if (response.status === 423)
+          throw new Unopened(body.unopened, body.refused);
+        if (response.status === 400) throw new Refusal(body.refused);
+      }
       throw new Error(`${operation}: the server answered ${response.status}`);
     };
   return over;

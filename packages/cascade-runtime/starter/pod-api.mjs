@@ -80,52 +80,45 @@ export function trendOf({ test, medication }) {
   };
 }
 
-/** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
-export const OPERATIONS = [
-  "pods",
-  "held",
-  "pod",
-  "answers",
-  "said",
-  "trend",
-  "classes",
-  "panel",
-  "table",
-  "ask",
-  "tool",
-];
-
-/** The type each input a client may send must have when it is given: s string, b boolean, n number, o object. */
-const INPUTS = {
-  pods: {},
-  held: {},
-  pod: { pod: "s" },
-  answers: { pod: "s", last: "b" },
-  said: { pod: "s", entry: "s" },
-  trend: { pod: "s", test: "s", medication: "s", named: "b" },
-  classes: { pod: "s" },
-  panel: { pod: "s", panel: "s" },
-  table: { id: "s", q: "s", page: "n", code: "s" },
-  ask: { pod: "s", question: "s", limit: "n" },
-  tool: { pod: "s", tool: "s", input: "o" },
-};
-const TYPES = {
-  s: ["a string", (value) => typeof value === "string"],
-  b: ["true or false", (value) => typeof value === "boolean"],
-  n: ["a number", (value) => typeof value === "number"],
-  o: [
+/** What a field a client may send can be: how its refusal reads, and which values pass. */
+const CHECKS = {
+  string: ["a string", (value) => typeof value === "string"],
+  boolean: ["true or false", (value) => typeof value === "boolean"],
+  positiveInteger: [
+    "a whole number from 1",
+    (value) => Number.isSafeInteger(value) && value > 0,
+  ],
+  object: [
     "an object",
     (value) =>
       value !== null && typeof value === "object" && !Array.isArray(value),
   ],
 };
+const { string, boolean, positiveInteger, object } = CHECKS;
+
+/** The check each input a client may send must pass when it is given, by operation. */
+const INPUTS = {
+  pods: {},
+  held: {},
+  pod: { pod: string },
+  answers: { pod: string, last: boolean },
+  said: { pod: string, entry: string },
+  trend: { pod: string, test: string, medication: string, named: boolean },
+  classes: { pod: string },
+  panel: { pod: string, panel: string },
+  table: { id: string, q: string, page: positiveInteger, code: string },
+  ask: { pod: string, question: string, limit: positiveInteger },
+  tool: { pod: string, tool: string, input: object },
+};
+
+/** The operations a client may call, which is every member of `podApi(host)` but `podFor`, `closePods` and `close`. */
+export const OPERATIONS = Object.keys(INPUTS);
 
 /** `operation`, refusing an input that is no object or holds a field of the wrong type. */
 function typed(name, operation) {
   return async (input = {}) => {
-    if (!TYPES.o[1](input)) throw new Refusal("the input must be an object");
-    for (const [field, type] of Object.entries(INPUTS[name])) {
-      const [what, is] = TYPES[type];
+    if (!object[1](input)) throw new Refusal("the input must be an object");
+    for (const [field, [what, is]] of Object.entries(INPUTS[name])) {
       if (input[field] !== undefined && !is(input[field]))
         throw new Refusal(`${field} must be ${what}`);
     }
@@ -454,10 +447,6 @@ export function podApi(host) {
   }
 
   async function ask({ pod: name, question, limit }) {
-    if (limit !== undefined && !(Number.isSafeInteger(limit) && limit > 0))
-      throw new Refusal(
-        `the limit is a whole number of rows from 1, or left out for every row; not ${limit}`,
-      );
     const pod = await podNamed(name);
     const rows = await pod.ask(question);
     return {
