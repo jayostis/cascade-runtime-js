@@ -6,25 +6,26 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { get, request } from "node:http";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, cwd, env, execPath, kill, platform, stdout } from "node:process";
-import { URL, URLSearchParams } from "node:url";
+import { pathToFileURL, URL, URLSearchParams } from "node:url";
 import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
-import { featureStory, OxigraphStore } from "@cascade-runtime/runtime";
-import {
-  FolderFiles,
-  packed,
-  vocabularyOf,
-} from "@cascade-runtime/runtime/node";
+import * as oxigraph from "oxigraph";
 import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import { tarballAddress } from "../dist/pack/address.js";
 import { agentPrompt, KITS, startLine } from "../dist/src/create.js";
-import { Tables } from "../dist/src/tables.js";
 
 /** What the tables the app holds now name each code, set once the app is installed. */
 let heldNames = async () => new Map();
 let heldSeries = async () => [];
+
+/** A Turtle file's triples, each as its subject, predicate and object. */
+const turtle = (bytes, base) =>
+  oxigraph
+    .parse(bytes, { format: "text/turtle", base_iri: base })
+    .map(({ subject, predicate, object }) => [subject, predicate, object]);
 
 const KIT = "conformance/alex-rivera";
 const PRIYA = "conformance/priya-natarajan";
@@ -597,32 +598,29 @@ await behaviour("the command makes the app", async () => {
     );
     assert.equal(manifest.dependencies["cascade-runtime"], address);
   }
-  const components = join(app, "node_modules", "cascade-runtime", "components");
-  const vocabulary = await vocabularyOf(await packed(components));
-  const heldTables = new Tables({
-    files: new FolderFiles(join(app, "pods", ".tables")),
-    feeds: [],
-    vocabulary: vocabulary.files,
-    newStore: () => new OxigraphStore(),
-    preference: vocabulary.config.tables.preference,
-  });
-  heldNames = (codes) => heldTables.about(codes);
-  heldSeries = () => heldTables.held();
+  const fixtures = await import(
+    pathToFileURL(
+      createRequire(join(app, "package.json")).resolve(
+        "cascade-runtime/fixtures",
+      ),
+    ).href
+  );
+  const held = await fixtures.heldTables(join(app, "pods", ".tables"));
+  heldNames = (codes) => held.about(codes);
+  heldSeries = () => held.held();
+  const vocabulary = resolve(
+    await fixtures.kitFolder("alex-rivera"),
+    "..",
+    "..",
+  );
   const kit = (through) =>
-    featureStory(
-      vocabulary.files,
-      `${KIT}/alex-rivera.feature`,
-      () => new OxigraphStore(),
-      through === undefined ? {} : { through },
-    );
+    fixtures.kitStory("alex-rivera", through === undefined ? {} : { through });
   const whole = await kit();
   const e15 = whole.steps.findIndex(({ name }) => name === "E15");
   assert.ok(e15 > 0, "Alex's story has no E15 after a first step");
   const through = whole.steps[e15 - 1].name;
-  const triples = await new OxigraphStore().parse(
-    await readFile(
-      join(vocabulary.files.folder, KIT, "expected", "allergies.ttl"),
-    ),
+  const triples = turtle(
+    await readFile(join(vocabulary, KIT, "expected", "allergies.ttl")),
     `file:///${KIT}/expected/allergies.ttl`,
   );
   const active = new Set(
@@ -631,7 +629,7 @@ await behaviour("the command makes the app", async () => {
       .map(([s]) => s.value),
   );
   story = {
-    vocabulary: vocabulary.files.folder,
+    vocabulary,
     e15: whole.steps[e15].when,
     through,
     throughSteps: (await kit(through)).steps
@@ -1069,7 +1067,7 @@ if (release === undefined) {
     "Priya's pod is loaded, and her C-CDA download is copied as its file",
     async () => {
       const view = `${PRIYA}/expected/medications.ttl`;
-      const triples = await new OxigraphStore().parse(
+      const triples = turtle(
         await readFile(join(story.vocabulary, view)),
         `file:///${view}`,
       );
@@ -1104,10 +1102,7 @@ if (release === undefined) {
     "Martin's pod is loaded, its page has a Genetic variants tile whose rows open each variant's entry, and the entry puts what ClinVar says today beside what each of his reports, from its lab, said, in the four states of his variants",
     async () => {
       const triplesOf = async (path) =>
-        new OxigraphStore().parse(
-          await readFile(join(story.vocabulary, path)),
-          `file:///${path}`,
-        );
+        turtle(await readFile(join(story.vocabulary, path)), `file:///${path}`);
       const objectsOf = (triples, subject, predicate) =>
         triples
           .filter(([s, p]) => s.value === subject && p.value === predicate)

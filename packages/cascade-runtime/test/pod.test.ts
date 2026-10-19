@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -15,6 +16,7 @@ import { after, before, test } from "node:test";
 import {
   type DeriveKey,
   EncryptedFiles,
+  type FolderPack,
   JUSTIFICATIONS,
   Layout,
   MATCHER,
@@ -51,6 +53,7 @@ import { EFF_LARGE_WORDLIST_LINES } from "../src/eff-wordlist.js";
 import { openFolderPod } from "../src/node/folder-pod.js";
 import { partsOf, publishedAnswers } from "../src/node/published.js";
 import { answersBeside, resolved } from "../src/node/resolved.js";
+import { samplesOf } from "../src/node/samples.js";
 import { keptPod, openPodWith, type Parts } from "../src/pod.js";
 
 const KIT = "conformance/alex-rivera";
@@ -715,7 +718,7 @@ test("a pod a browser copied before its versions were kept, saved as null, adopt
   }
 });
 
-test("a kit's download, a folder or a file, is found by name, or refused naming the choices", async () => {
+test("a kit's download, a folder or a file, is found by name, or refused naming the choices, and so is a kit's published sample", async () => {
   const x12 = await kitDownload("alex-rivera", "x-e12");
   assert.ok((await readdir(x12)).includes("apple_health_export"));
   const summary = "kestrel-harbor-health-summary.xml";
@@ -723,11 +726,102 @@ test("a kit's download, a folder or a file, is found by name, or refused naming 
     await readFile(await kitDownload("priya-natarajan", summary), "utf8"),
     /<ClinicalDocument/,
   );
-  for (const [kit, download, reason] of [
-    ["no-such-kit", "x-e12", /there are .*alex-rivera/],
-    ["alex-rivera", "x-e99", /it has .*x-e12/],
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const source = { components: await checkouts(root), runtime: "copying" };
+  for (const [refused, reason] of [
+    [() => kitDownload("no-such-kit", "x-e12"), /there are .*alex-rivera/],
+    [() => kitDownload("alex-rivera", "x-e99"), /it has .*x-e12/],
+    [
+      () => samplesOf(source, { kits: ["no-such-kit"] }),
+      /there are .*alex-rivera/,
+    ],
   ] as const)
-    await assert.rejects(kitDownload(kit, download), reason);
+    await assert.rejects(
+      refused(),
+      (error) => error instanceof Refusal && reason.test(error.message),
+    );
+});
+
+test("a sample is not made when a step its story does not expect refused is refused, as when the install lacks a file of the kit", async () => {
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const whole = await checkouts(root);
+  const copy = await mkdtemp(join(tmpdir(), "cascade-lacking-"));
+  try {
+    const found = await whole.resolve(whole.config.vocabulary);
+    await cp(found.folder, copy, {
+      recursive: true,
+      filter: (path) => !/[\\/](\.git|node_modules)([\\/]|$)/.test(path),
+    });
+    await rm(join(copy, `${KIT}/scripted-input/alex/entries/a1.ttl`));
+    const lacking = {
+      ...whole,
+      resolve: async (component: Parameters<typeof whole.resolve>[0]) =>
+        component === whole.config.vocabulary
+          ? { ...found, folder: copy }
+          : whole.resolve(component),
+    };
+    await assert.rejects(
+      samplesOf(
+        { components: lacking, runtime: "copying" },
+        { kits: ["alex-rivera"] },
+      ),
+      (error) =>
+        error instanceof Error &&
+        !(error instanceof Refusal) &&
+        /alex-rivera/.test(error.message) &&
+        /E3/.test(error.message) &&
+        /a1\.ttl does not exist/.test(error.message),
+    );
+  } finally {
+    await rm(copy, { recursive: true, force: true });
+  }
+});
+
+test("a kit's published sample is its pod, listed and packed beside it, with its answers and lookups kept under the runtime that copies it", async () => {
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const { kits, files } = await samplesOf(
+    { components: await checkouts(root), runtime: "copying" },
+    { kits: ["alex-rivera"], look: async () => undefined },
+  );
+  assert.ok(kits.size > 1);
+  assert.match(kits.get("alex-rivera") ?? "", /Alex/);
+  const text = (path: string): string =>
+    new TextDecoder().decode(files.get(path));
+  const POD = "alex-rivera/pod/";
+  const listed = JSON.parse(text(`${POD}files.json`)) as string[];
+  assert.ok(listed.length > 0);
+  assert.deepEqual(
+    [...files.keys()].sort(),
+    [
+      "alex-rivera/answers.json",
+      "alex-rivera/lookups.json",
+      "alex-rivera/pod.json",
+      "alex-rivera/pod.pack.json",
+      `${POD}files.json`,
+      ...listed.map((path) => POD + path),
+    ].sort(),
+  );
+  const pack = JSON.parse(text("alex-rivera/pod.pack.json")) as FolderPack;
+  assert.deepEqual(pack.paths, listed);
+  assert.deepEqual(
+    Object.keys({ ...pack.text, ...pack.base64 }).sort(),
+    [...listed].sort(),
+  );
+  assert.equal(
+    lookupsOf(files.get("alex-rivera/lookups.json"))?.runtime,
+    "copying",
+  );
+  const pod = new MemoryFiles("urn:test:sample/");
+  for (const path of listed) await pod.write(path, files.get(POD + path)!);
+  const answers = new MemoryFiles("urn:test:sample-answers/");
+  for (const path of ["answers.json", "pod.json"])
+    await answers.write(path, files.get(`alex-rivera/${path}`)!);
+  const { vocabulary, build, lens, layout, tables } = kept;
+  const reading = { vocabulary, build, lens, layout, tables };
+  const copied = await keptPod(reading, pod, new Answers(answers, "copying"));
+  assert.ok(((await copied?.rows(QUESTION)) ?? []).length > 0);
+  const other = await keptPod(reading, pod, new Answers(answers, "another"));
+  assert.equal(await other?.rows(QUESTION), undefined);
 });
 
 test("a published pod's answers, as the site computes them, are read back without the engine: every question under the lens as the pod answers it, what the pod is, and what the tables said of the codes its page asked, until the runtime or the tables are others", async () => {

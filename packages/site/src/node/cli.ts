@@ -2,17 +2,15 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve as absolute } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
-  kitsOf,
   OxigraphStore,
   parseConfig,
   podDataset,
   questions,
   repositoryName,
-  titleOf,
   treeIri,
   written,
 } from "@cascade-runtime/runtime";
@@ -20,7 +18,6 @@ import {
   BRIDGE_REPOSITORY,
   type BridgePackageFound,
   checkout,
-  type Components,
   CONFIG_FILE,
   FolderFiles,
   findBridgePackage,
@@ -29,17 +26,11 @@ import {
   localVocabulary,
   PACKED,
   type Packed,
-  packed as packedComponents,
   type Resolved,
   resolve,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
-import { replayKit } from "cascade-runtime/fixtures";
-import {
-  entryVersion,
-  partsOf,
-  publishedAnswers,
-} from "cascade-runtime/published";
+import type * as Published from "cascade-runtime/published";
 import {
   type Example,
   type Ingredient,
@@ -47,9 +38,11 @@ import {
   podOf,
 } from "../front-page.js";
 import { Site } from "../site.js";
+import { COPY } from "../terms.js";
 import { TRY_PACKAGE } from "../try-page.js";
 import { tryFiles, tryLooks } from "./try.js";
 import { servePages } from "./serve.js";
+import { assertStagedCurrent } from "./staged.js";
 import { startOf } from "./start.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -65,12 +58,9 @@ const RUNTIME_CLI = join(
 const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
 const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
-const KIT = "conformance/";
 const STAGE = join(ROOT, "build", "package");
 /** The package's starter copies of the feeds' series, which try/'s published answers are computed with. */
 const STARTER_TABLES = "components/tables";
-/** The browser entry in the staged package, whose bytes are in its version. */
-const BROWSER_ENTRY = "dist/browser/index.js";
 const PAGES = join(ROOT, "build", "pages");
 const log = (line: string): void => console.error(line);
 
@@ -190,15 +180,13 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
 async function stagedPackage(): Promise<{
   readonly files: Map<string, Uint8Array>;
   readonly vocabulary: string;
-  readonly components: Components;
-  /** The version of its browser entry, which a copied pod's answers are kept under. */
-  readonly runtime: string;
 }> {
   const components = join(STAGE, "components");
   if (!existsSync(join(components, PACKED)))
     throw new Error(
       `${STAGE} holds no package; run npm run build:package first`,
     );
+  assertStagedCurrent(STAGE, ROOT);
   const config = parseConfig(
     await readFile(join(components, CONFIG_FILE), "utf8"),
   );
@@ -238,58 +226,46 @@ async function stagedPackage(): Promise<{
     if (bytes === undefined) throw new Error(`${STAGE} holds no ${path}`);
     files.set(TRY_PACKAGE + path, bytes);
   }
-  const entry = files.get(TRY_PACKAGE + BROWSER_ENTRY);
-  if (entry === undefined)
-    throw new Error(`${STAGE} holds no ${BROWSER_ENTRY}`);
-  return {
-    files,
-    vocabulary: commit,
-    components: await packedComponents(components),
-    runtime: await entryVersion(entry, packed.components),
-  };
+  return { files, vocabulary: commit };
 }
 
-/** Builds every kit's pod, replayed on the package's starter copies, and its site, and writes them under build/pages beneath the newcomer's page and the examples' page. */
+/**
+ * Builds every kit's published sample with the staged package, as an app that installed it would, and each one's site
+ * over its pod, and writes them under build/pages beneath the newcomer's page and the examples' page.
+ */
 async function buildPages(): Promise<number> {
   const staged = await stagedPackage();
   const vocabulary = await localVocabulary(ROOT, log);
   log(
-    `the pods are built from cascade-vocabulary at ${vocabulary.resolved.version}; try/ reads the one the package carries, at ${staged.vocabulary}`,
+    `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods and try/ read the one the package carries, at ${staged.vocabulary}`,
   );
-  const parts = await partsOf(staged.components, {
-    starter: new FolderFiles(join(STAGE, STARTER_TABLES)),
-  });
+  const { publishedSamples } = (await import(
+    pathToFileURL(join(STAGE, "dist", "src", "node", "published.js")).href
+  )) as typeof Published;
+  const samples = await publishedSamples({ look: tryLooks });
   const examples: Example[] = [];
-  for (const kit of await kitsOf(vocabulary.files)) {
-    const name = kit.slice(KIT.length);
+  for (const [name, title] of samples.kits) {
+    const sample = new Map(
+      [...samples.files]
+        .filter(([path]) => path.startsWith(`${name}/`))
+        .map(([path, bytes]) => [path.slice(name.length + 1), bytes] as const),
+    );
     const pod = join(ROOT, "build", name, "pod");
     await rm(pod, { recursive: true, force: true });
-    for (const { step, refused } of await replayKit(name, pod, {
-      tables: parts.tables,
-    }))
-      if (refused !== undefined)
-        console.error(`step ${step} of ${name} was refused: ${refused}`);
+    const podFiles = new FolderFiles(pod);
+    for (const [path, bytes] of podOf(sample))
+      await podFiles.write(path, bytes);
     const built = await buildExampleSite([name]);
     if (built !== 0) return built;
     const folder = new FolderFiles(join(ROOT, "build", name, "site"));
     const site = new Map<string, Uint8Array>();
-    for (const path of await folder.list("")) {
-      const bytes = await folder.read(path);
-      if (bytes !== undefined) site.set(path, bytes);
-    }
-    for (const [path, bytes] of await publishedAnswers(
-      parts,
-      name,
-      podOf(site),
-      staged.runtime,
-      tryLooks,
-    ))
-      site.set(path, bytes);
-    examples.push({
-      folder: name,
-      title: await titleOf(vocabulary.files, kit),
-      site,
-    });
+    for (const path of await folder.list(""))
+      if (!path.startsWith(COPY)) {
+        const bytes = await folder.read(path);
+        if (bytes !== undefined) site.set(path, bytes);
+      }
+    for (const [path, bytes] of sample) site.set(path, bytes);
+    examples.push({ folder: name, title, site });
   }
   const siblingsIn = await siblingsOf(ROOT);
   const cache = join(ROOT, "build", "cache");
