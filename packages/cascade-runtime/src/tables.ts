@@ -17,6 +17,7 @@ import {
   rowsByCode,
   type StoreFactory,
   tableTerms,
+  type TableTerms,
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -741,7 +742,7 @@ export class Tables {
   async about(codes: readonly string[]): Promise<Map<string, About>> {
     const [references, { uriSpaces }] = await Promise.all([
       this.references(),
-      tableTerms(this.#options.vocabulary, this.#options.newStore),
+      this.#terms(),
     ]);
     const found = new Map<string, { -readonly [K in keyof About]: About[K] }>(
       codes.map((code) => [code, { notation: notation(uriSpaces, code) }]),
@@ -805,6 +806,10 @@ export class Tables {
           : undefined;
     });
     return found;
+  }
+
+  #terms(): Promise<TableTerms> {
+    return tableTerms(this.#options.vocabulary, this.#options.newStore);
   }
 
   /** The held series of the kind: those the order of preference names first, in its order, then the others. */
@@ -957,7 +962,7 @@ export class Tables {
     const [listings, codes, { uriSpaces }] = await Promise.all([
       Promise.all(versions.map((version) => this.#listed(version))),
       this.#codes(versions),
-      tableTerms(this.#options.vocabulary, this.#options.newStore),
+      this.#terms(),
     ]);
     const wanted = text.trim().toLowerCase();
     const names = wanted === "" ? undefined : await this.#names();
@@ -1044,10 +1049,7 @@ export class Tables {
   /** What every held series says of the code, or each of `among`, from its current version. */
   async facts(code: string, among?: readonly string[]): Promise<Facts> {
     const [references, { uriSpaces, foundBy, codeSystems }] = await Promise.all(
-      [
-        this.references(),
-        tableTerms(this.#options.vocabulary, this.#options.newStore),
-      ],
+      [this.references(), this.#terms()],
     );
     const held = (kind: string): Fact[] =>
       this.#currentOf(references, kind, among);
@@ -1249,10 +1251,7 @@ export class Tables {
       heldBy: { total: number; panels: PlaceOf[] };
     })[]
   > {
-    const { uriSpaces } = await tableTerms(
-      this.#options.vocabulary,
-      this.#options.newStore,
-    );
+    const { uriSpaces } = await this.#terms();
     return (
       await Promise.all(
         held.map(async (fact) => {
@@ -1509,10 +1508,7 @@ export class Tables {
     panel: string,
   ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
     const references = await this.references();
-    const terms = await tableTerms(
-      this.#options.vocabulary,
-      this.#options.newStore,
-    );
+    const terms = await this.#terms();
     const versions = this.#currentOf(references, `${REC}PanelMembers`).map(
       ({ version }) => version,
     );
@@ -1576,10 +1572,7 @@ export class Tables {
     codes: readonly string[],
   ): Promise<{ version: string; rows: Triple[]; description: Triple[] }[]> {
     const references = await this.references();
-    const terms = await tableTerms(
-      this.#options.vocabulary,
-      this.#options.newStore,
-    );
+    const terms = await this.#terms();
     const current = (kind: string): string[] =>
       this.#currentOf(references, kind).map(({ version }) => version);
     const ingredients = current(`${REC}ProductIngredients`);
@@ -1616,7 +1609,7 @@ export class Tables {
   async variantClassification(variant: VariantAsked): Promise<WhatClinVarSays> {
     const [references, { codeSystems }] = await Promise.all([
       this.references(),
-      tableTerms(this.#options.vocabulary, this.#options.newStore),
+      this.#terms(),
     ]);
     const held = this.#currentOf(references, CLASSIFICATIONS).map((fact) => ({
       ...fact,
@@ -1736,10 +1729,9 @@ export class Tables {
   async #codesIn(
     version: string,
   ): Promise<ReadonlyMap<string, readonly string[]>> {
-    const { vocabulary, newStore } = this.#options;
     const [references, { foundBy }] = await Promise.all([
       this.references(),
-      tableTerms(vocabulary, newStore),
+      this.#terms(),
     ]);
     const by =
       foundBy.get(
@@ -1768,7 +1760,7 @@ export class Tables {
     return once(this.#merges, versions.join(" "), async () => {
       const [listings, { uriSpaces }] = await Promise.all([
         Promise.all(versions.map((version) => this.#listed(version))),
-        tableTerms(this.#options.vocabulary, this.#options.newStore),
+        this.#terms(),
       ]);
       return merged(
         listings.map(({ codes }) => codes),
@@ -1782,7 +1774,7 @@ export class Tables {
     return once(this.#notations, version, async () => {
       const [{ codes, mapsTo }, { uriSpaces }] = await Promise.all([
         this.#listed(version),
-        tableTerms(this.#options.vocabulary, this.#options.newStore),
+        this.#terms(),
       ]);
       const named = new Map<string, string>();
       for (const code of [...codes, ...Object.values(mapsTo).flat()]) {
@@ -1836,7 +1828,7 @@ export class Tables {
       const path = `${stemOf(version)}${LISTED}`;
       const [bytes, { uriSpaces }] = await Promise.all([
         files.read(path),
-        tableTerms(this.#options.vocabulary, this.#options.newStore),
+        this.#terms(),
       ]);
       const kept =
         bytes === undefined ? undefined : keptListing(bytes, uriSpaces);
@@ -2051,10 +2043,7 @@ export class Tables {
         later = bytes;
         continue;
       }
-      const terms = await tableTerms(
-        this.#options.vocabulary,
-        this.#options.newStore,
-      );
+      const terms = await this.#terms();
       const rows = await (this.#options.work ?? IN_THIS_THREAD).verified({
         bytes,
         checksum: checksum.value,
