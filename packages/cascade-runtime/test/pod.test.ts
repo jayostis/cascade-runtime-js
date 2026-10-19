@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -739,6 +740,41 @@ test("a kit's download, a folder or a file, is found by name, or refused naming 
       refused(),
       (error) => error instanceof Refusal && reason.test(error.message),
     );
+});
+
+test("a sample is not made when a step its story does not expect refused is refused, as when the install lacks a file of the kit", async () => {
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  const whole = await checkouts(root);
+  const copy = await mkdtemp(join(tmpdir(), "cascade-lacking-"));
+  try {
+    const found = await whole.resolve(whole.config.vocabulary);
+    await cp(found.folder, copy, {
+      recursive: true,
+      filter: (path) => !/[\\/](\.git|node_modules)([\\/]|$)/.test(path),
+    });
+    await rm(join(copy, `${KIT}/scripted-input/alex/entries/a1.ttl`));
+    const lacking = {
+      ...whole,
+      resolve: async (component: Parameters<typeof whole.resolve>[0]) =>
+        component === whole.config.vocabulary
+          ? { ...found, folder: copy }
+          : whole.resolve(component),
+    };
+    await assert.rejects(
+      samplesOf(
+        { components: lacking, runtime: "copying" },
+        { kits: ["alex-rivera"] },
+      ),
+      (error) =>
+        error instanceof Error &&
+        !(error instanceof Refusal) &&
+        /alex-rivera/.test(error.message) &&
+        /E3/.test(error.message) &&
+        /a1\.ttl does not exist/.test(error.message),
+    );
+  } finally {
+    await rm(copy, { recursive: true, force: true });
+  }
 });
 
 test("a kit's published sample is its pod, listed and packed beside it, with its answers and lookups kept under the runtime that copies it", async () => {
