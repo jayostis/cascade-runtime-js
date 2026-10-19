@@ -2587,6 +2587,12 @@ test("the sidebar says the reference tables are loading until the app has read w
       ),
     );
   assert.ok(nav("loading").includes("Loading the reference tables"));
+  const busy = (loading: boolean) =>
+    render(
+      view.tablesNav({ series: [], href: () => "/", check: "/check", loading }),
+    );
+  assert.equal(count(busy(true), 'aria-busy="true"'), 1);
+  assert.equal(count(busy(false), "aria-busy"), 0);
   assert.ok(!nav("loading").includes("None yet"));
   assert.ok(nav("none").includes("None yet"));
   assert.ok(!nav("none").includes("Loading"));
@@ -2781,7 +2787,10 @@ test("a pod's page has a Genetic variants tile beside the others, a row for each
   assert.ok(!textOf(before).includes("ClinVar today"), "no column of its own");
   assert.ok(!before.includes('class="card variants"'));
   assert.ok(!textOf(before).includes("counsellor"));
-  assert.ok(!before.includes("card worth"), "nothing needs a look yet");
+  assert.ok(
+    !textOf(before).includes("differs from ClinVar"),
+    "nothing needs a look yet",
+  );
   assert.ok(!textOf(before).includes("Cascade keeps it as one variant"));
   const differing = `MLH1 ${NAME}: your 2022 report from ${HARBOURLINE} differs from ClinVar today.`;
   assert.deepEqual(view.worthALook(VARIANT_ANSWERS), []);
@@ -3178,6 +3187,7 @@ test("a card is drawn once, by the tables' names: with the tables not yet asked 
   const before = render(view.podPage(story.answers, props));
   assert.equal(count(before, 'class="change"'), 0);
   assert.match(text(before), /What changed\s*Naming what changed…/);
+  assert.equal(count(before, 'aria-busy="true"'), 2, "it and the credits wait");
 
   const about = new Map([
     [
@@ -3185,7 +3195,9 @@ test("a card is drawn once, by the tables' names: with the tables not yet asked 
       { name: { label: "Atorvastatin, per the tables", altLabels: [] } },
     ],
   ]);
-  const after = text(render(view.podPage(story.answers, { ...props, about })));
+  const landed = render(view.podPage(story.answers, { ...props, about }));
+  assert.equal(count(landed, "aria-busy"), 0);
+  const after = text(landed);
   const said = view.changeSaid(finding, about);
   assert.ok(said.includes("Atorvastatin, per the tables"), said);
   assert.ok(after.includes(said), said);
