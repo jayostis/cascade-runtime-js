@@ -64,6 +64,9 @@ const PROV = "http://www.w3.org/ns/prov#";
 /** Oxigraph's module, the engine a pod computes with. */
 const ENGINE = /\/web_bg\.wasm$/;
 
+/** The files a table's rows are read from, which the engine reads once it is ready. */
+const TABLE_ROWS = /\/components\/tables\/[^/]+\.(nq\.gz|codes\.json)$/;
+
 type Answers = Record<string, Row[]>;
 interface Person {
   readonly name: string;
@@ -423,12 +426,18 @@ const loadable = (page: Page): Promise<string[]> =>
     found.map((each) => (each as HTMLInputElement).value),
   );
 
-test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background", async () => {
+test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens Alex's, which reads as her record: her name, her places, what is worth a look with each line linking to its entry, and a tile per kind counting the question's rows; it and a switch to Priya's draw in place before the engine loads, a click on the pod shown adds no entry to the history, so Back draws Alex's again, and the engine then loads in the background, an entry opened and left for a code page before it does leaves the code page drawn when it lands", async () => {
   const page = watched(await profile.newPage());
   const held: Route[] = [];
   await page.route(ENGINE, (route) => {
     held.push(route);
   });
+  const rows: Route[] = [];
+  await page.route(TABLE_ROWS, (route) => {
+    rows.push(route);
+  });
+  const wrong: string[] = [];
+  page.on("pageerror", (error) => wrong.push(error.message));
   await page.goto(`${served.url}try/index.html`);
   await settled(page);
 
@@ -495,9 +504,32 @@ test("a first visit copies Alex's, Martin's, Priya's and Tamsin's pods and opens
     );
   });
   assert.equal(new URL(page.url()).searchParams.get("pod"), ALEX);
+  await inPlace(page, () => page.click(".worth li a"));
+  assert.match(new URL(page.url()).search, /entry=/);
+  const entryName = await page.textContent("main h1");
+  await page.evaluate(() => {
+    history.pushState(null, "", "?table=&code=141");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
   await page.unroute(ENGINE);
   for (const route of held) await route.continue().catch(() => undefined);
-  await page.reload();
+  await page.waitForSelector('body[data-engine="ready"]', { timeout: 60_000 });
+  await page.unroute(TABLE_ROWS);
+  for (const route of rows) await route.continue().catch(() => undefined);
+  await page.waitForFunction(
+    (name) => document.querySelector("main h1")?.textContent !== name,
+    entryName,
+    { timeout: 120_000 },
+  );
+  await settled(page);
+  assert.equal(
+    await page.textContent("main h1"),
+    "141 Influenza, split virus, trivalent, preservative",
+    (await page.textContent("main")) ?? "",
+  );
+  assert.match((await page.textContent("main")) ?? "", /141 Influenza/);
+  assert.deepEqual(wrong, []);
+  await page.goto(`${served.url}try/index.html`);
   await page.waitForSelector('body[data-engine="ready"]', { timeout: 60_000 });
   await page.close();
 });
