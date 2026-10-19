@@ -1,6 +1,7 @@
 // The starter's view, in the browser: pods kept in this browser's own storage, each shown as a person reads it, a way
 // to make one or load a published one, and a sign-in at a test hospital that brings a record in. The view is the
-// starter's `summary.mjs`, served beside it as `summary.js`; this file routes, reads the pods, and hands the view the addresses of this page.
+// starter's `summary.mjs`, served beside it as `summary.js`; the pods and the tables are read through the starter's
+// PodApi, served as `pod-api.js` over `browser-host.js`; this file routes, and hands the view the addresses of this page.
 // What the page shows is `state`; `redraw()` renders it into one root, in place, so a box, a menu, a table's sort and
 // filter and a scroll stay as they were. A pod's page is drawn from its kept answers; once it is, the engine loads in
 // the background, and `data-engine` on the body says when it is ready.
@@ -9,7 +10,6 @@
 import { render as renderInto } from "preact";
 import {
   appTables,
-  changesIn,
   changeTools,
   checkInput,
   checkTables,
@@ -17,9 +17,7 @@ import {
   ConnectionFailure,
   deletePod,
   DEMO_PLAN,
-  labSeriesIn,
   openPod,
-  podTitle,
   popupSignIn,
   pull,
   pullFiles,
@@ -28,7 +26,6 @@ import {
   searchDirectory,
   sixWords,
   TEST_DIRECTORY,
-  timelineIn,
   toolRegistry,
   typedWords,
   Unopened,
@@ -42,27 +39,20 @@ import {
 } from "./demo-hospitals.js";
 import {
   checkedNote,
-  classedElsewhere,
   classesPage,
-  classesSaid,
   closing,
   codePage,
   copyWords,
-  codesSaid,
   connectionDialog,
   didNote,
   doing,
   entryId,
   entryOf,
   entryPage,
-  HISTORY,
   hospitalName,
   hospitalsPage,
   html,
-  joinedBy,
-  LABS,
   layout,
-  MEDICATIONS,
   newPodDialog,
   noPods,
   noTables,
@@ -70,14 +60,11 @@ import {
   openPodPage,
   pageNumber,
   panelPage,
-  panelSaid,
-  panelsOf,
   patientNames,
   patientName,
   personName,
   podPage,
   postButton,
-  QUESTIONS,
   sixWordsPage,
   slug,
   sourcePage,
@@ -85,17 +72,15 @@ import {
   STYLE,
   tableId,
   tablePage,
-  trendInput,
   trendPage,
   trendTitle,
   savedLoginChanged,
-  variantsSaid,
-  withMechanism,
   utcInstant,
   worldInstant,
 } from "./summary.js";
+import { maps, podApi } from "./pod-api.js";
+import { browserHost, databases } from "./browser-host.js";
 
-const DATABASE = "cascade-pod:";
 const ANSWERS = "cascade-answers:";
 const BOX = "connection";
 const REGISTRATION = {
@@ -153,8 +138,9 @@ const state = {
   doing: "opening",
   saying: undefined,
 };
-/** Each pod opened, by name, kept open until every pod is deleted. */
-const open = new Map();
+/** What the page reads of the pods and the tables; each pod it opens stays open until every pod is deleted. */
+const host = browserHost();
+const api = podApi(host);
 /** The pod shown, open. */
 let pod;
 /** The address's query, as `route()` last drew it. */
@@ -175,35 +161,11 @@ const POPUP_BLOCKED = {
   },
 };
 
-/** The names of the databases here whose name starts with `prefix`, without it. */
-async function databases(prefix) {
-  return (await indexedDB.databases())
-    .map(({ name }) => name ?? "")
-    .filter((name) => name.startsWith(prefix))
-    .map((name) => name.slice(prefix.length))
-    .sort();
-}
-
-const podsHere = () => databases(DATABASE);
-
 /** Reads the pods there are into `state.pods`, and into `state.titles` the name each was made under; its own name where none can be read. */
 async function refreshPods() {
-  state.pods = await podsHere();
-  state.titles = new Map(
-    await Promise.all(
-      state.pods.map(async (pod) => [pod, await podTitle(pod)]),
-    ),
-  );
-}
-
-/** The pod named `name`, opened with `options` the first time it is asked for, and kept open. */
-function podNamed(name, options) {
-  if (!open.has(name)) {
-    const opening = openPod(name, options);
-    opening.catch(() => open.delete(name));
-    open.set(name, opening);
-  }
-  return open.get(name);
+  const { pods } = await api.pods();
+  state.pods = pods.map(({ name }) => name);
+  state.titles = new Map(pods.map(({ name, title }) => [name, title]));
 }
 
 /** The demo people, as the view's `demoPeople` gave them when the site was built; none, when they cannot be read. */
@@ -333,7 +295,7 @@ function entryShown() {
 
 /** The page `state.page` names: its title and its body, the pod's page with the connection's box over it. */
 function pageShown() {
-  const { answers, about, said, from, title, body, entry } = state.page;
+  const { answers, about, said, from, title, body, entry, unheld } = state.page;
   if (answers === undefined) return { title, body };
   if (entry !== undefined) return entryShown();
   const { current, connection } = state;
@@ -367,15 +329,11 @@ function pageShown() {
       findHospital: `${podHref(current)}&hospitals`,
       world: { asOf: state.world, action: WORLD_DATE },
       entryHref: (entry) => entryHref(current, entry),
-      unheld: pod?.opened?.unheld,
+      unheld,
       about,
       held: state.tables,
       said,
-      changes: (state.page.changes ??= changesIn(
-        answers[HISTORY] ?? [],
-        answers[LABS] ?? [],
-        { limit: 20 },
-      )),
+      changes: state.page.changes,
       trendHref: (trend) => trendHref(current, trend),
       classesHref: classesHref(current),
       register,
@@ -452,42 +410,51 @@ function render(title, body, doing = "ready") {
   redraw();
 }
 
-/** Every question's rows from the pod shown, by question. */
-async function answered() {
-  const answers = Object.fromEntries(
-    await Promise.all(
-      QUESTIONS.map(async (question) => [question, await pod.ask(question)]),
-    ),
-  );
-  return withMechanism(
-    answers,
-    changesIn(answers[HISTORY] ?? [], answers[LABS] ?? [], { limit: 20 }),
-    (question) => pod.ask(question),
-  );
+/** The answers of the pod named `pod` by question, the changes in them, and the series its import left unheld. */
+async function answered(pod) {
+  return api.answers({ pod });
 }
 
 /**
- * What the tables say of the codes `answers` hold: nothing while the engine is still warming, an empty map once they
- * cannot say, the engine having failed or the tables' answer having thrown.
+ * What the tables say of the codes and variants of the pod `page` was drawn for (`about`, `said`), and with `entry`,
+ * the LOINC panels that entry is in and the table versions whose rows joined it: nothing while the engine is still
+ * warming, no names once the tables cannot say, the engine having failed, the tables' answer having thrown or the pod
+ * having been locked or closed since. It asks the pod the page was drawn for, never `state.current`, which a route
+ * sets before it replaces the page.
  */
-async function aboutCodes(answers) {
+async function saidOf(page, entry) {
   if (document.body.dataset.engine !== "ready")
-    return state.tablesRead === "failed" ? new Map() : undefined;
+    return state.tablesRead === "failed" ? { about: new Map() } : {};
   try {
-    return await codesSaid(answers, { tables: await appTables(pod) });
+    const { about, said, panels, joined } = maps(
+      await api.said({ pod: page.pod, entry }),
+    );
+    return { about: about ?? new Map(), said, panels, joined };
   } catch {
-    return new Map();
+    return { about: new Map() };
   }
 }
 
-/** What the tables say of the variants `answers` hold; nothing before the engine is ready, or when they cannot say. */
-async function variantsOf(answers) {
-  if (document.body.dataset.engine !== "ready") return undefined;
-  try {
-    return await variantsSaid(answers, { tables: await appTables(pod), pod });
-  } catch {
-    return undefined;
-  }
+/** The pod's page as `state.page` holds it, the answers asked and what the tables say of them; `from` as `showPod`. */
+async function podShown(from) {
+  const { current } = state;
+  const page = { ...(await answered(current)), pod: current, from, at: routed };
+  return Object.assign(page, await saidOf(page));
+}
+
+/** Draws "Not found", saying `sentence`. */
+function notFound(sentence) {
+  render(
+    "Not found",
+    html`<h1>Not found</h1>
+<p>${sentence}</p>`,
+  );
+}
+
+/** A read the rules refused, as `{ refused }`, its sentence; any other failure is thrown on. */
+function refused(error) {
+  if (!(error instanceof Refusal)) throw error;
+  return { refused: error.message };
 }
 
 /**
@@ -500,14 +467,7 @@ function left(page) {
 
 /** The pod's page; `from` names the hospital a record was just brought in from. */
 async function showPod(from) {
-  const answers = await answered();
-  state.page = {
-    answers,
-    about: await aboutCodes(answers),
-    said: await variantsOf(answers),
-    from,
-    at: routed,
-  };
+  state.page = await podShown(from);
   state.doing = "ready";
   redraw();
   reopenBox();
@@ -525,66 +485,48 @@ function reopenBox() {
 
 /** The entry whose address part is `id`, from the pod's answers; one the pod does not hold says so. */
 async function showEntry(id) {
-  const answers = await answered();
-  const [about, said] = await Promise.all([
-    aboutCodes(answers),
-    variantsOf(answers),
-  ]);
-  const shown = { answers, entry: id, about, said, at: routed };
+  const { current } = state;
+  const shown = {
+    ...(await answered(current)),
+    pod: current,
+    entry: id,
+    at: routed,
+  };
+  Object.assign(shown, await saidOf(shown));
   state.page = shown;
   state.doing = "ready";
   redraw();
-  shown.panels = await panelsShown(shown);
-  shown.joined = await joinedShown(shown);
+  await panelsShown(shown);
+}
+
+/**
+ * Adds to `shown` the LOINC panels its entry is in and the table versions whose rows joined it, and draws it again;
+ * nothing before the engine is ready, or for an entry the pod does not hold.
+ */
+async function panelsShown(shown) {
   if (
-    state.page === shown &&
-    !left(shown) &&
-    (shown.panels !== undefined || shown.joined !== undefined)
+    document.body.dataset.engine !== "ready" ||
+    entryOf(shown.answers, shown.entry) === undefined
   )
-    redraw();
-}
-
-/** The table versions whose rows joined the entry `shown`; nothing before the engine is ready. */
-async function joinedShown({ entry }) {
-  if (entry === undefined || document.body.dataset.engine !== "ready")
-    return undefined;
-  try {
-    return await joinedBy(pod);
-  } catch {
-    return undefined;
-  }
-}
-
-/** The LOINC panels the entry `shown` is in; nothing before the engine is ready, or when the tables cannot say. */
-async function panelsShown({ answers, entry, about, said }) {
-  if (entry === undefined || document.body.dataset.engine !== "ready")
-    return undefined;
-  try {
-    const held = state.tables;
-    return await panelsOf(entryOf(answers, entry, { about, said, held }), {
-      tables: await appTables(),
-      held,
-    });
-  } catch {
-    return undefined;
-  }
+    return;
+  const { panels, joined } = await saidOf(shown, shown.entry);
+  shown.panels = panels;
+  shown.joined = joined;
+  if (state.page === shown && !left(shown)) redraw();
 }
 
 /**
  * The pod's results in the LOINC panel with the code `panel`. They come from the engine and the tables, so the page
  * waits for both.
  */
-async function showPanel(panel) {
+async function showPanel(code) {
   const { current } = state;
-  const [rows, labs] = await Promise.all([
-    pod.panelResults(panel),
-    pod.ask(LABS),
-  ]);
-  const tables = await appTables();
-  const [about] = await Promise.all([
-    panelSaid(panel, rows, { tables }).catch(() => undefined),
+  const [read] = await Promise.all([
+    api.panel({ pod: current, panel: code }).catch(refused),
     readTables(),
   ]);
+  if (read.refused !== undefined) return notFound(read.refused);
+  const { panel, rows, labs, panelAbout: about } = maps(read);
   const sources = sourcesOf(state.tables);
   render(
     `Your results in ${about?.get(panel)?.name?.label ?? "a panel"}`,
@@ -609,36 +551,32 @@ async function showPanel(panel) {
  * change's, else the pod's first. A test the pod holds no result of says so.
  */
 async function showTrend(query) {
-  const [medications, labs] = await Promise.all([
-    pod.ask(HISTORY),
-    pod.ask(LABS),
-  ]);
-  const input = trendInput(
-    { changes: changesIn(medications, labs, { limit: 20 }), labs },
-    {
+  const { current } = state;
+  const named = document.body.dataset.engine === "ready";
+  const read = await api
+    .trend({
+      pod: current,
       test: query.get("test") ?? undefined,
       medication: query.get("medication") ?? undefined,
-    },
-  );
-  let series;
-  try {
-    series = input === undefined ? undefined : labSeriesIn(labs, input.test);
-  } catch (error) {
-    if (!(error instanceof Refusal)) throw error;
-  }
-  const { current } = state;
-  const about = await aboutCodes({ [HISTORY]: medications, [LABS]: labs });
+      named,
+    })
+    .catch(refused);
+  if (read.refused !== undefined) return notFound(read.refused);
+  const { labs, series, timeline, test, medication } = read;
+  const about =
+    maps(read).about ??
+    (named || state.tablesRead === "failed" ? new Map() : undefined);
   render(
-    series === undefined ? "Not found" : trendTitle(series, about),
+    trendTitle(series, about),
     trendPage({
       titles: state.titles,
       pod: current,
       back: podHref(current),
       labs,
       series,
-      timeline: timelineIn(medications),
-      test: input?.test,
-      medication: input?.medication,
+      timeline,
+      test,
+      medication,
       trendHref: (trend) => trendHref(current, trend),
       about,
       register,
@@ -652,16 +590,11 @@ async function showTrend(query) {
  */
 async function showClasses(picked) {
   const { current } = state;
-  const [rows, medications] = await Promise.all([
-    pod.medicationClasses(),
-    pod.ask(MEDICATIONS),
-  ]);
-  const tables = await appTables();
-  const [about, elsewhere] = await Promise.all([
-    classesSaid(rows, { tables }).catch(() => undefined),
-    classedElsewhere(rows, medications, { tables }).catch(() => undefined),
+  const [read] = await Promise.all([
+    api.classes({ pod: current }),
     readTables(),
   ]);
+  const { rows, medications, classes: about, elsewhere } = maps(read);
   const sources = sourcesOf(state.tables);
   render(
     "Medicines by class",
@@ -704,13 +637,9 @@ function showHospitals(text) {
 
 /** Reads the reference tables this browser holds into `state.tables`, and notes whether the read answered. */
 async function readTables() {
-  try {
-    state.tables = await (await appTables()).held();
-    state.tablesRead = "read";
-  } catch (error) {
-    state.tablesRead = "failed";
-    throw error;
-  }
+  const { held, failed } = await api.held();
+  state.tables = held;
+  state.tablesRead = failed ? "failed" : "read";
 }
 
 /**
@@ -718,30 +647,21 @@ async function readTables() {
  * for `text`, page `shown` of what it finds, or with `code` shows that code's page; a table's page searches it alone.
  */
 async function showTable(id, text, shown, code) {
-  const tables = await appTables();
-  await readTables();
+  const [read] = await Promise.all([
+    api
+      .table({
+        id: id === "" ? undefined : id,
+        q: text,
+        page: shown,
+        code: code ?? undefined,
+      })
+      .catch(refused),
+    readTables(),
+  ]);
   state.current = undefined;
-  const sources = sourcesOf(state.tables);
-  const series =
-    id === "" || code !== null
-      ? undefined
-      : state.tables.find((each) => tableId(each.iri) === id);
-  const source =
-    series !== undefined
-      ? sources.find((each) => each.series.includes(series))
-      : id === ""
-        ? sources[0]
-        : sources.find((each) => tableId(each.iri) === id);
-  const notFound = (said) =>
-    render(
-      "Not found",
-      html`<h1>Not found</h1>
-<p>${said}</p>`,
-    );
-  if (source === undefined)
-    return id === ""
-      ? render("Reference tables", noTables())
-      : notFound(`This browser holds no reference table ${id}.`);
+  if (read.refused !== undefined) return notFound(read.refused);
+  const { source, series, searched, uses, facts } = read;
+  if (source === undefined) return render("Reference tables", noTables());
   state.table = source.iri;
   const at = series ?? source;
   const searchedHere = {
@@ -762,21 +682,13 @@ async function showTable(id, text, shown, code) {
         ...searchedHere,
         series,
         codeHref,
-        searched: await tables.search(series.iri, text, shown),
-        uses: await tables.uses(),
+        searched,
+        uses,
         pods: state.pods,
         href: podHref,
       }),
     );
-  const all = source.series.map(({ iri }) => iri);
-  if (code !== null) {
-    const found = await tables.codeNamed(
-      [...new Set([...all, ...state.tables.map(({ iri }) => iri)])],
-      code,
-    );
-    if (found === undefined)
-      return notFound(`${source.label} holds no code ${code}.`);
-    const facts = await tables.facts(found, all);
+  if (facts !== undefined)
     return render(
       `${facts.notation} ${facts.about?.name?.label ?? ""}`.trim(),
       codePage({
@@ -787,13 +699,12 @@ async function showTable(id, text, shown, code) {
         back: tableHref(source),
       }),
     );
-  }
   render(
     source.label,
     sourcePage({
       ...searchedHere,
       source,
-      searched: await tables.search(all, text, shown),
+      searched,
       codeHref,
       tableHref,
     }),
@@ -804,13 +715,8 @@ async function showTable(id, text, shown, code) {
 async function checkNow() {
   const checked = await checkTables();
   if (checked.some(({ kept }) => kept.length > 0)) {
-    for (const [name, opening] of [...open]) {
-      const each = await opening.catch(() => undefined);
-      if (each?.encrypted) continue;
-      open.delete(name);
-      if (each === pod) pod = undefined;
-      await each?.close().catch(() => undefined);
-    }
+    await api.closePods({ plaintextOnly: true });
+    if (!pod?.encrypted) pod = undefined;
   }
   await readTables();
   const note = checkedNote(checked, state.tables);
@@ -861,7 +767,7 @@ async function route() {
   state.current = asked ?? state.pods[0];
   if (asked === null) replaceAddress(podHref(state.current));
   try {
-    pod = await podNamed(state.current);
+    pod = await api.podFor(state.current);
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     pod = undefined;
@@ -914,13 +820,7 @@ async function signIn(fhirBase, popup) {
   const shown = { row, step: "signing in", asOf: state.world, requests: 0 };
   const forPod = state.current;
   state.connection = shown;
-  const answers = await answered();
-  state.page = {
-    answers,
-    about: await aboutCodes(answers),
-    said: await variantsOf(answers),
-    at: routed,
-  };
+  state.page = await podShown();
   const now = (said = {}, doing = "busy") => {
     if (state.connection === shown) showConnection(said, doing);
   };
@@ -1111,7 +1011,7 @@ async function confirmWords(fields) {
   )
     return showWords(NOT_WORDS);
   const { name, person, words } = making;
-  if ((await podsHere()).includes(name)) {
+  if ((await host.pods.names()).includes(name)) {
     making = undefined;
     closeDialog();
     return render(
@@ -1120,7 +1020,7 @@ async function confirmWords(fields) {
 <p>A pod named ${name} exists already. Make the pod again under another name.</p>`,
     );
   }
-  if (!(await podNamed(name, { title: person, secret: words })).encrypted)
+  if (!(await api.podFor(name, { title: person, secret: words })).encrypted)
     throw new Error(`The pod ${name} was made without its words.`);
   making = undefined;
   offerToSave(name, words);
@@ -1133,7 +1033,7 @@ async function unlock(fields) {
   const secret = String(fields.get("password") ?? "");
   if (secret.trim() === "") return showLocked("incorrect secret");
   try {
-    pod = await podNamed(state.current, { secret });
+    pod = await api.podFor(state.current, { secret });
   } catch (error) {
     if (!(error instanceof Unopened)) throw error;
     return showLocked(error.outcome);
@@ -1159,7 +1059,7 @@ async function make(person, encrypt = false) {
     );
   }
   if (!state.pods.includes(name)) {
-    await podNamed(name, { title: person.trim() });
+    await api.podFor(name, { title: person.trim() });
   }
   await refreshPods();
   return go(podHref(name));
@@ -1167,7 +1067,7 @@ async function make(person, encrypt = false) {
 
 /** Copies the published example pod into this browser, and keeps it open. */
 async function copy(name) {
-  await podNamed(name, { from: `../${name}/pod/` });
+  await api.podFor(name, { from: `../${name}/pod/` });
 }
 
 /** Copies the published example pod into this browser, unless it is here already, and goes to it. */
@@ -1184,12 +1084,10 @@ async function load(name) {
  * names of the pods there were.
  */
 async function deleteAll() {
-  const opened = [...open.values()];
-  open.clear();
   pod = undefined;
   making = undefined;
-  await Promise.allSettled(opened.map(async (each) => (await each).close()));
-  const names = await podsHere();
+  await api.closePods();
+  const names = await host.pods.names();
   const all = new Set([...names, ...(await databases(ANSWERS))]);
   const waiting = window.setTimeout(() => {
     state.saying = "Waiting for the pods to close in your other tabs…";
@@ -1337,19 +1235,16 @@ busy(async () => {
   return appTables().then(
     async () => {
       document.body.dataset.engine = "ready";
-      await readTables().catch(() => undefined);
-      // Each page is named from its own answers, until the page shown is one that was named. What ClinVar says of a
-      // variant is what a person waits for and needs none of the names, so it is drawn as soon as it is known.
+      await readTables();
+      // Each page is named from its own answers, until the page shown is one that was named; an entry's panels follow.
       for (
         let shown = state.page;
         shown?.answers !== undefined && shown.about === undefined;
         shown = state.page
       ) {
-        shown.said = await variantsOf(shown.answers);
+        Object.assign(shown, await saidOf(shown));
         if (state.page === shown && !left(shown)) redraw();
-        shown.about = await aboutCodes(shown.answers);
-        shown.panels = await panelsShown(shown);
-        shown.joined = await joinedShown(shown);
+        if (shown.entry !== undefined) await panelsShown(shown);
       }
       if (state.page !== undefined && !left(state.page)) redraw();
       const tables = await appTables();

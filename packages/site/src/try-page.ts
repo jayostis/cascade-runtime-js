@@ -4,6 +4,9 @@ import { Html, markup } from "./html.js";
 export const TRY_PACKAGE = "cascade-runtime/";
 /** The view the page renders, the starter's `summary.mjs`, beside the page as `.js`, a name every server types. */
 export const SUMMARY = "summary.js";
+/** What the app reads its pods and tables through: the starter's PodApi, and the host it is given in a browser. */
+export const POD_API = "pod-api.js";
+export const BROWSER_HOST = "browser-host.js";
 /** The packages the view and the app import, each beside the page as one `.js` module, by the name they import. */
 export const VIEW_PACKAGES = {
   preact: "preact.js",
@@ -24,6 +27,7 @@ function head(title: string): Html {
   const imports = JSON.stringify({
     imports: {
       "cascade-runtime": `./${TRY_PACKAGE}dist/browser/index.js`,
+      "./summary.mjs": `./${SUMMARY}`,
       ...Object.fromEntries(
         Object.entries(VIEW_PACKAGES).map(([name, file]) => [
           name,

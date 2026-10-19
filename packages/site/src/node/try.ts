@@ -6,7 +6,9 @@ import { loadHospitals } from "@the-cascade-protocol/sandbox/node";
 import type { Pod, Tables } from "cascade-runtime/published";
 import {
   BRANDS,
+  BROWSER_HOST,
   PEOPLE,
+  POD_API,
   SIGNED_IN,
   signedInPage,
   SUMMARY,
@@ -18,11 +20,17 @@ import {
 } from "../try-page.js";
 
 const APP = fileURLToPath(new URL("../../../try/app.js", import.meta.url));
+const HOST = fileURLToPath(
+  new URL("../../../try/browser-host.js", import.meta.url),
+);
 const RUNTIME_PACKAGE = fileURLToPath(
   new URL("../../../../cascade-runtime/package.json", import.meta.url),
 );
 const VIEW = fileURLToPath(
   new URL("../../../../cascade-runtime/starter/summary.mjs", import.meta.url),
+);
+const API = fileURLToPath(
+  new URL("../../../../cascade-runtime/starter/pod-api.mjs", import.meta.url),
 );
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 /** The demo hospitals' service worker, and their page side: the worker's registration, the world date, and the rule that names a pull after its hospital. */
@@ -55,36 +63,54 @@ async function bundled(
   return output.contents;
 }
 
+interface PodApi {
+  podApi(host: {
+    pods: {
+      names(): Promise<string[]>;
+      title(name: string): Promise<string | undefined>;
+      open(name: string): Promise<Pod>;
+    };
+    tables(): Promise<Tables>;
+    opensEncrypted: boolean;
+    unsaid(kind: string, error: unknown): void;
+  }): { said(input: { pod: string }): Promise<unknown> };
+}
+
+/**
+ * What try/'s page for a pod asks the tables of it, the names of its codes and what ClinVar says of its variants, asked
+ * as the page asks them, through PodApi. The pod stays open: its caller closes it. PodApi swallows a lookup that fails
+ * into `unsaid`, so each failure is recorded there and thrown together once `said` has settled: throwing inside
+ * `unsaid` would reject `said` while the other lookup still runs against a pod its caller is closing.
+ */
+export async function tryLooks(pod: Pod, tables: Tables): Promise<void> {
+  const { podApi } = (await import(pathToFileURL(API).href)) as PodApi;
+  const NAME = "pod";
+  const failed: unknown[] = [];
+  await podApi({
+    pods: {
+      names: async () => [NAME],
+      title: async () => undefined,
+      open: async () => pod,
+    },
+    tables: async () => tables,
+    opensEncrypted: true,
+    unsaid: (_kind, error) => {
+      failed.push(error);
+    },
+  }).said({ pod: NAME });
+  if (failed.length > 0)
+    throw new AggregateError(
+      failed,
+      "try/'s first-paint lookups could not be recorded",
+    );
+}
+
 /**
  * The files of `try/` but the package: the page, which offers the examples published in `samples` (their folders),
- * its app, the starter's view and the packages it imports, the demo people as the view names them, the demo hospitals as a brands bundle, the redirect page, and the demo hospitals'
+ * its app, the starter's PodApi and the app's host for it, the starter's view and the packages it imports, the demo people as the view names them, the demo hospitals as a brands bundle, the redirect page, and the demo hospitals'
  * worker, its page side and one data file per hospital beside them. The page cannot read the data files itself: the
  * worker answers every address under them as a hospital's sign-in page. `version` is what the pages were built from.
  */
-interface View {
-  readonly QUESTIONS: readonly string[];
-  codesSaid(answers: unknown, options: { tables: Tables }): Promise<unknown>;
-  variantsSaid(
-    answers: unknown,
-    options: { tables: Tables; pod: Pod },
-  ): Promise<unknown>;
-}
-
-/** What try/'s page for a pod asks the tables of it: the names of its codes, and what ClinVar says of its variants. */
-export async function tryLooks(pod: Pod, tables: Tables): Promise<void> {
-  const view = (await import(pathToFileURL(VIEW).href)) as View;
-  const answers = Object.fromEntries(
-    await Promise.all(
-      view.QUESTIONS.map(async (question) => [
-        question,
-        await pod.ask(question),
-      ]),
-    ),
-  );
-  await view.codesSaid(answers, { tables });
-  await view.variantsSaid(answers, { tables, pod });
-}
-
 export async function tryFiles(
   samples: readonly string[],
   version: string,
@@ -93,7 +119,9 @@ export async function tryFiles(
   const [
     hospitals,
     app,
+    host,
     view,
+    api,
     worker,
     workerPage,
     { demoPeople },
@@ -102,7 +130,9 @@ export async function tryFiles(
   ] = await Promise.all([
     loadHospitals(),
     readFile(APP),
+    readFile(HOST),
     readFile(VIEW),
+    readFile(API),
     bundled(SANDBOX_WEB.worker, "iife"),
     bundled(SANDBOX_WEB.page, "esm"),
     import(pathToFileURL(VIEW).href) as Promise<{
@@ -121,6 +151,8 @@ export async function tryFiles(
     ["index.html", encoder.encode(tryPage(samples, { version, runtime }))],
     ["app.js", app],
     [SUMMARY, view],
+    [POD_API, api],
+    [BROWSER_HOST, host],
     [PEOPLE, encoder.encode(JSON.stringify(demoPeople(hospitals)))],
     [
       BRANDS,
