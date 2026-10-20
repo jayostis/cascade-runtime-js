@@ -1,8 +1,6 @@
 import * as oxigraphWeb from "oxigraph/web.js";
 import {
-  BRIDGE_GLUE,
-  BRIDGE_WASM,
-  type CompiledBridge,
+  type DeriveKey,
   EncryptedFiles,
   type Followed,
   HEADER,
@@ -27,13 +25,15 @@ import {
   withTables,
 } from "@cascade-runtime/runtime";
 import {
+  absent,
   argon2id,
+  argon2idAt,
   compiledBridge,
   FetchedFiles,
   IndexedDbFiles,
   inWebWorker,
 } from "@cascade-runtime/runtime/web";
-import { ANSWERS, Answers, DESCRIBED, entryVersion } from "../answers.js";
+import { ANSWERS, Answers, DESCRIBED } from "../answers.js";
 import { LOOKUPS, type Lookups, lookupsOf, withLookups } from "../lookups.js";
 import { podKey } from "../encrypted.js";
 import {
@@ -100,9 +100,59 @@ const DATABASE = "cascade-pod:";
 const ANSWERS_DATABASE = "cascade-answers:";
 /** What names the tables' IndexedDB database, after the app's name. */
 const TABLES_DATABASE = "cascade-tables";
-const COMPONENTS = new URL("../../components/", import.meta.url);
 /** The folder of `components/` holding the package's starter copies of the feeds' series. */
 const STARTER_TABLES = "tables";
+/** This module's URL, named apart from `new URL`, so that no bundler rewrites the folder made from it. */
+const HERE = import.meta.url;
+
+declare const CASCADE_ENTRY_VERSION: string | undefined;
+
+/** The version of this browser entry, fixed when the package was packed, which every answer it keeps is kept under. */
+export function entryVersion(): string {
+  if (typeof CASCADE_ENTRY_VERSION !== "string")
+    throw new Error(
+      "this browser entry was not packed: its version is fixed by `npm run build:package`",
+    );
+  return CASCADE_ENTRY_VERSION;
+}
+
+/** The folder `configureRuntime` names; undefined for the folder this module is in. */
+let base: URL | undefined;
+
+export interface RuntimeSettings {
+  /**
+   * The folder holding the files of the package's `dist/browser/` and its `components/`, ending in a slash and resolved
+   * against the page: where an app that bundles this module serves them.
+   */
+  readonly base?: string | URL;
+}
+
+/**
+ * Sets where the package's files are served from, before the first pod opens: the components, every worker, the
+ * Bridge and the engine's module. Without it they are read beside this module, as the package lays them out.
+ */
+export function configureRuntime(settings: RuntimeSettings): void {
+  if (tablesMade)
+    throw new Error(
+      "configureRuntime comes before the first pod opens: the runtime is already reading its components",
+    );
+  if (settings.base === undefined) {
+    base = undefined;
+    return;
+  }
+  const folder = new URL(settings.base, globalThis.location?.href);
+  if (!folder.pathname.endsWith("/"))
+    throw new Error(
+      `a base is a folder, its URL ending in a slash: ${folder.href}`,
+    );
+  base = folder;
+}
+
+function components(): URL {
+  return base === undefined
+    ? new URL("../../components/", HERE)
+    : new URL("components/", base);
+}
 
 interface Packed {
   readonly components: readonly {
@@ -114,7 +164,7 @@ interface Packed {
 }
 
 async function fetched(path: string): Promise<Response> {
-  const url = new URL(path, COMPONENTS);
+  const url = new URL(path, components());
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url.href} answered ${response.status}`);
   return response;
@@ -156,14 +206,13 @@ const reading = once((): Promise<Read> => {
 });
 
 async function read(): Promise<Read> {
-  const [config, packed, entry] = await Promise.all([
+  const runtime = entryVersion();
+  const folder = components();
+  const [config, packed] = await Promise.all([
     fetched("cascade-runtime.json").then(async (r) =>
       withTables(parseConfig(await r.text()), configuredTables),
     ),
     fetched("packed.json").then((r) => r.json() as Promise<Packed>),
-    fetched(import.meta.url).then(
-      async (r) => new Uint8Array(await r.arrayBuffer()),
-    ),
   ]);
   const sources = new Map<string, Source>();
   const carried = (followed: Followed): Source => {
@@ -180,13 +229,11 @@ async function read(): Promise<Read> {
     const source = {
       iri,
       files: new FetchedFiles(
-        new URL(`${repositoryName(followed)}/${commit}/`, COMPONENTS).href,
+        new URL(`${repositoryName(followed)}/${commit}/`, folder).href,
         iri,
         {
-          pack: new URL(
-            `${repositoryName(followed)}/${commit}.json`,
-            COMPONENTS,
-          ).href,
+          pack: new URL(`${repositoryName(followed)}/${commit}.json`, folder)
+            .href,
         },
       ),
     };
@@ -195,7 +242,7 @@ async function read(): Promise<Read> {
   };
   if (packed.layout === undefined)
     throw new Error(
-      `${new URL("packed.json", COMPONENTS).href} records no layout: it was packed before this runtime, so pack it again`,
+      `${new URL("packed.json", folder).href} records no layout: it was packed before this runtime, so pack it again`,
     );
   const vocabulary = carried(config.vocabulary).files as FetchedFiles;
   const layout = Layout.of(
@@ -204,7 +251,7 @@ async function read(): Promise<Read> {
   );
   return {
     config,
-    runtime: await entryVersion(entry, packed.components),
+    runtime,
     vocabulary,
     layout,
     build: await vocabularyBuild(vocabulary, layout),
@@ -263,9 +310,9 @@ async function tablesOf(
     newStore: () => new OxigraphStore(),
     preference: config.tables.preference,
     starter: new FetchedFiles(
-      new URL(`${STARTER_TABLES}/`, COMPONENTS).href,
+      new URL(`${STARTER_TABLES}/`, components()).href,
       "urn:cascade:starter-tables/",
-      { pack: new URL(`${STARTER_TABLES}.json`, COMPONENTS).href },
+      { pack: new URL(`${STARTER_TABLES}.json`, components()).href },
     ),
     ...(configured.fetch === undefined ? {} : { fetch: configured.fetch }),
     work: IN_A_WORKER,
@@ -286,9 +333,12 @@ function runningWorker(): typeof tablesWorker {
   if (tablesWorker !== undefined) return tablesWorker;
   let worker: Worker;
   try {
-    worker = new Worker(new URL("./tables-worker.js", import.meta.url), {
-      type: "module",
-    });
+    worker =
+      base === undefined
+        ? new Worker(new URL("./tables-worker.js", HERE), {
+            type: "module",
+          })
+        : new Worker(new URL("tables-worker.js", base), { type: "module" });
   } catch {
     return undefined;
   }
@@ -378,7 +428,15 @@ type Resolved = Parts & { readonly runtime: string };
 const resolved = once(async (): Promise<Resolved> => {
   const [read] = await Promise.all([
     reading(),
-    (oxigraphWeb as unknown as { default(): Promise<unknown> }).default(),
+    (
+      oxigraphWeb as unknown as {
+        default(init?: { module_or_path: URL }): Promise<unknown>;
+      }
+    ).default(
+      base === undefined
+        ? undefined
+        : { module_or_path: new URL("web_bg.wasm", base) },
+    ),
   ]);
   const { config, vocabulary, carried } = read;
   const newStore = () => new OxigraphStore();
@@ -394,7 +452,7 @@ const resolved = once(async (): Promise<Resolved> => {
     importers: importersNamed(config.importers),
     tables: read.tables,
     newStore,
-    derive: argon2id,
+    derive: derive(),
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
@@ -403,7 +461,12 @@ const resolved = once(async (): Promise<Resolved> => {
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
     loadBridge: async () =>
       bridgeLoaded(
-        new WasmBridge(inWebWorker(await bridgeCompiled())),
+        new WasmBridge(
+          inWebWorker(
+            await bridgeCompiled(),
+            base === undefined ? undefined : new URL("wasm-worker.js", base),
+          ),
+        ),
         (bridge) =>
           loadAdapters(bridge, config.adapters, async (followed) =>
             carried(followed),
@@ -412,13 +475,23 @@ const resolved = once(async (): Promise<Resolved> => {
   };
 });
 
-/** The Bridge's module beside the browser entry, compiled once per page. */
-const bridgeCompiled = once((): Promise<CompiledBridge> =>
+/** The Bridge's module, beside the browser entry or under the base, compiled once per page. */
+const bridgeCompiled = once((): Promise<WebAssembly.Module> =>
   compiledBridge(
-    new URL(BRIDGE_GLUE, import.meta.url).href,
-    new URL(BRIDGE_WASM, import.meta.url).href,
+    base === undefined
+      ? new URL("./cascade_bridge_bg.wasm", HERE)
+      : new URL("cascade_bridge_bg.wasm", base),
   ),
 );
+
+let derivedAt: DeriveKey | undefined;
+
+/** Argon2id in its worker, beside the browser entry or under the base. */
+function derive(): DeriveKey {
+  if (base === undefined) return argon2id;
+  derivedAt ??= argon2idAt(new URL("argon2-worker.js", base));
+  return derivedAt;
+}
 
 /**
  * Loads the engine and what needs it, and compiles the Bridge, once per page, so that they are ready when a pod first
@@ -633,8 +706,9 @@ async function answersBeside(
   const found = await Promise.all(
     [ANSWERS, DESCRIBED, LOOKUPS].map(async (path) => {
       try {
-        const response = await fetch(new URL(`../${path}`, folder));
-        return response.ok
+        const url = new URL(`../${path}`, folder);
+        const response = await fetch(url);
+        return response.ok && !absent(response, url)
           ? [[path, new Uint8Array(await response.arrayBuffer())] as const]
           : [];
       } catch {
@@ -724,7 +798,7 @@ export async function openPod(
         held: async () => held.length > 0,
       },
       secret,
-      argon2id,
+      derive(),
     );
     const kept = await IndexedDbFiles.open(
       ANSWERS_DATABASE + name,

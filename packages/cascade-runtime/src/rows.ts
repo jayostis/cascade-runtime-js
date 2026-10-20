@@ -380,7 +380,10 @@ export const IN_THIS_THREAD: RowsWork = {
   verified,
   published: async (bytes) =>
     new TextEncoder().encode(
-      (await gunzipped(bytes)).replace(/ <[^<>]*> \.$/gm, " ."),
+      (bytes[0] === 0x1f && bytes[1] === 0x8b
+        ? await gunzipped(bytes)
+        : new TextDecoder().decode(bytes)
+      ).replace(/ <[^<>]*> \.$/gm, " ."),
     ),
   listed: async (text, uriSpaces) =>
     new TextEncoder().encode(

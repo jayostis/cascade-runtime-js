@@ -1,34 +1,39 @@
-import { type CompiledBridge, type Spawn, Waiting } from "../wasm-bridge.js";
+import { type Spawn, Waiting } from "../wasm-bridge.js";
 
-/** The package's module compiled from its URL, beside the URL of its glue module. */
-export async function compiledBridge(
-  glue: string,
-  wasm: string,
-): Promise<CompiledBridge> {
-  return { glue, module: await WebAssembly.compileStreaming(fetch(wasm)) };
+/** This module's URL, named apart from `new URL`, so that no bundler follows the worker made from it. */
+const HERE = import.meta.url;
+
+/** The Bridge's WebAssembly module, compiled from its URL. */
+export function compiledBridge(
+  wasm: string | URL,
+): Promise<WebAssembly.Module> {
+  return WebAssembly.compileStreaming(fetch(wasm));
 }
 
-/** Each instance in a Web Worker of its own. */
-export function inWebWorker(compiled: CompiledBridge): Spawn {
+/** Each instance in a Web Worker of its own: the one at `worker`, else the one beside this module. */
+export function inWebWorker(module: WebAssembly.Module, worker?: URL): Spawn {
   return () => {
-    const worker = new Worker(new URL("./wasm-worker.js", import.meta.url), {
-      type: "module",
-    });
+    const started =
+      worker === undefined
+        ? new Worker(new URL("./wasm-worker.js", HERE), {
+            type: "module",
+          })
+        : new Worker(worker, { type: "module" });
     const waiting = new Waiting();
-    worker.onmessage = (event) => waiting.answered(event.data);
-    worker.onerror = (event) => {
+    started.onmessage = (event) => waiting.answered(event.data);
+    started.onerror = (event) => {
       waiting.lost(new Error(event.message));
-      worker.terminate();
+      started.terminate();
     };
-    worker.postMessage({ compiled });
+    started.postMessage({ module });
     return Promise.resolve({
       call: (request, transfer) =>
         waiting.send(
-          (message) => worker.postMessage(message, transfer),
+          (message) => started.postMessage(message, transfer),
           request,
         ),
       end: () => {
-        worker.terminate();
+        started.terminate();
         waiting.lost(new Error("the worker was ended"));
       },
     });

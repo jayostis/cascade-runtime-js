@@ -2,6 +2,20 @@ import { FILES_JSON, type Files, relative, under } from "../files.js";
 import { type FolderPack, isFolderPack, unpackFile } from "../folder-pack.js";
 
 /**
+ * Whether the response says the file at the URL is not there: a 404, or an HTML page answered 200 for a path that names
+ * no page, as a single-page app's fallback answers every path it does not serve; an HTML error page is an error.
+ */
+export function absent(response: Response, url: string | URL): boolean {
+  if (response.status === 404) return true;
+  const type = response.headers.get("content-type") ?? "";
+  return (
+    response.ok &&
+    type.split(";")[0]?.trim().toLowerCase() === "text/html" &&
+    !new URL(url).pathname.endsWith(".html")
+  );
+}
+
+/**
  * A folder served over HTTP, read by `fetch`, each file once: listed by its `files.json`, or by its `FolderPack` where
  * one is served; never written. The first read fetches its file alone, so describing an adapter costs one small request;
  * the pack is fetched from the second read or the first list on.
@@ -53,7 +67,7 @@ export class FetchedFiles implements Files {
     if (fetched === undefined) {
       fetched = this.#fetched(path)
         .then(async (response) =>
-          response.status === 404
+          response === undefined
             ? undefined
             : new Uint8Array(await response.arrayBuffer()),
         )
@@ -71,7 +85,7 @@ export class FetchedFiles implements Files {
     if (pack === undefined) return Promise.resolve(undefined);
     this.#packed ??= (async () => {
       const response = await fetch(pack);
-      if (response.status === 404) return undefined;
+      if (absent(response, pack)) return undefined;
       if (!response.ok)
         throw new Error(
           `${pack} answered ${response.status} ${response.statusText}`,
@@ -101,7 +115,7 @@ export class FetchedFiles implements Files {
 
   async #listedByFilesJson(): Promise<string[]> {
     const response = await this.#fetched(FILES_JSON);
-    if (response.status === 404)
+    if (response === undefined)
       throw new Error(`${this.#url} has no ${FILES_JSON}`);
     const listed = (await response.json()) as unknown;
     if (
@@ -114,13 +128,15 @@ export class FetchedFiles implements Files {
     return listed as string[];
   }
 
-  async #fetched(path: string): Promise<Response> {
+  /** The file's response; undefined when it is absent. */
+  async #fetched(path: string): Promise<Response | undefined> {
     const url = new URL(
       path.split("/").map(encodeURIComponent).join("/"),
       this.#url,
     );
     const response = await fetch(url);
-    if (!response.ok && response.status !== 404)
+    if (absent(response, url)) return undefined;
+    if (!response.ok)
       throw new Error(
         `${url.href} answered ${response.status} ${response.statusText}`,
       );

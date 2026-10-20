@@ -195,6 +195,72 @@ A pod copied with `from` is taken as published: its first open records the
 tables the browser then holds without adopting them, and a later open adopts
 only tables newer than those.
 
+An app that bundles the package, as Vite does, serves its browser files at a
+base it names before the first pod opens:
+``configureRuntime({ base: `${import.meta.env.BASE_URL}cascade-runtime/` })``.
+The base is the folder holding the files of `dist/browser/` and, beneath them,
+`components/`; the components, every worker, the Bridge and the engine's module
+are read from there, and without a base from beside the module, as the package
+lays them out. Of `components/` a page reads `cascade-runtime.json`,
+`packed.json`, and for `tables/` and each component `packed.json` names
+(`<repository name>/<commit>`) its pack `<folder>.json` and the files its
+`files.json` lists; never the tables' listings, which a page makes itself.
+A pod's answers are kept under `entryVersion()`, fixed when the package was
+packed, as `entryVersion()` of `cascade-runtime/published` gives it in Node, so
+answers published from Node are read in the page without the engine.
+A browser app's TypeScript reads the browser build's types only with
+`"customConditions": ["browser"]` in its `tsconfig.json`; without it, it is
+given Node's. A Vite app's `vite.config.ts` copies those files into
+`public/cascade-runtime/`, and needs nothing else:
+
+```ts
+import { cp, readFile, rm } from "node:fs/promises";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type Plugin } from "vite";
+
+const RUNTIME = "node_modules/cascade-runtime/";
+const BASE = "public/cascade-runtime/";
+
+/** What a page reads of the installed package's components, by its path under the package. */
+async function served(): Promise<string[]> {
+  const json = async (path: string) =>
+    JSON.parse(await readFile(RUNTIME + path, "utf8"));
+  const packed: { components: { repository: string; commit: string }[] } =
+    await json("components/packed.json");
+  const folders = [
+    "components/tables",
+    ...packed.components.map(
+      ({ repository, commit }) =>
+        `components/${repository.split("/").at(-1)}/${commit}`,
+    ),
+  ];
+  const paths = ["components/cascade-runtime.json", "components/packed.json"];
+  for (const folder of folders) {
+    const listed: string[] = await json(`${folder}/files.json`);
+    paths.push(
+      `${folder}.json`,
+      `${folder}/files.json`,
+      ...listed.map((path) => `${folder}/${path}`),
+    );
+  }
+  return paths;
+}
+
+/** The browser build and what it reads, at the base the page names, before Vite serves or builds. */
+function cascadeRuntime(): Plugin {
+  return {
+    name: "cascade-runtime",
+    async buildStart() {
+      await rm(BASE, { recursive: true, force: true });
+      await cp(`${RUNTIME}dist/browser`, BASE, { recursive: true });
+      for (const path of await served()) await cp(RUNTIME + path, BASE + path);
+    },
+  };
+}
+
+export default defineConfig({ plugins: [react(), cascadeRuntime()] });
+```
+
 ## Bring in an export
 
 On each export or downloaded C-CDA file the person picks, `look` reads its index

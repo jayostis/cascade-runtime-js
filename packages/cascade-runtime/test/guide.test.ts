@@ -56,7 +56,10 @@ interface Block {
   readonly code: string;
 }
 
-/** Each part of the guide, by its heading, and each fenced block in document order. */
+/**
+ * Each part of the guide, by its heading, and each block fenced as js in document order; a block fenced as ts is an
+ * app's configuration, shown and not run.
+ */
 function read(guide: string): {
   sections: Map<string, string[]>;
   blocks: Block[];
@@ -68,11 +71,14 @@ function read(guide: string): {
   for (const line of guide.split(/\r?\n/)) {
     if (fence !== undefined) {
       if (line.startsWith("```")) {
-        assert.equal(
-          fence.language,
-          "js",
-          `a block under "${heading}" is fenced as "${fence.language}", not js`,
+        assert.ok(
+          ["js", "ts"].includes(fence.language),
+          `a block under "${heading}" is fenced as "${fence.language}", not js or ts`,
         );
+        if (fence.language === "ts") {
+          fence = undefined;
+          continue;
+        }
         const position =
           blocks.filter((block) => block.heading === heading).length + 1;
         blocks.push({ heading, position, code: fence.lines.join("\n") });

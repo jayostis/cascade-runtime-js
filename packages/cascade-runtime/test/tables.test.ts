@@ -1023,6 +1023,18 @@ test("a version's listing names every code its rows give a preferred name, in a 
   );
 });
 
+test("a version's published rows read the same gzipped and as a server sends them already unzipped", async () => {
+  const rows = `<urn:test:a> <urn:test:b> "c" <urn:test:graph> .\n`;
+  const read = async (bytes: Uint8Array) =>
+    new TextDecoder().decode(
+      await IN_THIS_THREAD.published(new Uint8Array(bytes)),
+    );
+  assert.equal(
+    await read(new TextEncoder().encode(rows)),
+    await read(await gzipped(rows)),
+  );
+});
+
 test("a version the tables name by no file is refused, by a search and by what the tables say of a code", async () => {
   const series = "urn:test:series";
   const version = "urn:test:no-file";
