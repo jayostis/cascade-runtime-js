@@ -196,3 +196,36 @@ test("a fetched folder fetches its first read alone, then its pack where it is s
     globalThis.fetch = fetchedNow;
   }
 });
+
+test("a fetched folder takes the page a single-page app's fallback answers for a missing file as absent, and a page it names as a page", async () => {
+  const served = new Map<string, string>([
+    ["c/files.json", JSON.stringify(["queries/a.rq", "about.html"])],
+    ["c/queries/a.rq", "SELECT * {}"],
+  ]);
+  const page = "<!doctype html><title>The app</title>";
+  const fetchedNow = globalThis.fetch;
+  globalThis.fetch = (url) => {
+    const body = served.get(
+      String(url instanceof Request ? url.url : url).slice(COMPONENTS.length),
+    );
+    return Promise.resolve(
+      new Response(body ?? page, {
+        headers: {
+          "content-type":
+            body === undefined ? "text/html; charset=utf-8" : "text/plain",
+        },
+      }),
+    );
+  };
+  try {
+    const files = new FetchedFiles(`${COMPONENTS}c/`, undefined, {
+      pack: `${COMPONENTS}c.json`,
+    });
+    assert.equal(await files.read("none.ttl"), undefined);
+    assert.deepEqual(await files.list(""), ["about.html", "queries/a.rq"]);
+    assert.equal(text(await files.read("queries/a.rq")), "SELECT * {}");
+    assert.equal(text(await files.read("about.html")), page);
+  } finally {
+    globalThis.fetch = fetchedNow;
+  }
+});
