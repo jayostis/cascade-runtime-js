@@ -2,13 +2,14 @@ import { FILES_JSON, type Files, relative, under } from "../files.js";
 import { type FolderPack, isFolderPack, unpackFile } from "../folder-pack.js";
 
 /**
- * Whether the response says the file at the URL is not there: a 404, or an HTML page for a path that names no page, as
- * a single-page app's fallback answers every path it does not serve.
+ * Whether the response says the file at the URL is not there: a 404, or an HTML page answered 200 for a path that names
+ * no page, as a single-page app's fallback answers every path it does not serve; an HTML error page is an error.
  */
 export function absent(response: Response, url: string | URL): boolean {
   if (response.status === 404) return true;
   const type = response.headers.get("content-type") ?? "";
   return (
+    response.ok &&
     type.split(";")[0]?.trim().toLowerCase() === "text/html" &&
     !new URL(url).pathname.endsWith(".html")
   );

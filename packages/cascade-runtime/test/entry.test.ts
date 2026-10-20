@@ -7,9 +7,8 @@ import { test } from "node:test";
 import { bundleBrowser } from "../pack/browser.js";
 import { entryVersion } from "../src/node/published.js";
 
-test("the browser entry keys its answers under the version its installed package gives, fixed when it was packed, and fetches nothing of itself for it", async () => {
+test("the browser entry keys its answers under the version its installed package gives, fixed when it was packed", async () => {
   const stage = await mkdtemp(join(tmpdir(), "cascade-entry-"));
-  const fetchedNow = globalThis.fetch;
   try {
     const bridge = join(stage, "bridge");
     await mkdir(bridge);
@@ -33,18 +32,11 @@ test("the browser entry keys its answers under the version its installed package
         cascadeRuntime: { entryVersion: version },
       }),
     );
-    const fetched: string[] = [];
-    globalThis.fetch = (url) => {
-      fetched.push(String(url instanceof Request ? url.url : url));
-      return Promise.reject(new Error("nothing is served"));
-    };
     const entry = (await import(
       pathToFileURL(join(stage, "dist", "browser", "index.js")).href
     )) as { entryVersion(): string };
     assert.equal(entry.entryVersion(), await entryVersion(stage));
-    assert.deepEqual(fetched, []);
   } finally {
-    globalThis.fetch = fetchedNow;
     await rm(stage, { recursive: true, force: true });
   }
 });

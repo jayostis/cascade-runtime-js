@@ -5,6 +5,9 @@ import {
   argon2idHere,
 } from "./argon2-direct.js";
 
+/** This module's URL, named apart from `new URL`, so that no bundler follows the worker made from it. */
+const HERE = import.meta.url;
+
 interface Job {
   readonly resolve: (key: Uint8Array) => void;
   readonly reject: (error: Error) => void;
@@ -77,7 +80,7 @@ function deriving(start: () => Worker): DeriveKey {
 /** Argon2id in the worker beside this module. */
 export const argon2id: DeriveKey = deriving(
   () =>
-    new Worker(new URL("./argon2-worker.js", import.meta.url), {
+    new Worker(new URL("./argon2-worker.js", HERE), {
       type: "module",
     }),
 );

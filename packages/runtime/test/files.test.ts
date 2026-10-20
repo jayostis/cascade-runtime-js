@@ -205,11 +205,11 @@ test("a fetched folder takes the page a single-page app's fallback answers for a
   const page = "<!doctype html><title>The app</title>";
   const fetchedNow = globalThis.fetch;
   globalThis.fetch = (url) => {
-    const body = served.get(
-      String(url instanceof Request ? url.url : url).slice(COMPONENTS.length),
-    );
+    const asked = String(url instanceof Request ? url.url : url);
+    const body = served.get(asked.slice(COMPONENTS.length));
     return Promise.resolve(
       new Response(body ?? page, {
+        status: asked.endsWith("down.ttl") ? 503 : 200,
         headers: {
           "content-type":
             body === undefined ? "text/html; charset=utf-8" : "text/plain",
@@ -225,6 +225,7 @@ test("a fetched folder takes the page a single-page app's fallback answers for a
     assert.deepEqual(await files.list(""), ["about.html", "queries/a.rq"]);
     assert.equal(text(await files.read("queries/a.rq")), "SELECT * {}");
     assert.equal(text(await files.read("about.html")), page);
+    await assert.rejects(files.read("down.ttl"), /503/);
   } finally {
     globalThis.fetch = fetchedNow;
   }

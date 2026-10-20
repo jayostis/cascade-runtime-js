@@ -23,7 +23,6 @@ const BUNDLED: BuildOptions = {
 };
 
 export interface BrowserBuild {
-  /** The commit the package is packed from. */
   readonly commit: string;
   /** Whether the checkout held uncommitted changes. */
   readonly dirty: boolean;
@@ -32,7 +31,6 @@ export interface BrowserBuild {
     readonly repository: string;
     readonly commit: string;
   }[];
-  /** The folder of the Bridge's package. */
   readonly bridge: string;
 }
 

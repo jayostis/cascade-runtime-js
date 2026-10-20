@@ -1,5 +1,8 @@
 import { type Spawn, Waiting } from "../wasm-bridge.js";
 
+/** This module's URL, named apart from `new URL`, so that no bundler follows the worker made from it. */
+const HERE = import.meta.url;
+
 /** The Bridge's WebAssembly module, compiled from its URL. */
 export function compiledBridge(
   wasm: string | URL,
@@ -12,7 +15,7 @@ export function inWebWorker(module: WebAssembly.Module, worker?: URL): Spawn {
   return () => {
     const started =
       worker === undefined
-        ? new Worker(new URL("./wasm-worker.js", import.meta.url), {
+        ? new Worker(new URL("./wasm-worker.js", HERE), {
             type: "module",
           })
         : new Worker(worker, { type: "module" });

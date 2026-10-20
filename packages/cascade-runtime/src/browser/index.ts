@@ -148,7 +148,6 @@ export function configureRuntime(settings: RuntimeSettings): void {
   base = folder;
 }
 
-/** The package's `components/`. */
 function components(): URL {
   return base === undefined
     ? new URL("../../components/", HERE)
@@ -336,7 +335,7 @@ function runningWorker(): typeof tablesWorker {
   try {
     worker =
       base === undefined
-        ? new Worker(new URL("./tables-worker.js", import.meta.url), {
+        ? new Worker(new URL("./tables-worker.js", HERE), {
             type: "module",
           })
         : new Worker(new URL("tables-worker.js", base), { type: "module" });
@@ -480,7 +479,7 @@ const resolved = once(async (): Promise<Resolved> => {
 const bridgeCompiled = once((): Promise<WebAssembly.Module> =>
   compiledBridge(
     base === undefined
-      ? new URL("./cascade_bridge_bg.wasm", import.meta.url)
+      ? new URL("./cascade_bridge_bg.wasm", HERE)
       : new URL("cascade_bridge_bg.wasm", base),
   ),
 );
