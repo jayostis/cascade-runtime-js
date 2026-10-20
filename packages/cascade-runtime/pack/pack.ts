@@ -12,10 +12,7 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { build } from "esbuild";
 import {
-  BRIDGE_GLUE,
-  BRIDGE_WASM,
   CODES,
   FILES_JSON,
   type Followed,
@@ -44,6 +41,7 @@ import {
 import { keptRows } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
+import { bundleBrowser } from "./browser.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
 const ROOT = findRoot(WORKSPACE);
@@ -54,9 +52,6 @@ const COMPONENTS = join(STAGE, "components");
 const NODE_MODULES = join(STAGE, "node_modules");
 const METADATA = "ro-crate-metadata.json";
 const BROWSER = join(WORKSPACE, "dist", "browser");
-const WASM = "web_bg.wasm";
-/** The Bridge's glue and module, which a page loads by URL beside the browser entry. */
-const BRIDGE_FILES = [BRIDGE_GLUE, BRIDGE_WASM];
 /** The workspaces bundled into the package, which are on no registry. */
 const BUNDLED = ["runtime", "apple-health", "ccda-download", "fhir-pull"];
 /** What a pod reads of the vocabulary, beside every kit under `conformance/`. */
@@ -173,6 +168,7 @@ async function vocabulariesNamed(
 
 async function packComponents(): Promise<{
   readonly resolved: readonly Resolved[];
+  readonly components: Packed["components"];
   readonly bridge: Packed["bridge"];
   readonly bridgeFolder: string;
 }> {
@@ -221,7 +217,12 @@ async function packComponents(): Promise<{
   };
   await writeJson(join(COMPONENTS, PACKED), record);
   for (const component of resolved) await writeListed(treeOf(component));
-  return { resolved, bridge: record.bridge, bridgeFolder: bridge.folder };
+  return {
+    resolved,
+    components: record.components,
+    bridge: record.bridge,
+    bridgeFolder: bridge.folder,
+  };
 }
 
 /** The starter copies: the feeds as they are now, with the rows of each version an app keeps, as published. */
@@ -287,56 +288,6 @@ async function writeListed(
   for (const path of paths.filter(packed))
     files.set(path, await readFile(join(folder, ...path.split("/"))));
   await writeFile(`${folder}.json`, JSON.stringify(packFolder(paths, files)));
-}
-
-/**
- * The browser entry, the Bridge's worker and the tables' as modules, with Oxigraph's web build and the Bridge's beside
- * them.
- */
-async function bundleBrowser(bridgeFolder: string): Promise<void> {
-  await rm(BROWSER, { recursive: true, force: true });
-  await build({
-    entryPoints: {
-      index: join(WORKSPACE, "dist", "src", "browser", "index.js"),
-      "tables-worker": join(
-        WORKSPACE,
-        "dist",
-        "src",
-        "browser",
-        "tables-worker.js",
-      ),
-      "wasm-worker": join(
-        ROOT,
-        "packages",
-        "runtime",
-        "dist",
-        "src",
-        "web",
-        "wasm-worker.js",
-      ),
-      "argon2-worker": join(
-        ROOT,
-        "packages",
-        "runtime",
-        "dist",
-        "src",
-        "web",
-        "argon2-worker.js",
-      ),
-    },
-    bundle: true,
-    format: "esm",
-    platform: "browser",
-    target: "es2023",
-    outdir: BROWSER,
-    logLevel: "warning",
-  });
-  await copyFile(
-    fileURLToPath(new URL(WASM, import.meta.resolve("oxigraph/web.js"))),
-    join(BROWSER, WASM),
-  );
-  for (const file of BRIDGE_FILES)
-    await copyFile(join(bridgeFolder, file), join(BROWSER, file));
 }
 
 /** The workspaces and the Bridge as real folders under the package's `node_modules/`, and the dependencies they bring. */
@@ -468,9 +419,15 @@ async function main(): Promise<void> {
 
   await rm(STAGE, { recursive: true, force: true });
   await mkdir(STAGE, { recursive: true });
-  const { resolved, bridge, bridgeFolder } = await packComponents();
+  const { resolved, components, bridge, bridgeFolder } = await packComponents();
   const { bundled, dependencies } = await packCode(bridgeFolder);
-  await bundleBrowser(bridgeFolder);
+  const dirty = head.uncommitted > 0;
+  const entryVersion = await bundleBrowser(BROWSER, {
+    commit,
+    dirty,
+    components,
+    bridge: bridgeFolder,
+  });
   await packOwnFiles(manifest, address);
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
@@ -479,7 +436,7 @@ async function main(): Promise<void> {
     files: [...(manifest.files ?? []), "components"],
     dependencies,
     bundleDependencies: Object.keys(bundled).sort(),
-    cascadeRuntime: { commit, dirty: head.uncommitted > 0, tarball: address },
+    cascadeRuntime: { commit, dirty, tarball: address, entryVersion },
   });
 
   for (const file of await readdir(BUILD))

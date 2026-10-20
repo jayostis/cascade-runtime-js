@@ -2,18 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MemoryFiles, questions } from "@cascade-runtime/runtime";
-import {
-  FolderFiles,
-  PACKED,
-  type Packed,
-  packed,
-} from "@cascade-runtime/runtime/node";
-import {
-  ANSWERS,
-  DESCRIBED,
-  type Described,
-  entryVersion,
-} from "../answers.js";
+import { FolderFiles, PACKED, packed } from "@cascade-runtime/runtime/node";
+import { ANSWERS, DESCRIBED, type Described } from "../answers.js";
 import { LOOKUPS, recording } from "../lookups.js";
 import { openPodWith, type Parts, type Pod } from "../pod.js";
 import { shipped, type Tables } from "../tables.js";
@@ -22,16 +12,31 @@ import { type SampleOptions, type Samples, samplesOf } from "./samples.js";
 const REPORTS = "pod/What each report says of a variant";
 const PACKAGE = fileURLToPath(new URL("../../../", import.meta.url));
 
-export { entryVersion } from "../answers.js";
 export { openPodWith, type Pod } from "../pod.js";
 export type { Tables } from "../tables.js";
 export { partsOf } from "./resolved.js";
 export type { SampleOptions, Samples } from "./samples.js";
 
 /**
+ * The version of the browser entry of the package in `folder`, this installed one by default, as its `package.json`
+ * records it when it was packed: the version the entry keeps every answer under.
+ */
+export async function entryVersion(folder: string = PACKAGE): Promise<string> {
+  const manifest = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8"),
+  ) as { cascadeRuntime?: { entryVersion?: unknown } };
+  const version = manifest.cascadeRuntime?.entryVersion;
+  if (typeof version !== "string")
+    throw new Error(
+      `${folder} is not a packed package: its package.json records no cascadeRuntime.entryVersion`,
+    );
+  return version;
+}
+
+/**
  * The kits' published samples, made from what the installed package carries: its components, its starter copies of
- * the feeds' series, and its browser entry, whose version every answer is kept under. Each sample's files are keyed as
- * a page beside the samples' root reads them: `<kit>/pod/…` with `<kit>/pod/files.json`, `<kit>/pod.pack.json`,
+ * the feeds' series, and its browser entry's version, which every answer is kept under. Each sample's files are keyed
+ * as a page beside the samples' root reads them: `<kit>/pod/…` with `<kit>/pod/files.json`, `<kit>/pod.pack.json`,
  * `<kit>/answers.json`, `<kit>/pod.json` and, given `look`, `<kit>/lookups.json`. A kit the package does not carry is
  * refused.
  */
@@ -39,11 +44,8 @@ export async function publishedSamples(
   options: SampleOptions = {},
 ): Promise<Samples> {
   const components = join(PACKAGE, "components");
-  let record: Packed;
   try {
-    record = JSON.parse(
-      await readFile(join(components, PACKED), "utf8"),
-    ) as Packed;
+    await readFile(join(components, PACKED));
   } catch (error) {
     throw new Error(
       `${PACKAGE} is not a packed package: it carries no components/${PACKED}`,
@@ -54,10 +56,7 @@ export async function publishedSamples(
     {
       components: await packed(components),
       starter: new FolderFiles(join(components, "tables")),
-      runtime: await entryVersion(
-        await readFile(join(PACKAGE, "dist", "browser", "index.js")),
-        record.components,
-      ),
+      runtime: await entryVersion(),
     },
     options,
   );

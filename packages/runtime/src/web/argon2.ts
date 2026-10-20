@@ -11,22 +11,26 @@ interface Job {
   readonly here: () => void;
 }
 
-let worker: Worker | undefined;
-let broken = false;
-let next = 1;
-const jobs = new Map<number, Job>();
+/**
+ * Argon2id in the module worker `start` starts, once, so the page does not freeze while it runs; on the page's own
+ * thread where workers are unavailable or it failed to start.
+ */
+function deriving(start: () => Worker): DeriveKey {
+  let worker: Worker | undefined;
+  let broken = false;
+  let next = 1;
+  const jobs = new Map<number, Job>();
 
-/** The worker, started once; none where workers are unavailable or it failed to start, and the page derives instead. */
-function started(): Worker | undefined {
-  if (broken || typeof Worker === "undefined") return undefined;
-  if (worker !== undefined) return worker;
-  try {
-    const starting = new Worker(
-      new URL("./argon2-worker.js", import.meta.url),
-      {
-        type: "module",
-      },
-    );
+  const started = (): Worker | undefined => {
+    if (broken || typeof Worker === "undefined") return undefined;
+    if (worker !== undefined) return worker;
+    let starting: Worker;
+    try {
+      starting = start();
+    } catch {
+      broken = true;
+      return undefined;
+    }
     starting.onmessage = (event: MessageEvent<Argon2Response>) => {
       const job = jobs.get(event.data.id);
       if (job === undefined) return;
@@ -45,31 +49,40 @@ function started(): Worker | undefined {
     };
     worker = starting;
     return starting;
-  } catch {
-    broken = true;
-    return undefined;
-  }
+  };
+
+  return (secret, salt, params) => {
+    const running = started();
+    if (running === undefined) return argon2idHere(secret, salt, params);
+    const id = next++;
+    const request: Argon2Request = {
+      id,
+      secret: new Uint8Array(secret),
+      salt: new Uint8Array(salt),
+      params: { t: params.t, m: params.m, p: params.p },
+    };
+    return new Promise<Uint8Array>((resolve, reject) => {
+      jobs.set(id, {
+        resolve,
+        reject,
+        here: () => {
+          argon2idHere(secret, salt, params).then(resolve, reject);
+        },
+      });
+      running.postMessage(request, [request.secret.buffer as ArrayBuffer]);
+    });
+  };
 }
 
-/** Argon2id in a module worker, so the page does not freeze while it runs; on the page's own thread when none starts. */
-export const argon2id: DeriveKey = (secret, salt, params) => {
-  const running = started();
-  if (running === undefined) return argon2idHere(secret, salt, params);
-  const id = next++;
-  const request: Argon2Request = {
-    id,
-    secret: new Uint8Array(secret),
-    salt: new Uint8Array(salt),
-    params: { t: params.t, m: params.m, p: params.p },
-  };
-  return new Promise<Uint8Array>((resolve, reject) => {
-    jobs.set(id, {
-      resolve,
-      reject,
-      here: () => {
-        argon2idHere(secret, salt, params).then(resolve, reject);
-      },
-    });
-    running.postMessage(request, [request.secret.buffer as ArrayBuffer]);
-  });
-};
+/** Argon2id in the worker beside this module. */
+export const argon2id: DeriveKey = deriving(
+  () =>
+    new Worker(new URL("./argon2-worker.js", import.meta.url), {
+      type: "module",
+    }),
+);
+
+/** Argon2id in the worker at the URL. */
+export function argon2idAt(worker: URL): DeriveKey {
+  return deriving(() => new Worker(worker, { type: "module" }));
+}

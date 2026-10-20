@@ -28,7 +28,10 @@ test("the browser entry keys its answers under the version its installed package
     });
     await writeFile(
       join(stage, "package.json"),
-      JSON.stringify({ cascadeRuntime: { entryVersion: version } }),
+      JSON.stringify({
+        type: "module",
+        cascadeRuntime: { entryVersion: version },
+      }),
     );
     const fetched: string[] = [];
     globalThis.fetch = (url) => {
