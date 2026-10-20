@@ -1,3 +1,4 @@
+export { BUILD, latestBuild } from "./bridge-build.js";
 export * from "./components.js";
 export * from "./encryption.js";
 export * from "./folder-files.js";

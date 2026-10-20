@@ -16,28 +16,6 @@ import {
 } from "cascade-runtime";
 import { direct, pulled, REGISTRATION, rowOf } from "./hospitals.js";
 
-const { nodeHost, nodeHospitals } = (await import(
-  new URL("../../starter/node-host.mjs", import.meta.url).href
-)) as {
-  nodeHost: (options: { folder: string }) => object;
-  nodeHospitals: (
-    origin: string,
-    demo: object[],
-    options: object,
-  ) => { hospitals: object; world: object; back: (url: URL) => unknown };
-};
-type Connected = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-const { podApi } = (await import(
-  new URL("../../starter/pod-api.mjs", import.meta.url).href
-)) as {
-  podApi: (
-    host: object,
-  ) => Record<
-    "connect" | "connection",
-    (input: object) => Promise<Connected>
-  > & { close(): Promise<void> };
-};
-
 const PREFIXES = `PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
@@ -213,7 +191,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   assert.deepEqual(again.wrote, []);
 });
 
-test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route, and the starter's hospitals reach the listener", async () => {
+test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route", async () => {
   const data = await loadHospital("cascade-north");
   const listener = await serveDemo([{ ...data, autoApprove: "pt-1001" }]);
   try {
@@ -228,39 +206,6 @@ test("a pull through the listener and the remapping fetch returns the same recor
     assert.ok(names(through).length > 0);
     assert.deepEqual(names(through), names(north));
     assert.equal(through.fhirBase, north.fhirBase);
-
-    const at = join(folder, "pods");
-    await (await openPod(join(at, "pod"))).close();
-    const reached = nodeHospitals(
-      "http://127.0.0.1:3000",
-      [{ ...data, autoApprove: "pt-1001" }],
-      { listener },
-    );
-    const api = podApi({ ...nodeHost({ folder: at }), ...reached });
-    try {
-      const { connection: n, authorize } = await api.connect({
-        pod: "pod",
-        fhirBase: north.fhirBase,
-      });
-      assert.ok(authorize?.startsWith(listener.origin), `sent to ${authorize}`);
-      const approved = await globalThis.fetch(authorize, {
-        redirect: "manual",
-      });
-      const back = new URL(approved.headers.get("location")!);
-      assert.deepEqual(reached.back(back), { pod: "pod", connection: 1 });
-      const pulledThere = await api.connection({
-        pod: "pod",
-        connection: n,
-        wait: true,
-      });
-      assert.equal(pulledThere.step, "pulled");
-      assert.deepEqual(
-        pulledThere.sources.map(({ server }: Connected) => server),
-        [north.fhirBase],
-      );
-    } finally {
-      await api.close();
-    }
   } finally {
     await listener.close();
   }

@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { chromium } from "playwright";
 import { findRoot } from "@cascade-runtime/runtime/node";
-import { settled, tiles, watched } from "./shown.js";
+import { STARTER_TRY } from "../src/front-page.js";
 
 type Address = typeof import("../../cascade-runtime/pack/address.js");
 
@@ -48,27 +48,26 @@ async function answered(url: string): Promise<Response> {
   }
 }
 
-test("the deployed site serves the quick start of the commit, its release, the front page, the examples, Alex's site and try/", async () => {
+test("the deployed site of the commit serves its release, the front page, the quick start with the starter kit's command, the examples, Alex's site, and try/'s old page, which sends a visitor on to the starter kit's", async () => {
   const site = required("PAGES_URL").replace(/\/?$/, "/");
   const commit = required("COMMIT");
-  const { packageVersion } = (await import(
+  const { packageVersion, tarballAddress } = (await import(
     pathToFileURL(
       join(ROOT, "packages", "cascade-runtime", "dist", "pack", "address.js"),
     ).href
   )) as Address;
 
   const began = Date.now();
-  let start: string;
   for (;;) {
     const response = await fetch(
-      `${site}start.html?commit=${commit}&at=${Date.now()}`,
+      `${site}examples.html?commit=${commit}&at=${Date.now()}`,
       { cache: "no-store" },
     ).catch(() => undefined);
-    start = response?.ok === true ? await response.text() : "";
-    if (start.includes(`build-${commit}`)) break;
+    const examples = response?.ok === true ? await response.text() : "";
+    if (examples.includes(`/tree/${commit}/`)) break;
     if (Date.now() - began > DEPLOY)
       assert.fail(
-        `${site}start.html did not name build-${commit} within ${DEPLOY / 60_000} minutes; it names ${/build-[0-9a-f]+/.exec(start)?.[0] ?? "no build"}`,
+        `${site}examples.html did not name ${commit} within ${DEPLOY / 60_000} minutes`,
       );
     await sleep(BETWEEN);
   }
@@ -91,8 +90,7 @@ test("the deployed site serves the quick start of the commit, its release, the f
     assert.equal(response.status, 200, `${site}${path}`);
   }
 
-  const address = /https:\/\/[^\s"<>]+\.tgz/.exec(start)?.[0];
-  assert.ok(address, "start.html's command names no tarball");
+  const address = tarballAddress(commit);
   const tarball = await answered(address);
   assert.equal(tarball.status, 200, address);
   const manifest = fromTar(
@@ -105,20 +103,31 @@ test("the deployed site serves the quick start of the commit, its release, the f
   };
   assert.equal(version, packageVersion(commit), address);
 
+  const start = await (
+    await answered(`${site}start.html?at=${Date.now()}`)
+  ).text();
+  const command =
+    /https:\/\/github\.com\/jayostis\/cascade-starter-kit\/releases\/download\/build-[0-9a-f]{40}\/create-cascade-app-[^\s"<>]+\.tgz/.exec(
+      start,
+    )?.[0];
+  assert.ok(
+    command,
+    "start.html's command names no release of the starter kit",
+  );
+  assert.equal((await answered(command)).status, 200, command);
+
   const browser = await chromium.launch();
   try {
-    const page = watched(await browser.newPage());
-    const opened = await page.goto(`${site}try/index.html?at=${Date.now()}`);
-    assert.equal(opened?.status(), 200, `${site}try/index.html`);
-    await settled(page);
-    assert.equal(
-      await page.textContent("main h1"),
-      "Alex Rivera",
-      `${site}try/ does not open with Alex's pod`,
+    const page = await browser.newPage();
+    await page.goto(
+      `${site}try/index.html?at=${Date.now()}&pod=alex-rivera#records`,
     );
-    assert.ok(
-      ((await tiles(page)).get("Allergies") ?? 0) > 0,
-      `${site}try/ shows Alex with no allergy`,
+    await page.waitForURL(
+      (url) =>
+        url.href.startsWith(STARTER_TRY) &&
+        url.searchParams.get("pod") === "alex-rivera" &&
+        url.hash === "#records",
+      { timeout: 30_000, waitUntil: "commit" },
     );
   } finally {
     await browser.close();

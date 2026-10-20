@@ -75,7 +75,7 @@ test("each pull holds the medication and the results as they stood on its date",
   }
 });
 
-test("the kit's pod, replayed from its story as the starter loads it, gives the story's finding", async () => {
+test("the kit's pod, replayed from its kit into a folder, as an app loads it, gives the story's finding", async () => {
   const at = await mkdtemp(join(tmpdir(), "cascade-runtime-story-pulls-"));
   try {
     await replayKit(KIT, join(at, KIT));

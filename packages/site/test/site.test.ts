@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, test } from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   type FolderPack,
   iri,
@@ -27,12 +28,13 @@ import {
   FRONT_PAGE,
   pagesTree,
   START_PAGE,
+  STARTER_TRY,
   TRY_PAGE,
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
 import { Site, type SiteOptions } from "../src/site.js";
 import { code, shown } from "../src/terms.js";
-import { startFunctions, startOf } from "../src/node/start.js";
+import { agentPrompt, startOf } from "../src/node/start.js";
 import { type Page, readPage } from "./page.js";
 
 const FEATURE = "runtime/matcher.feature";
@@ -333,21 +335,14 @@ async function pagesOf() {
     at: "2026-03-03T08:00:00Z",
   };
   const commit = "0123456789abcdef0123456789abcdef01234567";
-  const tried = new Map([["index.html", new Uint8Array()]]);
-  const start = await startOf(
-    ROOT,
-    commit,
-    vocabulary.layout,
-    examples[0]?.folder ?? "",
-  );
+  const start = startOf(commit, vocabulary.layout, examples[0]?.folder ?? "");
   return {
     examples,
     vocabularyAt,
     built,
     commit,
     start,
-    tried,
-    tree: pagesTree(examples, built, start, tried),
+    tree: pagesTree(examples, built, start),
   };
 }
 let pagesTreeOf: ReturnType<typeof pagesOf> | undefined;
@@ -384,21 +379,18 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
   }
 });
 
-test("the Pages front page leads to the quick start, try/, every example's pod, the kinds a pod holds and its two formats; the quick start gives the command, the prompt and try/; neither links what the tree does not hold", async () => {
-  const { examples, built, commit, start, tried, tree } = await shared();
-  const { tarballAddress, startLine, agentPrompt } = await startFunctions(ROOT);
-  const address = tarballAddress(commit);
+test("the Pages front page leads to the quick start, the starter kit's try/, every example's pod, the kinds a pod holds and its two formats; the quick start gives the starter kit's command, the prompt and its try/; neither links what the tree does not hold", async () => {
+  const { examples, built, commit, start, tree } = await shared();
   const page = (path: string) =>
     readPage(new TextDecoder().decode(tree.get(path)));
   const front = page(FRONT_PAGE);
   const quick = page(START_PAGE);
   assert.deepEqual(quick.code, [
-    startLine(address, "my-app"),
+    `npx --yes --package=https://github.com/jayostis/cascade-starter-kit/releases/download/build-${commit}/create-cascade-app-0.0.0-commit-${commit}.tgz create-cascade-app my-app`,
     agentPrompt("my-app"),
   ]);
-  assert.equal(quick.said.split(address).length - 1, 1);
   assert.ok(quick.hrefs.includes(FRONT_PAGE));
-  assert.ok(quick.hrefs.includes(TRY_PAGE));
+  assert.ok(quick.hrefs.includes(STARTER_TRY));
   assert.deepEqual(front.code, []);
   const titles = vocabulary.layout.views.map(({ title }) => title ?? "");
   assert.ok(titles.length > 0);
@@ -408,13 +400,13 @@ test("the Pages front page leads to the quick start, try/, every example's pod, 
     [START_PAGE, quick],
   ] as const)
     assert.deepEqual(
-      hrefs.filter((href) => !tree.has(href)),
+      hrefs.filter((href) => !tree.has(href) && href !== STARTER_TRY),
       [],
       `${path} links a file the tree does not hold`,
     );
   for (const href of [
     START_PAGE,
-    TRY_PAGE,
+    STARTER_TRY,
     ...examples.flatMap(({ folder }) => [
       `${folder}/index.html`,
       `${folder}/pod/manifest.ttl`,
@@ -424,7 +416,46 @@ test("the Pages front page leads to the quick start, try/, every example's pod, 
     assert.ok(front.hrefs.includes(href), href);
   assert.ok(front.said.includes("FHIR R4") && front.said.includes("C-CDA"));
   assert.throws(
-    () => pagesTree(examples, built, { ...start, example: "nobody" }, tried),
+    () => pagesTree(examples, built, { ...start, example: "nobody" }),
     /nobody/,
   );
+});
+
+test("try/'s old page unregisters the worker of its own folder and sends a visitor on to the starter kit's try/, with the pod or table they were sent to", async () => {
+  const { tree } = await shared();
+  const text = new TextDecoder().decode(tree.get(TRY_PAGE));
+  assert.ok(readPage(text).hrefs.includes(STARTER_TRY));
+  const script = /<script>([\s\S]*?)<\/script>/.exec(text)?.[1];
+  assert.ok(script, "the page runs no script");
+  const here = "https://jayostis.github.io/cascade-runtime-js/try/";
+  const unregistered: string[] = [];
+  const registration = (scope: string) => ({
+    scope,
+    unregister: () => {
+      unregistered.push(scope);
+      return new Promise<never>(() => {});
+    },
+  });
+  const sent = await new Promise<string>((done) =>
+    runInNewContext(script, {
+      URL,
+      setTimeout,
+      location: {
+        href: `${here}index.html?pod=alex-rivera&entry=a1#records`,
+        search: "?pod=alex-rivera&entry=a1",
+        hash: "#records",
+        replace: done,
+      },
+      navigator: {
+        serviceWorker: {
+          getRegistrations: async () => [
+            registration(here),
+            registration("https://jayostis.github.io/cascade-starter-kit/try/"),
+          ],
+        },
+      },
+    }),
+  );
+  assert.equal(sent, `${STARTER_TRY}?pod=alex-rivera&entry=a1#records`);
+  assert.deepEqual(unregistered, [here]);
 });

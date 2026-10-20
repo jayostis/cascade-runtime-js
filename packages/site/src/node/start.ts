@@ -1,40 +1,45 @@
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { Layout } from "@cascade-runtime/runtime";
 import { type Start, viewTitles } from "../front-page.js";
 
 const APP = "my-app";
+const COMMAND = "create-cascade-app";
+/** Where `create-cascade-app` is released, a `build-<commit>` pre-release for each commit of its main. */
+export const STARTER_REPOSITORY =
+  "https://github.com/jayostis/cascade-starter-kit";
 
-type Address = typeof import("../../../cascade-runtime/pack/address.js");
-type Create = typeof import("../../../cascade-runtime/src/create.js");
-
-/** cascade-runtime's address and start functions, from its compiled files in the workspace, which its exports do not offer. */
-export async function startFunctions(
-  root: string,
-): Promise<
-  Pick<Address, "tarballAddress"> & Pick<Create, "startLine" | "agentPrompt">
-> {
-  const dist = join(root, "packages", "cascade-runtime", "dist");
-  const { tarballAddress } = (await import(
-    pathToFileURL(join(dist, "pack", "address.js")).href
-  )) as Address;
-  const { startLine, agentPrompt } = (await import(
-    pathToFileURL(join(dist, "src", "create.js")).href
-  )) as Create;
-  return { tarballAddress, startLine, agentPrompt };
+/** The word as a shell reads it: quoted when it holds a space or a character a shell would act on. */
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./\\-]+$/.test(word)
+    ? word
+    : `"${word.replaceAll('"', '\\"')}"`;
 }
 
-/** What the front page and the quick start give a newcomer, for the release of the commit, with the example's pod. */
-export async function startOf(
-  root: string,
-  commit: string,
+/** The address of `create-cascade-app` in the starter kit's release of the commit. */
+export function starterAddress(commit: string): string {
+  return `${STARTER_REPOSITORY}/releases/download/build-${commit}/${COMMAND}-0.0.0-commit-${commit}.tgz`;
+}
+
+/** The one line that makes an app in the folder with `create-cascade-app` at the address. */
+export function startLine(address: string, folder: string): string {
+  return `npx --yes --package=${shellWord(address)} ${COMMAND} ${shellWord(folder)}`;
+}
+
+/** What a person gives a coding agent, started in the folder holding the made app, to build their app in it. */
+export function agentPrompt(folder: string): string {
+  return [
+    `Build me an app on a Cascade pod. Work inside ${folder}: read its AGENTS.md first and follow it, and use only what its guide teaches.`,
+    "My idea: <describe your idea in a sentence>",
+  ].join("\n");
+}
+
+/** What the front page and the quick start give a newcomer, for the starter kit's release of the commit, with the example's pod. */
+export function startOf(
+  starterCommit: string,
   layout: Layout,
   example: string,
-): Promise<Start> {
-  const { tarballAddress, startLine, agentPrompt } = await startFunctions(root);
-  const address = tarballAddress(commit);
+): Start {
   return {
-    command: startLine(address, APP),
+    command: startLine(starterAddress(starterCommit), APP),
     app: APP,
     prompt: agentPrompt(APP),
     kinds: viewTitles(layout),

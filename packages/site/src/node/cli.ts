@@ -7,7 +7,6 @@ import { parseArgs, promisify } from "node:util";
 import {
   clock,
   OxigraphStore,
-  parseConfig,
   podDataset,
   questions,
   repositoryName,
@@ -17,11 +16,12 @@ import {
 import {
   BRIDGE_REPOSITORY,
   type BridgePackageFound,
+  BUILD as RELEASE,
   checkout,
-  CONFIG_FILE,
   FolderFiles,
   findBridgePackage,
   findRoot,
+  latestBuild,
   type LocalVocabulary,
   localVocabulary,
   PACKED,
@@ -39,11 +39,9 @@ import {
 } from "../front-page.js";
 import { Site } from "../site.js";
 import { COPY } from "../terms.js";
-import { TRY_PACKAGE } from "../try-page.js";
-import { tryFiles, tryLooks } from "./try.js";
 import { servePages } from "./serve.js";
 import { assertStagedCurrent } from "./staged.js";
-import { startOf } from "./start.js";
+import { STARTER_REPOSITORY, startOf } from "./start.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const RUNTIME_CLI = join(
@@ -59,8 +57,7 @@ const RUNTIME = "https://github.com/jayostis/cascade-runtime-js";
 const EXAMPLE = "alex-rivera";
 const BRIDGE = "cascade-bridge-rs";
 const STAGE = join(ROOT, "build", "package");
-/** The package's starter copies of the feeds' series, which try/'s published answers are computed with. */
-const STARTER_TABLES = "components/tables";
+const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
 const log = (line: string): void => console.error(line);
 
@@ -176,57 +173,24 @@ function bridgeIngredient(found: BridgePackageFound): Ingredient {
       };
 }
 
-/** What the page under try/ serves of the package `npm run build:package` staged: its browser build, and every component it carries. */
-async function stagedPackage(): Promise<{
-  readonly files: Map<string, Uint8Array>;
-  readonly vocabulary: string;
-}> {
-  const components = join(STAGE, "components");
-  if (!existsSync(join(components, PACKED)))
+/**
+ * The commit of the vocabulary the package `npm run build:package` staged carries, whose published samples are the
+ * examples' pods: only a packed package publishes them.
+ */
+async function stagedVocabulary(repository: string): Promise<string> {
+  const packedFile = join(STAGE, "components", PACKED);
+  if (!existsSync(packedFile))
     throw new Error(
       `${STAGE} holds no package; run npm run build:package first`,
     );
   assertStagedCurrent(STAGE, ROOT);
-  const config = parseConfig(
-    await readFile(join(components, CONFIG_FILE), "utf8"),
-  );
-  const packed = JSON.parse(
-    await readFile(join(components, PACKED), "utf8"),
-  ) as Packed;
-  const followed = config.vocabulary;
+  const packed = JSON.parse(await readFile(packedFile, "utf8")) as Packed;
   const commit = packed.components.find(
-    ({ repository }) => repository === followed.repository,
+    (component) => component.repository === repository,
   )?.commit;
   if (commit === undefined)
-    throw new Error(
-      `${join(components, PACKED)} records no ${followed.repository}`,
-    );
-  const staged = new FolderFiles(STAGE);
-  const paths = [
-    ...(await staged.list("dist/browser")),
-    `components/${CONFIG_FILE}`,
-    `components/${PACKED}`,
-  ];
-  for (const component of packed.components) {
-    const tree = `components/${repositoryName(component)}/${component.commit}`;
-    paths.push(`${tree}.json`, ...(await staged.list(tree)));
-  }
-  const served = await staged.read(`${STARTER_TABLES}/files.json`);
-  if (served === undefined) throw new Error(`${STAGE} holds no starter tables`);
-  paths.push(
-    `${STARTER_TABLES}.json`,
-    `${STARTER_TABLES}/files.json`,
-    ...(JSON.parse(new TextDecoder().decode(served)) as string[]).map(
-      (path) => `${STARTER_TABLES}/${path}`,
-    ),
-  );
-  const files = new Map<string, Uint8Array>();
-  for (const path of paths) {
-    const bytes = await staged.read(path);
-    if (bytes === undefined) throw new Error(`${STAGE} holds no ${path}`);
-    files.set(TRY_PACKAGE + path, bytes);
-  }
-  return { files, vocabulary: commit };
+    throw new Error(`${packedFile} records no ${repository}`);
+  return commit;
 }
 
 /**
@@ -234,15 +198,17 @@ async function stagedPackage(): Promise<{
  * over its pod, and writes them under build/pages beneath the newcomer's page and the examples' page.
  */
 async function buildPages(): Promise<number> {
-  const staged = await stagedPackage();
   const vocabulary = await localVocabulary(ROOT, log);
+  const staged = await stagedVocabulary(
+    vocabulary.config.vocabulary.repository,
+  );
   log(
-    `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods and try/ read the one the package carries, at ${staged.vocabulary}`,
+    `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods read the one the package carries, at ${staged}`,
   );
   const { publishedSamples } = (await import(
     pathToFileURL(join(STAGE, "dist", "src", "node", "published.js")).href
   )) as typeof Published;
-  const samples = await publishedSamples({ look: tryLooks });
+  const samples = await publishedSamples();
   const examples: Example[] = [];
   for (const [name, title] of samples.kits) {
     const sample = new Map(
@@ -275,6 +241,10 @@ async function buildPages(): Promise<number> {
     ),
   );
   const bridge = await findBridgePackage({ siblingsIn, cache, log });
+  const starter = await latestBuild(STARTER_REPOSITORY, join(cache, STARTER));
+  log(
+    `${STARTER}: the quick start names the release ${RELEASE}${starter}, the newest build of its default branch`,
+  );
   const runtime = await checkout(ROOT);
   if (runtime === undefined)
     throw new Error(
@@ -297,14 +267,7 @@ async function buildPages(): Promise<number> {
       ],
       at: clock.now(),
     },
-    await startOf(ROOT, runtime.commit, vocabulary.layout, EXAMPLE),
-    new Map([
-      ...(await tryFiles(
-        examples.map(({ folder }) => folder),
-        builtFrom.version,
-      )),
-      ...staged.files,
-    ]),
+    startOf(starter, vocabulary.layout, EXAMPLE),
   );
   const out = PAGES;
   await rm(out, { recursive: true, force: true });

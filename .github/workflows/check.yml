@@ -65,8 +65,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  # The docs site as Pages would serve it: every kit's pod and site, the front page and the quick start.
   browser:
-    name: browser
+    name: docs site
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     env:
@@ -103,7 +104,7 @@ jobs:
       - id: rows-before
         shell: bash
         run: echo "hash=${{ hashFiles('cascade-runtime-js/.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
-      - name: Pack the package, whose browser build try/ serves
+      - name: Pack the package, whose published samples the example pods are
         if: ${{ !cancelled() }}
         run: npm run build:package
         env:
@@ -124,34 +125,6 @@ jobs:
         with:
           path: cascade-runtime-js/.rows-cache
           key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
-      # Every test launches the headless shell and nothing launches the full Chrome, so only the shell is installed and kept.
-      - id: playwright
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=$(node -p "require('playwright/package.json').version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - id: browsers
-        uses: actions/cache/restore@v6
-        if: ${{ !cancelled() }}
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
-      - id: install
-        if: ${{ !cancelled() }}
-        run: npx playwright install --with-deps --only-shell chromium
-      # Saved here, not after the job: a job that fails at the tests saves nothing.
-      - uses: actions/cache/save@v6
-        if: ${{ steps.install.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true' }}
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
-      - name: try/ in Chromium, served from build/pages
-        if: ${{ !cancelled() }}
-        run: npm run test:browser
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -197,71 +170,16 @@ jobs:
         with:
           name: package
           path: ${{ runner.temp }}/package
-      # The body is read now, not from the event: a re-run after the body gained its Depends-On line sees the line.
+      # Only the action is checked out: the starter is cloned beside it.
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          sparse-checkout: .github/actions
+          persist-credentials: false
       - id: starter
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PULL: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          starter="${GITHUB_WORKSPACE}/cascade-starter-kit"
-          pair=""
-          if [ -n "$PULL" ]; then
-            body=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PULL}" --jq '.body // ""')
-            pair=$(printf '%s\n' "$body" | tr -d '\r' \
-              | grep -iEo '^[[:space:]]*Depends-On:[[:space:]]*(https://github\.com/)?jayostis/cascade-starter-kit(#|/pull/)[0-9]+' \
-              | head -n 1 | grep -Eo '[0-9]+$' || true)
-          fi
-          git clone --quiet https://github.com/jayostis/cascade-starter-kit.git "$starter"
-          if [ -n "$pair" ]; then
-            state=$(gh api "repos/jayostis/cascade-starter-kit/pulls/${pair}" --jq '.state + " " + (.merged | tostring)')
-            case "$state" in
-              "open false")
-                git -C "$starter" fetch --quiet origin "pull/${pair}/head"
-                git -C "$starter" checkout --quiet FETCH_HEAD
-                what="the head of jayostis/cascade-starter-kit#${pair}, named on Depends-On and open"
-                ;;
-              "closed true")
-                what="the main of jayostis/cascade-starter-kit, where jayostis/cascade-starter-kit#${pair}, named on Depends-On, has merged"
-                ;;
-              *)
-                echo "::error title=starter-kit::jayostis/cascade-starter-kit#${pair}, named on Depends-On, is closed without merging; name another pull request or remove the line"
-                exit 1
-                ;;
-            esac
-          else
-            what="the main of jayostis/cascade-starter-kit"
-          fi
-          sha=$(git -C "$starter" rev-parse HEAD)
-          echo "::notice title=starter-kit::this tarball is checked against ${what} (${sha})"
-          echo "The starter kit at ${what}: ${sha}" >> "$GITHUB_STEP_SUMMARY"
-          tarball=$(ls "${RUNNER_TEMP}"/package/cascade-runtime-*.tgz)
-          echo "path=${starter}" >> "$GITHUB_OUTPUT"
-          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
-      # The pin is swapped in the checkout and never pushed. The lock forgets where the old runtime was, with the
-      # starter's own scripts/pin-lib.mjs, or npm installs the new one under app/ and the root resolves none.
-      - name: Pin the starter to this tarball
-        working-directory: ${{ steps.starter.outputs.path }}
-        env:
-          TARBALL: ${{ steps.starter.outputs.tarball }}
-        run: |
-          node --input-type=module -e '
-            import { readFileSync, writeFileSync } from "node:fs";
-            import { lockWithoutRuntime } from "./scripts/pin-lib.mjs";
-            const manifest = JSON.parse(readFileSync("app/package.json", "utf8"));
-            manifest.dependencies["cascade-runtime"] = `file:${process.env.TARBALL}`;
-            writeFileSync("app/package.json", JSON.stringify(manifest, null, 2) + "\n");
-            const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-            writeFileSync("package-lock.json", JSON.stringify(lockWithoutRuntime(lock), null, 2) + "\n");
-          '
-          npm install --no-audit --no-fund
-          packed=$(tar -xzOf "$TARBALL" package/package.json | node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')
-          installed=$(node -p 'require("./node_modules/cascade-runtime/package.json").version')
-          if [ "$packed" != "$installed" ]; then
-            echo "::error title=starter-kit::the starter resolved cascade-runtime ${installed}, not this tarball's ${packed}"
-            exit 1
-          fi
+        uses: ./cascade-runtime-js/.github/actions/starter
+        with:
+          package: ${{ runner.temp }}/package
       - name: The starter's types and tests
         working-directory: ${{ steps.starter.outputs.path }}
         run: |
@@ -311,6 +229,52 @@ jobs:
           cd "$RUNNER_TEMP"
           node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
+  # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
+  # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
+  # does not wait for it, so a slow system gates no merge, and a failure still fails the run. The starter is taken exactly
+  # as `starter-kit` takes it; only the build of the command and the app's check run, not the starter's suites.
+  starter-systems:
+    name: starter (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest"]' || '["windows-latest", "macos-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - id: starter
+        uses: ./cascade-runtime-js/.github/actions/starter
+        with:
+          package: ${{ runner.temp }}/package
+      - name: create-cascade-app, on this tarball
+        env:
+          STARTER: ${{ steps.starter.outputs.path }}
+          TARBALL: ${{ steps.starter.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          (cd "$STARTER" && npm run build:create)
+          cd "$RUNNER_TEMP"
+          node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+
   # The name branch protection requires. A part that was skipped is no pass: nothing but all succeeding reports success.
   compatibility:
     name: compatibility
@@ -324,7 +288,7 @@ jobs:
           BROWSER: ${{ needs.browser.result }}
           STARTER: ${{ needs.starter-kit.result }}
         run: |
-          echo "tests and conformance: ${TESTS}; browser: ${BROWSER}; starter-kit: ${STARTER}"
+          echo "tests and conformance: ${TESTS}; docs site: ${BROWSER}; starter-kit: ${STARTER}"
           [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] && [ "${STARTER}" = success ]
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
@@ -354,7 +318,7 @@ jobs:
       - id: rows-before
         shell: bash
         run: echo "hash=${{ hashFiles('.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
-      - name: Pack the package, whose browser build try/ serves
+      - name: Pack the package, whose published samples the example pods are
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -377,7 +341,7 @@ jobs:
 
   pages:
     name: pages
-    needs: [build-pages, release, starter-release]
+    needs: [build-pages, release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -446,15 +410,13 @@ jobs:
           PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
           COMMIT: ${{ github.sha }}
 
-  # connect and pull, and try/ in Chromium, against the SMART launcher, a server this project did not write, over the
-  # network: nightly and by hand only, so a network failure gates no pull request.
+  # connect and pull against the SMART launcher, a server this project did not write, over the network: nightly and by
+  # hand only, so a network failure gates no pull request.
   launcher:
     name: launcher
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    env:
-      CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -464,35 +426,6 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
-      # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
-      - id: rows
-        uses: actions/cache/restore@v6
-        with:
-          path: .rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: table-rows-${{ runner.os }}-
-      - id: rows-before
-        shell: bash
-        run: echo "hash=${{ hashFiles('.rows-cache/**') }}" >> "$GITHUB_OUTPUT"
-      - name: Pack the package, whose browser build try/ serves
-        run: npm run build:package
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Build every kit's pod and site, and the front page above them
-        run: npm run build:pages
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Drop half-written row files before they are saved
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: rm -f "$CASCADE_ROWS_CACHE"/*.tmp
-      - uses: actions/cache/save@v6
-        if: ${{ !cancelled() && hashFiles('.rows-cache/**') != '' && hashFiles('.rows-cache/**') != steps.rows-before.outputs.hash }}
-        with:
-          path: .rows-cache
-          key: table-rows-${{ runner.os }}-${{ github.run_id }}-${{ github.job }}
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:launcher
 
   # The package, packed once, so every system below tests the same bytes: with the counterparts a pull request names on
@@ -600,23 +533,3 @@ jobs:
             --notes-file package/release-notes.md \
             --prerelease \
             --latest=false
-
-  # The command exactly as a person is told to run it, from the release just made.
-  starter-release:
-    name: starter-release
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - name: The starter's check, against the release
-        working-directory: ${{ runner.temp }}
-        run: node "$GITHUB_WORKSPACE/packages/cascade-runtime/check/starter.mjs" --release "$GITHUB_SHA"
