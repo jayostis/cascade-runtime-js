@@ -228,6 +228,17 @@ jobs:
           (cd "$STARTER" && npm run build:create)
           cd "$RUNNER_TEMP"
           node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+      # The chat and MCP add-ons are the app's only with `--with`, so the base above never runs them. Linux only: on
+      # Windows a second check would double its six-minute job, as the starter's own create.yml keeps it.
+      - name: create-cascade-app --with chat,mcp, on this tarball
+        if: ${{ !cancelled() }}
+        env:
+          STARTER: ${{ steps.starter.outputs.path }}
+          TARBALL: ${{ steps.starter.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL" --with chat,mcp
 
   # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
   # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
