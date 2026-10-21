@@ -78,6 +78,8 @@ const KEPT_BY_PACKAGE = [
   "type",
   "exports",
   "files",
+  "peerDependencies",
+  "peerDependenciesMeta",
 ];
 
 type Manifest = Record<string, unknown> & {

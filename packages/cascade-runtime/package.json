@@ -22,6 +22,18 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
+    "./check": {
+      "browser": {
+        "types": "./dist/src/check.d.ts",
+        "default": "./dist/browser/check.js"
+      },
+      "types": "./dist/src/check.d.ts",
+      "default": "./dist/src/check.js"
+    },
+    "./vite": {
+      "types": "./dist/src/node/vite.d.ts",
+      "default": "./dist/src/node/vite.js"
+    },
     "./fixtures": {
       "types": "./dist/src/fixtures.d.ts",
       "default": "./dist/src/fixtures.js"

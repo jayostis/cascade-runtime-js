@@ -48,7 +48,7 @@ async function codeOf(entry: string): Promise<string> {
 }
 
 /**
- * Writes the browser build into `out`: the entry, the tables' worker, Argon2's and the Bridge's, the Bridge's glue
+ * Writes the browser build into `out`: the entry, the input checker, the tables' worker, Argon2's and the Bridge's, the Bridge's glue
  * bundled into its worker, with Oxigraph's module and the Bridge's beside them. Gives the entry's version, fixed in
  * it here: the commit's package version, or for an uncommitted build that and its code's name, with the components.
  */
@@ -68,6 +68,7 @@ export async function bundleBrowser(
     ...BUNDLED,
     entryPoints: {
       index: entry,
+      check: join(WORKSPACE, "dist", "src", "check.js"),
       "tables-worker": join(ENTRY, "tables-worker.js"),
       "argon2-worker": join(WEB, "argon2-worker.js"),
     },

@@ -9,6 +9,7 @@
   "exports": {
     ".": "./dist/src/index.js",
     "./node": "./dist/src/node/index.js",
+    "./refusal": "./dist/src/refusal.js",
     "./web": "./dist/src/web/index.js"
   },
   "dependencies": {
