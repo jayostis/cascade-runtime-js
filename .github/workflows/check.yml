@@ -227,7 +227,7 @@ jobs:
           set -euo pipefail
           (cd "$STARTER" && npm run build:create)
           cd "$RUNNER_TEMP"
-          node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
   # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
   # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
@@ -277,7 +277,7 @@ jobs:
           set -euo pipefail
           (cd "$STARTER" && npm run build:create)
           cd "$RUNNER_TEMP"
-          node "$STARTER/check/starter.mjs" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
+          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
   # The name branch protection requires. A part that was skipped is no pass: nothing but all succeeding reports success.
   compatibility:
