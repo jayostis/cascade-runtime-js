@@ -7,7 +7,13 @@ into an Apple Health export or a C-CDA file a patient portal handed out,
 imports it, enters and judges records, runs the
 matcher and asks the vocabulary's questions. `openPod` is the whole interface;
 `cascade-runtime/fixtures` adds `replayKit`, which replays a conformance kit's
-story into a folder.
+story into a folder. `cascade-runtime/check` is `checkInput`, the checker of a
+tool's input against the JSON Schema subset the tools use, with nothing of the
+runtime behind it, in Node and in the page (in the page it carries its own
+`Refusal`, so tell a refusal by its `name`, never `instanceof`). `cascade-runtime/vite` is
+`cascadeRuntime()`, a Vite plugin (`vite` is an optional peer) that keeps the
+runtime out of an app's browser bundle and serves its browser build beside it,
+under the base, with the import map that loads it.
 
 The package needs only Node 22 or later. It carries everything a pod reads, at
 the commits its build resolved: the code under its interface, the Bridge's

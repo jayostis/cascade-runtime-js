@@ -3,14 +3,12 @@ import { Graph } from "./graph.js";
 import type { IdsAndTime } from "./ids.js";
 import type { Layout } from "./layout.js";
 import type { StepWrites } from "./pod.js";
+import { Refusal } from "./refusal.js";
 import type { StoreFactory, Union } from "./store.js";
 
-export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+export { Refusal };
 
-/** A step the rules refuse: it writes nothing, and the replay goes on. */
-export class Refusal extends Error {
-  override readonly name = "Refusal";
-}
+export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 
 /** What an import is doing, as it begins each part, with what is done so far. */
 export interface ImportProgress {
