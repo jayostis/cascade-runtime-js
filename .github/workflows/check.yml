@@ -265,6 +265,10 @@ jobs:
         uses: ./cascade-runtime-js/.github/actions/starter
         with:
           package: ${{ runner.temp }}/package
+      # The check reads the made app's screens in Chromium.
+      - name: Chromium's headless shell
+        working-directory: ${{ steps.starter.outputs.path }}
+        run: npx playwright install --only-shell chromium
       - name: create-cascade-app, on this tarball
         env:
           STARTER: ${{ steps.starter.outputs.path }}
