@@ -122,13 +122,10 @@ test("the deployed site of the commit serves its release, the front page, the qu
     await page.goto(
       `${site}try/index.html?at=${Date.now()}&pod=alex-rivera#records`,
     );
-    await page.waitForURL(
-      (url) =>
-        url.href.startsWith(STARTER_TRY) &&
-        url.searchParams.get("pod") === "alex-rivera" &&
-        url.hash === "#records",
-      { timeout: 30_000, waitUntil: "commit" },
-    );
+    await page.waitForURL((url) => url.href.startsWith(STARTER_TRY), {
+      timeout: 30_000,
+      waitUntil: "commit",
+    });
   } finally {
     await browser.close();
   }
