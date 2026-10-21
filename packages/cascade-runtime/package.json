@@ -30,6 +30,7 @@
       "types": "./dist/src/check.d.ts",
       "default": "./dist/src/check.js"
     },
+    "./package.json": "./package.json",
     "./vite": {
       "types": "./dist/src/node/vite.d.ts",
       "default": "./dist/src/node/vite.js"

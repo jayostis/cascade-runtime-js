@@ -2,14 +2,14 @@ import { Refusal } from "@cascade-runtime/runtime/refusal";
 
 /** The keywords of JSON Schema that `checkInput` knows, and no others. */
 export interface InputSchema {
-  type: "object" | "string" | "integer";
-  description?: string;
-  properties?: Record<string, InputSchema>;
-  required?: string[];
-  additionalProperties?: false;
-  enum?: (string | number)[];
-  minimum?: number;
-  maximum?: number;
+  readonly type: "object" | "string" | "integer";
+  readonly description?: string;
+  readonly properties?: Readonly<Record<string, InputSchema>>;
+  readonly required?: readonly string[];
+  readonly additionalProperties?: false;
+  readonly enum?: readonly (string | number)[];
+  readonly minimum?: number;
+  readonly maximum?: number;
 }
 
 export type Schema = InputSchema;
@@ -18,6 +18,10 @@ export type Input = Record<string, unknown>;
 
 /**
  * Checks an input against a schema of the keywords `InputSchema` names.
+ *
+ * Served from `cascade-runtime/check` with nothing of the runtime behind it. In Node it is the main entry's function
+ * and throws its `Refusal`; the browser build of the subpath carries its own copy of both, so in a page tell a refusal
+ * by its `name` (`"Refusal"`), never by `instanceof`.
  *
  * @throws Refusal naming the first thing wrong.
  */
