@@ -31,6 +31,10 @@
       "default": "./dist/src/check.js"
     },
     "./package.json": "./package.json",
+    "./terms": {
+      "types": "./dist/src/terms.d.ts",
+      "default": "./dist/src/terms.js"
+    },
     "./vite": {
       "types": "./dist/src/node/vite.d.ts",
       "default": "./dist/src/node/vite.js"

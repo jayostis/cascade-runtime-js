@@ -13,7 +13,9 @@ runtime behind it, in Node and in the page (in the page it carries its own
 `Refusal`, so tell a refusal by its `name`, never `instanceof`). `cascade-runtime/vite` is
 `cascadeRuntime()`, a Vite plugin (`vite` is an optional peer) that keeps the
 runtime out of an app's browser bundle and serves its browser build beside it,
-under the base, with the import map that loads it.
+under the base, with the import map that loads it. `terms`, from each entry and from
+`cascade-runtime/terms` with nothing of the runtime behind it, is every vocabulary IRI an app
+names, keyed by the term's local name in the vocabulary's one namespace.
 
 The package needs only Node 22 or later. It carries everything a pod reads, at
 the commits its build resolved: the code under its interface, the Bridge's
