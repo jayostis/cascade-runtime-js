@@ -250,7 +250,19 @@ async function saveKitBridge(args: string[]): Promise<number> {
   return 0;
 }
 
+/** The Bridge's build a run reads, picked and downloaded, so the run's later steps read it from the cache. */
+async function bridge(): Promise<number> {
+  const root = findRoot(dirname(fileURLToPath(import.meta.url)));
+  await findBridgePackage({
+    siblingsIn: await siblingsOf(root),
+    cache: join(root, "build", "cache"),
+    log,
+  });
+  return 0;
+}
+
 const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
+  bridge,
   conformance,
   "build-example-pod": buildExamplePod,
   "kit-bridge": saveKitBridge,

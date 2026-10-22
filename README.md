@@ -232,13 +232,22 @@ it was made from. An adapter is given every file of its folder, and the
 vocabulary repository its `bridge:cascadeVocabularyRepository` names, resolved
 the same way.
 
-The Bridge is the build cascade-bridge-rs publishes as the release
-`build-<commit>` on every push to its default branch: a sibling
-`cascade-bridge-rs` checkout's `package/dist`, then that of a checkout handed in
-with `--folder`, is used only when it was built from the checkout as it is;
-otherwise the newest commit of the default branch with a release, downloaded
-into `build/cache/` and checked against the digest the release gives. The run
-says which it used, and why a checkout's build was passed over.
+The Bridge is a build cascade-bridge-rs publishes as the release
+`build-<commit>`, for every commit of its default branch and every head of a
+pull request from the repository itself. A sibling `cascade-bridge-rs`
+checkout's `package/dist`, then that of a checkout handed in with `--folder`,
+is used only when it was built from the checkout as it is; otherwise the release
+of the commit that checkout is at, and a checkout with uncommitted files and no
+build of them stops the run. With no checkout, the commit is picked as a
+counterpart is: in CI, the head of an open cascade-bridge-rs pull request reached
+by `Depends-On:` lines, else the head of its branch named like the one the run
+is on, else the newest commit of its default branch with a release; locally, the
+last. Each pull request is read as the compatibility tooling read it, from the file
+it names in `CASCADE_PULL_REQUESTS`, else from GitHub's API, except that with no
+token the pull request under test is the one the run's event carries, so a run
+naming nothing asks the API nothing. A picked commit with no release yet stops the run, saying how it was
+picked. The release is downloaded into `build/cache/` and checked against the
+digest it gives. The run says which it used, and why a checkout's build was passed over.
 
 Each is named, as `runtime/rules.md` N8 says, by its tree at the commit it is
 at, so an EARL report names the same entries on every machine.
