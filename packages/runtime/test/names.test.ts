@@ -2,12 +2,65 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseGraph } from "../src/graph.js";
 import {
+  canonical,
   ccdaRecordName,
+  containedRecordName,
   contentName,
   earlierInUtc,
   fingerprint,
+  normalisedBaseUrl,
+  recordFromCcdaWithoutIdName,
 } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { iri, literal, type Triple } from "../src/rdf.js";
+import { Refusal } from "../src/refusal.js";
+
+test("canonical N-Quads are in code point order, one line to a triple, where rdf-canonize orders by UTF-16 code unit", async () => {
+  const triple = (value: string): Triple => [
+    iri("urn:cascade:this-version"),
+    iri("http://example.org/p"),
+    literal(value),
+  ];
+  assert.equal(
+    await canonical([triple("😀"), triple("～"), triple("～")]),
+    `<urn:cascade:this-version> <http://example.org/p> "～" .\n<urn:cascade:this-version> <http://example.org/p> "😀" .\n`,
+  );
+});
+
+test("a base URL holding a control character, a space, a query or a fragment is refused", () => {
+  for (const url of [
+    "https://h/\u0000",
+    "https://h/a b",
+    "https://h/\u001f",
+    "https://h/\u007f",
+    "https://h/?",
+    "https://h/?a=b",
+    "https://h/#",
+    "https://h/#a",
+  ])
+    assert.throws(() => normalisedBaseUrl(url), Refusal, JSON.stringify(url));
+});
+
+test("an empty version id or key fingerprint counts as absent", async () => {
+  assert.equal(
+    await containedRecordName(
+      "urn:uuid:a",
+      { versionId: "", lastUpdated: "t" },
+      "x",
+    ),
+    await containedRecordName("urn:uuid:a", { lastUpdated: "t" }, "x"),
+  );
+  const entry = {
+    custodian: { root: "r" },
+    patient: { root: "p" },
+    entryClass: "c",
+    membersFingerprint: "7",
+  };
+  assert.equal(
+    await recordFromCcdaWithoutIdName({ ...entry, keyFingerprint: "" }),
+    await recordFromCcdaWithoutIdName(entry),
+  );
+});
 
 test("a version is named from its literals as written, before any store reads them, as the Bridge spec's typed-literals vector names it", async () => {
   const xsd = "http://www.w3.org/2001/XMLSchema#";

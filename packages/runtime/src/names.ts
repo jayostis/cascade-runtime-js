@@ -85,7 +85,7 @@ export async function ccdaRecordName(inputs: CcdaInputs): Promise<string> {
 }
 
 /** The triples' canonical N-Quads by RDFC-1.0: two sets of triples have the same exactly when they are one graph. */
-export function canonical(triples: Iterable<Triple>): Promise<string> {
+export async function canonical(triples: Iterable<Triple>): Promise<string> {
   const quads = [...triples].map(([subject, predicate, object]) => ({
     subject,
     predicate,
@@ -95,7 +95,12 @@ export function canonical(triples: Iterable<Triple>): Promise<string> {
         : object,
     graph: { termType: "DefaultGraph", value: "" },
   }));
-  return canonize(quads, { algorithm: "RDFC-1.0" });
+  const lines = new Set(
+    (await canonize(quads, { algorithm: "RDFC-1.0" }))
+      .split("\n")
+      .filter((line) => line !== ""),
+  );
+  return lines.size === 0 ? "" : `${[...lines].sort(byCodePoint).join("\n")}\n`;
 }
 
 /**
@@ -297,16 +302,21 @@ const URL_PARTS =
  * The base URL a client used, as the server and record rules take it: RFC 3986 §6.2.2 and §6.2.3 (case,
  * percent-encoding, dot segments, a default or empty port), then every trailing `/` of the path removed; a query and
  * a fragment as written. A URL carrying userinfo is refused, since a credential must never be a name input, as is one
- * with no scheme, a port that is no number, or a tab or line break.
+ * with no scheme, a port that is no number, a control character or a space, or a query or fragment, even an empty one.
  */
 export function normalisedBaseUrl(url: string): string {
-  if (/[\t\n\r]/.test(url))
-    throw new Refusal("a base URL holding a tab or a line break names nothing");
+  if ([...url].some((c) => (c.codePointAt(0) ?? 0) <= 0x20 || c === "\x7f"))
+    throw new Refusal(
+      "a base URL holding a control character or a space names nothing",
+    );
+  if (/[?#]/.test(url))
+    throw new Refusal(
+      "a base URL carrying a query or a fragment names nothing: a credential is never a name input",
+    );
   const parts = URL_PARTS.exec(url);
   if (parts === null)
     throw new Refusal(`${url} is no absolute URL with an authority`);
-  const [, scheme = "", authority = "", path = "", query = "", fragment = ""] =
-    parts;
+  const [, scheme = "", authority = "", path = ""] = parts;
   if (authority === "" || authority.startsWith(":"))
     throw new Refusal(`${url} names no host`);
   if (authority.includes("@"))
@@ -326,7 +336,7 @@ export function normalisedBaseUrl(url: string): string {
   const keptPort =
     port === "" || port === DEFAULT_PORTS[lowerScheme] ? "" : `:${port}`;
   const kept = withoutDotSegments(percentNormalised(path)).replace(/\/+$/, "");
-  return `${lowerScheme}://${host}${keptPort}${kept}${query}${fragment}`;
+  return `${lowerScheme}://${host}${keptPort}${kept}`;
 }
 
 /** A record read from a server: the base URL the client used, normalised, then the resource's type and id. */
@@ -382,14 +392,15 @@ export function recordFromCcdaWithoutIdName(entry: {
   readonly keyFingerprint?: string;
   readonly membersFingerprint?: string;
 }): Promise<string> {
+  const keyFingerprint = entry.keyFingerprint ?? "";
   return derivedName(NAMING_RULES.RecordFromCcdaWithoutId, [
     ...[entry.custodian, entry.patient].flatMap(({ root, extension }) => [
       root,
       extension ?? "",
     ]),
     entry.entryClass,
-    entry.keyFingerprint ?? "",
-    entry.keyFingerprint === undefined ? (entry.membersFingerprint ?? "") : "",
+    keyFingerprint,
+    keyFingerprint === "" ? (entry.membersFingerprint ?? "") : "",
   ]);
 }
 
@@ -407,7 +418,11 @@ export function containedRecordName(
 ): Promise<string> {
   return derivedName(NAMING_RULES.ContainedRecord, [
     container,
-    containerSource.versionId ?? containerSource.lastUpdated ?? "",
+    (containerSource.versionId === ""
+      ? undefined
+      : containerSource.versionId) ??
+      containerSource.lastUpdated ??
+      "",
     id,
   ]);
 }
