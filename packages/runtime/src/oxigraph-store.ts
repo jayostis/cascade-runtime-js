@@ -131,6 +131,25 @@ export class OxigraphStore implements Store {
     return answer;
   }
 
+  async holds(
+    triples: readonly Triple[],
+    union: ReadonlySet<string>,
+  ): Promise<boolean[]> {
+    return triples.map(([subject, predicate, object]) =>
+      this.#store
+        .match(
+          toOxigraph(subject) as oxigraph.NamedNode | oxigraph.BlankNode,
+          oxigraph.namedNode(predicate.value),
+          toOxigraph(object),
+          null,
+        )
+        .some(
+          ({ graph }) =>
+            graph.termType === "NamedNode" && union.has(graph.value),
+        ),
+    );
+  }
+
   async construct(
     query: string,
     union: ReadonlySet<string>,

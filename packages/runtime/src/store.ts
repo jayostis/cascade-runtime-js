@@ -24,6 +24,11 @@ export interface Store {
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
   ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
   construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;
+  /** For each triple, whether a graph of the union holds it. */
+  holds(
+    triples: readonly Triple[],
+    union: ReadonlySet<string>,
+  ): Promise<boolean[]>;
 }
 
 export type StoreFactory = () => Store;
@@ -73,6 +78,10 @@ export class Union implements Dataset {
 
   construct(query: string): Promise<Triple[]> {
     return this.store.construct(query, this.#graphs);
+  }
+
+  holds(triples: readonly Triple[]): Promise<boolean[]> {
+    return this.store.holds(triples, this.#graphs);
   }
 }
 
