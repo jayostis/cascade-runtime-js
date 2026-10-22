@@ -181,9 +181,7 @@ async function packComponents(): Promise<{
   const bridge = await releasedBridgePackage(CACHE);
   if (bridge.release === undefined)
     throw new Error(`${bridge.folder} names no release`);
-  log(
-    `cascade-bridge-rs: the release ${bridge.release}, the newest build of its default branch`,
-  );
+  log(`cascade-bridge-rs: the release ${bridge.release}, ${bridge.how}`);
   const others: Resolved[] = [];
   for (const repository of await vocabulariesNamed(bridge.folder, adapters))
     if (repository !== config.vocabulary.repository)

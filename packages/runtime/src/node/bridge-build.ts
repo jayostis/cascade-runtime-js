@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -12,7 +12,7 @@ import { dirname, join, resolve as absolute } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { git } from "./git.js";
 
-/** The tag of the release cascade-bridge-rs publishes on every push to its main, for the commit pushed. */
+/** The tag of the release cascade-bridge-rs publishes for every commit of its main and every head of a pull request from itself. */
 export const BUILD = "build-";
 const HISTORY = 100;
 
@@ -74,6 +74,190 @@ async function newestBuild(repository: string, at: string): Promise<string> {
     await rm(history, { recursive: true, force: true });
   }
 }
+
+/** A pull request, as GitHub's API answers for one. */
+export interface Pull {
+  readonly body?: string | null;
+  readonly state: string;
+  readonly merged?: boolean;
+  readonly base: { readonly ref: string; readonly repo?: Repo | null };
+  readonly head: { readonly sha: string; readonly repo?: Repo | null };
+}
+
+interface Repo {
+  readonly full_name?: string;
+}
+
+/** The run a pick is made for: the repository under test as `owner/name`, its pull request, and the branch it is on. */
+export interface Run {
+  readonly repository: string;
+  readonly number?: number;
+  readonly branch: string;
+}
+
+/** The commit a build is read at, and how it was picked. */
+export interface Picked {
+  readonly commit: string;
+  readonly how: string;
+}
+
+const DEPENDS_ON = /^[^\S\n]*Depends-On:[^\S\n]*(\S+)[^\S\n]*$/gim;
+const PULL_URL =
+  /^(?:https?:\/\/[^/]+\/)?([^/\s]+)\/([^/\s]+)\/pull\/(\d+)\/?$/;
+
+function pathOf(repository: string): string {
+  return new URL(repository).pathname
+    .split("/")
+    .filter((segment) => segment !== "")
+    .slice(-2)
+    .join("/")
+    .replace(/\.git$/, "");
+}
+
+function namedIn(
+  body: string | null | undefined,
+): { path: string; number: number }[] {
+  return [...(body ?? "").matchAll(DEPENDS_ON)].flatMap(([, reference]) => {
+    const match = PULL_URL.exec(reference ?? "");
+    return match === null
+      ? []
+      : [{ path: `${match[1]}/${match[2]}`, number: Number(match[3]) }];
+  });
+}
+
+/** The run CI is making, as GitHub Actions describes it, or undefined outside CI. */
+export function runOf(env: NodeJS.ProcessEnv = process.env): Run | undefined {
+  if (env.CI !== "true" || !env.GITHUB_REPOSITORY) return undefined;
+  let number: number | undefined;
+  try {
+    const event = JSON.parse(
+      readFileSync(env.GITHUB_EVENT_PATH ?? "", "utf8"),
+    ) as { pull_request?: { number?: number } };
+    number = event.pull_request?.number;
+  } catch {
+    number = undefined;
+  }
+  return {
+    repository: env.GITHUB_REPOSITORY,
+    ...(number === undefined ? {} : { number }),
+    branch: env.GITHUB_REF_NAME ?? "",
+  };
+}
+
+/** The pull request as GitHub's API answers now, so a description edited since the run's event is read as it stands. */
+export async function readPull(path: string, number: number): Promise<Pull> {
+  return (await (
+    await got(`https://api.github.com/repos/${path}/pulls/${number}`, true)
+  ).json()) as Pull;
+}
+
+/** The commit when it has a published build, otherwise an error saying how it was picked and why it has none. */
+export async function builtAt(
+  repository: string,
+  at: string,
+  commit: string,
+  how: string,
+): Promise<Picked> {
+  await mkdir(at, { recursive: true });
+  const tag = `refs/tags/${BUILD}${commit}`;
+  if ((await git(at, "ls-remote", repository, tag)).includes(tag))
+    return { commit, how };
+  throw new Error(
+    `${repository} has no ${BUILD}${commit} release yet for ${how}: its publish run builds one for the head of every pull request from the repository itself and for every commit of its default branch, so rerun this once that run has finished, or open a pull request from the branch`,
+  );
+}
+
+/**
+ * The commit of `repository` a run reads the build of, picked as the compatibility tooling picks a counterpart: an open
+ * pull request reached by `Depends-On:` lines, from the run's pull request and then from each open one named, at its
+ * head; otherwise the branch named like the branch the run is on, at its head, unless that is the default branch;
+ * otherwise the newest build of the default branch. Outside CI, the last.
+ */
+export async function pickBuild(
+  repository: string,
+  at: string,
+  run: Run | undefined,
+  read: (path: string, number: number) => Promise<Pull>,
+): Promise<Picked> {
+  const newest = async (): Promise<Picked> => ({
+    commit: await latestBuild(repository, at),
+    how: "the newest build of its default branch",
+  });
+  if (run === undefined) return newest();
+  let branch = run.branch;
+  if (run.number !== undefined) {
+    const under = await read(run.repository, run.number);
+    branch = under.base.ref || branch;
+    const own = pathOf(repository);
+    const seen = new Set([`${run.repository}/pull/${run.number}`]);
+    const walking = [under];
+    const found: { label: string; pull: Pull }[] = [];
+    for (let pull = walking.shift(); pull; pull = walking.shift())
+      for (const { path, number } of namedIn(pull.body)) {
+        const label = `${path}/pull/${number}`;
+        if (seen.has(label)) continue;
+        seen.add(label);
+        const named = await read(path, number);
+        const open = named.state === "open" && named.merged !== true;
+        if (open) walking.push(named);
+        if (path !== own) continue;
+        if (open) found.push({ label, pull: named });
+        else if (named.merged !== true)
+          throw new Error(
+            `${label} is closed without merging, so nothing names a build of ${own}: cut its Depends-On: line`,
+          );
+      }
+    if (found.length > 1)
+      throw new Error(
+        `${found.map(({ label }) => label).join(" and ")} are named on Depends-On: lines, and a run reads one build of ${own}: name one pull request holding every change`,
+      );
+    const [named] = found;
+    if (named !== undefined) {
+      const from = named.pull.head.repo?.full_name;
+      if (from !== named.pull.base.repo?.full_name)
+        throw new Error(
+          `${named.label} is from ${from ?? "a deleted fork"}, and only a pull request from ${own} itself gets a ${BUILD}<head> release: push its branch to ${own}`,
+        );
+      return builtAt(
+        repository,
+        at,
+        named.pull.head.sha,
+        `the head of ${named.label}, named on a Depends-On: line`,
+      );
+    }
+  }
+  if (branch === "") return newest();
+  await mkdir(at, { recursive: true });
+  const heads = `refs/heads/${branch}`;
+  let head: string | undefined;
+  let isDefault = false;
+  for (const line of (
+    await git(at, "ls-remote", "--symref", repository, "HEAD", heads)
+  ).split("\n")) {
+    const [left = "", ref] = line.trim().split("\t");
+    if (ref === "HEAD" && left === `ref: ${heads}`) isDefault = true;
+    if (ref === heads) head = left;
+  }
+  if (head === undefined || isDefault) return newest();
+  return builtAt(
+    repository,
+    at,
+    head,
+    `the head of its branch ${branch}, named like the branch the run is on`,
+  );
+}
+
+/** {@link pickBuild} for the run this process is part of, read once per process, so every part of one run uses the same build. */
+export function pickedBuild(repository: string, at: string): Promise<Picked> {
+  let found = picked.get(repository);
+  if (found === undefined) {
+    found = pickBuild(repository, at, runOf(), readPull);
+    picked.set(repository, found);
+  }
+  return found;
+}
+
+const picked = new Map<string, Promise<Picked>>();
 
 interface Asset {
   readonly name: string;
