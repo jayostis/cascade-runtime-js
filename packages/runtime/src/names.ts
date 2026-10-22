@@ -397,8 +397,8 @@ export function normalisedBaseUrl(url: string): string {
   const port = tail.slice(1);
   if (!/^[0-9]*$/.test(port))
     throw new Refusal("a base URL's port is ASCII digits");
-  if (Number(port) > 65535)
-    throw new Refusal("a base URL's port is at most 65535");
+  if (port.length > 5 || Number(port) > 65535)
+    throw new Refusal("a base URL's port is at most five digits and 65535");
   const number = port === "" ? "" : String(Number(port));
   const host = bracketed ? ipLiteral(written) : regName(written);
   const keptPort =
