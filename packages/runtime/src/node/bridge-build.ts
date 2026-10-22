@@ -247,17 +247,53 @@ export async function pickBuild(
   );
 }
 
-/** {@link pickBuild} for the run this process is part of, read once per process, so every part of one run uses the same build. */
+/**
+ * {@link pickBuild} for the run this process is part of, read once per process, so every part of one run uses the same
+ * build. In CI the pick is kept in `at` for the run's attempt, so a later step whose process holds no token to read
+ * GitHub's API with (the conformance command the compatibility tooling starts) reads the same pick.
+ */
 export function pickedBuild(repository: string, at: string): Promise<Picked> {
   let found = picked.get(repository);
   if (found === undefined) {
-    found = pickBuild(repository, at, runOf(), readPull);
+    found = keptPick(repository, at, runOf());
     picked.set(repository, found);
   }
   return found;
 }
 
 const picked = new Map<string, Promise<Picked>>();
+
+async function keptPick(
+  repository: string,
+  at: string,
+  run: Run | undefined,
+): Promise<Picked> {
+  const attempt =
+    run === undefined || !process.env.GITHUB_RUN_ID
+      ? undefined
+      : `${process.env.GITHUB_RUN_ID}.${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
+  const file = join(at, "picked.json");
+  if (attempt !== undefined)
+    try {
+      const kept = JSON.parse(await readFile(file, "utf8")) as Picked & {
+        attempt?: string;
+        repository?: string;
+      };
+      if (kept.attempt === attempt && kept.repository === repository)
+        return {
+          commit: kept.commit,
+          how: `${kept.how}, as the first pick of this run kept it`,
+        };
+    } catch {
+      // Not kept yet in this attempt.
+    }
+  const found = await pickBuild(repository, at, run, readPull);
+  if (attempt !== undefined) {
+    await mkdir(at, { recursive: true });
+    await writeFile(file, JSON.stringify({ attempt, repository, ...found }));
+  }
+  return found;
+}
 
 interface Asset {
   readonly name: string;
