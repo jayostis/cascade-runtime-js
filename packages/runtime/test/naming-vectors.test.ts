@@ -195,20 +195,22 @@ async function parsed(bytes: Uint8Array, base: string): Promise<Triple[]> {
 test("every naming vector of the vocabulary reproduces", async (t) => {
   const { graph, entries, path, read } = await vectors();
   assert.ok(entries.length > 0, "the manifest lists vectors");
-  for (const kind of [
-    "NamingTest",
-    "BaseUrlNormalisationTest",
-    "BaseUrlRefusalTest",
-  ]) {
+  for (const [kind, count] of [
+    ["NamingTest", 62],
+    ["BaseUrlNormalisationTest", 15],
+    ["BaseUrlRefusalTest", 23],
+  ] as const) {
     const typed = `${BRIDGE}${kind}`;
+    const listed = entries.filter((entry) =>
+      graph.objects(entry, `${RDF}type`).some((type) => type.value === typed),
+    ).length;
     assert.equal(
-      entries.filter((entry) =>
-        graph.objects(entry, `${RDF}type`).some((type) => type.value === typed),
-      ).length,
+      listed,
       graph.subjects(`${RDF}type`, { termType: "NamedNode", value: typed })
         .length,
       `the manifest lists every ${kind}`,
     );
+    assert.equal(listed, count, `the manifest holds ${count} ${kind}`);
   }
   const nameOf = (subject: Term, predicate: string): Term =>
     one(graph, one(graph, subject, predicate), `${BRIDGE}expectedName`);
