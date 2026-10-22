@@ -5,10 +5,13 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import {
+  keptPick,
   latestBuild,
   pickBuild,
   type Pull,
+  readerOf,
   type Run,
+  runOf,
 } from "../src/node/bridge-build.js";
 import { git } from "../src/node/git.js";
 import { BRIDGE_REPOSITORY, findBridgePackage } from "../src/node/wasm.js";
@@ -202,6 +205,20 @@ test("the Bridge's build is picked as a counterpart is: a pull request reached b
       bridge.built,
     ],
     [
+      "an unreadable one elsewhere passed over, and paths matched whatever their case",
+      onPull,
+      {
+        [`${RUNTIME}/pull/1`]: pull(RUNTIME, {
+          body: named(`${OTHER}/pull/3`, "Jayostis/Cascade-Bridge-RS/pull/7"),
+        }),
+        "Jayostis/Cascade-Bridge-RS/pull/7": pull(BRIDGE, {
+          head: bridge.built,
+          from: "JAYOSTIS/cascade-bridge-rs",
+        }),
+      },
+      bridge.built,
+    ],
+    [
       "named but merged, so the branch named like the target",
       onPull,
       {
@@ -245,19 +262,19 @@ test("the Bridge's build is picked as a counterpart is: a pull request reached b
     );
 });
 
-test("a picked Bridge with no build yet, two named, one closed unmerged or one from a fork stops the run, saying why", async () => {
+test("a picked Bridge with no build, two named, one closed unmerged, one from a fork, one unreadable, or a line naming no pull request stops the run, saying why", async () => {
   const root = await mkdtemp(join(tmpdir(), "bridge-refused-"));
   const bridge = await bridgeOrigin(root);
-  const refused: [Run, Record<string, Pull>, RegExp][] = [
+  const refused: [Run, Record<string, Pull>, RegExp, string?][] = [
     [
       { repository: RUNTIME, branch: "unbuilt" },
       {},
-      /no build-\w+ release yet for the head of its branch unbuilt/,
+      /no build-\w+ release for the head of its branch unbuilt/,
     ],
     [
       { repository: RUNTIME, number: 1, branch: "" },
       { [`${BRIDGE}/pull/9`]: pull(BRIDGE, { head: bridge.unbuilt }) },
-      /no build-\w+ release yet for the head of jayostis\/cascade-bridge-rs\/pull\/9/,
+      /no build-\w+ release for the head of jayostis\/cascade-bridge-rs\/pull\/9/,
     ],
     [
       { repository: RUNTIME, number: 1, branch: "" },
@@ -282,8 +299,20 @@ test("a picked Bridge with no build yet, two named, one closed unmerged or one f
       },
       /pull\/9 and .*pull\/10 are named/,
     ],
+    [
+      { repository: RUNTIME, number: 1, branch: "" },
+      {},
+      /pull\/9 could not be read, so nothing says which build/,
+      named(`${BRIDGE}/pull/9`),
+    ],
+    [
+      { repository: RUNTIME, number: 1, branch: "" },
+      {},
+      /Depends-On: #9 names no pull request/,
+      "Depends-On: #9",
+    ],
   ];
-  for (const [run, pulls, reason] of refused)
+  for (const [run, pulls, reason, body] of refused)
     await assert.rejects(
       pickBuild(
         bridge.url,
@@ -291,13 +320,123 @@ test("a picked Bridge with no build yet, two named, one closed unmerged or one f
         run,
         reader({
           [`${RUNTIME}/pull/1`]: pull(RUNTIME, {
-            body: named(...Object.keys(pulls)),
+            body: body ?? named(...Object.keys(pulls)),
           }),
           ...pulls,
         }),
       ),
       reason,
     );
+});
+
+test("a pick kept for this run's attempt and repository is read without asking anything; one kept for another attempt or repository is not", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bridge-kept-"));
+  const bridge = await bridgeOrigin(root);
+  const at = join(root, "at");
+  await mkdir(at, { recursive: true });
+  const run: Run = { repository: RUNTIME, number: 1, branch: "" };
+  const env = { GITHUB_RUN_ID: "5", GITHUB_RUN_ATTEMPT: "2" };
+  const asked = (): Promise<Pull> => Promise.reject(new Error("asked"));
+  const keep = (attempt: string, repository: string) =>
+    writeFile(
+      join(at, "picked.json"),
+      JSON.stringify({ attempt, repository, commit: "k", how: "kept" }),
+    );
+  await keep("5.2", bridge.url);
+  assert.deepEqual(await keptPick(bridge.url, at, run, env, asked), {
+    commit: "k",
+    how: "kept, as the first pick of this run kept it",
+  });
+  for (const [attempt, repository] of [
+    ["5.1", bridge.url],
+    ["5.2", BRIDGE_REPOSITORY],
+  ] as const) {
+    await keep(attempt, repository);
+    await assert.rejects(keptPick(bridge.url, at, run, env, asked), /asked/);
+  }
+});
+
+test("a run in CI is the repository, the event's pull request and the branch GitHub Actions names; a push has no pull request, and outside CI there is no run", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bridge-run-"));
+  const event = join(root, "event.json");
+  const ci = {
+    CI: "true",
+    GITHUB_REPOSITORY: RUNTIME,
+    GITHUB_REF_NAME: "12/merge",
+    GITHUB_EVENT_PATH: event,
+  };
+  await writeFile(event, JSON.stringify({ pull_request: { number: 12 } }));
+  assert.deepEqual(runOf(ci), {
+    repository: RUNTIME,
+    number: 12,
+    branch: "12/merge",
+  });
+  await writeFile(event, JSON.stringify({ ref: "refs/heads/main" }));
+  assert.deepEqual(runOf({ ...ci, GITHUB_REF_NAME: "main" }), {
+    repository: RUNTIME,
+    branch: "main",
+  });
+  assert.equal(runOf({ ...ci, CI: undefined }), undefined);
+});
+
+test("with no token, the pull request under test is the event's and the others the ones the compatibility tooling handed in, so the pick asks GitHub's API nothing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bridge-tokenless-"));
+  const bridge = await bridgeOrigin(root);
+  const event = join(root, "event.json");
+  const handed = join(root, "pull-requests.json");
+  const env = {
+    CI: "true",
+    GITHUB_REPOSITORY: RUNTIME,
+    GITHUB_EVENT_PATH: event,
+    GITHUB_API_URL: "http://127.0.0.1:9",
+  };
+  const pick = (more: Record<string, string> = {}) =>
+    pickBuild(
+      bridge.url,
+      join(root, "at"),
+      runOf({ ...env, ...more }),
+      readerOf({ ...env, ...more }),
+    );
+  await writeFile(
+    event,
+    JSON.stringify({ pull_request: { number: 1, ...pull(RUNTIME) } }),
+  );
+  assert.equal((await pick()).commit, bridge.two);
+
+  await writeFile(
+    event,
+    JSON.stringify({
+      pull_request: {
+        number: 1,
+        ...pull(RUNTIME, { body: named(`${OTHER}/pull/2`) }),
+      },
+    }),
+  );
+  await writeFile(
+    handed,
+    JSON.stringify({
+      [`${OTHER}/pull/2`]: pull(OTHER, { body: named(`${BRIDGE}/pull/7`) }),
+      [`${BRIDGE}/pull/7`.toUpperCase()]: pull(BRIDGE, { head: bridge.built }),
+    }),
+  );
+  assert.equal(
+    (await pick({ CASCADE_PULL_REQUESTS: handed })).commit,
+    bridge.built,
+  );
+  await writeFile(
+    event,
+    JSON.stringify({
+      pull_request: {
+        number: 1,
+        ...pull(RUNTIME, { body: named(`${BRIDGE}/pull/2`) }),
+      },
+    }),
+  );
+  await writeFile(handed, JSON.stringify({ [`${BRIDGE}/pull/2`]: null }));
+  await assert.rejects(
+    pick({ CASCADE_PULL_REQUESTS: handed }),
+    /the compatibility tooling could not read/,
+  );
 });
 
 test("a checkout with no build of itself is read at the release of its commit, and stops the run while it holds uncommitted files", async () => {

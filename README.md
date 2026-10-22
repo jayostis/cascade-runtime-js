@@ -242,7 +242,10 @@ build of them stops the run. With no checkout, the commit is picked as a
 counterpart is: in CI, the head of an open cascade-bridge-rs pull request reached
 by `Depends-On:` lines, else the head of its branch named like the one the run
 is on, else the newest commit of its default branch with a release; locally, the
-last. A picked commit with no release yet stops the run, saying how it was
+last. Each pull request is read as the compatibility tooling read it, from the file
+it names in `CASCADE_PULL_REQUESTS`, else from GitHub's API, except that with no
+token the pull request under test is the one the run's event carries, so a run
+naming nothing asks the API nothing. A picked commit with no release yet stops the run, saying how it was
 picked. The release is downloaded into `build/cache/` and checked against the
 digest it gives. The run says which it used, and why a checkout's build was passed over.
 

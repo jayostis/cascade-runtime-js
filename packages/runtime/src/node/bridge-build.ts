@@ -114,29 +114,29 @@ function pathOf(repository: string): string {
     .replace(/\.git$/, "");
 }
 
+const sameRepository = (one?: string, other?: string): boolean =>
+  one !== undefined && one.toLowerCase() === other?.toLowerCase();
+
+const labelOf = (path: string, number: number): string =>
+  `${path}/pull/${number}`.toLowerCase();
+
 function namedIn(
   body: string | null | undefined,
 ): { path: string; number: number }[] {
-  return [...(body ?? "").matchAll(DEPENDS_ON)].flatMap(([, reference]) => {
-    const match = PULL_URL.exec(reference ?? "");
-    return match === null
-      ? []
-      : [{ path: `${match[1]}/${match[2]}`, number: Number(match[3]) }];
+  return [...(body ?? "").matchAll(DEPENDS_ON)].map(([, reference = ""]) => {
+    const match = PULL_URL.exec(reference);
+    if (match === null)
+      throw new Error(
+        `Depends-On: ${reference} names no pull request, as https://github.com/owner/repository/pull/1 does`,
+      );
+    return { path: `${match[1]}/${match[2]}`, number: Number(match[3]) };
   });
 }
 
 /** The run CI is making, as GitHub Actions describes it, or undefined outside CI. */
 export function runOf(env: NodeJS.ProcessEnv = process.env): Run | undefined {
   if (env.CI !== "true" || !env.GITHUB_REPOSITORY) return undefined;
-  let number: number | undefined;
-  try {
-    const event = JSON.parse(
-      readFileSync(env.GITHUB_EVENT_PATH ?? "", "utf8"),
-    ) as { pull_request?: { number?: number } };
-    number = event.pull_request?.number;
-  } catch {
-    number = undefined;
-  }
+  const number = eventOf(env)?.pull_request?.number;
   return {
     repository: env.GITHUB_REPOSITORY,
     ...(number === undefined ? {} : { number }),
@@ -144,11 +144,71 @@ export function runOf(env: NodeJS.ProcessEnv = process.env): Run | undefined {
   };
 }
 
+function eventOf(
+  env: NodeJS.ProcessEnv,
+): { pull_request?: Pull & { number?: number } } | undefined {
+  try {
+    return JSON.parse(readFileSync(env.GITHUB_EVENT_PATH ?? "", "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+const tokenOf = (env: NodeJS.ProcessEnv): string | undefined =>
+  env.GITHUB_TOKEN || env.GH_TOKEN || undefined;
+
+const apiOf = (env: NodeJS.ProcessEnv): string =>
+  (env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
+
 /** The pull request as GitHub's API answers now, so a description edited since the run's event is read as it stands. */
-export async function readPull(path: string, number: number): Promise<Pull> {
+export async function readPull(
+  path: string,
+  number: number,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Pull> {
   return (await (
-    await got(`https://api.github.com/repos/${path}/pulls/${number}`, true)
+    await got(`${apiOf(env)}/repos/${path}/pulls/${number}`, true, env)
   ).json()) as Pull;
+}
+
+/**
+ * How a run reads a pull request: as the compatibility tooling read it with its token, from the file it hands the
+ * command it starts in `CASCADE_PULL_REQUESTS`; otherwise from GitHub's API, except that with no token to read it with,
+ * the pull request under test is the one the run's event carries, so a run naming nothing reads nothing.
+ */
+export function readerOf(
+  env: NodeJS.ProcessEnv = process.env,
+): (path: string, number: number) => Promise<Pull> {
+  let handed: Record<string, Pull | null> = {};
+  if (env.CASCADE_PULL_REQUESTS)
+    try {
+      handed = JSON.parse(readFileSync(env.CASCADE_PULL_REQUESTS, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `${env.CASCADE_PULL_REQUESTS}, the pull requests the compatibility tooling read, could not be read: ${String(error)}`,
+        { cause: error },
+      );
+    }
+  const fromTooling = new Map(
+    Object.entries(handed).map(([label, pull]) => [label.toLowerCase(), pull]),
+  );
+  const event = eventOf(env)?.pull_request;
+  const underTest =
+    event?.number === undefined || !env.GITHUB_REPOSITORY
+      ? undefined
+      : labelOf(env.GITHUB_REPOSITORY, event.number);
+  return async (path, number) => {
+    const label = labelOf(path, number);
+    const kept = fromTooling.get(label);
+    if (kept === null)
+      throw new Error(
+        `the compatibility tooling could not read ${path}/pull/${number}`,
+      );
+    if (kept !== undefined) return kept;
+    if (tokenOf(env) === undefined && label === underTest && event)
+      return event;
+    return readPull(path, number, env);
+  };
 }
 
 /** The commit when it has a published build, otherwise an error saying how it was picked and why it has none. */
@@ -163,15 +223,17 @@ export async function builtAt(
   if ((await git(at, "ls-remote", repository, tag)).includes(tag))
     return { commit, how };
   throw new Error(
-    `${repository} has no ${BUILD}${commit} release yet for ${how}: its publish run builds one for the head of every pull request from the repository itself and for every commit of its default branch, so rerun this once that run has finished, or open a pull request from the branch`,
+    `${repository} has no ${BUILD}${commit} release for ${how}. Either its publish run, which builds one for the head of every pull request from the repository itself and for every commit of its default branch, has not finished: rerun this once it has. Or the build was pruned, as the publish run deletes a pull request's older builds when it moves on to a new head, merges or closes: rerun this so it picks again`,
   );
 }
 
 /**
  * The commit of `repository` a run reads the build of, picked as the compatibility tooling picks a counterpart: an open
  * pull request reached by `Depends-On:` lines, from the run's pull request and then from each open one named, at its
- * head; otherwise the branch named like the branch the run is on, at its head, unless that is the default branch;
- * otherwise the newest build of the default branch. Outside CI, the last.
+ * head alone; otherwise the branch named like the branch the run is on, at its head, unless that is the default
+ * branch; otherwise the newest build of the default branch. Outside CI, the last. A named pull request that cannot be
+ * read stops the run when it is of `repository`, and is passed over otherwise, as the tooling passes over one in a
+ * repository it checks nothing out from.
  */
 export async function pickBuild(
   repository: string,
@@ -189,18 +251,28 @@ export async function pickBuild(
     const under = await read(run.repository, run.number);
     branch = under.base.ref || branch;
     const own = pathOf(repository);
-    const seen = new Set([`${run.repository}/pull/${run.number}`]);
+    const seen = new Set([labelOf(run.repository, run.number)]);
     const walking = [under];
     const found: { label: string; pull: Pull }[] = [];
     for (let pull = walking.shift(); pull; pull = walking.shift())
       for (const { path, number } of namedIn(pull.body)) {
         const label = `${path}/pull/${number}`;
-        if (seen.has(label)) continue;
-        seen.add(label);
-        const named = await read(path, number);
+        if (seen.has(labelOf(path, number))) continue;
+        seen.add(labelOf(path, number));
+        const ours = sameRepository(path, own);
+        let named: Pull;
+        try {
+          named = await read(path, number);
+        } catch (error) {
+          if (!ours) continue;
+          throw new Error(
+            `${label} could not be read, so nothing says which build of ${own} it names: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        }
         const open = named.state === "open" && named.merged !== true;
         if (open) walking.push(named);
-        if (path !== own) continue;
+        if (!ours) continue;
         if (open) found.push({ label, pull: named });
         else if (named.merged !== true)
           throw new Error(
@@ -214,7 +286,7 @@ export async function pickBuild(
     const [named] = found;
     if (named !== undefined) {
       const from = named.pull.head.repo?.full_name;
-      if (from !== named.pull.base.repo?.full_name)
+      if (!sameRepository(from, named.pull.base.repo?.full_name))
         throw new Error(
           `${named.label} is from ${from ?? "a deleted fork"}, and only a pull request from ${own} itself gets a ${BUILD}<head> release: push its branch to ${own}`,
         );
@@ -263,15 +335,18 @@ export function pickedBuild(repository: string, at: string): Promise<Picked> {
 
 const picked = new Map<string, Promise<Picked>>();
 
-async function keptPick(
+/** The pick kept in `at` for this run's attempt and `repository`, otherwise {@link pickBuild}'s, kept there. */
+export async function keptPick(
   repository: string,
   at: string,
   run: Run | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+  read?: (path: string, number: number) => Promise<Pull>,
 ): Promise<Picked> {
   const attempt =
-    run === undefined || !process.env.GITHUB_RUN_ID
+    run === undefined || !env.GITHUB_RUN_ID
       ? undefined
-      : `${process.env.GITHUB_RUN_ID}.${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
+      : `${env.GITHUB_RUN_ID}.${env.GITHUB_RUN_ATTEMPT ?? "1"}`;
   const file = join(at, "picked.json");
   if (attempt !== undefined)
     try {
@@ -287,7 +362,7 @@ async function keptPick(
     } catch {
       // Not kept yet in this attempt.
     }
-  const found = await pickBuild(repository, at, run, readPull);
+  const found = await pickBuild(repository, at, run, read ?? readerOf(env));
   if (attempt !== undefined) {
     await mkdir(at, { recursive: true });
     await writeFile(file, JSON.stringify({ attempt, repository, ...found }));
@@ -301,8 +376,12 @@ interface Asset {
   readonly digest?: string | null;
 }
 
-async function got(url: string, json: boolean): Promise<Response> {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+async function got(
+  url: string,
+  json: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Response> {
+  const token = tokenOf(env);
   const response = await fetch(url, {
     headers: {
       "user-agent": "cascade-runtime-js",
@@ -367,7 +446,7 @@ export async function releasedBuild(
   if ((await recorded(folder)) === commit) return folder;
   const { assets } = (await (
     await got(
-      `https://api.github.com/repos${new URL(repository).pathname}/releases/tags/${tag}`,
+      `${apiOf(process.env)}/repos${new URL(repository).pathname}/releases/tags/${tag}`,
       true,
     )
   ).json()) as { assets: Asset[] };
