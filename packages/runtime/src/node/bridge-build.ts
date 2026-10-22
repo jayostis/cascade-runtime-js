@@ -176,8 +176,6 @@ export async function readPull(
  * command it starts in `CASCADE_PULL_REQUESTS`; otherwise from GitHub's API, except that with no token to read it with,
  * the pull request under test is the one the run's event carries, so a run naming nothing reads nothing.
  */
-const answered: string[] = [];
-
 export function readerOf(
   env: NodeJS.ProcessEnv = process.env,
 ): (path: string, number: number) => Promise<Pull> {
@@ -206,15 +204,9 @@ export function readerOf(
       throw new Error(
         `the compatibility tooling could not read ${path}/pull/${number}`,
       );
-    if (kept !== undefined) {
-      answered.push(`${label} from the tooling's file`);
-      return kept;
-    }
-    if (tokenOf(env) === undefined && label === underTest && event) {
-      answered.push(`${label} from the event`);
+    if (kept !== undefined) return kept;
+    if (tokenOf(env) === undefined && label === underTest && event)
       return event;
-    }
-    answered.push(`${label} from the API`);
     return readPull(path, number, env);
   };
 }
@@ -371,9 +363,6 @@ export async function keptPick(
       // Not kept yet in this attempt.
     }
   const found = await pickBuild(repository, at, run, read ?? readerOf(env));
-  throw new Error(
-    `deliberately red: the pick ran in CI with ${tokenOf(env) ? "a token" : "no token"}, picked ${found.commit}, ${found.how}; read ${answered.join("; ") || "no pull request"}`,
-  );
   if (attempt !== undefined) {
     await mkdir(at, { recursive: true });
     await writeFile(file, JSON.stringify({ attempt, repository, ...found }));
