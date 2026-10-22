@@ -160,7 +160,7 @@ jobs:
   # (the start action refuses the short form), and the starter is then taken at that pull request's head instead of its main.
   starter-kit:
     name: starter-kit
-    if: ${{ github.event_name != 'push' }}
+    if: ${{ github.event_name != 'push' && !startsWith(github.base_ref, 'alpha/') }}
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -251,6 +251,7 @@ jobs:
   # as `starter-kit` takes it; only the build of the command and the app's check run, not the starter's suites.
   starter-systems:
     name: starter (${{ matrix.os }})
+    if: ${{ !startsWith(github.base_ref, 'alpha/') }}
     needs: package
     strategy:
       fail-fast: false
@@ -295,7 +296,7 @@ jobs:
           cd "$RUNNER_TEMP"
           node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
 
-  # The name branch protection requires. A part that was skipped is no pass: nothing but all succeeding reports success.
+  # The name branch protection requires. A part that was skipped is no pass, except starter-kit on a pull request into an alpha/ branch.
   compatibility:
     name: compatibility
     needs: [tests, browser, starter-kit]
@@ -307,9 +308,15 @@ jobs:
           TESTS: ${{ needs.tests.result }}
           BROWSER: ${{ needs.browser.result }}
           STARTER: ${{ needs.starter-kit.result }}
+          BASE: ${{ github.base_ref }}
         run: |
           echo "tests and conformance: ${TESTS}; docs site: ${BROWSER}; starter-kit: ${STARTER}"
-          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] && [ "${STARTER}" = success ]
+          [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] || exit 1
+          # starter-kit does not run on a pull request into an integration branch; it is skipped by that rule alone.
+          case "${BASE}" in
+            alpha/*) [ "${STARTER}" = skipped ] || [ "${STARTER}" = success ] ;;
+            *) [ "${STARTER}" = success ] ;;
+          esac
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
   build-pages:
