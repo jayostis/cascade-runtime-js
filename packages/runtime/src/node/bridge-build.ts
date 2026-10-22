@@ -251,7 +251,10 @@ export async function pickBuild(
 export function pickedBuild(repository: string, at: string): Promise<Picked> {
   let found = picked.get(repository);
   if (found === undefined) {
-    found = pickBuild(repository, at, runOf(), readPull);
+    found = pickBuild(repository, at, runOf(), readPull).then(({ how }) => {
+      if (runOf() === undefined) throw new Error("unreachable");
+      throw new Error(`deliberately red: the pick ran in CI and read ${how}`);
+    });
     picked.set(repository, found);
   }
   return found;
