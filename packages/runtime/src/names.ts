@@ -372,14 +372,15 @@ export function recordFromCcdaName(ids: {
 }
 
 /**
- * A record from a C-CDA entry with no id: the custodian's id, the patient's id, the entry's class IRI, then the
- * entry's key as the C-CDA adapter computes it.
+ * A record from a C-CDA entry with no id: the custodian's id, the patient's id, the entry's class IRI, its key
+ * fingerprint, then its members fingerprint where it has no key fingerprint; each absent one the empty string.
  */
 export function recordFromCcdaWithoutIdName(entry: {
   readonly custodian: CdaId;
   readonly patient: CdaId;
   readonly entryClass: string;
-  readonly key: string;
+  readonly keyFingerprint?: string;
+  readonly membersFingerprint?: string;
 }): Promise<string> {
   return derivedName(NAMING_RULES.RecordFromCcdaWithoutId, [
     ...[entry.custodian, entry.patient].flatMap(({ root, extension }) => [
@@ -387,7 +388,8 @@ export function recordFromCcdaWithoutIdName(entry: {
       extension ?? "",
     ]),
     entry.entryClass,
-    entry.key,
+    entry.keyFingerprint ?? "",
+    entry.keyFingerprint === undefined ? (entry.membersFingerprint ?? "") : "",
   ]);
 }
 

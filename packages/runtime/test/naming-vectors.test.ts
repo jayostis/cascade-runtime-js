@@ -65,7 +65,8 @@ const BY_INPUTS: Record<string, (inputs: readonly Input[]) => Promise<string>> =
         custodian: { root: nth(i, 0), extension: nth(i, 1) },
         patient: { root: nth(i, 2), extension: nth(i, 3) },
         entryClass: nth(i, 4),
-        key: nth(i, 5),
+        ...(nth(i, 5) === "" ? {} : { keyFingerprint: nth(i, 5) }),
+        ...(nth(i, 6) === "" ? {} : { membersFingerprint: nth(i, 6) }),
       }),
     ContainedRecordNamingRule: (i) =>
       containedRecordName(
