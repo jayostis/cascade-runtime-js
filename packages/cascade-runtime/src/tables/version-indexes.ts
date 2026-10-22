@@ -37,6 +37,18 @@ function stemOf(version: string): string {
   }
 }
 
+/**
+ * Whether the bytes begin as a listing of this format over these URI spaces is written, and end it: a file is written
+ * whole or not at all, so this is a kept listing without parsing it, which a read still does.
+ */
+function listingHead(bytes: Uint8Array, uriSpaces: readonly string[]): boolean {
+  const head = new TextEncoder().encode(
+    `{"format":${LISTING_FORMAT},"uriSpaces":${JSON.stringify(uriSpaces)},`,
+  );
+  if (bytes.length <= head.length || bytes.at(-1) !== 0x7d) return false;
+  return head.every((byte, at) => bytes[at] === byte);
+}
+
 /** A listing kept beside a version, when it is one of this shape over these URI spaces. */
 function keptListing(
   bytes: Uint8Array,
@@ -212,8 +224,7 @@ export class VersionIndexes {
         const bytes = await this.#context.files.read(
           `${stemOf(version)}${LISTED}`,
         );
-        if (bytes !== undefined && keptListing(bytes, uriSpaces) !== undefined)
-          continue;
+        if (bytes !== undefined && listingHead(bytes, uriSpaces)) continue;
         written += (await this.#list(version, uriSpaces)).byteLength;
       } catch (error) {
         if (!(error instanceof Refusal)) throw error;

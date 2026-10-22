@@ -993,16 +993,16 @@ test("a search lists a version again when the listing kept beside it is not one,
     await files.write(path, new TextEncoder().encode(kept));
     const again = tablesOver(feed, files);
     await again.start();
-    assert.deepEqual(
-      JSON.parse(new TextDecoder().decode(await files.read(path))),
-      valid,
-      `a start lists it again: ${kept}`,
-    );
     const { found } = await again.search(groups.series, "141");
     assert.deepEqual(
       found.map(({ notation }) => notation),
       ["141"],
       kept,
+    );
+    assert.deepEqual(
+      JSON.parse(new TextDecoder().decode(await files.read(path))),
+      valid,
+      `it is listed again: ${kept}`,
     );
   }
 });
