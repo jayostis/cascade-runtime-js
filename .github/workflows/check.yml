@@ -41,6 +41,11 @@ jobs:
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
       - run: npm ci
+      # The Bridge's build, picked with the job's token and kept for the conformance command the start step runs, which
+      # holds none.
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       # Checks the vocabulary and the adapters out beside this repository, and runs the conformance command on them once.
       - id: start
         uses: jayostis/cascade-bridge-spec/.github/actions/start@main
