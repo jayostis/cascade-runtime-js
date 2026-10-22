@@ -75,6 +75,7 @@ export {
   type UnopenedOutcome,
 } from "@cascade-runtime/runtime";
 export { sixWords, typedWords } from "../six-words.js";
+export { terms, type Terms } from "../terms.js";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {

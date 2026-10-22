@@ -15,13 +15,20 @@ import {
   type Spawn,
   Waiting,
 } from "../wasm-bridge.js";
-import { BUILD, latestBuild, releasedBuild } from "./bridge-build.js";
+import {
+  BUILD,
+  builtAt,
+  type Picked,
+  pickedBuild,
+  releasedBuild,
+} from "./bridge-build.js";
+import { checkout as gitState } from "./git.js";
 import { FolderFiles } from "./folder-files.js";
 import type { Components } from "./components.js";
 import { type Resolved, type ResolverOptions, siblingIn } from "./resolver.js";
 
 const PACKAGE = "cascade-bridge-rs";
-/** The repository whose default branch the Bridge's build is followed on. */
+/** The repository the Bridge's build is read from. */
 export const BRIDGE_REPOSITORY =
   "https://github.com/jayostis/cascade-bridge-rs";
 
@@ -32,8 +39,10 @@ export interface BridgePackageFound {
   /** The commit it was built from. */
   readonly commit: string;
   readonly dirty: boolean;
-  /** The release it was downloaded from, for a build of main. */
+  /** The release it was downloaded from. */
   readonly release?: string;
+  /** How the release was picked, for a downloaded one. */
+  readonly how?: string;
 }
 
 interface BuiltFrom {
@@ -80,51 +89,89 @@ async function checkoutBuild(
 
 /**
  * The Bridge's package a run uses: the build of a sibling checkout, then of a checkout handed in, when it was made
- * from the checkout as it is on disk; otherwise the release cascade-bridge-rs published for the newest commit of its
- * default branch that has one. The run says which, and why a checkout's build was passed over.
+ * from the checkout as it is on disk; otherwise the release of the commit the first of them is at, when nothing in it is
+ * uncommitted; with neither, the release of the commit {@link pickedBuild} picks, as a counterpart is picked. The run
+ * says which, and why a checkout's build was passed over.
  */
 export async function findBridgePackage(
   options: ResolverOptions,
+  repository: string = BRIDGE_REPOSITORY,
 ): Promise<BridgePackageFound> {
   const passedOver: string[] = [];
+  let unbuilt: Picked | undefined;
   const checkouts = [
     ["sibling", siblingIn(options.siblingsIn, PACKAGE)],
-    ["folder", options.folders?.get(BRIDGE_REPOSITORY)],
+    ["folder", options.folders?.get(repository)],
   ] as const;
   for (const [source, checkout] of checkouts) {
     if (checkout === undefined) continue;
     const found = await checkoutBuild(checkout);
-    if (typeof found === "string") {
-      passedOver.push(found);
-      continue;
-    }
     const where =
       source === "sibling"
         ? "the sibling checkout's"
         : "the handed-in checkout's";
+    if (typeof found === "string") {
+      passedOver.push(found);
+      const state =
+        unbuilt === undefined ? await gitState(checkout) : undefined;
+      if (state === undefined) continue;
+      if (state.uncommitted > 0)
+        throw new Error(
+          `${found}, and its ${state.uncommitted} uncommitted files are in no release: build it with sh package/build.sh, or commit them`,
+        );
+      unbuilt = {
+        commit: state.commit,
+        how: `the commit ${checkout} is at`,
+      };
+      continue;
+    }
     options.log?.(
       `${PACKAGE}: ${where} build in ${found.dist}, of ${short(found.built.commit)}${found.built.dirty ? " with uncommitted changes" : ""}${passedOver.map((why) => `; ${why}`).join("")}`,
     );
     return { source, folder: found.dist, ...found.built };
   }
-  const found = await releasedBridgePackage(options.cache);
+  const at = join(options.cache, PACKAGE);
+  const found = await releasedAt(
+    repository,
+    unbuilt === undefined
+      ? await pickedBuild(repository, at)
+      : await builtAt(repository, at, unbuilt.commit, unbuilt.how),
+    at,
+  );
   options.log?.(
-    `${PACKAGE}: the release ${found.release}, the newest build of its default branch${passedOver.map((why) => `; ${why}`).join("")}`,
+    `${PACKAGE}: the release ${found.release}, ${found.how}${passedOver.map((why) => `; ${why}`).join("")}`,
   );
   return found;
 }
 
-/** The release cascade-bridge-rs published for the newest commit of its default branch that has one, downloaded under `cache`. */
+/** The release of cascade-bridge-rs at the commit {@link pickedBuild} picks for this run, downloaded under `cache`. */
 export async function releasedBridgePackage(
   cache: string,
 ): Promise<BridgePackageFound> {
   const at = join(cache, PACKAGE);
-  const commit = await latestBuild(BRIDGE_REPOSITORY, at);
-  const folder = await releasedBuild(BRIDGE_REPOSITORY, commit, at);
+  return releasedAt(
+    BRIDGE_REPOSITORY,
+    await pickedBuild(BRIDGE_REPOSITORY, at),
+    at,
+  );
+}
+
+async function releasedAt(
+  repository: string,
+  { commit, how }: Picked,
+  at: string,
+): Promise<BridgePackageFound> {
+  const folder = await releasedBuild(repository, commit, at);
   const built = await builtFrom(folder);
   if (built === undefined)
     throw new Error(`${folder} records no commit it was built from`);
-  return { source: "release", folder, ...built, release: `${BUILD}${commit}` };
+  return {
+    source: "release",
+    folder,
+    ...built,
+    release: `${BUILD}${commit}`,
+    how,
+  };
 }
 
 /** The Bridge's package a package carries in `nodeModules`, as the build copied it from the release named. */
