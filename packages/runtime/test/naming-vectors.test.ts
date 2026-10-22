@@ -12,6 +12,7 @@ import {
   normalisedBaseUrl,
   organizationName,
   recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
   recordFromDocumentName,
   recordFromServerName,
   retractionName,
@@ -59,8 +60,19 @@ const BY_INPUTS: Record<string, (inputs: readonly Input[]) => Promise<string>> =
         patient: { root: nth(i, 2), extension: nth(i, 3) },
         entry: { root: nth(i, 4), extension: nth(i, 5) },
       }),
+    RecordFromCcdaWithoutIdNamingRule: (i) =>
+      recordFromCcdaWithoutIdName({
+        custodian: { root: nth(i, 0), extension: nth(i, 1) },
+        patient: { root: nth(i, 2), extension: nth(i, 3) },
+        entryClass: nth(i, 4),
+        key: nth(i, 5),
+      }),
     ContainedRecordNamingRule: (i) =>
-      containedRecordName(nth(i, 0), nth(i, 1), nth(i, 2)),
+      containedRecordName(
+        nth(i, 0),
+        nth(i, 1) === "" ? {} : { versionId: nth(i, 1) },
+        nth(i, 2),
+      ),
     EnteredRecordNamingRule: (i) =>
       enteredRecordName(nth(i, 0), Number(nth(i, 1))),
     ServerNamingRule: (i) => serverName(nth(i, 0)),
@@ -91,12 +103,13 @@ const BY_INPUTS: Record<string, (inputs: readonly Input[]) => Promise<string>> =
         i.slice(1).map((_, index) => nth(i, index + 1)),
       ),
     SnapshotNamingRule: (i) => {
-      const first = list(i, 0);
+      const first = list(i, 1);
       assert.ok(first.length <= 1, "a snapshot has at most one first parent");
       return snapshotName({
+        act: nth(i, 0),
         firstParent: first[0],
-        mergedParents: list(i, 1),
-        setHash: nth(i, 2),
+        mergedParents: list(i, 2),
+        setHash: nth(i, 3),
       });
     },
   };
@@ -187,8 +200,13 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
     const label = one(graph, entry, `${MF}name`).value;
     await t.test(label, async () => {
       const action = one(graph, entry, `${MF}action`);
-      const result = one(graph, entry, `${MF}result`);
       const [type] = graph.objects(entry, `${RDF}type`);
+      if (type?.value === `${BRIDGE}BaseUrlRefusalTest`) {
+        const url = one(graph, action, `${CASCADE}serverBaseUrl`).value;
+        assert.throws(() => normalisedBaseUrl(url), Refusal);
+        return;
+      }
+      const result = one(graph, entry, `${MF}result`);
       if (type?.value === `${BRIDGE}BaseUrlNormalisationTest`) {
         assert.equal(
           normalisedBaseUrl(
@@ -233,12 +251,4 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
       assert.equal(await byInputs(inputs), expected);
     });
   }
-});
-
-test("a base URL carrying userinfo is refused, so no credential enters a name", () => {
-  for (const url of [
-    "https://ada:secret@fhir.example.org/r4",
-    "https://ada@fhir.example.org/r4",
-  ])
-    assert.throws(() => normalisedBaseUrl(url), Refusal);
 });

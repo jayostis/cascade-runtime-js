@@ -89,7 +89,10 @@ export function canonical(triples: Iterable<Triple>): Promise<string> {
   const quads = [...triples].map(([subject, predicate, object]) => ({
     subject,
     predicate,
-    object,
+    object:
+      object.termType === "Literal" && object.language !== ""
+        ? { ...object, language: object.language.toLowerCase() }
+        : object,
     graph: { termType: "DefaultGraph", value: "" },
   }));
   return canonize(quads, { algorithm: "RDFC-1.0" });
@@ -186,6 +189,7 @@ export const NAMING_RULES = Object.freeze({
   RecordFromServer: `${CASCADE}RecordFromServerNamingRule`,
   RecordFromDocument: `${CASCADE}RecordFromDocumentNamingRule`,
   RecordFromCcda: `${CASCADE}RecordFromCcdaNamingRule`,
+  RecordFromCcdaWithoutId: `${CASCADE}RecordFromCcdaWithoutIdNamingRule`,
   ContainedRecord: `${CASCADE}ContainedRecordNamingRule`,
   EnteredRecord: `${CASCADE}EnteredRecordNamingRule`,
   Version: `${CASCADE}VersionNamingRule`,
@@ -292,29 +296,35 @@ const URL_PARTS =
 /**
  * The base URL a client used, as the server and record rules take it: RFC 3986 §6.2.2 and §6.2.3 (case,
  * percent-encoding, dot segments, a default or empty port), then every trailing `/` of the path removed; a query and
- * a fragment as written. A URL carrying userinfo is refused, since a credential must never be a name input.
+ * a fragment as written. A URL carrying userinfo is refused, since a credential must never be a name input, as is one
+ * with no scheme, a port that is no number, or a tab or line break.
  */
 export function normalisedBaseUrl(url: string): string {
+  if (/[\t\n\r]/.test(url))
+    throw new Refusal("a base URL holding a tab or a line break names nothing");
   const parts = URL_PARTS.exec(url);
   if (parts === null)
     throw new Refusal(`${url} is no absolute URL with an authority`);
   const [, scheme = "", authority = "", path = "", query = "", fragment = ""] =
     parts;
+  if (authority === "" || authority.startsWith(":"))
+    throw new Refusal(`${url} names no host`);
   if (authority.includes("@"))
     throw new Refusal(
       `a base URL carrying userinfo names nothing: a credential is never a name input`,
     );
   const lowerScheme = scheme.toLowerCase();
-  const port = /:([0-9]*)$/.exec(authority);
+  const colon = authority.indexOf(":", authority.lastIndexOf("]") + 1);
+  const port = colon === -1 ? "" : authority.slice(colon + 1);
+  if (!/^[0-9]*$/.test(port))
+    throw new Refusal(`${url} has a port that is no number`);
   const host = percentNormalised(
-    (port === null ? authority : authority.slice(0, port.index)).toLowerCase(),
+    (colon === -1 ? authority : authority.slice(0, colon)).toLowerCase(),
   )
     .toLowerCase()
     .replace(/%[0-9a-f]{2}/g, (triplet) => triplet.toUpperCase());
   const keptPort =
-    port === null || port[1] === "" || port[1] === DEFAULT_PORTS[lowerScheme]
-      ? ""
-      : `:${port[1]}`;
+    port === "" || port === DEFAULT_PORTS[lowerScheme] ? "" : `:${port}`;
   const kept = withoutDotSegments(percentNormalised(path)).replace(/\/+$/, "");
   return `${lowerScheme}://${host}${keptPort}${kept}${query}${fragment}`;
 }
@@ -361,15 +371,41 @@ export function recordFromCcdaName(ids: {
   );
 }
 
-/** A contained resource: its container's record name, the version id the source gives the container, its own id. */
+/**
+ * A record from a C-CDA entry with no id: the custodian's id, the patient's id, the entry's class IRI, then the
+ * entry's key as the C-CDA adapter computes it.
+ */
+export function recordFromCcdaWithoutIdName(entry: {
+  readonly custodian: CdaId;
+  readonly patient: CdaId;
+  readonly entryClass: string;
+  readonly key: string;
+}): Promise<string> {
+  return derivedName(NAMING_RULES.RecordFromCcdaWithoutId, [
+    ...[entry.custodian, entry.patient].flatMap(({ root, extension }) => [
+      root,
+      extension ?? "",
+    ]),
+    entry.entryClass,
+    entry.key,
+  ]);
+}
+
+/**
+ * A contained resource: its container's record name, the version the source gives the container (its version id,
+ * else its last-updated time, else the empty string), then its own id.
+ */
 export function containedRecordName(
   container: string,
-  containerSourceVersion: string | undefined,
+  containerSource: {
+    readonly versionId?: string;
+    readonly lastUpdated?: string;
+  },
   id: string,
 ): Promise<string> {
   return derivedName(NAMING_RULES.ContainedRecord, [
     container,
-    containerSourceVersion ?? "",
+    containerSource.versionId ?? containerSource.lastUpdated ?? "",
     id,
   ]);
 }
@@ -475,13 +511,15 @@ export async function viewEntryName(
   return `${view}#${hex(await sha256(new TextEncoder().encode(least)))}`;
 }
 
-/** A snapshot: the writer's previous snapshot where it has one, the heads it merged, and the set hash it carries. */
+/** An act's snapshot: the act, the writer's previous snapshot where it has one, the heads it merged, and its set hash. */
 export function snapshotName(snapshot: {
+  readonly act: string;
   readonly firstParent?: string;
   readonly mergedParents: Iterable<string>;
   readonly setHash: string;
 }): Promise<string> {
   return derivedName(NAMING_RULES.Snapshot, [
+    snapshot.act,
     ...counted(
       snapshot.firstParent === undefined ? [] : [snapshot.firstParent],
     ),
