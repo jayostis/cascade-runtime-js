@@ -164,6 +164,19 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # Four parts side by side, each on its own runner: the starter's suites, its browser tests, and the made app without
+    # and with the add-ons. `compatibility` reads them as one result, which fails when any part fails.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: suites
+          - part: browser
+          - part: app
+          # The chat and MCP add-ons are the app's only with `--with`, so the base app never runs them. Linux only: on
+          # Windows a second check would double its six-minute job, as the starter's own create.yml keeps it.
+          - part: app
+            with: chat,mcp
     permissions:
       contents: read
       pull-requests: read
@@ -186,16 +199,17 @@ jobs:
         with:
           package: ${{ runner.temp }}/package
       - name: The starter's types and tests
+        if: ${{ matrix.part == 'suites' }}
         working-directory: ${{ steps.starter.outputs.path }}
         run: |
           npm run typecheck
           npm test
       - name: Build try/ and the samples over this tarball
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.part == 'browser' }}
         working-directory: ${{ steps.starter.outputs.path }}
         run: npm run build:try
       - id: playwright
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.part != 'suites' }}
         working-directory: ${{ steps.starter.outputs.path }}
         shell: bash
         run: |
@@ -204,12 +218,12 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - id: browsers
         uses: actions/cache/restore@v6
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.part != 'suites' }}
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - id: install
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.part != 'suites' }}
         working-directory: ${{ steps.starter.outputs.path }}
         run: npx playwright install --only-shell chromium
       - uses: actions/cache/save@v6
@@ -218,32 +232,22 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
       - name: try/ and the starter in Chromium
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.part == 'browser' }}
         timeout-minutes: 15
         working-directory: ${{ steps.starter.outputs.path }}
         run: npm run test:browser
       # The command a person runs, on the app it makes, with the runtime from this tarball instead of the pin.
-      - name: create-cascade-app, on this tarball
-        if: ${{ !cancelled() }}
+      - name: create-cascade-app ${{ matrix.with && format('--with {0}', matrix.with) || '' }}, on this tarball
+        if: ${{ matrix.part == 'app' }}
         env:
           STARTER: ${{ steps.starter.outputs.path }}
           TARBALL: ${{ steps.starter.outputs.tarball }}
+          WITH: ${{ matrix.with }}
         run: |
           set -euo pipefail
           (cd "$STARTER" && npm run build:create)
           cd "$RUNNER_TEMP"
-          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL"
-      # The chat and MCP add-ons are the app's only with `--with`, so the base above never runs them. Linux only: on
-      # Windows a second check would double its six-minute job, as the starter's own create.yml keeps it.
-      - name: create-cascade-app --with chat,mcp, on this tarball
-        if: ${{ !cancelled() }}
-        env:
-          STARTER: ${{ steps.starter.outputs.path }}
-          TARBALL: ${{ steps.starter.outputs.tarball }}
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL" --with chat,mcp
+          node "$STARTER/check/starter.ts" "$STARTER"/build/create-cascade-app-*.tgz --runtime "$TARBALL" ${WITH:+--with "$WITH"}
 
   # The made app on the other systems, as the deleted installed.yml `starter` job ran it: windows on a pull request,
   # windows and macos on a push, the nightly run and by hand. Like `other-systems`, nothing needs it and `compatibility`
