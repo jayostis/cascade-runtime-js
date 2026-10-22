@@ -1,5 +1,6 @@
 import { canonize } from "rdf-canonize";
 import type { Triple } from "./rdf.js";
+import { Refusal } from "./refusal.js";
 
 const NI = "ni:///sha-256;";
 const UUID = "urn:uuid:";
@@ -176,4 +177,335 @@ export function fileStem(name: string): string {
       .join("");
   }
   throw new Error(`${name} names no file`);
+}
+
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+
+/** The IRI of each naming rule, by the rule term's local name less `NamingRule`. */
+export const NAMING_RULES = Object.freeze({
+  RecordFromServer: `${CASCADE}RecordFromServerNamingRule`,
+  RecordFromDocument: `${CASCADE}RecordFromDocumentNamingRule`,
+  RecordFromCcda: `${CASCADE}RecordFromCcdaNamingRule`,
+  ContainedRecord: `${CASCADE}ContainedRecordNamingRule`,
+  EnteredRecord: `${CASCADE}EnteredRecordNamingRule`,
+  Version: `${CASCADE}VersionNamingRule`,
+  Revision: `${CASCADE}RevisionNamingRule`,
+  Document: `${CASCADE}DocumentNamingRule`,
+  Finding: `${CASCADE}FindingNamingRule`,
+  TableRow: `${CASCADE}TableRowNamingRule`,
+  TableVersion: `${CASCADE}TableVersionNamingRule`,
+  ViewEntry: `${CASCADE}ViewEntryNamingRule`,
+  Snapshot: `${CASCADE}SnapshotNamingRule`,
+  Server: `${CASCADE}ServerNamingRule`,
+  Organization: `${CASCADE}OrganizationNamingRule`,
+  Claim: `${CASCADE}ClaimNamingRule`,
+  Assertion: `${CASCADE}AssertionNamingRule`,
+  Retraction: `${CASCADE}RetractionNamingRule`,
+});
+
+/** Orders strings by their Unicode code points, where `<` orders UTF-16 code units. */
+export function byCodePoint(first: string, second: string): number {
+  const a = [...first];
+  const b = [...second];
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const difference =
+      (a[index]?.codePointAt(0) ?? 0) - (b[index]?.codePointAt(0) ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return a.length - b.length;
+}
+
+/** A set of names as name inputs: its count, then its distinct items in code point order. */
+function counted(names: Iterable<string>): string[] {
+  const distinct = [...new Set(names)].sort(byCodePoint);
+  return [String(distinct.length), ...distinct];
+}
+
+function escaped(input: string): string {
+  return input.replace(/%/g, "%25").replace(/\|/g, "%7C");
+}
+
+function hex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A UUIDv8 name (RFC 9562 §5.8): the first 128 bits of the SHA-256 of the namespace, the rule's IRI and the inputs,
+ * each escaped and joined by `|`, with the version and variant bits set.
+ */
+async function derivedName(
+  rule: string,
+  inputs: readonly string[],
+): Promise<string> {
+  const digest = await sha256(
+    new TextEncoder().encode(
+      [RECORD_NAMESPACE, rule, ...inputs].map(escaped).join("|"),
+    ),
+  );
+  digest[6] = ((digest[6] ?? 0) & 0x0f) | 0x80;
+  digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80;
+  const text = hex(digest.slice(0, 16));
+  return `${UUID}${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
+}
+
+const UNRESERVED = /^[A-Za-z0-9\-._~]$/;
+
+/** RFC 3986 §6.2.2.1 and §6.2.2.2: an unreserved character's triplet decoded, every other's hex in upper case. */
+function percentNormalised(text: string): string {
+  return text.replace(/%([0-9A-Fa-f]{2})/g, (_, digits: string) => {
+    const character = String.fromCharCode(parseInt(digits, 16));
+    return UNRESERVED.test(character) ? character : `%${digits.toUpperCase()}`;
+  });
+}
+
+/** RFC 3986 §5.2.4. */
+function withoutDotSegments(path: string): string {
+  let input = path;
+  let output = "";
+  while (input !== "") {
+    if (input.startsWith("../")) input = input.slice(3);
+    else if (input.startsWith("./") || input.startsWith("/./"))
+      input = input.slice(2);
+    else if (input === "/.") input = "/";
+    else if (input.startsWith("/../") || input === "/..") {
+      input = `/${input.slice(input === "/.." ? 3 : 4)}`;
+      output = output.slice(0, Math.max(output.lastIndexOf("/"), 0));
+    } else if (input === "." || input === "..") input = "";
+    else {
+      const end = input.indexOf("/", 1);
+      const segment = end === -1 ? input : input.slice(0, end);
+      output += segment;
+      input = input.slice(segment.length);
+    }
+  }
+  return output;
+}
+
+const DEFAULT_PORTS: Readonly<Record<string, string>> = {
+  http: "80",
+  https: "443",
+};
+
+const URL_PARTS =
+  /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/;
+
+/**
+ * The base URL a client used, as the server and record rules take it: RFC 3986 §6.2.2 and §6.2.3 (case,
+ * percent-encoding, dot segments, a default or empty port), then every trailing `/` of the path removed; a query and
+ * a fragment as written. A URL carrying userinfo is refused, since a credential must never be a name input.
+ */
+export function normalisedBaseUrl(url: string): string {
+  const parts = URL_PARTS.exec(url);
+  if (parts === null)
+    throw new Refusal(`${url} is no absolute URL with an authority`);
+  const [, scheme = "", authority = "", path = "", query = "", fragment = ""] =
+    parts;
+  if (authority.includes("@"))
+    throw new Refusal(
+      `a base URL carrying userinfo names nothing: a credential is never a name input`,
+    );
+  const lowerScheme = scheme.toLowerCase();
+  const port = /:([0-9]*)$/.exec(authority);
+  const host = percentNormalised(
+    (port === null ? authority : authority.slice(0, port.index)).toLowerCase(),
+  )
+    .toLowerCase()
+    .replace(/%[0-9a-f]{2}/g, (triplet) => triplet.toUpperCase());
+  const keptPort =
+    port === null || port[1] === "" || port[1] === DEFAULT_PORTS[lowerScheme]
+      ? ""
+      : `:${port[1]}`;
+  const kept = withoutDotSegments(percentNormalised(path)).replace(/\/+$/, "");
+  return `${lowerScheme}://${host}${keptPort}${kept}${query}${fragment}`;
+}
+
+/** A record read from a server: the base URL the client used, normalised, then the resource's type and id. */
+export function recordFromServerName(
+  baseUrl: string,
+  type: string,
+  id: string,
+): Promise<string> {
+  return derivedName(NAMING_RULES.RecordFromServer, [
+    normalisedBaseUrl(baseUrl),
+    type,
+    id,
+  ]);
+}
+
+/** A record from a document: the document's name, then its selector's `rdf:value`. */
+export function recordFromDocumentName(
+  document: string,
+  selector: string,
+): Promise<string> {
+  return derivedName(NAMING_RULES.RecordFromDocument, [document, selector]);
+}
+
+/** A CDA `id`: its root, and its extension where it has one. */
+export interface CdaId {
+  readonly root: string;
+  readonly extension?: string;
+}
+
+/** A record from a C-CDA entry: the custodian's id, the patient's id, then the entry's id. */
+export function recordFromCcdaName(ids: {
+  readonly custodian: CdaId;
+  readonly patient: CdaId;
+  readonly entry: CdaId;
+}): Promise<string> {
+  return derivedName(
+    NAMING_RULES.RecordFromCcda,
+    [ids.custodian, ids.patient, ids.entry].flatMap(({ root, extension }) => [
+      root,
+      extension ?? "",
+    ]),
+  );
+}
+
+/** A contained resource: its container's record name, the version id the source gives the container, its own id. */
+export function containedRecordName(
+  container: string,
+  containerSourceVersion: string | undefined,
+  id: string,
+): Promise<string> {
+  return derivedName(NAMING_RULES.ContainedRecord, [
+    container,
+    containerSourceVersion ?? "",
+    id,
+  ]);
+}
+
+/** A record an entry session wrote: the session's IRI, then the draft's position. */
+export function enteredRecordName(
+  session: string,
+  position: number,
+): Promise<string> {
+  if (!Number.isSafeInteger(position) || position < 0)
+    throw new Error(`${position} is no draft's position`);
+  return derivedName(NAMING_RULES.EnteredRecord, [session, String(position)]);
+}
+
+/** A server: the base URL the client used, normalised. */
+export function serverName(baseUrl: string): Promise<string> {
+  return derivedName(NAMING_RULES.Server, [normalisedBaseUrl(baseUrl)]);
+}
+
+/**
+ * An organization: from a server, by the server's base URL and its `Organization` resource's id; from a document, by
+ * the identifier's system and value as the document writes them (a C-CDA custodian's id root and extension).
+ */
+export function organizationName(
+  from:
+    | { readonly server: string; readonly id: string }
+    | { readonly system: string; readonly value: string },
+): Promise<string> {
+  return derivedName(
+    NAMING_RULES.Organization,
+    "server" in from
+      ? [normalisedBaseUrl(from.server), "Organization", from.id]
+      : [from.system, from.value],
+  );
+}
+
+/** A machine judgment's claim: its maker, the matcher rule, the justification, its members, and the versions used. */
+export function claimName(claim: {
+  readonly maker: string;
+  readonly rule: string;
+  readonly justification: string;
+  readonly members: Iterable<string>;
+  readonly used: Iterable<string>;
+}): Promise<string> {
+  return derivedName(NAMING_RULES.Claim, [
+    claim.maker,
+    claim.rule,
+    claim.justification,
+    ...counted(claim.members),
+    ...counted(claim.used),
+  ]);
+}
+
+/** A claim's assertion under a rule list version. */
+export function assertionName(
+  ruleListVersion: string,
+  claim: string,
+): Promise<string> {
+  return derivedName(NAMING_RULES.Assertion, [ruleListVersion, claim]);
+}
+
+/** A release's retraction of a claim, made by the matcher rule it declares wrong. */
+export function retractionName(
+  release: string,
+  claim: string,
+  rule: string,
+): Promise<string> {
+  return derivedName(NAMING_RULES.Retraction, [release, claim, rule]);
+}
+
+/**
+ * A mapping row: its `owl:annotatedSource`, `owl:annotatedProperty` and `owl:annotatedTarget`, and for a panel
+ * member its `panelSequence` in its canonical lexical form.
+ */
+export function tableRowName(
+  row: {
+    readonly source: string;
+    readonly property: string;
+    readonly target: string;
+  },
+  panelSequence?: string | number,
+): Promise<string> {
+  const inputs = [row.source, row.property, row.target];
+  if (panelSequence !== undefined) {
+    const digits = /^\+?([0-9]+)$/.exec(String(panelSequence))?.[1];
+    if (digits === undefined)
+      throw new Error(`${panelSequence} is no panel sequence`);
+    inputs.push(digits.replace(/^0+(?=.)/, ""));
+  }
+  return derivedName(NAMING_RULES.TableRow, inputs);
+}
+
+/**
+ * A view entry, relative to the pod: the view's path, `#`, then the lower-case hex SHA-256 of the IRI of its least
+ * member in code point order.
+ */
+export async function viewEntryName(
+  view: string,
+  members: Iterable<string>,
+): Promise<string> {
+  const [least] = [...members].sort(byCodePoint);
+  if (least === undefined) throw new Error("a view entry has a member");
+  return `${view}#${hex(await sha256(new TextEncoder().encode(least)))}`;
+}
+
+/** A snapshot: the writer's previous snapshot where it has one, the heads it merged, and the set hash it carries. */
+export function snapshotName(snapshot: {
+  readonly firstParent?: string;
+  readonly mergedParents: Iterable<string>;
+  readonly setHash: string;
+}): Promise<string> {
+  return derivedName(NAMING_RULES.Snapshot, [
+    ...counted(
+      snapshot.firstParent === undefined ? [] : [snapshot.firstParent],
+    ),
+    ...counted(snapshot.mergedParents),
+    snapshot.setHash,
+  ]);
+}
+
+/** A version, from its triples about `urn:cascade:this-version`. */
+export function versionName(triples: Iterable<Triple>): Promise<string> {
+  return contentName(triples);
+}
+
+/** A revision, from its triples about `urn:cascade:this-revision`. */
+export function revisionName(triples: Iterable<Triple>): Promise<string> {
+  return contentName(triples);
+}
+
+/** A finding, from its triples about `urn:cascade:this-finding`. */
+export function findingName(triples: Iterable<Triple>): Promise<string> {
+  return contentName(triples);
+}
+
+/** A table version, from its triples about `urn:cascade:this-version`: its series, what it revises, and its rows. */
+export function tableVersionName(triples: Iterable<Triple>): Promise<string> {
+  return contentName(triples);
 }
