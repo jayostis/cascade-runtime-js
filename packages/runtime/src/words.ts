@@ -324,6 +324,10 @@ export class Words {
     const scopes = bytes === undefined ? undefined : scopesOf(bytes);
     if (scopes === undefined)
       throw new Error(`${handle} names ${path}, which is no C-CDA document`);
+    if (scopes === null)
+      throw new Error(
+        `${handle} names ${path}, which states no custodian id and one patient with an id: handles.json gives its selector`,
+      );
     const { identifier, class: entryClass, key, members } = inputs;
     const strings = (value: unknown): value is string[] =>
       Array.isArray(value) && value.every((part) => typeof part === "string");

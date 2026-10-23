@@ -59,32 +59,38 @@ interface Header {
   effectiveTime?: string;
   custodian?: string;
   custodianId?: CdaId;
+  patients: number;
   patientId?: CdaId;
   readonly sections: Section[];
 }
 
 const OTHER = Symbol("another document element");
 
+/** An `id` with a root and no `nullFlavor`, its extension only where it is not empty. */
 function idOf(tag: SaxesTagNS): CdaId | undefined {
   const root = tag.attributes.root?.value;
   const extension = tag.attributes.extension?.value;
-  if (root === undefined || root === "") return undefined;
-  return extension === undefined ? { root } : { root, extension };
+  if (root === undefined || root === "" || tag.attributes.nullFlavor)
+    return undefined;
+  return extension === undefined || extension === ""
+    ? { root }
+    : { root, extension };
 }
 
 /**
- * The ids that scope a C-CDA document's records: its custodian's and its patient's first `id`, each with an empty root
- * where the document gives none; undefined where the file is no C-CDA document.
+ * The ids that scope a C-CDA document's records, its custodian's first `id` and its one patient's; null where it states
+ * no custodian id or not exactly one patient with an id, so that its records are named by the document; undefined where
+ * the file is no C-CDA document.
  */
 export function scopesOf(
   bytes: Uint8Array,
-): { readonly custodian: CdaId; readonly patient: CdaId } | undefined {
+): { readonly custodian: CdaId; readonly patient: CdaId } | null | undefined {
   const header = headerOf(bytes);
   if (header === undefined) return undefined;
-  return {
-    custodian: header.custodianId ?? { root: "" },
-    patient: header.patientId ?? { root: "" },
-  };
+  const { custodianId: custodian, patientId: patient, patients } = header;
+  return custodian === undefined || patient === undefined || patients !== 1
+    ? null
+    : { custodian, patient };
 }
 
 /**
@@ -92,7 +98,7 @@ export function scopesOf(
  * than that element; it throws where a CDA is not well-formed XML.
  */
 function headerOf(bytes: Uint8Array): Header | undefined {
-  const header: Header = { sections: [] };
+  const header: Header = { patients: 0, sections: [] };
   const path: string[] = [];
   let section: Section | undefined;
   let capture: { depth: number; text: string } | undefined;
@@ -118,7 +124,9 @@ function headerOf(bytes: Uint8Array): Header | undefined {
     else if (at(HEADER, "effectiveTime"))
       header.effectiveTime = tag.attributes.value?.value;
     else if (at(CUSTODIAN, "id")) header.custodianId ??= idOf(tag);
-    else if (at(PATIENT, "id")) header.patientId ??= idOf(tag);
+    else if (at(PATIENT)) header.patients++;
+    else if (at(PATIENT, "id") && header.patients === 1)
+      header.patientId ??= idOf(tag);
     else if (at(CUSTODIAN, "name") || at(SECTION, "title"))
       capture = { depth: path.length, text: "" };
     else if (at(SECTION)) {
