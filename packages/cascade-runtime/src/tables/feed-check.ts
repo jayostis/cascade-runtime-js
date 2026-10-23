@@ -64,7 +64,8 @@ export interface FeedContext extends Pick<
 
 /**
  * The kinds something the app runs reads: the kind a row of the vocabulary's rule list names, and the kinds the
- * vocabulary marks as read by pages. A series of any other kind is neither kept nor packed.
+ * vocabulary marks as read by pages, each one the vocabulary declares. A series of any other kind is neither kept nor
+ * packed.
  */
 export async function kindsRead({
   vocabulary,
@@ -72,7 +73,8 @@ export async function kindsRead({
 }: Pick<TablesOptions, "vocabulary" | "newStore">): Promise<
   ReadonlySet<string>
 > {
-  const kinds = new Set((await tableTerms(vocabulary, newStore)).readByPages);
+  const { declared, readByPages } = await tableTerms(vocabulary, newStore);
+  const kinds = new Set(readByPages);
   for (const path of await vocabulary.list(RULE_LIST)) {
     const bytes = path.endsWith(".ttl")
       ? await vocabulary.read(path)
@@ -84,7 +86,7 @@ export async function kindsRead({
     ))
       if (predicate.value === `${REC}tableKind`) kinds.add(object.value);
   }
-  return kinds;
+  return new Set([...kinds].filter((kind) => declared.has(kind)));
 }
 
 function only(graph: Graph, subject: Term, kept: readonly string[]): Triple[] {

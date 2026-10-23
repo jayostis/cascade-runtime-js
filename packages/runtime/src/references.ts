@@ -33,6 +33,8 @@ export interface TableTerms {
   readonly uriSpaces: readonly string[];
   /** By kind; `cascade:RowSubject` for a row found by its own subject. */
   readonly foundBy: ReadonlyMap<string, readonly string[]>;
+  /** The kinds the vocabulary declares, `a cascade:TableKind`: a series of any other kind is retired. */
+  readonly declared: ReadonlySet<string>;
   /** The kinds the vocabulary marks `cascade:readByAppPages true`: an app keeps their series though no rule reads the kind. */
   readonly readByPages: ReadonlySet<string>;
 }
@@ -89,10 +91,16 @@ async function readTableTerms(
         ...(template && { pageTemplate: template.value }),
       };
     });
+  const declared = new Set(
+    graph
+      .subjects(`${RDF}type`, iri(`${REC}TableKind`))
+      .map(({ value }) => value),
+  );
   return {
     codeSystems,
     uriSpaces: codeSystems.map(({ uriSpace }) => uriSpace),
     foundBy,
+    declared,
     readByPages: new Set(
       graph
         .match(undefined, `${REC}readByAppPages`)
