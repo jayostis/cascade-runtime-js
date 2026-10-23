@@ -1,4 +1,5 @@
 import {
+  builtFileBytes,
   type CodeSystem,
   DERIVED,
   documentName,
@@ -6,7 +7,6 @@ import {
   iri,
   type Layout,
   lenses,
-  ntriples,
   QUERIES,
   type PodBuild,
   podDataset,
@@ -289,7 +289,12 @@ export class Site {
       const bytes =
         rebuilt === undefined
           ? await this.options.pod.read(path)
-          : ntriples(rebuilt);
+          : builtFileBytes(
+              this.options.layout,
+              this.pod.address,
+              path,
+              rebuilt,
+            );
       if (bytes !== undefined) files.set(COPY + path, bytes);
     }
     return files;

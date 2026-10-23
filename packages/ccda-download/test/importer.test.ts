@@ -163,7 +163,10 @@ test("a document's records are scoped by its custodian's first id with no nullFl
     ["a nullFlavor custodian id", document(one, '<id nullFlavor="NI"/>')],
     [
       "two recordTargets",
-      document(`${one}${patient('<id root="2.16.3"/>')}`, '<id root="2.16.9"/>'),
+      document(
+        `${one}${patient('<id root="2.16.3"/>')}`,
+        '<id root="2.16.9"/>',
+      ),
     ],
     ["no patient id", document(patient(""), '<id root="2.16.9"/>')],
     ["neither", bytes(CDA)],

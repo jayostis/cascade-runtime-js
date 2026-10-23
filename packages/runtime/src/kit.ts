@@ -1,3 +1,4 @@
+import { builtFileBytes } from "./build.js";
 import type { Assertion } from "./conformance.js";
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
@@ -26,7 +27,6 @@ const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const PAV = "http://purl.org/pav/";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 const TYPE = `${RDF}type`;
-const ENTRY = "urn:cascade:entry:";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const UUID_V4 =
   /^urn:uuid:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
@@ -40,6 +40,7 @@ export const KIT_CHECKS = {
   shapes: "check-3-every-file-conforms-to-the-shapes",
   names: "check-4-every-name-follows-its-rule",
   layout: "check-5-every-file-is-where-the-layout-says",
+  address: "check-6-no-view-holds-the-pods-address",
 } as const;
 
 /** What the kit's checks read: one replay of its story, and the pod at its last step under `everyday`. */
@@ -83,14 +84,14 @@ async function podFiles(
   return files;
 }
 
-/** Check 2: a view's entries with what they state, each entry IRI a blank node. */
-function entriesOf(triples: readonly Triple[]): Triple[] {
+/** Check 2: a view's entries with what they state, each entry, named in the view, a blank node. */
+function entriesOf(view: string, triples: readonly Triple[]): Triple[] {
   const kept = new Set(
     triples.filter(([, p]) => p.value === MERGED_FROM).map(([s]) => written(s)),
   );
   const node = (term: Term): Term =>
-    term.termType === "NamedNode" && term.value.startsWith(ENTRY)
-      ? blank(term.value.slice(ENTRY.length))
+    term.termType === "NamedNode" && term.value.startsWith(`${view}#`)
+      ? blank(term.value.slice(view.length + 1))
       : term;
   return triples
     .filter(([s]) => kept.has(written(s)))
@@ -168,7 +169,7 @@ async function viewsEqualExpected(
       await readText(vocabulary, path),
       vocabulary.iri + path,
     );
-    const found = entriesOf(pod.get(view) ?? []);
+    const found = entriesOf(replayed.story.address + view, pod.get(view) ?? []);
     if ((await canonical(expected)) !== (await canonical(found)))
       failures.push(
         `${replayed.story.address}${view} is not ${path}:`,
@@ -616,7 +617,30 @@ async function whereTheLayoutSays(
   return failures;
 }
 
-/** Checks 2 to 5 of the kit, each one assertion, named under the kit's folder. */
+/** Each IRI the Turtle's bytes write that begins with the pod's address, in the order written. */
+export function podAddressesIn(bytes: Uint8Array, address: string): string[] {
+  return [...new TextDecoder().decode(bytes).matchAll(/<([^<>"{}|^`\s]*)>/g)]
+    .map(([, written = ""]) => written)
+    .filter((written) => written.startsWith(address));
+}
+
+/** Check 6: no view, as the runtime writes or shares it, holds the pod's address. */
+function viewsHoldNoAddress(
+  run: KitRun,
+  pod: ReadonlyMap<string, Triple[]>,
+): string[] {
+  const address = run.replayed.story.address;
+  return run.layout.views.flatMap(({ file = "" }) => {
+    const triples = pod.get(file);
+    if (triples === undefined) return [];
+    return podAddressesIn(
+      builtFileBytes(run.layout, address, file, triples),
+      address,
+    ).map((written) => `${address}${file} writes <${written}>`);
+  });
+}
+
+/** Checks 2 to 6 of the kit, each one assertion, named under the kit's folder. */
 export async function kitChecks(run: KitRun): Promise<Assertion[]> {
   const address = run.replayed.story.address;
   const pod = await podFiles(run.final, address);
@@ -636,6 +660,7 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
     [KIT_CHECKS.shapes, () => conformsToShapes(run, pod)],
     [KIT_CHECKS.names, () => namesFollowTheirRules(run, held)],
     [KIT_CHECKS.layout, () => whereTheLayoutSays(run, by)],
+    [KIT_CHECKS.address, () => Promise.resolve(viewsHoldNoAddress(run, pod))],
   ];
   const assertions: Assertion[] = [];
   for (const [check, made] of checks) {
@@ -667,8 +692,4 @@ export async function kitsOf(vocabulary: Files): Promise<string[]> {
   return (await vocabulary.list("conformance"))
     .filter(isKitStory)
     .map((path) => path.slice(0, path.lastIndexOf("/")));
-}
-
-export function podAddressesIn(_bytes: Uint8Array, _address: string): string[] {
-  return [];
 }

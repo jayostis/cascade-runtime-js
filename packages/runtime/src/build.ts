@@ -1,7 +1,17 @@
 import { Derivations, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
-import { blank, iri, literal, RDF, type Triple, XSD } from "./rdf.js";
+import {
+  blank,
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  relativeTurtle,
+  type Term,
+  type Triple,
+  XSD,
+} from "./rdf.js";
 import type { Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -30,6 +40,36 @@ export type Derive = (
 
 /** The software a pod's manifest says built it. */
 export const RUNTIME = "cascade-runtime-js";
+
+/** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
+const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
+
+/** A view's triples with each entry named in the view (N13): its address, `#`, and the hash its placeholder carries. */
+function entriesInView(view: string, triples: readonly Triple[]): Triple[] {
+  const named = (term: Term): Term =>
+    term.termType === "NamedNode" && term.value.startsWith(ENTRY_PLACEHOLDER)
+      ? iri(`${view}#${term.value.slice(ENTRY_PLACEHOLDER.length)}`)
+      : term;
+  return triples.map(
+    ([subject, predicate, object]) =>
+      [named(subject), predicate, named(object)] as Triple,
+  );
+}
+
+/**
+ * A built file's bytes: a view as Turtle relative to itself, so that it holds no address of the pod; any other file as
+ * N-Triples.
+ */
+export function builtFileBytes(
+  layout: Layout,
+  address: string,
+  path: string,
+  triples: Iterable<Triple>,
+): Uint8Array {
+  return layout.views.some(({ file }) => file === path)
+    ? relativeTurtle(triples, address + path)
+    : ntriples(triples);
+}
 
 /** A query's triples, with its file marked as a view built with these reference versions. */
 function marked(
@@ -182,14 +222,19 @@ export async function vocabularyBuild(
       const made = await Promise.all(
         group
           .filter(({ file }) => !views.includes(file) || held.has(file))
-          .map(async ({ file, query: path }) => ({
-            file,
-            triples: marked(
-              pod.address + file,
-              await union.construct(query(path)),
-              used,
-            ),
-          })),
+          .map(async ({ file, query: path }) => {
+            const triples = await union.construct(query(path));
+            return {
+              file,
+              triples: marked(
+                pod.address + file,
+                views.includes(file)
+                  ? entriesInView(pod.address + file, triples)
+                  : triples,
+                used,
+              ),
+            };
+          }),
       );
       for (const { file, triples } of made) await add(file, triples);
     }
