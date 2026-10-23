@@ -179,7 +179,7 @@ async function ruleList(): Promise<{
   const index = new TextDecoder().decode(
     await parts.vocabulary.read(`${RULE_LIST}references.ttl`),
   );
-  const [, shipped] = /rec:shipsWith <([^>]+)>/.exec(index) ?? [];
+  const [, shipped] = /cascade:defaultTableVersion <([^>]+)>/.exec(index) ?? [];
   const [, series] = /<([^>]+)> a cascade:ReferenceSeries/.exec(index) ?? [];
   assert.ok(shipped !== undefined && series !== undefined);
   return { index, shipped, series };
@@ -311,6 +311,7 @@ const spaceOf = (label: string): string => {
 };
 const RXNORM = spaceOf("RxNorm");
 const ICD10CM = spaceOf("ICD-10-CM");
+const CVX = spaceOf("CVX");
 
 /** A mapping series of the test feed: its kind, the code system its rows' codes are in, and their predicate. */
 interface Mapping {
@@ -509,7 +510,7 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
       ["141", "2024-10-01"],
     ].map(([code, date]) => [
       "cascade:Vaccination",
-      `cascade:vaccineCode "${code}" ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+      `cascade:vaccineCode <${CVX}${code}> ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
     ]),
     ...["153010", "5640"].map((code) => [
       "cascade:AllergyOrIntolerance",
@@ -554,14 +555,14 @@ ${records.join("\n")}`);
       [{ version: groups.second }],
     );
     const sames = await pod.ask({
-      query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(?code; separator=" ") AS ?codes) WHERE {
+      query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
         ?judgment cascade:justification cascade:SameMappedCodeAndDate ; prov:used ?used ; prov:hadMember ?record .
         VALUES ?used { <${groups.first}> <${groups.second}> }
-        ?record pav:hasCurrentVersion/health:vaccineCode ?code
+        ?record pav:hasCurrentVersion/cascade:vaccineCode ?code
       } GROUP BY ?judgment ?used`,
     });
     const codes = ({ used = "", codes = "" }) =>
-      `${used === groups.first ? "first" : "second"}: ${codes.split(" ").sort().join(" ")}`;
+      `${used === groups.first ? "first" : "second"}: ${codes.replaceAll(CVX, "").split(" ").sort().join(" ")}`;
     assert.deepEqual(sames.map(codes).sort(), [
       "first: 141 150",
       "second: 140 141",
@@ -573,7 +574,7 @@ ${records.join("\n")}`);
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
         ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
         VALUES ?used { <${held}> <${adopted}> }
-        ?record pav:hasCurrentVersion/health:allergenCode ?code
+        ?record pav:hasCurrentVersion/cascade:allergenCode ?code
       } GROUP BY ?judgment ?used`,
     });
     const allergens = ({ used = "", codes = "" }) =>
@@ -587,7 +588,7 @@ ${records.join("\n")}`);
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
         ?judgment cascade:justification cascade:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
-        ?record pav:hasCurrentVersion/health:icd10Code ?code
+        ?record pav:hasCurrentVersion/cascade:icd10Code ?code
       } GROUP BY ?judgment`,
     });
     assert.deepEqual(
@@ -599,7 +600,7 @@ ${records.join("\n")}`);
     const episodes = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?onset); separator=" ") AS ?onsets) WHERE {
         ?judgment cascade:justification cascade:SameCodeAndPeriod ; prov:used <${shipped}> ; prov:hadMember ?record .
-        ?record pav:hasCurrentVersion/health:onsetDate ?onset
+        ?record pav:hasCurrentVersion/cascade:onsetDate ?onset
       } GROUP BY ?judgment`,
     });
     assert.deepEqual(
@@ -611,7 +612,7 @@ ${records.join("\n")}`);
       joined.set(entry, [...(joined.get(entry) ?? []), used]);
     const citedBy = async (field: string, value: string): Promise<string[]> => {
       const entries = await pod.ask({
-        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/health:${field} ${value} ; cascade:inEntry ?entry }`,
+        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/cascade:${field} ${value} ; cascade:inEntry ?entry }`,
       });
       assert.equal(
         entries.length,
@@ -625,8 +626,12 @@ ${records.join("\n")}`);
       [adopted],
       "a brand join cites the version that counts, not the one that lapsed",
     );
-    assert.deepEqual(await citedBy("vaccineCode", '"150"'), [groups.second]);
-    assert.deepEqual(await citedBy("vaccineCode", '"140"'), [groups.second]);
+    assert.deepEqual(await citedBy("vaccineCode", `<${CVX}150>`), [
+      groups.second,
+    ]);
+    assert.deepEqual(await citedBy("vaccineCode", `<${CVX}140>`), [
+      groups.second,
+    ]);
     assert.deepEqual(
       await citedBy("icd10Code", `<${ICD10CM}C88.00>`),
       [converted],
@@ -2044,7 +2049,7 @@ ${allergies.join("\n")}`);
         query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
           ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
           VALUES ?used { <${oldVersion}> <${newVersion}> }
-          ?record pav:hasCurrentVersion/health:allergenCode ?code
+          ?record pav:hasCurrentVersion/cascade:allergenCode ?code
         } GROUP BY ?judgment ?used`,
       })
     )

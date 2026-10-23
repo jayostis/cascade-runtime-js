@@ -319,7 +319,7 @@ test("the reading example shows each allergy as its entry states it, its records
   for (const { record, field, value } of await examplesPod().ask(
     "record/What each version says",
   ))
-    if (record && value && field?.endsWith("#criticality"))
+    if (record && value && field?.endsWith("#allergyCriticality"))
       stated.set(record, (stated.get(record) ?? new Set()).add(value));
   const severity = ["unable-to-assess", "low", "high"];
   const mostSevere = (records: readonly string[]): string | undefined =>
