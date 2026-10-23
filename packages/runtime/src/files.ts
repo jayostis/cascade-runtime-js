@@ -7,6 +7,15 @@ export interface Files {
   readonly iri: string;
   /** The file's bytes, or undefined when there is no such file. */
   read(pathOrIri: string): Promise<Uint8Array | undefined>;
+  /**
+   * Up to `length` bytes of the file from `start`, or, when `start` is negative, from that many bytes before its
+   * end; undefined when there is no such file. For a host that can read part of a file without reading the rest.
+   */
+  readRange?(
+    pathOrIri: string,
+    start: number,
+    length: number,
+  ): Promise<Uint8Array | undefined>;
   write(pathOrIri: string, bytes: Uint8Array): Promise<void>;
   /** Writes the file, whole or not at all, only when none is at its path; false when one is. */
   writeNew?(pathOrIri: string, bytes: Uint8Array): Promise<boolean>;
@@ -81,6 +90,17 @@ export class MemoryFiles implements Files {
 
   async read(pathOrIri: string): Promise<Uint8Array | undefined> {
     return this.#files.get(relative(this, pathOrIri))?.slice();
+  }
+
+  async readRange(
+    pathOrIri: string,
+    start: number,
+    length: number,
+  ): Promise<Uint8Array | undefined> {
+    const bytes = this.#files.get(relative(this, pathOrIri));
+    if (bytes === undefined) return undefined;
+    const from = start < 0 ? Math.max(0, bytes.length + start) : start;
+    return bytes.slice(from, from + length);
   }
 
   async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {

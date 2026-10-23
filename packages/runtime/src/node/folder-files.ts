@@ -1,6 +1,7 @@
 import {
   link,
   mkdir,
+  open,
   readdir,
   readFile,
   rename,
@@ -93,6 +94,35 @@ export class FolderFiles implements Files {
     const state = await enter(local, (t) => t.renames > 0, "reads");
     try {
       return new Uint8Array(await readFile(local));
+    } catch (error) {
+      if (absent(error)) return undefined;
+      throw error;
+    } finally {
+      state.reads -= 1;
+      settled(local, state);
+    }
+  }
+
+  async readRange(
+    pathOrIri: string,
+    start: number,
+    length: number,
+  ): Promise<Uint8Array | undefined> {
+    const local = this.#local(pathOrIri);
+    const state = await enter(local, (t) => t.renames > 0, "reads");
+    try {
+      const handle = await open(local, "r");
+      try {
+        const size = (await handle.stat()).size;
+        const from = start < 0 ? Math.max(0, size + start) : start;
+        const bytes = new Uint8Array(
+          Math.max(0, Math.min(length, size - from)),
+        );
+        const { bytesRead } = await handle.read(bytes, 0, bytes.length, from);
+        return bytes.subarray(0, bytesRead);
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
       if (absent(error)) return undefined;
       throw error;
