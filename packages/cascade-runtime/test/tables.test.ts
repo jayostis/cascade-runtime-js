@@ -978,29 +978,40 @@ test("a search lists a version again when the listing kept beside it is not one,
     new TextDecoder().decode(await checked.read(path)),
   ) as Record<string, unknown>;
   const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
-  for (const kept of [
+  const headDiffers = [
     "{",
+    JSON.stringify({ ...valid, codes: [], format: 0 }),
+    JSON.stringify({ ...valid, codes: [], uriSpaces: ["urn:test:other:"] }),
+  ];
+  const brokenInside = [
     JSON.stringify({ ...valid, mapsTo: null }),
     JSON.stringify({ ...valid, codes: [], names: null }),
     JSON.stringify({ ...valid, names: { [cvx141]: 141 } }),
-    JSON.stringify({ ...valid, codes: [], format: 0 }),
-    JSON.stringify({ ...valid, codes: [], uriSpaces: ["urn:test:other:"] }),
-  ]) {
+  ];
+  for (const kept of [...headDiffers, ...brokenInside]) {
     const files = new MemoryFiles("urn:test:tables/");
     await tablesOver(feed, files).check();
     await files.write(path, new TextEncoder().encode(kept));
     const again = tablesOver(feed, files);
     await again.start();
-    assert.deepEqual(
-      JSON.parse(new TextDecoder().decode(await files.read(path))),
-      valid,
-      `a start lists it again: ${kept}`,
-    );
+    const listedAgain = async (): Promise<unknown> =>
+      JSON.parse(new TextDecoder().decode(await files.read(path)));
+    if (headDiffers.includes(kept))
+      assert.deepEqual(
+        await listedAgain(),
+        valid,
+        `a start lists it again: ${kept}`,
+      );
     const { found } = await again.search(groups.series, "141");
     assert.deepEqual(
       found.map(({ notation }) => notation),
       ["141"],
       kept,
+    );
+    assert.deepEqual(
+      await listedAgain(),
+      valid,
+      `a search lists it again: ${kept}`,
     );
   }
 });
