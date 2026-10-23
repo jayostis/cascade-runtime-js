@@ -298,11 +298,68 @@ const DEFAULT_PORTS: Readonly<Record<string, string>> = {
 const URL_PARTS =
   /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/;
 
+const REG_NAME = /^(?:[A-Za-z0-9\-._~!$&'()*+,;=]|%[0-9A-Fa-f]{2})+$/;
+const H16 = /^[0-9A-Fa-f]{1,4}$/;
+const DEC_OCTET = /^(?:0|[1-9][0-9]{0,2})$/;
+const IPV_FUTURE = /^v[0-9a-f]+\.[A-Za-z0-9\-._~!$&'()*+,;=:]+$/i;
+
+function ipv4(text: string): boolean {
+  const octets = text.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => DEC_OCTET.test(octet) && Number(octet) <= 255)
+  );
+}
+
+/** RFC 3986 §3.2.2's IPv6address. */
+function ipv6(text: string): boolean {
+  const halves = text.split("::");
+  if (halves.length > 2) return false;
+  let groups = 0;
+  for (const [index, half] of halves.entries()) {
+    if (half === "") continue;
+    const pieces = half.split(":");
+    for (const [at, piece] of pieces.entries()) {
+      if (H16.test(piece)) groups += 1;
+      else if (
+        index === halves.length - 1 &&
+        at === pieces.length - 1 &&
+        ipv4(piece)
+      )
+        groups += 2;
+      else return false;
+    }
+  }
+  return halves.length === 2 ? groups <= 7 : groups === 8;
+}
+
+/** A bracketed host: an IPv6 address or an IPvFuture, lower-cased and otherwise as written. */
+function ipLiteral(bracketed: string): string {
+  const inner = bracketed.slice(1, -1);
+  if (!ipv6(inner) && !IPV_FUTURE.test(inner))
+    throw new Refusal(
+      "a base URL's bracketed host is an IPv6 address or an IPvFuture, with no zone id",
+    );
+  return bracketed.toLowerCase();
+}
+
+/** An ASCII reg-name, normalised as RFC 3986 §6.2.2.1 says: unreserved triplets decoded, hex digits in upper case. */
+function regName(host: string): string {
+  if (!REG_NAME.test(host))
+    throw new Refusal(
+      "a base URL's host is an ASCII reg-name of unreserved characters, sub-delims and percent-encodings",
+    );
+  return percentNormalised(host.toLowerCase())
+    .toLowerCase()
+    .replace(/%[0-9a-f]{2}/g, (triplet) => triplet.toUpperCase());
+}
+
 /**
  * The base URL a client used, as the server and record rules take it: RFC 3986 §6.2.2 and §6.2.3 (case,
- * percent-encoding, dot segments, a default or empty port), then every trailing `/` of the path removed; a query and
- * a fragment as written. A URL carrying userinfo is refused, since a credential must never be a name input, as is one
- * with no scheme, a port that is no number, a control character or a space, or a query or fragment, even an empty one.
+ * percent-encoding, dot segments, a default or empty port, a port's leading zeros), then every trailing `/` of the
+ * path removed. Refused, with a reason that never holds the URL: userinfo (a credential must never be a name input),
+ * no scheme or host, a control character or a space, a query or fragment even if empty, a host that is not an ASCII
+ * reg-name or a bracketed IPv6 address or IPvFuture, and a port that is not ASCII digits or exceeds 65535.
  */
 export function normalisedBaseUrl(url: string): string {
   if ([...url].some((c) => (c.codePointAt(0) ?? 0) <= 0x20 || c === "\x7f"))
@@ -315,26 +372,37 @@ export function normalisedBaseUrl(url: string): string {
     );
   const parts = URL_PARTS.exec(url);
   if (parts === null)
-    throw new Refusal(`${url} is no absolute URL with an authority`);
+    throw new Refusal("a base URL is an absolute URL with an authority");
   const [, scheme = "", authority = "", path = ""] = parts;
   if (authority === "" || authority.startsWith(":"))
-    throw new Refusal(`${url} names no host`);
+    throw new Refusal("a base URL has no host");
   if (authority.includes("@"))
     throw new Refusal(
       `a base URL carrying userinfo names nothing: a credential is never a name input`,
     );
   const lowerScheme = scheme.toLowerCase();
-  const colon = authority.indexOf(":", authority.lastIndexOf("]") + 1);
-  const port = colon === -1 ? "" : authority.slice(colon + 1);
+  const bracketed = authority.startsWith("[");
+  const close = authority.indexOf("]");
+  if (bracketed ? close === -1 : close !== -1)
+    throw new Refusal("a base URL's host has unbalanced brackets");
+  const colon = authority.indexOf(":", bracketed ? close : 0);
+  const written = bracketed
+    ? authority.slice(0, close + 1)
+    : colon === -1
+      ? authority
+      : authority.slice(0, colon);
+  const tail = authority.slice(written.length);
+  if (tail !== "" && !tail.startsWith(":"))
+    throw new Refusal("a base URL's bracketed host is followed by a port only");
+  const port = tail.slice(1);
   if (!/^[0-9]*$/.test(port))
-    throw new Refusal(`${url} has a port that is no number`);
-  const host = percentNormalised(
-    (colon === -1 ? authority : authority.slice(0, colon)).toLowerCase(),
-  )
-    .toLowerCase()
-    .replace(/%[0-9a-f]{2}/g, (triplet) => triplet.toUpperCase());
+    throw new Refusal("a base URL's port is ASCII digits");
+  if (port.length > 5 || Number(port) > 65535)
+    throw new Refusal("a base URL's port is at most five digits and 65535");
+  const number = port === "" ? "" : String(Number(port));
+  const host = bracketed ? ipLiteral(written) : regName(written);
   const keptPort =
-    port === "" || port === DEFAULT_PORTS[lowerScheme] ? "" : `:${port}`;
+    number === "" || number === DEFAULT_PORTS[lowerScheme] ? "" : `:${number}`;
   const kept = withoutDotSegments(percentNormalised(path)).replace(/\/+$/, "");
   return `${lowerScheme}://${host}${keptPort}${kept}`;
 }
