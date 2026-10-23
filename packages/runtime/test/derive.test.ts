@@ -44,18 +44,12 @@ async function derivedBy(
     "ro-crate-metadata.json",
     enc.encode(
       JSON.stringify({
-        "@graph": [
-          ...graph,
-          { "@id": "queries/lenses/l.rq", position: 99 },
-        ],
+        "@graph": [...graph, { "@id": "queries/lenses/l.rq", position: 99 }],
       }),
     ),
   );
   for (const [at, query] of derivations.entries())
-    await vocabulary.write(
-      `queries/derivations/${at}.rq`,
-      enc.encode(query),
-    );
+    await vocabulary.write(`queries/derivations/${at}.rq`, enc.encode(query));
   await vocabulary.write("queries/lenses/l.rq", enc.encode(NEVER));
   const union = new Union(store);
   await union.add(asserted, "urn:test:asserted");
