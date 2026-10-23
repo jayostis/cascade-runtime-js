@@ -46,6 +46,27 @@ test("a folder and memory read, write and list alike, by path or by IRI, and onl
     );
     assert.deepEqual(await files.list("subject"), ["subject/7c/a.ttl"], kind);
     assert.deepEqual(await files.list("nowhere"), [], kind);
+    await files.write(
+      "records/long.ttl",
+      new TextEncoder().encode("0123456789"),
+    );
+    for (const [start, length, expected] of [
+      [0, 3, "012"],
+      [-2, 2, "89"],
+      [-20, 3, "012"],
+      [8, 5, "89"],
+      [10, 5, ""],
+    ] as const)
+      assert.equal(
+        text(await files.readRange?.("records/long.ttl", start, length)),
+        expected,
+        `${kind} ${start} ${length}`,
+      );
+    assert.equal(
+      await files.readRange?.("records/none.ttl", 0, 1),
+      undefined,
+      kind,
+    );
     for (const outside of [
       "https://elsewhere.example/a.ttl",
       "../a.ttl",
