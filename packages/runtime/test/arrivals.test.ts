@@ -99,10 +99,10 @@ test("a refused step says which rule refused it", async () => {
 const OA = "http://www.w3.org/ns/oa#";
 
 /**
- * Finn's stray-statement import, the stray line dropped, the arrival's selector written as given and `own` added,
- * then an entry whose version holds a blank node and one that holds none.
+ * Finn's stray-statement import, the stray line dropped, the arrival's selector node blank as saved, named `<urn:example:selector>`,
+ * or with a blank-node statement beside it, then an entry whose version holds a blank node and one that holds none.
  */
-async function strayReplay(selector: string, own = "") {
+async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
   const files = await vocabulary();
   const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
@@ -121,8 +121,20 @@ async function strayReplay(selector: string, own = "") {
             new TextDecoder()
               .decode(bytes)
               .replace(/^<urn:example:stray>.*$/m, "")
-              .replace('bridge:selector ""', selector)
-              .concat(own),
+              .replace(
+                /^(.*)oa:hasSelector (_:\w+)/m,
+                (_line, head: string, label: string) =>
+                  mode === "named"
+                    ? `${head}oa:hasSelector <urn:example:selector>`
+                    : mode === "blank"
+                      ? `${head}<urn:example:says> _:stray ; oa:hasSelector ${label}`
+                      : `${head}oa:hasSelector ${label}`,
+              )
+              .replace(/^_:\w+ a oa:FragmentSelector/m, (line) =>
+                mode === "named"
+                  ? line.replace(/^_:\w+/, "<urn:example:selector>")
+                  : line,
+              ),
           )
         : bytes,
     );
@@ -196,7 +208,7 @@ async function wroteBy(replayed: Replayed, index: number): Promise<Graph> {
 }
 
 test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
-  const { steps } = await strayReplay("bridge:selector _:selector");
+  const { steps } = await strayReplay("blank");
   assert.match(
     steps[1]?.refused ?? "",
     /^the revision of urn:uuid:.*holds a blank node/,
@@ -208,11 +220,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
 });
 
 let selected: ReturnType<typeof strayReplay> | undefined;
-const withSelectorNode = () =>
-  (selected ??= strayReplay(
-    `<${OA}hasSelector> [ a <${OA}FragmentSelector> ; dct:conformsTo <https://www.rfc-editor.org/rfc/rfc6901> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "" ] ;
-  <${OA}hasSource> <ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww>`,
-  ));
+const withSelectorNode = () => (selected ??= strayReplay());
 
 /** The revision the import wrote carries the arrival's selector as its #selector, with the selector's statements and its source. */
 async function carriesSelector(replayed: Replayed): Promise<void> {
@@ -245,16 +253,7 @@ async function carriesSelector(replayed: Replayed): Promise<void> {
 
 test("an arrival's selector, a node of its own, blank or named, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
   await carriesSelector(await withSelectorNode());
-  await carriesSelector(
-    await strayReplay(
-      `<${OA}hasSelector> <urn:example:selector> ;
-  <${OA}hasSource> <ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww>`,
-      `
-<urn:example:selector> a <${OA}FragmentSelector> ; <http://purl.org/dc/terms/conformsTo> <https://www.rfc-editor.org/rfc/rfc6901> ;
-  <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "" .
-`,
-    ),
-  );
+  await carriesSelector(await strayReplay("named"));
 });
 
 test("an entered record is named from its entry session's IRI and the draft's position", async () => {
