@@ -60,13 +60,16 @@ async function wordsOver(
   });
 }
 
-test("a record in words is found through the stem its code system is registered with, as an IRI or, for SNOMED, a literal", async () => {
+test("a record in words is found through the stem its code system is registered with, as an IRI and never a literal", async () => {
   const words = await wordsOver(REGISTRY);
   assert.equal(
     await words.record("allergy SNOMED 373270004"),
     "urn:test:coded",
   );
-  assert.equal(await words.record("allergy SNOMED 1234"), "urn:test:literal");
+  await assert.rejects(
+    words.record("allergy SNOMED 1234"),
+    /names no record|no record/,
+  );
 });
 
 test("a medication is found by its NDC through the space the vocabulary registers for it, and the matcher's same brand generic by the medications it joins", async () => {
