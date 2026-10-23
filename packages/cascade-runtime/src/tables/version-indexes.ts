@@ -1,4 +1,10 @@
-import { CODES, fileStem, Refusal, rowsByCode } from "@cascade-runtime/runtime";
+import {
+  CODES,
+  type Files,
+  fileStem,
+  Refusal,
+  rowsByCode,
+} from "@cascade-runtime/runtime";
 import {
   IN_THIS_THREAD,
   LISTING_FORMAT,
@@ -35,6 +41,34 @@ function stemOf(version: string): string {
       `the tables hold ${version}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * Whether a file begins as a listing of this format over these URI spaces is written, and ends it: a file is written
+ * whole or not at all, so this is a kept listing without parsing it, which a read still does. Only the file's first
+ * bytes and its last are read, where the files can read a range.
+ */
+async function isKept(
+  files: Files,
+  path: string,
+  uriSpaces: readonly string[],
+): Promise<boolean> {
+  const head = new TextEncoder().encode(
+    `{"format":${LISTING_FORMAT},"uriSpaces":${JSON.stringify(uriSpaces)},`,
+  );
+  let start: Uint8Array | undefined;
+  let end: Uint8Array | undefined;
+  if (files.readRange === undefined) {
+    const bytes = await files.read(path);
+    start = bytes?.subarray(0, head.length + 1);
+    end = bytes?.subarray(-1);
+  } else {
+    start = await files.readRange(path, 0, head.length + 1);
+    end = await files.readRange(path, -1, 1);
+  }
+  if (start === undefined || start.length <= head.length || end?.[0] !== 0x7d)
+    return false;
+  return head.every((byte, at) => start[at] === byte);
 }
 
 /** A listing kept beside a version, when it is one of this shape over these URI spaces. */
@@ -199,9 +233,9 @@ export class VersionIndexes {
   }
 
   /**
-   * Lists each version whose listing is not kept beside it, or not as a read takes one kept, one at a time, and keeps
-   * it there, so a first read of it waits for none; a version whose rows the tables do not hold is left to its read.
-   * The bytes written.
+   * Lists each version whose listing is not kept beside it, or does not begin and end as one is written, one at a
+   * time, and keeps it there, so a first read of it waits for none; a version whose rows the tables do not hold is left
+   * to its read. The bytes written.
    */
   async keep(versions: readonly string[]): Promise<number> {
     const { uriSpaces } = await this.#context.terms();
@@ -209,11 +243,8 @@ export class VersionIndexes {
     for (const version of versions) {
       if (this.#listings.has(version)) continue;
       try {
-        const bytes = await this.#context.files.read(
-          `${stemOf(version)}${LISTED}`,
-        );
-        if (bytes !== undefined && keptListing(bytes, uriSpaces) !== undefined)
-          continue;
+        const path = `${stemOf(version)}${LISTED}`;
+        if (await isKept(this.#context.files, path, uriSpaces)) continue;
         written += (await this.#list(version, uriSpaces)).byteLength;
       } catch (error) {
         if (!(error instanceof Refusal)) throw error;
