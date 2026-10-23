@@ -327,6 +327,53 @@ test("an import with the claim records an About for each unclaimed profile and i
   assert.deepEqual(again.claimed, []);
 });
 
+test("a profile that is the subject itself is not unclaimed, so the claim records no About for it", async () => {
+  const own = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  try {
+    const profile = await profileOf("J1");
+    const bridge = await kept.loadBridge();
+    const itself = await openPodWith(
+      {
+        ...kept,
+        loadBridge: () =>
+          Promise.resolve({
+            ...bridge,
+            adapters: (mediaType) =>
+              bridge.adapters(mediaType).map((adapter) => ({
+                accepts: (document) => adapter.accepts(document),
+                free: () => adapter.free(),
+                convert: async (document, options) => {
+                  const converted = await adapter.convert(document, options);
+                  return {
+                    ...converted,
+                    graph: new TextEncoder().encode(
+                      new TextDecoder()
+                        .decode(converted.graph)
+                        .replaceAll(`<${profile}>`, `<${itself.subject}>`),
+                    ),
+                  };
+                },
+              })),
+          }),
+      },
+      join(own, "pod"),
+    );
+    try {
+      const imported = await itself.import(exported("x-e2"), {
+        aboutSubject: true,
+        match: false,
+      });
+      assert.equal(imported.refused, undefined);
+      assert.deepEqual(imported.unclaimed, []);
+      assert.deepEqual(imported.claimed, []);
+    } finally {
+      await itself.close();
+    }
+  } finally {
+    await rm(own, { recursive: true, force: true });
+  }
+});
+
 test("the look reads an export's or a download's index and writes nothing: a FHIR source by its server, a C-CDA by its custodian with its sections, claimed once the subject's records from it are filed", async () => {
   const before = await filesIn(folder);
   const sources = await pod.look(exported("x-e12"));
