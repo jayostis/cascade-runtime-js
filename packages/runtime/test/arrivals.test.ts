@@ -99,10 +99,10 @@ test("a refused step says which rule refused it", async () => {
 const OA = "http://www.w3.org/ns/oa#";
 
 /**
- * Finn's stray-statement import, the stray line dropped and the arrival's selector written as given, then an entry
- * whose version holds a blank node and one that holds none.
+ * Finn's stray-statement import, the stray line dropped, the arrival's selector written as given and `own` added,
+ * then an entry whose version holds a blank node and one that holds none.
  */
-async function strayReplay(selector: string) {
+async function strayReplay(selector: string, own = "") {
   const files = await vocabulary();
   const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
@@ -121,7 +121,8 @@ async function strayReplay(selector: string) {
             new TextDecoder()
               .decode(bytes)
               .replace(/^<urn:example:stray>.*$/m, "")
-              .replace('bridge:selector ""', selector),
+              .replace('bridge:selector ""', selector)
+              .concat(own),
           )
         : bytes,
     );
@@ -213,8 +214,8 @@ const withSelectorNode = () =>
   <${OA}hasSource> <ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww>`,
   ));
 
-test("an arrival's selector, a node of its own, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
-  const replayed = await withSelectorNode();
+/** The revision the import wrote carries the arrival's selector as its #selector, with the selector's statements and its source. */
+async function carriesSelector(replayed: Replayed): Promise<void> {
   assert.equal(replayed.steps[1]?.refused, undefined);
   const wrote = await wroteBy(replayed, 1);
   const [revision] = wrote.subjects(
@@ -239,6 +240,20 @@ test("an arrival's selector, a node of its own, is carried into the revision as 
   assert.deepEqual(
     wrote.objects(revision, `${OA}hasSource`).map((o) => o.value),
     ["ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww"],
+  );
+}
+
+test("an arrival's selector, a node of its own, blank or named, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
+  await carriesSelector(await withSelectorNode());
+  await carriesSelector(
+    await strayReplay(
+      `<${OA}hasSelector> <urn:example:selector> ;
+  <${OA}hasSource> <ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww>`,
+      `
+<urn:example:selector> a <${OA}FragmentSelector> ; <http://purl.org/dc/terms/conformsTo> <https://www.rfc-editor.org/rfc/rfc6901> ;
+  <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "" .
+`,
+    ),
   );
 });
 
