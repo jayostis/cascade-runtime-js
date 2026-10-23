@@ -4,6 +4,7 @@ import { MemoryFiles } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import type { Replayed } from "../src/replay.js";
 import { MATCHER } from "../src/matcher.js";
+import { documentName, recordFromDocumentName } from "../src/names.js";
 import { REC, Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
 import {
@@ -27,9 +28,12 @@ rec:NDC a rec:CodeSystem ; rdfs:label "NDC"@en ; void:uriSpace "urn:test:ndc/" .
 async function wordsOver(
   records: string,
   handles?: ConstructorParameters<typeof Words>[0]["handles"],
+  files: Readonly<Record<string, Uint8Array>> = {},
 ): Promise<Words> {
   const vocabulary = new MemoryFiles("urn:test:vocabulary/");
   await vocabulary.write(RECORDS, new TextEncoder().encode(records));
+  for (const [path, bytes] of Object.entries(files))
+    await vocabulary.write(path, bytes);
   const store = new Union(new OxigraphStore());
   await store.loadTurtle(
     `@prefix health: <${HEALTH}> . @prefix clinical: <${CLINICAL}> . @prefix prov: <${PROV}> .
@@ -126,28 +130,39 @@ test("a variant is found by its HGVS expression, which holds a colon, or by its 
   );
 });
 
-test("a handle of a FHIR record with no id and a urn:uuid: fullUrl names the record from its fullUrl alone, and a handle with none of the known inputs is an Error", async () => {
-  const words = await wordsOver(REGISTRY, {
-    records: {
-      "HG-V1": { fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011" },
-      "NO-INPUTS": { identifier: "x" },
+test("a handle names a record from a server by its base URL, normalised, its type and id, and one from a document by the document's bytes and its selector; a retired form or none of the known inputs is an Error", async () => {
+  const bundle = new TextEncoder().encode('{"resourceType": "Bundle"}');
+  const words = await wordsOver(
+    REGISTRY,
+    {
+      records: {
+        SERVER: {
+          server: "https://FHIR.example.org:443/api/FHIR/R4/",
+          type: "AllergyIntolerance",
+          id: "eQ3xk2RtVb7Lm9Pw1aZy8A3",
+        },
+        DOCUMENT: { document: "downloads/bundle.json", selector: "/entry/3" },
+        "FULL-URL": {
+          fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011",
+        },
+        "NO-INPUTS": { identifier: "x" },
+      },
     },
-    profiles: {
-      "HG-PAT": { fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52001" },
-    },
-  });
-  assert.equal(
-    await words.record("HG-V1"),
-    "urn:uuid:5f2ff240-5d0e-8484-82a8-35a333082cbf",
+    { "test/downloads/bundle.json": bundle },
   );
   assert.equal(
-    await words.record("HG-PAT"),
-    "urn:uuid:b21d6039-06b7-877f-a351-cdb8a2412ee0",
+    await words.record("SERVER"),
+    "urn:uuid:81ad3fab-98f1-890c-8abe-e93c84afd9e0",
   );
-  await assert.rejects(
-    words.record("NO-INPUTS"),
-    /handles\.json gives NO-INPUTS no name inputs/,
+  assert.equal(
+    await words.record("DOCUMENT"),
+    await recordFromDocumentName(await documentName(bundle), "/entry/3"),
   );
+  for (const handle of ["FULL-URL", "NO-INPUTS"])
+    await assert.rejects(
+      words.record(handle),
+      new RegExp(`handles\\.json gives ${handle} no name inputs`),
+    );
 });
 
 test("a variant interpretation is a kind and no step names one: it has neither a code nor a name", async () => {

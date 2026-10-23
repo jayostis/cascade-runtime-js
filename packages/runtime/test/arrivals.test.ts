@@ -6,9 +6,11 @@ import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
 import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { StoryTime } from "../src/ids.js";
-import { parseGraph } from "../src/graph.js";
+import { Graph, parseGraph } from "../src/graph.js";
+import { enteredRecordName } from "../src/names.js";
+import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { replay } from "../src/replay.js";
+import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
 import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
@@ -94,7 +96,13 @@ test("a refused step says which rule refused it", async () => {
   );
 });
 
-test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
+const OA = "http://www.w3.org/ns/oa#";
+
+/**
+ * Finn's stray-statement import, the stray line dropped and the arrival's selector written as given, then an entry
+ * whose version holds a blank node and one that holds none.
+ */
+async function strayReplay(selector: string) {
   const files = await vocabulary();
   const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
@@ -113,7 +121,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
             new TextDecoder()
               .decode(bytes)
               .replace(/^<urn:example:stray>.*$/m, "")
-              .replace('bridge:selector ""', "bridge:selector _:selector"),
+              .replace('bridge:selector ""', selector),
           )
         : bytes,
     );
@@ -156,7 +164,7 @@ test("a step whose content to be named holds a blank node is refused, and the re
       },
     ],
   };
-  const { steps } = await replay({
+  return replay({
     story,
     source,
     vocabulary: source,
@@ -167,6 +175,27 @@ test("a step whose content to be named holds a blank node is refused, and the re
     layout: await layout(),
     importers: [appleHealthExport],
   });
+}
+
+/** What the step wrote, as one graph. */
+async function wroteBy(replayed: Replayed, index: number): Promise<Graph> {
+  const triples = [];
+  for (const path of replayed.steps[index]?.wrote ?? [])
+    if ((await layout()).isRdf(path))
+      triples.push(
+        ...(
+          await parseGraph(
+            (await replayed.pod.read(path)) ?? new Uint8Array(),
+            replayed.pod.iri + path,
+            newStore,
+          )
+        ).triples,
+      );
+  return new Graph(triples);
+}
+
+test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
+  const { steps } = await strayReplay("bridge:selector _:selector");
   assert.match(
     steps[1]?.refused ?? "",
     /^the revision of urn:uuid:.*holds a blank node/,
@@ -175,6 +204,56 @@ test("a step whose content to be named holds a blank node is refused, and the re
   for (const step of steps.slice(1, 3)) assert.deepEqual(step.wrote, []);
   assert.equal(steps[3]?.refused, undefined);
   assert.notDeepEqual(steps[3]?.wrote, []);
+});
+
+let selected: ReturnType<typeof strayReplay> | undefined;
+const withSelectorNode = () =>
+  (selected ??= strayReplay(
+    `<${OA}hasSelector> [ a <${OA}FragmentSelector> ; dct:conformsTo <https://www.rfc-editor.org/rfc/rfc6901> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "" ] ;
+  <${OA}hasSource> <ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww>`,
+  ));
+
+test("an arrival's selector, a node of its own, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
+  const replayed = await withSelectorNode();
+  assert.equal(replayed.steps[1]?.refused, undefined);
+  const wrote = await wroteBy(replayed, 1);
+  const [revision] = wrote.subjects(
+    "https://ns.cascadeprotocol.org/records/v1-draft#revisionOf",
+  );
+  assert.ok(revision);
+  const selector = iri(`${revision.value}#selector`);
+  assert.deepEqual(wrote.objects(revision, `${OA}hasSelector`).map(written), [
+    written(selector),
+  ]);
+  assert.deepEqual(
+    wrote
+      .match(selector)
+      .map(([, p, o]) => `${p.value} ${written(o)}`)
+      .sort(),
+    [
+      `http://purl.org/dc/terms/conformsTo <https://www.rfc-editor.org/rfc/rfc6901>`,
+      `http://www.w3.org/1999/02/22-rdf-syntax-ns#type <${OA}FragmentSelector>`,
+      `http://www.w3.org/1999/02/22-rdf-syntax-ns#value ""`,
+    ],
+  );
+  assert.deepEqual(
+    wrote.objects(revision, `${OA}hasSource`).map((o) => o.value),
+    ["ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww"],
+  );
+});
+
+test("an entered record is named from its entry session's IRI and the draft's position", async () => {
+  const replayed = await withSelectorNode();
+  const wrote = await wroteBy(replayed, 3);
+  const [session] = wrote.subjects("http://www.w3.org/ns/prov#startedAtTime");
+  const records = wrote
+    .match(
+      undefined,
+      "https://ns.cascadeprotocol.org/records/v1-draft#revisionOf",
+    )
+    .map(([, , record]) => record.value);
+  assert.ok(session);
+  assert.deepEqual(records, [await enteredRecordName(session.value, 0)]);
 });
 
 test("a step given bad input by its story is refused, and the replay goes on", async () => {

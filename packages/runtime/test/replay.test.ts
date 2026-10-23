@@ -142,3 +142,46 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
     [literal("2026-02-02T08:00:00Z")],
   );
 });
+
+test("a view is written relative to itself: it names itself and its entries by no pod address", async () => {
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",
+    steps: [
+      {
+        name: "create",
+        when: "2026-02-01T08:00:00Z",
+        happened: { kind: "creation" },
+      },
+    ],
+  };
+  const [{ file = "" } = {}] = (await layout()).views;
+  const view = story.address + file;
+  const triples = [
+    [iri(view), iri(`${RDF}type`), iri("urn:example:View")],
+    [iri(`${view}#entry`), iri(`${RDF}value`), iri(`${view}#entry`)],
+  ] as const;
+  const pod = new MemoryFiles(story.address);
+  await replay({
+    story,
+    source: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    folder: "",
+    title: "",
+    pod,
+    layout: await layout(),
+    newStore: () => new OxigraphStore(),
+    build: {
+      lens: "everyday",
+      derive: () => Promise.resolve(new Map([[file, triples]])),
+    },
+  });
+  const bytes = (await pod.read(file)) ?? new Uint8Array();
+  assert.ok(!new TextDecoder().decode(bytes).includes(story.address));
+  assert.deepEqual(
+    (await new OxigraphStore().parse(bytes, view))
+      .map((triple) => triple.map(({ value }) => value).join(" "))
+      .sort(),
+    triples.map((triple) => triple.map(({ value }) => value).join(" ")).sort(),
+  );
+});
