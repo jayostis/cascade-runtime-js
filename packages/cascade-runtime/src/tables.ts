@@ -1,15 +1,22 @@
 import {
-  canonical,
   type Files,
   fileStem,
   Graph,
+  iri,
   MemoryFiles,
   References,
   type TableTerms,
   tableTerms,
+  tableVersionName,
+  THIS_VERSION,
   type Triple,
 } from "@cascade-runtime/runtime";
-import { gunzipped, IN_THIS_THREAD, nameOver } from "./rows.js";
+import {
+  gunzipped,
+  IN_THIS_THREAD,
+  REVISION_OF,
+  SPECIALIZATION_OF,
+} from "./rows.js";
 import { about } from "./tables/about.js";
 import { HELD, INDEX, SHIPS_WITH } from "./tables/constants.js";
 import { classedElsewhere, reached } from "./tables/drug-classes.js";
@@ -72,14 +79,14 @@ export async function versionName(
   previous: string | undefined,
   rows: readonly Triple[],
 ): Promise<string> {
-  if (rows.some((triple) => triple.some((t) => t.termType === "BlankNode")))
-    throw new Error("content to be named holds a blank node");
-  const text = await canonical(rows);
-  return nameOver(
-    text.split("\n").filter((line) => line !== ""),
-    series,
-    previous,
-  );
+  const version = iri(THIS_VERSION);
+  return tableVersionName([
+    ...rows,
+    [version, iri(SPECIALIZATION_OF), iri(series)],
+    ...(previous === undefined
+      ? []
+      : [[version, iri(REVISION_OF), iri(previous)] as const]),
+  ]);
 }
 
 /** What `make` gives, made at the first `get` and kept until `forget`; one that fails is made again at the next. */

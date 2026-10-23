@@ -10,7 +10,7 @@ import type { Layout } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import { documentName } from "./names.js";
 import { same, StepWrites } from "./pod.js";
-import { ntriples } from "./rdf.js";
+import { ntriples, relativeTurtle } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import {
@@ -480,9 +480,18 @@ export class CorePod {
       union,
       build.derive,
     );
+    const views = new Set(layout.views.map(({ file }) => file));
     await writeAll(
       pod,
-      [...made].map(([path, triples]) => [path, ntriples(triples)] as const),
+      [...made].map(
+        ([path, triples]) =>
+          [
+            path,
+            views.has(path)
+              ? relativeTurtle(triples, address + path)
+              : ntriples(triples),
+          ] as const,
+      ),
     );
     await addLayout(union, layout, address);
     this.#kept.set(DATASET + build.lens, Promise.resolve(union));

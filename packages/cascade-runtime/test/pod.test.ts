@@ -24,7 +24,7 @@ import {
   OxigraphStore,
   type Placed,
   questions,
-  recordName,
+  recordFromServerName,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -152,7 +152,7 @@ async function handled(): Promise<(handle: string) => Promise<string>> {
   ) as { records: Record<string, Record<string, string>> };
   return (handle) => {
     const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
-    return recordName([server, type, id]);
+    return recordFromServerName(server, type, id);
   };
 }
 

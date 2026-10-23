@@ -96,11 +96,31 @@ export function written(term: Term): string {
 
 /** The triples as N-Triples, which every Turtle reader also reads. */
 export function ntriples(triples: Iterable<Triple>): Uint8Array {
-  const lines = new Set<string>();
-  for (const [subject, predicate, object] of triples) {
-    lines.add(
-      `${written(subject)} ${written(predicate)} ${written(object)} .\n`,
-    );
-  }
-  return new TextEncoder().encode([...lines].sort().join(""));
+  return lines(triples, written);
+}
+
+/**
+ * The triples as Turtle, a triple to a line, with every IRI that is the file's own or a node inside it written
+ * relative to it (`<>`, `<#…>`), so the file holds no address of its own.
+ */
+export function relativeTurtle(
+  triples: Iterable<Triple>,
+  file: string,
+): Uint8Array {
+  return lines(triples, (term) =>
+    term.termType === "NamedNode" &&
+    (term.value === file || term.value.startsWith(`${file}#`))
+      ? `<${term.value.slice(file.length)}>`
+      : written(term),
+  );
+}
+
+function lines(
+  triples: Iterable<Triple>,
+  write: (term: Term) => string,
+): Uint8Array {
+  const found = new Set<string>();
+  for (const [subject, predicate, object] of triples)
+    found.add(`${write(subject)} ${write(predicate)} ${write(object)} .\n`);
+  return new TextEncoder().encode([...found].sort().join(""));
 }

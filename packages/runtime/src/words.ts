@@ -1,6 +1,11 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
-import { ccdaRecordName, documentName, inUtc, recordName } from "./names.js";
+import {
+  documentName,
+  enteredRecordName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { codeIri, iri, RDF, written } from "./rdf.js";
 import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
@@ -260,14 +265,19 @@ export class Words {
     const inputs =
       this.#handles?.records?.[handle] ?? this.#handles?.profiles?.[handle];
     if (inputs === undefined) return undefined;
-    const { server, type, id, fullUrl, entry, position, download } = inputs;
+    const { server, type, id, document, selector, entry, position, download } =
+      inputs;
     if (
       typeof server === "string" &&
       typeof type === "string" &&
       typeof id === "string"
     )
-      return recordName([server, type, id]);
-    if (typeof fullUrl === "string") return recordName([fullUrl]);
+      return recordFromServerName(server, type, id);
+    if (typeof document === "string" && typeof selector === "string")
+      return recordFromDocumentName(
+        await this.#document(`${this.#kit}/${document}`),
+        selector,
+      );
     if (typeof entry === "string" && typeof position === "number") {
       const file = entry.slice(entry.lastIndexOf("/entries/") + 1);
       const step = this.#replayed.steps.find(
@@ -278,30 +288,11 @@ export class Words {
         throw new Error(
           `${handle} names the entry ${entry}, which no step made`,
         );
-      return recordName([
-        this.#person.subject,
-        inUtc(step.step.when),
-        String(position),
-      ]);
-    }
-    if (typeof inputs.class === "string") {
-      const { identifier, key, members } = inputs;
-      const strings = (value: unknown): value is string[] =>
-        Array.isArray(value) && value.every((part) => typeof part === "string");
-      if (
-        (identifier !== undefined && typeof identifier !== "string") ||
-        (key !== undefined && !strings(key)) ||
-        (members !== undefined && !strings(members))
-      )
+      if (step.activity === undefined)
         throw new Error(
-          `handles.json gives ${handle} an identifier, a key or members it cannot read`,
+          `${handle} names the entry ${entry}, which made nothing`,
         );
-      return ccdaRecordName({
-        class: inputs.class,
-        ...(identifier === undefined ? {} : { identifier }),
-        ...(key === undefined ? {} : { key }),
-        ...(members === undefined ? {} : { members }),
-      });
+      return enteredRecordName(step.activity, position);
     }
     if (typeof download === "string") {
       const document = await this.#document(`${this.#kit}/${download}`);

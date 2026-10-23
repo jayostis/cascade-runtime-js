@@ -17,7 +17,7 @@ import {
   lenses,
   OxigraphStore,
   questions,
-  recordName,
+  recordFromServerName,
   Shapes,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -170,7 +170,7 @@ async function recordOf(handle: string): Promise<string> {
   };
   const { server, type, id } = records[handle] ?? {};
   assert.ok(server && type && id, `${handle} is no hospital's record`);
-  return recordName([server, type, id]);
+  return recordFromServerName(server, type, id);
 }
 
 /** The module the guide's blocks make, in order, after the stand-ins for the person. */

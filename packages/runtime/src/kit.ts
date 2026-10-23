@@ -8,8 +8,8 @@ import {
   contentName,
   documentName,
   earlierInUtc,
+  enteredRecordName,
   fileStem,
-  inUtc,
   recordName,
   THIS_REVISION,
   THIS_VERSION,
@@ -246,7 +246,7 @@ async function namesFollowTheirRules(
 
   // N1, N2: each record is named by the Bridge, or from an entry by the record rule.
   const expectedRecords = new Set<string>();
-  for (const { name, when, happened } of story.steps) {
+  for (const { name, happened } of story.steps) {
     if (happened.kind === "import") {
       for (const path of await vocabulary.list(at(happened.converted))) {
         if (!path.endsWith("/graph.ttl")) continue;
@@ -265,10 +265,12 @@ async function namesFollowTheirRules(
           triple.flatMap((term) => DRAFT.exec(term.value)?.[1] ?? []),
         ),
       );
-      for (const position of drafts)
-        expectedRecords.add(
-          await recordName([story.subject, inUtc(when), position]),
-        );
+      const session = activityOf.get(name);
+      if (session !== undefined)
+        for (const position of drafts)
+          expectedRecords.add(
+            await enteredRecordName(session, Number(position)),
+          );
       if (drafts.size === 0) failures.push(`entry ${name} holds no draft`);
     }
   }

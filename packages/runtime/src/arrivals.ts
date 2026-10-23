@@ -12,8 +12,8 @@ import {
   canonical,
   contentName,
   documentName,
+  enteredRecordName,
   inUtc,
-  recordName,
   THIS_ENTRY,
   THIS_REVISION,
   THIS_VERSION,
@@ -51,6 +51,7 @@ const GENERATED_BY = `${PROV}wasGeneratedBy`;
 const STARTED = `${PROV}startedAtTime`;
 const USED = `${PROV}used`;
 const DATE_TIME = `${XSD}dateTime`;
+const HAS_SELECTOR = "http://www.w3.org/ns/oa#hasSelector";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 
 /** One arrival of a record, as a revision would carry it (runtime/rules.md, N4). */
@@ -60,8 +61,11 @@ interface Arrival {
   readonly recordTriples: readonly Triple[];
   readonly version: NamedNode;
   readonly versionTriples: readonly Triple[];
-  /** Every statement on the arrival but `bridge:arrivedAs` and `prov:wasGeneratedBy`. */
-  readonly statements: readonly (readonly [NamedNode, Term])[];
+  /**
+   * Every statement on the arrival but `bridge:arrivedAs` and `prov:wasGeneratedBy`, made about
+   * `urn:cascade:this-revision`, with its selector's node as `urn:cascade:this-revision#selector`.
+   */
+  readonly statements: readonly Triple[];
   /** The start of the import or the session, as an `xsd:dateTime`. */
   readonly at: string;
   /** The import or the session. */
@@ -69,8 +73,9 @@ interface Arrival {
 }
 
 function sourceVersion(arrival: Arrival): string | undefined {
-  return arrival.statements.find(([p]) => p.value === `${PAV}version`)?.[1]
-    .value;
+  return arrival.statements.find(
+    ([s, p]) => s.value === THIS_REVISION && p.value === `${PAV}version`,
+  )?.[2].value;
 }
 
 function key(triple: Triple): string {
@@ -87,6 +92,39 @@ function renamed(
   return [...triples].map(
     ([s, p, o]) => [swap(s), p, swap(o)] as unknown as Triple,
   );
+}
+
+/** The triples with the placeholder, and every node inside it (`<placeholder>#…`), under the name. */
+function renamedWithin(
+  triples: Iterable<Triple>,
+  placeholder: string,
+  name: string,
+): Triple[] {
+  const swap = <T extends Term>(term: T): T | NamedNode =>
+    term.termType === "NamedNode" &&
+    (term.value === placeholder || term.value.startsWith(`${placeholder}#`))
+      ? iri(name + term.value.slice(placeholder.length))
+      : term;
+  return [...triples].map(
+    ([s, p, o]) => [swap(s), p, swap(o)] as unknown as Triple,
+  );
+}
+
+/** The arrival's statements as a revision carries them: its selector's node, a blank node, named inside the revision. */
+function revisionStatements(graph: Graph, arrival: Term): Triple[] {
+  const placeholder = iri(THIS_REVISION);
+  const selector = iri(`${THIS_REVISION}#selector`);
+  return graph
+    .match(arrival)
+    .filter(([, p]) => p.value !== ARRIVED_AS && p.value !== GENERATED_BY)
+    .flatMap(([, p, o]): Triple[] =>
+      p.value === HAS_SELECTOR && o.termType === "BlankNode"
+        ? [
+            [placeholder, p, selector],
+            ...renamed(graph.closure(o), o, selector),
+          ]
+        : [[placeholder, p, o]],
+    );
 }
 
 /** The name of a version's or a revision's content (N3, N4); content that cannot be named is refused. */
@@ -210,7 +248,7 @@ class Revisions {
     const placeholder = iri(THIS_REVISION);
     const previous = this.#last.get(record)?.revision;
     const triples: Triple[] = [
-      ...arrival.statements.map(([p, o]): Triple => [placeholder, p, o]),
+      ...arrival.statements,
       [placeholder, iri(TYPE), iri(`${REC}Revision`)],
       [placeholder, iri(`${REC}revisionOf`), arrival.record],
       [placeholder, iri(`${REC}version`), arrival.version],
@@ -229,7 +267,7 @@ class Revisions {
     const { value: name } = await named(triples, `the revision of ${record}`);
     this.#files.push([
       this.layout.revision(arrival.place, name),
-      ntriples(renamed(triples, placeholder, iri(name))),
+      ntriples(renamedWithin(triples, THIS_REVISION, name)),
     ]);
     this.#last.set(record, { revision: name, version: arrival.version.value });
     const source = sourceVersion(arrival);
@@ -260,7 +298,7 @@ function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
   add(graph.closure(document));
   for (const activity of graph.subjects(USED, document))
     add(graph.closure(activity));
-  for (const arrival of graph.subjects(ARRIVED_AS)) add(graph.match(arrival));
+  for (const arrival of graph.subjects(ARRIVED_AS)) add(graph.closure(arrival));
   for (const version of graph.subjects(SPECIALIZATION_OF)) {
     if (version.termType !== "NamedNode") continue;
     add(graph.triples.filter(([s]) => inVersion(s, version)));
@@ -307,10 +345,7 @@ function arrivals(
         recordTriples: graph.match(record),
         version,
         versionTriples: graph.triples.filter(([s]) => inVersion(s, version)),
-        statements: graph
-          .match(arrival)
-          .filter(([, p]) => p.value !== ARRIVED_AS && p.value !== GENERATED_BY)
-          .map(([, p, o]) => [p, o] as const),
+        statements: revisionStatements(graph, arrival),
         at: at.value,
         by,
       };
@@ -497,9 +532,8 @@ export async function fileEntry(
   const [at] = graph.objects(session, STARTED);
   if (at === undefined)
     throw new Refusal(`${entry.name}'s session has no start`);
-  let started: string;
   try {
-    started = inUtc(at.value);
+    inUtc(at.value);
   } catch (error) {
     throw new Refusal(
       `${entry.name}'s session's start: ${error instanceof Error ? error.message : String(error)}`,
@@ -516,7 +550,7 @@ export async function fileEntry(
     if (draft.termType === "NamedNode" && position !== undefined)
       records.set(
         draft.value,
-        iri(await recordName([context.subject, started, position])),
+        iri(await enteredRecordName(session.value, Number(position))),
       );
   }
   const { layout } = context;

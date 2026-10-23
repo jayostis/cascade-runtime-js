@@ -46,7 +46,7 @@ export async function recordName(inputs: readonly string[]): Promise<string> {
   return `${UUID}${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
 }
 
-/** A set's fingerprint, as cascade-bridge-spec's engine/sparql.md writes it: no order or repeat of the strings enters it. */
+/** A C-CDA entry's key or members fingerprint, as the C-CDA adapter computes it: no order or repeat of the strings enters it. */
 export async function fingerprint(strings: Iterable<string>): Promise<string> {
   let sum = 0n;
   for (const text of new Set(strings)) {
@@ -57,31 +57,6 @@ export async function fingerprint(strings: Iterable<string>): Promise<string> {
     sum += BigInt(`0x${hex}`);
   }
   return sum.toString();
-}
-
-/** What a C-CDA record's name is computed from: a handle's class, identifier and key, as far as it gives them. */
-export interface CcdaInputs {
-  readonly class: string;
-  /** `root:extension`, or the root alone; empty or absent where the record has no usable identifier. */
-  readonly identifier?: string;
-  /** The key's `field=value` strings, given where the name takes the key's fingerprint. */
-  readonly key?: readonly string[];
-  /** The member strings, given for a record with no identifier and no key, whose name takes their fingerprint. */
-  readonly members?: readonly string[];
-}
-
-/** A C-CDA record's name, by cascade-bridge-spec's rows for one. */
-export async function ccdaRecordName(inputs: CcdaInputs): Promise<string> {
-  const { identifier = "", key, members } = inputs;
-  const named =
-    key !== undefined
-      ? [identifier, await fingerprint(key)]
-      : identifier !== ""
-        ? [identifier]
-        : members !== undefined
-          ? ["", "", await fingerprint(members)]
-          : [];
-  return recordName([inputs.class, ...named]);
 }
 
 /** The triples' canonical N-Quads by RDFC-1.0: two sets of triples have the same exactly when they are one graph. */
