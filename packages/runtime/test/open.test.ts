@@ -11,7 +11,7 @@ import { REC } from "../src/step.js";
 import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
-const JUDGMENT = "https://ns.cascadeprotocol.org/judgments/v1-draft#Judgment";
+const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 /** The example replayed, its story's files those `source` gives for its folder, and otherwise the vocabulary's. */

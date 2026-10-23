@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { changesIn, compact, type Row } from "cascade-runtime";
 
-const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm/";
+const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
 const LOINC = "http://loinc.org/";
 
 const medicine = (

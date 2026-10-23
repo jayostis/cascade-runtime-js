@@ -20,13 +20,11 @@ const EXAMPLE =
   "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "persons-same";
 const LENS = "everyday";
-const PREFIXES = `PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
-  PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
   PREFIX solid: <http://www.w3.org/ns/solid/terms#>
   PREFIX dct: <http://purl.org/dc/terms/>
   PREFIX pav: <http://purl.org/pav/>
   PREFIX prov: <http://www.w3.org/ns/prov#>
-  PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>`;
 
 let store: Dataset;
@@ -122,16 +120,16 @@ test("the build writes the labels, each view the layout marks written always, a 
   const held = (
     await values(
       store,
-      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a rec:View } } }`,
+      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a cascade:View } } }`,
     )
   ).map((kind) => `<${kind}>`);
-  const written = await values(store, `GRAPH ?view { ?view a rec:View }`);
+  const written = await values(store, `GRAPH ?view { ?view a cascade:View }`);
   assert.deepEqual(
     written,
     await values(
       laidOut,
-      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a rec:Placement ; rec:writtenBy [] ; solid:instance ?file
-        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement rec:writtenAlways ?always }
+      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a cascade:Placement ; cascade:writtenByQueryPath [] ; solid:instance ?file
+        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement cascade:writtenAlways ?always }
         FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
@@ -157,9 +155,9 @@ test("the build writes the labels, each view the layout marks written always, a 
     await values(
       laidOut,
       `SELECT ?class ?listing ?target ?title WHERE { GRAPH <${address}> {
-        ?placement a rec:Placement ; solid:forClass ${registration}
-        { ?placement rec:writtenBy [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
-        UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
+        ?placement a cascade:Placement ; solid:forClass ${registration}
+        { ?placement cascade:writtenByQueryPath [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
+        UNION { ?placement solid:forClass cascade:View ; solid:instanceContainer [] } } }`,
     ),
   );
 });
@@ -212,20 +210,20 @@ test("a build after each step reads no file back, or one the pod held at its ope
 
 test("the labels label every record, current revision and current version of the derived state, each document a current revision came from, the subject, and every entry of a view", async () => {
   const labels = await placed(
-    `[] rec:writtenBy "labels.rq" ; solid:instance ?file`,
+    `[] cascade:writtenByQueryPath "labels.rq" ; solid:instance ?file`,
   );
   const views = await placed(
-    `[] solid:forClass rec:View ; solid:instanceContainer ?folder`,
+    `[] solid:forClass cascade:View ; solid:instanceContainer ?folder`,
   );
   const derived = `${DERIVED}${LENS}`;
   const { rows } = await store.select(`${PREFIXES}
     SELECT ?kind ?thing ?label WHERE {
-      { GRAPH <${derived}> { ?thing a rec:Record } BIND ("record" AS ?kind) }
-      UNION { GRAPH <${derived}> { [] rec:currentRevision ?thing } BIND ("revision" AS ?kind) }
+      { GRAPH <${derived}> { ?thing a cascade:Record } BIND ("record" AS ?kind) }
+      UNION { GRAPH <${derived}> { [] cascade:currentRevision ?thing } BIND ("revision" AS ?kind) }
       UNION { GRAPH <${derived}> { [] pav:hasCurrentVersion ?thing } BIND ("version" AS ?kind) }
-      UNION { GRAPH <${derived}> { [] rec:currentRevision ?revision } GRAPH ?file { ?revision prov:wasDerivedFrom ?thing }
+      UNION { GRAPH <${derived}> { [] cascade:currentRevision ?revision } GRAPH ?file { ?revision prov:wasDerivedFrom ?thing }
               BIND ("document" AS ?kind) }
-      UNION { GRAPH ?file { ?thing a rec:Subject } BIND ("subject" AS ?kind) }
+      UNION { GRAPH ?file { ?thing a cascade:Subject } BIND ("subject" AS ?kind) }
       UNION { GRAPH ?view { ?thing cascade:mergedFrom [] } FILTER (STRSTARTS(STR(?view), "${views}")) BIND ("entry" AS ?kind) }
       OPTIONAL { GRAPH <${labels}> { ?thing rdfs:label ?label } }
     }`);
@@ -245,18 +243,18 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
   const derived = `${DERIVED}${LENS}`;
   const judged = await values(
     store,
-    `SELECT DISTINCT ?verdict WHERE { GRAPH ?file { [] a jdg:Judgment ; jdg:verdict ?verdict } FILTER (?file != <${derived}>) }`,
+    `SELECT DISTINCT ?verdict WHERE { GRAPH ?file { [] a cascade:Judgment ; cascade:verdict ?verdict } FILTER (?file != <${derived}>) }`,
   );
   assert.deepEqual(judged, [
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#About",
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#Different",
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#Same",
+    "https://ns.cascadeprotocol.org/cascade#About",
+    "https://ns.cascadeprotocol.org/cascade#Different",
+    "https://ns.cascadeprotocol.org/cascade#Same",
   ]);
   assert.deepEqual(
     await values(
       store,
-      `GRAPH ?file { ?judgment a jdg:Judgment } FILTER (?file != <${derived}>)
-       FILTER NOT EXISTS { GRAPH <${derived}> { ?judgment rec:counts true } }`,
+      `GRAPH ?file { ?judgment a cascade:Judgment } FILTER (?file != <${derived}>)
+       FILTER NOT EXISTS { GRAPH <${derived}> { ?judgment cascade:countsUnderLens true } }`,
     ),
     [],
   );
@@ -267,29 +265,29 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
     assert.deepEqual(
       await values(
         store,
-        `GRAPH ?file { [] jdg:verdict jdg:${verdict} ; prov:hadMember ?one, ?other FILTER (?one != ?other) }
-         FILTER NOT EXISTS { GRAPH <${derived}> { ?one jdg:${currently} ?other } }`,
+        `GRAPH ?file { [] cascade:verdict cascade:${verdict} ; prov:hadMember ?one, ?other FILTER (?one != ?other) }
+         FILTER NOT EXISTS { GRAPH <${derived}> { ?one cascade:${currently} ?other } }`,
       ),
       [],
       verdict,
     );
   const leftOut = await values(
     store,
-    `GRAPH <${derived}> { ?record rec:leftOutFor [ rec:reason rec:PatientNotClaimed ; rec:because ?profile ] }`,
+    `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }`,
   );
   assert.ok(leftOut.length > 0, "no record is left out for its patient");
   assert.deepEqual(
     await values(
       store,
-      `GRAPH <${derived}> { ?record rec:leftOutFor [ rec:reason rec:PatientNotClaimed ; rec:because ?profile ] }
-       GRAPH ?file { [] jdg:verdict jdg:About ; prov:hadMember ?profile }`,
+      `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }
+       GRAPH ?file { [] cascade:verdict cascade:About ; prov:hadMember ?profile }`,
     ),
     [],
   );
   assert.deepEqual(
     await values(
       store,
-      `GRAPH <${derived}> { ?record a rec:Record FILTER NOT EXISTS { ?record rec:leftOutFor [] } FILTER NOT EXISTS { ?record rec:inEntry [] } }`,
+      `GRAPH <${derived}> { ?record a cascade:Record FILTER NOT EXISTS { ?record cascade:leftOutFor [] } FILTER NOT EXISTS { ?record cascade:inEntry [] } }`,
     ),
     [],
   );
@@ -299,7 +297,7 @@ test("the matcher reads a statement two files of the pod make as one", async () 
   const [[first, record] = []] = (
     await values(
       store,
-      `SELECT ?first ?record WHERE { ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf [] } }`,
+      `SELECT ?first ?record WHERE { ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf [] } }`,
     )
   ).map((row) => row.split(" "));
   const files = await vocabulary();
@@ -307,7 +305,7 @@ test("the matcher reads a statement two files of the pod make as one", async () 
   await copy.files.write(
     "restated.ttl",
     new TextEncoder().encode(
-      `<${first ?? ""}> <https://ns.cascadeprotocol.org/records/v1-draft#revisionOf> <${record ?? ""}> .`,
+      `<${first ?? ""}> <https://ns.cascadeprotocol.org/cascade#revisionOf> <${record ?? ""}> .`,
     ),
   );
   const restated = new CorePod({

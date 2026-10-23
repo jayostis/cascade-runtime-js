@@ -1,7 +1,8 @@
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const MEDIA_TYPE = "application/fhir+json";
@@ -57,7 +58,7 @@ interface Described {
   readonly asOf?: string;
 }
 
-/** The word `rec:kind` gives each type of resource that is a record. */
+/** The word `cascade:recordKind` gives each type of resource that is a record. */
 const KINDS: ReadonlyMap<string, string> = new Map([
   ["AllergyIntolerance", "Allergy"],
   ["Condition", "Condition"],
@@ -167,16 +168,16 @@ function facts(pull: Described, importStarted: string): Uint8Array {
   const lines = [
     `${thisImport} <${RDFS}label> ${quoted("FHIR pull")} .`,
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
-    `${document} <${BRIDGE}serverBaseUrl> ${quoted(pull.fhirBase)} .`,
+    `${document} <${CASCADE}serverBaseUrl> ${quoted(pull.fhirBase)} .`,
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
     ...(pull.asOf === undefined
       ? []
       : [`${document} <${REC}answeredAsOf> ${dateTime(pull.asOf)} .`]),
-    `${document} <${BRIDGE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
+    `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,
     `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
-    `_:attribution <${PROV}hadRole> <${REC}author> .`,
+    `_:attribution <${PROV}hadRole> <${REC}AuthorRole> .`,
   ];
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
@@ -208,7 +209,7 @@ function codes(concepts: unknown): unknown[] {
   });
 }
 
-/** The resource's `rec:kind`, or undefined where the adapter makes no record of it. */
+/** The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it. */
 function kindOf(resource: Record<string, unknown>): string | undefined {
   const type = resource.resourceType;
   if (type === "Observation")

@@ -60,11 +60,9 @@ const PAV = "http://purl.org/pav/";
 const CURRENT = `${DCAT}hasCurrentVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const PREFIXES = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
-PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
-PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
 `;
 
 /** The test feed as it is served: its catalog and each file under it, by URL. */
@@ -182,7 +180,7 @@ async function ruleList(): Promise<{
     await parts.vocabulary.read(`${RULE_LIST}references.ttl`),
   );
   const [, shipped] = /rec:shipsWith <([^>]+)>/.exec(index) ?? [];
-  const [, series] = /<([^>]+)> a rec:ReferenceSeries/.exec(index) ?? [];
+  const [, series] = /<([^>]+)> a cascade:ReferenceSeries/.exec(index) ?? [];
   assert.ok(shipped !== undefined && series !== undefined);
   return { index, shipped, series };
 }
@@ -198,7 +196,7 @@ async function ruleListRevised(): Promise<Files> {
     [
       `${RULE_LIST}references.ttl`,
       new TextEncoder().encode(
-        `${index.replace(`rec:shipsWith <${shipped}>`, `rec:shipsWith <${next}>`)}
+        `${index.replace(`cascade:defaultTableVersion <${shipped}>`, `cascade:defaultTableVersion <${next}>`)}
 <${next}> a prov:Entity ; prov:specializationOf <${series}> ; prov:wasRevisionOf <${shipped}> ; pav:version "2" .
 `,
       ),
@@ -428,8 +426,8 @@ async function withVersions(
   const files = new Map(served.files);
   const versions: string[] = [];
   let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
-@prefix rdfs: <${RDFS}> . @prefix rec: <${REC}> . @prefix spdx: <${SPDX}> .
-<${series.series}> a rec:ReferenceSeries ; rdfs:label "${series.label}" ; rec:tableKind rec:${series.kind} .
+@prefix rdfs: <${RDFS}> . @prefix cascade: <${REC}> . @prefix spdx: <${SPDX}> .
+<${series.series}> a cascade:ReferenceSeries ; rdfs:label "${series.label}" ; cascade:tableKind cascade:${series.kind} .
 `;
   for (const [index, rows] of line.entries()) {
     const previous = versions.at(-1);
@@ -510,36 +508,36 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
       ["140", "2024-10-01"],
       ["141", "2024-10-01"],
     ].map(([code, date]) => [
-      "health:ImmunizationRecord",
-      `health:vaccineCode "${code}" ; health:administrationDate "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
+      "cascade:Vaccination",
+      `cascade:vaccineCode "${code}" ; cascade:vaccinationOccurrenceTime "${date}"^^<http://www.w3.org/2001/XMLSchema#date>`,
     ]),
     ...["153010", "5640"].map((code) => [
-      "health:AllergyRecord",
-      `health:allergenCode <${RXNORM}${code}>`,
+      "cascade:AllergyOrIntolerance",
+      `cascade:allergenCode <${RXNORM}${code}>`,
     ]),
     ...["C88.0", "C88.00"].map((code) => [
-      "health:ConditionRecord",
-      `health:icd10Code <${ICD10CM}${code}>`,
+      "cascade:ProblemOrDiagnosis",
+      `cascade:icd10Code <${ICD10CM}${code}>`,
     ]),
     ...[
       [
         "2019-01-05",
-        `<https://ns.cascadeprotocol.org/clinical/v1#abatementDate> "2019-02-01"^^<http://www.w3.org/2001/XMLSchema#date> ; health:status "resolved"`,
+        `<https://ns.cascadeprotocol.org/cascade#abatementDate> "2019-02-01"^^<http://www.w3.org/2001/XMLSchema#date> ; cascade:clinicalStatus "resolved"`,
       ],
-      ["2019-01-07", `health:status "resolved"`],
-      ["2024-03-01", `health:status "active"`],
+      ["2019-01-07", `cascade:clinicalStatus "resolved"`],
+      ["2024-03-01", `cascade:clinicalStatus "active"`],
     ].map(([onset, rest]) => [
-      "health:ConditionRecord",
-      `health:icd10Code <${ICD10CM}J18.9> ; health:onsetDate "${onset}"^^<http://www.w3.org/2001/XMLSchema#date> ; ${rest}`,
+      "cascade:ProblemOrDiagnosis",
+      `cascade:icd10Code <${ICD10CM}J18.9> ; cascade:onsetDate "${onset}"^^<http://www.w3.org/2001/XMLSchema#date> ; ${rest}`,
     ]),
   ].map(
     ([type, fields], index) => `<urn:cascade:output-${index}> a ${type} .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  ${fields} ; rec:patient <${pod.subject}> .`,
+  ${fields} ; cascade:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
-  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${records.join("\n")}`);
   assert.equal(entered.refused, undefined);
   assert.equal(entered.matched?.refused, undefined);
@@ -557,7 +555,7 @@ ${records.join("\n")}`);
     );
     const sames = await pod.ask({
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(?code; separator=" ") AS ?codes) WHERE {
-        ?judgment jdg:justification jdg:SameMappedCodeAndDate ; prov:used ?used ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameMappedCodeAndDate ; prov:used ?used ; prov:hadMember ?record .
         VALUES ?used { <${groups.first}> <${groups.second}> }
         ?record pav:hasCurrentVersion/health:vaccineCode ?code
       } GROUP BY ?judgment ?used`,
@@ -573,7 +571,7 @@ ${records.join("\n")}`);
     const [, adopted] = ingredientsLater.versions;
     const brands = await pod.ask({
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
         VALUES ?used { <${held}> <${adopted}> }
         ?record pav:hasCurrentVersion/health:allergenCode ?code
       } GROUP BY ?judgment ?used`,
@@ -588,7 +586,7 @@ ${records.join("\n")}`);
     const { shipped } = await ruleList();
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment jdg:justification jdg:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
         ?record pav:hasCurrentVersion/health:icd10Code ?code
       } GROUP BY ?judgment`,
     });
@@ -600,7 +598,7 @@ ${records.join("\n")}`);
     );
     const episodes = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?onset); separator=" ") AS ?onsets) WHERE {
-        ?judgment jdg:justification jdg:SameCodeAndPeriod ; prov:used <${shipped}> ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameCodeAndPeriod ; prov:used <${shipped}> ; prov:hadMember ?record .
         ?record pav:hasCurrentVersion/health:onsetDate ?onset
       } GROUP BY ?judgment`,
     });
@@ -613,7 +611,7 @@ ${records.join("\n")}`);
       joined.set(entry, [...(joined.get(entry) ?? []), used]);
     const citedBy = async (field: string, value: string): Promise<string[]> => {
       const entries = await pod.ask({
-        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/health:${field} ${value} ; rec:inEntry ?entry }`,
+        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/health:${field} ${value} ; cascade:inEntry ?entry }`,
       });
       assert.equal(
         entries.length,
@@ -979,7 +977,7 @@ test("a search lists a version again when the listing kept beside it is not one,
   const valid = JSON.parse(
     new TextDecoder().decode(await checked.read(path)),
   ) as Record<string, unknown>;
-  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
   for (const kept of [
     "{",
     JSON.stringify({ ...valid, mapsTo: null }),
@@ -1008,7 +1006,7 @@ test("a search lists a version again when the listing kept beside it is not one,
 });
 
 test("a version's listing names every code its rows give a preferred name, in a code system's URI space or not, as what the tables say of a code does", () => {
-  const space = "http://hl7.org/fhir/sid/cvx/";
+  const space = "https://ns.cascadeprotocol.org/codes/cvx/";
   const outside = "urn:test:outside:1";
   const label = "http://www.w3.org/2004/02/skos/core#prefLabel";
   const other = "http://www.w3.org/2004/02/skos/core#altLabel";
@@ -1043,7 +1041,7 @@ test("a version the tables name by no file is refused, by a search and by what t
     "references.ttl",
     new TextEncoder().encode(
       `<${series}> <${REC}tableKind> <${REC}CodeNames> .
-<${series}> <${REC}shipsWith> <${version}> .
+<${series}> <${REC}defaultTableVersion> <${version}> .
 <${version}> <${PROV}specializationOf> <${series}> .
 `,
     ),
@@ -1129,7 +1127,7 @@ test("the starter copies carry each version's rows as published, name the curren
   const tables = tablesOn(copiedTo);
   const shipped = await tables.current();
   assert.ok(shipped.includes(groups.first));
-  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
   assert.ok((await tables.about([cvx141])).get(cvx141)?.name !== undefined);
   assert.deepEqual(
     [...new Set(asked.filter((path) => versionsIn([path]).size === 0))].sort(),
@@ -1373,7 +1371,7 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
         : new TextEncoder().encode(
             new TextDecoder()
               .decode(bytes)
-              .replace("rec:VaccineGroups", "rec:SubstanceIngredients"),
+              .replace("cascade:VaccineGroups", "cascade:SubstanceIngredients"),
           );
     },
     write: (path, bytes) => vocabulary.write(path, bytes),
@@ -1465,7 +1463,7 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
   await tables.check();
   const references = await tables.references();
   assert.equal(await tables.references(), references);
-  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
+  const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
   const names = feed.catalog.find(
     ([subject, predicate]) =>
       predicate.value === CURRENT &&
@@ -1591,8 +1589,8 @@ test("rows are found through no index that is unreadable, or was built for a kin
     all.find(([, predicate]) => predicate.value.endsWith("#annotatedTarget")) ??
     [];
   assert.ok(target !== undefined);
-  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
-  const source = "rec:foundBy owl:annotatedSource .";
+  const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
+  const source = "cascade:foundBy owl:annotatedSource .";
   const cases: [string, Files, (files: Files) => Promise<void>, string][] = [
     [
       "unreadable",
@@ -1617,7 +1615,7 @@ test("rows are found through no index that is unreadable, or was built for a kin
   const reading = recordsChanged((turtle) =>
     turtle.replace(
       source,
-      "rec:foundBy owl:annotatedSource , owl:annotatedTarget .",
+      "cascade:foundBy owl:annotatedSource , owl:annotatedTarget .",
     ),
   );
   for (const [name, vocabulary, change, code] of cases) {
@@ -1819,7 +1817,7 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
   }
 });
 
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
 const CVX_NAMES = "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0";
 const CVX_STATUS = "urn:uuid:624f752e-dfba-45e7-a3e5-710ff7204a79";
 const EXAMPLE_NAMES = "urn:uuid:6e9c1dc9-8c36-49a8-929c-cd9f6701076c";
@@ -1896,10 +1894,10 @@ test("a builder the configuration names runs locally and its versions are kept a
 
 test("a code's name and status come from the first series of their kinds, in the order of preference, that holds it, a later one where the first does not, and every code asked is answered with how it is written", async () => {
   const { store } = await built();
-  const cvx141 = "http://hl7.org/fhir/sid/cvx/141";
-  const cvx57 = "http://hl7.org/fhir/sid/cvx/57";
-  const cvx03 = "http://hl7.org/fhir/sid/cvx/03";
-  const unknown = "http://hl7.org/fhir/sid/cvx/999999";
+  const cvx141 = "https://ns.cascadeprotocol.org/codes/cvx/141";
+  const cvx57 = "https://ns.cascadeprotocol.org/codes/cvx/57";
+  const cvx03 = "https://ns.cascadeprotocol.org/codes/cvx/03";
+  const unknown = "https://ns.cascadeprotocol.org/codes/cvx/999999";
   for (const [names, status, label] of [
     [CVX_NAMES, CVX_STATUS, "Influenza, split virus, trivalent, preservative"],
     [EXAMPLE_NAMES, EXAMPLE_STATUS, "flu, split"],
@@ -1910,7 +1908,7 @@ test("a code's name and status come from the first series of their kinds, in the
           feeds: [],
           preference: {
             [`${REC}CodeNames`]: [names],
-            [`${REC}CodeStatus`]: [status],
+            [`${REC}RetiredCodes`]: [status],
           },
         },
       })
@@ -2001,8 +1999,8 @@ test("a pod that joined two allergies through a product ingredients version writ
       path === `${RULE_LIST}references.ttl`
         ? new TextEncoder().encode(
             index.replace(
-              `rec:shipsWith <${shipped}>`,
-              `rec:shipsWith <${eighth}>`,
+              `cascade:defaultTableVersion <${shipped}>`,
+              `cascade:defaultTableVersion <${eighth}>`,
             ),
           )
         : vocabulary.read(path),
@@ -2015,13 +2013,16 @@ test("a pod that joined two allergies through a product ingredients version writ
   await held.check();
   let pod = await openPodWith({ ...parts, tables: held }, folder);
   const allergies = ["153010", "5640"].map(
-    (code, index) => `<urn:cascade:output-${index}> a health:AllergyRecord .
+    (
+      code,
+      index,
+    ) => `<urn:cascade:output-${index}> a cascade:AllergyOrIntolerance .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  health:allergenCode <${RXNORM}${code}> ; rec:patient <${pod.subject}> .`,
+  cascade:allergenCode <${RXNORM}${code}> ; cascade:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
-  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${allergies.join("\n")}`);
   assert.equal(entered.refused, undefined);
   await pod.close();
@@ -2030,7 +2031,7 @@ ${allergies.join("\n")}`);
     (
       await pod.ask({
         query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-          ?judgment jdg:justification jdg:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+          ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
           VALUES ?used { <${oldVersion}> <${newVersion}> }
           ?record pav:hasCurrentVersion/health:allergenCode ?code
         } GROUP BY ?judgment ?used`,
@@ -2286,9 +2287,9 @@ const CLASSES_BY_RELATION: Mapping = {
   ...CLASSES,
   predicateOf: (_, target) =>
     MECHANISMS.has(target)
-      ? `${REC}mechanismOfAction`
+      ? `${REC}mechanismOfActionClass`
       : target === AZOLES
-        ? `${REC}chemicalStructure`
+        ? `${REC}chemicalStructureClass`
         : CLASSES.predicate,
 };
 
@@ -2548,15 +2549,15 @@ test("the pod's medicines in a class are asked of the tables by the same rule as
       "2588848": "Levoketoconazole 150 MG Oral Tablet",
     };
     const medication = (code: string, index: number): string =>
-      `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/clinical/v1#Medication> .
+      `<urn:cascade:output-${index}> a <https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication> .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  <https://ns.cascadeprotocol.org/clinical/v1#drugName> "${names[code]}" ;
-  <https://ns.cascadeprotocol.org/clinical/v1#rxNormCode> <${RXNORM}${code}> ;
-  <https://ns.cascadeprotocol.org/clinical/v1#clinicalIntent> "prescribed" ;
-  <https://ns.cascadeprotocol.org/clinical/v1#status> "active" ; rec:patient <${pod.subject}> .`;
+  <https://ns.cascadeprotocol.org/cascade#drugName> "${names[code]}" ;
+  <https://ns.cascadeprotocol.org/cascade#rxNormCode> <${RXNORM}${code}> ;
+  <https://ns.cascadeprotocol.org/cascade#prescribedOrReported> "prescribed" ;
+  <https://ns.cascadeprotocol.org/cascade#workflowStatus> "active" ; cascade:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
-  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${Object.keys(names).map(medication).join("\n")}`);
     assert.equal(entered.refused, undefined);
     const rows = await pod.medicationClasses();
@@ -2682,13 +2683,13 @@ test("a person's results in the panel they pick are asked of the tables: in LOIN
   const pod = await openPodWith({ ...parts, tables }, folder);
   try {
     const result = (day: string, index: number): string =>
-      `<urn:cascade:output-${index}> a health:LabResultRecord .
+      `<urn:cascade:output-${index}> a cascade:LaboratoryTestResult .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  health:testCode <${LOINC}2823-3> ; health:testName "Potassium" ; health:resultValue "4.${index}" ;
-  health:performedDate "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ; rec:patient <${pod.subject}> .`;
+  cascade:testCode <${LOINC}2823-3> ; cascade:testName "Potassium" ; cascade:resultValue "4.${index}" ;
+  cascade:resultClinicallyRelevantTime "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ; cascade:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ;
-  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${["2025-03-01", "2025-06-01"].map(result).join("\n")}`);
     assert.equal(entered.refused, undefined);
     const said = (rows: Row[]): string[] =>

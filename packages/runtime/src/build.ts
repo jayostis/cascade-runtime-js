@@ -7,9 +7,9 @@ import type { Union } from "./store.js";
 const PROV = "http://www.w3.org/ns/prov#";
 const DCT = "http://purl.org/dc/terms/";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = `${RDF}type`;
 const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference versions are current.rq`;
 
@@ -101,7 +101,7 @@ function manifest(file: string, title: string, at: string): Triple[] {
   const agent = blank("agent");
   const created = literal(at, `${XSD}dateTime`);
   return [
-    [manifest, iri(TYPE), iri(`${CASCADE}ExportManifest`)],
+    [manifest, iri(TYPE), iri(`${CASCADE}PodManifest`)],
     [manifest, iri(`${DCT}title`), literal(title)],
     [manifest, iri(`${DCT}created`), created],
     [manifest, iri(`${CASCADE}schemaVersion`), literal("1.8")],

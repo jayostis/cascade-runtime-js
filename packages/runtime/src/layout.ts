@@ -5,11 +5,11 @@ import { type StoreFactory, Union } from "./store.js";
 export const LAYOUT_FILE = "runtime/pod-layout.ttl";
 export const LAYOUT_GRAPH = "urn:cascade:pod-layout";
 const BASE = "https://pod.invalid/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
 
@@ -91,16 +91,16 @@ export class Layout {
     const layout = new Union(newStore());
     await layout.loadTurtle(turtle, BASE);
     const { rows } = await layout.select(`
-      PREFIX rec: <${REC}>
+      PREFIX cascade: <${REC}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
       SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
-        ?placement a rec:Placement .
+        ?placement a cascade:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
-        OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement rec:filedWith ?filedWith }
-        OPTIONAL { ?placement rec:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement rec:fanOut ?fanOut }
-        OPTIONAL { ?placement rec:writtenBy ?writtenBy } OPTIONAL { ?placement dct:title ?title }
-        OPTIONAL { ?placement rec:storesBytes ?storesBytes } OPTIONAL { ?placement rec:writtenAlways ?writtenAlways }
+        OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement cascade:filedWith ?filedWith }
+        OPTIONAL { ?placement cascade:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement cascade:subfolderPrefixLength ?fanOut }
+        OPTIONAL { ?placement cascade:writtenByQueryPath ?writtenBy } OPTIONAL { ?placement dct:title ?title }
+        OPTIONAL { ?placement cascade:storesBytes ?storesBytes } OPTIONAL { ?placement cascade:writtenAlways ?writtenAlways }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -249,7 +249,7 @@ export class Layout {
   }
 
   get manifest(): string {
-    return this.#file(`${CASCADE}ExportManifest`);
+    return this.#file(`${CASCADE}PodManifest`);
   }
 
   get card(): string {

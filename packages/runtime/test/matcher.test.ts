@@ -12,7 +12,7 @@ import { blank, iri, literal, type Term, type Triple } from "../src/rdf.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
 async function row(
@@ -22,14 +22,15 @@ async function row(
   hashOf = query,
 ): Promise<Triple[]> {
   const files = await vocabulary();
-  const bytes = await files.read(`queries/v1-draft/${hashOf}`);
+  const bytes = await files.read(`queries/${hashOf}`);
   assert.ok(bytes, hashOf);
   const rule = blank(name);
   return [
-    [rule, iri(TYPE), iri(`${REC}MatcherRule`)],
+    [rule, iri(TYPE), iri(`${REC}RuleListRow`)],
+    [rule, iri(`${REC}matcherRule`), iri(`${JDG}${justification}Rule`)],
     [rule, iri(`${REC}justifiedAs`), iri(JDG + justification)],
-    [rule, iri(`${REC}appliesTo`), literal("Condition")],
-    [rule, iri(`${REC}query`), literal(query)],
+    [rule, iri(`${REC}appliesToClass`), iri(`${JDG}ProblemOrDiagnosis`)],
+    [rule, iri(`${REC}queryPath`), literal(query)],
     [rule, iri(`${REC}queryHash`), iri(await documentName(bytes))],
   ];
 }
@@ -39,8 +40,9 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
   const sameCode = await row("a", "SameCode", "matcher/same-code.rq");
   assert.equal((await matcherRules(new Graph(sameCode), files)).length, 1);
   const kindless: MatcherRule = {
+    term: JDG + "SameMappedCodeRule",
     justification: JDG + "SameMappedCode",
-    appliesTo: new Set(["Condition"]),
+    appliesTo: new Set([JDG + "ProblemOrDiagnosis"]),
     query: "matcher/same-mapped-code.rq",
   };
   const rule: MatcherRule = { ...kindless, kind: `${REC}CodeMappings` };

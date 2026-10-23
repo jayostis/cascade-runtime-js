@@ -3,7 +3,7 @@ import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
 
 export const DERIVED = "urn:cascade:derived:";
-export const QUERIES = "queries/v1-draft/";
+export const QUERIES = "queries/";
 const CRATE = "ro-crate-metadata.json";
 const DERIVATIONS = `${QUERIES}derivations`;
 export const LENSES = `${QUERIES}lenses/`;

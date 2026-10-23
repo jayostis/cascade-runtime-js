@@ -45,8 +45,8 @@ const ALEX = `${KIT}/scripted-input/alex`;
 const PICKED = ["x-e2", "x-e4", "x-e10", "x-e12"];
 /** Patient A at Cascade North, as whom `openBrowser()` signs in. */
 const A_NORTH = "pt-1001";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
 
 interface Block {

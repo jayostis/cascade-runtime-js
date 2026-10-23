@@ -59,12 +59,9 @@ import { keptPod, openPodWith, type Parts } from "../src/pod.js";
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
 const QUESTION = "pod/My active allergies";
-const PREFIXES = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
 PREFIX pav: <http://purl.org/pav/>
-PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
-PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
 `;
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
@@ -186,16 +183,16 @@ async function filesIn(at: string): Promise<string[]> {
 
 function about(profile: string, named = "urn:cascade:this-judgment"): string {
   return `${PREFIXES}
-<${named}> a jdg:Judgment ;
-    jdg:verdict jdg:About ; jdg:subject <${pod.subject}> ; jdg:basis jdg:OwnerStatement ;
+<${named}> a cascade:Judgment ;
+    cascade:verdict cascade:About ; cascade:subject <${pod.subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${pod.owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 <${pod.owner}> a prov:Person .`;
 }
 
 function judgment(verdict: string, members: readonly string[]): string {
   return `${PREFIXES}
-<urn:cascade:this-judgment> a jdg:Judgment ; jdg:verdict jdg:${verdict} ;
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:${verdict} ;
     ${members.map((member) => `prov:hadMember <${member}> ;`).join(" ")}
     prov:wasAttributedTo <${pod.owner}> .
 <${pod.owner}> a prov:Person .`;
@@ -279,7 +276,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   const judgments = await pod.ask({
     query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?member)) AS ?members) WHERE {
       VALUES ?file { ${wrote.map((path) => `<${pod.address}${path}>`).join(" ")} }
-      GRAPH ?file { ?judgment a jdg:Judgment ; jdg:justification ?justification ; prov:hadMember ?member } }
+      GRAPH ?file { ?judgment a cascade:Judgment ; cascade:justification ?justification ; prov:hadMember ?member } }
       GROUP BY ?judgment ?justification`,
   });
   const expected = await tableUnder(
@@ -306,7 +303,7 @@ test("an import with the claim records an About for each unclaimed profile and i
             const kinds = await pod.ask({
               query: `SELECT DISTINCT ?kind WHERE {
                 VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-                ?record <https://ns.cascadeprotocol.org/records/v1-draft#kind> ?kind }`,
+                ?record <https://ns.cascadeprotocol.org/cascade#recordKind> ?kind }`,
             });
             const conditions =
               kinds.length === 1 && kinds[0]?.kind === "Condition";
@@ -430,7 +427,7 @@ test("an entry is filed and matched by default; a person's judgment records the 
   assert.ok(entered.matched);
   const peanuts = await pod.ask({
     query: `${PREFIXES}SELECT ?entry ?record WHERE {
-      ?entry health:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
+      ?entry cascade:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
   });
   assert.equal(peanuts.length, 1);
   const { entry = "", record = "" } = peanuts[0] ?? {};
@@ -676,7 +673,7 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
       const used = await replayed.ask({
         query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
           ?judgment prov:wasAttributedTo <${MATCHER}> ; prov:used ?version .
-          ?version prov:specializationOf/a rec:ReferenceSeries }`,
+          ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       });
       const cited = used.map(({ version }) => version ?? "");
       const held = shipped(

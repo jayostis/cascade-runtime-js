@@ -37,7 +37,7 @@ export const LISTING_FORMAT = 2;
 
 /** A product ingredients row's predicate that names a precise ingredient, not an ingredient. */
 export const PRECISE_INGREDIENT =
-  "https://ns.cascadeprotocol.org/records/v1-draft#hasPreciseIngredient";
+  "https://ns.cascadeprotocol.org/cascade#hasPreciseIngredient";
 
 /** A version's codes as a search lists them, and what it reads of them. */
 export interface Listed {
@@ -48,7 +48,7 @@ export interface Listed {
   readonly codes: readonly string[];
   /** In a mapping series, the codes each code maps to; a product ingredients row naming a precise ingredient is not one. */
   readonly mapsTo: Readonly<Record<string, readonly string[]>>;
-  /** In a product ingredients series, the precise ingredients each code has (`rec:hasPreciseIngredient`). */
+  /** In a product ingredients series, the precise ingredients each code has (`cascade:hasPreciseIngredient`). */
   readonly precise: Readonly<Record<string, readonly string[]>>;
   /** In a names series, each code it gives a preferred name, with its names, lowercased, each after a line break. */
   readonly names: Readonly<Record<string, string>>;

@@ -54,7 +54,7 @@ test("an import writes its content-addressed files first, then its revisions, an
     ranks.push(
       said("http://www.w3.org/ns/prov#used")
         ? 2
-        : said("https://ns.cascadeprotocol.org/records/v1-draft#Revision")
+        : said("https://ns.cascadeprotocol.org/cascade#Revision")
           ? 1
           : 0,
     );
@@ -129,9 +129,9 @@ async function strayReplay(selector: string) {
   const entry = (allergen: string): Uint8Array =>
     new TextEncoder()
       .encode(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .
-<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/health/v1#allergen> ${allergen} .`);
+  <https://ns.cascadeprotocol.org/cascade#allergen> ${allergen} .`);
   await source.write("s/blank.ttl", entry("[ <urn:example:value> 2 ]"));
   await source.write("s/plain.ttl", entry('"Peanut"'));
   const story: Story = {
@@ -218,7 +218,7 @@ test("an arrival's selector, a node of its own, is carried into the revision as 
   assert.equal(replayed.steps[1]?.refused, undefined);
   const wrote = await wroteBy(replayed, 1);
   const [revision] = wrote.subjects(
-    "https://ns.cascadeprotocol.org/records/v1-draft#revisionOf",
+    "https://ns.cascadeprotocol.org/cascade#revisionOf",
   );
   assert.ok(revision);
   const selector = iri(`${revision.value}#selector`);
@@ -247,10 +247,7 @@ test("an entered record is named from its entry session's IRI and the draft's po
   const wrote = await wroteBy(replayed, 3);
   const [session] = wrote.subjects("http://www.w3.org/ns/prov#startedAtTime");
   const records = wrote
-    .match(
-      undefined,
-      "https://ns.cascadeprotocol.org/records/v1-draft#revisionOf",
-    )
+    .match(undefined, "https://ns.cascadeprotocol.org/cascade#revisionOf")
     .map(([, , record]) => record.value);
   assert.ok(session);
   assert.deepEqual(records, [await enteredRecordName(session.value, 0)]);
@@ -288,10 +285,10 @@ test("a step given bad input by its story is refused, and the replay goes on", a
       `s/${file}`,
       new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
 <urn:cascade:this-entry> a prov:Activity .
-<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/health/v1#allergen> "${allergen}" ;
-  <https://ns.cascadeprotocol.org/clinical/v1#criticality> "${criticality}" .`),
+  <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
+  <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
     );
   const refusals: readonly [Step["happened"], RegExp][] = [
     [
@@ -313,11 +310,11 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
     [
       { kind: "entry", file: "blank-allergen.ttl" },
-      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*health\/v1#allergen: /,
+      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,
     ],
     [
       { kind: "entry", file: "made-up-criticality.ttl" },
-      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*clinical\/v1#criticality: /,
+      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*cascade#allergyCriticality: /,
     ],
     [
       { kind: "judgment", file: "no-judgment.ttl" },

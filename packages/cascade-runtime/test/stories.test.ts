@@ -17,7 +17,7 @@ import {
 } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 
-const PREFIXES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 `;
 
@@ -55,7 +55,7 @@ function resourcesOf(pull: Pull, type: string) {
 async function endDays(pod: Pod): Promise<string[]> {
   const rows = await pod.ask({
     query: `${PREFIXES}SELECT ?ended WHERE {
-      ?record a clinical:Medication . ?version prov:specializationOf ?record ; clinical:endDate ?ended .
+      ?record a cascade:PrescribedOrReportedMedication . ?version prov:specializationOf ?record ; cascade:medicationUseEndDate ?ended .
     }`,
   });
   return rows.map(({ ended }) => day(ended));
@@ -158,9 +158,9 @@ test("the stopped story's C-CDA copy joins its FHIR pull: the medication is one 
     assert.equal(second.refused, undefined);
 
     const medications = await pod.ask({
-      query: `PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
+      query: `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 ${PREFIXES}SELECT ?entry (COUNT(?record) AS ?records) WHERE {
-        ?entry a clinical:Medication ; cascade:mergedFrom ?record .
+        ?entry a cascade:PrescribedOrReportedMedication ; cascade:mergedFrom ?record .
       } GROUP BY ?entry`,
     });
     assert.deepEqual(

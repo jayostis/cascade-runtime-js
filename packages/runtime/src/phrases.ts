@@ -39,7 +39,7 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -52,10 +52,7 @@ export const PREFIXES: Readonly<Record<string, string>> = {
   prov: PROV,
   pav: PAV,
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
-  rec: REC,
-  jdg: JDG,
-  health: HEALTH,
-  clinical: CLINICAL,
+  oa: "http://www.w3.org/ns/oa#",
   cascade: CASCADE,
 };
 
@@ -328,9 +325,12 @@ const FIELDS: Readonly<Record<string, Field>> = {
     entry: true,
     shows: ({ value }) => localName(value),
   },
-  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`], entry: true },
+  status: {
+    predicates: [`${HEALTH}clinicalStatus`, `${CLINICAL}workflowStatus`],
+    entry: true,
+  },
   criticality: {
-    predicates: [`${CLINICAL}criticality`],
+    predicates: [`${CLINICAL}allergyCriticality`],
     entry: true,
     of: "version",
   },
@@ -1262,7 +1262,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const does = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
+            `ASK { <${judgment}> <${REC}countsUnderLens> true }`,
           );
           if (does === counts) return undefined;
           return does ? "it counts" : "it does not count";
@@ -1364,7 +1364,7 @@ const DEFINITIONS: Definition[] = [
           found.push(`${words} is in a view`);
         for (const [why, because] of await selected(
           reading.store,
-          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
+          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}leftOutReason> ?why . OPTIONAL { ?left <${REC}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
             `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,

@@ -193,7 +193,7 @@ export async function checkFeed(
       !(await context.kindsRead()).has(kind)
     )
       continue;
-    const [held] = index.objects(series, `${REC}shipsWith`);
+    const [held] = index.objects(series, `${REC}defaultTableVersion`);
     if (held !== undefined && !descends(catalog, version, held.value)) {
       refused.push({
         version: version.value,
@@ -248,11 +248,13 @@ export async function checkFeed(
         ([subject, predicate]) =>
           !(
             subject.value === series.value &&
-            [...SERIES_KEPT, `${REC}shipsWith`].includes(predicate.value)
+            [...SERIES_KEPT, `${REC}defaultTableVersion`].includes(
+              predicate.value,
+            )
           ),
       ),
       ...only(catalog, series, SERIES_KEPT),
-      [series, iri(`${REC}shipsWith`), version],
+      [series, iri(`${REC}defaultTableVersion`), version],
       [version, iri(`${RDF}type`), iri(`${PROV}Entity`)],
       ...only(catalog, version, VERSION_KEPT),
       ...catalog

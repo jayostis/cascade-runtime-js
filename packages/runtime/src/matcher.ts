@@ -2,7 +2,7 @@ import { Derivations, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
-import { documentName, inUtc, recordName } from "./names.js";
+import { claimName, documentName, inUtc } from "./names.js";
 import {
   codeIri,
   iri,
@@ -16,20 +16,23 @@ import { type References, tableTerms, type TableTerms } from "./references.js";
 import { REC, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const NPX = "http://purl.org/nanopub/x/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const TYPE = `${RDF}type`;
-const PREFIXES = `PREFIX rec: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX jdg: <${JDG}> PREFIX npx: <${NPX}>`;
+const PREFIXES = `PREFIX cascade: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX npx: <${NPX}>`;
 
-export const MATCHER = "urn:uuid:80bcb9f7-34ae-432b-bd78-ba2616a81f76";
+export const MATCHER = `${JDG}CascadeMatcher`;
 const LENS = "everyday";
 const COMPARISONS = `${QUERIES}matcher/`;
 
 export interface MatcherRule {
+  /** The matcher rule term the row names. */
+  readonly term: string;
   readonly justification: string;
+  /** The record classes it compares. */
   readonly appliesTo: ReadonlySet<string>;
   readonly query: string;
   readonly kind?: string;
@@ -37,13 +40,13 @@ export interface MatcherRule {
 
 interface SubjectRecord {
   readonly name: string;
-  readonly kind: string;
+  readonly classes: ReadonlySet<string>;
   readonly version: string;
   readonly arrived: readonly [string, string];
   readonly activity?: string;
 }
 
-/** The path a rule's query names under `queries/v1-draft/`, when it resolves inside `matcher/` and holds no backslash. */
+/** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
 function comparison(query: string): string | undefined {
   if (query.includes("\\") || /^(\/|[a-z][a-z0-9+.-]*:)/i.test(query))
     return undefined;
@@ -63,17 +66,18 @@ export async function matcherRules(
   vocabulary: Files,
 ): Promise<{ rule: MatcherRule; text: string }[]> {
   const found: { rule: MatcherRule; text: string }[] = [];
-  for (const row of rows.subjects(TYPE, iri(`${REC}MatcherRule`))) {
+  for (const row of rows.subjects(TYPE, iri(`${REC}RuleListRow`))) {
     const one = (predicate: string): string => {
       const values = rows.objects(row, `${REC}${predicate}`);
       if (values.length !== 1)
         throw new Refusal(
-          `a rule of the rule list gives ${values.length} rec:${predicate}, not one`,
+          `a rule of the rule list gives ${values.length} cascade:${predicate}, not one`,
         );
       return values[0]?.value ?? "";
     };
+    const term = one("matcherRule");
     const justification = one("justifiedAs");
-    const query = one("query");
+    const query = one("queryPath");
     const expected = one("queryHash");
     const path = comparison(query);
     if (path === undefined)
@@ -92,9 +96,10 @@ export async function matcherRules(
       );
     found.push({
       rule: {
+        term,
         justification,
         appliesTo: new Set(
-          rows.objects(row, `${REC}appliesTo`).map(({ value }) => value),
+          rows.objects(row, `${REC}appliesToClass`).map(({ value }) => value),
         ),
         query: path,
         ...(kinds[0] === undefined ? {} : { kind: kinds[0].value }),
@@ -181,24 +186,24 @@ async function subjectRecords(
 ): Promise<Map<string, SubjectRecord>> {
   const subjects = await column(
     dataset,
-    "SELECT DISTINCT ?subject WHERE { ?subject a rec:Subject }",
+    "SELECT DISTINCT ?subject WHERE { ?subject a cascade:Subject }",
     "subject",
   );
   const [subject] = subjects;
   if (subjects.length !== 1 || subject?.[0] === undefined)
     throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
-  const theirs = `?record rec:subject <${subject[0]}> .`;
+  const theirs = `?record a cascade:Record ; cascade:subject <${subject[0]}> .`;
   const records = await column(
     dataset,
     `SELECT DISTINCT ?record WHERE { ${theirs} }`,
     "record",
   );
-  const kinds = grouped(
+  const classes = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?record ?kind WHERE { ${theirs} ?record rec:kind ?kind }`,
+      `SELECT DISTINCT ?record ?class WHERE { ${theirs} ?record a ?class }`,
       "record",
-      "kind",
+      "class",
     ),
   );
   const versions = grouped(
@@ -212,7 +217,7 @@ async function subjectRecords(
   const firsts = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
+      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
       "record",
       "first",
     ),
@@ -220,7 +225,7 @@ async function subjectRecords(
   const times = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:generatedAtTime ?at }`,
+      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:generatedAtTime ?at }`,
       "first",
       "at",
     ),
@@ -228,7 +233,7 @@ async function subjectRecords(
   const activities = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
+      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
       "first",
       "activity",
     ),
@@ -246,7 +251,7 @@ async function subjectRecords(
     const activity = activities.get(first[0] ?? "")?.[0];
     found.set(name, {
       name,
-      kind: kinds.get(name)?.[0] ?? "",
+      classes: new Set(classes.get(name) ?? []),
       version,
       arrived: arrival(at),
       ...(activity === undefined ? {} : { activity }),
@@ -323,7 +328,7 @@ export async function namedVersions(
   return grouped(
     await column(
       union,
-      "SELECT DISTINCT ?series ?version WHERE { ?series a rec:ReferenceSeries ; pav:hasCurrentVersion ?version }",
+      "SELECT DISTINCT ?series ?version WHERE { ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?version }",
       "series",
       "version",
     ),
@@ -542,7 +547,8 @@ class Matcher {
     record: SubjectRecord,
     other: SubjectRecord,
   ): ReadonlySet<string> {
-    if (!rule.appliesTo.has(record.kind)) return new Set();
+    if (![...record.classes].some((found) => rule.appliesTo.has(found)))
+      return new Set();
     return (
       joined.get(rule.justification)?.get(pair(record.name, other.name)) ??
       new Set()
@@ -582,12 +588,13 @@ class Matcher {
       ...new Set([...applied, ...members.map(({ version }) => version)]),
     ].sort();
     const names = members.map(({ name }) => name).sort();
-    const name = await recordName([
-      MATCHER,
-      rule.justification,
-      ...names,
-      ...used,
-    ]);
+    const name = await claimName({
+      maker: MATCHER,
+      rule: rule.term,
+      justification: rule.justification,
+      members: names,
+      used,
+    });
     for (const version of applied) {
       this.describe(this.references.seriesOf(version) ?? "");
       this.describe(version);
@@ -718,7 +725,7 @@ function pair(record: string | undefined, other: string | undefined): string {
 
 /** The matcher's Sames that nothing retracts and no unretracted judgment supersedes, in order of name. */
 async function recheckable(dataset: Dataset): Promise<Judged[]> {
-  const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same .
+  const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same .
     FILTER NOT EXISTS {
       ?superseding npx:supersedes ?judgment
       OPTIONAL { ?undoing npx:retracts ?superseding }
@@ -726,7 +733,7 @@ async function recheckable(dataset: Dataset): Promise<Judged[]> {
     }
     FILTER NOT EXISTS { ?retracting npx:retracts ?judgment }`;
   const [justifications, members, used] = await Promise.all(
-    ["jdg:justification", "prov:hadMember", "prov:used"].map(
+    ["cascade:justification", "prov:hadMember", "prov:used"].map(
       async (predicate) =>
         grouped(
           await column(
@@ -764,7 +771,7 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     await column(
       dataset,
       `SELECT DISTINCT ?judgment ?member WHERE {
-        ?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same ; prov:hadMember ?member .
+        ?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same ; prov:hadMember ?member .
         ?retracting npx:retracts ?judgment
       }`,
       "judgment",

@@ -32,12 +32,11 @@ import {
 } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
+const GENOMICS = "https://ns.cascadeprotocol.org/cascade#";
 const CLASSIFICATIONS = `${REC}VariantClassifications`;
 const LYNCH = ["MLH1", "MSH2", "MSH6", "PMS2", "EPCAM"];
-const TURTLE = `@prefix genomics: <${GENOMICS}> .
-@prefix rec: <${REC}> .
+const TURTLE = `@prefix cascade: <${GENOMICS}> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
@@ -46,7 +45,7 @@ const TURTLE = `@prefix genomics: <${GENOMICS}> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix spdx: <http://spdx.org/rdf/terms#> .
 `;
-const HGVS = "http://varnomen.hgvs.org/";
+const HGVS = "https://ns.cascadeprotocol.org/codes/hgvs/";
 const CLINVAR = "http://www.ncbi.nlm.nih.gov/clinvar/";
 const A = "urn:uuid:0a1e2c3d-4b5a-4c6d-8e7f-a1b2c3d4e5f6";
 const B = "urn:uuid:0b1e2c3d-4b5a-4c6d-8e7f-a1b2c3d4e5f6";
@@ -55,25 +54,25 @@ const CREDIT =
 
 /** A row of a variant classifications table: the variation, the expressions it is found by, and what it says. */
 const row = (id: string, expressions: readonly string[], says: string) =>
-  `<${CLINVAR}${id}> ${expressions.map((each) => `rec:hgvsExpression <${HGVS}${encodeURIComponent(each).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}> ;`).join(" ")} ${says} .`;
+  `<${CLINVAR}${id}> ${expressions.map((each) => `cascade:hgvsExpression <${HGVS}${encodeURIComponent(each).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}> ;`).join(" ")} ${says} .`;
 
 const LYNCH_ROWS = [
   row(
     "90011",
     ["NM_000249.3:c.2042C>T", "NM_000249.4:c.2042C>T"],
-    `rec:clinvarClassification genomics:Pathogenic , genomics:LikelyPathogenic ;
-      rec:clinvarReviewStatus rec:ClinVarMultipleSubmittersNoConflicts ;
-      rec:lastEvaluated "2024-12-11"^^xsd:date ; rec:contributingSubmitters 5`,
+    `cascade:clinvarClassification cascade:Pathogenic , cascade:LikelyPathogenic ;
+      cascade:clinvarReviewStatus cascade:ClinVarMultipleSubmittersNoConflicts ;
+      cascade:lastEvaluated "2024-12-11"^^xsd:date ; cascade:contributingSubmitterCount 5`,
   ),
   row(
     "90012",
     ["NM_000251.3:c.100A>G"],
-    `rec:clinvarClassification rec:ClinVarConflicting ; rec:submitters 3`,
+    `cascade:clinvarClassification cascade:ClinVarConflicting ; cascade:submitterCount 3`,
   ),
   row(
     "90013",
     ["NM_000251.3:c.200A>G"],
-    `rec:clinvarClassification genomics:Benign`,
+    `cascade:clinvarClassification cascade:Benign`,
   ),
 ].join("\n");
 
@@ -121,8 +120,8 @@ async function withClassifications(
 ): Promise<{ served: Served; versions: string[] }> {
   const files = new Map(served.files);
   const versions: string[] = [];
-  let turtle = `${TURTLE}<${series}> a rec:ReferenceSeries ; rdfs:label "ClinVar ${series.slice(9, 13)}" ;
-  rec:tableKind rec:VariantClassifications ; dct:bibliographicCitation "${CREDIT}" .
+  let turtle = `${TURTLE}<${series}> a cascade:ReferenceSeries ; rdfs:label "ClinVar ${series.slice(9, 13)}" ;
+  cascade:tableKind cascade:VariantClassifications ; dct:bibliographicCitation "${CREDIT}" .
 `;
   for (const [index, { rows, genes = [] }] of line.entries()) {
     const triples = await new OxigraphStore().parse(
@@ -143,7 +142,7 @@ async function withClassifications(
     files.set(url, bytes);
     turtle += `<${version}> prov:specializationOf <${series}> ; pav:version "${index + 1}" ;
   ${previous === undefined ? "" : `prov:wasRevisionOf <${previous}> ;`}
-  ${genes.map((gene) => `rec:coversGene "${gene}" ;`).join(" ")}
+  ${genes.map((gene) => `cascade:coversGene "${gene}" ;`).join(" ")}
   dcat:distribution [ dcat:downloadURL <${url}> ; spdx:checksum [ spdx:checksumValue "${await hex(bytes)}" ] ] .
 `;
     versions.push(version);
@@ -210,7 +209,7 @@ async function twoSeries() {
       rows: row(
         "80001",
         ["NM_000059.4:c.1114A>C"],
-        `rec:clinvarClassification genomics:VUS`,
+        `cascade:clinvarClassification cascade:UncertainSignificance`,
       ),
     },
   ]);
@@ -312,13 +311,13 @@ test("the labels are the vocabulary's, and a classification is a variation's fac
   assert.deepEqual(
     [
       ...(await app.labels([
-        `${GENOMICS}VUS`,
+        `${GENOMICS}UncertainSignificance`,
         `${REC}ClinVarConflicting`,
         "urn:test:unlabelled",
       ])),
     ],
     [
-      [`${GENOMICS}VUS`, "Uncertain significance"],
+      [`${GENOMICS}UncertainSignificance`, "Uncertain significance"],
       [
         `${REC}ClinVarConflicting`,
         "Conflicting classifications of pathogenicity",
@@ -341,8 +340,11 @@ test("the labels are the vocabulary's, and a classification is a variation's fac
     system: "ClinVar",
   });
   assert.equal(
-    (await app.facts("http://varnomen.hgvs.org/NM_000249.3%3Ac.2042C%3ET"))
-      .page,
+    (
+      await app.facts(
+        "https://ns.cascadeprotocol.org/codes/hgvs/NM_000249.3%3Ac.2042C%3ET",
+      )
+    ).page,
     undefined,
   );
 });
@@ -367,7 +369,12 @@ test("an index of rows by code that is missing or was built for other properties
   assert.ok(
     new TextDecoder()
       .decode(await files.read(path))
-      .includes(codeIri("http://varnomen.hgvs.org/", "NM_000251.3:c.200A>G")),
+      .includes(
+        codeIri(
+          "https://ns.cascadeprotocol.org/codes/hgvs/",
+          "NM_000251.3:c.200A>G",
+        ),
+      ),
   );
   assert.equal(
     (await again.facts(`${CLINVAR}90013`)).classifications[0]?.version,
@@ -386,58 +393,62 @@ interface Case {
 const CASES: readonly Case[] = [
   {
     gene: "MLH1",
-    variant: `genomics:clinvarVariationId "90021"`,
-    report: "genomics:LikelyPathogenic",
+    variant: `cascade:clinvarVariationId "90021"`,
+    report: "cascade:LikelyPathogenic",
     verdict: "agrees",
   },
   {
     gene: "MSH2",
-    variant: `genomics:hgvsCDot "NM_000251.3:c.300A>G"`,
-    report: "genomics:VUS",
+    variant: `cascade:hgvsCodingDnaExpression "NM_000251.3:c.300A>G"`,
+    report: "cascade:UncertainSignificance",
     verdict: "differs",
   },
   {
     gene: "MSH6",
-    variant: `genomics:clinvarVariationId "90023"`,
-    report: "genomics:Pathogenic",
+    variant: `cascade:clinvarVariationId "90023"`,
+    report: "cascade:Pathogenic",
     verdict: "labs disagree",
   },
   {
     gene: "PMS2",
-    variant: `genomics:hgvsCDot "NM_000535.7:c.400A>G"`,
-    report: "genomics:Benign",
+    variant: `cascade:hgvsCodingDnaExpression "NM_000535.7:c.400A>G"`,
+    report: "cascade:Benign",
     verdict: "as ClinVar writes it",
   },
-  { gene: "EPCAM", variant: `genomics:clinvarVariationId "90025"` },
+  { gene: "EPCAM", variant: `cascade:clinvarVariationId "90025"` },
   {
     gene: "BRCA1",
-    variant: `genomics:hgvsCDot "NM_007294.4:c.500A>G"`,
-    report: "genomics:Pathogenic",
+    variant: `cascade:hgvsCodingDnaExpression "NM_007294.4:c.500A>G"`,
+    report: "cascade:Pathogenic",
   },
 ];
 
-const PATHOGENIC = "genomics:Pathogenic , genomics:LikelyPathogenic";
+const PATHOGENIC = "cascade:Pathogenic , cascade:LikelyPathogenic";
 
 /** The rows of the agreement cases, 90021 saying what is given. */
 const agreementRows = (says90021: string): string =>
   [
-    row("90021", [], `rec:clinvarClassification ${says90021}`),
+    row("90021", [], `cascade:clinvarClassification ${says90021}`),
     row(
       "90022",
       ["NM_000251.3:c.300A>G"],
-      `rec:clinvarClassification genomics:Pathogenic , genomics:LikelyPathogenic`,
+      `cascade:clinvarClassification cascade:Pathogenic , cascade:LikelyPathogenic`,
     ),
-    row("90023", [], `rec:clinvarClassification rec:ClinVarConflicting`),
+    row(
+      "90023",
+      [],
+      `cascade:clinvarClassification cascade:ClinVarConflicting`,
+    ),
     row(
       "90024",
       ["NM_000535.7:c.400A>G"],
-      `rec:clinvarClassification rec:ClinVarDrugResponse`,
+      `cascade:clinvarClassification cascade:ClinVarDrugResponse`,
     ),
-    row("90025", [], `rec:clinvarClassification genomics:Benign`),
+    row("90025", [], `cascade:clinvarClassification cascade:Benign`),
     row(
       "90026",
       ["NM_007294.4:c.500A>G"],
-      `rec:clinvarClassification genomics:Pathogenic`,
+      `cascade:clinvarClassification cascade:Pathogenic`,
     ),
   ].join("\n");
 
@@ -445,23 +456,23 @@ function entry(cases: readonly Case[], subject: string, owner: string): string {
   const draft = (position: number, kind: string, content: string): string =>
     `<urn:cascade:output-${position}> a ${kind} .
 <urn:cascade:output-${position}-version> prov:specializationOf <urn:cascade:output-${position}> ;
-  ${content} ; rec:patient <${subject}> .`;
+  ${content} ; cascade:patient <${subject}> .`;
   const records = cases.flatMap(({ gene, variant, report }, index) => [
     draft(
       2 * index,
-      "genomics:Variant",
-      `genomics:geneSymbol "${gene}" ; ${variant}`,
+      "cascade:GeneticVariantFinding",
+      `cascade:geneSymbol "${gene}" ; ${variant}`,
     ),
     draft(
       2 * index + 1,
-      "genomics:VariantInterpretation",
-      `genomics:variantInterpreted <urn:cascade:output-${2 * index}> ; ${report === undefined ? "" : `genomics:acmgClassification ${report} ; `}genomics:interpretedDate "2024-03-21"^^xsd:date`,
+      "cascade:VariantInterpretation",
+      `cascade:variantInterpreted <urn:cascade:output-${2 * index}> ; ${report === undefined ? "" : `cascade:acmgClassification ${report} ; `}cascade:interpretedDate "2024-03-21"^^xsd:date`,
     ),
   ]);
-  return `@prefix jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#> .
+  return `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 ${TURTLE}
 <urn:cascade:this-entry> a prov:Activity ;
-  prov:qualifiedAssociation [ prov:agent <${owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
 ${records.join("\n")}`;
 }
 
@@ -496,7 +507,7 @@ test("a report agrees with ClinVar when its value is among the row's, differs wh
       rows: row(
         "80026",
         ["NM_007294.4:c.500A>G"],
-        `rec:clinvarClassification genomics:Benign`,
+        `cascade:clinvarClassification cascade:Benign`,
       ),
     },
   ]);
@@ -560,7 +571,7 @@ test("a report agrees with ClinVar when its value is among the row's, differs wh
   // The series' next version reclassifies 90021; the pod, unchanged, is a new key.
   const next = await withClassifications(NOTHING, A, [
     { rows: agreementRows(PATHOGENIC), genes: LYNCH },
-    { rows: agreementRows("genomics:VUS"), genes: LYNCH },
+    { rows: agreementRows("cascade:UncertainSignificance"), genes: LYNCH },
   ]);
   const later = await openPodWith(
     withTables(await appOver(next.served)),

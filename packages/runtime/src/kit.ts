@@ -8,9 +8,9 @@ import {
   contentName,
   documentName,
   earlierInUtc,
+  claimName,
   enteredRecordName,
   fileStem,
-  recordName,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -20,18 +20,17 @@ import type { Shapes } from "./shapes.js";
 import type { Dataset, StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const PAV = "http://purl.org/pav/";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 const TYPE = `${RDF}type`;
 const ENTRY = "urn:cascade:entry:";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const UUID_V4 =
   /^urn:uuid:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
-const OUT_OF_PLACE =
-  "queries/v1-draft/questions/pod/Which files are out of place.rq";
+const OUT_OF_PLACE = "queries/questions/pod/Which files are out of place.rq";
 /** The lens the final views are built under, as the kit's check 2 says. */
 export const KIT_LENS = "everyday";
 
@@ -357,31 +356,43 @@ async function namesFollowTheirRules(
       failures.push(`N5: ${name}, stored at ${path}, is not described`);
   }
 
-  // N6: each matcher judgment is named by the record rule from what it judged and used.
+  // N6: each matcher judgment is named by the claim rule from its rule, what it judged and what it used.
   const judged = whole.subjects(`${PROV}wasAttributedTo`, iri(MATCHER));
   for (const judgment of judged) {
-    const sorted = (predicate: string): string[] =>
+    const values = (predicate: string): string[] =>
+      whole.objects(judgment, predicate).map((t) => t.value);
+    const [justification = ""] = values(`${JDG}justification`);
+    const rules = new Set(
       whole
-        .objects(judgment, predicate)
-        .map((t) => t.value)
-        .sort();
-    const name = await recordName([
-      MATCHER,
-      ...whole.objects(judgment, `${JDG}justification`).map((t) => t.value),
-      ...sorted(`${PROV}hadMember`),
-      ...sorted(`${PROV}used`),
-    ]);
+        .subjects(`${REC}justifiedAs`, iri(justification))
+        .flatMap((row) => whole.objects(row, `${REC}matcherRule`))
+        .map((rule) => rule.value),
+    );
+    const [rule] = rules;
+    if (rules.size !== 1 || rule === undefined) {
+      failures.push(
+        `N6: the pod's rule lists give ${rules.size} matcher rules for ${justification}, not one`,
+      );
+      continue;
+    }
+    const name = await claimName({
+      maker: MATCHER,
+      rule,
+      justification,
+      members: values(`${PROV}hadMember`),
+      used: values(`${PROV}used`),
+    });
     if (name !== judgment.value)
       failures.push(
         `N6: ${judgment.value} is not named from its members and what it used`,
       );
   }
 
-  // N7: each import and entry session is a new version 4 UUID that no input gives.
+  // N7: each import is a new version 4 UUID that no input gives.
   const given = await everyInput(vocabulary, kit);
   const made = story.steps.filter(
     ({ name, happened }) =>
-      (happened.kind === "import" || happened.kind === "entry") &&
+      happened.kind === "import" &&
       replayed.steps.some(
         (done) => done.step.name === name && done.wrote.length > 0,
       ),

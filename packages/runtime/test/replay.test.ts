@@ -47,9 +47,9 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
           bytes: new TextEncoder().encode(
             `@prefix prov: <http://www.w3.org/ns/prov#> .
             <urn:cascade:this-entry> a prov:Activity .
-            <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+            <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
             <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-              <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${story.subject}> .
+              <https://ns.cascadeprotocol.org/cascade#patient> <${story.subject}> .
             <urn:cascade:zz-version> prov:specializationOf <urn:cascade:no-draft> .`,
           ),
           base: story.address,

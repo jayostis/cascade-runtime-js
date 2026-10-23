@@ -33,19 +33,6 @@ export async function documentName(bytes: Uint8Array): Promise<string> {
   return NI + base64url(await sha256(bytes));
 }
 
-/** A record's name from its inputs, by the Bridge's record rule (runtime/rules.md, N2). */
-export async function recordName(inputs: readonly string[]): Promise<string> {
-  const digest = await sha256(
-    new TextEncoder().encode([RECORD_NAMESPACE, ...inputs].join("|")),
-  );
-  digest[6] = ((digest[6] ?? 0) & 0x0f) | 0x80;
-  digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80;
-  const text = [...digest.slice(0, 16)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-  return `${UUID}${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
-}
-
 /** A C-CDA entry's key or members fingerprint, as the C-CDA adapter computes it: no order or repeat of the strings enters it. */
 export async function fingerprint(strings: Iterable<string>): Promise<string> {
   let sum = 0n;

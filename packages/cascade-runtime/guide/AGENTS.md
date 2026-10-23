@@ -116,14 +116,14 @@ the app holds the LOINC names. `facts(code)` gives, beside the rest, `panels`: f
 a LOINC panel its `members` by their sequence, each with whether the panel
 requires it (`required`), and for a member the panels that hold it (`heldBy`, a
 page of them); and `classes`: for an RxNorm code the classes of its ingredient,
-each `in` list a `relation` (`rec:establishedPharmacologicClass`,
-`rec:mechanismOfAction`, `rec:physiologicEffect` or `rec:chemicalStructure`), the
+each `in` list a `relation` (`cascade:establishedPharmacologicClass`,
+`cascade:mechanismOfActionClass`, `cascade:physiologicEffectClass` or `cascade:chemicalStructureClass`), the
 `class` with its name, and `through`, the code FDA gave the class to when it is
 not the code asked of (FDA classes estradiol, not a tablet of it). A class is
 joined only on exact evidence, relation by relation, as the vocabulary's
 `tables/medication-classes-through-precise-ingredients.rq` says: a row on the
 code itself, else the rows of the code's own precise ingredients
-(`rec:hasPreciseIngredient`), else, in a product ingredients version that states
+(`cascade:hasPreciseIngredient`), else, in a product ingredients version that states
 precise ingredients, its ingredient's own rows (an estradiol tablet takes
 estradiol's). Each relation is decided apart, so one product can take some from
 its precise ingredient and others from its ingredient: Recorlev takes the
@@ -427,7 +427,7 @@ await showPerson(allergies.map(shown));
 
 async function search(word) {
   const found = await pod.ask({
-    query: `PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
+    query: `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       SELECT DISTINCT ?entry ?view ?field ?value WHERE {
         GRAPH ?view { ?entry cascade:mergedFrom [] ; ?field ?value }
         FILTER (isLiteral(?value) && CONTAINS(LCASE(STR(?value)), LCASE(${JSON.stringify(word)})))
@@ -495,14 +495,11 @@ record `<urn:cascade:output-0>` and its content `<urn:cascade:output-0-version>`
 One template per kind; every value typed goes in through `text()`.
 
 ```js
-const PREFIXES = `@prefix clinical: <https://ns.cascadeprotocol.org/clinical/v1#> .
+const PREFIXES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix dct: <http://purl.org/dc/terms/> .
-@prefix health: <https://ns.cascadeprotocol.org/health/v1#> .
-@prefix jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#> .
 @prefix npx: <http://purl.org/nanopub/x/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 `;
 const text = (value) => JSON.stringify(String(value));
@@ -515,38 +512,38 @@ function iri(value) {
 function entry(pod, type, statements) {
   return `${PREFIXES}
 <urn:cascade:this-entry> a prov:Activity ; rdfs:label "entered by the person" ;
-  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 <urn:cascade:output-0> a ${type} .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
   ${statements.filter(Boolean).join(" ;\n  ")} ;
-  rec:patient <${pod.subject}> .
+  cascade:patient <${pod.subject}> .
 `;
 }
 
 const allergy = (pod, { allergen, code, criticality, reaction }) =>
-  entry(pod, "health:AllergyRecord", [
-    `health:allergen ${text(allergen)}`,
-    code && `health:allergenCode ${iri(code)}`,
-    criticality && `clinical:criticality ${text(criticality)}`,
-    reaction && `health:reaction ${text(reaction)}`,
+  entry(pod, "cascade:AllergyOrIntolerance", [
+    `cascade:allergen ${text(allergen)}`,
+    code && `cascade:allergenCode ${iri(code)}`,
+    criticality && `cascade:allergyCriticality ${text(criticality)}`,
+    reaction && `cascade:reactionManifestationText ${text(reaction)}`,
   ]);
 const condition = (pod, name, status, onset) =>
-  entry(pod, "health:ConditionRecord", [
-    `health:conditionName ${text(name)}`,
-    `health:status ${text(status)}`,
-    onset && `health:onsetDate ${day(onset)}`,
+  entry(pod, "cascade:ProblemOrDiagnosis", [
+    `cascade:conditionName ${text(name)}`,
+    `cascade:clinicalStatus ${text(status)}`,
+    onset && `cascade:onsetDate ${day(onset)}`,
   ]);
 const immunization = (pod, vaccine, code, given) =>
-  entry(pod, "health:ImmunizationRecord", [
-    `health:vaccineName ${text(vaccine)}`,
-    `health:vaccineCode ${text(code)}`,
-    `health:administrationDate ${day(given)}`,
+  entry(pod, "cascade:Vaccination", [
+    `cascade:vaccineName ${text(vaccine)}`,
+    `cascade:vaccineCode ${text(code)}`,
+    `cascade:vaccinationOccurrenceTime ${day(given)}`,
   ]);
 const procedure = (pod, name, snomed, performed) =>
-  entry(pod, "clinical:Procedure", [
-    `clinical:procedureName ${text(name)}`,
-    `clinical:snomedCode ${text(snomed)}`,
-    `clinical:procedureDate ${day(performed)}`,
+  entry(pod, "cascade:MedicalProcedure", [
+    `cascade:procedureName ${text(name)}`,
+    `cascade:snomedCode ${text(snomed)}`,
+    `cascade:procedureDate ${day(performed)}`,
   ]);
 
 async function saved(step) {
@@ -579,10 +576,10 @@ Erroneous each member's current version as `prov:used`.
 ```js
 function judgment(pod, reason, statements) {
   return `${PREFIXES}
-<urn:cascade:this-judgment> a jdg:Judgment ;
+<urn:cascade:this-judgment> a cascade:Judgment ;
   ${[...statements, reason && `dct:description ${text(reason)}`].filter(Boolean).join(" ;\n  ")} ;
   prov:wasAttributedTo <${pod.owner}> ;
-  prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+  prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 <${pod.owner}> a prov:Person .
 `;
 }
@@ -590,23 +587,23 @@ const members = (records) => records.map((one) => `prov:hadMember <${one}>`);
 
 const about = (pod, profile) =>
   judgment(pod, undefined, [
-    "jdg:verdict jdg:About",
-    `jdg:subject <${pod.subject}>`,
-    "jdg:basis jdg:OwnerStatement",
+    "cascade:verdict cascade:About",
+    `cascade:subject <${pod.subject}>`,
+    "cascade:basis cascade:OwnerStatement",
     `prov:hadMember <${profile}>`,
   ]);
 const same = (pod, records, reason) =>
-  judgment(pod, reason, ["jdg:verdict jdg:Same", ...members(records)]);
+  judgment(pod, reason, ["cascade:verdict cascade:Same", ...members(records)]);
 const sameInstead = (pod, records, machineSame, reason) =>
   judgment(pod, reason, [
-    "jdg:verdict jdg:Same",
+    "cascade:verdict cascade:Same",
     ...members(records),
     `npx:supersedes <${machineSame}>`,
   ]);
 const different = (pod, records, reason) =>
-  judgment(pod, reason, ["jdg:verdict jdg:Different", ...members(records)]);
+  judgment(pod, reason, ["cascade:verdict cascade:Different", ...members(records)]);
 const erroneous = (pod, record, reason) =>
-  judgment(pod, reason, ["jdg:verdict jdg:Erroneous", ...members([record])]);
+  judgment(pod, reason, ["cascade:verdict cascade:Erroneous", ...members([record])]);
 const retraction = (pod, earlier, reason) =>
   judgment(pod, reason, [`npx:retracts <${earlier}>`]);
 
@@ -647,7 +644,7 @@ inside an entry, never one Different over a whole group, which overrides the
 person's own Sames. A Different wins over a Same, though a later record can
 rejoin them. `sameInstead` rests the matcher's join on the person. An Erroneous
 record leaves every view. A retraction takes a judgment back; none is edited.
-`jdg:OwnerStatement` is the one basis a person states.
+`cascade:OwnerStatement` is the one basis a person states.
 
 ## When an export holds someone else's records
 

@@ -1,9 +1,9 @@
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
-const CORE = "https://ns.cascadeprotocol.org/core/v1#";
-const CLINICAL = "https://ns.cascadeprotocol.org/clinical/v1#";
-const HEALTH = "https://ns.cascadeprotocol.org/health/v1#";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const REC = "https://ns.cascadeprotocol.org/cascade#";
+const GENOMICS = "https://ns.cascadeprotocol.org/cascade#";
+const CORE = "https://ns.cascadeprotocol.org/cascade#";
+const CLINICAL = "https://ns.cascadeprotocol.org/cascade#";
+const HEALTH = "https://ns.cascadeprotocol.org/cascade#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 
 /**
  * The vocabulary's IRIs an app names, each under the local name the term takes in the vocabulary's one namespace, so
@@ -19,7 +19,7 @@ export const terms = Object.freeze({
 
   Pathogenic: `${GENOMICS}Pathogenic`,
   LikelyPathogenic: `${GENOMICS}LikelyPathogenic`,
-  UncertainSignificance: `${GENOMICS}VUS`,
+  UncertainSignificance: `${GENOMICS}UncertainSignificance`,
   LikelyBenign: `${GENOMICS}LikelyBenign`,
   Benign: `${GENOMICS}Benign`,
 
@@ -33,46 +33,46 @@ export const terms = Object.freeze({
   ClinVarNoAssertionCriteria: `${REC}ClinVarNoAssertionCriteria`,
 
   establishedPharmacologicClass: `${REC}establishedPharmacologicClass`,
-  mechanismOfActionClass: `${REC}mechanismOfAction`,
-  physiologicEffectClass: `${REC}physiologicEffect`,
-  chemicalStructureClass: `${REC}chemicalStructure`,
+  mechanismOfActionClass: `${REC}mechanismOfActionClass`,
+  physiologicEffectClass: `${REC}physiologicEffectClass`,
+  chemicalStructureClass: `${REC}chemicalStructureClass`,
 
   mergedFrom: `${CORE}mergedFrom`,
-  hgvsCodingDnaExpression: `${GENOMICS}hgvsCDot`,
+  hgvsCodingDnaExpression: `${GENOMICS}hgvsCodingDnaExpression`,
   clinvarVariationId: `${GENOMICS}clinvarVariationId`,
   geneSymbol: `${GENOMICS}geneSymbol`,
   coversGene: `${REC}coversGene`,
   clinvarClassification: `${REC}clinvarClassification`,
   clinvarReviewStatus: `${REC}clinvarReviewStatus`,
-  contributingSubmitterCount: `${REC}contributingSubmitters`,
+  contributingSubmitterCount: `${REC}contributingSubmitterCount`,
   variantInterpreted: `${GENOMICS}variantInterpreted`,
   acmgClassification: `${GENOMICS}acmgClassification`,
   interpretedDate: `${GENOMICS}interpretedDate`,
 
   drugName: `${CLINICAL}drugName`,
-  medicationUseEndDate: `${CLINICAL}endDate`,
+  medicationUseEndDate: `${CLINICAL}medicationUseEndDate`,
   allergen: `${HEALTH}allergen`,
-  Vaccination: `${HEALTH}ImmunizationRecord`,
+  Vaccination: `${HEALTH}Vaccination`,
   vaccineCode: `${HEALTH}vaccineCode`,
-  vaccinationOccurrenceTime: `${HEALTH}administrationDate`,
+  vaccinationOccurrenceTime: `${HEALTH}vaccinationOccurrenceTime`,
 
   patient: `${REC}patient`,
-  PatientRole: `${JDG}patient`,
+  PatientRole: `${JDG}PatientRole`,
   justification: `${JDG}justification`,
   SameMappedCodeAndDate: `${JDG}SameMappedCodeAndDate`,
 
   CodeSystem: `${REC}CodeSystem`,
   ReferenceSeries: `${REC}ReferenceSeries`,
-  defaultTableVersion: `${REC}shipsWith`,
+  defaultTableVersion: `${REC}defaultTableVersion`,
 
   /** The property a version of each kind states its status by, under the kind's class. */
   statusOf: Object.freeze({
-    AllergyOrIntolerance: `${CLINICAL}status`,
-    ProblemOrDiagnosis: `${HEALTH}status`,
-    Vaccination: `${HEALTH}status`,
-    PrescribedOrReportedMedication: `${CLINICAL}status`,
-    MedicalProcedure: `${CLINICAL}status`,
-    LaboratoryTestResult: `${CLINICAL}status`,
+    AllergyOrIntolerance: `${CLINICAL}clinicalStatus`,
+    ProblemOrDiagnosis: `${HEALTH}clinicalStatus`,
+    Vaccination: `${HEALTH}workflowStatus`,
+    PrescribedOrReportedMedication: `${CLINICAL}workflowStatus`,
+    MedicalProcedure: `${CLINICAL}workflowStatus`,
+    LaboratoryTestResult: `${CLINICAL}workflowStatus`,
   }),
 });
 

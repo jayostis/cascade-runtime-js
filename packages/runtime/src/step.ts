@@ -8,7 +8,7 @@ import type { StoreFactory, Union } from "./store.js";
 
 export { Refusal };
 
-export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+export const REC = "https://ns.cascadeprotocol.org/cascade#";
 
 /** What an import is doing, as it begins each part, with what is done so far. */
 export interface ImportProgress {

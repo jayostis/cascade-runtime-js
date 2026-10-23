@@ -193,11 +193,11 @@ class Revisions {
       }
     }
     const { rows } = await union.select(`
-      PREFIX rec: <${REC}>
+      PREFIX cascade: <${REC}>
       PREFIX prov: <${PROV}>
       PREFIX pav: <${PAV}>
       SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion WHERE {
-        ?revision a rec:Revision ; rec:revisionOf ?record ; rec:version ?version .
+        ?revision a cascade:Revision ; cascade:revisionOf ?record ; cascade:version ?version .
         OPTIONAL { ?revision prov:wasRevisionOf ?previous }
         OPTIONAL { ?revision pav:version ?sourceVersion }
       }`);

@@ -68,15 +68,15 @@ const KEYS = [
 
 const CLASSES: Record<keyof typeof terms.statusOf, string> = {
   AllergyOrIntolerance:
-    "https://ns.cascadeprotocol.org/health/v1#AllergyRecord",
+    "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
   ProblemOrDiagnosis:
-    "https://ns.cascadeprotocol.org/health/v1#ConditionRecord",
+    "https://ns.cascadeprotocol.org/cascade#ProblemOrDiagnosis",
   Vaccination: terms.Vaccination,
   PrescribedOrReportedMedication:
-    "https://ns.cascadeprotocol.org/clinical/v1#Medication",
-  MedicalProcedure: "https://ns.cascadeprotocol.org/clinical/v1#Procedure",
+    "https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication",
+  MedicalProcedure: "https://ns.cascadeprotocol.org/cascade#MedicalProcedure",
   LaboratoryTestResult:
-    "https://ns.cascadeprotocol.org/health/v1#LabResultRecord",
+    "https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult",
 };
 
 test("the keys of terms are never renamed", () => {

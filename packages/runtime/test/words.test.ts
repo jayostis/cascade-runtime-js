@@ -7,22 +7,14 @@ import { MATCHER } from "../src/matcher.js";
 import { documentName, recordFromDocumentName } from "../src/names.js";
 import { REC, Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
-import {
-  CLINICAL,
-  GENOMICS,
-  HEALTH,
-  JDG,
-  KINDS,
-  PROV,
-  Words,
-} from "../src/words.js";
+import { GENOMICS, HEALTH, JDG, KINDS, PROV, Words } from "../src/words.js";
 
-const RECORDS = "ontologies/records/v1-draft/records.ttl";
-const REGISTRY = `@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#> .
+const RECORDS = "ontologies/cascade.ttl";
+const REGISTRY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix void: <http://rdfs.org/ns/void#> .
-rec:SNOMEDCT a rec:CodeSystem ; rdfs:label "SNOMED CT"@en ; void:uriSpace "urn:test:snomed/" .
-rec:NDC a rec:CodeSystem ; rdfs:label "NDC"@en ; void:uriSpace "urn:test:ndc/" .
+cascade:SNOMEDCT a cascade:CodeSystem ; rdfs:label "SNOMED CT"@en ; void:uriSpace "urn:test:snomed/" .
+cascade:NDC a cascade:CodeSystem ; rdfs:label "NDC"@en ; void:uriSpace "urn:test:ndc/" .
 `;
 
 async function wordsOver(
@@ -36,13 +28,13 @@ async function wordsOver(
     await vocabulary.write(path, bytes);
   const store = new Union(new OxigraphStore());
   await store.loadTurtle(
-    `@prefix health: <${HEALTH}> . @prefix clinical: <${CLINICAL}> . @prefix prov: <${PROV}> .
-<urn:test:coded> a health:AllergyRecord . <urn:test:coded-v> prov:specializationOf <urn:test:coded> ; health:allergenCode <urn:test:snomed/373270004> .
-<urn:test:literal> a health:AllergyRecord . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; clinical:snomedCode "1234" .
-<urn:test:brand> a clinical:Medication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${REC}ndcCode> <urn:test:ndc/00378520905> .
-<urn:test:generic> a clinical:Medication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${REC}ndcCode> <urn:test:ndc/00093101301> .
-<urn:test:martin> a <${GENOMICS}Variant> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${GENOMICS}hgvsCDot> "NM_000249.4:c.2042C>T" ; <${GENOMICS}clinvarVariationId> "90011" .
-<urn:test:panel> a <${GENOMICS}Variant> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${GENOMICS}hgvsCDot> "NM_000249.3:c.2042C>T" .
+    `@prefix cascade: <${HEALTH}> . @prefix prov: <${PROV}> .
+<urn:test:coded> a cascade:AllergyOrIntolerance . <urn:test:coded-v> prov:specializationOf <urn:test:coded> ; cascade:allergenCode <urn:test:snomed/373270004> .
+<urn:test:literal> a cascade:AllergyOrIntolerance . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; cascade:snomedCode "1234" .
+<urn:test:brand> a cascade:PrescribedOrReportedMedication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${REC}ndcCode> <urn:test:ndc/00378520905> .
+<urn:test:generic> a cascade:PrescribedOrReportedMedication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${REC}ndcCode> <urn:test:ndc/00093101301> .
+<urn:test:martin> a <${GENOMICS}GeneticVariantFinding> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${GENOMICS}hgvsCodingDnaExpression> "NM_000249.4:c.2042C>T" ; <${GENOMICS}clinvarVariationId> "90011" .
+<urn:test:panel> a <${GENOMICS}GeneticVariantFinding> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${GENOMICS}hgvsCodingDnaExpression> "NM_000249.3:c.2042C>T" .
 <urn:test:report> a <${GENOMICS}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${GENOMICS}variantInterpreted> <urn:test:martin> .
 <urn:test:variation> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariation> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
 <urn:test:through> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariationThroughTable> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .

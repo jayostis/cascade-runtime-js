@@ -188,12 +188,12 @@ test("the second developer story prints Priya's active medications, the lisinopr
     multiset([
       {
         medication: "lisinopril 10 MG Oral Tablet",
-        code: "http://www.nlm.nih.gov/research/umls/rxnorm/314076",
+        code: "https://ns.cascadeprotocol.org/codes/rxnorm/314076",
         records: "2",
       },
       {
         medication: "amlodipine 5 MG Oral Tablet",
-        code: "http://www.nlm.nih.gov/research/umls/rxnorm/197361",
+        code: "https://ns.cascadeprotocol.org/codes/rxnorm/197361",
         records: "1",
       },
     ]),

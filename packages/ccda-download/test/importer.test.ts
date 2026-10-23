@@ -105,7 +105,7 @@ test("a download's facts are its import's label and start and the header's versi
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       ASK {
         bridge:thisImport rdfs:label "C-CDA download" ; prov:startedAtTime "2026-01-02T10:00:00Z"^^xsd:dateTime .
-        bridge:thisDocument bridge:sourceFormatVersion "2015-08-01" .
+        bridge:thisDocument cascade:sourceFormatVersion "2015-08-01" .
       }`),
     true,
   );
