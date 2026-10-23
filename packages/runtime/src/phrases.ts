@@ -10,7 +10,16 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
-import { documentName, inUtc } from "./names.js";
+import {
+  byCodePoint,
+  containedRecordName,
+  documentName,
+  enteredRecordName,
+  recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import {
   iri,
   literal,
@@ -498,16 +507,19 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
   };
 }
 
-const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
+const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used ?rule WHERE {
   ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
     <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
   OPTIONAL { ?judgment <${PROV}used> ?used }
+  OPTIONAL { ?row <${REC}justifiedAs> ?justification ; <${REC}matcherRule> ?rule }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
+  /** The matcher rule terms the pod's rule lists give its justification. */
+  readonly rules: Set<string>;
   readonly members: Set<string>;
   readonly at: Set<string>;
   readonly used: Set<string>;
@@ -515,7 +527,7 @@ interface Judged {
 
 async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used] of await selected(
+  for (const [name, justification, member, at, used, rule] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -524,6 +536,7 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
       ({
         name: name ?? "",
         justification: justification ?? "",
+        rules: new Set(),
         members: new Set(),
         at: new Set(),
         used: new Set(),
@@ -531,6 +544,7 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
     judged.members.add(member ?? "");
     if (at) judged.at.add(shownTime(at));
     if (used) judged.used.add(used);
+    if (rule) judged.rules.add(rule);
     found.set(judged.name, judged);
   }
   return [...found.values()];
@@ -564,10 +578,10 @@ function judgmentRow(
           return sorted(judged.used);
         case "inputs":
           return [
-            MATCHER,
-            judged.justification,
-            ...[...judged.members].sort(),
-            ...[...judged.used].sort(),
+            "cascade:ClaimNamingRule",
+            ...[MATCHER, ...judged.rules, judged.justification].map(termShown),
+            `(${[...judged.members].sort(byCodePoint).join(", ")})`,
+            `(${[...judged.used].sort(byCodePoint).join(", ")})`,
           ].join(", ");
         case "name":
           return judged.name;
@@ -758,34 +772,80 @@ async function queryAnswers(
   });
 }
 
+/** A vocabulary term as a feature's cells write it, `cascade:` and its local name. */
+const termShown = (iri: string): string =>
+  iri.startsWith(REC) ? `cascade:${iri.slice(REC.length)}` : iri;
+
+/** The record name rules a `these are named:` table gives inputs to, by the rule term's local name. */
+const RECORD_RULES: Readonly<
+  Record<string, (inputs: readonly string[]) => Promise<string>>
+> = {
+  RecordFromServerNamingRule: ([base = "", type = "", id = ""]) =>
+    recordFromServerName(base, type, id),
+  RecordFromDocumentNamingRule: ([document = "", selector = ""]) =>
+    recordFromDocumentName(document, selector),
+  RecordFromCcdaNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    er = "",
+    ee = "",
+  ]) =>
+    recordFromCcdaName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entry: { root: er, extension: ee },
+    }),
+  RecordFromCcdaWithoutIdNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    entryClass = "",
+    key = "",
+    members = "",
+  ]) =>
+    recordFromCcdaWithoutIdName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entryClass: entryClass.replace(/^cascade:/, REC),
+      keyFingerprint: key,
+      membersFingerprint: members,
+    }),
+  ContainedRecordNamingRule: ([container = "", versionId = "", id = ""]) =>
+    containedRecordName(container, { versionId }, id),
+  EnteredRecordNamingRule: ([session = "", position = ""]) =>
+    enteredRecordName(session, Number(position)),
+};
+
 /**
- * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
- * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ * Whether the inputs a record is named from, its rule first, give the name; an entered record's session must also be
+ * the session its first revision came from, which the pod holds where the position reaches it only through the name.
  */
-async function entryInputs(
+async function recordInputs(
   reading: Reading,
   words: string,
   inputs: string,
+  name: string,
 ): Promise<string | undefined> {
-  const [subject, start, position] = inputs.split(", ");
-  if (position === undefined || !/^\d+$/.test(position))
-    return `"${inputs}" is no subject, start and position`;
-  const record = await reading.words.record(words);
-  const [first] = await selected(
-    reading.store,
-    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
-      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
-  );
-  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
-  const wrong = [
-    ...(held[0] === subject
-      ? []
-      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
-    ...(held[1] === start
-      ? []
-      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
-  ];
-  return wrong.length === 0 ? undefined : wrong.join("; ");
+  const [rule = "", ...given] = inputs.split(", ");
+  const named = RECORD_RULES[rule.replace(/^cascade:/, "")];
+  if (named === undefined) return `"${rule}" is no record naming rule`;
+  if (rule.endsWith("EnteredRecordNamingRule")) {
+    const record = await reading.words.record(words);
+    const [first] = await selected(
+      reading.store,
+      `SELECT ?session WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
+        FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+    );
+    if (first?.[0] !== given[0])
+      return `its entry's session is ${first?.[0] ?? "none"}, not ${given[0] ?? ""}`;
+  }
+  const computed = await named(given);
+  return computed === name
+    ? undefined
+    : `its inputs give ${computed}, not ${name}`;
 }
 
 /** The entry holding the record shows the table's fields; with `only`, nothing else but its members. */
@@ -1379,7 +1439,12 @@ const DEFINITIONS: Definition[] = [
       const failures: string[] = [];
       for (const row of rows) {
         if (row.inputs !== undefined && row.inputs !== "") {
-          const why = await entryInputs(reading, row.thing ?? "", row.inputs);
+          const why = await recordInputs(
+            reading,
+            row.thing ?? "",
+            row.inputs,
+            row.name ?? "",
+          );
           if (why !== undefined) {
             failures.push(`${row.thing ?? ""}: ${why}`);
             continue;

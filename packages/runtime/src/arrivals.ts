@@ -515,23 +515,24 @@ export async function fileEntry(
   let [session] = activities as [Triple[0]];
   if (session.value === THIS_ENTRY) {
     const id = iri(context.time.newId());
-    graph = new Graph([
-      ...renamed(
+    graph = new Graph(
+      renamed(
         graph.triples.filter(
           ([s, p]) => !(s.value === THIS_ENTRY && p.value === STARTED),
         ),
         session,
         id,
       ),
-      [id, iri(STARTED), literal(context.time.now(), DATE_TIME)],
-    ]);
+    );
     session = id;
   }
   if (session.termType !== "NamedNode")
     throw new Refusal(`${entry.name}'s session has no name`);
-  const [at] = graph.objects(session, STARTED);
-  if (at === undefined)
-    throw new Refusal(`${entry.name}'s session has no start`);
+  let [at] = graph.objects(session, STARTED);
+  if (at === undefined) {
+    at = literal(context.time.now(), DATE_TIME);
+    graph = new Graph([...graph.triples, [session, iri(STARTED), at]]);
+  }
   try {
     inUtc(at.value);
   } catch (error) {

@@ -129,10 +129,10 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
       `_:attribution${n} <${PROV}hadRole> <${REC}${role}> .`,
     );
   };
-  attribution("Apple Health", "transmitter", 0);
+  attribution("Apple Health", "TransmitterRole", 0);
   if (entry !== undefined) {
     const sourceUrl = attribute(entry, "sourceURL");
-    attribution(attribute(entry, "sourceName"), "author", 1);
+    attribution(attribute(entry, "sourceName"), "AuthorRole", 1);
     lines.push(
       `${document} <${CASCADE}serverBaseUrl> ${quoted(server(sourceUrl))} .`,
       `${document} <${PAV}retrievedFrom> ${iriRef(sourceUrl)} .`,

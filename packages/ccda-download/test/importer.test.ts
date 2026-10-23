@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as oxigraph from "oxigraph";
-import { ccdaDownload, type DownloadFiles, received } from "../src/index.js";
+import {
+  ccdaDownload,
+  type DownloadFiles,
+  received,
+  scopesOf,
+} from "../src/index.js";
 
 const CDA = `<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3"><templateId root="2.16.840.1.113883.10.20.22.1.1"/></ClinicalDocument>`;
@@ -101,6 +106,7 @@ test("a download's facts are its import's label and start and the header's versi
   });
   assert.equal(
     store.query(`PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+      PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       PREFIX prov: <http://www.w3.org/ns/prov#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       ASK {
@@ -126,4 +132,25 @@ test("a CDA time is a UTC time where it gives an hour and its offset, else its d
     ["2025-04-03", undefined],
   ])
     assert.equal(received(time ?? ""), when, time);
+});
+
+test("a document's records are scoped by its custodian's first id and its patient's, an empty root where it gives none, and a file that is no C-CDA has no scopes", () => {
+  const bytes = (xml: string): Uint8Array => new TextEncoder().encode(xml);
+  assert.deepEqual(
+    scopesOf(
+      bytes(`<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <recordTarget><patientRole><id root="2.16.1" extension="P-7"/><id root="2.16.2" extension="other"/></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><id root="2.16.9"/></representedCustodianOrganization></assignedCustodian></custodian>
+</ClinicalDocument>`),
+    ),
+    {
+      custodian: { root: "2.16.9" },
+      patient: { root: "2.16.1", extension: "P-7" },
+    },
+  );
+  assert.deepEqual(scopesOf(bytes(CDA)), {
+    custodian: { root: "" },
+    patient: { root: "" },
+  });
+  assert.equal(scopesOf(bytes("<Bundle/>")), undefined);
 });

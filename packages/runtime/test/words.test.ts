@@ -122,8 +122,13 @@ test("a variant is found by its HGVS expression, which holds a colon, or by its 
   );
 });
 
-test("a handle names a record from a server by its base URL, normalised, its type and id, and one from a document by the document's bytes and its selector; a retired form or none of the known inputs is an Error", async () => {
+test("a handle names a record from a server by its base URL, normalised, its type and id, one from a document by the document's bytes and its selector, and a C-CDA entry by its id in its document's custodian and patient scopes; a retired form or none of the known inputs is an Error", async () => {
   const bundle = new TextEncoder().encode('{"resourceType": "Bundle"}');
+  const summary = new TextEncoder()
+    .encode(`<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <recordTarget><patientRole><id root="2.16.840.1.113883.19.5.99" extension="MRN-1234"/></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><id root="2.16.840.1.113883.19.5" extension="CLINIC-1"/></representedCustodianOrganization></assignedCustodian></custodian>
+</ClinicalDocument>`);
   const words = await wordsOver(
     REGISTRY,
     {
@@ -134,13 +139,20 @@ test("a handle names a record from a server by its base URL, normalised, its typ
           id: "eQ3xk2RtVb7Lm9Pw1aZy8A3",
         },
         DOCUMENT: { document: "downloads/bundle.json", selector: "/entry/3" },
+        CCDA: {
+          document: "downloads/summary.xml",
+          identifier: "2.16.840.1.113883.19.5:8237461",
+        },
         "FULL-URL": {
           fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011",
         },
         "NO-INPUTS": { identifier: "x" },
       },
     },
-    { "test/downloads/bundle.json": bundle },
+    {
+      "test/downloads/bundle.json": bundle,
+      "test/downloads/summary.xml": summary,
+    },
   );
   assert.equal(
     await words.record("SERVER"),
@@ -149,6 +161,10 @@ test("a handle names a record from a server by its base URL, normalised, its typ
   assert.equal(
     await words.record("DOCUMENT"),
     await recordFromDocumentName(await documentName(bundle), "/entry/3"),
+  );
+  assert.equal(
+    await words.record("CCDA"),
+    "urn:uuid:bb2e2b2b-5b01-8991-aa76-984b9b06ed2c",
   );
   for (const handle of ["FULL-URL", "NO-INPUTS"])
     await assert.rejects(
