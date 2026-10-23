@@ -1,4 +1,9 @@
-import { documentName, linesAbout, rowsByCode } from "@cascade-runtime/runtime";
+import {
+  byCodePoint,
+  documentName,
+  linesAbout,
+  rowsByCode,
+} from "@cascade-runtime/runtime";
 
 export const PROV = "http://www.w3.org/ns/prov#";
 export const SPECIALIZATION_OF = `${PROV}specializationOf`;
@@ -73,7 +78,7 @@ export function nameOver(
     let [low, high] = [0, named.length];
     while (low < high) {
       const middle = (low + high) >> 1;
-      if (named[middle]! < line) low = middle + 1;
+      if (byCodePoint(named[middle]!, line) < 0) low = middle + 1;
       else high = middle;
     }
     named.splice(low, 0, line);

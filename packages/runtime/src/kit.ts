@@ -244,7 +244,7 @@ async function namesFollowTheirRules(
     ),
   );
 
-  // N1, N2: each record is named by the Bridge, or from an entry by the record rule.
+  // N1, N2: each record is named by the Bridge, or from an entry by EnteredRecordNamingRule.
   const expectedRecords = new Set<string>();
   for (const { name, happened } of story.steps) {
     if (happened.kind === "import") {

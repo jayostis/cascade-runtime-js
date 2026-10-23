@@ -58,7 +58,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
 const CODES: Readonly<
   Record<string, { readonly system?: string; readonly literal?: string }>
 > = {
-  SNOMED: { system: `${REC}SNOMEDCT`, literal: `${CLINICAL}snomedCode` },
+  SNOMED: { system: `${REC}SNOMEDCT` },
   RxNorm: { system: `${REC}RxNorm` },
   "ICD-10-CM": { system: `${REC}ICD10CM` },
   LOINC: { system: `${REC}LOINC` },
