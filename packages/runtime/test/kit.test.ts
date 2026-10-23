@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runConformance } from "../src/conformance.js";
 import { MemoryFiles } from "../src/files.js";
-import { KIT_CHECKS } from "../src/kit.js";
+import { KIT_CHECKS, podAddressesIn } from "../src/kit.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Shapes } from "../src/shapes.js";
 import { layout } from "./vocabulary.js";
@@ -39,4 +39,27 @@ test("a kit whose story has a step the runtime cannot perform reports its checks
   );
   for (const { name, why } of assertions)
     assert.match(why ?? "", /kind creation/, name);
+});
+
+test("check 6 finds each IRI a view's bytes write that begins with the pod's address, a prefix's among them, and none a relative reference or another name gives", () => {
+  const bytes = (text: string) => new TextEncoder().encode(text);
+  assert.deepEqual(
+    podAddressesIn(
+      bytes(`<> a <urn:example:View> .
+<#ab> <urn:example:p> <urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53> .`),
+      "https://pod.example/",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    podAddressesIn(
+      bytes(`@prefix pod: <https://pod.example/clinical/> .
+<https://pod.example/clinical/allergies.ttl#ab> <urn:example:p> pod:x .`),
+      "https://pod.example/",
+    ),
+    [
+      "https://pod.example/clinical/",
+      "https://pod.example/clinical/allergies.ttl#ab",
+    ],
+  );
 });

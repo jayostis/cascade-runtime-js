@@ -5,6 +5,7 @@ import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
+import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
@@ -327,4 +328,29 @@ test("the matcher reads a statement two files of the pod make as one", async () 
     build: { lens: LENS, derive: await vocabularyDerive(files, layout) },
   });
   assert.equal((await restated.match()).refused, undefined);
+});
+
+test("each entry of a view is named in the view, its address, # and the hash of its least member, and is written <#hash>", async () => {
+  const { rows } = await store.select(
+    `SELECT ?view ?entry ?member WHERE { GRAPH ?view { ?view a <https://ns.cascadeprotocol.org/cascade#View> . ?entry <https://ns.cascadeprotocol.org/cascade#mergedFrom> ?member } }`,
+  );
+  const members = new Map<string, { view: string; members: string[] }>();
+  for (const row of rows) {
+    const entry = row.get("entry")?.value ?? "";
+    const found = members.get(entry) ?? {
+      view: row.get("view")?.value ?? "",
+      members: [],
+    };
+    found.members.push(row.get("member")?.value ?? "");
+    members.set(entry, found);
+  }
+  assert.ok(members.size > 0);
+  for (const [entry, { view, members: of }] of members)
+    assert.equal(entry, await viewEntryName(view, of));
+  const [view = ""] = [...new Set([...members.values()].map((m) => m.view))];
+  const text = new TextDecoder().decode(
+    await pod.read(view.slice(address.length)),
+  );
+  assert.match(text, /^<#[0-9a-f]{64}> /m);
+  assert.ok(!text.includes(address), text);
 });

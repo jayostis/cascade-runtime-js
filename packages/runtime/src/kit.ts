@@ -668,3 +668,7 @@ export async function kitsOf(vocabulary: Files): Promise<string[]> {
     .filter(isKitStory)
     .map((path) => path.slice(0, path.lastIndexOf("/")));
 }
+
+export function podAddressesIn(_bytes: Uint8Array, _address: string): string[] {
+  return [];
+}
