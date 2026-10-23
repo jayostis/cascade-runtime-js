@@ -134,23 +134,40 @@ test("a CDA time is a UTC time where it gives an hour and its offset, else its d
     assert.equal(received(time ?? ""), when, time);
 });
 
-test("a document's records are scoped by its custodian's first id and its patient's, an empty root where it gives none, and a file that is no C-CDA has no scopes", () => {
+test("a document's records are scoped by its custodian's first id with no nullFlavor and its one patient's first id; with no custodian id, or not one patient with an id, it states no scope, and a file that is no C-CDA has none", () => {
   const bytes = (xml: string): Uint8Array => new TextEncoder().encode(xml);
+  const document = (patients: string, custodianIds: string): Uint8Array =>
+    bytes(`<ClinicalDocument xmlns="urn:hl7-org:v3">
+  ${patients}
+  <custodian><assignedCustodian><representedCustodianOrganization>${custodianIds}</representedCustodianOrganization></assignedCustodian></custodian>
+</ClinicalDocument>`);
+  const patient = (ids: string): string =>
+    `<recordTarget><patientRole>${ids}</patientRole></recordTarget>`;
+  const one = patient(
+    '<id root="2.16.1" extension="P-7"/><id root="2.16.2" extension="other"/>',
+  );
   assert.deepEqual(
     scopesOf(
-      bytes(`<ClinicalDocument xmlns="urn:hl7-org:v3">
-  <recordTarget><patientRole><id root="2.16.1" extension="P-7"/><id root="2.16.2" extension="other"/></patientRole></recordTarget>
-  <custodian><assignedCustodian><representedCustodianOrganization><id root="2.16.9"/></representedCustodianOrganization></assignedCustodian></custodian>
-</ClinicalDocument>`),
+      document(
+        one,
+        '<id nullFlavor="UNK" root="2.16.8" extension="flavoured"/><id root="2.16.9" extension=""/>',
+      ),
     ),
     {
       custodian: { root: "2.16.9" },
       patient: { root: "2.16.1", extension: "P-7" },
     },
   );
-  assert.deepEqual(scopesOf(bytes(CDA)), {
-    custodian: { root: "" },
-    patient: { root: "" },
-  });
+  for (const [stated, file] of [
+    ["no custodian id", document(one, "")],
+    ["a nullFlavor custodian id", document(one, '<id nullFlavor="NI"/>')],
+    [
+      "two recordTargets",
+      document(`${one}${patient('<id root="2.16.3"/>')}`, '<id root="2.16.9"/>'),
+    ],
+    ["no patient id", document(patient(""), '<id root="2.16.9"/>')],
+    ["neither", bytes(CDA)],
+  ] as const)
+    assert.equal(scopesOf(file), null, stated);
   assert.equal(scopesOf(bytes("<Bundle/>")), undefined);
 });

@@ -122,7 +122,7 @@ test("a variant is found by its HGVS expression, which holds a colon, or by its 
   );
 });
 
-test("a handle names a record from a server by its base URL, normalised, its type and id, one from a document by the document's bytes and its selector, and a C-CDA entry by its id in its document's custodian and patient scopes; a retired form or none of the known inputs is an Error", async () => {
+test("a handle names a record from a server by its base URL, normalised, its type and id, one from a document by the document's bytes and its selector, and a C-CDA entry by its id in its document's custodian and patient scopes, which a document that states none names by its selector; a retired form or none of the known inputs is an Error", async () => {
   const bundle = new TextEncoder().encode('{"resourceType": "Bundle"}');
   const summary = new TextEncoder()
     .encode(`<ClinicalDocument xmlns="urn:hl7-org:v3">
@@ -147,12 +147,23 @@ test("a handle names a record from a server by its base URL, normalised, its typ
           fullUrl: "urn:uuid:0a8c1f4e-6d27-4b93-8c15-3e90a7d52011",
         },
         "NO-INPUTS": { identifier: "x" },
+        UNSCOPED: {
+          document: "downloads/unscoped.xml",
+          identifier: "2.16.840.1.113883.19.5:8237461",
+        },
       },
     },
     {
       "test/downloads/bundle.json": bundle,
       "test/downloads/summary.xml": summary,
+      "test/downloads/unscoped.xml": new TextEncoder().encode(
+        '<ClinicalDocument xmlns="urn:hl7-org:v3"/>',
+      ),
     },
+  );
+  await assert.rejects(
+    words.record("UNSCOPED"),
+    /UNSCOPED names .*unscoped\.xml, which states no custodian id and one patient with an id: handles\.json gives its selector/,
   );
   assert.equal(
     await words.record("SERVER"),
