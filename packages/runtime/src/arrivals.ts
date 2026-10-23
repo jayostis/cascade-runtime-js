@@ -110,7 +110,14 @@ function renamedWithin(
   );
 }
 
-/** The arrival's statements as a revision carries them: its selector's node, a blank node, named inside the revision. */
+/** The arrival's selectors: each node, blank or named, that `oa:hasSelector` gives it. */
+function selectorsOf(graph: Graph, arrival: Term): Term[] {
+  return graph
+    .objects(arrival, HAS_SELECTOR)
+    .filter(({ termType }) => termType !== "Literal");
+}
+
+/** The arrival's statements as a revision carries them: its selector's node, with its statements, named inside the revision. */
 function revisionStatements(graph: Graph, arrival: Term): Triple[] {
   const placeholder = iri(THIS_REVISION);
   const selector = iri(`${THIS_REVISION}#selector`);
@@ -118,7 +125,7 @@ function revisionStatements(graph: Graph, arrival: Term): Triple[] {
     .match(arrival)
     .filter(([, p]) => p.value !== ARRIVED_AS && p.value !== GENERATED_BY)
     .flatMap(([, p, o]): Triple[] =>
-      p.value === HAS_SELECTOR && o.termType === "BlankNode"
+      p.value === HAS_SELECTOR && o.termType !== "Literal"
         ? [
             [placeholder, p, selector],
             ...renamed(graph.closure(o), o, selector),
@@ -298,7 +305,11 @@ function refuseUnaccounted(graph: Graph, document: NamedNode, where: string) {
   add(graph.closure(document));
   for (const activity of graph.subjects(USED, document))
     add(graph.closure(activity));
-  for (const arrival of graph.subjects(ARRIVED_AS)) add(graph.closure(arrival));
+  for (const arrival of graph.subjects(ARRIVED_AS)) {
+    add(graph.closure(arrival));
+    for (const selector of selectorsOf(graph, arrival))
+      add(graph.closure(selector));
+  }
   for (const version of graph.subjects(SPECIALIZATION_OF)) {
     if (version.termType !== "NamedNode") continue;
     add(graph.triples.filter(([s]) => inVersion(s, version)));
