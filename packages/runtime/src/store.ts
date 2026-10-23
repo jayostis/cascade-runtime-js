@@ -21,6 +21,8 @@ export interface Store {
   /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
   parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
+  /** Removes a graph and its triples. */
+  drop(graph: string): Promise<void>;
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
   ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
   construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;

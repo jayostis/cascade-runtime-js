@@ -2,18 +2,19 @@ import SHACLValidator from "rdf-validate-shacl";
 import factory from "rdf-validate-shacl/src/defaultEnv.js";
 import type * as RDFJS from "@rdfjs/types";
 import { type Files, readText } from "./files.js";
-import { blank, iri, literal, type Term, type Triple } from "./rdf.js";
+import { blank, iri, literal, type Term, type Triple, written } from "./rdf.js";
 import {
+  checkSparqlConstraints,
   runSparqlConstraints,
+  termsStore,
   type SparqlConstraint,
   type SparqlResult,
   takeSparqlConstraints,
 } from "./sparql-constraints.js";
-import type { StoreFactory } from "./store.js";
+import type { Store, StoreFactory } from "./store.js";
 
 const ONTOLOGIES = "ontologies/";
 const SHAPES = ".shapes.ttl";
-const VALIDATED = "urn:cascade:validated";
 
 function term(value: Term): RDFJS.Quad_Object {
   switch (value.termType) {
@@ -48,6 +49,8 @@ export type ShapeResult = SparqlResult;
 
 /** The vocabulary's shapes, and its terms, which a graph is read with so that a subclass's instances are its class's. */
 export class Shapes {
+  #termsStore: Promise<Store> | undefined;
+
   private constructor(
     readonly validator: SHACLValidator,
     readonly sparql: readonly SparqlConstraint[],
@@ -71,6 +74,7 @@ export class Shapes {
       (path.endsWith(SHAPES) ? shapes : terms).push(...triples);
     }
     const { rest, constraints } = takeSparqlConstraints(shapes);
+    await checkSparqlConstraints(constraints, newStore);
     return new Shapes(
       new SHACLValidator(dataset(rest)),
       constraints,
@@ -81,12 +85,12 @@ export class Shapes {
 
   /** Each result the shapes give about a node the triples describe, not one they only name; none when they conform. */
   async results(triples: readonly Triple[]): Promise<ShapeResult[]> {
-    const described = new Set(triples.map(([s]) => s.value));
+    const described = new Set(triples.map(([s]) => written(s)));
     const report = await this.validator.validate(
       dataset([...triples, ...this.terms]),
     );
     const results: ShapeResult[] = report.results
-      .filter(({ focusNode }) => described.has(focusNode.value))
+      .filter(({ focusNode }) => described.has(written(fromRdfjs(focusNode))))
       .map((result) => ({
         focusNode: fromRdfjs(result.focusNode),
         path: result.path ? fromRdfjs(result.path) : undefined,
@@ -95,16 +99,13 @@ export class Shapes {
         sourceConstraintComponent: iri(result.sourceConstraintComponent.value),
         message: result.message.map(({ value }) => value),
       }));
-    if (this.sparql.length === 0) return results;
-    const store = this.newStore();
-    await store.add([...triples, ...this.terms], { graph: VALIDATED });
     return [
       ...results,
       ...(await runSparqlConstraints(
         this.sparql,
-        store,
-        new Set([VALIDATED]),
-        described,
+        triples,
+        this.terms,
+        () => (this.#termsStore ??= termsStore(this.terms, this.newStore)),
       )),
     ];
   }

@@ -281,9 +281,12 @@ test("SHACL-SPARQL the runtime does not run is refused when the shapes are read,
       /sub-select/,
     ],
     [
-      select("SELECT $this WHERE { BIND('''a\''' AS ?s) $this ex:q ?v }"),
-      /parse|string/,
+      select(
+        "SELECT $this WHERE { BIND('''a\\''' AS ?s) $this <https://example.org/q> ?v }",
+      ),
+      /unterminated string/,
     ],
+    [select("SELECT $this WHERE { $this ex:q ?v }"), /does not parse/],
   ];
   for (const [shapes, why] of cases)
     await assert.rejects(
