@@ -41,7 +41,7 @@ import {
 } from "./step.js";
 import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
-import { derivationsOf, QUERIES } from "./derive.js";
+import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
 import { type StoreFactory, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -239,9 +239,15 @@ class Revisions {
   /** Each record's versions, and what its revisions are told apart by. */
   readonly #versions = new Map<string, Set<string>>();
   readonly #held = new Map<string, Set<string>>();
+  /** The pod's files holding each record and its revisions. */
+  readonly #recordFiles = new Map<string, Set<string>>();
   readonly #files: [string, Uint8Array][] = [];
-  /** Each record's current version, as the ladder picked it before the step, read once the first arrival needs it. */
-  #current: Promise<ReadonlyMap<string, string>> | undefined;
+  /** The files the step holds for each record it revised, until `write`: the record's and its new revisions'. */
+  readonly #pending = new Map<string, [string, Uint8Array][]>();
+  /** Each record's current version as the ladder picks it, read when an arrival needs it; dropped once the record is revised. */
+  readonly #current = new Map<string, string | undefined>();
+  /** The judgments, acts and documents every reading of the ladder reads, loaded once a step needs them. */
+  #shared: Promise<Union> | undefined;
 
   private constructor(
     readonly layout: Layout,
@@ -275,8 +281,22 @@ class Revisions {
         OPTIONAL { ?revision pav:version ?sourceVersion }
         OPTIONAL { ?revision pav:lastUpdateOn ?changed }
       }`);
+    const { rows: files } = await union.select(`
+      PREFIX cascade: <${CASCADE}>
+      SELECT DISTINCT ?record ?file WHERE {
+        ?revision cascade:revisionOf ?record .
+        { GRAPH ?file { ?revision cascade:revisionOf ?record } } UNION { GRAPH ?file { ?record a ?kind } }
+      }`);
     freed(union);
     const revisions = new Revisions(layout, context);
+    for (const row of files) {
+      const [record, file] = ["record", "file"].map(
+        (name) => row.get(name)?.value ?? "",
+      ) as [string, string];
+      const held = revisions.#recordFiles.get(record) ?? new Set();
+      held.add(file.slice(pod.iri.length));
+      revisions.#recordFiles.set(record, held);
+    }
     const revised = new Set(rows.map((row) => row.get("previous")?.value));
     for (const row of rows) {
       const [record, revision, version] = ["record", "revision", "version"].map(
@@ -306,34 +326,99 @@ class Revisions {
   }
 
   /**
-   * Each record's current version as the vocabulary's derivations pick it, through
-   * queries/derivations/current-revisions.rq, which runs before any lens, over the files of the set and the syncs,
-   * which hold the judgments, the documents' transmitters and the snapshots the ladder reads.
+   * The files of the set and the syncs every reading of the ladder reads whatever records it is for: the judgments,
+   * the acts, which hold the snapshots, and the documents, which name their transmitters and when they were retrieved.
    */
-  #currentVersions(): Promise<ReadonlyMap<string, string>> {
-    this.#current ??= (async () => {
-      const { context } = this;
+  #sharedFiles(): Promise<Union> {
+    this.#shared ??= (async () => {
+      const { context, layout } = this;
+      const folders = [
+        ...layout.actFolders,
+        layout.place(`${CASCADE}Judgment`).folder,
+        layout.place(`${PROV}Entity`).folder,
+      ].filter((folder): folder is string => folder !== undefined);
+      const shared = (await context.pod.list(""))
+        .filter(
+          (path) => layout.inSnapshotSet(path) || layout.inSyncsFolder(path),
+        )
+        .filter((path) => folders.some((folder) => path.startsWith(folder)));
       const union = new Union(context.newStore());
-      const held = (await context.pod.list("")).filter(
-        (path) =>
-          this.layout.inSnapshotSet(path) || this.layout.inSyncsFolder(path),
-      );
-      await podFiles(context.pod, this.layout, context.address, union, held);
-      await (
-        await derivationsOf(context.vocabulary)
-      ).derive(union, LADDER_LENS, undefined, CURRENT_REVISIONS);
-      const { rows } = await union.select(
-        `SELECT ?record ?current WHERE { ?record <${PAV}hasCurrentVersion> ?current ; a <${CASCADE}Record> }`,
-      );
-      freed(union);
-      return new Map(
-        rows.map((row) => [
-          row.get("record")?.value ?? "",
-          row.get("current")?.value ?? "",
-        ]),
-      );
+      await podFiles(context.pod, layout, context.address, union, shared);
+      return union;
     })();
-    return this.#current;
+    return this.#shared;
+  }
+
+  /**
+   * Reads, for each of the records, its current version as the vocabulary's derivations pick it through
+   * queries/derivations/current-revisions.rq, which runs before any lens: over the judgments, acts and documents, the
+   * pod's files holding the records and their revisions, and the revisions the step holds for them.
+   */
+  async #readCurrent(records: readonly string[]): Promise<void> {
+    if (records.length === 0) return;
+    const { context } = this;
+    const union = await this.#sharedFiles();
+    const graphs: string[] = [];
+    const paths = records.flatMap((record) => [
+      ...(this.#recordFiles.get(record) ?? []),
+    ]);
+    await podFiles(context.pod, this.layout, context.address, union, paths);
+    graphs.push(...paths.map((path) => context.address + path));
+    for (const record of records)
+      for (const [path, bytes] of this.#pending.get(record) ?? []) {
+        const graph = `${context.address}${path}#held`;
+        await union.loadTurtle(bytes, graph);
+        graphs.push(graph);
+      }
+    await (
+      await derivationsOf(context.vocabulary)
+    ).derive(union, LADDER_LENS, undefined, CURRENT_REVISIONS);
+    const { rows } = await union.select(
+      `SELECT ?record ?current WHERE {
+        VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
+        ?record <${PAV}hasCurrentVersion> ?current
+      }`,
+    );
+    for (const graph of [...graphs, DERIVED + LADDER_LENS])
+      await union.drop(graph);
+    for (const record of records) this.#current.set(record, undefined);
+    for (const row of rows)
+      this.#current.set(
+        row.get("record")?.value ?? "",
+        row.get("current")?.value ?? "",
+      );
+  }
+
+  /**
+   * Whether the arrival can write nothing only by being at the record's current version: a revision of the record
+   * holds its version but not with its source version and source change time, and it carries a source change time.
+   */
+  #readsTheLadder(arrival: Arrival): boolean {
+    const record = arrival.record.value;
+    const version = arrival.version.value;
+    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    const told = held(
+      version,
+      statedOnRevision(arrival, `${PAV}version`),
+      changed,
+    );
+    return (
+      !(this.#held.get(record)?.has(told) ?? false) &&
+      (this.#versions.get(record)?.has(version) ?? false) &&
+      changed !== undefined
+    );
+  }
+
+  /** Reads the ladder once for every record among the arrivals that `repeats` will read it for. */
+  async prepare(arrivals: readonly Arrival[]): Promise<void> {
+    await this.#readCurrent([
+      ...new Set(
+        arrivals
+          .filter((arrival) => this.#readsTheLadder(arrival))
+          .map(({ record }) => record.value)
+          .filter((record) => !this.#current.has(record)),
+      ),
+    ]);
   }
 
   /**
@@ -345,16 +430,19 @@ class Revisions {
   async repeats(arrival: Arrival): Promise<boolean> {
     const record = arrival.record.value;
     const version = arrival.version.value;
-    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    if (this.#readsTheLadder(arrival)) {
+      if (!this.#current.has(record)) await this.#readCurrent([record]);
+      return this.#current.get(record) === version;
+    }
     const told = held(
       version,
       statedOnRevision(arrival, `${PAV}version`),
-      changed,
+      statedOnRevision(arrival, `${PAV}lastUpdateOn`),
     );
-    if (this.#held.get(record)?.has(told) ?? false) return true;
-    if (!(this.#versions.get(record)?.has(version) ?? false)) return false;
-    if (changed === undefined) return true;
-    return (await this.#currentVersions()).get(record) === version;
+    return (
+      (this.#held.get(record)?.has(told) ?? false) ||
+      (this.#versions.get(record)?.has(version) ?? false)
+    );
   }
 
   /** Adds the record and its version, and holds the revision after each of the record's heads (A2, A5) until `write`. */
@@ -388,10 +476,16 @@ class Revisions {
       ]),
     ];
     const { value: name } = await named(triples, `the revision of ${record}`);
-    this.#files.push([
+    const revision: [string, Uint8Array] = [
       this.layout.revision(arrival.place, name),
       ntriples(renamedWithin(triples, THIS_REVISION, name)),
-    ]);
+    ];
+    this.#files.push(revision);
+    const pending = this.#pending.get(record) ?? [
+      [arrival.place.path(record), ntriples(arrival.recordTriples)],
+    ];
+    this.#pending.set(record, [...pending, revision]);
+    this.#current.delete(record);
     this.#heads.set(record, [
       { revision: name, version: arrival.version.value },
     ]);
@@ -403,9 +497,12 @@ class Revisions {
     );
   }
 
-  /** Adds the revisions held, after every file before them (W1). */
-  write(writes: StepWrites): void {
+  /** Adds the revisions held, after every file before them (W1), and frees what the ladder was read over. */
+  async write(writes: StepWrites): Promise<void> {
     for (const [path, bytes] of this.#files) writes.add(path, bytes);
+    const shared = this.#shared;
+    this.#shared = undefined;
+    if (shared !== undefined) freed(await shared);
   }
 }
 
@@ -630,7 +727,9 @@ export async function fileExport(
     const subject = iri(documentIri);
     refuseUnaccounted(graph, subject, found.path);
     let revised = false;
-    for (const arrival of arrivals(layout, graph, name, found.path)) {
+    const arriving = arrivals(layout, graph, name, found.path);
+    await revisions.prepare(arriving);
+    for (const arrival of arriving) {
       if (await revisions.repeats(arrival)) continue;
       await revisions.revise(arrival, writes);
       revised = true;
@@ -658,7 +757,7 @@ export async function fileExport(
       }
     }
   }
-  revisions.write(writes);
+  await revisions.write(writes);
   if (kept.size === 0) return name;
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
@@ -775,7 +874,7 @@ export async function fileEntry(
       context.writes,
     );
   }
-  revisions.write(context.writes);
+  await revisions.write(context.writes);
   context.writes.act({
     name: session.value,
     path: sessions.path(session.value),
@@ -833,7 +932,7 @@ export async function fileConnect(
   };
   if (await revisions.repeats(arrival)) return undefined;
   await revisions.revise(arrival, writes);
-  revisions.write(writes);
+  await revisions.write(writes);
   const act = iri(name);
   writes.act({
     name,
