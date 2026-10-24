@@ -379,6 +379,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
         activities: new Map(),
         time,
         newStore,
+        writer: () => pod,
       }),
     (pod: CorePod, time: StoryTime) => {
       time.begin(step.when);
