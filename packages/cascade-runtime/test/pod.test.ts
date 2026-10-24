@@ -517,6 +517,43 @@ test("an entry is filed and matched by default; a person's judgment records the 
   assert.deepEqual(await filesIn(folder), held);
 });
 
+test("a connect is matched by default, so a hospital's server at a new path on its host is judged the server it was", async () => {
+  const connects = "runtime/scripted-input/finn/connects";
+  const saved = async (name: string): Promise<Exported> =>
+    new Map(
+      await Promise.all(
+        ["connect.json", "capability.json", "smart-configuration.json"].map(
+          async (file) =>
+            [
+              `${name}/${file}`,
+              await readFile(inKit(`${connects}/${name}/${file}`)),
+            ] as const,
+        ),
+      ),
+    );
+  const fresh = await openPod();
+  try {
+    const first = await fresh.connect(await saved("hospital"));
+    assert.equal(first.matched?.refused, undefined);
+    assert.deepEqual(first.matched?.wrote, []);
+    const moved = await fresh.connect(await saved("hospital-at-a-new-path"));
+    assert.equal(moved.matched?.refused, undefined);
+    assert.ok(moved.matched?.wrote.length);
+    const sames = await fresh.ask({
+      query: `${PREFIXES}SELECT ?base WHERE {
+        ?claim cascade:justification cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost ;
+          prov:hadMember ?server .
+        ?server cascade:serverBaseUrl ?base }`,
+    });
+    assert.deepEqual(sames.map(({ base }) => base).sort(), [
+      "https://fhir.example-hospital.example/api/FHIR/R4",
+      "https://fhir.example-hospital.example/r4",
+    ]);
+  } finally {
+    await fresh.close();
+  }
+});
+
 test("a Same whose one member is a finding the pod holds is filed naming no version; a Different over it, or a Same over a thing the pod does not hold, is refused", async () => {
   const at = join(pods, "a-finding");
   await (await openPodWith(kept, at)).close();
