@@ -19,7 +19,6 @@ const DCT = "http://purl.org/dc/terms/";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = `${RDF}type`;
 const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference versions are current.rq`;
 
@@ -108,7 +107,7 @@ function marked(
 ): Triple[] {
   return [
     ...triples,
-    [iri(file), iri(TYPE), iri(`${REC}View`)],
+    [iri(file), iri(TYPE), iri(`${CASCADE}View`)],
     ...used.map((version): Triple => [
       iri(file),
       iri(`${PROV}used`),

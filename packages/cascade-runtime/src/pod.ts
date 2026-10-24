@@ -49,19 +49,20 @@ import {
 } from "./answers.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
-const JDG = "https://ns.cascadeprotocol.org/cascade#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
-const PREFIXES = `PREFIX cascade: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
 /** What an app names the judgment it hands to `judge`, which the package names in its place. */
 const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
+const SEEN = new Set(
+  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
+);
 const UUID = "urn:uuid:";
 
 /** A name as a person reads it, its runs of white space one space. */
@@ -320,7 +321,7 @@ const CLASSES_QUERY = `${QUERIES}tables/medication-classes-through-precise-ingre
 /** The statements of the medication entries, which the classes query reads of the pod. */
 const MEDICATION_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a cascade:PrescribedOrReportedMedication ; ?property ?value }`;
-const SELECTED_CODE = `${REC}userSelectedCode`;
+const SELECTED_CODE = `${CASCADE}userSelectedCode`;
 const RXNORM_CODE = "https://ns.cascadeprotocol.org/cascade#rxNormCode";
 
 /** A person's results in a panel are asked of the tables the app holds the same way. */
@@ -483,7 +484,7 @@ function failure(error: unknown): string {
 
 /** The About the claim records: the profile is the subject's, by the owner's statement. */
 function about(subject: string, profile: string, owner: string): string {
-  return `@prefix cascade: <${JDG}> .
+  return `@prefix cascade: <${CASCADE}> .
 @prefix prov: <${PROV}> .
 <${THIS_JUDGMENT}> a cascade:Judgment ;
     cascade:verdict cascade:About ; cascade:subject <${subject}> ; cascade:basis cascade:OwnerStatement ;
@@ -799,7 +800,9 @@ class OpenPod implements Pod {
       });
     }
     const judgments = stated
-      .filter(([, p, o]) => p.value === TYPE && o.value === `${JDG}Judgment`)
+      .filter(
+        ([, p, o]) => p.value === TYPE && o.value === `${CASCADE}Judgment`,
+      )
       .map(([s]) => s.value);
     if (judgments.length !== 1 || judgments[0] !== THIS_JUDGMENT)
       throw new Error(
@@ -827,7 +830,7 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${JDG}verdict`).some((verdict) => SEEN.has(verdict))) {
+    if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
       const members = of(`${PROV}hadMember`);
       const current = await this.#currentVersions(members);
       for (const member of members) {
@@ -893,7 +896,7 @@ class OpenPod implements Pod {
     }
     const { rows } = await this.#core.selectWithRows(
       text,
-      `${REC}VariantClassifications`,
+      `${CASCADE}VariantClassifications`,
     );
     const verdicts = rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
@@ -1140,7 +1143,7 @@ export async function openPodWith(
     opened = new Union(store);
     await podFiles(disk.files, parts.layout, address, opened);
     const { rows } = await opened.select(
-      `SELECT DISTINCT ?subject WHERE { ?subject a <${REC}Subject> }`,
+      `SELECT DISTINCT ?subject WHERE { ?subject a <${CASCADE}Subject> }`,
     );
     const [found, ...others] = rows.flatMap(
       (row) => row.get("subject")?.value ?? [],

@@ -22,7 +22,7 @@ PREFIX pav: <http://purl.org/pav/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 `;
-const JDG = "https://ns.cascadeprotocol.org/cascade#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 
 let north: Pull;
 let south: Pull;
@@ -166,7 +166,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
     across,
     [
       [
-        `${JDG}SameCodeAndPeriod`,
+        `${CASCADE}SameCodeAndPeriod`,
         coded(north, "Condition", "59621000"),
         coded(south, "Condition", "59621000"),
       ],

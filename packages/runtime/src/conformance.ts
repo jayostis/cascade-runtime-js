@@ -31,7 +31,7 @@ import {
 import { referenceIndex, References } from "./references.js";
 import { type Performers, Replay, type Replayed, titleOf } from "./replay.js";
 import type { Shapes } from "./shapes.js";
-import { Refusal, REC } from "./step.js";
+import { Refusal, CASCADE } from "./step.js";
 import type { Dataset, StoreFactory, Union } from "./store.js";
 import type { Step } from "./story.js";
 import { peopleOf, type Person, Words } from "./words.js";
@@ -57,7 +57,7 @@ async function addTables(
   const described: Triple[] = [];
   for (const { value: series } of tables.index.subjects(
     `${RDF}type`,
-    iri(`${REC}ReferenceSeries`),
+    iri(`${CASCADE}ReferenceSeries`),
   )) {
     let version: string | undefined;
     try {

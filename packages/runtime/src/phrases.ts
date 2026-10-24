@@ -32,12 +32,9 @@ import {
 import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { type Row, selected, type Dataset } from "./store.js";
-import { REC } from "./step.js";
+import { CASCADE } from "./step.js";
 import type { Happened, Step } from "./story.js";
 import {
-  CLINICAL,
-  HEALTH,
-  JDG,
   JUSTIFICATIONS,
   KINDS,
   listed,
@@ -48,7 +45,6 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -335,18 +331,22 @@ const FIELDS: Readonly<Record<string, Field>> = {
     shows: ({ value }) => localName(value),
   },
   status: {
-    predicates: [`${HEALTH}clinicalStatus`, `${CLINICAL}workflowStatus`],
+    predicates: [`${CASCADE}clinicalStatus`, `${CASCADE}workflowStatus`],
     entry: true,
   },
   criticality: {
-    predicates: [`${CLINICAL}allergyCriticality`],
+    predicates: [`${CASCADE}allergyCriticality`],
     entry: true,
     of: "version",
   },
-  "abatement date": { predicates: [`${CLINICAL}abatementDate`], entry: true },
-  "status from": { predicates: [`${REC}statusFrom`], entry: true, thing: true },
+  "abatement date": { predicates: [`${CASCADE}abatementDate`], entry: true },
+  "status from": {
+    predicates: [`${CASCADE}statusFrom`],
+    entry: true,
+    thing: true,
+  },
   "latest member": {
-    predicates: [`${REC}latestMember`],
+    predicates: [`${CASCADE}latestMember`],
     entry: true,
     thing: true,
   },
@@ -361,8 +361,8 @@ const FIELDS: Readonly<Record<string, Field>> = {
     shows: async ({ value }, reading, record) =>
       String((await reading.words.versions(record)).indexOf(value) + 1),
   },
-  subject: { predicates: [`${REC}subject`], of: "record", thing: true },
-  patient: { predicates: [`${REC}patient`], of: "version", thing: true },
+  subject: { predicates: [`${CASCADE}subject`], of: "record", thing: true },
+  patient: { predicates: [`${CASCADE}patient`], of: "version", thing: true },
   "influenced by": {
     predicates: [`${PROV}wasInfluencedBy`],
     of: "version",
@@ -457,7 +457,7 @@ async function revisionsOf(
   for (const [, version, at, after] of await selected(
     reading.store,
     `SELECT ?revision ?version ?at ?after WHERE {
-        ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at .
+        ?revision <${CASCADE}revisionOf> <${record}> ; <${CASCADE}version> ?version ; <${PROV}generatedAtTime> ?at .
         OPTIONAL { ?revision <${PROV}wasRevisionOf> ?previous . ?previous <${PROV}generatedAtTime> ?after }
       }`,
   )) {
@@ -508,10 +508,10 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
 }
 
 const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used ?rule WHERE {
-  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
-    <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
-  OPTIONAL { ?judgment <${JDG}matcherRule> ?rule }
-  OPTIONAL { ?assertion <${JDG}assertedClaim> ?judgment ; <${JDG}assertedUnderRuleListVersion> ?under }
+  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}verdict> <${CASCADE}Same> ;
+    <${CASCADE}justification> ?justification ; <${PROV}hadMember> ?member .
+  OPTIONAL { ?judgment <${CASCADE}matcherRule> ?rule }
+  OPTIONAL { ?assertion <${CASCADE}assertedClaim> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
   OPTIONAL { ?judgment <${PROV}used> ?used }
 }`;
 
@@ -774,7 +774,7 @@ async function queryAnswers(
 
 /** A vocabulary term as a feature's cells write it, `cascade:` and its local name. */
 const termShown = (iri: string): string =>
-  iri.startsWith(REC) ? `cascade:${iri.slice(REC.length)}` : iri;
+  iri.startsWith(CASCADE) ? `cascade:${iri.slice(CASCADE.length)}` : iri;
 
 /** The record name rules a `these are named:` table gives inputs to, by the rule term's local name. */
 const RECORD_RULES: Readonly<
@@ -809,7 +809,7 @@ const RECORD_RULES: Readonly<
     recordFromCcdaWithoutIdName({
       custodian: { root: cr, extension: ce },
       patient: { root: pr, extension: pe },
-      entryClass: entryClass.replace(/^cascade:/, REC),
+      entryClass: entryClass.replace(/^cascade:/, CASCADE),
       keyFingerprint: key,
       membersFingerprint: members,
     }),
@@ -836,7 +836,7 @@ async function recordInputs(
     const record = await reading.words.record(words);
     const [first] = await selected(
       reading.store,
-      `SELECT ?session WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
+      `SELECT ?session WHERE { ?revision <${CASCADE}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
         FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
     );
     if (first?.[0] !== given[0])
@@ -1080,7 +1080,7 @@ const DEFINITIONS: Definition[] = [
     "the pod holds no revision",
     () =>
       async ({ store }) =>
-        (await store.ask(`ASK { ?revision a <${REC}Revision> }`))
+        (await store.ask(`ASK { ?revision a <${CASCADE}Revision> }`))
           ? "the pod holds a revision"
           : undefined,
   ),
@@ -1199,18 +1199,18 @@ const DEFINITIONS: Definition[] = [
       const heldGraph = await wroteGraph(reading, [step]);
       const claims = new Set(
         heldGraph
-          .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
+          .subjects(`${RDF}type`, iri(`${CASCADE}Judgment`))
           .map(({ value }) => value),
       );
       const assertions = new Set(
         heldGraph
-          .subjects(`${RDF}type`, iri(`${JDG}ClaimAssertion`))
+          .subjects(`${RDF}type`, iri(`${CASCADE}ClaimAssertion`))
           .map(({ value }) => value),
       );
       const asserted = new Set(
         [...assertions].flatMap((assertion) =>
           heldGraph
-            .objects(iri(assertion), `${JDG}assertedClaim`)
+            .objects(iri(assertion), `${CASCADE}assertedClaim`)
             .map(({ value }) => value),
         ),
       );
@@ -1218,24 +1218,24 @@ const DEFINITIONS: Definition[] = [
         asserted.has(name),
       );
       const allowed = {
-        [`${JDG}Judgment`]: new Set([
+        [`${CASCADE}Judgment`]: new Set([
           `${RDF}type`,
-          `${JDG}verdict`,
-          `${JDG}justification`,
-          `${JDG}matcherRule`,
+          `${CASCADE}verdict`,
+          `${CASCADE}justification`,
+          `${CASCADE}matcherRule`,
           `${PROV}wasAttributedTo`,
           `${PROV}hadMember`,
           `${PROV}used`,
         ]),
-        [`${JDG}ClaimAssertion`]: new Set([
+        [`${CASCADE}ClaimAssertion`]: new Set([
           `${RDF}type`,
-          `${JDG}assertedClaim`,
-          `${JDG}assertedUnderRuleListVersion`,
+          `${CASCADE}assertedClaim`,
+          `${CASCADE}assertedUnderRuleListVersion`,
         ]),
       };
       for (const [kind, names] of [
-        [`${JDG}Judgment`, claims],
-        [`${JDG}ClaimAssertion`, assertions],
+        [`${CASCADE}Judgment`, claims],
+        [`${CASCADE}ClaimAssertion`, assertions],
       ] as const)
         for (const name of names)
           for (const [, p, o] of heldGraph.match(iri(name)))
@@ -1274,10 +1274,11 @@ const DEFINITIONS: Definition[] = [
           heldGraph.match(
             iri(value),
             `${RDF}type`,
-            iri(`${REC}ReferenceSeries`),
+            iri(`${CASCADE}ReferenceSeries`),
           ).length > 0 ||
           heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0 ||
-          heldGraph.match(iri(value), `${REC}rowOfRuleListVersion`).length > 0;
+          heldGraph.match(iri(value), `${CASCADE}rowOfRuleListVersion`).length >
+            0;
         if (!isReference) failures.push(`the step also wrote of ${value}`);
       }
       const problem = await comparedJudgments(reading, rows, found, columns);
@@ -1299,8 +1300,8 @@ const DEFINITIONS: Definition[] = [
           [step],
           "DISTINCT ?thing",
           `GRAPH ?file {
-              { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any }`,
+              { ?thing a <${CASCADE}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
+            } FILTER NOT EXISTS { ?thing <${CASCADE}revisionOf> ?any }`,
         ),
         "thing",
       )) {
@@ -1323,7 +1324,7 @@ const DEFINITIONS: Definition[] = [
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      const rowOf = `<${REC}rowOfRuleListVersion>`;
+      const rowOf = `<${CASCADE}rowOfRuleListVersion>`;
       for (const [thing, said] of described) {
         const rows = heldTriples.filter((triple) =>
           triple.endsWith(` ${rowOf} <${thing}>`),
@@ -1351,7 +1352,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const does = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}countsUnderLens> true }`,
+            `ASK { <${judgment}> <${CASCADE}countsUnderLens> true }`,
           );
           if (does === counts) return undefined;
           return does ? "it counts" : "it does not count";
@@ -1365,7 +1366,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const has = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}lapsed> true }`,
+            `ASK { <${judgment}> <${CASCADE}lapsed> true }`,
           );
           if (has === lapsed) return undefined;
           return has ? "it has lapsed" : "it has not lapsed";
@@ -1453,7 +1454,7 @@ const DEFINITIONS: Definition[] = [
           found.push(`${words} is in a view`);
         for (const [why, because] of await selected(
           reading.store,
-          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}leftOutReason> ?why . OPTIONAL { ?left <${REC}leftOutBecauseOf> ?because } }`,
+          `SELECT ?why ?because WHERE { <${record}> <${CASCADE}leftOutFor> ?left . ?left <${CASCADE}leftOutReason> ?why . OPTIONAL { ?left <${CASCADE}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
             `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,

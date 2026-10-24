@@ -2,7 +2,7 @@ import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import { fileStem } from "./names.js";
 import { iri, RDF, type Triple } from "./rdf.js";
-import { REC, Refusal } from "./step.js";
+import { CASCADE, Refusal } from "./step.js";
 import type { StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
@@ -10,11 +10,11 @@ const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
-const SHIPS_WITH = `${REC}defaultTableVersion`;
+const DEFAULT_TABLE_VERSION = `${CASCADE}defaultTableVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 /** What follows a version's file stem in the name of the index of its rows by code. */
 export const CODES = ".codes.json";
-const RECORDS = "ontologies/cascade.ttl";
+const ONTOLOGY = "ontologies/cascade.ttl";
 /** Where the vocabulary keeps the versions of its rule list, which a folder of tables may leave to it. */
 export const RULE_LIST = "runtime/rule-list/";
 
@@ -60,18 +60,18 @@ async function readTableTerms(
 ): Promise<TableTerms> {
   const graph = new Graph(
     await newStore().parse(
-      await readText(vocabulary, RECORDS),
-      vocabulary.iri + RECORDS,
+      await readText(vocabulary, ONTOLOGY),
+      vocabulary.iri + ONTOLOGY,
     ),
   );
   const foundBy = new Map<string, string[]>();
-  for (const [kind, , property] of graph.match(undefined, `${REC}foundBy`))
+  for (const [kind, , property] of graph.match(undefined, `${CASCADE}foundBy`))
     foundBy.set(kind.value, [
       ...(foundBy.get(kind.value) ?? []),
       property.value,
     ]);
   const codeSystems = graph
-    .subjects(`${RDF}type`, iri(`${REC}CodeSystem`))
+    .subjects(`${RDF}type`, iri(`${CASCADE}CodeSystem`))
     .map((system): CodeSystem => {
       const label = graph.objects(system, `${RDFS}label`)[0];
       const space = graph.objects(system, `${VOID}uriSpace`)[0];
@@ -79,7 +79,10 @@ async function readTableTerms(
         throw new Error(
           `${system.value} is a code system with no ${label === undefined ? "label" : "URI space"}`,
         );
-      const template = graph.objects(system, `${REC}codePageUrlTemplate`)[0];
+      const template = graph.objects(
+        system,
+        `${CASCADE}codePageUrlTemplate`,
+      )[0];
       if (template !== undefined && !template.value.includes("{code}"))
         throw new Error(
           `${system.value} is a code system whose page template has no {code}`,
@@ -93,7 +96,7 @@ async function readTableTerms(
     });
   const declared = new Set(
     graph
-      .subjects(`${RDF}type`, iri(`${REC}TableKind`))
+      .subjects(`${RDF}type`, iri(`${CASCADE}TableKind`))
       .map(({ value }) => value),
   );
   return {
@@ -103,14 +106,14 @@ async function readTableTerms(
     declared,
     readByPages: new Set(
       graph
-        .match(undefined, `${REC}readByAppPages`)
+        .match(undefined, `${CASCADE}readByAppPages`)
         .filter(([, , marked]) => marked.value === "true")
         .map(([kind]) => kind.value),
     ),
   };
 }
 
-const ROW_SUBJECT = `${REC}RowSubject`;
+const ROW_SUBJECT = `${CASCADE}RowSubject`;
 
 /** Whether a kind's rows are found by their own subjects alone: the code is the subject, so no index is needed. */
 function bySubjectAlone(foundBy: readonly string[]): boolean {
@@ -263,7 +266,7 @@ export class References {
   description(thing: string): Triple[] {
     return this.index
       .match(iri(thing))
-      .filter(([, predicate]) => predicate.value !== SHIPS_WITH);
+      .filter(([, predicate]) => predicate.value !== DEFAULT_TABLE_VERSION);
   }
 
   /**
@@ -277,15 +280,18 @@ export class References {
       return described;
     const rows = new Graph(await this.rows(thing));
     const found: Triple[] = [];
-    for (const row of rows.subjects(`${RDF}type`, iri(`${REC}RuleListRow`))) {
-      const [rule] = rows.objects(row, `${REC}matcherRule`);
-      const [hash] = rows.objects(row, `${REC}queryHash`);
+    for (const row of rows.subjects(
+      `${RDF}type`,
+      iri(`${CASCADE}RuleListRow`),
+    )) {
+      const [rule] = rows.objects(row, `${CASCADE}matcherRule`);
+      const [hash] = rows.objects(row, `${CASCADE}queryHash`);
       if (rule === undefined || hash === undefined) continue;
       const named = iri(`${thing}#${rule.value.replace(/^.*[#/]/, "")}`);
       found.push(
-        [named, iri(`${REC}rowOfRuleListVersion`), iri(thing)],
-        [named, iri(`${REC}matcherRule`), iri(rule.value)],
-        [named, iri(`${REC}queryHash`), iri(hash.value)],
+        [named, iri(`${CASCADE}rowOfRuleListVersion`), iri(thing)],
+        [named, iri(`${CASCADE}matcherRule`), iri(rule.value)],
+        [named, iri(`${CASCADE}queryHash`), iri(hash.value)],
       );
     }
     return [...described, ...found];
@@ -301,13 +307,13 @@ export class References {
 
   seriesOfKind(kind: string): string[] {
     return this.index
-      .subjects(`${REC}tableKind`, iri(kind))
+      .subjects(`${CASCADE}tableKind`, iri(kind))
       .map(({ value }) => value)
       .sort();
   }
 
   kindOf(series: string): string | undefined {
-    return this.index.objects(iri(series), `${REC}tableKind`)[0]?.value;
+    return this.index.objects(iri(series), `${CASCADE}tableKind`)[0]?.value;
   }
 
   /**
@@ -424,12 +430,14 @@ export class References {
     const found: string[] = [];
     for (const series of this.index.subjects(
       `${RDF}type`,
-      iri(`${REC}ReferenceSeries`),
+      iri(`${CASCADE}ReferenceSeries`),
     )) {
       if (this.kindOf(series.value) !== undefined) continue;
       for (const version of this.index.subjects(SPECIALIZATION_OF, series)) {
         const rows = new Graph(await this.rows(version.value));
-        if (rows.subjects(`${RDF}type`, iri(`${REC}RuleListRow`)).length > 0) {
+        if (
+          rows.subjects(`${RDF}type`, iri(`${CASCADE}RuleListRow`)).length > 0
+        ) {
           found.push(series.value);
           break;
         }
@@ -459,7 +467,8 @@ export class References {
 
   /** The series' default (M10): the version it ships with. */
   fallback(series: string): string {
-    const shipped = this.index.objects(iri(series), SHIPS_WITH)[0]?.value;
+    const shipped = this.index.objects(iri(series), DEFAULT_TABLE_VERSION)[0]
+      ?.value;
     if (shipped === undefined || this.seriesOf(shipped) !== series)
       throw new Refusal(
         `${this.#label(series)} ships with ${shipped}, a version it does not list`,

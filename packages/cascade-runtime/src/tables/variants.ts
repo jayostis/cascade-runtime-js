@@ -1,6 +1,6 @@
 import { codeIri, Graph, iri, readText } from "@cascade-runtime/runtime";
 import { type Row, rowsAbout, SKOS, values } from "../rows.js";
-import { CLASSIFICATIONS, RDFS, REC } from "./constants.js";
+import { CLASSIFICATIONS, RDFS, CASCADE } from "./constants.js";
 import { currentOfKind } from "./references-index.js";
 import type {
   ClassificationRow,
@@ -11,7 +11,7 @@ import type {
   WhatClinVarSays,
 } from "./types.js";
 
-const RECORDS = "ontologies/cascade.ttl";
+const ONTOLOGY = "ontologies/cascade.ttl";
 
 export async function variantClassification(
   context: TablesContext,
@@ -28,13 +28,15 @@ export async function variantClassification(
   ).map((fact) => ({
     ...fact,
     genes: references.index
-      .objects(iri(fact.version), `${REC}coversGene`)
+      .objects(iri(fact.version), `${CASCADE}coversGene`)
       .map(({ value }) => value),
   }));
   const [first] = held;
   if (first === undefined) return { found: "no series" };
   const stem = (system: string): string => {
-    const found = codeSystems.find((each) => each.iri === `${REC}${system}`);
+    const found = codeSystems.find(
+      (each) => each.iri === `${CASCADE}${system}`,
+    );
     if (found === undefined)
       throw new Error(
         `the vocabulary registers no code system cascade:${system}`,
@@ -105,11 +107,11 @@ export async function classificationRow(
   variation: string,
   rows: readonly Row[],
 ): Promise<ClassificationRow> {
-  const classes = values(rows, `${REC}clinvarClassification`);
-  const [status] = values(rows, `${REC}clinvarReviewStatus`);
-  const [evaluated] = values(rows, `${REC}lastEvaluated`);
-  const [contributing] = values(rows, `${REC}contributingSubmitterCount`);
-  const [submitters] = values(rows, `${REC}submitterCount`);
+  const classes = values(rows, `${CASCADE}clinvarClassification`);
+  const [status] = values(rows, `${CASCADE}clinvarReviewStatus`);
+  const [evaluated] = values(rows, `${CASCADE}lastEvaluated`);
+  const [contributing] = values(rows, `${CASCADE}contributingSubmitterCount`);
+  const [submitters] = values(rows, `${CASCADE}submitterCount`);
   const named = await context.labels([...classes, ...(status ? [status] : [])]);
   const concept = (each: string): Concept => ({
     iri: each,
@@ -136,8 +138,8 @@ export async function conceptLabels({
 > {
   const graph = new Graph(
     await newStore().parse(
-      await readText(vocabulary, RECORDS),
-      vocabulary.iri + RECORDS,
+      await readText(vocabulary, ONTOLOGY),
+      vocabulary.iri + ONTOLOGY,
     ),
   );
   const labels = new Map<string, string>();

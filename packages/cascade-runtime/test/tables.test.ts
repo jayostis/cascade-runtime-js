@@ -427,7 +427,7 @@ async function withVersions(
   const files = new Map(served.files);
   const versions: string[] = [];
   let turtle = `@prefix dcat: <${DCAT}> . @prefix pav: <http://purl.org/pav/> . @prefix prov: <${PROV}> .
-@prefix rdfs: <${RDFS}> . @prefix cascade: <${REC}> . @prefix spdx: <${SPDX}> .
+@prefix rdfs: <${RDFS}> . @prefix cascade: <${CASCADE}> . @prefix spdx: <${SPDX}> .
 <${series.series}> a cascade:ReferenceSeries ; rdfs:label "${series.label}" ; cascade:tableKind cascade:${series.kind} .
 `;
   for (const [index, rows] of line.entries()) {
@@ -1058,8 +1058,8 @@ test("a version the tables name by no file is refused, by a search and by what t
   await files.write(
     "references.ttl",
     new TextEncoder().encode(
-      `<${series}> <${REC}tableKind> <${REC}CodeNames> .
-<${series}> <${REC}defaultTableVersion> <${version}> .
+      `<${series}> <${CASCADE}tableKind> <${CASCADE}CodeNames> .
+<${series}> <${CASCADE}defaultTableVersion> <${version}> .
 <${version}> <${PROV}specializationOf> <${series}> .
 `,
     ),
@@ -1338,7 +1338,7 @@ test("the starter copies carry each version's rows as published, name the curren
 });
 
 test("a series of a kind nothing the app runs reads is neither kept nor carried as a starter copy, until a rule list names its kind", async () => {
-  const unread = `${REC}SubstanceIngredients`;
+  const unread = `${CASCADE}SubstanceIngredients`;
   for (const path of await parts.vocabulary.list(RULE_LIST)) {
     const bytes = path.endsWith(".ttl")
       ? await parts.vocabulary.read(path)
@@ -1346,7 +1346,7 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
     if (bytes === undefined) continue;
     const named = (await parts.newStore().parse(bytes, FEED)).filter(
       ([, predicate, object]) =>
-        predicate.value === `${REC}tableKind` && object.value === unread,
+        predicate.value === `${CASCADE}tableKind` && object.value === unread,
     );
     assert.deepEqual(
       named,
@@ -1357,7 +1357,8 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
   const served: Served = {
     ...first,
     catalog: first.catalog.map(([subject, predicate, object]) =>
-      subject.value === groups.series && predicate.value === `${REC}tableKind`
+      subject.value === groups.series &&
+      predicate.value === `${CASCADE}tableKind`
         ? [subject, predicate, iri(unread)]
         : [subject, predicate, object],
     ),
@@ -1405,8 +1406,8 @@ test("a series of a kind nothing the app runs reads is neither kept nor carried 
 
 test("the kinds an app keeps are those a rule list names and those the vocabulary marks as read by pages, and a kept version carries the genes it covers where its series carries none", async () => {
   const { readByPages } = await tableTerms(parts.vocabulary, parts.newStore);
-  const marked = `${REC}CodeNames`;
-  const published = `${REC}NdcDrugs`;
+  const marked = `${CASCADE}CodeNames`;
+  const published = `${CASCADE}NdcDrugs`;
   assert.ok(readByPages.has(marked) && !readByPages.has(published));
   for (const path of await parts.vocabulary.list(RULE_LIST)) {
     const bytes = path.endsWith(".ttl")
@@ -1416,19 +1417,20 @@ test("the kinds an app keeps are those a rule list names and those the vocabular
     assert.deepEqual(
       (await parts.newStore().parse(bytes, FEED)).filter(
         ([, predicate, object]) =>
-          predicate.value === `${REC}tableKind` &&
+          predicate.value === `${CASCADE}tableKind` &&
           [marked, published].includes(object.value),
       ),
       [],
       `${path} now names a kind this test needs no rule list to read`,
     );
   }
-  const covers = `${REC}coversGene`;
+  const covers = `${CASCADE}coversGene`;
   const servedAs = (kind: string, genes: readonly Triple[] = []): Served => ({
     ...first,
     catalog: [
       ...first.catalog.map(([subject, predicate, object]): Triple =>
-        subject.value === groups.series && predicate.value === `${REC}tableKind`
+        subject.value === groups.series &&
+        predicate.value === `${CASCADE}tableKind`
           ? [subject, predicate, iri(kind)]
           : [subject, predicate, object],
       ),
@@ -1548,7 +1550,7 @@ test("the rows a pod's codes find are those found by them, by the kind's propert
   await inner.write(
     `${fileStem(names)}.codes.json`,
     new TextEncoder().encode(
-      JSON.stringify({ foundBy: [`${REC}RowSubject`], rows: {} }),
+      JSON.stringify({ foundBy: [`${CASCADE}RowSubject`], rows: {} }),
     ),
   );
   assert.deepEqual(
@@ -1835,7 +1837,7 @@ test("a check keeps nothing of a version that does not verify, and tries a feed 
   }
 });
 
-const REC = "https://ns.cascadeprotocol.org/cascade#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const CVX_NAMES = "urn:uuid:f71f6797-48ec-4875-9b87-4cb1be1d9be0";
 const CVX_STATUS = "urn:uuid:624f752e-dfba-45e7-a3e5-710ff7204a79";
 const EXAMPLE_NAMES = "urn:uuid:6e9c1dc9-8c36-49a8-929c-cd9f6701076c";
@@ -1925,8 +1927,8 @@ test("a code's name and status come from the first series of their kinds, in the
         tables: {
           feeds: [],
           preference: {
-            [`${REC}CodeNames`]: [names],
-            [`${REC}RetiredCodes`]: [status],
+            [`${CASCADE}CodeNames`]: [names],
+            [`${CASCADE}RetiredCodes`]: [status],
           },
         },
       })
@@ -2089,7 +2091,7 @@ test("an app's tables are the package's with each field of its own file, then of
   );
   const app = await mkdtemp(join(scratch, "app-"));
   const other = "https://tables.example/other.ttl";
-  const preference = { [`${REC}CodeNames`]: [EXAMPLE_NAMES] };
+  const preference = { [`${CASCADE}CodeNames`]: [EXAMPLE_NAMES] };
   const cases: [string, unknown, object, object | RegExp][] = [
     [
       "the file's feeds and order of preference, the package's check on open",
@@ -2124,7 +2126,7 @@ test("an app's tables are the package's with each field of its own file, then of
     ],
     [
       "an order of preference not of IRIs",
-      { tables: { preference: { [`${REC}CodeNames`]: ["names"] } } },
+      { tables: { preference: { [`${CASCADE}CodeNames`]: ["names"] } } },
       {},
       /preference does not give/,
     ],
@@ -2253,7 +2255,7 @@ const CLASSES: Mapping = {
   kind: "DrugClasses",
   system: RXNORM,
   targetSystem: MEDRT,
-  predicate: `${REC}establishedPharmacologicClass`,
+  predicate: `${CASCADE}establishedPharmacologicClass`,
   justification: () => "ManualMappingCuration",
 };
 
@@ -2286,7 +2288,7 @@ const PRECISE_INGREDIENTS: Mapping = {
   ...INGREDIENTS,
   predicateOf: (source, target) =>
     PRECISE.has(`${source} ${target}`)
-      ? `${REC}hasPreciseIngredient`
+      ? `${CASCADE}hasPreciseIngredient`
       : INGREDIENTS.predicate,
 };
 /** Estradiol's rows: its tablet, which has no precise ingredient, and fluoroestradiol F-18, a precise ingredient of it. */
@@ -2305,9 +2307,9 @@ const CLASSES_BY_RELATION: Mapping = {
   ...CLASSES,
   predicateOf: (_, target) =>
     MECHANISMS.has(target)
-      ? `${REC}mechanismOfActionClass`
+      ? `${CASCADE}mechanismOfActionClass`
       : target === AZOLES
-        ? `${REC}chemicalStructureClass`
+        ? `${CASCADE}chemicalStructureClass`
         : CLASSES.predicate,
 };
 
@@ -2333,14 +2335,14 @@ function plantedTables(): Promise<{ tables: Tables; classes: string }> {
         ...PANELS,
         extra: (_, member) => [
           [
-            `${REC}panelSequence`,
+            `${CASCADE}panelSequence`,
             literal(String(place[member]![0]), XSD_INTEGER),
           ],
           ...(place[member]![1] === undefined
             ? []
             : [
                 [
-                  `${REC}observationRequiredInPanel`,
+                  `${CASCADE}observationRequiredInPanel`,
                   literal(place[member]![1]),
                 ] as const,
               ]),
@@ -2478,11 +2480,11 @@ async function classLines(tables: Tables, code: string): Promise<string[]> {
     ({ in: each, withheld }) => [
       ...each.map(
         ({ relation, class: of, through }) =>
-          `${relation.slice(REC.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
+          `${relation.slice(CASCADE.length)} ${of.notation}${through === undefined ? "" : ` through ${through.notation}`}`,
       ),
       ...withheld.map(
         ({ relation, ingredient }) =>
-          `${relation.slice(REC.length)} withheld, a different form of ${ingredient.notation}`,
+          `${relation.slice(CASCADE.length)} withheld, a different form of ${ingredient.notation}`,
       ),
     ],
   );
@@ -2591,7 +2593,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
             origin,
           }) => [
             medication,
-            relation.slice(REC.length),
+            relation.slice(CASCADE.length),
             of.slice(MEDRT.length),
             through?.slice(RXNORM.length),
             stated,
@@ -2688,8 +2690,8 @@ test("a person's results in the panel they pick are asked of the tables: in LOIN
           ([of, each]) => of === panel && each === member,
         )!;
         return [
-          [`${REC}panelSequence`, literal(String(sequence), XSD_INTEGER)],
-          [`${REC}observationRequiredInPanel`, literal(required)],
+          [`${CASCADE}panelSequence`, literal(String(sequence), XSD_INTEGER)],
+          [`${CASCADE}observationRequiredInPanel`, literal(required)],
         ];
       },
     },

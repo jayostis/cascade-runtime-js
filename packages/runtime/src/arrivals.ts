@@ -32,7 +32,7 @@ import {
 import {
   type OnProgress,
   parseStepFile,
-  REC,
+  CASCADE,
   Refusal,
   type StepContext,
   type StepFile,
@@ -224,7 +224,7 @@ class Revisions {
       }
     }
     const { rows } = await union.select(`
-      PREFIX cascade: <${REC}>
+      PREFIX cascade: <${CASCADE}>
       PREFIX prov: <${PROV}>
       PREFIX pav: <${PAV}>
       SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion WHERE {
@@ -280,9 +280,9 @@ class Revisions {
     const previous = this.#last.get(record)?.revision;
     const triples: Triple[] = [
       ...arrival.statements,
-      [placeholder, iri(TYPE), iri(`${REC}Revision`)],
-      [placeholder, iri(`${REC}revisionOf`), arrival.record],
-      [placeholder, iri(`${REC}version`), arrival.version],
+      [placeholder, iri(TYPE), iri(`${CASCADE}Revision`)],
+      [placeholder, iri(`${CASCADE}revisionOf`), arrival.record],
+      [placeholder, iri(`${CASCADE}version`), arrival.version],
       [
         placeholder,
         iri(`${PROV}generatedAtTime`),
