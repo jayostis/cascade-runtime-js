@@ -655,16 +655,20 @@ export async function snapshotsFollowTheirRule(
   let previous: string | undefined;
   let last: { readonly set: string[]; readonly hash: string } | undefined;
   for (const { step, wrote, activity } of steps) {
-    const ofSet = wrote.filter((path) => layout.inSnapshotSet(path));
-    held.push(...ofSet);
     let found = 0;
-    for (const path of wrote) {
+    let from = 0;
+    for (const [index, path] of wrote.entries()) {
       const bytes = layout.isRdf(path) ? await pod.read(path) : undefined;
       if (
         bytes === undefined ||
         !new TextDecoder().decode(bytes).includes(`${CASCADE}Snapshot`)
       )
         continue;
+      const ofSet = wrote
+        .slice(from, index + 1)
+        .filter((file) => layout.inSnapshotSet(file));
+      from = index + 1;
+      held.push(...ofSet);
       const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
       for (const snapshot of graph.subjects(TYPE, iri(`${CASCADE}Snapshot`))) {
         found++;
@@ -717,8 +721,11 @@ export async function snapshotsFollowTheirRule(
         last = { set, hash };
       }
     }
-    if (activity !== undefined && wrote.length > 0 && found !== 1)
-      failures.push(`N14: step ${step.name} wrote ${found} snapshots, not one`);
+    held.push(
+      ...wrote.slice(from).filter((file) => layout.inSnapshotSet(file)),
+    );
+    if (activity !== undefined && wrote.length > 0 && found === 0)
+      failures.push(`N14: step ${step.name} wrote no snapshot`);
   }
   if (last !== undefined) {
     const present = last.set.filter((path) => listed.has(path));

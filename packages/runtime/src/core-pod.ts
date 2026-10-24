@@ -7,7 +7,13 @@ import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
-import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
+import {
+  matcherView,
+  migrateRelease,
+  openPod,
+  podCodes,
+  runMatcher,
+} from "./matcher.js";
 import {
   actDescriptionName,
   documentName,
@@ -405,8 +411,15 @@ export class CorePod {
     );
   }
 
-  /** The pod opened with the tables (O1, O2), which it matches with from then on. */
+  /**
+   * The pod opened with the tables (O1, O2), which it matches with from then on: first, when a version the tables hold
+   * declares a rule wrong, the release's migration (N15), an act of its own, then the open's matcher run.
+   */
   async open(tables: References): Promise<Performed> {
+    const migrated = tables.declareARuleWrong()
+      ? await this.#step((context) => migrateRelease(context, tables))
+      : undefined;
+    if (migrated?.refused !== undefined) return migrated;
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
       const opened = await openPod(context, tables);
@@ -414,7 +427,11 @@ export class CorePod {
       this.#references = Promise.resolve(tables);
       return opened.activity;
     });
-    return unheld.length === 0 ? performed : { ...performed, unheld };
+    return {
+      ...performed,
+      wrote: [...(migrated?.wrote ?? []), ...performed.wrote],
+      ...(unheld.length === 0 ? {} : { unheld }),
+    };
   }
 
   /** A matcher run taking the import or entry session given, or, given none, a recheck (M7). */

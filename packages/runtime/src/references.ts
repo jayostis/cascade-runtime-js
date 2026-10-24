@@ -12,6 +12,7 @@ const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const DEFAULT_TABLE_VERSION = `${CASCADE}defaultTableVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
+const RULE_DECLARED_WRONG = `${CASCADE}ruleDeclaredWrong`;
 /** What follows a version's file stem in the name of the index of its rows by code. */
 export const CODES = ".codes.json";
 const ONTOLOGY = "ontologies/cascade.ttl";
@@ -449,6 +450,18 @@ export class References {
         `${this.#folder} holds ${found.length} rule lists, not one`,
       );
     return series;
+  }
+
+  /** The matcher rules a rule list version, a release, declares wrong (N15). */
+  rulesDeclaredWrong(version: string): string[] {
+    return this.index
+      .objects(iri(version), RULE_DECLARED_WRONG)
+      .map(({ value }) => value);
+  }
+
+  /** Whether any version these tables describe declares a rule wrong. */
+  declareARuleWrong(): boolean {
+    return this.index.match(undefined, RULE_DECLARED_WRONG).length > 0;
   }
 
   /** The version this one revises, if any. */

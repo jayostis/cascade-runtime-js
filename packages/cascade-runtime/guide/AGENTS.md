@@ -484,7 +484,7 @@ async function search(word) {
 
 ### Lenses
 
-- `everyday`: the default; a judgment counts unless superseded, retracted or
+- `everyday`: the default; a judgment counts unless replaced, retracted or
   made under a table since replaced.
 - `export`: for sharing; a matcher's join counts only on a code, or code and day.
 
@@ -499,7 +499,6 @@ One template per kind; every value typed goes in through `text()`.
 ```js
 const PREFIXES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix dct: <http://purl.org/dc/terms/> .
-@prefix npx: <http://purl.org/nanopub/x/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -584,7 +583,8 @@ in `search`, never in `pod/My active allergies`.
 
 A judgment is `<urn:cascade:this-judgment>`, by the owner as the patient, on
 records, never entries. The package adds its time, and to a Same, Different or
-Erroneous each member's current version as `prov:used`.
+Erroneous each member's current version as `prov:used`. A retraction is named
+so too: no judgment, but an activity that `prov:invalidated` one.
 
 ```js
 function judgment(pod, reason, statements) {
@@ -611,14 +611,19 @@ const sameInstead = (pod, records, machineSame, reason) =>
   judgment(pod, reason, [
     "cascade:verdict cascade:Same",
     ...members(records),
-    `npx:supersedes <${machineSame}>`,
+    `dct:replaces <${machineSame}>`,
   ]);
 const different = (pod, records, reason) =>
   judgment(pod, reason, ["cascade:verdict cascade:Different", ...members(records)]);
 const erroneous = (pod, record, reason) =>
   judgment(pod, reason, ["cascade:verdict cascade:Erroneous", ...members([record])]);
-const retraction = (pod, earlier, reason) =>
-  judgment(pod, reason, [`npx:retracts <${earlier}>`]);
+const retraction = (pod, earlier, reason) => `${PREFIXES}
+<urn:cascade:this-judgment> a prov:Activity ;
+  ${[`prov:invalidated <${earlier}>`, reason && `dct:description ${text(reason)}`].filter(Boolean).join(" ;\n  ")} ;
+  prov:wasAssociatedWith <${pod.owner}> ;
+  prov:qualifiedAssociation [ a prov:Association ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
+<${pod.owner}> a prov:Person .
+`;
 
 const judged = (turtle) => saved(pod.judge(turtle));
 const inEntry = await recordsBy("record/Which entry shows it", "entry");

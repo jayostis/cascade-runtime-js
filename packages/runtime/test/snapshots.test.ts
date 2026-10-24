@@ -177,3 +177,33 @@ test("a writer handed no head the pod holds is a new writer, whose snapshot merg
   ]);
   assert.deepEqual(next.snapshot.values("mergedParentSnapshot"), []);
 });
+
+test("an open that migrates a release leaves two acts in one step, each with its own snapshot naming its own files, the run's chained to the migration's (N14, N15)", async () => {
+  const local = await localVocabulary(ROOT);
+  const story = await featurePod(
+    local,
+    "runtime/naming.feature",
+    new MemoryFiles(ADDRESS),
+    {
+      example:
+        "adopting a release that declares R4 wrong retracts R4's two claims before the open's matcher runs, and neither counts nor lapses",
+    },
+  );
+  const opened = story.steps.at(-1);
+  const snapshots = [];
+  for (const path of opened?.wrote ?? [])
+    if (path.startsWith("provenance/"))
+      snapshots.push(await snapshotIn(story.pod, path));
+  assert.equal(snapshots.length, 2);
+  const [migration, run] = snapshots;
+  assert.deepEqual(run?.values("firstParentSnapshot"), [migration?.name]);
+  assert.ok(
+    migration
+      ?.values("fileAddedToSet")
+      .some((path) => path.startsWith("judgments/retractions/")),
+  );
+  assert.deepEqual(
+    await snapshotsFollowTheirRule(story, local.layout, newStore),
+    [],
+  );
+});

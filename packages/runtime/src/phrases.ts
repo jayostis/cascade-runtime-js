@@ -50,7 +50,7 @@ const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export const PREFIXES: Readonly<Record<string, string>> = {
-  npx: "http://purl.org/nanopub/x/",
+  dct: "http://purl.org/dc/terms/",
   rdf: RDF,
   rdfs: RDFS,
   xsd: XSD,
@@ -624,6 +624,8 @@ async function expectedJudgmentRow(
   }
   return cells.join(" | ");
 }
+
+const RETRACTION_COLUMNS = ["justification", "members", "inputs", "name"];
 
 const JUDGMENT_COLUMNS = [
   "justification",
@@ -1217,6 +1219,11 @@ const DEFINITIONS: Definition[] = [
       const actOf = new Set(
         [
           ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}MatcherRun`)),
+          ...heldGraph.subjects(
+            `${RDF}type`,
+            iri(`${CASCADE}ReleaseMigration`),
+          ),
+          ...heldGraph.subjects(`${PROV}invalidated`),
           ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}Snapshot`)),
           ...heldGraph.triples
             .filter(([, p]) => p.value === `${PROV}wasAssociatedWith`)
@@ -1296,6 +1303,77 @@ const DEFINITIONS: Definition[] = [
       return failures.length === 0
         ? undefined
         : [...new Set(failures)].join("\n");
+    };
+  }),
+  then("{step} wrote these retractions:", ([said], stated) => {
+    const rows = table(stated, RETRACTION_COLUMNS);
+    const columns = RETRACTION_COLUMNS.filter((column) =>
+      stated.table?.[0]?.includes(column),
+    );
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const held = await wroteGraph(reading, [step]);
+      const claims = new Map(
+        (await matcherJudgments(reading.store)).map((judged) => [
+          judged.name,
+          judged,
+        ]),
+      );
+      const failures: string[] = [];
+      /** Each row found, shown once the table's words are read, which names its records. */
+      const found: (() => string)[] = [];
+      for (const retraction of held.subjects(`${PROV}invalidated`)) {
+        const [claim = ""] = held
+          .objects(retraction, `${PROV}invalidated`)
+          .map(({ value }) => value);
+        const [release = ""] = held
+          .objects(retraction, `${PROV}wasInfluencedBy`)
+          .map(({ value }) => value);
+        const described = held
+          .match(retraction)
+          .map(([, p, o]) => `${p.value} ${written(o)}`)
+          .sort();
+        const wanted = [
+          `${RDF}type <${PROV}Activity>`,
+          `${PROV}invalidated <${claim}>`,
+          `${PROV}wasInfluencedBy <${release}>`,
+        ].sort();
+        if (described.join("\n") !== wanted.join("\n"))
+          failures.push(`${retraction.value} states ${described.join("; ")}`);
+        const judged = claims.get(claim);
+        if (judged === undefined) {
+          failures.push(
+            `${retraction.value} invalidates ${claim}, no claim of the matcher's`,
+          );
+          continue;
+        }
+        found.push(() =>
+          columns
+            .map((column) =>
+              column === "inputs"
+                ? [
+                    "cascade:RetractionNamingRule",
+                    release,
+                    claim,
+                    ...[...judged.rules].map(termShown),
+                  ].join(", ")
+                : column === "name"
+                  ? retraction.value
+                  : judgmentRow(reading, judged, [column]),
+            )
+            .join(" | "),
+        );
+      }
+      const expected = await Promise.all(
+        rows.map((row) => expectedJudgmentRow(reading, row, columns)),
+      );
+      const problem = compared(
+        expected,
+        found.map((row) => row()),
+      );
+      if (problem !== undefined) failures.push(problem);
+      return failures.length === 0 ? undefined : failures.join("\n");
     };
   }),
   then("{step} wrote these reference descriptions:", ([said], stated) => {
