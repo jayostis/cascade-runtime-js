@@ -512,13 +512,16 @@ const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used ?ru
     <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
   OPTIONAL { ?judgment <${PROV}used> ?used }
-  OPTIONAL { ?row <${REC}justifiedAs> ?justification ; <${REC}matcherRule> ?rule }
+  OPTIONAL {
+    ?judgment <${PROV}used> ?list .
+    GRAPH ?list { ?row <${REC}justifiedAs> ?justification ; <${REC}matcherRule> ?rule }
+  }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
-  /** The matcher rule terms the pod's rule lists give its justification. */
+  /** The matcher rule terms the rule list versions it used give its justification. */
   readonly rules: Set<string>;
   readonly members: Set<string>;
   readonly at: Set<string>;

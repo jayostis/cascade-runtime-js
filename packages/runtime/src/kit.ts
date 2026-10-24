@@ -375,16 +375,15 @@ async function namesFollowTheirRules(
     const values = (predicate: string): string[] =>
       whole.objects(judgment, predicate).map((t) => t.value);
     const [justification = ""] = values(`${JDG}justification`);
-    const rules = new Set(
-      whole
-        .subjects(`${REC}justifiedAs`, iri(justification))
-        .flatMap((row) => whole.objects(row, `${REC}matcherRule`))
-        .map((rule) => rule.value),
+    const { rows } = await run.final.select(
+      `SELECT DISTINCT ?rule WHERE { <${judgment.value}> <${PROV}used> ?list .
+        GRAPH ?list { ?row <${REC}justifiedAs> <${justification}> ; <${REC}matcherRule> ?rule } }`,
     );
+    const rules = new Set(rows.flatMap((row) => row.get("rule")?.value ?? []));
     const [rule] = rules;
     if (rules.size !== 1 || rule === undefined) {
       failures.push(
-        `N6: the pod's rule lists give ${rules.size} matcher rules for ${justification}, not one`,
+        `N6: the rule lists ${judgment.value} used give ${rules.size} matcher rules for ${justification}, not one`,
       );
       continue;
     }
