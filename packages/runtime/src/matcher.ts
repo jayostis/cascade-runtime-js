@@ -407,8 +407,8 @@ class Matcher {
 
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
-   * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the import or entry session a run
-   * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4). The rule list the
+   * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the acts whose records a run
+   * takes, each comparison is evaluated with ?record bound to the subject's records they began (M1, M4). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
    * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
@@ -418,7 +418,7 @@ class Matcher {
     context: StepContext,
     references: References,
     adopted?: ReadonlyMap<string, string>,
-    activity?: string,
+    takes?: ReadonlySet<string>,
   ): Promise<Matcher> {
     const union = await context.matcherView();
     const named = await namedVersions(union);
@@ -427,10 +427,12 @@ class Matcher {
       references.current(series, named.get(series) ?? []);
     const pod = await read(union, references);
     const bound =
-      activity === undefined
+      takes === undefined
         ? undefined
         : [...pod.theirs.values()].flatMap((record) =>
-            record.activity === activity ? [record.name] : [],
+            record.activity !== undefined && takes.has(record.activity)
+              ? [record.name]
+              : [],
           );
     const rulesVersion = current(await references.ruleList());
     const none: Joins = new Map();
@@ -784,11 +786,11 @@ class Matcher {
     }
   }
 
-  /** Files a Same for each of the subject's records that the activity's first revisions began (M1-M5). */
-  async take(activity: string): Promise<void> {
+  /** Files a Same for each of the subject's records whose first revisions the acts began (M1-M5). */
+  async take(takes: ReadonlySet<string>): Promise<void> {
     await this.file(
       [...this.pod.theirs.values()].filter(
-        (record) => record.activity === activity,
+        (record) => record.activity !== undefined && takes.has(record.activity),
       ),
       this.matched,
     );
@@ -1081,15 +1083,38 @@ function actOfRun(
   return name;
 }
 
-/** A matcher run: the records the import or entry session it takes made, or, taking none, a recheck. Gives the run's act, if it wrote one. */
+/**
+ * The acts whose records a run given the activity takes: an import or entry session itself, or each act a sync names
+ * (M1).
+ */
+async function actsTaken(
+  context: StepContext,
+  activity: string,
+): Promise<Set<string>> {
+  const named = await column(
+    await context.matcherView(),
+    `SELECT ?act WHERE { <${activity}> a cascade:SyncFromAnotherWriter ; prov:wasInformedBy ?act }`,
+    "act",
+  );
+  return named.length === 0
+    ? new Set([activity])
+    : new Set(named.flatMap(([act]) => act ?? []));
+}
+
+/**
+ * A matcher run: the records the import or entry session it takes made, or those a sync brought, or, taking none, a
+ * recheck. Gives the run's act, if it wrote one.
+ */
 export async function runMatcher(
   context: StepContext,
   references: References,
   activity?: string,
 ): Promise<string | undefined> {
-  const matcher = await Matcher.of(context, references, undefined, activity);
-  if (activity === undefined) await matcher.recheck();
-  else await matcher.take(activity);
+  const takes =
+    activity === undefined ? undefined : await actsTaken(context, activity);
+  const matcher = await Matcher.of(context, references, undefined, takes);
+  if (takes === undefined) await matcher.recheck();
+  else await matcher.take(takes);
   matcher.finish();
   return actOfRun(context, activity);
 }

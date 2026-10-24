@@ -146,7 +146,8 @@ export class Layout {
   /**
    * Whether the file at the path is in a snapshot's set (cascade:Snapshot): named as N9 names a file in a folder the
    * layout gives, the views' folder aside. A file the layout gives by itself changes in place, and is outside it, and
-   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`.
+   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`. A sync's act file passes, though
+   * outside the set: only what it holds tells it.
    */
   inSnapshotSet(path: string): boolean {
     if (path.startsWith(this.viewsFolder)) return false;
