@@ -44,6 +44,7 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
     justification: JDG + "SameMappedCode",
     appliesTo: new Set([JDG + "ProblemOrDiagnosis"]),
     query: "matcher/same-mapped-code.rq",
+    hash: "ni:///sha-256;x",
   };
   const rule: MatcherRule = { ...kindless, kind: `${REC}CodeMappings` };
   const version = "urn:example:mappings-2";

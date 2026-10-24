@@ -6,6 +6,7 @@ import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
 import {
+  assertionName,
   canonical,
   contentName,
   documentName,
@@ -365,21 +366,18 @@ async function namesFollowTheirRules(
       failures.push(`N5: ${name}, stored at ${path}, is not described`);
   }
 
-  // N6: each matcher judgment is named by the claim rule from its rule, what it judged and what it used.
+  // N6: each matcher claim is named by the claim rule from its rule, what it judged and what it used, and each of its
+  // assertions by the assertion rule from the rule list version and the claim.
   const judged = whole.subjects(`${PROV}wasAttributedTo`, iri(MATCHER));
   for (const judgment of judged) {
     const values = (predicate: string): string[] =>
       whole.objects(judgment, predicate).map((t) => t.value);
     const [justification = ""] = values(`${JDG}justification`);
-    const { rows } = await run.final.select(
-      `SELECT DISTINCT ?rule WHERE { <${judgment.value}> <${PROV}used> ?list .
-        GRAPH ?list { ?row <${REC}justifiedAs> <${justification}> ; <${REC}matcherRule> ?rule } }`,
-    );
-    const rules = new Set(rows.flatMap((row) => row.get("rule")?.value ?? []));
+    const rules = values(`${JDG}matcherRule`);
     const [rule] = rules;
-    if (rules.size !== 1 || rule === undefined) {
+    if (rules.length !== 1 || rule === undefined) {
       failures.push(
-        `N6: the rule lists ${judgment.value} used give ${rules.size} matcher rules for ${justification}, not one`,
+        `N6: ${judgment.value} cites ${rules.length} matcher rules, not one`,
       );
       continue;
     }
@@ -393,6 +391,21 @@ async function namesFollowTheirRules(
     if (name !== judgment.value)
       failures.push(
         `N6: ${judgment.value} is not named from its members and what it used`,
+      );
+  }
+  for (const assertion of whole.subjects(TYPE, iri(`${JDG}ClaimAssertion`))) {
+    const [claim] = whole.objects(assertion, `${JDG}assertedClaim`);
+    const [version] = whole.objects(
+      assertion,
+      `${JDG}assertedUnderRuleListVersion`,
+    );
+    if (
+      claim === undefined ||
+      version === undefined ||
+      (await assertionName(version.value, claim.value)) !== assertion.value
+    )
+      failures.push(
+        `N6: ${assertion.value} is not named from its rule list version and its claim`,
       );
   }
 

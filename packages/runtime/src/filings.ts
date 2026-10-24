@@ -80,6 +80,6 @@ export async function fileReference(
       context.layout.place(`${REC}ReferenceSeries`),
       version,
     ),
-    ntriples(references.description(version)),
+    ntriples(await references.podDescription(version)),
   );
 }

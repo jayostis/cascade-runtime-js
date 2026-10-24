@@ -266,6 +266,27 @@ export class References {
       .filter(([, predicate]) => predicate.value !== SHIPS_WITH);
   }
 
+  /** What a pod states of a series or a version: its description, and, of a rule list version, its rows' query hashes. */
+  async podDescription(thing: string): Promise<Triple[]> {
+    const described = this.description(thing);
+    const series = this.seriesOf(thing);
+    if (series === undefined || this.kindOf(series) !== undefined)
+      return described;
+    const rows = new Graph(await this.rows(thing));
+    const hashes = new Set(
+      rows
+        .subjects(`${RDF}type`, iri(`${REC}RuleListRow`))
+        .flatMap((row) => rows.objects(row, `${REC}queryHash`))
+        .map(({ value }) => value),
+    );
+    return [
+      ...described,
+      ...[...hashes]
+        .sort()
+        .map((hash): Triple => [iri(thing), iri(`${REC}queryHash`), iri(hash)]),
+    ];
+  }
+
   isVersion(name: string): boolean {
     return this.index.match(iri(name), SPECIALIZATION_OF).length > 0;
   }
