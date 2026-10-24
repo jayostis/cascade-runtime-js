@@ -523,8 +523,10 @@ test("a connect is matched by default, so a hospital's server at a new path on i
   const fresh = await openPod();
   try {
     const first = await fresh.connect(await saved("hospital"));
+    assert.equal(first.matched?.refused, undefined);
     assert.deepEqual(first.matched?.wrote, []);
     const moved = await fresh.connect(await saved("hospital-at-a-new-path"));
+    assert.equal(moved.matched?.refused, undefined);
     assert.ok(moved.matched?.wrote.length);
     const sames = await fresh.ask({
       query: `${PREFIXES}SELECT ?base WHERE {

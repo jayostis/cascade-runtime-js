@@ -49,9 +49,14 @@ interface TakenRecord {
   readonly arrived: readonly [string, string];
   /** The act that generated each of its first revisions. */
   readonly activities: readonly string[];
+  /** For a server, the act that generated each of its revisions, first or later: a reconnect takes it (M1). */
+  readonly revisedBy: readonly string[];
 }
 
-/** The acts whose records a run takes: those with a first revision from any of them, or, for a sync's run, every one (M1). */
+/**
+ * The acts whose records a run takes: those with a first revision from any of them, and servers with any revision from
+ * one, or, for a sync's run, every one (M1).
+ */
 interface Takes {
   readonly acts: ReadonlySet<string>;
   readonly all: boolean;
@@ -61,7 +66,9 @@ function taken(record: TakenRecord, takes: Takes): boolean {
   return takes.all
     ? record.activities.length > 0 &&
         record.activities.every((act) => takes.acts.has(act))
-    : record.activities.some((act) => takes.acts.has(act));
+    : [...record.activities, ...record.revisedBy].some((act) =>
+        takes.acts.has(act),
+      );
 }
 
 /** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
@@ -201,7 +208,180 @@ function byArrival(a: TakenRecord, b: TakenRecord): number {
   return 0;
 }
 
-/** The records the matcher takes (M2), the pod's one subject's and each server's with a version, by name, each with its kind, current version and first revision's arrival. */
+interface FirstRevision {
+  readonly at: string | undefined;
+  readonly activities: readonly string[];
+}
+
+function takenRecord(
+  name: string,
+  classes: Iterable<string>,
+  version: string | undefined,
+  firsts: readonly FirstRevision[],
+  revisedBy: readonly string[],
+): TakenRecord {
+  if (
+    firsts.length === 0 ||
+    version === undefined ||
+    firsts.some(({ at }) => at === undefined)
+  )
+    throw new Refusal(`${name} has no first revision and current version`);
+  const [earliest = arrival(""), ...later] = firsts.map(({ at }) =>
+    arrival(at as string),
+  );
+  return {
+    name,
+    classes: new Set(classes),
+    version,
+    arrived: later.reduce(
+      (soonest, at) =>
+        at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
+          ? at
+          : soonest,
+      earliest,
+    ),
+    activities: [...new Set(firsts.flatMap(({ activities }) => activities))],
+    revisedBy,
+  };
+}
+
+/** The subject's records, each with its kind, current version and first revisions. */
+async function subjectRecords(
+  dataset: Dataset,
+  subject: string,
+): Promise<TakenRecord[]> {
+  const theirs = `?record a cascade:Record ; cascade:subject <${subject}> .`;
+  const records = await column(
+    dataset,
+    `SELECT DISTINCT ?record WHERE { ${theirs} }`,
+    "record",
+  );
+  const classes = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?record ?class WHERE { ${theirs} ?record a ?class }`,
+      "record",
+      "class",
+    ),
+  );
+  const versions = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?record ?version WHERE { ${theirs} ?record pav:hasCurrentVersion ?version }`,
+      "record",
+      "version",
+    ),
+  );
+  const firsts = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
+      "record",
+      "first",
+    ),
+  );
+  const times = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:generatedAtTime ?at }`,
+      "first",
+      "at",
+    ),
+  );
+  const activities = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
+      "first",
+      "activity",
+    ),
+  );
+  return records.flatMap(([name]) =>
+    name === undefined
+      ? []
+      : [
+          takenRecord(
+            name,
+            classes.get(name) ?? [],
+            versions.get(name)?.[0],
+            (firsts.get(name) ?? []).map((revision) => ({
+              at: times.get(revision)?.[0],
+              activities: activities.get(revision) ?? [],
+            })),
+            [],
+          ),
+        ],
+  );
+}
+
+/** Each server's record with a version, from one query, since a pod holds few; every revision's act is kept (M1). */
+async function serverRecords(dataset: Dataset): Promise<TakenRecord[]> {
+  const rows = await column(
+    dataset,
+    `SELECT DISTINCT ?record ?class ?version ?revision ?earlier ?at ?activity WHERE {
+      ?record a cascade:Server ; pav:hasCurrentVersion ?version ; a ?class .
+      OPTIONAL { ?revision cascade:revisionOf ?record
+        OPTIONAL { ?revision prov:wasRevisionOf ?earlier }
+        OPTIONAL { ?revision prov:generatedAtTime ?at }
+        OPTIONAL { ?revision prov:wasGeneratedBy ?activity } } }`,
+    "record",
+    "class",
+    "version",
+    "revision",
+    "earlier",
+    "at",
+    "activity",
+  );
+  interface Revision {
+    first: boolean;
+    at: string | undefined;
+    readonly activities: Set<string>;
+  }
+  const servers = new Map<
+    string,
+    {
+      readonly classes: Set<string>;
+      version: string | undefined;
+      readonly revisions: Map<string, Revision>;
+    }
+  >();
+  for (const [record, kind, version, revision, earlier, at, activity] of rows) {
+    if (record === undefined) continue;
+    const server = servers.get(record) ?? {
+      classes: new Set<string>(),
+      version,
+      revisions: new Map<string, Revision>(),
+    };
+    servers.set(record, server);
+    if (kind !== undefined) server.classes.add(kind);
+    if (revision === undefined) continue;
+    const found = server.revisions.get(revision) ?? {
+      first: true,
+      at,
+      activities: new Set<string>(),
+    };
+    server.revisions.set(revision, found);
+    if (earlier !== undefined) found.first = false;
+    if (activity !== undefined) found.activities.add(activity);
+  }
+  return [...servers].map(([name, { classes, version, revisions }]) => {
+    const all = [...revisions.values()];
+    return takenRecord(
+      name,
+      classes,
+      version,
+      all
+        .filter(({ first }) => first)
+        .map(({ at, activities }) => ({ at, activities: [...activities] })),
+      [...new Set(all.flatMap(({ activities }) => [...activities]))],
+    );
+  });
+}
+
+/**
+ * The records the matcher takes (M2), by name: the pod's subject's, if it has one, and each server's with a version,
+ * each with its kind, current version and first revisions' arrival.
+ */
 async function takenRecords(
   dataset: Dataset,
 ): Promise<Map<string, TakenRecord>> {
@@ -210,83 +390,14 @@ async function takenRecords(
     "SELECT DISTINCT ?subject WHERE { ?subject a cascade:Subject }",
     "subject",
   );
-  const [subject] = subjects;
-  if (subjects.length !== 1 || subject?.[0] === undefined)
+  if (subjects.length > 1)
     throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
-  const pattern = `{ ?record a cascade:Record ; cascade:subject <${subject[0]}> } UNION { ?record a cascade:Server ; pav:hasCurrentVersion ?serverVersion }`;
-  const records = await column(
-    dataset,
-    `SELECT DISTINCT ?record WHERE { ${pattern} }`,
-    "record",
-  );
-  const classes = grouped(
-    await column(
-      dataset,
-      `SELECT DISTINCT ?record ?class WHERE { ${pattern} ?record a ?class }`,
-      "record",
-      "class",
-    ),
-  );
-  const versions = grouped(
-    await column(
-      dataset,
-      `SELECT DISTINCT ?record ?version WHERE { ${pattern} ?record pav:hasCurrentVersion ?version }`,
-      "record",
-      "version",
-    ),
-  );
-  const firsts = grouped(
-    await column(
-      dataset,
-      `SELECT DISTINCT ?record ?first WHERE { ${pattern} ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
-      "record",
-      "first",
-    ),
-  );
-  const times = grouped(
-    await column(
-      dataset,
-      `SELECT DISTINCT ?first ?at WHERE { ${pattern} ?first cascade:revisionOf ?record ; prov:generatedAtTime ?at }`,
-      "first",
-      "at",
-    ),
-  );
-  const activities = grouped(
-    await column(
-      dataset,
-      `SELECT DISTINCT ?first ?activity WHERE { ${pattern} ?first cascade:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
-      "first",
-      "activity",
-    ),
-  );
-  const found = new Map<string, TakenRecord>();
-  for (const [name] of records) {
-    if (name === undefined) continue;
-    const first = firsts.get(name) ?? [];
-    const version = versions.get(name)?.[0];
-    const ats = first.map((revision) => times.get(revision)?.[0]);
-    if (first.length === 0 || version === undefined || ats.includes(undefined))
-      throw new Refusal(`${name} has no first revision and current version`);
-    const [earliest = arrival(""), ...later] = ats.map((at) =>
-      arrival(at as string),
-    );
-    found.set(name, {
-      name,
-      classes: new Set(classes.get(name) ?? []),
-      version,
-      arrived: later.reduce(
-        (soonest, at) =>
-          at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
-            ? at
-            : soonest,
-        earliest,
-      ),
-      activities: [
-        ...new Set(first.flatMap((revision) => activities.get(revision) ?? [])),
-      ],
-    });
-  }
-  return found;
+  const subject = subjects[0]?.[0];
+  const records = [
+    ...(subject === undefined ? [] : await subjectRecords(dataset, subject)),
+    ...(await serverRecords(dataset)),
+  ];
+  return new Map(records.map((record) => [record.name, record]));
 }
 
 const derivations = new WeakMap<Files, Promise<Derivations>>();

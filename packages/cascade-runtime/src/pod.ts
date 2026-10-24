@@ -115,7 +115,7 @@ export interface Pod {
   ): Promise<Imported>;
   /**
    * A connect to a server, saved as `connectFiles` saves it: its act and a version of the server's record (A16), and the
-   * matcher run taking the server (M18), on unless false.
+   * matcher run taking the server (M20), on unless false.
    */
   connect(saved: Exported, options?: { match?: boolean }): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
