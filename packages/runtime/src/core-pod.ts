@@ -6,7 +6,7 @@ import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
-import type { Layout } from "./layout.js";
+import { type Layout, SYNC } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import {
   actDescriptionName,
@@ -16,7 +16,7 @@ import {
   snapshotName,
 } from "./names.js";
 import { type Act, same, StepWrites } from "./pod.js";
-import { iri, literal, RDF, type Triple } from "./rdf.js";
+import { iri, literal, RDF, type Triple, XSD } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import {
@@ -80,6 +80,8 @@ export interface Performed {
   readonly activity?: string;
   /** The versions the pod names that the tables an open was given do not hold (O2). */
   readonly unheld?: readonly string[];
+  /** The files that arrived from another writer, which it wrote but its act did not (S3). */
+  readonly arrived?: readonly string[];
 }
 
 /** The build after a step failed: the step itself is in the pod, as `performed` says. */
@@ -202,47 +204,131 @@ export async function podRevision(
   return documentName(bytes);
 }
 
-/**
- * The snapshots the pod's act files hold, and its heads: those no snapshot they hold names as a parent, in code point
- * order. Only the files in the folders the layout gives acts are read.
- */
-async function snapshotsHeld(
-  pod: Files,
-  layout: Layout,
+/** What an act's file holds of the chain: its snapshot, the act that generated it, the parents and set hash it names, whether the act is a sync. */
+interface ActFile {
+  readonly snapshot?: string;
+  readonly act?: string;
+  readonly parents: readonly string[];
+  readonly setHash?: string;
+  readonly sync: boolean;
+}
+
+/** Reads what the act's file holds of the chain; a file naming no snapshot is not parsed. */
+async function actFileOf(
+  bytes: Uint8Array,
+  base: string,
   newStore: StoreFactory,
-): Promise<{
-  readonly snapshots: ReadonlySet<string>;
-  readonly heads: string[];
-}> {
-  const folders = layout.placements.flatMap(({ kind, folder }) =>
-    kind === `${PROV}Activity` && folder !== undefined ? [folder] : [],
-  );
-  const snapshots = new Set<string>();
-  const parents = new Set<string>();
-  for (const path of await pod.list("")) {
-    if (!folders.some((folder) => path.startsWith(folder))) continue;
-    const bytes = await pod.read(path);
+): Promise<ActFile> {
+  if (!new TextDecoder().decode(bytes).includes("Snapshot"))
+    return { parents: [], sync: false };
+  const triples = await newStore().parse(bytes, base);
+  let snapshot: string | undefined;
+  const syncs = new Set<string>();
+  for (const [s, p, o] of triples) {
+    if (p.value !== TYPE) continue;
+    if (o.value === `${CASCADE}Snapshot`) snapshot ??= s.value;
+    if (o.value === SYNC) syncs.add(s.value);
+  }
+  let act: string | undefined;
+  let setHash: string | undefined;
+  const parents: string[] = [];
+  for (const [s, p, o] of triples) {
+    if (s.value !== snapshot) continue;
+    if (p.value === `${PROV}wasGeneratedBy`) act = o.value;
+    if (p.value === `${CASCADE}setHash`) setHash = o.value;
     if (
-      bytes === undefined ||
-      !new TextDecoder().decode(bytes).includes(`${CASCADE}Snapshot`)
+      p.value === `${CASCADE}firstParentSnapshot` ||
+      p.value === `${CASCADE}mergedParentSnapshot`
     )
-      continue;
-    for (const [s, p, o] of await newStore().parse(bytes, pod.iri + path)) {
-      if (p.value === TYPE && o.value === `${CASCADE}Snapshot`)
-        snapshots.add(s.value);
-      if (
-        p.value === `${CASCADE}firstParentSnapshot` ||
-        p.value === `${CASCADE}mergedParentSnapshot`
-      )
-        parents.add(o.value);
-    }
+      parents.push(o.value);
   }
   return {
-    snapshots,
-    heads: [...snapshots]
-      .filter((snapshot) => !parents.has(snapshot))
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    ...(snapshot === undefined ? {} : { snapshot }),
+    ...(act === undefined ? {} : { act }),
+    ...(setHash === undefined ? {} : { setHash }),
+    parents,
+    sync: act !== undefined && syncs.has(act),
   };
+}
+
+/** The act files by the snapshot each holds. */
+function bySnapshot(files: Iterable<ActFile>): Map<string, ActFile> {
+  const found = new Map<string, ActFile>();
+  for (const file of files)
+    if (file.snapshot !== undefined) found.set(file.snapshot, file);
+  return found;
+}
+
+/** The heads among the snapshots the act files hold: those none of them names as a parent, in code point order. */
+function headsOf(files: Iterable<ActFile>): string[] {
+  const snapshots = new Set<string>();
+  const parents = new Set<string>();
+  for (const file of files) {
+    if (file.snapshot !== undefined) snapshots.add(file.snapshot);
+    for (const parent of file.parents) parents.add(parent);
+  }
+  return [...snapshots]
+    .filter((snapshot) => !parents.has(snapshot))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** The snapshot and each it descends from, as far as the snapshots held go. */
+function ancestorsOf(
+  snapshot: string,
+  held: ReadonlyMap<string, ActFile>,
+): Set<string> {
+  const found = new Set<string>([snapshot]);
+  const next = [snapshot];
+  for (let at = next.pop(); at !== undefined; at = next.pop())
+    for (const parent of held.get(at)?.parents ?? [])
+      if (!found.has(parent)) {
+        found.add(parent);
+        next.push(parent);
+      }
+  return found;
+}
+
+/** The act files, each after those holding its snapshot's parents, else in path order (W1). */
+function parentsFirst<
+  T extends { readonly path: string; readonly file: ActFile },
+>(acts: readonly T[]): T[] {
+  const held = new Map(
+    acts.flatMap((act) =>
+      act.file.snapshot === undefined
+        ? []
+        : [[act.file.snapshot, act] as const],
+    ),
+  );
+  const placed = new Set<T>();
+  const visiting = new Set<T>();
+  const ordered: T[] = [];
+  for (const start of [...acts].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+    const stack: [T, number][] = [[start, 0]];
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1] as [T, number];
+      const [act, index] = top;
+      visiting.add(act);
+      if (placed.has(act)) {
+        stack.pop();
+        continue;
+      }
+      const parent = held.get(act.file.parents[index] ?? "");
+      if (index < act.file.parents.length) {
+        top[1] = index + 1;
+        if (
+          parent !== undefined &&
+          !placed.has(parent) &&
+          !visiting.has(parent)
+        )
+          stack.push([parent, 0]);
+        continue;
+      }
+      placed.add(act);
+      ordered.push(act);
+      stack.pop();
+    }
+  }
+  return ordered;
 }
 
 /** A copy of the pod's files, in memory. */
@@ -270,6 +356,10 @@ export class CorePod {
   #headHeld = false;
   /** The SHA-256 of each file of the set read so far, by path: no file, once written, changes. */
   readonly #digests = new Map<string, Uint8Array>();
+  /** What each act file of the pod read or written so far holds of the chain, by path. */
+  readonly #chain = new Map<string, ActFile>();
+  /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
+  #writing = new Map<string, ActFile>();
 
   /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
@@ -417,7 +507,134 @@ export class CorePod {
     return unheld.length === 0 ? performed : { ...performed, unheld };
   }
 
-  /** A matcher run taking the import or entry session given, or, given none, a recheck (M7). */
+  /**
+   * Another writer's files arriving (S1 to S4): each file it holds that the pod lacks, in a folder the layout gives by
+   * solid:instanceContainer but the views', is written in W1's order, the stored documents' bytes first, then the other
+   * files of the set, then the act files, parents first. A sync is written last whenever the pod holds an act, other
+   * than a sync, whose snapshot is no ancestor of the writer's last, naming each such act; with none, a writer that
+   * then holds one head takes it as its last snapshot, as git fast-forwards. What it writes depends on what the pod
+   * holds, never on what this call wrote, so a call that stops partway and is made again writes the same sync. Only
+   * the files that arrived and the act files not read before are read.
+   */
+  async receive(other: Pick<Files, "list" | "read">): Promise<Performed> {
+    const arrived: string[] = [];
+    let fastForward: Head | undefined;
+    const performed = await this.#step(
+      async ({ pod, layout, time, writes, newStore }) => {
+        const held = new Set(await pod.list(""));
+        const stored: [string, Uint8Array][] = [];
+        const others: [string, Uint8Array][] = [];
+        const acts: { path: string; bytes: Uint8Array; file: ActFile }[] = [];
+        for (const path of await other.list("")) {
+          if (
+            held.has(path) ||
+            !(layout.inSnapshotSet(path) || layout.inSyncsFolder(path))
+          )
+            continue;
+          const bytes = await other.read(path);
+          if (bytes === undefined) continue;
+          if (layout.inActFolder(path))
+            acts.push({
+              path,
+              bytes,
+              file: await actFileOf(bytes, pod.iri + path, newStore),
+            });
+          else
+            (layout.inStoredBytes(path) ? stored : others).push([path, bytes]);
+        }
+        stored.sort(([a], [b]) => (a < b ? -1 : 1));
+        others.sort(([a], [b]) => (a < b ? -1 : 1));
+        for (const [path, bytes] of [
+          ...stored,
+          ...others,
+          ...parentsFirst(acts).map(
+            ({ path, bytes }) => [path, bytes] as const,
+          ),
+        ]) {
+          writes.arrive(path, bytes);
+          arrived.push(path);
+        }
+        for (const { path, file } of acts) this.#writing.set(path, file);
+        const chain = await this.#chainHeld();
+        const snapshots = bySnapshot(chain);
+        const head =
+          this.#head !== undefined && snapshots.has(this.#head.snapshot)
+            ? this.#head.snapshot
+            : undefined;
+        const merged =
+          head === undefined ? new Set<string>() : ancestorsOf(head, snapshots);
+        const unmerged = new Set(
+          chain.flatMap(({ snapshot, act, sync }) =>
+            snapshot === undefined ||
+            act === undefined ||
+            sync ||
+            merged.has(snapshot)
+              ? []
+              : [act],
+          ),
+        );
+        if (unmerged.size === 0) {
+          const heads = headsOf(chain);
+          const setHash = snapshots.get(heads[0] ?? "")?.setHash;
+          if (heads.length === 1 && heads[0] !== head && setHash !== undefined)
+            fastForward = { snapshot: heads[0] as string, setHash };
+          return undefined;
+        }
+        const name = time.newId();
+        const sync = iri(name);
+        writes.act({
+          name,
+          path: layout.place(SYNC).path(name),
+          triples: [
+            [sync, iri(TYPE), iri(`${PROV}Activity`)],
+            [sync, iri(TYPE), iri(SYNC)],
+            [
+              sync,
+              iri(`${PROV}startedAtTime`),
+              literal(time.now(), `${XSD}dateTime`),
+            ],
+            ...[...unmerged]
+              .sort()
+              .map((act): Triple => [
+                sync,
+                iri(`${PROV}wasInformedBy`),
+                iri(act),
+              ]),
+          ],
+        });
+        return name;
+      },
+    );
+    if (performed.refused !== undefined) return performed;
+    if (fastForward !== undefined) {
+      this.#head = fastForward;
+      this.#headHeld = true;
+      await this.#options.keepHead?.(fastForward).catch(() => undefined);
+    }
+    return { ...performed, arrived };
+  }
+
+  /**
+   * What every act file the pod holds, and every one the step in progress writes, holds of the chain. Only act files
+   * not read before are read.
+   */
+  async #chainHeld(): Promise<ActFile[]> {
+    const { pod, layout, newStore } = this.#options;
+    for (const path of await pod.list("")) {
+      if (
+        this.#chain.has(path) ||
+        this.#writing.has(path) ||
+        !layout.inActFolder(path)
+      )
+        continue;
+      const bytes = await pod.read(path);
+      if (bytes !== undefined)
+        this.#chain.set(path, await actFileOf(bytes, pod.iri + path, newStore));
+    }
+    return [...this.#chain.values(), ...this.#writing.values()];
+  }
+
+  /** A matcher run taking the import or entry session given, or the records a sync brought, or, given none, a recheck (M7). */
   match(activity?: string): Promise<Performed> {
     return this.#step(async (context) =>
       runMatcher(context, await this.#tables(), activity),
@@ -481,8 +698,23 @@ export class CorePod {
     fork.#references = this.#references;
     fork.#head = this.#head;
     fork.#headHeld = this.#headHeld;
+    for (const [path, file] of this.#chain) fork.#chain.set(path, file);
     if (this.#readShapes !== undefined) fork.#holdShapes(this.#readShapes);
     return fork;
+  }
+
+  /** A second writer of the pod: over a copy of its files, with no snapshot of its own, a new writer (N14). */
+  async newWriter(): Promise<CorePod> {
+    const writer = new CorePod({
+      ...this.#options,
+      pod: await copied(this.#options.pod),
+      head: undefined,
+      keepHead: undefined,
+    });
+    writer.#references = this.#references;
+    for (const [path, file] of this.#chain) writer.#chain.set(path, file);
+    if (this.#readShapes !== undefined) writer.#holdShapes(this.#readShapes);
+    return writer;
   }
 
   #tables(): Promise<References> {
@@ -529,11 +761,15 @@ export class CorePod {
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
       });
       let head: Head | undefined;
-      const wrote = await writes.commit(options.pod, async (act, fresh) => {
-        const finished = await this.#finished(act, fresh);
-        head = finished.head;
-        return finished.triples;
-      });
+      const wrote = await writes.commit(
+        options.pod,
+        async (act, fresh, arrived) => {
+          const finished = await this.#finished(act, fresh, arrived);
+          head = finished.head;
+          return finished.triples;
+        },
+      );
+      for (const [path, file] of this.#writing) this.#chain.set(path, file);
       if (head !== undefined) {
         this.#head = head;
         this.#headHeld = true;
@@ -546,6 +782,7 @@ export class CorePod {
       performed = { wrote: [], refused: error.message };
     } finally {
       this.#kept = new Map();
+      this.#writing = new Map();
     }
     if (options.build !== undefined) {
       try {
@@ -560,14 +797,16 @@ export class CorePod {
   /**
    * What an act's file holds beside its description: the runtime that performed it (N7) and its snapshot (N14), chained
    * to the writer's last. A writer with none, or whose last the pod does not hold, is a new writer, whose snapshot merges
-   * every head the pod holds. The set hash is over every file of the set the pod holds once the step's other files are
-   * written; the snapshot names only the files of the set the act wrote, its own among them.
+   * every head the pod holds; a sync's merges every head the pod holds but its first parent (S3). The set hash is over
+   * every file of the set the pod holds once the step's other files are written; the snapshot names only the files of
+   * the set the act wrote, its own among them unless a sync's, which is outside the set.
    */
   async #finished(
     act: Act,
     fresh: readonly (readonly [string, Uint8Array])[],
+    arrived: ReadonlySet<string>,
   ): Promise<{ readonly triples: Triple[]; readonly head: Head }> {
-    const { pod, layout, runtime, newStore } = this.#options;
+    const { pod, layout, runtime } = this.#options;
     const written = new Map(fresh);
     const set = [...new Set([...(await pod.list("")), ...written.keys()])]
       .filter((path) => path !== act.path && layout.inSnapshotSet(path))
@@ -585,13 +824,23 @@ export class CorePod {
       files.push([path, digest]);
     }
     const hash = await setHash(files);
+    const sync = act.triples.some(
+      ([, p, o]) => p.value === TYPE && o.value === SYNC,
+    );
     let first = this.#head;
     let merged: string[] = [];
-    if (first === undefined || !this.#headHeld) {
-      const held = await snapshotsHeld(pod, layout, newStore);
-      if (first !== undefined && !held.snapshots.has(first.snapshot))
+    if (first === undefined || !this.#headHeld || sync) {
+      const chain = await this.#chainHeld();
+      const snapshots = bySnapshot(chain);
+      if (first !== undefined && !snapshots.has(first.snapshot))
         first = undefined;
-      if (first === undefined) merged = held.heads;
+      const heads = headsOf(chain);
+      merged =
+        first === undefined
+          ? heads
+          : sync
+            ? heads.filter((head) => head !== first?.snapshot)
+            : [];
     }
     const agent = iri(runtime);
     const description: Triple[] = [
@@ -607,10 +856,16 @@ export class CorePod {
       setHash: hash,
     });
     const node = iri(snapshot);
-    const added = [
-      ...[...written.keys()].filter((path) => layout.inSnapshotSet(path)),
-      act.path,
-    ];
+    this.#writing.set(act.path, {
+      snapshot,
+      act: act.name,
+      parents: [...(first === undefined ? [] : [first.snapshot]), ...merged],
+      setHash: hash,
+      sync,
+    });
+    const added = [...written.keys(), act.path].filter(
+      (path) => !arrived.has(path) && layout.inSnapshotSet(path),
+    );
     return {
       head: { snapshot, setHash: hash },
       triples: [
