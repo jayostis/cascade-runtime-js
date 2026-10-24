@@ -11,30 +11,68 @@ export interface KeptSet {
   /** How many files the set holds. */
   readonly files: number;
   /**
-   * The sum modulo 2^256 of the SHA-256 of each file's path, in hex: what the set's paths are checked against when the
-   * writer next opens the pod, without reading a file.
+   * The set's paths as `PathBuckets.digest` hashes them, in hex: what the pod's listing is checked against when the
+   * writer next opens it, without reading a file.
    */
   readonly paths: string;
 }
 
-const PATH_SUM_MODULUS = 1n << 256n;
+const BUCKETS = 256;
 
 let hashing: Promise<IHasher> | undefined;
 
-/** The SHA-256 of each path read as a number, summed modulo 2^256. */
-async function pathSum(paths: Iterable<string>): Promise<bigint> {
-  hashing ??= createSHA256();
-  const hasher = await hashing;
-  let sum = 0n;
-  for (const path of paths) {
-    hasher.init();
-    hasher.update(path);
-    const digest = hasher.digest("binary");
-    const words = new DataView(digest.buffer, digest.byteOffset, 32);
-    for (let offset = 0; offset < 32; offset += 8)
-      sum += words.getBigUint64(offset) << BigInt(192 - offset * 8);
+/** The bucket of the path: the low byte of its 32-bit FNV-1a over its UTF-16 code units. */
+function bucketOf(path: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < path.length; index++) {
+    hash ^= path.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
   }
-  return sum % PATH_SUM_MODULUS;
+  return hash & (BUCKETS - 1);
+}
+
+/**
+ * The paths of a set in 256 buckets, so that its digest after a few paths are added hashes again only their buckets.
+ * The digest is the SHA-256 of each bucket's SHA-256 in hex, in bucket order, a bucket's being over its paths in
+ * UTF-16 code unit order, each followed by a 0x00 byte: two sets of paths have one digest only when they are one set.
+ */
+class PathBuckets {
+  readonly #paths: string[][];
+  readonly #digests: (string | undefined)[];
+
+  constructor(paths: Iterable<string> = [], from?: PathBuckets) {
+    this.#paths =
+      from === undefined ? [] : from.#paths.map((bucket) => [...bucket]);
+    this.#digests = from === undefined ? [] : [...from.#digests];
+    for (let bucket = this.#paths.length; bucket < BUCKETS; bucket++)
+      this.#paths.push([]);
+    for (const path of paths) this.add(path);
+  }
+
+  add(path: string): void {
+    const bucket = bucketOf(path);
+    this.#paths[bucket]?.push(path);
+    this.#digests[bucket] = undefined;
+  }
+
+  copy(): PathBuckets {
+    return new PathBuckets([], this);
+  }
+
+  async digest(): Promise<string> {
+    hashing ??= createSHA256();
+    const hasher = await hashing;
+    for (let bucket = 0; bucket < BUCKETS; bucket++) {
+      if (this.#digests[bucket] !== undefined) continue;
+      const paths = (this.#paths[bucket] ?? []).sort();
+      hasher.init();
+      if (paths.length > 0) hasher.update(`${paths.join("\0")}\0`);
+      this.#digests[bucket] = hasher.digest("hex");
+    }
+    hasher.init();
+    hasher.update(this.#digests.join(""));
+    return hasher.digest("hex");
+  }
 }
 
 function hexOf(bytes: Uint8Array): string {
@@ -52,17 +90,17 @@ function bytesOf(text: string): Uint8Array | undefined {
 /** The files of the set a writer has hashed, by path, and their product. */
 export class HashedSet {
   readonly #paths: Set<string>;
+  readonly #buckets: PathBuckets;
   readonly #product: SetHashProduct;
-  #pathSum: bigint;
 
   private constructor(
     paths: Set<string>,
+    buckets: PathBuckets,
     product: SetHashProduct,
-    sum: bigint,
   ) {
     this.#paths = paths;
+    this.#buckets = buckets;
     this.#product = product;
-    this.#pathSum = sum;
   }
 
   /** The set of the files, each given by its path and the SHA-256 of its bytes, every member multiplied in. */
@@ -71,12 +109,12 @@ export class HashedSet {
     await product.add(files);
     return new HashedSet(
       new Set(files.keys()),
+      new PathBuckets(files.keys()),
       product,
-      await pathSum(files.keys()),
     );
   }
 
-  /** The set kept as `kept()` wrote it, when the paths are its files; undefined otherwise. */
+  /** The set kept as `kept()` wrote it, when the paths are exactly its files; undefined otherwise. */
   static async kept(
     kept: KeptSet,
     paths: ReadonlySet<string>,
@@ -86,37 +124,39 @@ export class HashedSet {
     const product =
       bytes === undefined ? undefined : SetHashProduct.read(bytes);
     if (product === undefined) return undefined;
-    const sum = await pathSum(paths);
-    if (sum.toString(16).padStart(64, "0") !== kept.paths) return undefined;
-    return new HashedSet(new Set(paths), product, sum);
+    const buckets = new PathBuckets(paths);
+    if ((await buckets.digest()) !== kept.paths) return undefined;
+    return new HashedSet(new Set(paths), buckets, product);
   }
 
   /**
-   * The paths given that it does not hold and `inSet` takes; undefined when a file it holds is not among the paths.
-   * Only a path it does not hold is given to `inSet`, and no path is given twice.
+   * The paths given that it does not hold and `inSet` takes, each once; undefined when a file it holds is not among
+   * the paths. Only a path it does not hold is given to `inSet`.
    */
   missing(
     paths: Iterable<string>,
     inSet: (path: string) => boolean,
   ): string[] | undefined {
     let held = 0;
-    const missing = new Set<string>();
-    for (const path of paths)
+    const missing: string[] = [];
+    for (const path of new Set(paths))
       if (this.#paths.has(path)) held++;
-      else if (inSet(path)) missing.add(path);
-    return held === this.#paths.size ? [...missing] : undefined;
+      else if (inSet(path)) missing.push(path);
+    return held === this.#paths.size ? missing : undefined;
   }
 
-  /** Adds each file it does not hold, given by its path and the SHA-256 of its bytes. */
+  /** Adds each file it does not hold, given by its path and the SHA-256 of its bytes; a path given twice is added once. */
   async add(
     files: Iterable<readonly [path: string, sha256: Uint8Array]>,
   ): Promise<void> {
-    const added = [...files].filter(([path]) => !this.#paths.has(path));
+    const added = new Map<string, Uint8Array>();
+    for (const [path, digest] of files)
+      if (!this.#paths.has(path) && !added.has(path)) added.set(path, digest);
     await this.#product.add(added);
-    for (const [path] of added) this.#paths.add(path);
-    this.#pathSum =
-      (this.#pathSum + (await pathSum(added.map(([path]) => path)))) %
-      PATH_SUM_MODULUS;
+    for (const path of added.keys()) {
+      this.#paths.add(path);
+      this.#buckets.add(path);
+    }
   }
 
   setHash(): Promise<string> {
@@ -126,16 +166,16 @@ export class HashedSet {
   copy(): HashedSet {
     return new HashedSet(
       new Set(this.#paths),
+      this.#buckets.copy(),
       this.#product.copy(),
-      this.#pathSum,
     );
   }
 
-  kept(): KeptSet {
+  async kept(): Promise<KeptSet> {
     return {
       product: hexOf(this.#product.bytes()),
       files: this.#paths.size,
-      paths: this.#pathSum.toString(16).padStart(64, "0"),
+      paths: await this.#buckets.digest(),
     };
   }
 }

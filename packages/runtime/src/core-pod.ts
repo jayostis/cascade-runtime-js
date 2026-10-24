@@ -665,7 +665,7 @@ export class CorePod {
     if (fastForward !== undefined) {
       const hashed = await this.#hashedSet(new Map());
       this.#hashed = hashed;
-      fastForward = { ...fastForward, set: hashed.kept() };
+      fastForward = { ...fastForward, set: await hashed.kept() };
       this.#head = fastForward;
       this.#headHeld = true;
       await this.#options.keepHead?.(fastForward).catch(() => undefined);
@@ -796,6 +796,7 @@ export class CorePod {
       keepHead: undefined,
     });
     writer.#references = this.#references;
+    writer.#hashed = this.#hashed?.copy();
     for (const [path, file] of this.#chain) writer.#chain.set(path, file);
     if (this.#readShapes !== undefined) writer.#holdShapes(this.#readShapes);
     return writer;
@@ -882,14 +883,11 @@ export class CorePod {
         },
       );
       for (const [path, file] of this.#writing) this.#chain.set(path, file);
-      if (head !== undefined && hashed !== undefined) {
-        const { set, act } = hashed;
-        if (options.layout.inSnapshotSet(act))
-          await set.add([[act, await this.#digestOf(act, new Map())]]);
-        this.#hashed = set;
-        head = { ...head, set: set.kept() };
+      if (head !== undefined) {
         this.#head = head;
         this.#headHeld = true;
+        const kept = await this.#keptAfter(hashed);
+        if (kept !== undefined) this.#head = head = { ...head, set: kept };
         await options.keepHead?.(head).catch(() => undefined);
       }
       performed =
@@ -1037,6 +1035,26 @@ export class CorePod {
       return HashedSet.of(await digests(new Set(paths.filter(inSet))));
     await held.add(await digests(missing));
     return held;
+  }
+
+  /**
+   * What the writer keeps of the set its act hashed, with the act's own file once written unless a sync's; held from
+   * then on. When the act's file cannot be read back, nothing is held or kept, and the next act hashes the whole set.
+   */
+  async #keptAfter(
+    hashed: { readonly set: HashedSet; readonly act: string } | undefined,
+  ): Promise<KeptSet | undefined> {
+    if (hashed === undefined) return undefined;
+    const { set, act } = hashed;
+    try {
+      if (this.#options.layout.inSnapshotSet(act))
+        await set.add([[act, await this.#digestOf(act, new Map())]]);
+      const kept = await set.kept();
+      this.#hashed = set;
+      return kept;
+    } catch {
+      return undefined;
+    }
   }
 
   /** The SHA-256 of the file's bytes, as written or as the pod holds them. */
