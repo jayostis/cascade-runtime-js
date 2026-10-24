@@ -1323,10 +1323,24 @@ const DEFINITIONS: Definition[] = [
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
+      const hashed = `<${REC}queryHash>`;
       for (const [thing, said] of described) {
+        const held = heldTriples.filter((triple) =>
+          triple.startsWith(`<${thing}> `),
+        );
+        const hashes = held.filter((triple) =>
+          triple.startsWith(`<${thing}> ${hashed} `),
+        );
+        if (
+          hashes.length > 0 !==
+          (await reading.words.isRuleListVersion(thing))
+        )
+          wrong.push(
+            `${reading.words.shown(thing)} gives ${hashes.length} query hashes, and is ${hashes.length > 0 ? "no" : "a"} rule list version`,
+          );
         const why = compared(
           said,
-          heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
+          held.filter((triple) => !hashes.includes(triple)),
         );
         if (why !== undefined)
           wrong.push(

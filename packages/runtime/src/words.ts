@@ -248,6 +248,16 @@ export class Words {
       .map((triple) => triple.map(written).join(" "));
   }
 
+  /** Whether references.ttl lists the name as a version of a series of no table kind: a version of a rule list. */
+  async isRuleListVersion(name: string): Promise<boolean> {
+    const index = await this.#references_();
+    const [series] = index.objects(iri(name), `${PROV}specializationOf`);
+    return (
+      series !== undefined &&
+      index.objects(series, `${REC}tableKind`).length === 0
+    );
+  }
+
   /** A reference series by its label, or a version as `<label> version <version>`, as references.ttl names it. */
   async reference(words: string): Promise<string | undefined> {
     const index = await this.#references_();

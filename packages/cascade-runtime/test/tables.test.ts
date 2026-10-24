@@ -587,7 +587,8 @@ ${records.join("\n")}`);
     const { shipped } = await ruleList();
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment cascade:justification cascade:SameConvertedCode ; prov:used <${converted}> , <${shipped}> ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameConvertedCode ; prov:used <${converted}> ; prov:hadMember ?record .
+        ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
         ?record pav:hasCurrentVersion/cascade:icd10Code ?code
       } GROUP BY ?judgment`,
     });
@@ -599,7 +600,8 @@ ${records.join("\n")}`);
     );
     const episodes = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?onset); separator=" ") AS ?onsets) WHERE {
-        ?judgment cascade:justification cascade:SameCodeAndPeriod ; prov:used <${shipped}> ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameCodeAndPeriod ; prov:hadMember ?record .
+        ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
         ?record pav:hasCurrentVersion/cascade:onsetDate ?onset
       } GROUP BY ?judgment`,
     });

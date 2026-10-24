@@ -12,6 +12,7 @@ import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
 const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
+const ASSERTION = "https://ns.cascadeprotocol.org/cascade#ClaimAssertion";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 /** The example replayed, its story's files those `source` gives for its folder, and otherwise the vocabulary's. */
@@ -52,10 +53,19 @@ test("an open writes its judgments first and the descriptions of the versions it
     kinds.push(
       triples.some(([, , object]) => object.value === JUDGMENT)
         ? "judgment"
-        : `version ${version?.[2].value ?? "?"}`,
+        : triples.some(([, , object]) => object.value === ASSERTION)
+          ? "assertion"
+          : `version ${version?.[2].value ?? "?"}`,
     );
   }
-  assert.deepEqual(kinds, ["judgment", "judgment", "version 2", "version 3"]);
+  assert.deepEqual(kinds, [
+    "judgment",
+    "assertion",
+    "judgment",
+    "assertion",
+    "version 2",
+    "version 3",
+  ]);
 });
 
 test("an open of a pod on series the tables lack writes nothing of them and names their versions as unheld (O2)", async () => {
@@ -105,11 +115,11 @@ test("an open whose tables list another version of the pod's rule list matches n
   assert.deepEqual(opened?.unheld, [`urn:uuid:${rules}`]);
 });
 
-test("an open on a clock that moves between judgments files each Same once when its recheck and its new joins both give it (O1)", async () => {
+test("an open on a clock that moves between judgments writes nothing for a claim its recheck and its new joins both reach, asserted with the query the adopted rule list runs (O1, M9)", async () => {
   const files = await vocabulary();
   const { story, folder } = await storyFrom(
     FEATURE,
-    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair",
+    "a rule list the pod names that M11 now refuses joins nothing, so the adopted rule list judges every pair, and finds each claim asserted with the query it runs",
   );
   const pod = new MemoryFiles(story.address);
   await replay({
@@ -146,10 +156,15 @@ test("an open on a clock that moves between judgments files each Same once when 
       pod.iri + path,
       newStore,
     );
-    if (triples.some(([, , object]) => object.value === JUDGMENT))
+    if (
+      triples.some(
+        ([, , object]) =>
+          object.value === JUDGMENT || object.value === ASSERTION,
+      )
+    )
       judgments.push(path);
   }
-  assert.equal(judgments.length, 2);
+  assert.deepEqual(judgments, []);
 });
 
 test("a refused open leaves the pod matching with the tables it had", async () => {

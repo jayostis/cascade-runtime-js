@@ -672,7 +672,9 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
       assert.equal(replayed.opened, undefined);
       const used = await replayed.ask({
         query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
-          ?judgment prov:wasAttributedTo <${MATCHER}> ; prov:used ?version .
+          ?judgment prov:wasAttributedTo <${MATCHER}> .
+          { ?judgment prov:used ?version }
+          UNION { ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion ?version }
           ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       });
       const cited = used.map(({ version }) => version ?? "");

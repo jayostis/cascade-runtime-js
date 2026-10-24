@@ -287,8 +287,10 @@ export async function matcherView(
 /** What the matcher reads of the pod and its derived state, before any table's rows are added to it. */
 interface Pod {
   readonly held: ReadonlySet<string>;
-  /** The entry each of the subject's records is in, as the derived state gives it before the run. */
-  readonly entryOf: ReadonlyMap<string, string>;
+  /** The members of each Same that counts under the lens before the run. */
+  readonly sames: readonly (readonly string[])[];
+  /** Each ordered pair of records that are currently different. */
+  readonly different: ReadonlySet<string>;
   /** The query hashes each claim is asserted with. */
   readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
@@ -375,6 +377,13 @@ class Matcher {
   readonly #descriptions = new Map<string, Uint8Array>();
   /** The Sames the run has written, which its recheck and its new joins may both give. */
   readonly #filed = new Set<string>();
+  #sames?: (readonly string[])[];
+
+  /** The members of each Same that counts: the pod's, then each the run files. */
+  private get sames(): (readonly string[])[] {
+    this.#sames ??= [...this.pod.sames];
+    return this.#sames;
+  }
 
   private constructor(
     readonly context: StepContext,
@@ -617,6 +626,7 @@ class Matcher {
     const asserted = this.pod.asserted.get(name);
     if (asserted?.has(rule.hash) === true || this.#filed.has(name)) return;
     this.#filed.add(name);
+    this.sames.push(names);
     const claim = iri(name);
     const matcher = iri(MATCHER);
     if (!this.pod.held.has(name))
@@ -660,20 +670,46 @@ class Matcher {
 
   /**
    * The record and, of each entry among the records it matched, the least of those it matched, in code point order of
-   * their names: a star, so a record matched with every earlier copy of one fact names one of them (M5).
+   * their names: a star, so a record matched with every earlier copy of one fact names one of them (M5). The entries
+   * are those the counting Sames make as same-pairs.rq derives them, with the Sames the run has filed so far and
+   * without any Same that holds the record, so a run again over the same records reaches the same claims (M9).
    */
   private star(
     record: SubjectRecord,
     matched: readonly SubjectRecord[],
   ): SubjectRecord[] {
-    const least = new Map<string, SubjectRecord>();
-    for (const other of matched) {
-      const entry = this.pod.entryOf.get(other.name) ?? other.name;
-      const was = least.get(entry);
-      if (was === undefined || byCodePoint(other.name, was.name) < 0)
-        least.set(entry, other);
+    const parent = new Map<string, string>();
+    const root = (name: string): string => {
+      let at = name;
+      for (
+        let up = parent.get(at);
+        up !== undefined && up !== at;
+        up = parent.get(at)
+      )
+        at = up;
+      parent.set(name, at);
+      return at;
+    };
+    const { different } = this.pod;
+    for (const members of this.sames) {
+      if (members.includes(record.name)) continue;
+      const split = members.some((one) =>
+        members.some((other) => different.has(pair(one, other))),
+      );
+      const [least = ""] = [...members].sort(byCodePoint);
+      for (const one of members)
+        for (const other of split ? members : [least])
+          if (one !== other && !different.has(pair(one, other)))
+            parent.set(root(one), root(other));
     }
-    return [record, ...least.values()];
+    const kept = new Map<string, SubjectRecord>();
+    for (const other of matched) {
+      const entry = root(other.name);
+      const was = kept.get(entry);
+      if (was === undefined || byCodePoint(other.name, was.name) < 0)
+        kept.set(entry, other);
+    }
+    return [record, ...kept.values()];
   }
 
   /** Files a Same for each record taken, in arrival order, of it and what it joins among the records before it (M3-M5). */
@@ -834,11 +870,19 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       "member",
     ),
   );
-  const entries = await column(
+  const sames = grouped(
+    await column(
+      dataset,
+      "SELECT DISTINCT ?same ?member WHERE { ?same cascade:countsUnderLens true ; cascade:verdict cascade:Same ; prov:hadMember ?member }",
+      "same",
+      "member",
+    ),
+  );
+  const different = await column(
     dataset,
-    "SELECT DISTINCT ?record ?entry WHERE { ?record cascade:inEntry ?entry }",
+    "SELECT DISTINCT ?record ?other WHERE { ?record cascade:currentlyDifferent ?other }",
     "record",
-    "entry",
+    "other",
   );
   const asserted = grouped(
     await column(
@@ -850,10 +894,12 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
   );
   return {
     held: new Set(held.flatMap(([thing]) => thing ?? [])),
-    entryOf: new Map(
-      entries.flatMap(([record, entry]) =>
-        record === undefined || entry === undefined ? [] : [[record, entry]],
-      ),
+    sames: [...sames.values()],
+    different: new Set(
+      different.flatMap(([record, other]) => [
+        pair(record, other),
+        pair(other, record),
+      ]),
     ),
     asserted: new Map(
       [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
