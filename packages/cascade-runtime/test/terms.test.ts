@@ -9,8 +9,8 @@ import {
   readConfig,
   resolveVocabulary,
 } from "@cascade-runtime/runtime/node";
-import { terms as main } from "cascade-runtime";
-import { terms } from "cascade-runtime/terms";
+import { codeStems as mainCodeStems, terms as main } from "cascade-runtime";
+import { codeStems, terms } from "cascade-runtime/terms";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -126,4 +126,35 @@ test("every IRI of terms is a term the vocabulary the runtime reads declares, ea
       .map((property) => pathOf.get(property));
     assert.ok(paths.includes(status), `${kind}'s shape constrains ${status}`);
   }
+});
+
+test("codeStems holds every code system the vocabulary the runtime reads declares, under its local name, as its void:uriSpace, and is the main entry's", async () => {
+  assert.equal(codeStems, mainCodeStems);
+  const { folder } = await resolveVocabulary(ROOT, await readConfig(ROOT));
+  const ontologies = join(folder, "ontologies");
+  const systems = new Set<string>();
+  const spaceOf = new Map<string, string>();
+  for (const path of await readdir(ontologies, { recursive: true })) {
+    if (!path.endsWith(".ttl") || path.endsWith(".shapes.ttl")) continue;
+    for (const { subject, predicate, object } of oxigraph.parse(
+      await readFile(join(ontologies, path), "utf8"),
+      {
+        format: "text/turtle",
+        base_iri: pathToFileURL(join(ontologies, path)).href,
+      },
+    ))
+      if (predicate.value === TYPE && object.value === terms.CodeSystem)
+        systems.add(subject.value);
+      else if (predicate.value === "http://rdfs.org/ns/void#uriSpace")
+        spaceOf.set(subject.value, object.value);
+  }
+  assert.deepEqual(
+    codeStems,
+    Object.fromEntries(
+      [...systems].map((system) => [
+        system.slice(system.lastIndexOf("#") + 1),
+        spaceOf.get(system),
+      ]),
+    ),
+  );
 });
