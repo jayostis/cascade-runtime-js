@@ -196,7 +196,7 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
   const { graph, entries, path, read } = await vectors();
   assert.ok(entries.length > 0, "the manifest lists vectors");
   for (const [kind, count] of [
-    ["NamingTest", 62],
+    ["NamingTest", 63],
     ["BaseUrlNormalisationTest", 15],
     ["BaseUrlRefusalTest", 23],
   ] as const) {

@@ -41,8 +41,8 @@ const FEATURE = "runtime/matcher.feature";
 const EXAMPLE =
   "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "entry";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
-const RECORD = "https://ns.cascadeprotocol.org/records/v1-draft#Record";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const RECORD = "https://ns.cascadeprotocol.org/cascade#Record";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));

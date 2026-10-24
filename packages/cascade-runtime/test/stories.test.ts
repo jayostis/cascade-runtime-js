@@ -17,7 +17,7 @@ import {
 } from "cascade-runtime";
 import { pulled } from "./hospitals.js";
 
-const PREFIXES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 `;
 
@@ -55,7 +55,7 @@ function resourcesOf(pull: Pull, type: string) {
 async function endDays(pod: Pod): Promise<string[]> {
   const rows = await pod.ask({
     query: `${PREFIXES}SELECT ?ended WHERE {
-      ?record a clinical:Medication . ?version prov:specializationOf ?record ; clinical:endDate ?ended .
+      ?record a cascade:PrescribedOrReportedMedication . ?version prov:specializationOf ?record ; cascade:medicationUseEndDate ?ended .
     }`,
   });
   return rows.map(({ ended }) => day(ended));
@@ -127,7 +127,7 @@ test("each story patient's pull is denied nothing, and imports with every result
         active.some(
           (row) =>
             row.code?.endsWith(`/${code}`) &&
-            row.started === request.authoredOn,
+            row.written === request.authoredOn,
         ),
         `${patient}: ${code} started ${String(request.authoredOn)}`,
       );
@@ -158,9 +158,9 @@ test("the stopped story's C-CDA copy joins its FHIR pull: the medication is one 
     assert.equal(second.refused, undefined);
 
     const medications = await pod.ask({
-      query: `PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
+      query: `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 ${PREFIXES}SELECT ?entry (COUNT(?record) AS ?records) WHERE {
-        ?entry a clinical:Medication ; cascade:mergedFrom ?record .
+        ?entry a cascade:PrescribedOrReportedMedication ; cascade:mergedFrom ?record .
       } GROUP BY ?entry`,
     });
     assert.deepEqual(
@@ -272,13 +272,18 @@ test("the tools give a story's findings, their rows, a test's series and the tim
 
   const medications = (await tools.get("timeline")!.execute({})) as {
     notation: string;
-    started: string;
+    started?: string;
+    written?: string;
   }[];
   assert.deepEqual(
-    medications.map(({ notation, started }) => [notation, started]),
+    medications.map(({ notation, started, written }) => [
+      notation,
+      started,
+      written,
+    ]),
     [
-      ["197658", "2019-04-01"],
-      ["617310", "2024-03-04"],
+      ["197658", undefined, "2019-04-01"],
+      ["617310", undefined, "2024-03-04"],
     ],
   );
 

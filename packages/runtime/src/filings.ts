@@ -8,14 +8,14 @@ import {
   type StepFile,
 } from "./step.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PROV = "http://www.w3.org/ns/prov#";
 const PIM = "http://www.w3.org/ns/pim/space#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 
 /**
- * Rule A13: the pod's creation writes the subject as a rec:Subject, the owner's profile, saying who the owner is and
+ * Rule A13: the pod's creation writes the subject as a cascade:Subject, the owner's profile, saying who the owner is and
  * where the pod's root and the preferences file are, and the preferences file, saying where the type index is.
  */
 export async function fileCreation(context: StepContext): Promise<void> {

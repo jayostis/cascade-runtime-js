@@ -20,10 +20,9 @@ const PREFIXES = `PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
-PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 `;
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const JDG = "https://ns.cascadeprotocol.org/cascade#";
 
 let north: Pull;
 let south: Pull;
@@ -101,8 +100,8 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
 
   const documents = await pod.ask({
     query: `${PREFIXES}SELECT ?server ?on ?patient ?author WHERE {
-      ?document bridge:serverBaseUrl ?server ; pav:retrievedOn ?on ; bridge:authenticatedPatient ?patient ;
-        prov:qualifiedAttribution [ prov:hadRole rec:author ; prov:agent/rdfs:label ?author ] .
+      ?document cascade:serverBaseUrl ?server ; pav:retrievedOn ?on ; cascade:authenticatedPatient ?patient ;
+        prov:qualifiedAttribution [ prov:hadRole cascade:AuthorRole ; prov:agent/rdfs:label ?author ] .
     }`,
   });
   assert.deepEqual(
@@ -126,7 +125,7 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
 
   const named = (
     await pod.ask({
-      query: `${PREFIXES}SELECT DISTINCT ?url WHERE { ?record rec:sourceUrl ?url }`,
+      query: `${PREFIXES}SELECT DISTINCT ?url WHERE { ?record cascade:sourceUrl ?url }`,
     })
   ).map(({ url }) => url ?? "");
   for (const pull of [north, south]) {
@@ -146,8 +145,8 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
 
   const judgments = await pod.ask({
     query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?url); SEPARATOR=" ") AS ?urls) WHERE {
-      ?judgment a jdg:Judgment ; jdg:justification ?justification ; prov:hadMember ?member .
-      ?member rec:sourceUrl ?url .
+      ?judgment a cascade:Judgment ; cascade:justification ?justification ; prov:hadMember ?member .
+      ?member cascade:sourceUrl ?url .
     } GROUP BY ?judgment ?justification`,
   });
   const across = judgments

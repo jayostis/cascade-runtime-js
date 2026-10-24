@@ -74,7 +74,7 @@ export async function about(
     }),
   );
   await fill(
-    `${REC}CodeStatus`,
+    `${REC}RetiredCodes`,
     "status",
     fromRows<"status">((rows, origin) => {
       const status = statusOf(rows);

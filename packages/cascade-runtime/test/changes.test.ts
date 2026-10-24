@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { changesIn, compact, type Row } from "cascade-runtime";
+import { changesIn, compact, type Row, timelineIn } from "cascade-runtime";
 
-const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm/";
+const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
 const LOINC = "http://loinc.org/";
 
 const medicine = (
@@ -183,4 +183,41 @@ test("a stop is a day of its own, and a finding's compact form drops its rows an
   assert.equal("entry" in small.medication, false);
   assert.equal(small.medication.date, "2024-04-15");
   assert.ok(JSON.stringify(small).length < JSON.stringify(finding).length / 2);
+});
+
+test("a prescription with no start of use is placed on the day it was written and says so, and the timeline keeps the two dates apart (decision row 9)", () => {
+  const written: Row = { ...medicine("333", undefined), written: "2024-03-04" };
+  const taken = medicine("444", "2024-03-10", "2024-06-20");
+  const labs = series(
+    "LDL",
+    "mg/dL",
+    ["2024-01-01", "160"],
+    ["2024-02-01", "158"],
+    ["2024-03-01", "165"],
+    ["2024-05-01", "100"],
+    ["2024-06-01", "98"],
+    ["2024-07-01", "96"],
+    ["2024-08-01", "95"],
+    ["2024-09-01", "94"],
+  );
+  const dated = (rows: Row[]) =>
+    changesIn(rows, labs, { limit: 10 })
+      .map(({ key, medication: { date, dateIs } }) => [key, date, dateIs])
+      .sort();
+  assert.deepEqual(dated([written]), [
+    ["start:333:LDL", "2024-03-04", "prescription written"],
+  ]);
+  assert.deepEqual(dated([taken]), [
+    ["start:444:LDL", "2024-03-10", "start of use"],
+    ["stop:444:LDL", "2024-06-20", "end of use"],
+  ]);
+  assert.deepEqual(
+    timelineIn([{ ...taken, written: "2024-03-01" }, written]).map(
+      ({ notation, started, written: on }) => [notation, started, on],
+    ),
+    [
+      ["333", undefined, "2024-03-04"],
+      ["444", "2024-03-10", "2024-03-01"],
+    ],
+  );
 });

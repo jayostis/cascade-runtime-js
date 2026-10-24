@@ -7,13 +7,11 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { ROOT, vocabulary } from "./vocabulary.js";
 
 const STEMS = [
-  "snomed.info/sct/",
+  "snomed.info/",
   "loinc.org/",
-  "umls/rxnorm",
-  "hl7.org/fhir/sid/ndc/",
   "ns.cascadeprotocol.org/codes/",
-  "varnomen.hgvs.org/",
-  "ncbi.nlm.nih.gov/clinvar/",
+  "identifiers.org/",
+  "id.nlm.nih.gov/mesh/",
 ];
 
 /** Every file under the folder whose name ends as given, by its path from the root. */

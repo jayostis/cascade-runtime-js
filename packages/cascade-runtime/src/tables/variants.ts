@@ -11,7 +11,7 @@ import type {
   WhatClinVarSays,
 } from "./types.js";
 
-const RECORDS = "ontologies/records/v1-draft/records.ttl";
+const RECORDS = "ontologies/cascade.ttl";
 
 export async function variantClassification(
   context: TablesContext,
@@ -36,7 +36,9 @@ export async function variantClassification(
   const stem = (system: string): string => {
     const found = codeSystems.find((each) => each.iri === `${REC}${system}`);
     if (found === undefined)
-      throw new Error(`the vocabulary registers no code system rec:${system}`);
+      throw new Error(
+        `the vocabulary registers no code system cascade:${system}`,
+      );
     return found.uriSpace;
   };
   const codes =
@@ -106,8 +108,8 @@ export async function classificationRow(
   const classes = values(rows, `${REC}clinvarClassification`);
   const [status] = values(rows, `${REC}clinvarReviewStatus`);
   const [evaluated] = values(rows, `${REC}lastEvaluated`);
-  const [contributing] = values(rows, `${REC}contributingSubmitters`);
-  const [submitters] = values(rows, `${REC}submitters`);
+  const [contributing] = values(rows, `${REC}contributingSubmitterCount`);
+  const [submitters] = values(rows, `${REC}submitterCount`);
   const named = await context.labels([...classes, ...(status ? [status] : [])]);
   const concept = (each: string): Concept => ({
     iri: each,

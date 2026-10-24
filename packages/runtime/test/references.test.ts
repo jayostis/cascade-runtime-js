@@ -8,10 +8,10 @@ import { linesAbout, References, tableTerms } from "../src/references.js";
 import { REC, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
-const RECORDS = "ontologies/records/v1-draft/records.ttl";
+const RECORDS = "ontologies/cascade.ttl";
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const URI_SPACE = "http://rdfs.org/ns/void#uriSpace";
-const PAGE_TEMPLATE = `${REC}pageTemplate`;
+const PAGE_TEMPLATE = `${REC}codePageUrlTemplate`;
 
 test("a version whose name names no file refuses the step rather than aborting the replay", async () => {
   const source = new MemoryFiles("https://story.example/");
@@ -65,7 +65,7 @@ test("a folder without a file for a version of the vocabulary's rule list reads 
   const ruleCount = async (rows: Promise<Triple[]>) =>
     new Graph(await rows).subjects(
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-      iri(`${REC}MatcherRule`),
+      iri(`${REC}RuleListRow`),
     ).length;
   const references = () =>
     References.of(story, folder, () => new OxigraphStore(), files);
@@ -131,7 +131,7 @@ test("the table terms hold one code system for each the vocabulary's records fil
     codeSystems.map(({ uriSpace }) => uriSpace),
   );
   for (const { iri: system, uriSpace } of codeSystems)
-    assert.ok(uriSpace.endsWith("/"), system);
+    assert.match(uriSpace, /[/:]$/, system);
   assert.match(
     codeSystems.find(({ iri }) => iri === `${REC}ClinVar`)?.pageTemplate ?? "",
     /\{code\}/,
@@ -144,14 +144,14 @@ test("the table terms hold one code system for each the vocabulary's records fil
 
 test("a code system registered without a label, without a URI space or with a page template that has no {code} is a broken vocabulary, an Error and never a Refusal", async () => {
   const system = (what: string): string =>
-    `@prefix rec: <${REC}> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix void: <http://rdfs.org/ns/void#> .
-rec:Broken a rec:CodeSystem ; ${what} .`;
+    `@prefix cascade: <${REC}> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix void: <http://rdfs.org/ns/void#> .
+cascade:Broken a cascade:CodeSystem ; ${what} .`;
   for (const [broken, why] of [
     [system('void:uriSpace "urn:test:broken/"'), "no label"],
     [system('rdfs:label "Broken"@en'), "no URI space"],
     [
       system(
-        'rdfs:label "Broken"@en ; void:uriSpace "urn:test:broken/" ; rec:pageTemplate "https://example.org/"',
+        'rdfs:label "Broken"@en ; void:uriSpace "urn:test:broken/" ; cascade:codePageUrlTemplate "https://example.org/"',
       ),
       "a page template with no {code}",
     ],

@@ -13,7 +13,7 @@ import type { Described, Fact, TablesOptions } from "./types.js";
 /** The version each series of the tables ships with, the rule list's among them, sorted. */
 export function shipped(references: References): string[] {
   return references.index
-    .match(undefined, `${REC}shipsWith`)
+    .match(undefined, `${REC}defaultTableVersion`)
     .map(([, , version]) => version.value)
     .sort();
 }

@@ -1,6 +1,15 @@
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
-import { ccdaRecordName, documentName, inUtc, recordName } from "./names.js";
+import { scopesOf } from "@cascade-runtime/ccda-download";
+import {
+  documentName,
+  enteredRecordName,
+  fingerprint,
+  recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import { MATCHER } from "./matcher.js";
 import { codeIri, iri, RDF, written } from "./rdf.js";
 import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
@@ -9,24 +18,24 @@ import { REC } from "./step.js";
 import { selected, type Dataset, type StoreFactory } from "./store.js";
 
 export const PROV = "http://www.w3.org/ns/prov#";
-export const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
-export const HEALTH = "https://ns.cascadeprotocol.org/health/v1#";
-export const CLINICAL = "https://ns.cascadeprotocol.org/clinical/v1#";
+export const JDG = "https://ns.cascadeprotocol.org/cascade#";
+export const HEALTH = "https://ns.cascadeprotocol.org/cascade#";
+export const CLINICAL = "https://ns.cascadeprotocol.org/cascade#";
 export const PAV = "http://purl.org/pav/";
-export const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
+export const GENOMICS = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 
 export const KINDS: Readonly<Record<string, string>> = {
-  allergy: `${HEALTH}AllergyRecord`,
-  condition: `${HEALTH}ConditionRecord`,
-  immunization: `${HEALTH}ImmunizationRecord`,
-  procedure: `${CLINICAL}Procedure`,
-  medication: `${CLINICAL}Medication`,
-  "lab result": `${HEALTH}LabResultRecord`,
-  variant: `${GENOMICS}Variant`,
+  allergy: `${HEALTH}AllergyOrIntolerance`,
+  condition: `${HEALTH}ProblemOrDiagnosis`,
+  immunization: `${HEALTH}Vaccination`,
+  procedure: `${CLINICAL}MedicalProcedure`,
+  medication: `${CLINICAL}PrescribedOrReportedMedication`,
+  "lab result": `${HEALTH}LaboratoryTestResult`,
+  variant: `${GENOMICS}GeneticVariantFinding`,
   "variant interpretation": `${GENOMICS}VariantInterpretation`,
 };
 
@@ -49,13 +58,13 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
 const CODES: Readonly<
   Record<string, { readonly system?: string; readonly literal?: string }>
 > = {
-  SNOMED: { system: `${REC}SNOMEDCT`, literal: `${CLINICAL}snomedCode` },
+  SNOMED: { system: `${REC}SNOMEDCT` },
   RxNorm: { system: `${REC}RxNorm` },
   "ICD-10-CM": { system: `${REC}ICD10CM` },
   LOINC: { system: `${REC}LOINC` },
   NDC: { system: `${REC}NDC` },
-  CVX: { literal: `${HEALTH}vaccineCode` },
-  HGVS: { literal: `${GENOMICS}hgvsCDot` },
+  CVX: { system: `${REC}CVX` },
+  HGVS: { literal: `${GENOMICS}hgvsCodingDnaExpression` },
   ClinVar: { literal: `${GENOMICS}clinvarVariationId` },
 };
 
@@ -78,7 +87,7 @@ const NAMES = [
   `${CLINICAL}procedureName`,
   `${CLINICAL}drugName`,
   `${HEALTH}testName`,
-  `${GENOMICS}hgvsCDot`,
+  `${GENOMICS}hgvsCodingDnaExpression`,
 ];
 
 /** A person `people.ttl` names: the pod's subject, its address, and the folder of their scripted input. */
@@ -233,7 +242,9 @@ export class Words {
   async described(name: string): Promise<string[]> {
     return (await this.#references_())
       .match(iri(name))
-      .filter(([, predicate]) => predicate.value !== `${REC}shipsWith`)
+      .filter(
+        ([, predicate]) => predicate.value !== `${REC}defaultTableVersion`,
+      )
       .map((triple) => triple.map(written).join(" "));
   }
 
@@ -260,14 +271,21 @@ export class Words {
     const inputs =
       this.#handles?.records?.[handle] ?? this.#handles?.profiles?.[handle];
     if (inputs === undefined) return undefined;
-    const { server, type, id, fullUrl, entry, position, download } = inputs;
+    const { server, type, id, document, selector, entry, position, download } =
+      inputs;
     if (
       typeof server === "string" &&
       typeof type === "string" &&
       typeof id === "string"
     )
-      return recordName([server, type, id]);
-    if (typeof fullUrl === "string") return recordName([fullUrl]);
+      return recordFromServerName(server, type, id);
+    if (typeof document === "string" && typeof selector === "string")
+      return recordFromDocumentName(
+        await this.#document(`${this.#kit}/${document}`),
+        selector,
+      );
+    if (typeof document === "string")
+      return this.#ccdaRecord(handle, document, inputs);
     if (typeof entry === "string" && typeof position === "number") {
       const file = entry.slice(entry.lastIndexOf("/entries/") + 1);
       const step = this.#replayed.steps.find(
@@ -278,30 +296,11 @@ export class Words {
         throw new Error(
           `${handle} names the entry ${entry}, which no step made`,
         );
-      return recordName([
-        this.#person.subject,
-        inUtc(step.step.when),
-        String(position),
-      ]);
-    }
-    if (typeof inputs.class === "string") {
-      const { identifier, key, members } = inputs;
-      const strings = (value: unknown): value is string[] =>
-        Array.isArray(value) && value.every((part) => typeof part === "string");
-      if (
-        (identifier !== undefined && typeof identifier !== "string") ||
-        (key !== undefined && !strings(key)) ||
-        (members !== undefined && !strings(members))
-      )
+      if (step.activity === undefined)
         throw new Error(
-          `handles.json gives ${handle} an identifier, a key or members it cannot read`,
+          `${handle} names the entry ${entry}, which made nothing`,
         );
-      return ccdaRecordName({
-        class: inputs.class,
-        ...(identifier === undefined ? {} : { identifier }),
-        ...(key === undefined ? {} : { key }),
-        ...(members === undefined ? {} : { members }),
-      });
+      return enteredRecordName(step.activity, position);
     }
     if (typeof download === "string") {
       const document = await this.#document(`${this.#kit}/${download}`);
@@ -311,6 +310,48 @@ export class Words {
         "record",
       );
     }
+    throw new Error(`handles.json gives ${handle} no name inputs`);
+  }
+
+  /** A C-CDA record a handle names by its document's scopes and its entry's id, or its class and key or members. */
+  async #ccdaRecord(
+    handle: string,
+    document: string,
+    inputs: Readonly<Record<string, unknown>>,
+  ): Promise<string> {
+    const path = `${this.#kit}/${document}`;
+    const bytes = await this.#vocabulary.read(path);
+    const scopes = bytes === undefined ? undefined : scopesOf(bytes);
+    if (scopes === undefined)
+      throw new Error(`${handle} names ${path}, which is no C-CDA document`);
+    if (scopes === null)
+      throw new Error(
+        `${handle} names ${path}, which states no custodian id and one patient with an id: handles.json gives its selector`,
+      );
+    const { identifier, class: entryClass, key, members } = inputs;
+    const strings = (value: unknown): value is string[] =>
+      Array.isArray(value) && value.every((part) => typeof part === "string");
+    if (typeof identifier === "string") {
+      const colon = identifier.indexOf(":");
+      return recordFromCcdaName({
+        ...scopes,
+        entry:
+          colon === -1
+            ? { root: identifier }
+            : {
+                root: identifier.slice(0, colon),
+                extension: identifier.slice(colon + 1),
+              },
+      });
+    }
+    if (typeof entryClass === "string" && (strings(key) || strings(members)))
+      return recordFromCcdaWithoutIdName({
+        ...scopes,
+        entryClass: `${REC}${entryClass}`,
+        ...(strings(key)
+          ? { keyFingerprint: await fingerprint(key) }
+          : { membersFingerprint: await fingerprint(members as string[]) }),
+      });
     throw new Error(`handles.json gives ${handle} no name inputs`);
   }
 

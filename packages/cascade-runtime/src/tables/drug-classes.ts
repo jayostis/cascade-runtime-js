@@ -6,9 +6,9 @@ import type { Described, Fact, TablesContext } from "./types.js";
 /** The relations of a drug class row, in the order a code's page lists them. */
 const RELATIONS = [
   `${REC}establishedPharmacologicClass`,
-  `${REC}mechanismOfAction`,
-  `${REC}physiologicEffect`,
-  `${REC}chemicalStructure`,
+  `${REC}mechanismOfActionClass`,
+  `${REC}physiologicEffectClass`,
+  `${REC}chemicalStructureClass`,
 ];
 
 /** A class row, before `facts` names its codes. */

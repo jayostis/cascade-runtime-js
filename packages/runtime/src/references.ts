@@ -10,11 +10,11 @@ const PAV = "http://purl.org/pav/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
-const SHIPS_WITH = `${REC}shipsWith`;
+const SHIPS_WITH = `${REC}defaultTableVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
 /** What follows a version's file stem in the name of the index of its rows by code. */
 export const CODES = ".codes.json";
-const RECORDS = "ontologies/records/v1-draft/records.ttl";
+const RECORDS = "ontologies/cascade.ttl";
 /** Where the vocabulary keeps the versions of its rule list, which a folder of tables may leave to it. */
 export const RULE_LIST = "runtime/rule-list/";
 
@@ -31,9 +31,11 @@ export interface CodeSystem {
 export interface TableTerms {
   readonly codeSystems: readonly CodeSystem[];
   readonly uriSpaces: readonly string[];
-  /** By kind; `rec:RowSubject` for a row found by its own subject. */
+  /** By kind; `cascade:RowSubject` for a row found by its own subject. */
   readonly foundBy: ReadonlyMap<string, readonly string[]>;
-  /** The kinds the vocabulary marks `rec:readByPages true`: an app keeps their series though no rule reads the kind. */
+  /** The kinds the vocabulary declares, `a cascade:TableKind`: a series of any other kind is retired. */
+  readonly declared: ReadonlySet<string>;
+  /** The kinds the vocabulary marks `cascade:readByAppPages true`: an app keeps their series though no rule reads the kind. */
   readonly readByPages: ReadonlySet<string>;
 }
 
@@ -77,7 +79,7 @@ async function readTableTerms(
         throw new Error(
           `${system.value} is a code system with no ${label === undefined ? "label" : "URI space"}`,
         );
-      const template = graph.objects(system, `${REC}pageTemplate`)[0];
+      const template = graph.objects(system, `${REC}codePageUrlTemplate`)[0];
       if (template !== undefined && !template.value.includes("{code}"))
         throw new Error(
           `${system.value} is a code system whose page template has no {code}`,
@@ -89,13 +91,19 @@ async function readTableTerms(
         ...(template && { pageTemplate: template.value }),
       };
     });
+  const declared = new Set(
+    graph
+      .subjects(`${RDF}type`, iri(`${REC}TableKind`))
+      .map(({ value }) => value),
+  );
   return {
     codeSystems,
     uriSpaces: codeSystems.map(({ uriSpace }) => uriSpace),
     foundBy,
+    declared,
     readByPages: new Set(
       graph
-        .match(undefined, `${REC}readByPages`)
+        .match(undefined, `${REC}readByAppPages`)
         .filter(([, , marked]) => marked.value === "true")
         .map(([kind]) => kind.value),
     ),
@@ -396,7 +404,7 @@ export class References {
       if (this.kindOf(series.value) !== undefined) continue;
       for (const version of this.index.subjects(SPECIALIZATION_OF, series)) {
         const rows = new Graph(await this.rows(version.value));
-        if (rows.subjects(`${RDF}type`, iri(`${REC}MatcherRule`)).length > 0) {
+        if (rows.subjects(`${RDF}type`, iri(`${REC}RuleListRow`)).length > 0) {
           found.push(series.value);
           break;
         }

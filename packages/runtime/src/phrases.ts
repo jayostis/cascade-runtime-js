@@ -10,7 +10,16 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
-import { documentName, inUtc } from "./names.js";
+import {
+  byCodePoint,
+  containedRecordName,
+  documentName,
+  enteredRecordName,
+  recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import {
   iri,
   literal,
@@ -39,7 +48,7 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -52,10 +61,7 @@ export const PREFIXES: Readonly<Record<string, string>> = {
   prov: PROV,
   pav: PAV,
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
-  rec: REC,
-  jdg: JDG,
-  health: HEALTH,
-  clinical: CLINICAL,
+  oa: "http://www.w3.org/ns/oa#",
   cascade: CASCADE,
 };
 
@@ -328,9 +334,12 @@ const FIELDS: Readonly<Record<string, Field>> = {
     entry: true,
     shows: ({ value }) => localName(value),
   },
-  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`], entry: true },
+  status: {
+    predicates: [`${HEALTH}clinicalStatus`, `${CLINICAL}workflowStatus`],
+    entry: true,
+  },
   criticality: {
-    predicates: [`${CLINICAL}criticality`],
+    predicates: [`${CLINICAL}allergyCriticality`],
     entry: true,
     of: "version",
   },
@@ -498,16 +507,22 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
   };
 }
 
-const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
+const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used ?rule WHERE {
   ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
     <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
   OPTIONAL { ?judgment <${PROV}used> ?used }
+  OPTIONAL {
+    ?judgment <${PROV}used> ?list .
+    GRAPH ?list { ?row <${REC}justifiedAs> ?justification ; <${REC}matcherRule> ?rule }
+  }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
+  /** The matcher rule terms the rule list versions it used give its justification. */
+  readonly rules: Set<string>;
   readonly members: Set<string>;
   readonly at: Set<string>;
   readonly used: Set<string>;
@@ -515,7 +530,7 @@ interface Judged {
 
 async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used] of await selected(
+  for (const [name, justification, member, at, used, rule] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -524,6 +539,7 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
       ({
         name: name ?? "",
         justification: justification ?? "",
+        rules: new Set(),
         members: new Set(),
         at: new Set(),
         used: new Set(),
@@ -531,6 +547,7 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
     judged.members.add(member ?? "");
     if (at) judged.at.add(shownTime(at));
     if (used) judged.used.add(used);
+    if (rule) judged.rules.add(rule);
     found.set(judged.name, judged);
   }
   return [...found.values()];
@@ -564,10 +581,10 @@ function judgmentRow(
           return sorted(judged.used);
         case "inputs":
           return [
-            MATCHER,
-            judged.justification,
-            ...[...judged.members].sort(),
-            ...[...judged.used].sort(),
+            "cascade:ClaimNamingRule",
+            ...[MATCHER, ...judged.rules, judged.justification].map(termShown),
+            `(${[...judged.members].sort(byCodePoint).join(", ")})`,
+            `(${[...judged.used].sort(byCodePoint).join(", ")})`,
           ].join(", ");
         case "name":
           return judged.name;
@@ -758,34 +775,80 @@ async function queryAnswers(
   });
 }
 
+/** A vocabulary term as a feature's cells write it, `cascade:` and its local name. */
+const termShown = (iri: string): string =>
+  iri.startsWith(REC) ? `cascade:${iri.slice(REC.length)}` : iri;
+
+/** The record name rules a `these are named:` table gives inputs to, by the rule term's local name. */
+const RECORD_RULES: Readonly<
+  Record<string, (inputs: readonly string[]) => Promise<string>>
+> = {
+  RecordFromServerNamingRule: ([base = "", type = "", id = ""]) =>
+    recordFromServerName(base, type, id),
+  RecordFromDocumentNamingRule: ([document = "", selector = ""]) =>
+    recordFromDocumentName(document, selector),
+  RecordFromCcdaNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    er = "",
+    ee = "",
+  ]) =>
+    recordFromCcdaName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entry: { root: er, extension: ee },
+    }),
+  RecordFromCcdaWithoutIdNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    entryClass = "",
+    key = "",
+    members = "",
+  ]) =>
+    recordFromCcdaWithoutIdName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entryClass: entryClass.replace(/^cascade:/, REC),
+      keyFingerprint: key,
+      membersFingerprint: members,
+    }),
+  ContainedRecordNamingRule: ([container = "", versionId = "", id = ""]) =>
+    containedRecordName(container, { versionId }, id),
+  EnteredRecordNamingRule: ([session = "", position = ""]) =>
+    enteredRecordName(session, Number(position)),
+};
+
 /**
- * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
- * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ * Whether the inputs a record is named from, its rule first, give the name; an entered record's session must also be
+ * the session its first revision came from, which the pod holds where the position reaches it only through the name.
  */
-async function entryInputs(
+async function recordInputs(
   reading: Reading,
   words: string,
   inputs: string,
+  name: string,
 ): Promise<string | undefined> {
-  const [subject, start, position] = inputs.split(", ");
-  if (position === undefined || !/^\d+$/.test(position))
-    return `"${inputs}" is no subject, start and position`;
-  const record = await reading.words.record(words);
-  const [first] = await selected(
-    reading.store,
-    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
-      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
-  );
-  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
-  const wrong = [
-    ...(held[0] === subject
-      ? []
-      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
-    ...(held[1] === start
-      ? []
-      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
-  ];
-  return wrong.length === 0 ? undefined : wrong.join("; ");
+  const [rule = "", ...given] = inputs.split(", ");
+  const named = RECORD_RULES[rule.replace(/^cascade:/, "")];
+  if (named === undefined) return `"${rule}" is no record naming rule`;
+  if (rule.endsWith("EnteredRecordNamingRule")) {
+    const record = await reading.words.record(words);
+    const [first] = await selected(
+      reading.store,
+      `SELECT ?session WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
+        FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+    );
+    if (first?.[0] !== given[0])
+      return `its entry's session is ${first?.[0] ?? "none"}, not ${given[0] ?? ""}`;
+  }
+  const computed = await named(given);
+  return computed === name
+    ? undefined
+    : `its inputs give ${computed}, not ${name}`;
 }
 
 /** The entry holding the record shows the table's fields; with `only`, nothing else but its members. */
@@ -1215,17 +1278,21 @@ const DEFINITIONS: Definition[] = [
     return async (reading) => {
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
-      const described = valuesOf(
+      const described = new Map<string, string[]>();
+      for (const thing of valuesOf(
         await inWritten(
           reading,
           [step],
           "DISTINCT ?thing",
           `GRAPH ?file {
               { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:"))`,
+            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any }`,
         ),
         "thing",
-      );
+      )) {
+        const said = await reading.words.described(thing);
+        if (said.length > 0) described.set(thing, said);
+      }
       const expected: string[] = [];
       for (const row of rows) {
         const name = await reading.words.reference(row.reference ?? "");
@@ -1235,16 +1302,16 @@ const DEFINITIONS: Definition[] = [
       }
       const problem = compared(
         expected,
-        described.map((thing) => reading.words.shown(thing)),
+        [...described.keys()].map((thing) => reading.words.shown(thing)),
       );
       if (problem !== undefined) return problem;
       const heldTriples = (await wroteGraph(reading, [step])).triples.map(
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      for (const thing of described) {
+      for (const [thing, said] of described) {
         const why = compared(
-          await reading.words.described(thing),
+          said,
           heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
         );
         if (why !== undefined)
@@ -1262,7 +1329,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const does = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
+            `ASK { <${judgment}> <${REC}countsUnderLens> true }`,
           );
           if (does === counts) return undefined;
           return does ? "it counts" : "it does not count";
@@ -1364,7 +1431,7 @@ const DEFINITIONS: Definition[] = [
           found.push(`${words} is in a view`);
         for (const [why, because] of await selected(
           reading.store,
-          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
+          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}leftOutReason> ?why . OPTIONAL { ?left <${REC}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
             `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
@@ -1379,7 +1446,12 @@ const DEFINITIONS: Definition[] = [
       const failures: string[] = [];
       for (const row of rows) {
         if (row.inputs !== undefined && row.inputs !== "") {
-          const why = await entryInputs(reading, row.thing ?? "", row.inputs);
+          const why = await recordInputs(
+            reading,
+            row.thing ?? "",
+            row.inputs,
+            row.name ?? "",
+          );
           if (why !== undefined) {
             failures.push(`${row.thing ?? ""}: ${why}`);
             continue;

@@ -1,9 +1,9 @@
-export const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+export const REC = "https://ns.cascadeprotocol.org/cascade#";
 export const CLASSIFICATIONS = `${REC}VariantClassifications`;
 export const PAV = "http://purl.org/pav/";
 export const DCT = "http://purl.org/dc/terms/";
 export const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-export const SHIPS_WITH = `${REC}shipsWith`;
+export const SHIPS_WITH = `${REC}defaultTableVersion`;
 export const TABLE_KIND = `${REC}tableKind`;
 /** How many codes a page of a search shows. */
 export const PAGE_SIZE = 50;

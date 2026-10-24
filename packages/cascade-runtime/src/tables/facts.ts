@@ -58,7 +58,7 @@ export async function facts(
   };
   const [named, statuses, mappings] = await Promise.all([
     rowsOf(`${REC}CodeNames`),
-    rowsOf(`${REC}CodeStatus`),
+    rowsOf(`${REC}RetiredCodes`),
     Promise.all(
       seriesOfAKind(references.index)
         .map(({ value }) => value)

@@ -33,20 +33,7 @@ export async function documentName(bytes: Uint8Array): Promise<string> {
   return NI + base64url(await sha256(bytes));
 }
 
-/** A record's name from its inputs, by the Bridge's record rule (runtime/rules.md, N2). */
-export async function recordName(inputs: readonly string[]): Promise<string> {
-  const digest = await sha256(
-    new TextEncoder().encode([RECORD_NAMESPACE, ...inputs].join("|")),
-  );
-  digest[6] = ((digest[6] ?? 0) & 0x0f) | 0x80;
-  digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80;
-  const text = [...digest.slice(0, 16)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-  return `${UUID}${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
-}
-
-/** A set's fingerprint, as cascade-bridge-spec's engine/sparql.md writes it: no order or repeat of the strings enters it. */
+/** A C-CDA entry's key or members fingerprint, as the C-CDA adapter computes it: no order or repeat of the strings enters it. */
 export async function fingerprint(strings: Iterable<string>): Promise<string> {
   let sum = 0n;
   for (const text of new Set(strings)) {
@@ -57,31 +44,6 @@ export async function fingerprint(strings: Iterable<string>): Promise<string> {
     sum += BigInt(`0x${hex}`);
   }
   return sum.toString();
-}
-
-/** What a C-CDA record's name is computed from: a handle's class, identifier and key, as far as it gives them. */
-export interface CcdaInputs {
-  readonly class: string;
-  /** `root:extension`, or the root alone; empty or absent where the record has no usable identifier. */
-  readonly identifier?: string;
-  /** The key's `field=value` strings, given where the name takes the key's fingerprint. */
-  readonly key?: readonly string[];
-  /** The member strings, given for a record with no identifier and no key, whose name takes their fingerprint. */
-  readonly members?: readonly string[];
-}
-
-/** A C-CDA record's name, by cascade-bridge-spec's rows for one. */
-export async function ccdaRecordName(inputs: CcdaInputs): Promise<string> {
-  const { identifier = "", key, members } = inputs;
-  const named =
-    key !== undefined
-      ? [identifier, await fingerprint(key)]
-      : identifier !== ""
-        ? [identifier]
-        : members !== undefined
-          ? ["", "", await fingerprint(members)]
-          : [];
-  return recordName([inputs.class, ...named]);
 }
 
 /** The triples' canonical N-Quads by RDFC-1.0: two sets of triples have the same exactly when they are one graph. */
