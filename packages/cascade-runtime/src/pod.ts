@@ -113,6 +113,8 @@ export interface Pod {
     exported: string | Exported,
     options?: ImportOptions,
   ): Promise<Imported>;
+  /** A connect to a server, saved as `connectFiles` saves it: its act and a version of the server's record (A16). */
+  connect(saved: Exported): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
   judge(turtle: string): Promise<Done>;
   match(activity?: string): Promise<Done>;
@@ -551,6 +553,23 @@ class OpenPod implements Pod {
     options: ImportOptions = {},
   ): Promise<Imported> {
     return this.#next(() => this.#import(exported, options));
+  }
+
+  connect(saved: Exported): Promise<Done> {
+    return this.#next(async () => {
+      let names: string[];
+      try {
+        names = exportedNames(saved);
+      } catch (error) {
+        return this.#core.refuse(failure(error));
+      }
+      const [name] = names;
+      if (names.length !== 1 || name === undefined)
+        return this.#core.refuse(
+          `a connect is saved as one folder, not ${names.length === 0 ? "no file" : names.join(" and ")}`,
+        );
+      return this.#core.connect(new ExportedFiles(saved, name), name);
+    });
   }
 
   enter(turtle: string, options: { match?: boolean } = {}): Promise<Done> {

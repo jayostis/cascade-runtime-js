@@ -1,3 +1,4 @@
+import { readConnect } from "@cascade-runtime/fhir-pull";
 import { arrivalInRevision, selectorNodes } from "./arrivals.js";
 import { builtFileBytes } from "./build.js";
 import type { Assertion } from "./conformance.js";
@@ -13,6 +14,7 @@ import {
   earlierInUtc,
   claimName,
   enteredRecordName,
+  serverName,
   actDescriptionName,
   fileDigest,
   fileStem,
@@ -287,6 +289,12 @@ async function namesFollowTheirRules(
           );
       if (drafts.size === 0) failures.push(`entry ${name} holds no draft`);
     }
+    if (happened.kind === "connect" && activityOf.has(name))
+      expectedRecords.add(
+        await serverName(
+          (await readConnect(vocabulary, at(happened.folder))).fhirBase,
+        ),
+      );
   }
   const records = new Set(
     whole.triples
@@ -417,11 +425,11 @@ async function namesFollowTheirRules(
       );
   }
 
-  // N7: each import is a new version 4 UUID that no input gives.
+  // N7: each import and each connect is a new version 4 UUID that no input gives.
   const given = await everyInput(vocabulary, kit);
   const made = story.steps.filter(
     ({ name, happened }) =>
-      happened.kind === "import" &&
+      (happened.kind === "import" || happened.kind === "connect") &&
       replayed.steps.some(
         (done) => done.step.name === name && done.wrote.length > 0,
       ),
