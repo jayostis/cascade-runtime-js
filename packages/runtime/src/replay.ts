@@ -56,8 +56,9 @@ async function withStoryFile(
 const SETTING = /<urn:cascade:revision-setting:([^>]+)>/g;
 
 /**
- * A judgment's Turtle with each <urn:cascade:revision-setting:{version}> made the one revision that sets the version,
- * where one does: a revision's name depends on its run, so a story cannot write it.
+ * A judgment's Turtle with each <urn:cascade:revision-setting:{version}> made the one revision that sets the version: a
+ * revision's name depends on its run, so a story cannot write it. A version no revision sets, or several do, is the
+ * story's mistake, and throws.
  */
 async function revisionsNamed(
   pod: CorePod,
@@ -68,12 +69,15 @@ async function revisionsNamed(
   for (const [placeholder, version = ""] of text.matchAll(SETTING)) {
     if (named.has(placeholder)) continue;
     const { rows } = await pod.select(
-      `SELECT ?revision WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#version> <${version}> }`,
+      `SELECT DISTINCT ?revision WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#version> <${version}> }`,
     );
     const [only] = rows;
     const revision = only?.get("revision")?.value;
-    if (rows.length === 1 && revision !== undefined)
-      named.set(placeholder, `<${revision}>`);
+    if (rows.length !== 1 || revision === undefined)
+      throw new Error(
+        `the judgment names the revision setting ${version}, which ${rows.length} revisions set, not one`,
+      );
+    named.set(placeholder, `<${revision}>`);
   }
   return new TextEncoder().encode(
     text.replace(
