@@ -30,6 +30,8 @@ export class Placement {
     readonly storesBytes: boolean,
     /** Whether the build writes this view at every build, not only once the pod holds a record of its kind. */
     readonly writtenAlways: boolean = false,
+    /** Whether this folder holds the records of its class, with their versions and revisions. */
+    readonly holdsRecords: boolean = false,
   ) {}
 
   /** The path of the file holding the thing named `name`: this placement's file, or one in `folder` or its own. */
@@ -74,6 +76,8 @@ export class Layout {
         ? [folder]
         : [],
     );
+    if (!placements.some(({ holdsRecords }) => holdsRecords))
+      throw new Error(`${LAYOUT_FILE} gives no folder that holds records`);
   }
 
   /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
@@ -93,6 +97,7 @@ export class Layout {
             placed.title,
             placed.storesBytes,
             placed.writtenAlways,
+            placed.holdsRecords,
           ),
       ),
     );
@@ -109,13 +114,14 @@ export class Layout {
       PREFIX cascade: <${CASCADE}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
-      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
+      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways ?holdsRecords WHERE {
         ?placement a cascade:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
         OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement cascade:filedWith ?filedWith }
         OPTIONAL { ?placement cascade:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement cascade:subfolderPrefixLength ?fanOut }
         OPTIONAL { ?placement cascade:writtenByQueryPath ?writtenBy } OPTIONAL { ?placement dct:title ?title }
         OPTIONAL { ?placement cascade:storesBytes ?storesBytes } OPTIONAL { ?placement cascade:writtenAlways ?writtenAlways }
+        OPTIONAL { ?placement cascade:holdsRecords ?holdsRecords }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -145,6 +151,7 @@ export class Layout {
         value("title"),
         value("storesBytes") === "true",
         value("writtenAlways") === "true",
+        value("holdsRecords") === "true",
       );
     });
     return new Layout(turtle, placements);
@@ -276,16 +283,20 @@ export class Layout {
     return this.placements.filter(({ writtenBy }) => writtenBy !== undefined);
   }
 
-  /** Where a record of the class is filed, with its versions and revisions; only a class a view lists is filed. */
+  /**
+   * Where a record of the class is filed, with its versions and revisions: only a class whose placement the layout says
+   * holds records is filed, whether or not a view lists it, as no view lists an organization.
+   */
   records(kind: string): Placement | undefined {
-    return this.views.some((view) => view.kind === kind)
-      ? this.find(kind)
-      : undefined;
+    const found = this.find(kind);
+    return found?.holdsRecords === true ? found : undefined;
   }
 
   get recordPlacements(): readonly Placement[] {
-    return this.views.flatMap(({ kind }) =>
-      kind === undefined ? [] : (this.find(kind) ?? []),
+    return this.placements.filter(
+      (placement) =>
+        placement.kind !== undefined &&
+        this.records(placement.kind) === placement,
     );
   }
 
