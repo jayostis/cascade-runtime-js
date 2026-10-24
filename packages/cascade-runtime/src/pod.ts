@@ -113,8 +113,11 @@ export interface Pod {
     exported: string | Exported,
     options?: ImportOptions,
   ): Promise<Imported>;
-  /** A connect to a server, saved as `connectFiles` saves it: its act and a version of the server's record (A16). */
-  connect(saved: Exported): Promise<Done>;
+  /**
+   * A connect to a server, saved as `connectFiles` saves it: its act and a version of the server's record (A16), and the
+   * matcher run taking the server (M20), on unless false.
+   */
+  connect(saved: Exported, options?: { match?: boolean }): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
   judge(turtle: string): Promise<Done>;
   match(activity?: string): Promise<Done>;
@@ -180,7 +183,7 @@ export interface Done {
   readonly wrote: readonly string[];
   /** Why the rules refused the step; it then wrote nothing. */
   readonly refused?: string;
-  /** The import or entry session it made. */
+  /** The import, entry session or connect it made. */
   readonly activity?: string;
   /** The judgment it filed, as the package named it. */
   readonly judgment?: string;
@@ -555,7 +558,7 @@ class OpenPod implements Pod {
     return this.#next(() => this.#import(exported, options));
   }
 
-  connect(saved: Exported): Promise<Done> {
+  connect(saved: Exported, options: { match?: boolean } = {}): Promise<Done> {
     return this.#next(async () => {
       let names: string[];
       try {
@@ -568,7 +571,20 @@ class OpenPod implements Pod {
         return this.#core.refuse(
           `a connect is saved as one folder, not ${names.length === 0 ? "no file" : names.join(" and ")}`,
         );
-      return this.#core.connect(new ExportedFiles(saved, name), name);
+      const connected = await this.#core.connect(
+        new ExportedFiles(saved, name),
+        name,
+      );
+      if (
+        options.match === false ||
+        connected.refused !== undefined ||
+        connected.activity === undefined
+      )
+        return connected;
+      return {
+        ...connected,
+        matched: await this.#core.match(connected.activity),
+      };
     });
   }
 
@@ -874,8 +890,16 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
-      const members = of(`${PROV}hadMember`);
+    const verdicts = of(`${CASCADE}verdict`);
+    const members = of(`${PROV}hadMember`);
+    const [only] = members;
+    const overFinding =
+      verdicts.length === 1 &&
+      verdicts[0] === `${CASCADE}Same` &&
+      members.length === 1 &&
+      only !== undefined &&
+      (await this.#isFinding(only));
+    if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
       const current = await this.#currentVersions(members);
       for (const member of members) {
         const version = current.get(member);
@@ -900,6 +924,13 @@ class OpenPod implements Pod {
       name: "the judgment",
     });
     return filed.refused === undefined ? { ...filed, judgment: name } : filed;
+  }
+
+  /** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
+  async #isFinding(thing: string): Promise<boolean> {
+    const { rows } = await this.#core.select(`${PREFIXES}
+      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
+    return rows.length > 0;
   }
 
   /** Each record's current version, under the everyday lens, and each revision's version, by the member. */

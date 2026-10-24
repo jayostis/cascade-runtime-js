@@ -426,3 +426,26 @@ test("two writers on one release write its retractions under one name with one c
   assert.equal(first?.length, 2);
   assert.deepEqual(first, second);
 });
+
+test("two writers' first runs under a rule list version file its one finding of the claims it no longer reaches under one name with one content (M18)", async () => {
+  const runs = await Promise.all(
+    [0, 1].map(() =>
+      replayed(
+        "opening a pod matched under version 6 with version 7 files one finding naming the claims of the rule version 7 changed that it did not file again",
+        undefined,
+        "runtime/matcher.feature",
+      ),
+    ),
+  );
+  const [first, second] = await Promise.all(
+    runs.map(async ({ pod, opened }) => {
+      const findings: [string, string][] = [];
+      for (const path of opened?.wrote ?? [])
+        if (path.startsWith("findings/"))
+          findings.push([path, new TextDecoder().decode(await pod.read(path))]);
+      return findings;
+    }),
+  );
+  assert.equal(first?.length, 1);
+  assert.deepEqual(first, second);
+});

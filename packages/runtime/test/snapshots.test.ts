@@ -4,6 +4,7 @@ import { CorePod, type Head } from "../src/core-pod.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
+import { HashedSet } from "../src/kept-set.js";
 import { snapshotsFollowTheirRule } from "../src/kit.js";
 import type { Layout } from "../src/layout.js";
 import { fileDigest, setHash } from "../src/names.js";
@@ -259,9 +260,10 @@ async function theSync(pod: Files, layout: Layout) {
 /** The pod's files, its writes stopping with an error at the one numbered `stopAt`, counting from 0, once. */
 class StopsAtOneWrite implements Files {
   writes = 0;
+  readonly reads = new Set<string>();
   constructor(
     readonly inner: Files,
-    readonly stopAt: number,
+    public stopAt: number,
   ) {}
 
   get iri(): string {
@@ -269,6 +271,7 @@ class StopsAtOneWrite implements Files {
   }
 
   read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    this.reads.add(pathOrIri);
     return this.inner.read(pathOrIri);
   }
 
@@ -311,7 +314,7 @@ test("a receive that stops at any of its writes and is made again writes the syn
 });
 
 test("three writers, one receiving the others' files in either order, hold one set hash and leave no head but their own", async () => {
-  const { replayed: story } = await replayed;
+  const { local, replayed: story } = await replayed;
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -328,6 +331,10 @@ test("three writers, one receiving the others' files in either order, hold one s
     const writer = await cleosWriter(await copied(story.pod), head);
     for (const from of order) await writer.receive(from.files);
     assert.deepEqual(await headsIn(writer.files), [writer.head?.snapshot]);
+    assert.equal(
+      writer.head?.setHash,
+      await setHashOf(writer.files, local.layout, ""),
+    );
     return writer.head?.setHash;
   };
   assert.equal(
@@ -364,4 +371,103 @@ test("an open that migrates a release leaves two acts in one step, each with its
     await snapshotsFollowTheirRule(story, local.layout, newStore),
     [],
   );
+});
+
+test("a set hash multiplied in a few files at a time, in any order, and kept between sessions is the whole set's; a kept set whose files the pod no longer lists is not taken", async () => {
+  const files = new Map<string, Uint8Array>();
+  for (let index = 0; index < 60; index++)
+    files.set(
+      `records/${randomId()}.ttl`,
+      globalThis.crypto.getRandomValues(new Uint8Array(32)),
+    );
+  const whole = await setHash(files);
+  for (let round = 0; round < 5; round++) {
+    const order = [...files].sort(() => Math.random() - 0.5);
+    const cut = 1 + Math.floor(Math.random() * 20);
+    const hashed = await HashedSet.of(new Map(order.slice(0, cut)));
+    for (let at = cut; at < order.length; at += 7) {
+      const paths = new Set(order.slice(0, at + 7).map(([path]) => path));
+      const missing = hashed.missing(paths, () => true) ?? [];
+      await hashed.add(
+        missing.map((path) => [path, files.get(path) ?? new Uint8Array()]),
+      );
+    }
+    assert.equal(await hashed.setHash(), whole);
+    const paths = new Set(files.keys());
+    const reopened = await HashedSet.kept(await hashed.kept(), paths);
+    assert.equal(await reopened?.setHash(), whole);
+    const [first = ""] = paths;
+    const swapped = new Set([...paths].filter((path) => path !== first));
+    swapped.add(`records/${randomId()}.ttl`);
+    assert.equal(await HashedSet.kept(await hashed.kept(), swapped), undefined);
+    assert.equal(
+      hashed.missing(swapped, () => true),
+      undefined,
+    );
+  }
+});
+
+/** The replay's last snapshot, as the head its writer kept, with no set. */
+async function replayHead(): Promise<Head> {
+  const { replayed: story } = await replayed;
+  const last = await snapshotIn(
+    story.pod,
+    story.steps.at(-1)?.wrote.at(-1) ?? "",
+  );
+  return { snapshot: last.name, setHash: last.values("setHash")[0] ?? "" };
+}
+
+/** Cleo's entry, entered by the writer; the act's file is the last it wrote. */
+async function enterInto(writer: CorePod, entry: string): Promise<string> {
+  const files = await vocabulary();
+  const path = `runtime/scripted-input/cleo/entries/${entry}.ttl`;
+  const bytes = await files.read(path);
+  assert.ok(bytes !== undefined);
+  const { wrote, refused } = await writer.enter({
+    bytes,
+    base: files.iri + path,
+    name: path,
+  });
+  assert.equal(refused, undefined);
+  return wrote.at(-1) ?? "";
+}
+
+test("a writer reopened with the head it kept reads no file of the set it kept, and its set hash is the whole set's; handed the head without the set, it reads them", async () => {
+  const { local, replayed: story } = await replayed;
+  const pod = new StopsAtOneWrite(await copied(story.pod), -1);
+  const first = await cleosWriter(pod, await replayHead());
+  await enterInto(first, "second-entry");
+  const kept = first.head;
+  assert.ok(kept?.set !== undefined);
+  const untouched = await pod.list("attachments/");
+  assert.ok(untouched.length > 0);
+  const control = new StopsAtOneWrite(await copied(pod), -1);
+  pod.reads.clear();
+  const actFile = await enterInto(await cleosWriter(pod, kept), "third-entry");
+  assert.deepEqual(
+    untouched.filter((path) => pod.reads.has(path)),
+    [],
+  );
+  assert.deepEqual((await snapshotIn(pod, actFile)).values("setHash"), [
+    await setHashOf(pod, local.layout, actFile),
+  ]);
+  const { snapshot, setHash: hash } = kept;
+  await enterInto(
+    await cleosWriter(control, { snapshot, setHash: hash }),
+    "third-entry",
+  );
+  assert.ok(untouched.every((path) => control.reads.has(path)));
+});
+
+test("a step that fails after hashing the set leaves the next act's set hash the whole set's", async () => {
+  const { local, replayed: story } = await replayed;
+  const pod = new StopsAtOneWrite(await copied(story.pod), -1);
+  const writer = await cleosWriter(pod, await replayHead());
+  await enterInto(writer, "second-entry");
+  pod.stopAt = pod.writes + 1;
+  await assert.rejects(enterInto(writer, "third-entry"), /the write stopped/);
+  const actFile = await enterInto(writer, "third-entry");
+  assert.deepEqual((await snapshotIn(pod, actFile)).values("setHash"), [
+    await setHashOf(pod, local.layout, actFile),
+  ]);
 });
