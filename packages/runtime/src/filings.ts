@@ -44,24 +44,36 @@ export async function fileCreation(context: StepContext): Promise<void> {
   );
 }
 
-/** A person's judgment: its file, as it is, filed by the judgment's name. */
+/**
+ * A person's judgment or retraction: its file, as it is, filed by its name (N10), a retraction where the layout files
+ * what states prov:invalidated.
+ */
 export async function fileJudgment(
   context: StepContext,
   judgment: StepFile,
 ): Promise<void> {
-  const judgments = (await parseStepFile(judgment, context.newStore)).subjects(
-    `${RDF}type`,
-    iri(`${CASCADE}Judgment`),
-  );
-  const [found] = judgments;
-  if (judgments.length !== 1 || found === undefined)
-    throw new Refusal(
-      `${judgment.name} holds ${judgments.length} judgments, not one`,
+  const graph = await parseStepFile(judgment, context.newStore);
+  const judgments = graph.subjects(`${RDF}type`, iri(`${CASCADE}Judgment`));
+  const retractions = graph
+    .subjects(`${PROV}invalidated`)
+    .filter(
+      (s) => graph.match(s, `${RDF}type`, iri(`${PROV}Activity`)).length > 0,
     );
-  context.writes.add(
-    context.layout.place(`${CASCADE}Judgment`).path(found.value),
-    judgment.bytes,
-  );
+  const found = [...judgments, ...retractions];
+  const [one] = found;
+  if (found.length !== 1 || one === undefined)
+    throw new Refusal(
+      `${judgment.name} holds ${judgments.length} judgments and ${retractions.length} retractions, not one of either`,
+    );
+  const { layout } = context;
+  const placement =
+    judgments.length === 1
+      ? layout.place(`${CASCADE}Judgment`)
+      : layout.place(
+          `${PROV}Activity`,
+          graph.match(one).map(([, p]) => p.value),
+        );
+  context.writes.add(placement.path(one.value), judgment.bytes);
 }
 
 /** A reference version's arrival: what the reference index states about it, filed by its name. */

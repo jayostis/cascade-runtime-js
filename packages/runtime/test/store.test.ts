@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { iri, literal, written } from "../src/rdf.js";
+import { blank, iri, literal, written } from "../src/rdf.js";
 import { Union } from "../src/store.js";
 
 test("a query's default graph is the union of the graphs it names, GRAPH reads every graph, and blank nodes are shared across graphs", async () => {
@@ -71,5 +71,32 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
   assert.equal(
     await new Union(store, ["urn:other"]).ask("ASK { ?o <urn:t> ?z }"),
     false,
+  );
+});
+
+test("terms, quads and graphs the store frees once read leave the same answers when read again", async () => {
+  const store = new OxigraphStore();
+  const turtle = '<urn:s> <urn:p> 1, 2, "x"@en .\n<urn:t> <urn:p> 1 .';
+  const parsed = await store.parse(turtle, "urn:base");
+  assert.deepEqual(await store.parse(turtle, "urn:base"), parsed);
+  await store.loadTurtle(turtle, { graph: "urn:one" });
+  const union = new Set(["urn:one"]);
+  const held = await store.holds(parsed, union);
+  assert.deepEqual(held, [true, true, true, true]);
+  assert.deepEqual(await store.holds(parsed, union), held);
+  const integer = "http://www.w3.org/2001/XMLSchema#integer";
+  const added = [blank("b"), iri("urn:p"), literal("3", integer)] as const;
+  await store.add([added], { graph: "urn:two" });
+  const both = new Set(["urn:one", "urn:two"]);
+  const construct = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }";
+  const constructed = await store.construct(construct, both);
+  assert.equal(constructed.length, 5);
+  assert.deepEqual(await store.construct(construct, both), constructed);
+  assert.deepEqual(await store.holds(parsed, both), held);
+  assert.deepEqual(
+    (await store.construct(construct, new Set(["urn:two"]))).map(
+      ([, , object]) => written(object),
+    ),
+    [`"3"^^<${integer}>`],
   );
 });
