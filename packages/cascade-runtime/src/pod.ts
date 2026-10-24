@@ -5,6 +5,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   type Files,
+  type Head,
   type Importer,
   type ImportProgress,
   type IndexEntry,
@@ -100,6 +101,11 @@ export interface Pod {
   readonly opened?: Opened;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
   readonly encrypted: boolean;
+  /**
+   * The app's last snapshot in the pod (N14), which the app's tables store keeps beside the pod's name and hands back
+   * as the writer's head at the next open; none until the app performs an act in it, so a first act is a new writer's.
+   */
+  readonly head: Head | undefined;
   /** The export or download at the path, or the files the app holds of one. */
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
@@ -529,6 +535,10 @@ class OpenPod implements Pod {
 
   get owner(): string {
     return `${this.address}${this.#parts.layout.card}#me`;
+  }
+
+  get head(): Head | undefined {
+    return this.#core.head;
   }
 
   look(exported: string | Exported): Promise<readonly ExportSource[]> {
@@ -1034,6 +1044,7 @@ function coreOver(
   subject: string,
   title: string,
   opened?: Union,
+  head?: Head,
 ): CorePod {
   const { build } = parts;
   return new CorePod(
@@ -1048,6 +1059,8 @@ function coreOver(
       time: clock,
       importers: parts.importers,
       runtime: parts.performer,
+      ...(head === undefined ? {} : { head }),
+      keepHead: (kept) => parts.tables.keptHead(address, kept),
       references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,
@@ -1165,6 +1178,7 @@ export async function openPodWith(
     subject,
     title,
     opened,
+    await parts.tables.headOf(address),
   );
   return new OpenPod(
     parts,

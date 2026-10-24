@@ -13,6 +13,8 @@ import {
   earlierInUtc,
   claimName,
   enteredRecordName,
+  actDescriptionName,
+  fileDigest,
   fileStem,
   setHash,
   snapshotName,
@@ -621,9 +623,10 @@ async function namesFollowTheirRules(
 
 /**
  * N7 and N14 over a replay, read from its pod: each act's file names the runtime that performed it and holds one
- * snapshot, named by its rule, whose first parent is the snapshot before it; each set hash is the hash of the set the
- * steps had written by then and, with a first parent, that parent's plus the files it adds; and every file of
- * the set its steps wrote is in the pod, which may hold more, so a file of the set removed fails it.
+ * snapshot, named by its rule over its act's description, whose first parent is the snapshot before it and whose added
+ * files are the files of the set its act wrote; each set hash is the set's after its step, its act's own file left out;
+ * and the last snapshot's set hash is the set hash of the files the pod lists of that set, so a file of it removed or
+ * changed fails the check.
  */
 export async function snapshotsFollowTheirRule(
   replayed: Replayed,
@@ -632,10 +635,28 @@ export async function snapshotsFollowTheirRule(
 ): Promise<string[]> {
   const { pod, steps, runtime } = replayed;
   const failures: string[] = [];
+  const listed = new Set(await pod.list(""));
+  const digests = new Map<string, Uint8Array>();
   const held: string[] = [];
-  let previous: { readonly name: string; readonly hash: string } | undefined;
+  const hashOf = async (paths: readonly string[]): Promise<string> => {
+    const files: [string, Uint8Array][] = [];
+    for (const path of paths) {
+      let digest = digests.get(path);
+      if (digest === undefined) {
+        const bytes = await pod.read(path);
+        if (bytes === undefined) continue;
+        digest = await fileDigest(bytes);
+        digests.set(path, digest);
+      }
+      files.push([path, digest]);
+    }
+    return setHash(files);
+  };
+  let previous: string | undefined;
+  let last: { readonly set: string[]; readonly hash: string } | undefined;
   for (const { step, wrote, activity } of steps) {
-    held.push(...wrote.filter((path) => layout.inSnapshotSet(path)));
+    const ofSet = wrote.filter((path) => layout.inSnapshotSet(path));
+    held.push(...ofSet);
     let found = 0;
     for (const path of wrote) {
       const bytes = layout.isRdf(path) ? await pod.read(path) : undefined;
@@ -660,43 +681,58 @@ export async function snapshotsFollowTheirRule(
             .length === 0
         )
           failures.push(`N7: the act of ${where} names no ${runtime}`);
-        if (first.join() !== (previous?.name ?? ""))
+        if (first.join() !== (previous ?? ""))
           failures.push(
-            `N14: ${where} has the first parent ${first.join() || "none"}, not ${previous?.name ?? "none"}`,
+            `N14: ${where} has the first parent ${first.join() || "none"}, not ${previous ?? "none"}`,
           );
-        if (hash !== (await setHash(held)))
+        if ([...added].sort().join() !== [...ofSet].sort().join())
+          failures.push(
+            `N14: ${where} names as added ${added.length} files, not the ${ofSet.length} of the set its act wrote`,
+          );
+        const set = held.filter((file) => file !== path);
+        if (
+          set.every((file) => listed.has(file)) &&
+          hash !== (await hashOf(set))
+        )
           failures.push(
             `N14: ${where}'s set hash is not the set's after step ${step.name}`,
           );
-        if (
-          previous !== undefined &&
-          hash !== (await setHash(added, previous.hash))
-        )
-          failures.push(
-            `N14: ${where}'s set hash is not its first parent's plus the files it adds`,
-          );
+        const description = graph.triples.filter(
+          ([subject]) =>
+            subject.termType !== "NamedNode" ||
+            subject.value !== snapshot.value,
+        );
         if (
           snapshot.value !==
           (await snapshotName({
             act,
+            description: await actDescriptionName(description),
             ...(first[0] === undefined ? {} : { firstParent: first[0] }),
             mergedParents: merged,
             setHash: hash,
           }))
         )
           failures.push(`N14: ${where} is not named by its rule`);
-        previous = { name: snapshot.value, hash };
+        previous = snapshot.value;
+        last = { set, hash };
       }
     }
     if (activity !== undefined && wrote.length > 0 && found !== 1)
       failures.push(`N14: step ${step.name} wrote ${found} snapshots, not one`);
   }
-  const listed = new Set(await pod.list(""));
-  for (const path of held)
-    if (!listed.has(path))
+  if (last !== undefined) {
+    const present = last.set.filter((path) => listed.has(path));
+    if ((await hashOf(present)) !== last.hash) {
       failures.push(
-        `N14: ${path}, of the set the snapshots hash, is missing from the pod`,
+        "N14: the last snapshot's set hash is not the set hash of the files the pod lists of its set",
       );
+      for (const path of last.set)
+        if (!listed.has(path))
+          failures.push(
+            `N14: ${path}, of the set the snapshots hash, is missing from the pod`,
+          );
+    }
+  }
   return failures;
 }
 

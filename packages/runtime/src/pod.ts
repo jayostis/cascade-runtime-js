@@ -15,12 +15,12 @@ export interface Act {
 }
 
 /**
- * Given the act and the paths of every file its step writes new to the pod, the act's file among them, what its file
+ * Given the act and every other file its step writes new to the pod, each path with its bytes, what the act's file
  * holds beside the act's description: the runtime that performed it and its snapshot (N7, N14).
  */
 export type FinishAct = (
   act: Act,
-  written: readonly string[],
+  fresh: readonly (readonly [string, Uint8Array])[],
 ) => Promise<readonly Triple[]>;
 
 /**
@@ -72,11 +72,8 @@ export class StepWrites {
     if (act !== undefined) {
       if ((await pod.read(act.path)) !== undefined)
         throw new Error(`${act.path} is in the pod already`);
-      const written = [...fresh.map(([path]) => path), act.path];
-      fresh.push([
-        act.path,
-        ntriples([...act.triples, ...((await finish?.(act, written)) ?? [])]),
-      ]);
+      const finished = (await finish?.(act, [...fresh])) ?? [];
+      fresh.push([act.path, ntriples([...act.triples, ...finished])]);
     }
     await writeAll(pod, fresh);
     return fresh.map(([path]) => path);

@@ -8,7 +8,13 @@ import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
-import { documentName, setHash, snapshotName } from "./names.js";
+import {
+  actDescriptionName,
+  documentName,
+  fileDigest,
+  setHash,
+  snapshotName,
+} from "./names.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import { iri, literal, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
@@ -47,8 +53,13 @@ export interface CorePodOptions {
   readonly references: () => Promise<References>;
   /** The runtime performing the acts, as N7 names it: <repository>/tree/<commit>/. */
   readonly runtime: string;
-  /** The writer's last snapshot, which it keeps outside the pod (N14); a writer given none is a new writer. */
+  /**
+   * The writer's last snapshot, which it keeps outside the pod (N14); a writer given none, or one the pod does not hold,
+   * is a new writer.
+   */
   readonly head?: Head;
+  /** Told each new last snapshot once its act is written, to keep it outside the pod; a failure loses only the head. */
+  readonly keepHead?: (head: Head) => Promise<void>;
   /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
   readonly build?: { readonly lens: string; readonly derive: Derive };
 }
@@ -192,14 +203,17 @@ export async function podRevision(
 }
 
 /**
- * The snapshots the pod's act files hold that no snapshot they hold names as a parent, in code point order: only the
- * files in the folders the layout gives acts are read.
+ * The snapshots the pod's act files hold, and its heads: those no snapshot they hold names as a parent, in code point
+ * order. Only the files in the folders the layout gives acts are read.
  */
-async function heads(
+async function snapshotsHeld(
   pod: Files,
   layout: Layout,
   newStore: StoreFactory,
-): Promise<string[]> {
+): Promise<{
+  readonly snapshots: ReadonlySet<string>;
+  readonly heads: string[];
+}> {
   const folders = layout.placements.flatMap(({ kind, folder }) =>
     kind === `${PROV}Activity` && folder !== undefined ? [folder] : [],
   );
@@ -223,9 +237,12 @@ async function heads(
         parents.add(o.value);
     }
   }
-  return [...snapshots]
-    .filter((snapshot) => !parents.has(snapshot))
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return {
+    snapshots,
+    heads: [...snapshots]
+      .filter((snapshot) => !parents.has(snapshot))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+  };
 }
 
 /** A copy of the pod's files, in memory. */
@@ -248,9 +265,11 @@ export class CorePod {
   #readShapes: Promise<Shapes> | undefined;
   /** What is built of the pod as it stands, by what it is; a step drops it all. */
   #kept = new Map<string, Promise<unknown>>();
-  /** The writer's last snapshot, and the files of the set it wrote since without an act. */
+  /** The writer's last snapshot, and whether the pod is known to hold it. */
   #head: Head | undefined;
-  #gained: string[] = [];
+  #headHeld = false;
+  /** The SHA-256 of each file of the set read so far, by path: no file, once written, changes. */
+  readonly #digests = new Map<string, Uint8Array>();
 
   /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
@@ -263,7 +282,10 @@ export class CorePod {
     return this.#options.pod;
   }
 
-  /** The writer's last snapshot, for it to keep outside the pod (N14); undefined until it performs an act. */
+  /**
+   * The writer's last snapshot, for it to keep outside the pod (N14) and hand back as `CorePodOptions.head`: the one it
+   * was handed until it performs an act, undefined for a new writer.
+   */
   get head(): Head | undefined {
     return this.#head;
   }
@@ -387,8 +409,10 @@ export class CorePod {
   async open(tables: References): Promise<Performed> {
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
-      unheld = await openPod(context, tables);
+      const opened = await openPod(context, tables);
+      unheld = opened.unheld;
       this.#references = Promise.resolve(tables);
+      return opened.activity;
     });
     return unheld.length === 0 ? performed : { ...performed, unheld };
   }
@@ -456,7 +480,7 @@ export class CorePod {
     });
     fork.#references = this.#references;
     fork.#head = this.#head;
-    fork.#gained = [...this.#gained];
+    fork.#headHeld = this.#headHeld;
     if (this.#readShapes !== undefined) fork.#holdShapes(this.#readShapes);
     return fork;
   }
@@ -504,18 +528,15 @@ export class CorePod {
         matcherView: () => this.#matcherView(),
       });
       let head: Head | undefined;
-      const wrote = await writes.commit(options.pod, async (act, written) => {
-        const finished = await this.#finished(act, written);
+      const wrote = await writes.commit(options.pod, async (act, fresh) => {
+        const finished = await this.#finished(act, fresh);
         head = finished.head;
         return finished.triples;
       });
-      if (head === undefined)
-        this.#gained.push(
-          ...wrote.filter((path) => options.layout.inSnapshotSet(path)),
-        );
-      else {
+      if (head !== undefined) {
         this.#head = head;
-        this.#gained = [];
+        this.#headHeld = true;
+        await options.keepHead?.(head).catch(() => undefined);
       }
       performed =
         typeof activity === "string" ? { wrote, activity } : { wrote };
@@ -537,42 +558,62 @@ export class CorePod {
 
   /**
    * What an act's file holds beside its description: the runtime that performed it (N7) and its snapshot (N14), chained
-   * to the writer's last; a new writer's merges every head the pod holds and hashes the whole set.
+   * to the writer's last. A writer with none, or whose last the pod does not hold, is a new writer, whose snapshot merges
+   * every head the pod holds. The set hash is over every file of the set the pod holds once the step's other files are
+   * written; the snapshot names only the files of the set the act wrote, its own among them.
    */
   async #finished(
     act: Act,
-    written: readonly string[],
+    fresh: readonly (readonly [string, Uint8Array])[],
   ): Promise<{ readonly triples: Triple[]; readonly head: Head }> {
-    const { pod, layout, runtime } = this.#options;
-    const added = written.filter((path) => layout.inSnapshotSet(path));
-    const first = this.#head;
-    let hash: string;
-    let merged: string[] = [];
-    let listed: string[];
-    if (first === undefined) {
-      const held = (await pod.list("")).filter((path) =>
-        layout.inSnapshotSet(path),
-      );
-      hash = await setHash([...held, ...added]);
-      merged = await heads(pod, layout, this.#options.newStore);
-      listed = added;
-    } else {
-      listed = [...new Set([...this.#gained, ...added])];
-      hash = await setHash(listed, first.setHash);
+    const { pod, layout, runtime, newStore } = this.#options;
+    const written = new Map(fresh);
+    const set = [...new Set([...(await pod.list("")), ...written.keys()])]
+      .filter((path) => path !== act.path && layout.inSnapshotSet(path))
+      .sort();
+    const files: [string, Uint8Array][] = [];
+    for (const path of set) {
+      let digest = this.#digests.get(path);
+      if (digest === undefined) {
+        const bytes = written.get(path) ?? (await pod.read(path));
+        if (bytes === undefined)
+          throw new Error(`${path} is listed but not held`);
+        digest = await fileDigest(bytes);
+        this.#digests.set(path, digest);
+      }
+      files.push([path, digest]);
     }
+    const hash = await setHash(files);
+    let first = this.#head;
+    let merged: string[] = [];
+    if (first === undefined || !this.#headHeld) {
+      const held = await snapshotsHeld(pod, layout, newStore);
+      if (first !== undefined && !held.snapshots.has(first.snapshot))
+        first = undefined;
+      if (first === undefined) merged = held.heads;
+    }
+    const agent = iri(runtime);
+    const description: Triple[] = [
+      ...act.triples,
+      [iri(act.name), iri(`${PROV}wasAssociatedWith`), agent],
+      [agent, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
+    ];
     const snapshot = await snapshotName({
       act: act.name,
+      description: await actDescriptionName(description),
       ...(first === undefined ? {} : { firstParent: first.snapshot }),
       mergedParents: merged,
       setHash: hash,
     });
     const node = iri(snapshot);
-    const agent = iri(runtime);
+    const added = [
+      ...[...written.keys()].filter((path) => layout.inSnapshotSet(path)),
+      act.path,
+    ];
     return {
       head: { snapshot, setHash: hash },
       triples: [
-        [iri(act.name), iri(`${PROV}wasAssociatedWith`), agent],
-        [agent, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
+        ...description.slice(act.triples.length),
         [node, iri(TYPE), iri(`${CASCADE}Snapshot`)],
         [node, iri(`${PROV}wasGeneratedBy`), iri(act.name)],
         ...(first === undefined
@@ -590,7 +631,7 @@ export class CorePod {
           iri(parent),
         ]),
         [node, iri(`${CASCADE}setHash`), literal(hash)],
-        ...listed.map((path): Triple => [
+        ...added.map((path): Triple => [
           node,
           iri(`${CASCADE}fileAddedToSet`),
           literal(path),

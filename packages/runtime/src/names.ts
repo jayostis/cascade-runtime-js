@@ -1,3 +1,4 @@
+import { createSHA256, type IHasher } from "hash-wasm";
 import { canonize } from "rdf-canonize";
 import type { Triple } from "./rdf.js";
 import { Refusal } from "./refusal.js";
@@ -557,35 +558,175 @@ export async function viewEntryName(
   return `${view}#${hex(await sha256(new TextEncoder().encode(least)))}`;
 }
 
-const SET_HASH_MODULUS = 1n << 256n;
+const MUHASH_BITS = 3072n;
+const MUHASH_BYTES = 384;
+const MUHASH_DIFFERENCE = 1103717n;
+const MUHASH_MODULUS = (1n << MUHASH_BITS) - MUHASH_DIFFERENCE;
+const MUHASH_LOW = (1n << MUHASH_BITS) - 1n;
+const CHACHA20_CONSTANTS = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
-/** The set hash of the empty set. */
-export const EMPTY_SET_HASH = "0".repeat(64);
+let hashing: Promise<IHasher> | undefined;
 
-/**
- * MSet-Add-Hash (cascade:setHash): the sum modulo 2^256 of the SHA-256 of each member, a file's path relative to the
- * pod, read as a big-endian unsigned integer, in 64 lower-case hex digits. Given the set hash of a set that lacks every
- * member, `before`, it is the set hash of their union.
- */
-export async function setHash(
-  members: Iterable<string>,
-  before: string = EMPTY_SET_HASH,
-): Promise<string> {
-  let sum = BigInt(`0x${before}`);
-  for (const member of new Set(members))
-    sum += BigInt(`0x${hex(await sha256(new TextEncoder().encode(member)))}`);
-  return (sum % SET_HASH_MODULUS).toString(16).padStart(64, "0");
+/** A synchronous SHA-256, for the many small inputs a set hash takes, which WebCrypto answers one task at a time. */
+function sha256Hasher(): Promise<IHasher> {
+  hashing ??= createSHA256();
+  return hashing;
 }
 
-/** An act's snapshot: the act, the writer's previous snapshot where it has one, the heads it merged, and its set hash. */
+/** ChaCha20's quarter round on the words at a, b, c and d. */
+function quarter(
+  x: Uint32Array,
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+): void {
+  let va = x[a] ?? 0;
+  let vb = x[b] ?? 0;
+  let vc = x[c] ?? 0;
+  let vd = x[d] ?? 0;
+  va = (va + vb) | 0;
+  vd ^= va;
+  vd = (vd << 16) | (vd >>> 16);
+  vc = (vc + vd) | 0;
+  vb ^= vc;
+  vb = (vb << 12) | (vb >>> 20);
+  va = (va + vb) | 0;
+  vd ^= va;
+  vd = (vd << 8) | (vd >>> 24);
+  vc = (vc + vd) | 0;
+  vb ^= vc;
+  vb = (vb << 7) | (vb >>> 25);
+  x[a] = va;
+  x[b] = vb;
+  x[c] = vc;
+  x[d] = vd;
+}
+
+/**
+ * RFC 8439's ChaCha20 keystream under the 32-byte key, its nonce zero, as Bitcoin Core's ChaCha20Aligned gives it,
+ * read as one little-endian number.
+ */
+function chacha20Number(key: Uint8Array, blocks: number): bigint {
+  const keyWords = new DataView(key.buffer, key.byteOffset, 32);
+  const state = new Uint32Array(16);
+  CHACHA20_CONSTANTS.forEach((word, index) => (state[index] = word));
+  for (let index = 0; index < 8; index++)
+    state[4 + index] = keyWords.getUint32(index * 4, true);
+  const words = new Uint32Array(blocks * 16);
+  const x = new Uint32Array(16);
+  for (let block = 0; block < blocks; block++) {
+    state[12] = block;
+    x.set(state);
+    for (let round = 0; round < 10; round++) {
+      quarter(x, 0, 4, 8, 12);
+      quarter(x, 1, 5, 9, 13);
+      quarter(x, 2, 6, 10, 14);
+      quarter(x, 3, 7, 11, 15);
+      quarter(x, 0, 5, 10, 15);
+      quarter(x, 1, 6, 11, 12);
+      quarter(x, 2, 7, 8, 13);
+      quarter(x, 3, 4, 9, 14);
+    }
+    for (let index = 0; index < 16; index++)
+      words[block * 16 + index] = (x[index] ?? 0) + (state[index] ?? 0);
+  }
+  let text = "0x";
+  for (let index = words.length - 1; index >= 0; index--)
+    text += (words[index] ?? 0).toString(16).padStart(8, "0");
+  return BigInt(text);
+}
+
+function toLittleEndian(value: bigint, length: number): Uint8Array {
+  const text = value.toString(16).padStart(length * 2, "0");
+  const out = new Uint8Array(length);
+  for (let index = 0; index < length; index++)
+    out[index] = parseInt(
+      text.slice(text.length - 2 * (index + 1), text.length - 2 * index),
+      16,
+    );
+  return out;
+}
+
+/** The product reduced modulo 2^3072 - 1103717. */
+function reduced(value: bigint): bigint {
+  let left = value;
+  while (left > MUHASH_LOW)
+    left = (left & MUHASH_LOW) + (left >> MUHASH_BITS) * MUHASH_DIFFERENCE;
+  return left >= MUHASH_MODULUS ? left - MUHASH_MODULUS : left;
+}
+
+/**
+ * Bitcoin Core's MuHash3072 over the byte strings, each inserted once: the SHA-256 of the product, modulo
+ * 2^3072 - 1103717, of each one's ChaCha20 keystream under its SHA-256 read as a 384-byte little-endian number, the
+ * product written as 384 bytes little-endian. Bitcoin Core writes the digest byte-reversed.
+ */
+export async function muhash3072(
+  members: Iterable<Uint8Array>,
+): Promise<Uint8Array> {
+  const hasher = await sha256Hasher();
+  let product = 1n;
+  for (const member of members) {
+    hasher.init();
+    hasher.update(member);
+    product = reduced(
+      product * chacha20Number(hasher.digest("binary"), MUHASH_BYTES / 64),
+    );
+  }
+  return sha256(toLittleEndian(product, MUHASH_BYTES));
+}
+
+/**
+ * The set hash (cascade:setHash): MuHash3072 over one member per file, its path relative to the pod in UTF-8, a 0x00
+ * byte and the SHA-256 of its bytes, in 64 lower-case hex digits. Each file is given by its path and that SHA-256.
+ */
+export async function setHash(
+  files: Iterable<readonly [path: string, sha256: Uint8Array]>,
+): Promise<string> {
+  const encoder = new TextEncoder();
+  const members: Uint8Array[] = [];
+  for (const [path, digest] of new Map(files)) {
+    const encoded = encoder.encode(path);
+    const member = new Uint8Array(encoded.length + 1 + digest.length);
+    member.set(encoded);
+    member.set(digest, encoded.length + 1);
+    members.push(member);
+  }
+  return hex(await muhash3072(members));
+}
+
+/** The SHA-256 of the bytes, as `setHash` takes a file's. */
+export async function fileDigest(bytes: Uint8Array): Promise<Uint8Array> {
+  const hasher = await sha256Hasher();
+  hasher.init();
+  hasher.update(bytes);
+  return hasher.digest("binary");
+}
+
+/**
+ * An act's description, every triple of its file but its snapshot's, named as a version is named but with its blank
+ * nodes labelled by RDFC-1.0 (cascade:SnapshotNamingRule).
+ */
+export async function actDescriptionName(
+  triples: Iterable<Triple>,
+): Promise<string> {
+  return documentName(new TextEncoder().encode(await canonical(triples)));
+}
+
+/**
+ * An act's snapshot: the act, its description's name, the writer's previous snapshot where it has one, the heads it
+ * merged, and its set hash.
+ */
 export function snapshotName(snapshot: {
   readonly act: string;
+  readonly description: string;
   readonly firstParent?: string;
   readonly mergedParents: Iterable<string>;
   readonly setHash: string;
 }): Promise<string> {
   return derivedName(NAMING_RULES.Snapshot, [
     snapshot.act,
+    snapshot.description,
     ...counted(
       snapshot.firstParent === undefined ? [] : [snapshot.firstParent],
     ),

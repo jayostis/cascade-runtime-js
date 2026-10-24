@@ -1082,12 +1082,12 @@ function descent(references: References, to: string, from: string): string[] {
 /**
  * Opens the pod with the tables: adopts each series' default that descends from the version the pod names, and files
  * what that and any rule or series new to the pod join (O1); a version the tables do not hold is left out (O2). Gives
- * the versions the pod names that the tables do not hold.
+ * the versions the pod names that the tables do not hold, and the run's act, if it wrote one.
  */
 export async function openPod(
   context: StepContext,
   references: References,
-): Promise<string[]> {
+): Promise<{ readonly unheld: string[]; readonly activity?: string }> {
   const named = await namedVersions(await context.matcherView());
   const adopted = new Map<string, string>();
   const line: string[] = [];
@@ -1109,6 +1109,7 @@ export async function openPod(
   await matcher.recheck();
   await matcher.rejoin();
   matcher.finish();
-  actOfRun(context);
-  return unheld.sort();
+  const activity = actOfRun(context);
+  unheld.sort();
+  return activity === undefined ? { unheld } : { unheld, activity };
 }

@@ -76,6 +76,7 @@ export async function bundleBrowser(
     define: {
       CASCADE_ENTRY_VERSION: JSON.stringify(version),
       CASCADE_RUNTIME_COMMIT: JSON.stringify(packing.commit),
+      CASCADE_RUNTIME_DIRTY: JSON.stringify(packing.dirty),
     },
   });
   const glue = join(packing.bridge, BRIDGE_GLUE).replaceAll("\\", "/");

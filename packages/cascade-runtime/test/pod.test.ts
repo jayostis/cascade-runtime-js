@@ -506,6 +506,65 @@ test("an entry is filed and matched by default; a person's judgment records the 
   assert.deepEqual(await filesIn(folder), held);
 });
 
+test("the app keeps its last snapshot in a pod beside the pod's name, so a session after a reopen chains to it with no merge", async () => {
+  const at = join(pods, "two-sessions");
+  const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
+  const alex = people.find(
+    ([, p, o]) => p.value === FOAF_NAME && o.value === "Alex",
+  )?.[0].value;
+  assert.ok(alex);
+  const a1 = await readFile(inKit(`${ALEX}/entries/a1.ttl`), "utf8");
+  const entered = async (of: Pod, session: string) => {
+    const done = await of.enter(
+      a1
+        .replaceAll("5c5734fb-433f-4ed1-8de7-1ad16d7d21cc", session)
+        .replaceAll(`<${alex}>`, `<${of.subject}>`),
+      { match: false },
+    );
+    assert.equal(done.refused, undefined);
+    const triples = await new OxigraphStore().parse(
+      await readFile(join(at, ...(done.wrote.at(-1) ?? "").split("/"))),
+      of.address,
+    );
+    const values = (local: string) =>
+      triples
+        .filter(
+          ([, p]) =>
+            p.value === `https://ns.cascadeprotocol.org/cascade#${local}`,
+        )
+        .map(([, , o]) => o.value);
+    return {
+      firstParent: values("firstParentSnapshot"),
+      merged: values("mergedParentSnapshot"),
+    };
+  };
+  const headOf = (of: Pod) => of.head;
+  const first = await openPodWith(kept, at);
+  let head: Pod["head"];
+  try {
+    assert.equal(first.head, undefined);
+    assert.deepEqual(
+      await entered(first, "0b6f3c1e-2d4a-4e8b-9c7f-1a2b3c4d5e6f"),
+      { firstParent: [], merged: [] },
+    );
+    head = headOf(first);
+    assert.ok(head !== undefined);
+  } finally {
+    await first.close();
+  }
+  const second = await openPodWith(kept, at);
+  try {
+    assert.deepEqual(second.head, head);
+    assert.deepEqual(
+      await entered(second, "7d1e9a4b-6c2f-4b3d-8e5a-2f1c0b9d8e7a"),
+      { firstParent: [head.snapshot], merged: [] },
+    );
+  } finally {
+    await second.close();
+    await rm(at, { recursive: true, force: true });
+  }
+});
+
 test("files no importer reads are refused before the Bridge loads, and write nothing", async () => {
   const unloaded = await openPodWith(
     {

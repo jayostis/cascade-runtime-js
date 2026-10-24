@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Graph } from "../src/graph.js";
 import {
+  actDescriptionName,
   assertionName,
   canonical,
   claimName,
   containedRecordName,
   documentName,
   enteredRecordName,
+  fileDigest,
   findingName,
+  muhash3072,
   normalisedBaseUrl,
   organizationName,
   recordFromCcdaName,
@@ -105,13 +108,14 @@ const BY_INPUTS: Record<string, (inputs: readonly Input[]) => Promise<string>> =
         i.slice(1).map((_, index) => nth(i, index + 1)),
       ),
     SnapshotNamingRule: (i) => {
-      const first = list(i, 1);
+      const first = list(i, 2);
       assert.ok(first.length <= 1, "a snapshot has at most one first parent");
       return snapshotName({
         act: nth(i, 0),
+        description: nth(i, 1),
         firstParent: first[0],
-        mergedParents: list(i, 2),
-        setHash: nth(i, 3),
+        mergedParents: list(i, 3),
+        setHash: nth(i, 4),
       });
     },
   };
@@ -314,26 +318,50 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
 });
 
 interface SnapshotVectors {
-  readonly setHashes: readonly {
+  readonly muhash3072: readonly {
     readonly name: string;
     readonly members: readonly string[];
+    readonly numerator: string;
+    readonly digest: string;
+  }[];
+  readonly setHashes: readonly {
+    readonly name: string;
+    readonly files: readonly SetFile[];
     readonly setHash: string;
   }[];
   readonly chains: readonly {
     readonly name: string;
     readonly snapshots: readonly {
       readonly act: string;
+      readonly path: string;
+      readonly file: string;
+      readonly description: string;
       readonly firstParent: string | null;
       readonly mergedParents: readonly string[];
-      readonly set?: readonly string[];
-      readonly added?: readonly string[];
+      readonly set: readonly SetFile[];
       readonly setHash: string;
       readonly name: string;
     }[];
   }[];
 }
 
-test("every snapshot vector of the vocabulary reproduces: each set hash, and each chained snapshot's set hash and name", async (t) => {
+interface SetFile {
+  readonly path: string;
+  readonly sha256: string;
+}
+
+function bytesOf(hex: string): Uint8Array {
+  return Uint8Array.from(hex.match(/../g) ?? [], (pair) => parseInt(pair, 16));
+}
+
+function hexOf(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+const filesOf = (files: readonly SetFile[]) =>
+  files.map(({ path, sha256 }) => [path, bytesOf(sha256)] as const);
+
+test("every snapshot vector of the vocabulary reproduces: Bitcoin Core's MuHash3072, each set hash, and each snapshot's description and name", async (t) => {
   const bytes = await (
     await vocabulary()
   ).read("tests/vectors/snapshot/vectors.json");
@@ -341,33 +369,48 @@ test("every snapshot vector of the vocabulary reproduces: each set hash, and eac
   const vectors = JSON.parse(
     new TextDecoder().decode(bytes),
   ) as SnapshotVectors;
-  assert.ok(vectors.setHashes.length > 0 && vectors.chains.length > 0);
+  assert.ok(vectors.muhash3072.length > 0 && vectors.chains.length > 0);
+  for (const vector of vectors.muhash3072)
+    await t.test(vector.name, async () => {
+      assert.equal(
+        hexOf(await fileDigest(bytesOf(vector.numerator))),
+        vector.digest,
+      );
+      assert.equal(
+        hexOf(await muhash3072(vector.members.map(bytesOf))),
+        vector.digest,
+      );
+    });
   for (const vector of vectors.setHashes)
     await t.test(vector.name, async () => {
-      assert.equal(await setHash(vector.members), vector.setHash);
+      assert.equal(await setHash(filesOf(vector.files)), vector.setHash);
     });
+  const store = new OxigraphStore();
   for (const chain of vectors.chains)
     await t.test(chain.name, async () => {
-      const named = new Map<string, string>();
       for (const snapshot of chain.snapshots) {
-        const parent = snapshot.firstParent ?? undefined;
-        const before = parent === undefined ? undefined : named.get(parent);
-        assert.equal(
-          parent === undefined
-            ? await setHash(snapshot.set ?? [])
-            : await setHash(snapshot.added ?? [], before),
-          snapshot.setHash,
+        assert.equal(await setHash(filesOf(snapshot.set)), snapshot.setHash);
+        const triples = await store.parse(
+          new TextEncoder().encode(snapshot.file),
+          "https://pod.example/",
         );
+        assert.equal(
+          await actDescriptionName(
+            triples.filter(([subject]) => subject.value !== snapshot.name),
+          ),
+          snapshot.description,
+        );
+        const parent = snapshot.firstParent ?? undefined;
         assert.equal(
           await snapshotName({
             act: snapshot.act,
+            description: snapshot.description,
             ...(parent === undefined ? {} : { firstParent: parent }),
             mergedParents: snapshot.mergedParents,
             setHash: snapshot.setHash,
           }),
           snapshot.name,
         );
-        named.set(snapshot.name, snapshot.setHash);
       }
     });
 });

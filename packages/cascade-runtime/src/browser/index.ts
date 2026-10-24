@@ -3,6 +3,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   type Followed,
+  type Head,
   HEADER,
   importersNamed,
   Layout,
@@ -589,6 +590,10 @@ class BrowserPod implements Pod {
     return this.#known().owner;
   }
 
+  get head(): Head | undefined {
+    return this.#opened?.head;
+  }
+
   async look(exported: string | Exported): Promise<readonly ExportSource[]> {
     return (await this.#pod()).look(exported);
   }
@@ -900,12 +905,19 @@ export async function deletePod(name: string): Promise<void> {
 }
 
 declare const CASCADE_RUNTIME_COMMIT: string | undefined;
+declare const CASCADE_RUNTIME_DIRTY: boolean | undefined;
 
-/** The runtime this packed entry is, as every act it performs names it (N7): the commit it was packed from. */
+/**
+ * The runtime this packed entry is, as every act it performs names it (N7): the commit it was packed from, marked
+ * `#uncommitted` when the checkout held changes, since the tree at the commit is not what runs.
+ */
 function performer(): string {
   if (typeof CASCADE_RUNTIME_COMMIT !== "string")
     throw new Error(
       "this browser entry was not packed: its commit is fixed by `npm run build:package`",
     );
-  return runtimeIri(CASCADE_RUNTIME_COMMIT);
+  const tree = runtimeIri(CASCADE_RUNTIME_COMMIT);
+  return typeof CASCADE_RUNTIME_DIRTY === "boolean" && CASCADE_RUNTIME_DIRTY
+    ? `${tree}#uncommitted`
+    : tree;
 }
