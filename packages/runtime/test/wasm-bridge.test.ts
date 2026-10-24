@@ -349,7 +349,8 @@ async function filed(pod: MemoryFiles): Promise<Triple[]> {
     ),
   );
   const blanked = <T extends Term>(term: T): T | BlankNode =>
-    term.termType === "NamedNode" && runDependent.has(term.value)
+    term.termType === "NamedNode" &&
+    runDependent.has(term.value.split("#")[0] ?? "")
       ? blank(term.value)
       : term;
   return triples.map(
