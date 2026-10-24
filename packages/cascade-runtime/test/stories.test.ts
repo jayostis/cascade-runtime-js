@@ -272,13 +272,18 @@ test("the tools give a story's findings, their rows, a test's series and the tim
 
   const medications = (await tools.get("timeline")!.execute({})) as {
     notation: string;
-    started: string;
+    started?: string;
+    written?: string;
   }[];
   assert.deepEqual(
-    medications.map(({ notation, started }) => [notation, started]),
+    medications.map(({ notation, started, written }) => [
+      notation,
+      started,
+      written,
+    ]),
     [
-      ["197658", "2019-04-01"],
-      ["617310", "2024-03-04"],
+      ["197658", undefined, "2019-04-01"],
+      ["617310", undefined, "2024-03-04"],
     ],
   );
 
