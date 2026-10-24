@@ -1,5 +1,5 @@
 import { boundToRecords } from "./bound-records.js";
-import { Derivations, QUERIES } from "./derive.js";
+import { Derivations, type Keep, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
@@ -269,13 +269,14 @@ const derivations = new WeakMap<Files, Promise<Derivations>>();
 
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
- * union of a new store.
+ * union of a new store; with `keep`, the Sames M7 leaves as they were count on.
  */
 export async function matcherView(
   context: Pick<
     StepContext,
     "layout" | "pod" | "address" | "vocabulary" | "newStore"
   >,
+  keep?: Keep,
 ): Promise<Union> {
   let read = derivations.get(context.vocabulary);
   if (read === undefined) {
@@ -284,7 +285,7 @@ export async function matcherView(
   }
   const union = new Union(context.newStore());
   await podFiles(context.pod, context.layout, context.address, union);
-  await (await read).derive(union, LENS);
+  await (await read).derive(union, LENS, keep);
   return union;
 }
 
@@ -811,8 +812,9 @@ class Matcher {
   }
 
   /**
-   * Files again each claim of the matcher's that used a version the tables revise, or whose rule the current rule list
-   * runs with a query it is not asserted with, and still joins two of its members (M7).
+   * Files again each claim of the matcher's that used a version the tables revise whose current version does not join
+   * its members, or whose rule the current rule list runs with a query it is not asserted with, and still joins two of
+   * its members (M7).
    */
   async recheck(): Promise<void> {
     if (this.rulesVersion === "") return;
@@ -837,6 +839,13 @@ class Matcher {
               );
       const origin = series === undefined ? "" : this.current(series);
       if (origin === undefined) continue;
+      if (
+        origin !== "" &&
+        !judged.used.includes(origin) &&
+        this.pod.asserted.get(judged.name)?.has(rule.hash) === true &&
+        this.#joinsAll(rule, origin, judged.members)
+      )
+        continue;
       const members = judged.members.flatMap(
         (member) => this.pod.theirs.get(member) ?? [],
       );
@@ -850,6 +859,21 @@ class Matcher {
       if (still.length >= 2) await this.same(rule, origin, still);
     }
     await this.resplit(byTerm);
+  }
+
+  /** Whether the origin's rows join one of the members to each other one under the rule, as the lens asks (M7). */
+  #joinsAll(
+    rule: MatcherRule,
+    origin: string,
+    members: readonly string[],
+  ): boolean {
+    const pairs = this.matched.get(rule.justification);
+    return members.some((one) =>
+      members.every(
+        (other) =>
+          other === one || (pairs?.get(pair(one, other))?.has(origin) ?? false),
+      ),
+    );
   }
 
   /**

@@ -70,6 +70,12 @@ export class Union implements Dataset {
     this.#graphs.add(graph);
   }
 
+  /** Removes a graph and its triples, and takes it out of the union. */
+  async drop(graph: string): Promise<void> {
+    await this.store.drop(graph);
+    this.#graphs.delete(graph);
+  }
+
   select(query: string): Promise<Rows> {
     return this.store.select(query, this.#graphs);
   }

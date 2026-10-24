@@ -2,10 +2,12 @@ import { fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import { builtFileBytes, type Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
+import type { Keep } from "./derive.js";
 import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
+import { keptClaims } from "./kept.js";
 import type { Layout } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import { documentName } from "./names.js";
@@ -232,7 +234,7 @@ export class CorePod {
       }
     } else {
       const at = (await podStated(pod, layout, union.store)).at ?? time.now();
-      await build.derive(union, lens, { address, at, title });
+      await build.derive(union, lens, { address, at, title }, this.#keep());
     }
     await addLayout(union, layout, address);
     return union;
@@ -371,7 +373,9 @@ export class CorePod {
   }
 
   #matcherView(): Promise<Union> {
-    return this.#held(MATCHER_VIEW, () => matcherView(this.#options));
+    return this.#held(MATCHER_VIEW, () =>
+      matcherView(this.#options, this.#keep()),
+    );
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -402,6 +406,17 @@ export class CorePod {
   #tables(): Promise<References> {
     this.#references ??= this.#options.references();
     return this.#references;
+  }
+
+  /** The Sames M7 leaves as they were across a table version, over the tables the pod is read with. */
+  #keep(): Keep {
+    const { vocabulary, newStore } = this.#options;
+    return (union) =>
+      keptClaims(union, {
+        vocabulary,
+        newStore,
+        references: () => this.#tables(),
+      });
   }
 
   #shapes(): Promise<Shapes> {
@@ -479,6 +494,7 @@ export class CorePod {
       build.lens,
       union,
       build.derive,
+      this.#keep(),
     );
     await writeAll(
       pod,

@@ -9,6 +9,7 @@ import {
 import { type Files, folderOf } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Importer } from "./importer.js";
+import { keptClaims } from "./kept.js";
 import { isKitStory, kitChecks, KIT_CHECKS, KIT_LENS } from "./kit.js";
 import { Layout } from "./layout.js";
 import { namedVersions } from "./matcher.js";
@@ -349,23 +350,33 @@ class Run {
           ? Promise.reject(new Error("the step was not replayed"))
           : replayed.stopped !== undefined
             ? Promise.reject(stopped(replayed.stopped))
-            : dataset(
-                replayed,
-                replayed.steps.at(-1)?.step.name ?? "",
-                lens,
-                this.#options.newStore(),
-                this.#options.derive,
-              ).then(async (union) => {
+            : (async () => {
                 const tables =
                   folder === undefined
                     ? undefined
                     : await this.#tables(folder, replayed);
+                const { vocabulary, newStore } = this.#options;
+                const union = await dataset(
+                  replayed,
+                  replayed.steps.at(-1)?.step.name ?? "",
+                  lens,
+                  newStore(),
+                  this.#options.derive,
+                  tables === undefined
+                    ? undefined
+                    : (held) =>
+                        keptClaims(held, {
+                          vocabulary,
+                          newStore,
+                          references: () => Promise.resolve(tables),
+                        }),
+                );
                 if (tables !== undefined)
                   await addTables(union, tables, (version) =>
                     this.#rows(tables, version),
                   );
                 return union;
-              });
+              })();
       found.catch(() => undefined);
       node.datasets.set(key, found);
     }
