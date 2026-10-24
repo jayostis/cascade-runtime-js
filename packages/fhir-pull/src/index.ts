@@ -113,22 +113,7 @@ function checked(value: unknown): Described {
     string,
     unknown
   >;
-  let base: URL | undefined;
-  try {
-    base = typeof fhirBase === "string" ? new URL(fhirBase) : undefined;
-  } catch {
-    base = undefined;
-  }
-  if (
-    typeof fhirBase !== "string" ||
-    fhirBase !== fhirBase.trim() ||
-    fhirBase.endsWith("/") ||
-    base?.protocol !== "https:" ||
-    base.search !== "" ||
-    base.hash !== "" ||
-    fhirBase.includes("?") ||
-    fhirBase.includes("#")
-  )
+  if (!isFhirBase(fhirBase))
     throw new PullRefused(
       `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
     );
@@ -147,6 +132,24 @@ function checked(value: unknown): Described {
     retrievedAt,
     ...(asOf !== undefined && { asOf }),
   };
+}
+
+/** Whether the value is an https: URL with no query, fragment, trailing slash or surrounding space. */
+function isFhirBase(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value !== value.trim() ||
+    value.endsWith("/") ||
+    value.includes("?") ||
+    value.includes("#")
+  )
+    return false;
+  try {
+    const base = new URL(value);
+    return base.protocol === "https:" && base.search === "" && base.hash === "";
+  } catch {
+    return false;
+  }
 }
 
 function isUtc(value: unknown): value is string {
@@ -274,3 +277,156 @@ export const fhirPull = {
     });
   },
 };
+
+const CONNECT = "connect.json";
+const CAPABILITY = "capability.json";
+const SMART_CONFIGURATION = "smart-configuration.json";
+const NOTHING: Record<string, unknown> = {};
+const OAUTH_URIS =
+  "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris";
+
+/** What `connectFiles` and `readConnect` throw for a connect the import would refuse: bad input, never a broken runtime. */
+export class ConnectRefused extends Error {
+  override readonly name = "ConnectRefused";
+}
+
+/**
+ * A connect as an app saves it: the base it connected to, the client id it signed in with, and what the server answered
+ * of itself.
+ */
+export interface SavedConnect {
+  readonly fhirBase: string;
+  readonly clientId: string;
+  /** The server's CapabilityStatement, as it answered `GET <fhirBase>/metadata`. */
+  readonly capability: object;
+  /** The server's SMART configuration, as it answered `GET <fhirBase>/.well-known/smart-configuration`, where it did. */
+  readonly smartConfiguration?: object;
+}
+
+/**
+ * What a connect says of its server (runtime/arrivals.feature, A16): the base and client id the app used, and each fact
+ * the server reported, as it wrote it, where it wrote a string that is not empty.
+ */
+export interface Reported {
+  readonly fhirBase: string;
+  readonly clientId: string;
+  readonly selfAssertedBaseUrl?: string;
+  readonly authorizationEndpoint?: string;
+  readonly softwareName?: string;
+  readonly softwareVersion?: string;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** `smart` is undefined where the connect saved no SMART configuration. */
+function reported(
+  connect: unknown,
+  capability: unknown,
+  smart: unknown,
+): Reported {
+  const saved = record(connect);
+  if (saved === undefined)
+    throw new ConnectRefused(`${CONNECT} is not a JSON object`);
+  const { fhirBase, clientId } = saved;
+  if (!isFhirBase(fhirBase))
+    throw new ConnectRefused(
+      `${CONNECT}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
+    );
+  if (text(clientId) === undefined)
+    throw new ConnectRefused(`${CONNECT} names no client id`);
+  const statement = record(capability);
+  if (statement?.resourceType !== "CapabilityStatement")
+    throw new ConnectRefused(`${CAPABILITY} is no CapabilityStatement`);
+  const configuration = smart === undefined ? NOTHING : record(smart);
+  if (configuration === undefined)
+    throw new ConnectRefused(`${SMART_CONFIGURATION} is not a JSON object`);
+  const server = list(statement.rest)
+    .map(record)
+    .find((rest) => rest?.mode === "server");
+  const authorize = list(record(server?.security)?.extension)
+    .map(record)
+    .find((extension) => extension?.url === OAUTH_URIS);
+  const facts: Record<string, string | undefined> = {
+    selfAssertedBaseUrl: text(record(statement.implementation)?.url),
+    authorizationEndpoint:
+      text(configuration.authorization_endpoint) ??
+      text(
+        list(authorize?.extension)
+          .map(record)
+          .find((extension) => extension?.url === "authorize")?.valueUri,
+      ),
+    softwareName: text(record(statement.software)?.name),
+    softwareVersion: text(record(statement.software)?.version),
+  };
+  return {
+    fhirBase,
+    clientId: clientId as string,
+    ...Object.fromEntries(
+      Object.entries(facts).filter(([, value]) => value !== undefined),
+    ),
+  };
+}
+
+/**
+ * The connect as the folder `name` of two files, `capability.json`, what the server answered, and `connect.json`, the
+ * base and the client id, and a third, `smart-configuration.json`, where the connect holds one. A connect the import
+ * would refuse is refused here, before it is saved.
+ */
+export function connectFiles(
+  connect: SavedConnect,
+  name: string,
+): ReadonlyMap<string, Uint8Array> {
+  if (name === "" || name === "." || name === ".." || /[/\\]/.test(name))
+    throw new TypeError(
+      `a connect is saved under one folder name, not ${name}`,
+    );
+  const { capability, fhirBase, clientId, smartConfiguration } = connect;
+  reported({ fhirBase, clientId }, capability, smartConfiguration);
+  const encoder = new TextEncoder();
+  return new Map([
+    [
+      `${name}/${CONNECT}`,
+      encoder.encode(`${JSON.stringify({ fhirBase, clientId }, null, 2)}\n`),
+    ],
+    [`${name}/${CAPABILITY}`, encoder.encode(JSON.stringify(capability))],
+    ...(smartConfiguration === undefined
+      ? []
+      : [
+          [
+            `${name}/${SMART_CONFIGURATION}`,
+            encoder.encode(JSON.stringify(smartConfiguration)),
+          ] as const,
+        ]),
+  ]);
+}
+
+/** What the connect saved in the folder reports; one that holds no `connect.json`, or that A14 refuses, is refused. */
+export async function readConnect(
+  files: PullFiles,
+  folder: string,
+): Promise<Reported> {
+  const saved = await files.read(`${folder}/${CONNECT}`);
+  if (saved === undefined)
+    throw new ConnectRefused(`${folder} holds no ${CONNECT}`);
+  const capability = await files.read(`${folder}/${CAPABILITY}`);
+  if (capability === undefined)
+    throw new ConnectRefused(`${folder} holds no ${CAPABILITY}`);
+  const smart = await files.read(`${folder}/${SMART_CONFIGURATION}`);
+  return reported(
+    json(saved),
+    json(capability),
+    smart === undefined ? undefined : (json(smart) ?? null),
+  );
+}

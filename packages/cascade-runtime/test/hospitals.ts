@@ -13,6 +13,8 @@ import {
   type Pull,
   type QueryPlan,
   type Registration,
+  type SavedConnect,
+  serverReport,
   type SignIn,
 } from "cascade-runtime";
 
@@ -102,6 +104,8 @@ export interface Setup {
   readonly plan?: QueryPlan;
   /** Runs between connecting and pulling. */
   readonly between?: () => void;
+  /** Asks the server for its report once the pull is done. */
+  readonly report?: boolean;
 }
 
 /** Signs in to the demo hospital as the patient and pulls with `DEMO_PLAN`, unless the setup says otherwise. */
@@ -109,7 +113,7 @@ export async function pulled(
   at: Loaded,
   patient: string,
   setup: Setup = {},
-): Promise<{ pull: Pull; seen: Seen }> {
+): Promise<{ pull: Pull; seen: Seen; report?: SavedConnect }> {
   const seen: Seen = { requests: [], secrets: new Set() };
   const fetch = routed(
     [
@@ -137,7 +141,12 @@ export async function pulled(
       limits: { ...FAST, ...setup.limits },
       ...(setup.now ? { now: setup.now } : {}),
     });
-    return { pull: result, seen };
+    if (setup.report !== true) return { pull: result, seen };
+    return {
+      pull: result,
+      seen,
+      report: await serverReport(connection, { limits: FAST }),
+    };
   } catch (error) {
     throw Object.assign(error as object, { seen });
   }
