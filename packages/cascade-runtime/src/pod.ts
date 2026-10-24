@@ -874,8 +874,16 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
-      const members = of(`${PROV}hadMember`);
+    const verdicts = of(`${CASCADE}verdict`);
+    const members = of(`${PROV}hadMember`);
+    const [only] = members;
+    const overFinding =
+      verdicts.length === 1 &&
+      verdicts[0] === `${CASCADE}Same` &&
+      members.length === 1 &&
+      only !== undefined &&
+      (await this.#isFinding(only));
+    if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
       const current = await this.#currentVersions(members);
       for (const member of members) {
         const version = current.get(member);
@@ -900,6 +908,13 @@ class OpenPod implements Pod {
       name: "the judgment",
     });
     return filed.refused === undefined ? { ...filed, judgment: name } : filed;
+  }
+
+  /** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
+  async #isFinding(thing: string): Promise<boolean> {
+    const { rows } = await this.#core.select(`${PREFIXES}
+      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
+    return rows.length > 0;
   }
 
   /** Each record's current version, under the everyday lens, by the record. */
