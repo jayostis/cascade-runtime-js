@@ -1,4 +1,4 @@
-import type { Files, Graph, Term } from "@cascade-runtime/runtime";
+import type { Files, Graph, Head, Term } from "@cascade-runtime/runtime";
 import { SPECIALIZATION_OF } from "../rows.js";
 import {
   DCT,
@@ -31,6 +31,8 @@ export interface Held {
   readonly pods: Record<string, readonly string[]>;
   /** The name the app opened each pod by, by the pod's naming base. */
   readonly names?: Record<string, string>;
+  /** The app's last snapshot in each pod, as a writer keeps it outside the pod (N14), by the pod's naming base. */
+  readonly heads?: Record<string, Head>;
 }
 
 const NOTHING_HELD: Held = { feeds: {}, current: [], pods: {} };

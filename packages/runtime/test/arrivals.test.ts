@@ -12,7 +12,7 @@ import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
-import { layout, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -20,6 +20,7 @@ async function replayed(feature: string, example: string) {
   const files = await vocabulary();
   const { story, folder } = await storyFrom(feature, example);
   return replay({
+    runtime: RUNTIME,
     story,
     source: files,
     vocabulary: files,
@@ -187,6 +188,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
     ],
   };
   return replay({
+    runtime: RUNTIME,
     story,
     source,
     vocabulary: source,
@@ -383,6 +385,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     ],
   };
   const { steps, stopped } = await replay({
+    runtime: RUNTIME,
     story,
     source,
     vocabulary: await vocabulary(),
@@ -423,6 +426,7 @@ test("a document the Bridge fails on is refused with the Bridge's reason, and an
     const time = new StoryTime();
     time.begin("2026-06-01T09:00:00Z");
     return new CorePod({
+      runtime: RUNTIME,
       pod: new MemoryFiles("https://pod.example/"),
       address: "https://pod.example/",
       subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",

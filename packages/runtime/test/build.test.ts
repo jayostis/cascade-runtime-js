@@ -19,6 +19,7 @@ import { notIsomorphic } from "./graphs.js";
 import {
   layout as readLayout,
   ROOT,
+  RUNTIME,
   storyFrom,
   vocabulary,
 } from "./vocabulary.js";
@@ -78,6 +79,7 @@ before(async () => {
   laidOut = new Union(new OxigraphStore());
   await laidOut.loadTurtle(await readText(files, LAYOUT_FILE), address);
   replayed = await replay({
+    runtime: RUNTIME,
     story,
     source: files,
     vocabulary: files,
@@ -92,6 +94,7 @@ before(async () => {
   store = await dataset(replayed, THROUGH, LENS, new OxigraphStore(), derive);
   reopened = () =>
     new CorePod({
+      runtime: RUNTIME,
       pod,
       address,
       subject: story.subject,
@@ -317,6 +320,7 @@ test("the matcher reads a statement two files of the pod make as one", async () 
     ),
   );
   const restated = new CorePod({
+    runtime: RUNTIME,
     pod: copy.files,
     address,
     subject: replayed.story.subject,

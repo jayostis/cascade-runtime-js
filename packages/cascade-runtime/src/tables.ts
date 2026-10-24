@@ -1,5 +1,6 @@
 import {
   type Files,
+  type Head,
   fileStem,
   Graph,
   iri,
@@ -246,6 +247,19 @@ export class Tables {
       ...held,
       pods: { ...held.pods, [pod]: versions },
       ...(name === undefined ? {} : { names: { ...held.names, [pod]: name } }),
+    }));
+  }
+
+  /** The app's last snapshot in the pod, as `keptHead` recorded it; none for a pod it never wrote to. */
+  async headOf(pod: string): Promise<Head | undefined> {
+    return (await this.#held.read()).heads?.[pod];
+  }
+
+  /** Records the app's last snapshot in the pod, which it hands back as the writer's head when it next opens the pod. */
+  keptHead(pod: string, head: Head): Promise<void> {
+    return this.#held.change((held) => ({
+      ...held,
+      heads: { ...held.heads, [pod]: head },
     }));
   }
 

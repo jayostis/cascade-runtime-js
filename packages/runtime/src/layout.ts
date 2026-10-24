@@ -11,6 +11,9 @@ const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+/** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
+const FILE_STEM =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
 
 /** One entry of the layout: a file, a folder, or the property whose value's folder a thing goes in. */
 export class Placement {
@@ -138,6 +141,26 @@ export class Layout {
     return (placement.file ?? placement.folder ?? "").startsWith(
       this.viewsFolder,
     );
+  }
+
+  /**
+   * Whether the file at the path is in a snapshot's set (cascade:Snapshot): named as N9 names a file in a folder the
+   * layout gives, the views' folder aside. A file the layout gives by itself changes in place, and is outside it, and
+   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`.
+   */
+  inSnapshotSet(path: string): boolean {
+    if (path.startsWith(this.viewsFolder)) return false;
+    return this.placements.some(({ folder, fanOut, storesBytes }) => {
+      if (folder === undefined || !path.startsWith(folder)) return false;
+      const extension = storesBytes ? "" : ".ttl";
+      const rest = path.slice(folder.length);
+      if (!rest.endsWith(extension)) return false;
+      const parts = rest.slice(0, rest.length - extension.length).split("/");
+      const stem = parts.at(-1) ?? "";
+      if (parts.length !== (fanOut > 0 ? 2 : 1)) return false;
+      if (fanOut > 0 && parts[0] !== stem.slice(0, fanOut)) return false;
+      return FILE_STEM.test(stem);
+    });
   }
 
   /**

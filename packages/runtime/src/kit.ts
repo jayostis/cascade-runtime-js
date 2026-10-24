@@ -13,7 +13,11 @@ import {
   earlierInUtc,
   claimName,
   enteredRecordName,
+  actDescriptionName,
+  fileDigest,
   fileStem,
+  setHash,
+  snapshotName,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -432,8 +436,20 @@ async function namesFollowTheirRules(
     else if (given.includes(uuid))
       failures.push(`N7: step ${name}'s ${activity} is given by an input`);
   }
+  for (const run of whole.subjects(TYPE, iri(`${CASCADE}MatcherRun`))) {
+    const uuid = UUID_V4.exec(run.value)?.[1];
+    if (uuid === undefined)
+      failures.push(`N7: the matcher run ${run.value} is no version 4 UUID`);
+    else if (given.includes(uuid))
+      failures.push(`N7: the matcher run ${run.value} is given by an input`);
+  }
   if (new Set(activityOf.values()).size !== activityOf.size)
     failures.push("N7: two steps made one activity");
+
+  // N7, N14: each act names the runtime, and leaves a snapshot chained to the one before it.
+  failures.push(
+    ...(await snapshotsFollowTheirRule(replayed, layout, run.newStore)),
+  );
 
   // N9: each file is named from the thing it holds, in the fan-out its folder gives.
   for (const [path, triples] of files) {
@@ -548,6 +564,12 @@ async function namesFollowTheirRules(
             o.value !== document.value
           )
             continue;
+          if (
+            subject === thisImport &&
+            p.value === `${PROV}wasAssociatedWith` &&
+            o.value === replayed.runtime
+          )
+            continue;
           found.push(
             triple,
             ...(o.termType === "BlankNode" ? whole.closure(o) : []),
@@ -594,6 +616,121 @@ async function namesFollowTheirRules(
             `A9: the revision of ${version?.value ?? "an arrival"} from ${document.value} does not hold its arrival's statements`,
           );
       }
+    }
+  }
+  return failures;
+}
+
+/**
+ * N7 and N14 over a replay, read from its pod: each act's file names the runtime that performed it and holds one
+ * snapshot, named by its rule over its act's description, whose first parent is the snapshot before it and whose added
+ * files are the files of the set its act wrote; each set hash is the set's after its step, its act's own file left out;
+ * and the last snapshot's set hash is the set hash of the files the pod lists of that set, so a file of it removed or
+ * changed fails the check.
+ */
+export async function snapshotsFollowTheirRule(
+  replayed: Replayed,
+  layout: Layout,
+  newStore: StoreFactory,
+): Promise<string[]> {
+  const { pod, steps, runtime } = replayed;
+  const failures: string[] = [];
+  const listed = new Set(await pod.list(""));
+  const digests = new Map<string, Uint8Array>();
+  const held: string[] = [];
+  const hashOf = async (paths: readonly string[]): Promise<string> => {
+    const files: [string, Uint8Array][] = [];
+    for (const path of paths) {
+      let digest = digests.get(path);
+      if (digest === undefined) {
+        const bytes = await pod.read(path);
+        if (bytes === undefined) continue;
+        digest = await fileDigest(bytes);
+        digests.set(path, digest);
+      }
+      files.push([path, digest]);
+    }
+    return setHash(files);
+  };
+  let previous: string | undefined;
+  let last: { readonly set: string[]; readonly hash: string } | undefined;
+  for (const { step, wrote, activity } of steps) {
+    const ofSet = wrote.filter((path) => layout.inSnapshotSet(path));
+    held.push(...ofSet);
+    let found = 0;
+    for (const path of wrote) {
+      const bytes = layout.isRdf(path) ? await pod.read(path) : undefined;
+      if (
+        bytes === undefined ||
+        !new TextDecoder().decode(bytes).includes(`${CASCADE}Snapshot`)
+      )
+        continue;
+      const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
+      for (const snapshot of graph.subjects(TYPE, iri(`${CASCADE}Snapshot`))) {
+        found++;
+        const values = (predicate: string): string[] =>
+          graph.objects(snapshot, predicate).map(({ value }) => value);
+        const [act = ""] = values(`${PROV}wasGeneratedBy`);
+        const first = values(`${CASCADE}firstParentSnapshot`);
+        const merged = values(`${CASCADE}mergedParentSnapshot`);
+        const [hash = ""] = values(`${CASCADE}setHash`);
+        const added = values(`${CASCADE}fileAddedToSet`);
+        const where = `${snapshot.value} in ${path}`;
+        if (
+          graph.match(iri(act), `${PROV}wasAssociatedWith`, iri(runtime))
+            .length === 0
+        )
+          failures.push(`N7: the act of ${where} names no ${runtime}`);
+        if (first.join() !== (previous ?? ""))
+          failures.push(
+            `N14: ${where} has the first parent ${first.join() || "none"}, not ${previous ?? "none"}`,
+          );
+        if ([...added].sort().join() !== [...ofSet].sort().join())
+          failures.push(
+            `N14: ${where} names as added ${added.length} files, not the ${ofSet.length} of the set its act wrote`,
+          );
+        const set = held.filter((file) => file !== path);
+        if (
+          set.every((file) => listed.has(file)) &&
+          hash !== (await hashOf(set))
+        )
+          failures.push(
+            `N14: ${where}'s set hash is not the set's after step ${step.name}`,
+          );
+        const description = graph.triples.filter(
+          ([subject]) =>
+            subject.termType !== "NamedNode" ||
+            subject.value !== snapshot.value,
+        );
+        if (
+          snapshot.value !==
+          (await snapshotName({
+            act,
+            description: await actDescriptionName(description),
+            ...(first[0] === undefined ? {} : { firstParent: first[0] }),
+            mergedParents: merged,
+            setHash: hash,
+          }))
+        )
+          failures.push(`N14: ${where} is not named by its rule`);
+        previous = snapshot.value;
+        last = { set, hash };
+      }
+    }
+    if (activity !== undefined && wrote.length > 0 && found !== 1)
+      failures.push(`N14: step ${step.name} wrote ${found} snapshots, not one`);
+  }
+  if (last !== undefined) {
+    const present = last.set.filter((path) => listed.has(path));
+    if ((await hashOf(present)) !== last.hash) {
+      failures.push(
+        "N14: the last snapshot's set hash is not the set hash of the files the pod lists of its set",
+      );
+      for (const path of last.set)
+        if (!listed.has(path))
+          failures.push(
+            `N14: ${path}, of the set the snapshots hash, is missing from the pod`,
+          );
     }
   }
   return failures;
