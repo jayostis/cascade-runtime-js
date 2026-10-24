@@ -1278,17 +1278,20 @@ const DEFINITIONS: Definition[] = [
     return async (reading) => {
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
-      const described = valuesOf(
+      const described: string[] = [];
+      for (const thing of valuesOf(
         await inWritten(
           reading,
           [step],
           "DISTINCT ?thing",
           `GRAPH ?file {
               { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:"))`,
+            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any }`,
         ),
         "thing",
-      );
+      ))
+        if ((await reading.words.described(thing)).length > 0)
+          described.push(thing);
       const expected: string[] = [];
       for (const row of rows) {
         const name = await reading.words.reference(row.reference ?? "");
