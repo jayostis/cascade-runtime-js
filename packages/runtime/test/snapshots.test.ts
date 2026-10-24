@@ -4,6 +4,7 @@ import { CorePod, type Head } from "../src/core-pod.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
+import { HashedSet } from "../src/kept-set.js";
 import { snapshotsFollowTheirRule } from "../src/kit.js";
 import type { Layout } from "../src/layout.js";
 import { fileDigest, setHash } from "../src/names.js";
@@ -311,7 +312,7 @@ test("a receive that stops at any of its writes and is made again writes the syn
 });
 
 test("three writers, one receiving the others' files in either order, hold one set hash and leave no head but their own", async () => {
-  const { replayed: story } = await replayed;
+  const { local, replayed: story } = await replayed;
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -328,6 +329,10 @@ test("three writers, one receiving the others' files in either order, hold one s
     const writer = await cleosWriter(await copied(story.pod), head);
     for (const from of order) await writer.receive(from.files);
     assert.deepEqual(await headsIn(writer.files), [writer.head?.snapshot]);
+    assert.equal(
+      writer.head?.setHash,
+      await setHashOf(writer.files, local.layout, ""),
+    );
     return writer.head?.setHash;
   };
   assert.equal(
@@ -364,4 +369,38 @@ test("an open that migrates a release leaves two acts in one step, each with its
     await snapshotsFollowTheirRule(story, local.layout, newStore),
     [],
   );
+});
+
+test("a set hash multiplied in a few files at a time, in any order, and kept between sessions is the whole set's; a kept set whose files the pod no longer lists is not taken", async () => {
+  const files = new Map<string, Uint8Array>();
+  for (let index = 0; index < 60; index++)
+    files.set(
+      `records/${randomId()}.ttl`,
+      globalThis.crypto.getRandomValues(new Uint8Array(32)),
+    );
+  const whole = await setHash(files);
+  for (let round = 0; round < 5; round++) {
+    const order = [...files].sort(() => Math.random() - 0.5);
+    const cut = 1 + Math.floor(Math.random() * 20);
+    const hashed = await HashedSet.of(new Map(order.slice(0, cut)));
+    for (let at = cut; at < order.length; at += 7) {
+      const paths = new Set(order.slice(0, at + 7).map(([path]) => path));
+      const missing = hashed.missing(paths, () => true) ?? [];
+      await hashed.add(
+        missing.map((path) => [path, files.get(path) ?? new Uint8Array()]),
+      );
+    }
+    assert.equal(await hashed.setHash(), whole);
+    const paths = new Set(files.keys());
+    const reopened = await HashedSet.kept(hashed.kept(), paths);
+    assert.equal(await reopened?.setHash(), whole);
+    const [first = ""] = paths;
+    const swapped = new Set([...paths].filter((path) => path !== first));
+    swapped.add(`records/${randomId()}.ttl`);
+    assert.equal(await HashedSet.kept(hashed.kept(), swapped), undefined);
+    assert.equal(
+      hashed.missing(swapped, () => true),
+      undefined,
+    );
+  }
 });
