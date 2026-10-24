@@ -291,6 +291,8 @@ interface Pod {
   readonly sames: readonly (readonly string[])[];
   /** Each ordered pair of records that are currently different. */
   readonly different: ReadonlySet<string>;
+  /** The entry each of the subject's records is in, as the derived state the run reads gives it. */
+  readonly entryOf: ReadonlyMap<string, string>;
   /** The matcher's claims a person retracted, or superseded by a judgment not itself retracted. */
   readonly withdrawn: ReadonlySet<string>;
   /** The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under. */
@@ -675,8 +677,8 @@ class Matcher {
   }
 
   /**
-   * The record and, of each entry among the records it matched, the least of those it matched, in code point order of
-   * their names: a star, so a record matched with every earlier copy of one fact names one of them (M5). The entries
+   * The record and, of each entry among the records it matched, the least of those it matched and is not judged different
+   * from, or the least of them all when it is judged different from each, in code point order of their names: a star, so a record matched with every earlier copy of one fact names one of them (M5). The entries
    * are those the counting Sames make as same-pairs.rq derives them, with the Sames the run has filed so far and
    * without any Same that holds the record, so a run again over the same records reaches the same claims (M9).
    */
@@ -713,10 +715,16 @@ class Matcher {
             parent.set(root(one), root(other));
     }
     const kept = new Map<string, SubjectRecord>();
+    const apart = (other: SubjectRecord): boolean =>
+      different.has(pair(record.name, other.name));
     for (const other of matched) {
       const entry = root(other.name);
       const was = kept.get(entry);
-      if (was === undefined || byCodePoint(other.name, was.name) < 0)
+      if (
+        was === undefined ||
+        (apart(was) && !apart(other)) ||
+        (apart(was) === apart(other) && byCodePoint(other.name, was.name) < 0)
+      )
         kept.set(entry, other);
     }
     return [record, ...kept.values()];
@@ -815,13 +823,23 @@ class Matcher {
   }
 
   /**
-   * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: two of the
-   * records its latest-arriving member matches are currently different (M7).
+   * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
+   * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
+   * (M7). A star filed again joins it, so a claim triggers this once.
    */
   private async resplit(
     byTerm: ReadonlyMap<string, MatcherRule>,
   ): Promise<void> {
-    const { different, theirs } = this.pod;
+    const { different, theirs, entryOf } = this.pod;
+    const neighbours = new Map<string, Map<string, string[]>>();
+    for (const [justification, pairs] of this.matched) {
+      const of = new Map<string, string[]>();
+      for (const key of pairs.keys()) {
+        const [record = "", other = ""] = key.split(" ");
+        of.set(record, [...(of.get(record) ?? []), other]);
+      }
+      neighbours.set(justification, of);
+    }
     for (const judged of this.pod.judgments) {
       const rule = byTerm.get(judged.rule);
       if (rule === undefined) continue;
@@ -839,14 +857,23 @@ class Matcher {
                   this.references.seriesOf(thing) ?? "",
                 ) === rule.kind,
             ) ?? "");
-      const matched = [...theirs.values()].filter(
-        (other) =>
-          byArrival(other, record) < 0 &&
-          this.origins(this.matched, rule, record, other).has(origin),
-      );
+      const matched = (
+        neighbours.get(rule.justification)?.get(record.name) ?? []
+      )
+        .flatMap((name) => theirs.get(name) ?? [])
+        .filter(
+          (other) =>
+            byArrival(other, record) < 0 &&
+            this.origins(this.matched, rule, record, other).has(origin),
+        );
+      const entry = entryOf.get(record.name);
       if (
-        matched.some((one) =>
-          matched.some((other) => different.has(pair(one.name, other.name))),
+        entry !== undefined &&
+        matched.some(
+          (other) =>
+            !different.has(pair(record.name, other.name)) &&
+            entryOf.get(other.name) !== undefined &&
+            entryOf.get(other.name) !== entry,
         )
       )
         await this.same(rule, origin, this.star(record, matched));
@@ -921,6 +948,13 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     ),
   );
   const judgments = await recheckable(dataset);
+  const counted = new Set(judgments.map(({ name }) => name));
+  const entries = await column(
+    dataset,
+    "SELECT DISTINCT ?record ?entry WHERE { ?record cascade:inEntry ?entry }",
+    "record",
+    "entry",
+  );
   const claims = await column(
     dataset,
     `SELECT DISTINCT ?claim WHERE { ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
@@ -968,9 +1002,12 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     judgments,
     withdrawn: new Set(
       claims.flatMap(([claim]) =>
-        claim === undefined || judgments.some(({ name }) => name === claim)
-          ? []
-          : [claim],
+        claim === undefined || counted.has(claim) ? [] : [claim],
+      ),
+    ),
+    entryOf: new Map(
+      entries.flatMap(([record, entry]) =>
+        record === undefined || entry === undefined ? [] : [[record, entry]],
       ),
     ),
     revised: references.revised(),
