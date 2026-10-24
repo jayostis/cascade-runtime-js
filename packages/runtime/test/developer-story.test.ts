@@ -96,6 +96,16 @@ async function story(
 }
 
 /** Each row as one string, its columns in name order, so two answers compare as multisets. */
+/** The row with its entry as the path inside its pod: the replay's pod and the script's have different addresses. */
+function inPod(row: Record<string, string>): Record<string, string> {
+  return row.entry === undefined
+    ? row
+    : {
+        ...row,
+        entry: row.entry.replace(/^[a-z][a-z\d+.-]*:\/\/[^/]*\//i, ""),
+      };
+}
+
 function multiset(rows: readonly Record<string, unknown>[]): string[] {
   return rows
     .map((row) =>
@@ -146,14 +156,18 @@ test("the developer story prints Alex's active allergies as the replay through J
   const query = (await questions(vocabulary.files)).get(QUESTION);
   assert.ok(query, `the vocabulary has no question ${QUESTION}`);
   const expected = (await store.select(query.text)).rows.map((row) =>
-    Object.fromEntries([...row].map(([column, term]) => [column, term.value])),
+    inPod(
+      Object.fromEntries(
+        [...row].map(([column, term]) => [column, term.value]),
+      ),
+    ),
   );
 
   const printed = await story("allergies.mjs", "alex-pod", [
     join(vocabulary.files.folder, FIRST_EXPORT),
   ]);
   for (const row of printed) t.diagnostic(JSON.stringify(row));
-  assert.deepEqual(multiset(printed), multiset(expected));
+  assert.deepEqual(multiset(printed.map(inPod)), multiset(expected));
 });
 
 test("the second developer story prints Priya's active medications, the lisinopril both formats carry as one entry", async (t) => {
