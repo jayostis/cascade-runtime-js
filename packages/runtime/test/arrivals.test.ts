@@ -145,8 +145,17 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
 <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
   <https://ns.cascadeprotocol.org/cascade#allergen> ${allergen} .`);
-  await source.write("s/blank.ttl", entry("urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93", "[ <urn:example:value> 2 ]"));
-  await source.write("s/plain.ttl", entry("urn:uuid:8c1f4e7a-2d93-4b56-b0a8-e3d6f9c2a147", '"Peanut"'));
+  await source.write(
+    "s/blank.ttl",
+    entry(
+      "urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93",
+      "[ <urn:example:value> 2 ]",
+    ),
+  );
+  await source.write(
+    "s/plain.ttl",
+    entry("urn:uuid:8c1f4e7a-2d93-4b56-b0a8-e3d6f9c2a147", '"Peanut"'),
+  );
   const story: Story = {
     address: "https://pod.example/",
     subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
