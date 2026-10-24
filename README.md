@@ -115,7 +115,7 @@ published query by its file.
 | `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
 | `packages/apple-health`    | the importer: the documents in an export and the facts of each |
 | `packages/ccda-download`   | the importer: a C-CDA file as downloaded, and its header       |
-| `packages/site`            | the site that documents a pod and its queries                  |
+| `packages/site`            | the site that documents a pod and its queries, and the spec    |
 | `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
 
@@ -136,6 +136,7 @@ npm run build:example alex-rivera        # the pod, then the site
 npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
 npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
 npm run build:pages                      # every kit's pod and site, under the newcomer's page, in build/pages
+npm run build:spec                       # every rule beside its note and its result in build/conformance/earl.nt, in build/spec
 ```
 
 Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
