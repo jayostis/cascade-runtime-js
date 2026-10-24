@@ -1214,6 +1214,15 @@ const DEFINITIONS: Definition[] = [
             .map(({ value }) => value),
         ),
       );
+      const actOf = new Set(
+        [
+          ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}MatcherRun`)),
+          ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}Snapshot`)),
+          ...heldGraph.triples
+            .filter(([, p]) => p.value === `${PROV}wasAssociatedWith`)
+            .map(([, , o]) => o),
+        ].map(({ value }) => value),
+      );
       const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
         asserted.has(name),
       );
@@ -1255,6 +1264,7 @@ const DEFINITIONS: Definition[] = [
         .concat(heldGraph.triples.map(([s]) => s))) {
         const value = subject.value;
         if (claims.has(value) || assertions.has(value)) continue;
+        if (actOf.has(value)) continue;
         if (value === MATCHER) {
           const described = heldGraph
             .match(iri(MATCHER))

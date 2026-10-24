@@ -232,6 +232,8 @@ export async function bridgeLoaded(
 /** What a pod is opened with. */
 export interface Parts {
   readonly vocabulary: Files;
+  /** The runtime performing a pod's acts, as N7 names it. */
+  readonly performer: string;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
   /** The lens `cascade-runtime.json` names. */
@@ -1045,6 +1047,7 @@ function coreOver(
       newStore: parts.newStore,
       time: clock,
       importers: parts.importers,
+      runtime: parts.performer,
       references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,

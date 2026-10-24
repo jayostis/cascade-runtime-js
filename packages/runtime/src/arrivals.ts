@@ -521,17 +521,18 @@ export async function fileExport(
     throw new Refusal(
       "its documents disagree on the import's label, start or association",
     );
-  writes.add(
-    layout.place(`${PROV}Activity`, [USED]).path(name),
-    ntriples([
+  writes.act({
+    name,
+    path: layout.place(`${PROV}Activity`, [USED]).path(name),
+    triples: [
       ...(descriptions[0] ?? []),
       ...[...kept.keys()].map((document): Triple => [
         iri(name),
         iri(USED),
         iri(document),
       ]),
-    ]),
-  );
+    ],
+  });
   return name;
 }
 
@@ -629,9 +630,10 @@ export async function fileEntry(
     );
   }
   revisions.write(context.writes);
-  context.writes.add(
-    sessions.path(session.value),
-    ntriples(graph.closure(session)),
-  );
+  context.writes.act({
+    name: session.value,
+    path: sessions.path(session.value),
+    triples: graph.closure(session),
+  });
   return session.value;
 }

@@ -18,6 +18,7 @@ import {
   retractionName,
   revisionName,
   serverName,
+  setHash,
   snapshotName,
   tableRowName,
   tableVersionName,
@@ -310,4 +311,63 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
       assert.equal(await byInputs(inputs), expected);
     });
   }
+});
+
+interface SnapshotVectors {
+  readonly setHashes: readonly {
+    readonly name: string;
+    readonly members: readonly string[];
+    readonly setHash: string;
+  }[];
+  readonly chains: readonly {
+    readonly name: string;
+    readonly snapshots: readonly {
+      readonly act: string;
+      readonly firstParent: string | null;
+      readonly mergedParents: readonly string[];
+      readonly set?: readonly string[];
+      readonly added?: readonly string[];
+      readonly setHash: string;
+      readonly name: string;
+    }[];
+  }[];
+}
+
+test("every snapshot vector of the vocabulary reproduces: each set hash, and each chained snapshot's set hash and name", async (t) => {
+  const bytes = await (
+    await vocabulary()
+  ).read("tests/vectors/snapshot/vectors.json");
+  assert.ok(bytes !== undefined, "the vocabulary holds the snapshot vectors");
+  const vectors = JSON.parse(
+    new TextDecoder().decode(bytes),
+  ) as SnapshotVectors;
+  assert.ok(vectors.setHashes.length > 0 && vectors.chains.length > 0);
+  for (const vector of vectors.setHashes)
+    await t.test(vector.name, async () => {
+      assert.equal(await setHash(vector.members), vector.setHash);
+    });
+  for (const chain of vectors.chains)
+    await t.test(chain.name, async () => {
+      const named = new Map<string, string>();
+      for (const snapshot of chain.snapshots) {
+        const parent = snapshot.firstParent ?? undefined;
+        const before = parent === undefined ? undefined : named.get(parent);
+        assert.equal(
+          parent === undefined
+            ? await setHash(snapshot.set ?? [])
+            : await setHash(snapshot.added ?? [], before),
+          snapshot.setHash,
+        );
+        assert.equal(
+          await snapshotName({
+            act: snapshot.act,
+            ...(parent === undefined ? {} : { firstParent: parent }),
+            mergedParents: snapshot.mergedParents,
+            setHash: snapshot.setHash,
+          }),
+          snapshot.name,
+        );
+        named.set(snapshot.name, snapshot.setHash);
+      }
+    });
 });

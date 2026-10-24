@@ -147,6 +147,8 @@ export interface ReplayedStep extends Performed {
 
 /** A story replayed into a pod, as far as the runtime can perform its steps. */
 export interface Replayed {
+  /** The runtime that performed its acts (N7). */
+  readonly runtime: string;
   readonly story: Story;
   /** What a pod's manifest takes as its title: the name the source's crate gives the story's folder, or else the folder's own. */
   readonly title: string;
@@ -173,6 +175,8 @@ export interface ReplayOptions {
   readonly newStore: StoreFactory;
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
+  /** The runtime performing its acts, as N7 names it. */
+  readonly runtime: string;
   /** The tables the pod is given, instead of the story's own `references/`. */
   readonly references?: () => Promise<References>;
   /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
@@ -231,6 +235,7 @@ export class Replay {
         newStore: options.newStore,
         time: this.#time,
         importers: options.importers ?? [],
+        runtime: options.runtime,
         references:
           options.references ??
           (() =>
@@ -313,6 +318,7 @@ export class Replay {
       },
       title: this.#options.title,
       layout: this.#options.layout,
+      runtime: this.#options.runtime,
       pod: this.#pod.files,
       steps: [...this.#steps],
       ...(this.#stopped === undefined ? {} : { stopped: this.#stopped }),

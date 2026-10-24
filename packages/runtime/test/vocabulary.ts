@@ -6,6 +6,7 @@ import type { Story } from "../src/story.js";
 import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { readConfig, resolveVocabulary } from "../src/node/runtime.js";
+import { runtimeIri } from "../src/config.js";
 
 export const ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -55,3 +56,6 @@ export async function storyFrom(
     folder: person.folder,
   };
 }
+
+/** The runtime the tests' acts name (N7): this repository at a commit no checkout is at. */
+export const RUNTIME = runtimeIri("0".repeat(40));

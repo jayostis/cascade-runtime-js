@@ -141,6 +141,19 @@ export class Layout {
   }
 
   /**
+   * Whether the file at the path is in a snapshot's set (cascade:Snapshot): under a folder the layout gives, but the
+   * views'. A file the layout gives by itself changes in place, and is outside it.
+   */
+  inSnapshotSet(path: string): boolean {
+    return (
+      !path.startsWith(this.viewsFolder) &&
+      this.placements.some(
+        ({ folder }) => folder !== undefined && path.startsWith(folder),
+      )
+    );
+  }
+
+  /**
    * Where a thing of the class is filed outside the views: by the placement for a property it states, else by the one
    * for its class alone; undefined when the layout files it nowhere.
    */

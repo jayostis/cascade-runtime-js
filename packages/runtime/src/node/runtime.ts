@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
-import { parseConfig, type RuntimeConfig } from "../config.js";
+import { fileURLToPath } from "node:url";
+import {
+  packedCommit,
+  parseConfig,
+  runtimeIri,
+  type RuntimeConfig,
+} from "../config.js";
 import type { VocabularyBuild } from "../build.js";
 import type { Layout } from "../layout.js";
 import { checkouts, vocabularyOf } from "./components.js";
@@ -85,4 +91,34 @@ export async function localVocabulary(
   log?: (line: string) => void,
 ): Promise<LocalVocabulary> {
   return vocabularyOf(await checkouts(root, log));
+}
+
+let performing: Promise<string> | undefined;
+
+/**
+ * This runtime as every act it performs names it (N7): the commit a packed package's manifest records, or else the
+ * commit of the checkout this module is in, read once.
+ */
+export function thisRuntime(): Promise<string> {
+  performing ??= (async () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (let folder = here; ; folder = dirname(folder)) {
+      const manifest = join(folder, "package.json");
+      if (existsSync(manifest)) {
+        const { version, cascadeRuntime } = JSON.parse(
+          await readFile(manifest, "utf8"),
+        ) as { version?: unknown; cascadeRuntime?: { commit?: unknown } };
+        const commit =
+          typeof cascadeRuntime?.commit === "string"
+            ? cascadeRuntime.commit
+            : typeof version === "string"
+              ? packedCommit(version)
+              : undefined;
+        if (commit !== undefined) return runtimeIri(commit);
+      }
+      if (dirname(folder) === folder) break;
+    }
+    return runtimeIri((await git(here, "rev-parse", "HEAD")).trim());
+  })();
+  return performing;
 }

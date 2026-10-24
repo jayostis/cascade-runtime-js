@@ -163,3 +163,17 @@ export function repositoryName(followed: Followed): string {
 export function treeIri(followed: Followed, commit: string): string {
   return `${followed.repository}/tree/${commit}/`;
 }
+
+/** The reference runtime's repository. */
+export const RUNTIME_REPOSITORY =
+  "https://github.com/jayostis/cascade-runtime-js";
+
+/** The reference runtime at a commit, as every act it performs names it (N7): N8's form. */
+export function runtimeIri(commit: string): string {
+  return `${RUNTIME_REPOSITORY}/tree/${commit}/`;
+}
+
+/** The commit a packed build's version names, `0.0.0-commit-<commit>` with or without its code's name after a `+`. */
+export function packedCommit(version: string): string | undefined {
+  return /-commit-([0-9a-f]{40})(?:\+|$)/.exec(version)?.[1];
+}

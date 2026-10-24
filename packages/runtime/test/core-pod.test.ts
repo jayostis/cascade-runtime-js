@@ -6,7 +6,7 @@ import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
-import { layout } from "./vocabulary.js";
+import { layout, RUNTIME } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
 const ADDRESS = "https://pod.example/";
@@ -18,6 +18,7 @@ function options(
   state: { now: string; failing?: boolean },
 ): CorePodOptions {
   return {
+    runtime: RUNTIME,
     pod,
     address: ADDRESS,
     subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",

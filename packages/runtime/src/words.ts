@@ -470,6 +470,8 @@ export class Words {
   async thing(words: string): Promise<string> {
     const person = this.#people.get(words);
     if (person !== undefined) return this.#remember(words, person.subject);
+    if (words === "the runtime")
+      return this.#remember(words, this.#replayed.runtime);
     const version = /^version (\d+) of (.+)$/.exec(words);
     if (version !== null) {
       const record = await this.record(version[2] ?? "");

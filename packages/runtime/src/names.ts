@@ -557,6 +557,26 @@ export async function viewEntryName(
   return `${view}#${hex(await sha256(new TextEncoder().encode(least)))}`;
 }
 
+const SET_HASH_MODULUS = 1n << 256n;
+
+/** The set hash of the empty set. */
+export const EMPTY_SET_HASH = "0".repeat(64);
+
+/**
+ * MSet-Add-Hash (cascade:setHash): the sum modulo 2^256 of the SHA-256 of each member, a file's path relative to the
+ * pod, read as a big-endian unsigned integer, in 64 lower-case hex digits. Given the set hash of a set that lacks every
+ * member, `before`, it is the set hash of their union.
+ */
+export async function setHash(
+  members: Iterable<string>,
+  before: string = EMPTY_SET_HASH,
+): Promise<string> {
+  let sum = BigInt(`0x${before}`);
+  for (const member of new Set(members))
+    sum += BigInt(`0x${hex(await sha256(new TextEncoder().encode(member)))}`);
+  return (sum % SET_HASH_MODULUS).toString(16).padStart(64, "0");
+}
+
 /** An act's snapshot: the act, the writer's previous snapshot where it has one, the heads it merged, and its set hash. */
 export function snapshotName(snapshot: {
   readonly act: string;

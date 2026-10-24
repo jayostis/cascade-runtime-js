@@ -6,7 +6,7 @@ import { KIT_CHECKS, podAddressesIn } from "../src/kit.js";
 import { iri, relativeTurtle } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Shapes } from "../src/shapes.js";
-import { layout } from "./vocabulary.js";
+import { layout, RUNTIME } from "./vocabulary.js";
 
 test("a kit whose story has a step the runtime cannot perform reports its checks failed, naming the step's kind, not thrown", async () => {
   const vocabulary = new MemoryFiles("https://vocabulary.example/");
@@ -26,6 +26,7 @@ test("a kit whose story has a step the runtime cannot perform reports its checks
   );
   const newStore = () => new OxigraphStore();
   const assertions = await runConformance({
+    runtime: RUNTIME,
     vocabulary,
     newStore,
     newPod: (address: string) => new MemoryFiles(address),
