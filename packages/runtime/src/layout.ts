@@ -11,6 +11,7 @@ const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+export const SYNC = `${CASCADE}SyncFromAnotherWriter`;
 /** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
 const FILE_STEM =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
@@ -51,6 +52,10 @@ export class Layout {
   readonly viewsFolder: string;
   /** The placement of the views' folder. */
   readonly viewsPlacement: Placement;
+  /** The folder of syncs' act files (cascade:SyncFromAnotherWriter), outside the set; undefined when the layout gives none. */
+  readonly syncsFolder: string | undefined;
+  /** The folders of act files, the syncs' among them. */
+  readonly actFolders: readonly string[];
 
   private constructor(turtle: string, placements: readonly Placement[]) {
     this.turtle = turtle;
@@ -61,6 +66,14 @@ export class Layout {
       throw new Error(`${LAYOUT_FILE} gives no one folder for the views`);
     this.viewsPlacement = placement;
     this.viewsFolder = placement.folder;
+    this.syncsFolder = placements.find(
+      ({ kind, folder }) => kind === SYNC && folder !== undefined,
+    )?.folder;
+    this.actFolders = placements.flatMap(({ kind, folder }) =>
+      (kind === `${PROV}Activity` || kind === SYNC) && folder !== undefined
+        ? [folder]
+        : [],
+    );
   }
 
   /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
@@ -146,11 +159,38 @@ export class Layout {
   /**
    * Whether the file at the path is in a snapshot's set (cascade:Snapshot): named as N9 names a file in a folder the
    * layout gives, the views' folder aside. A file the layout gives by itself changes in place, and is outside it, and
-   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`. A sync's act file passes, though
-   * outside the set: only what it holds tells it.
+   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`. The syncs' folder is outside it.
    */
   inSnapshotSet(path: string): boolean {
     if (path.startsWith(this.viewsFolder)) return false;
+    if (this.syncsFolder !== undefined && path.startsWith(this.syncsFolder))
+      return false;
+    return this.#namedInAFolder(path);
+  }
+
+  /** Whether the file at the path is a sync's act file: named as N9 names a file in the syncs' folder. */
+  inSyncsFolder(path: string): boolean {
+    return (
+      this.syncsFolder !== undefined &&
+      path.startsWith(this.syncsFolder) &&
+      this.#namedInAFolder(path)
+    );
+  }
+
+  /** Whether the file at the path is an act's file: named as N9 names a file in a folder of acts. */
+  inActFolder(path: string): boolean {
+    return (
+      this.actFolders.some((folder) => path.startsWith(folder)) &&
+      this.#namedInAFolder(path)
+    );
+  }
+
+  /** Whether the file at the path is in the folder of documents' bytes. */
+  inStoredBytes(path: string): boolean {
+    return path.startsWith(this.storedBytes.folder ?? "");
+  }
+
+  #namedInAFolder(path: string): boolean {
     return this.placements.some(({ folder, fanOut, storesBytes }) => {
       if (folder === undefined || !path.startsWith(folder)) return false;
       const extension = storesBytes ? "" : ".ttl";

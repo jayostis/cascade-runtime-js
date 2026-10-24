@@ -46,7 +46,21 @@ interface SubjectRecord {
   readonly classes: ReadonlySet<string>;
   readonly version: string;
   readonly arrived: readonly [string, string];
-  readonly activity?: string;
+  /** The act that generated each of its first revisions. */
+  readonly activities: readonly string[];
+}
+
+/** The acts whose records a run takes: those with a first revision from any of them, or, for a sync's run, every one (M1). */
+interface Takes {
+  readonly acts: ReadonlySet<string>;
+  readonly all: boolean;
+}
+
+function taken(record: SubjectRecord, takes: Takes): boolean {
+  return takes.all
+    ? record.activities.length > 0 &&
+        record.activities.every((act) => takes.acts.has(act))
+    : record.activities.some((act) => takes.acts.has(act));
 }
 
 /** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
@@ -249,18 +263,26 @@ async function subjectRecords(
     if (name === undefined) continue;
     const first = firsts.get(name) ?? [];
     const version = versions.get(name)?.[0];
-    const at = times.get(first[0] ?? "")?.[0];
-    if (first.length !== 1 || version === undefined || at === undefined)
-      throw new Refusal(
-        `${name} has no one first revision and current version`,
-      );
-    const activity = activities.get(first[0] ?? "")?.[0];
+    const ats = first.map((revision) => times.get(revision)?.[0]);
+    if (first.length === 0 || version === undefined || ats.includes(undefined))
+      throw new Refusal(`${name} has no first revision and current version`);
+    const [earliest = arrival(""), ...later] = ats.map((at) =>
+      arrival(at as string),
+    );
     found.set(name, {
       name,
       classes: new Set(classes.get(name) ?? []),
       version,
-      arrived: arrival(at),
-      ...(activity === undefined ? {} : { activity }),
+      arrived: later.reduce(
+        (soonest, at) =>
+          at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
+            ? at
+            : soonest,
+        earliest,
+      ),
+      activities: [
+        ...new Set(first.flatMap((revision) => activities.get(revision) ?? [])),
+      ],
     });
   }
   return found;
@@ -418,7 +440,7 @@ class Matcher {
     context: StepContext,
     references: References,
     adopted?: ReadonlyMap<string, string>,
-    takes?: ReadonlySet<string>,
+    takes?: Takes,
   ): Promise<Matcher> {
     const union = await context.matcherView();
     const named = await namedVersions(union);
@@ -430,9 +452,7 @@ class Matcher {
       takes === undefined
         ? undefined
         : [...pod.theirs.values()].flatMap((record) =>
-            record.activity !== undefined && takes.has(record.activity)
-              ? [record.name]
-              : [],
+            taken(record, takes) ? [record.name] : [],
           );
     const rulesVersion = current(await references.ruleList());
     const none: Joins = new Map();
@@ -787,11 +807,9 @@ class Matcher {
   }
 
   /** Files a Same for each of the subject's records whose first revisions the acts began (M1-M5). */
-  async take(takes: ReadonlySet<string>): Promise<void> {
+  async take(takes: Takes): Promise<void> {
     await this.file(
-      [...this.pod.theirs.values()].filter(
-        (record) => record.activity !== undefined && takes.has(record.activity),
-      ),
+      [...this.pod.theirs.values()].filter((record) => taken(record, takes)),
       this.matched,
     );
   }
@@ -1084,21 +1102,22 @@ function actOfRun(
 }
 
 /**
- * The acts whose records a run given the activity takes: an import or entry session itself, or each act a sync names
- * (M1).
+ * The acts whose records a run given the activity takes (M1): an import or entry session, for the records with any
+ * first revision from it, or each act a sync names, for those with every first revision from them; a sync naming none
+ * takes none.
  */
 async function actsTaken(
   context: StepContext,
   activity: string,
-): Promise<Set<string>> {
+): Promise<Takes> {
   const named = await column(
     await context.matcherView(),
-    `SELECT ?act WHERE { <${activity}> a cascade:SyncFromAnotherWriter ; prov:wasInformedBy ?act }`,
+    `SELECT ?act WHERE { <${activity}> a cascade:SyncFromAnotherWriter OPTIONAL { <${activity}> prov:wasInformedBy ?act } }`,
     "act",
   );
   return named.length === 0
-    ? new Set([activity])
-    : new Set(named.flatMap(([act]) => act ?? []));
+    ? { acts: new Set([activity]), all: false }
+    : { acts: new Set(named.flatMap(([act]) => act ?? [])), all: true };
 }
 
 /**
