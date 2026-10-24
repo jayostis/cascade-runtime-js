@@ -526,6 +526,7 @@ export class CorePod {
         layout: options.layout,
         vocabulary: options.vocabulary,
         matcherView: () => this.#matcherView(),
+        releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
       });
       let head: Head | undefined;
       const wrote = await writes.commit(options.pod, async (act, fresh) => {
