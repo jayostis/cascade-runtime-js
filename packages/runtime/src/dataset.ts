@@ -1,5 +1,5 @@
 import type { Derive, VocabularyBuild } from "./build.js";
-import type { DerivedStep } from "./derive.js";
+import type { DerivedStep, Keep } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
@@ -46,6 +46,7 @@ export async function built(
   lens: string,
   union: Union,
   derive?: Derive,
+  keep?: Keep,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   for (const path of files.filter((path) => layout.isRdf(path))) {
     const bytes = await pod.read(path);
@@ -54,7 +55,7 @@ export async function built(
     await union.loadTurtle(bytes, address + path);
   }
   if (derive === undefined || at === undefined) return new Map();
-  return derive(union, lens, { address, at, title });
+  return derive(union, lens, { address, at, title }, keep);
 }
 
 /**
@@ -69,6 +70,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
+  keep?: Keep,
 ): Promise<Union> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
@@ -106,6 +108,7 @@ export async function dataset(
     lens,
     union,
     derive,
+    keep,
   );
   await addLayout(union, replayed.layout, address);
   await store.add(

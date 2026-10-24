@@ -42,7 +42,7 @@ async function replayed(
 
 test("an open writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last (W1)", async () => {
   const { pod, opened } = await replayed(
-    "adopting files again each Same the adopted rows still join, and a Same of each pair only they join",
+    "adopting files no Same the adopted rows still join, and a Same of each pair only they join",
   );
   const kinds: string[] = [];
   for (const path of opened?.wrote ?? []) {
@@ -65,8 +65,6 @@ test("an open writes its judgments first, then the descriptions of the versions 
     );
   }
   assert.deepEqual(kinds, [
-    "judgment",
-    "assertion",
     "judgment",
     "assertion",
     "version 2",
