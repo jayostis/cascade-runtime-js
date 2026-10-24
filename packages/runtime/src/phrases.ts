@@ -1488,9 +1488,17 @@ const DEFINITIONS: Definition[] = [
         const allowed = new Set([
           `${RDF}type`,
           `${OA}hasBody`,
+          `${OA}motivatedBy`,
           `${OA}hasTarget`,
           NO_LONGER_REACHED_UNDER,
         ]);
+        const motivations = held
+          .objects(finding, `${OA}motivatedBy`)
+          .map(({ value }) => value);
+        if (motivations.join(" ") !== `${OA}classifying`)
+          failures.push(
+            `${finding.value} is motivated by ${motivations.join(", ") || "nothing"}, not oa:classifying`,
+          );
         for (const [, p, o] of stated)
           if (!allowed.has(p.value))
             failures.push(

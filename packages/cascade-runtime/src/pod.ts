@@ -874,13 +874,19 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
-      const members = of(`${PROV}hadMember`);
+    const verdicts = of(`${CASCADE}verdict`);
+    const members = of(`${PROV}hadMember`);
+    const [only] = members;
+    const overFinding =
+      verdicts.length === 1 &&
+      verdicts[0] === `${CASCADE}Same` &&
+      members.length === 1 &&
+      only !== undefined &&
+      (await this.#isFinding(only));
+    if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
       const current = await this.#currentVersions(members);
-      const findings = await this.#findings(members);
       for (const member of members) {
         const version = current.get(member);
-        if (version === undefined && findings.has(member)) continue;
         if (version === undefined)
           throw new Error(
             `${member} has no current version in the pod: it names no record`,
@@ -904,18 +910,14 @@ class OpenPod implements Pod {
     return filed.refused === undefined ? { ...filed, judgment: name } : filed;
   }
 
-  /** Each record's current version, under the everyday lens, by the record. */
-  /** Those of the things given that are findings for review, which have no versions: a Same may name one alone. */
-  async #findings(things: readonly string[]): Promise<Set<string>> {
-    if (things.length === 0) return new Set();
+  /** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
+  async #isFinding(thing: string): Promise<boolean> {
     const { rows } = await this.#core.select(`${PREFIXES}
-      SELECT ?thing WHERE {
-        VALUES ?thing { ${things.map((thing) => `<${thing}>`).join(" ")} }
-        ?thing a cascade:FindingForReview .
-      }`);
-    return new Set(rows.flatMap((row) => row.get("thing")?.value ?? []));
+      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
+    return rows.length > 0;
   }
 
+  /** Each record's current version, under the everyday lens, by the record. */
   async #currentVersions(
     records: readonly string[],
   ): Promise<Map<string, string>> {

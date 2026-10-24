@@ -340,6 +340,10 @@ interface Pod {
   readonly retracted: ReadonlySet<string>;
   /** Each rule list version a finding of the claims it no longer reaches names. */
   readonly noLongerReachedUnder: ReadonlySet<string>;
+  /** Each claim a finding of claims no longer reached names. */
+  readonly namedByFinding: ReadonlySet<string>;
+  /** The query hash of each matcher rule's row, by the rule list version whose rows the pod describes. */
+  readonly ruleHashes: ReadonlyMap<string, ReadonlyMap<string, string>>;
 }
 
 /**
@@ -910,33 +914,34 @@ class Matcher {
   /**
    * Files the rule list version's finding of the claims it no longer reaches (M18), when the version revises another and
    * the pod holds no such finding of it: every claim of the matcher's nothing withdraws that is asserted with the query
-   * hash of its rule's row in the version this one revises and with none of this version's row for it, this run's
-   * assertions counted. None when it would name none.
+   * hash of its rule's row in any version this one revises, directly or not, as the rows the pod describes give it, and
+   * not with this version's row for it, this run's assertions counted, and that no finding the pod holds names, so the
+   * claims it names do not depend on which versions the pod's runs went through. None when it would name none.
    */
   async fileNoLongerReached(): Promise<void> {
     const version = this.rulesVersion;
-    const before =
-      version === "" ? undefined : this.references.revisionOf(version);
-    if (before === undefined || this.pod.noLongerReachedUnder.has(version))
-      return;
-    let hashesBefore: Map<string, string>;
-    try {
-      hashesBefore = ruleHashes(new Graph(await this.references.rows(before)));
-    } catch (error) {
-      if (error instanceof Refusal) return;
-      throw error;
-    }
+    if (version === "" || this.pod.noLongerReachedUnder.has(version)) return;
+    const earlier = new Map<string, Set<string>>();
+    for (const revised of revisedBy(this.references, version))
+      for (const [rule, hash] of this.pod.ruleHashes.get(revised) ?? [])
+        earlier.set(rule, (earlier.get(rule) ?? new Set()).add(hash));
+    if (earlier.size === 0) return;
     const hashesNow = new Map(this.rules.map(({ term, hash }) => [term, hash]));
     const claims: string[] = [];
     for (const judged of this.pod.judgments) {
-      if (this.#filed.has(judged.name)) continue;
+      if (
+        this.#filed.has(judged.name) ||
+        this.pod.namedByFinding.has(judged.name)
+      )
+        continue;
       const asserted = this.pod.asserted.get(judged.name);
-      const was = hashesBefore.get(judged.rule);
       const now = hashesNow.get(judged.rule);
       if (
-        was === undefined ||
-        asserted?.has(was) !== true ||
-        (now !== undefined && asserted.has(now))
+        asserted === undefined ||
+        (now !== undefined && asserted.has(now)) ||
+        ![...(earlier.get(judged.rule) ?? [])].some((hash) =>
+          asserted.has(hash),
+        )
       )
         continue;
       claims.push(judged.name);
@@ -945,6 +950,7 @@ class Matcher {
     const content = (subject: string): Triple[] => [
       [iri(subject), iri(TYPE), iri(`${CASCADE}FindingForReview`)],
       [iri(subject), iri(`${OA}hasBody`), iri(NO_LONGER_REACHED)],
+      [iri(subject), iri(`${OA}motivatedBy`), iri(`${OA}classifying`)],
       [
         iri(subject),
         iri(`${CASCADE}noLongerReachedUnderRuleListVersion`),
@@ -1028,18 +1034,6 @@ interface Judged {
   readonly rule: string;
   readonly members: readonly string[];
   readonly used: readonly string[];
-}
-
-/** The query hash of each matcher rule a version of the rule list holds a row for, as its rows give it. */
-function ruleHashes(rows: Graph): Map<string, string> {
-  const found = new Map<string, string>();
-  for (const row of rows.subjects(TYPE, iri(`${CASCADE}RuleListRow`))) {
-    const [rule] = rows.objects(row, `${CASCADE}matcherRule`);
-    const [hash] = rows.objects(row, `${CASCADE}queryHash`);
-    if (rule !== undefined && hash !== undefined)
-      found.set(rule.value, hash.value);
-  }
-  return found;
 }
 
 function pair(record: string | undefined, other: string | undefined): string {
@@ -1133,6 +1127,25 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     `SELECT DISTINCT ?version WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; cascade:noLongerReachedUnderRuleListVersion ?version }`,
     "version",
   );
+  const namedByFinding = await column(
+    dataset,
+    `SELECT DISTINCT ?claim WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?claim }`,
+    "claim",
+  );
+  const rows = await column(
+    dataset,
+    "SELECT DISTINCT ?version ?rule ?hash WHERE { ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash }",
+    "version",
+    "rule",
+    "hash",
+  );
+  const ruleHashes = new Map<string, Map<string, string>>();
+  for (const [version, rule, hash] of rows)
+    if (version !== undefined && rule !== undefined && hash !== undefined)
+      ruleHashes.set(
+        version,
+        (ruleHashes.get(version) ?? new Map<string, string>()).set(rule, hash),
+      );
   const different = await column(
     dataset,
     "SELECT DISTINCT ?record ?other WHERE { ?record cascade:currentlyDifferent ?other }",
@@ -1180,6 +1193,8 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     noLongerReachedUnder: new Set(
       noLongerReachedUnder.flatMap(([version]) => version ?? []),
     ),
+    namedByFinding: new Set(namedByFinding.flatMap(([claim]) => claim ?? [])),
+    ruleHashes,
     retracted: new Set(
       [...retracted.values()].flatMap((members) =>
         members.flatMap((record) =>
