@@ -8,7 +8,6 @@ const RECORD_NAMESPACE = "90c60849-c5ef-4ca6-bfb8-8662bd07d2b5";
 
 export const THIS_VERSION = "urn:cascade:this-version";
 export const THIS_REVISION = "urn:cascade:this-revision";
-export const THIS_ENTRY = "urn:cascade:this-entry";
 
 function base64url(bytes: Uint8Array): string {
   let binary = "";

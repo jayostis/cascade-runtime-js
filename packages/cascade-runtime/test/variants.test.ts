@@ -472,7 +472,7 @@ function entry(cases: readonly Case[], subject: string, owner: string): string {
   ]);
   return `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 ${TURTLE}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
 ${records.join("\n")}`;
 }

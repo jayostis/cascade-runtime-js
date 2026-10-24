@@ -173,7 +173,6 @@ function manifest(file: string, title: string, at: string): Triple[] {
     [manifest, iri(TYPE), iri(`${CASCADE}PodManifest`)],
     [manifest, iri(`${DCT}title`), literal(title)],
     [manifest, iri(`${DCT}created`), created],
-    [manifest, iri(`${CASCADE}schemaVersion`), literal("1.8")],
     [manifest, iri(`${PROV}wasGeneratedBy`), activity],
     [activity, iri(TYPE), iri(`${PROV}Activity`)],
     [activity, iri(`${PROV}startedAtTime`), created],

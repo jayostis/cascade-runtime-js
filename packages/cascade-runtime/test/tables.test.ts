@@ -537,7 +537,7 @@ test("a pod keeps the tables it was opened with; opened after a check keeps the 
   ${fields} ; cascade:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${records.join("\n")}`);
   assert.equal(entered.refused, undefined);
@@ -2039,7 +2039,7 @@ test("a pod that joined two allergies through a product ingredients version writ
   cascade:allergenCode <${RXNORM}${code}> ; cascade:patient <${pod.subject}> .`,
   );
   const entered = await pod.enter(`${PREFIXES}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${allergies.join("\n")}`);
   assert.equal(entered.refused, undefined);
@@ -2574,7 +2574,7 @@ test("the pod's medicines in a class are asked of the tables by the same rule as
   <https://ns.cascadeprotocol.org/cascade#prescribedOrReported> "prescribed" ;
   <https://ns.cascadeprotocol.org/cascade#workflowStatus> "active" ; cascade:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${Object.keys(names).map(medication).join("\n")}`);
     assert.equal(entered.refused, undefined);
@@ -2706,7 +2706,7 @@ test("a person's results in the panel they pick are asked of the tables: in LOIN
   cascade:testCode <${LOINC}2823-3> ; cascade:testName "Potassium" ; cascade:resultValue "4.${index}" ;
   cascade:resultClinicallyRelevantTime "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ; cascade:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 ${["2025-03-01", "2025-06-01"].map(result).join("\n")}`);
     assert.equal(entered.refused, undefined);

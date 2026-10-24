@@ -14,7 +14,6 @@ import {
   documentName,
   enteredRecordName,
   inUtc,
-  THIS_ENTRY,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -548,20 +547,11 @@ export async function fileEntry(
     throw new Refusal(
       `${entry.name} holds ${activities.length} activities, not one`,
     );
-  let [session] = activities as [Triple[0]];
-  if (session.value === THIS_ENTRY) {
-    const id = iri(context.time.newId());
-    graph = new Graph(
-      renamed(
-        graph.triples.filter(
-          ([s, p]) => !(s.value === THIS_ENTRY && p.value === STARTED),
-        ),
-        session,
-        id,
-      ),
+  const [session] = activities as [Triple[0]];
+  if (session.value === "urn:cascade:this-entry")
+    throw new Refusal(
+      `${entry.name} names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it`,
     );
-    session = id;
-  }
   if (session.termType !== "NamedNode")
     throw new Refusal(`${entry.name}'s session has no name`);
   let [at] = graph.objects(session, STARTED);

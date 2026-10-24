@@ -46,7 +46,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
         return pod.enter({
           bytes: new TextEncoder().encode(
             `@prefix prov: <http://www.w3.org/ns/prov#> .
-            <urn:cascade:this-entry> a prov:Activity .
+            <urn:uuid:1e6c3a8d-5f27-4b90-9d4e-a7b2c8f0e513> a prov:Activity .
             <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
             <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
               <https://ns.cascadeprotocol.org/cascade#patient> <${story.subject}> .
