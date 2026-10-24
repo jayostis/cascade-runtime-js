@@ -1,8 +1,11 @@
 import { Refusal } from "./step.js";
 
-/** What a query's text may hold before its outermost group: comments, IRIs and strings, whose braces open no group. */
+/**
+ * What a query's text may hold before its outermost group: long and short strings, comments, IRIs and a prefixed name's
+ * escaped character, whose braces and number signs open no group and no comment.
+ */
 const TOKEN =
-  /#[^\n]*|<[^<>"{}|^`\\\s]*>|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\{/g;
+  /"""(?:[^"\\]|\\.|"(?!""))*"""|'''(?:[^'\\]|\\.|'(?!''))*'''|#[^\n]*|<[^<>"{}|^`\\\s]*>|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\\.|\{/g;
 
 /**
  * The comparison with `VALUES ?record { … }` opening its outermost group: Oxigraph's JavaScript build takes no initial

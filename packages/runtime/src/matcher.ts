@@ -20,6 +20,8 @@ const PAV = "http://purl.org/pav/";
 const NPX = "http://purl.org/nanopub/x/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const TYPE = `${RDF}type`;
+/** The graph holding the descriptions of the versions a comparison reads and of their series, and no others. */
+const DESCRIBED = "urn:cascade:references";
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX npx: <${NPX}>`;
 
 export const MATCHER = `${CASCADE}CascadeMatcher`;
@@ -405,7 +407,10 @@ class Matcher {
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
    * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the import or entry session a run
-   * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4).
+   * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4). The rule list the
+   * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
+   * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
+   * describes but the tables do not load revises one they do (M13, O1).
    */
   static async of(
     context: StepContext,
@@ -486,33 +491,71 @@ class Matcher {
     );
     const terms = await tableTerms(context.vocabulary, context.newStore);
     const find = { codes: await podCodes(union, terms), terms };
-    for (const version of new Set([...versions, ...versionsBefore])) {
-      await union.add(await references.rows(version, find), version);
-      await union.add(
-        [
-          ...references.description(version),
-          ...references.description(references.seriesOf(version) ?? ""),
-        ],
-        "urn:cascade:references",
-      );
-    }
-    const selected = new Map<string, Promise<readonly Row[]>>();
-    const rowsOf = (query: string): Promise<readonly Row[]> => {
-      let rows = selected.get(query);
-      if (rows === undefined) {
-        rows = union
-          .select(bound === undefined ? query : boundToRecords(query, bound))
-          .then((answer) => answer.rows);
-        selected.set(query, rows);
+    const shown = new Set<string>();
+    const over = async (
+      held: readonly string[],
+      rules: readonly { rule: MatcherRule; text: string }[],
+    ): Promise<Joins> => {
+      for (const version of shown)
+        if (!held.includes(version)) {
+          await union.store.drop(version);
+          shown.delete(version);
+        }
+      await union.store.drop(DESCRIBED);
+      for (const version of held) {
+        if (!shown.has(version))
+          await union.add(await references.rows(version, find), version);
+        shown.add(version);
+        await union.add(
+          [
+            ...references.description(version),
+            ...references.description(references.seriesOf(version) ?? ""),
+          ],
+          DESCRIBED,
+        );
       }
-      return rows;
+      const selected = new Map<string, Promise<readonly Row[]>>();
+      const rowsOf = (query: string): Promise<readonly Row[]> => {
+        let rows = selected.get(query);
+        if (rows === undefined) {
+          rows = union
+            .select(bound === undefined ? query : boundToRecords(query, bound))
+            .then((answer) => answer.rows);
+          selected.set(query, rows);
+        }
+        return rows;
+      };
+      return joins(rowsOf, rules, loaded, new Set(["", ...held]));
     };
-    const matched = await joins(
-      rowsOf,
-      found,
-      loaded,
-      new Set(["", ...versions]),
-    );
+    const foundBefore =
+      adopted === undefined || rulesBefore === undefined
+        ? []
+        : rulesBefore === rulesVersion
+          ? found
+          : await matcherRules(
+              new Graph(await references.rows(rulesBefore)),
+              context.vocabulary,
+            ).catch((error: unknown) => {
+              if (error instanceof Refusal) return [];
+              throw error;
+            });
+    const { address, layout } = context;
+    const folder = layout.place(`${CASCADE}ReferenceSeries`).folder;
+    const described =
+      folder === undefined
+        ? []
+        : [...union.graphs].filter((graph) =>
+            graph.startsWith(address + folder),
+          );
+    for (const graph of described) await union.store.drop(graph);
+    const known =
+      foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
+    const matched = await over(versions, found);
+    for (const graph of described) {
+      const bytes = await context.pod.read(graph.slice(address.length));
+      if (bytes === undefined) throw new Error(`${graph} is gone`);
+      await union.loadTurtle(bytes, graph);
+    }
     if (adopted === undefined)
       return new Matcher(
         context,
@@ -524,24 +567,6 @@ class Matcher {
         matched,
         none,
       );
-    const foundBefore =
-      rulesBefore === undefined
-        ? []
-        : rulesBefore === rulesVersion
-          ? found
-          : await matcherRules(
-              new Graph(await references.rows(rulesBefore)),
-              context.vocabulary,
-            ).catch((error: unknown) => {
-              if (error instanceof Refusal) return [];
-              throw error;
-            });
-    const known = await joins(
-      rowsOf,
-      foundBefore,
-      loaded,
-      new Set(["", ...versionsBefore]),
-    );
     const fresh = new Map<string, Map<string, Set<string>>>();
     for (const [justification, pairs] of matched) {
       const newly = new Map<string, Set<string>>();
