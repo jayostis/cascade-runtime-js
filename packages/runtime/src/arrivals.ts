@@ -219,6 +219,11 @@ function recordPlace(
   return { place, kind };
 }
 
+/** Frees what the union's store holds in Oxigraph's memory now, rather than when it is collected. */
+function freed(union: Union): void {
+  (union.store as { free?: () => void }).free?.();
+}
+
 /** What an arrival is told apart by: its version, its source version and its source change time. */
 function held(version: string, source?: string, changed?: string): string {
   return [version, source ?? "", changed ?? ""].join("\u0000");
@@ -270,6 +275,7 @@ class Revisions {
         OPTIONAL { ?revision pav:version ?sourceVersion }
         OPTIONAL { ?revision pav:lastUpdateOn ?changed }
       }`);
+    freed(union);
     const revisions = new Revisions(layout, context);
     const revised = new Set(rows.map((row) => row.get("previous")?.value));
     for (const row of rows) {
@@ -301,9 +307,8 @@ class Revisions {
 
   /**
    * Each record's current version as the vocabulary's derivations pick it, through
-   * queries/derivations/current-revisions.rq under the everyday lens, over the files of the set and the syncs, which
-   * hold the judgments, the documents' transmitters and the snapshots the ladder reads: which lens counts a person's
-   * judgments does not touch what their Before or Erroneous does to it.
+   * queries/derivations/current-revisions.rq, which runs before any lens, over the files of the set and the syncs,
+   * which hold the judgments, the documents' transmitters and the snapshots the ladder reads.
    */
   #currentVersions(): Promise<ReadonlyMap<string, string>> {
     this.#current ??= (async () => {
@@ -320,6 +325,7 @@ class Revisions {
       const { rows } = await union.select(
         `SELECT ?record ?current WHERE { ?record <${PAV}hasCurrentVersion> ?current ; a <${CASCADE}Record> }`,
       );
+      freed(union);
       return new Map(
         rows.map((row) => [
           row.get("record")?.value ?? "",
