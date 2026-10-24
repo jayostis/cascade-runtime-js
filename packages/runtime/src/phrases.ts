@@ -1231,7 +1231,6 @@ const DEFINITIONS: Definition[] = [
           `${RDF}type`,
           `${JDG}assertedClaim`,
           `${JDG}assertedUnderRuleListVersion`,
-          `${JDG}assertedWithQueryHash`,
         ]),
       };
       for (const [kind, names] of [
@@ -1277,7 +1276,8 @@ const DEFINITIONS: Definition[] = [
             `${RDF}type`,
             iri(`${REC}ReferenceSeries`),
           ).length > 0 ||
-          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
+          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0 ||
+          heldGraph.match(iri(value), `${REC}rowOfRuleListVersion`).length > 0;
         if (!isReference) failures.push(`the step also wrote of ${value}`);
       }
       const problem = await comparedJudgments(reading, rows, found, columns);
@@ -1323,24 +1323,18 @@ const DEFINITIONS: Definition[] = [
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      const hashed = `<${REC}queryHash>`;
+      const rowOf = `<${REC}rowOfRuleListVersion>`;
       for (const [thing, said] of described) {
-        const held = heldTriples.filter((triple) =>
-          triple.startsWith(`<${thing}> `),
+        const rows = heldTriples.filter((triple) =>
+          triple.endsWith(` ${rowOf} <${thing}>`),
         );
-        const hashes = held.filter((triple) =>
-          triple.startsWith(`<${thing}> ${hashed} `),
-        );
-        if (
-          hashes.length > 0 !==
-          (await reading.words.isRuleListVersion(thing))
-        )
+        if (rows.length > 0 !== (await reading.words.isRuleListVersion(thing)))
           wrong.push(
-            `${reading.words.shown(thing)} gives ${hashes.length} query hashes, and is ${hashes.length > 0 ? "no" : "a"} rule list version`,
+            `${reading.words.shown(thing)} has ${rows.length} rows, and is ${rows.length > 0 ? "no" : "a"} rule list version`,
           );
         const why = compared(
           said,
-          held.filter((triple) => !hashes.includes(triple)),
+          heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
         );
         if (why !== undefined)
           wrong.push(

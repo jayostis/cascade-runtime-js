@@ -266,25 +266,29 @@ export class References {
       .filter(([, predicate]) => predicate.value !== SHIPS_WITH);
   }
 
-  /** What a pod states of a series or a version: its description, and, of a rule list version, its rows' query hashes. */
+  /**
+   * What a pod states of a series or a version: its description, and, of a rule list version, each of its rows, named
+   * `<version>#<the local name of its rule term>`, by the version it is a row of, its rule and its query hash (M8).
+   */
   async podDescription(thing: string): Promise<Triple[]> {
     const described = this.description(thing);
     const series = this.seriesOf(thing);
     if (series === undefined || this.kindOf(series) !== undefined)
       return described;
     const rows = new Graph(await this.rows(thing));
-    const hashes = new Set(
-      rows
-        .subjects(`${RDF}type`, iri(`${REC}RuleListRow`))
-        .flatMap((row) => rows.objects(row, `${REC}queryHash`))
-        .map(({ value }) => value),
-    );
-    return [
-      ...described,
-      ...[...hashes]
-        .sort()
-        .map((hash): Triple => [iri(thing), iri(`${REC}queryHash`), iri(hash)]),
-    ];
+    const found: Triple[] = [];
+    for (const row of rows.subjects(`${RDF}type`, iri(`${REC}RuleListRow`))) {
+      const [rule] = rows.objects(row, `${REC}matcherRule`);
+      const [hash] = rows.objects(row, `${REC}queryHash`);
+      if (rule === undefined || hash === undefined) continue;
+      const named = iri(`${thing}#${rule.value.replace(/^.*[#/]/, "")}`);
+      found.push(
+        [named, iri(`${REC}rowOfRuleListVersion`), iri(thing)],
+        [named, iri(`${REC}matcherRule`), iri(rule.value)],
+        [named, iri(`${REC}queryHash`), iri(hash.value)],
+      );
+    }
+    return [...described, ...found];
   }
 
   isVersion(name: string): boolean {

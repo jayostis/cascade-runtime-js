@@ -291,7 +291,9 @@ interface Pod {
   readonly sames: readonly (readonly string[])[];
   /** Each ordered pair of records that are currently different. */
   readonly different: ReadonlySet<string>;
-  /** The query hashes each claim is asserted with. */
+  /** The matcher's claims a person retracted, or superseded by a judgment not itself retracted. */
+  readonly withdrawn: ReadonlySet<string>;
+  /** The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under. */
   readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
   readonly judgments: readonly Judged[];
@@ -624,7 +626,12 @@ class Matcher {
       await this.describe(version);
     }
     const asserted = this.pod.asserted.get(name);
-    if (asserted?.has(rule.hash) === true || this.#filed.has(name)) return;
+    if (
+      asserted?.has(rule.hash) === true ||
+      this.#filed.has(name) ||
+      this.pod.withdrawn.has(name)
+    )
+      return;
     this.#filed.add(name);
     this.sames.push(names);
     const claim = iri(name);
@@ -663,7 +670,6 @@ class Matcher {
           iri(`${JDG}assertedUnderRuleListVersion`),
           iri(this.rulesVersion),
         ],
-        [iri(assertion), iri(`${JDG}assertedWithQueryHash`), iri(rule.hash)],
       ]),
     );
   }
@@ -691,8 +697,12 @@ class Matcher {
       return at;
     };
     const { different } = this.pod;
+    const later = (name: string): boolean => {
+      const other = this.pod.theirs.get(name);
+      return other !== undefined && byArrival(other, record) >= 0;
+    };
     for (const members of this.sames) {
-      if (members.includes(record.name)) continue;
+      if (members.some(later)) continue;
       const split = members.some((one) =>
         members.some((other) => different.has(pair(one, other))),
       );
@@ -801,6 +811,46 @@ class Matcher {
       );
       if (still.length >= 2) await this.same(rule, origin, still);
     }
+    await this.resplit(byTerm);
+  }
+
+  /**
+   * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: two of the
+   * records its latest-arriving member matches are currently different (M7).
+   */
+  private async resplit(
+    byTerm: ReadonlyMap<string, MatcherRule>,
+  ): Promise<void> {
+    const { different, theirs } = this.pod;
+    for (const judged of this.pod.judgments) {
+      const rule = byTerm.get(judged.rule);
+      if (rule === undefined) continue;
+      const members = judged.members.flatMap(
+        (member) => theirs.get(member) ?? [],
+      );
+      const [record] = [...members].sort(byArrival).slice(-1);
+      if (record === undefined) continue;
+      const origin =
+        rule.kind === undefined
+          ? ""
+          : (judged.used.find(
+              (thing) =>
+                this.references.kindOf(
+                  this.references.seriesOf(thing) ?? "",
+                ) === rule.kind,
+            ) ?? "");
+      const matched = [...theirs.values()].filter(
+        (other) =>
+          byArrival(other, record) < 0 &&
+          this.origins(this.matched, rule, record, other).has(origin),
+      );
+      if (
+        matched.some((one) =>
+          matched.some((other) => different.has(pair(one.name, other.name))),
+        )
+      )
+        await this.same(rule, origin, this.star(record, matched));
+    }
   }
 }
 
@@ -870,6 +920,12 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       "member",
     ),
   );
+  const judgments = await recheckable(dataset);
+  const claims = await column(
+    dataset,
+    `SELECT DISTINCT ?claim WHERE { ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
+    "claim",
+  );
   const sames = grouped(
     await column(
       dataset,
@@ -887,7 +943,11 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
   const asserted = grouped(
     await column(
       dataset,
-      "SELECT DISTINCT ?claim ?hash WHERE { ?assertion cascade:assertedClaim ?claim ; cascade:assertedWithQueryHash ?hash }",
+      `SELECT DISTINCT ?claim ?hash WHERE {
+        ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+        ?claim cascade:matcherRule ?rule .
+        ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash
+      }`,
       "claim",
       "hash",
     ),
@@ -905,7 +965,14 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
     ),
     theirs: await subjectRecords(dataset),
-    judgments: await recheckable(dataset),
+    judgments,
+    withdrawn: new Set(
+      claims.flatMap(([claim]) =>
+        claim === undefined || judgments.some(({ name }) => name === claim)
+          ? []
+          : [claim],
+      ),
+    ),
     revised: references.revised(),
     retracted: new Set(
       [...retracted.values()].flatMap((members) =>
