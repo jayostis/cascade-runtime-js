@@ -1,4 +1,4 @@
-import { Derivations, QUERIES } from "./derive.js";
+import { Derivations, type Keep, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
 import {
@@ -35,6 +35,7 @@ export type Derive = (
   union: Union,
   lens: string,
   pod: PodState,
+  keep?: Keep,
 ) => Promise<ReadonlyMap<string, readonly Triple[]>>;
 
 /** The software a pod's manifest says built it. */
@@ -284,8 +285,8 @@ export async function vocabularyDerive(
   layout: Layout,
 ): Promise<Derive> {
   const { derivations, files } = await vocabularyBuild(vocabulary, layout);
-  return async (union, lens, pod) => {
-    await derivations.derive(union, lens);
+  return async (union, lens, pod, keep) => {
+    await derivations.derive(union, lens, keep);
     return files(union, pod);
   };
 }
