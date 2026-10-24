@@ -47,7 +47,21 @@ interface SubjectRecord {
   readonly classes: ReadonlySet<string>;
   readonly version: string;
   readonly arrived: readonly [string, string];
-  readonly activity?: string;
+  /** The act that generated each of its first revisions. */
+  readonly activities: readonly string[];
+}
+
+/** The acts whose records a run takes: those with a first revision from any of them, or, for a sync's run, every one (M1). */
+interface Takes {
+  readonly acts: ReadonlySet<string>;
+  readonly all: boolean;
+}
+
+function taken(record: SubjectRecord, takes: Takes): boolean {
+  return takes.all
+    ? record.activities.length > 0 &&
+        record.activities.every((act) => takes.acts.has(act))
+    : record.activities.some((act) => takes.acts.has(act));
 }
 
 /** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
@@ -250,18 +264,26 @@ async function subjectRecords(
     if (name === undefined) continue;
     const first = firsts.get(name) ?? [];
     const version = versions.get(name)?.[0];
-    const at = times.get(first[0] ?? "")?.[0];
-    if (first.length !== 1 || version === undefined || at === undefined)
-      throw new Refusal(
-        `${name} has no one first revision and current version`,
-      );
-    const activity = activities.get(first[0] ?? "")?.[0];
+    const ats = first.map((revision) => times.get(revision)?.[0]);
+    if (first.length === 0 || version === undefined || ats.includes(undefined))
+      throw new Refusal(`${name} has no first revision and current version`);
+    const [earliest = arrival(""), ...later] = ats.map((at) =>
+      arrival(at as string),
+    );
     found.set(name, {
       name,
       classes: new Set(classes.get(name) ?? []),
       version,
-      arrived: arrival(at),
-      ...(activity === undefined ? {} : { activity }),
+      arrived: later.reduce(
+        (soonest, at) =>
+          at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
+            ? at
+            : soonest,
+        earliest,
+      ),
+      activities: [
+        ...new Set(first.flatMap((revision) => activities.get(revision) ?? [])),
+      ],
     });
   }
   return found;
@@ -411,8 +433,8 @@ class Matcher {
 
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
-   * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the import or entry session a run
-   * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4). The rule list the
+   * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the acts whose records a run
+   * takes, each comparison is evaluated with ?record bound to the subject's records they began (M1, M4). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
    * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
@@ -422,7 +444,7 @@ class Matcher {
     context: StepContext,
     references: References,
     adopted?: ReadonlyMap<string, string>,
-    activity?: string,
+    takes?: Takes,
   ): Promise<Matcher> {
     const union = await context.matcherView();
     const named = await namedVersions(union);
@@ -431,10 +453,10 @@ class Matcher {
       references.current(series, named.get(series) ?? []);
     const pod = await read(union, references);
     const bound =
-      activity === undefined
+      takes === undefined
         ? undefined
         : [...pod.theirs.values()].flatMap((record) =>
-            record.activity === activity ? [record.name] : [],
+            taken(record, takes) ? [record.name] : [],
           );
     const rulesVersion = current(await references.ruleList());
     const none: Joins = new Map();
@@ -788,12 +810,10 @@ class Matcher {
     }
   }
 
-  /** Files a Same for each of the subject's records that the activity's first revisions began (M1-M5). */
-  async take(activity: string): Promise<void> {
+  /** Files a Same for each of the subject's records whose first revisions the acts began (M1-M5). */
+  async take(takes: Takes): Promise<void> {
     await this.file(
-      [...this.pod.theirs.values()].filter(
-        (record) => record.activity === activity,
-      ),
+      [...this.pod.theirs.values()].filter((record) => taken(record, takes)),
       this.matched,
     );
   }
@@ -1086,15 +1106,39 @@ function actOfRun(
   return name;
 }
 
-/** A matcher run: the records the import or entry session it takes made, or, taking none, a recheck. Gives the run's act, if it wrote one. */
+/**
+ * The acts whose records a run given the activity takes (M1): an import or entry session, for the records with any
+ * first revision from it, or each act a sync names, for those with every first revision from them; a sync naming none
+ * takes none.
+ */
+async function actsTaken(
+  context: StepContext,
+  activity: string,
+): Promise<Takes> {
+  const named = await column(
+    await context.matcherView(),
+    `SELECT ?act WHERE { <${activity}> a cascade:SyncFromAnotherWriter OPTIONAL { <${activity}> prov:wasInformedBy ?act } }`,
+    "act",
+  );
+  return named.length === 0
+    ? { acts: new Set([activity]), all: false }
+    : { acts: new Set(named.flatMap(([act]) => act ?? [])), all: true };
+}
+
+/**
+ * A matcher run: the records the import or entry session it takes made, or those a sync brought, or, taking none, a
+ * recheck. Gives the run's act, if it wrote one.
+ */
 export async function runMatcher(
   context: StepContext,
   references: References,
   activity?: string,
 ): Promise<string | undefined> {
-  const matcher = await Matcher.of(context, references, undefined, activity);
-  if (activity === undefined) await matcher.recheck();
-  else await matcher.take(activity);
+  const takes =
+    activity === undefined ? undefined : await actsTaken(context, activity);
+  const matcher = await Matcher.of(context, references, undefined, takes);
+  if (takes === undefined) await matcher.recheck();
+  else await matcher.take(takes);
   matcher.finish();
   return actOfRun(context, activity);
 }

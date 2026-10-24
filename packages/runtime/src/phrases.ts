@@ -85,6 +85,10 @@ export interface Compiled {
   /** The step the pod is read as it stood after, by its name, and the lens; the last step under everyday otherwise. */
   at?: { readonly index: number; readonly lens: string };
   readonly checks: { readonly text: string; readonly check: Check }[];
+  /** How many writers the pod has, 1 until a second starts. */
+  writers?: number;
+  /** The writer that takes the steps that follow, numbered from 0, the pod's first. */
+  writer?: number;
   /** The query the last `When the query is:` or `When the query {name} is asked` gave, which the `it answers` steps after it read. */
   query?: string;
 }
@@ -162,6 +166,9 @@ parameter(
   /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile|variants|variant-interpretations/,
 );
 parameter("lens", /[a-z]+/);
+parameter("writer", /the first writer|the second writer/, (text) =>
+  text === "the first writer" ? 0 : 1,
+);
 /** Words, in which a colon is part of an HGVS expression when a non-space follows it, and the colon ending a step is not. */
 const WORDS = /(?:[^:]|:(?=\S))+/;
 parameter("record", WORDS);
@@ -209,6 +216,7 @@ function happen(
   quoted: string | undefined,
   when: string,
   happened: Happened,
+  writer = compiled.writer ?? 0,
 ): void {
   if (compiled.person === undefined)
     throw new Error("the example has no pod: its first step creates one");
@@ -226,7 +234,15 @@ function happen(
     name,
     when,
     happened,
+    ...(writer === 0 ? {} : { writer }),
   });
+}
+
+/** The writer so numbered, which the pod must have. */
+function writerOf(compiled: Compiled, writer: number): number {
+  if (writer >= (compiled.writers ?? 1))
+    throw new Error("the pod has no second writer: a step starts one first");
+  return writer;
 }
 
 function table(
@@ -1036,6 +1052,42 @@ const DEFINITIONS: Definition[] = [
       happen(compiled, label ?? "recheck", undefined, when as string, {
         kind: "matcher",
       });
+    },
+  ],
+  [
+    "a second writer of the pod",
+    (compiled, _args, _stated, _compiling, label) => {
+      if ((compiled.writers ?? 1) > 1)
+        throw new Error("the pod has a second writer already");
+      const when = compiled.steps.at(-1)?.when;
+      if (when === undefined)
+        throw new Error("the example has no pod: its first step creates one");
+      compiled.writers = 2;
+      happen(compiled, label, undefined, when, { kind: "writer" }, 1);
+    },
+  ],
+  [
+    "the steps that follow are {writer}'s",
+    (compiled, [writer]) => {
+      compiled.writer = writerOf(compiled, writer as number);
+    },
+  ],
+  [
+    "{writer} receives the files of {writer} on {time}",
+    (compiled, [to, from, when], _stated, _compiling, label) => {
+      const receiver = writerOf(compiled, to as number);
+      const sender = writerOf(compiled, from as number);
+      if (receiver === sender)
+        throw new Error("a writer receives the files of another writer");
+      happen(
+        compiled,
+        label,
+        undefined,
+        when as string,
+        { kind: "sync", from: sender },
+        receiver,
+      );
+      compiled.writer = receiver;
     },
   ],
   ["the pod is read as it stood after {step}", readAfter],
