@@ -256,7 +256,7 @@ const CONNECT: SavedConnect = {
   capability: CAPABILITY,
 };
 
-test("a saved connect reports each string the server wrote and the client id, and a connect the rules refuse is refused with why, and never saved", async () => {
+test("a saved connect reports each string the server wrote and the client id, the authorization endpoint from its SMART configuration where it has one, and a connect the rules refuse is refused with why, and never saved", async () => {
   assert.deepEqual(
     await readConnect(filesOf(connectFiles(CONNECT, "north")), "north"),
     {
@@ -266,6 +266,16 @@ test("a saved connect reports each string the server wrote and the client id, an
       authorizationEndpoint: `${BASE}/authorize`,
       softwareName: "Example EHR",
     },
+  );
+  const smartConfiguration = { authorization_endpoint: `${BASE}/smart` };
+  const withConfiguration = connectFiles(
+    { ...CONNECT, smartConfiguration },
+    "north",
+  );
+  assert.equal(
+    (await readConnect(filesOf(withConfiguration), "north"))
+      .authorizationEndpoint,
+    `${BASE}/smart`,
   );
   const rows: [string, SavedConnect, string][] = [
     [
@@ -283,11 +293,16 @@ test("a saved connect reports each string the server wrote and the client id, an
       { ...CONNECT, capability: { resourceType: "Bundle" } },
       "capability.json is no CapabilityStatement",
     ],
+    [
+      "a SMART configuration that is no object",
+      { ...CONNECT, smartConfiguration: [] },
+      "smart-configuration.json is not a JSON object",
+    ],
   ];
   for (const [name, connect, why] of rows) {
     assert.throws(() => connectFiles(connect, "north"), { message: why }, name);
     const encoder = new TextEncoder();
-    const { capability, ...saved } = connect;
+    const { capability, smartConfiguration: smart, ...saved } = connect;
     await assert.rejects(
       readConnect(
         filesOf(
@@ -297,6 +312,14 @@ test("a saved connect reports each string the server wrote and the client id, an
               "north/capability.json",
               encoder.encode(JSON.stringify(capability)),
             ],
+            ...(smart === undefined
+              ? []
+              : [
+                  [
+                    "north/smart-configuration.json",
+                    encoder.encode(JSON.stringify(smart)),
+                  ] as const,
+                ]),
           ]),
         ),
         "north",

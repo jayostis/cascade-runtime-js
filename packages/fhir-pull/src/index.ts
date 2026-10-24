@@ -280,6 +280,8 @@ export const fhirPull = {
 
 const CONNECT = "connect.json";
 const CAPABILITY = "capability.json";
+const SMART_CONFIGURATION = "smart-configuration.json";
+const NOTHING: Record<string, unknown> = {};
 const OAUTH_URIS =
   "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris";
 
@@ -288,12 +290,17 @@ export class ConnectRefused extends Error {
   override readonly name = "ConnectRefused";
 }
 
-/** A connect as an app saves it: the base it connected to, the client id it signed in with, and what the server answered. */
+/**
+ * A connect as an app saves it: the base it connected to, the client id it signed in with, and what the server answered
+ * of itself.
+ */
 export interface SavedConnect {
   readonly fhirBase: string;
   readonly clientId: string;
   /** The server's CapabilityStatement, as it answered `GET <fhirBase>/metadata`. */
   readonly capability: object;
+  /** The server's SMART configuration, as it answered `GET <fhirBase>/.well-known/smart-configuration`, where it did. */
+  readonly smartConfiguration?: object;
 }
 
 /**
@@ -323,7 +330,12 @@ function text(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-function reported(connect: unknown, capability: unknown): Reported {
+/** `smart` is undefined where the connect saved no SMART configuration. */
+function reported(
+  connect: unknown,
+  capability: unknown,
+  smart: unknown,
+): Reported {
   const saved = record(connect);
   if (saved === undefined)
     throw new ConnectRefused(`${CONNECT} is not a JSON object`);
@@ -337,6 +349,9 @@ function reported(connect: unknown, capability: unknown): Reported {
   const statement = record(capability);
   if (statement?.resourceType !== "CapabilityStatement")
     throw new ConnectRefused(`${CAPABILITY} is no CapabilityStatement`);
+  const configuration = smart === undefined ? NOTHING : record(smart);
+  if (configuration === undefined)
+    throw new ConnectRefused(`${SMART_CONFIGURATION} is not a JSON object`);
   const server = list(statement.rest)
     .map(record)
     .find((rest) => rest?.mode === "server");
@@ -345,11 +360,13 @@ function reported(connect: unknown, capability: unknown): Reported {
     .find((extension) => extension?.url === OAUTH_URIS);
   const facts: Record<string, string | undefined> = {
     selfAssertedBaseUrl: text(record(statement.implementation)?.url),
-    authorizationEndpoint: text(
-      list(authorize?.extension)
-        .map(record)
-        .find((extension) => extension?.url === "authorize")?.valueUri,
-    ),
+    authorizationEndpoint:
+      text(configuration.authorization_endpoint) ??
+      text(
+        list(authorize?.extension)
+          .map(record)
+          .find((extension) => extension?.url === "authorize")?.valueUri,
+      ),
     softwareName: text(record(statement.software)?.name),
     softwareVersion: text(record(statement.software)?.version),
   };
@@ -363,8 +380,9 @@ function reported(connect: unknown, capability: unknown): Reported {
 }
 
 /**
- * The connect as the folder `name` of two files: `capability.json`, what the server answered, and `connect.json`, the
- * base and the client id. A connect the import would refuse is refused here, before it is saved.
+ * The connect as the folder `name` of two files, `capability.json`, what the server answered, and `connect.json`, the
+ * base and the client id, and a third, `smart-configuration.json`, where the connect holds one. A connect the import
+ * would refuse is refused here, before it is saved.
  */
 export function connectFiles(
   connect: SavedConnect,
@@ -374,8 +392,8 @@ export function connectFiles(
     throw new TypeError(
       `a connect is saved under one folder name, not ${name}`,
     );
-  const { capability, fhirBase, clientId } = connect;
-  reported({ fhirBase, clientId }, capability);
+  const { capability, fhirBase, clientId, smartConfiguration } = connect;
+  reported({ fhirBase, clientId }, capability, smartConfiguration);
   const encoder = new TextEncoder();
   return new Map([
     [
@@ -383,6 +401,14 @@ export function connectFiles(
       encoder.encode(`${JSON.stringify({ fhirBase, clientId }, null, 2)}\n`),
     ],
     [`${name}/${CAPABILITY}`, encoder.encode(JSON.stringify(capability))],
+    ...(smartConfiguration === undefined
+      ? []
+      : [
+          [
+            `${name}/${SMART_CONFIGURATION}`,
+            encoder.encode(JSON.stringify(smartConfiguration)),
+          ] as const,
+        ]),
   ]);
 }
 
@@ -397,5 +423,10 @@ export async function readConnect(
   const capability = await files.read(`${folder}/${CAPABILITY}`);
   if (capability === undefined)
     throw new ConnectRefused(`${folder} holds no ${CAPABILITY}`);
-  return reported(json(saved), json(capability));
+  const smart = await files.read(`${folder}/${SMART_CONFIGURATION}`);
+  return reported(
+    json(saved),
+    json(capability),
+    smart === undefined ? undefined : (json(smart) ?? null),
+  );
 }

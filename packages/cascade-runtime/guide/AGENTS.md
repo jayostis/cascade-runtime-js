@@ -311,8 +311,9 @@ The same calls run in Node and in a browser:
 - `connect(row, registration, { signIn })` signs the person in to the hospital a
   directory row names, as a SMART patient launch, and gives a `Connection`;
 - `pod.connect(connectFiles(await serverReport(connection), name))` keeps what
-  the server reports of itself, its `CapabilityStatement`, and the client id,
-  as a version of the server's record: the pod's record of the connect;
+  the server reports of itself, its `CapabilityStatement` and the SMART
+  configuration the sign-in read, and the client id, as a version of the
+  server's record: the pod's record of the connect;
 - `pull(connection, DEMO_PLAN)` fetches the record, and gives a `Pull`;
 - `pod.import(pullFiles(pull, name), { aboutSubject: true })` brings it in, as
   `bringIn` does an export.

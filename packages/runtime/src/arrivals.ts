@@ -459,12 +459,13 @@ async function accepting(
   );
 }
 
-/** A server's record, named by its base URL and stating it normalised (A16, A17); a base that names nothing is refused (A14). */
+/** A server's record, named by its base URL and stating it normalised (A16, A17), or none for a base that cannot be. */
 async function serverRecord(
   layout: Layout,
   base: string,
-  where: string,
-): Promise<{ record: NamedNode; place: Placement; triples: Triple[] }> {
+): Promise<
+  { record: NamedNode; place: Placement; triples: Triple[] } | undefined
+> {
   const place = layout.records(SERVER);
   if (place === undefined)
     throw new Error(`the layout files no ${SERVER} under records/`);
@@ -473,10 +474,8 @@ async function serverRecord(
   try {
     record = iri(await serverName(base));
     normalised = normalisedBaseUrl(base);
-  } catch (error) {
-    throw new Refusal(
-      `${where} names its server by a base URL that names nothing: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    return undefined;
   }
   return {
     record,
@@ -546,11 +545,12 @@ export async function fileExport(
         importDescription(graph, subject, name, found.path),
       );
       for (const base of graph.objects(subject, SERVER_BASE_URL)) {
-        const server = await serverRecord(layout, base.value, found.path);
-        writes.add(
-          server.place.path(server.record.value),
-          ntriples(server.triples),
-        );
+        const server = await serverRecord(layout, base.value);
+        if (server !== undefined)
+          writes.add(
+            server.place.path(server.record.value),
+            ntriples(server.triples),
+          );
       }
     }
   }
@@ -700,7 +700,9 @@ export async function fileConnect(
   const { pod, writes, newStore, time, layout } = context;
   const name = time.newId();
   const started = time.now();
-  const server = await serverRecord(layout, connect.fhirBase, "the connect");
+  const server = await serverRecord(layout, connect.fhirBase);
+  if (server === undefined)
+    throw new Refusal("the connect's FHIR base cannot be normalised");
   const placeholder = iri(THIS_VERSION);
   const content: Triple[] = [
     [placeholder, iri(SPECIALIZATION_OF), server.record],

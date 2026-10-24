@@ -28,6 +28,8 @@ export interface Connection {
   readonly patient: string;
   /** The OAuth 2.0 client id the app signed in with. */
   readonly clientId: string;
+  /** The server's SMART configuration, as `GET <fhirBase>/.well-known/smart-configuration` answered the sign-in. */
+  readonly smartConfiguration: Readonly<Record<string, unknown>>;
   readonly scope: string;
   readonly expiresAt: Date | undefined;
 }
@@ -253,6 +255,7 @@ export async function connect(
     fhirBase,
     patient,
     clientId: registration.clientId,
+    smartConfiguration: Object.freeze(configuration),
     scope:
       typeof answer.scope === "string" && answer.scope !== ""
         ? answer.scope
@@ -319,7 +322,8 @@ export interface ReportOptions {
 
 /**
  * What the connected server says of itself, its CapabilityStatement at `GET <fhirBase>/metadata`, asked of the FHIR
- * base's origin with no token, with the base and the client id: a connect as `connectFiles` saves it (A16).
+ * base's origin with no token, with the base, the client id and the SMART configuration the sign-in read: a connect as
+ * `connectFiles` saves it (A16).
  */
 export async function serverReport(
   connection: Connection,
@@ -344,5 +348,6 @@ export async function serverReport(
     fhirBase: connection.fhirBase,
     clientId: connection.clientId,
     capability: parsed(answer, url, "metadata"),
+    smartConfiguration: connection.smartConfiguration,
   };
 }

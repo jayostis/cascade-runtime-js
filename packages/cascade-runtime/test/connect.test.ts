@@ -165,7 +165,7 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
-test("the server's report is its CapabilityStatement, asked with no token, with the base and the client id, which connectFiles saves", async () => {
+test("the server's report is its CapabilityStatement, asked with no token, with the base, the client id and the SMART configuration the sign-in read, which connectFiles saves", async () => {
   const { report, seen } = await pulled({ report: true });
   assert.equal(report?.fhirBase, north.hospital.fhirBase);
   assert.equal(report?.clientId, REGISTRATION.clientId);
@@ -178,7 +178,16 @@ test("the server's report is its CapabilityStatement, asked with no token, with 
   const asked = seen.requests.at(-1)!;
   assert.equal(new URL(asked.url).href, `${north.hospital.fhirBase}/metadata`);
   assert.equal(asked.headers.has("Authorization"), false);
-  assert.equal(connectFiles(report!, "north").size, 2);
+  const discovery = seen.requests.filter(({ url }) =>
+    url.endsWith("/.well-known/smart-configuration"),
+  );
+  assert.equal(discovery.length, 1);
+  assert.equal(
+    (report?.smartConfiguration as { authorization_endpoint?: unknown })
+      .authorization_endpoint,
+    `${north.hospital.fhirBase}/authorize`,
+  );
+  assert.equal(connectFiles(report!, "north").size, 3);
 });
 
 test("a pull retries a 503, a 429 and a transport error, and from a base written with a trailing slash names everything without it", async () => {
