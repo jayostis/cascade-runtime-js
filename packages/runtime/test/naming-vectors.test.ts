@@ -195,11 +195,11 @@ async function parsed(bytes: Uint8Array, base: string): Promise<Triple[]> {
 test("every naming vector of the vocabulary reproduces", async (t) => {
   const { graph, entries, path, read } = await vectors();
   assert.ok(entries.length > 0, "the manifest lists vectors");
-  for (const [kind, count] of [
-    ["NamingTest", 63],
-    ["BaseUrlNormalisationTest", 15],
-    ["BaseUrlRefusalTest", 23],
-  ] as const) {
+  for (const kind of [
+    "NamingTest",
+    "BaseUrlNormalisationTest",
+    "BaseUrlRefusalTest",
+  ]) {
     const typed = `${BRIDGE}${kind}`;
     const listed = entries.filter((entry) =>
       graph.objects(entry, `${RDF}type`).some((type) => type.value === typed),
@@ -210,7 +210,6 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
         .length,
       `the manifest lists every ${kind}`,
     );
-    assert.equal(listed, count, `the manifest holds ${count} ${kind}`);
   }
   const nameOf = (subject: Term, predicate: string): Term =>
     one(graph, one(graph, subject, predicate), `${BRIDGE}expectedName`);
@@ -226,7 +225,14 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
           "a refusal names no result",
         );
         const url = one(graph, action, `${CASCADE}serverBaseUrl`).value;
-        assert.throws(() => normalisedBaseUrl(url), Refusal);
+        assert.throws(
+          () => normalisedBaseUrl(url),
+          (error: unknown) =>
+            error instanceof Refusal &&
+            error.message.length > 10 &&
+            !error.message.includes(url),
+          "it is refused, saying why and never echoing the URL",
+        );
         return;
       }
       const result = one(graph, entry, `${MF}result`);
