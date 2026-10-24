@@ -693,7 +693,9 @@ class OpenPod implements Pod {
         OPTIONAL {
           FILTER NOT EXISTS { ?document cascade:serverBaseUrl ?anyServer }
           ?document prov:qualifiedAttribution ?attribution .
-          ?attribution prov:hadRole cascade:AuthorRole ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
+          ?attribution prov:hadRole ?role ;
+            prov:agent/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
+          FILTER (?role IN (cascade:AuthorRole, cascade:CustodianRole))
         }
       }`);
     const claimedServers = new Set(
