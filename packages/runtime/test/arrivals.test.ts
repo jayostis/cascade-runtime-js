@@ -150,7 +150,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
     "s/blank.ttl",
     entry(
       "urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93",
-      "[ <urn:example:value> 2 ]",
+      `"Peanut" ; <urn:example:note> [ <urn:example:value> 2 ]`,
     ),
   );
   await source.write(
@@ -191,7 +191,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
     runtime: RUNTIME,
     story,
     source,
-    vocabulary: source,
+    vocabulary: files,
     folder: "s",
     title: "",
     pod: new MemoryFiles(story.address),

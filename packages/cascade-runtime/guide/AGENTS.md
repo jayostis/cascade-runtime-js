@@ -414,7 +414,7 @@ variable name, an unbound variable absent; `entry`, `record`, `profile` and
 An entry is what an app shows: one allergy, joining its records from every
 source. Show it first: read an allergy's criticality and status from
 `pod/My active allergies` (each active, its criticality the most severe its
-records give), never from `entry/What it shows`, whose fields are the latest
+records give), never from `entry/What it shows`, whose fields are each
 record's. Its records go beneath (`entry/Where it came from`,
 `record/What each version says`). Search the entries in the views, never the
 records: no view shows another person's records, or ones entered in error.
@@ -440,7 +440,7 @@ async function search(word) {
 
 ### Questions
 
-- `entry/What it shows`: each entry's fields, and the record each came from.
+- `entry/What it shows`: each entry's fields and its members', each with the record it came from, the lead's first.
 - `entry/What needs review`: entries a person should look at, and why.
 - `entry/Where it came from`: each member's arrival, import and hospital.
 - `judgment/What needs review`: Same judgments a newer version may undo.
@@ -478,6 +478,8 @@ async function search(word) {
 - `profile/Whose it is counted as`: whose each profile is, by hospital.
 - `record/Its revisions, in the order they arrived`: each record's arrivals.
 - `record/What each version says`: each version's statements.
+- `record/What needs review`: records whose current state no source change time
+  decided, with the state shown, one not shown and why; one Before fixes each.
 - `record/Which entry shows it`: the entry each record is in.
 - `record/Which judgments name it`: the judgments on each record.
 - `record/Why it is in no view`: why a hidden record is hidden.
@@ -619,6 +621,12 @@ const erroneous = (pod, record, reason) =>
   judgment(pod, reason, ["cascade:verdict cascade:Erroneous", ...members([record])]);
 const retraction = (pod, earlier, reason) =>
   judgment(pod, reason, [`npx:retracts <${earlier}>`]);
+const before = (pod, earlier, later, reason) =>
+  judgment(pod, reason, [
+    "cascade:verdict cascade:Before",
+    ...members([earlier, later]),
+    `cascade:earlierMember <${earlier}>`,
+  ]);
 
 const judged = (turtle) => saved(pod.judge(turtle));
 const inEntry = await recordsBy("record/Which entry shows it", "entry");
@@ -656,7 +664,12 @@ asthma record is not the same as the old one". Offer it per record or pair
 inside an entry, never one Different over a whole group, which overrides the
 person's own Sames. A Different wins over a Same, though a later record can
 rejoin them. `sameInstead` rests the matcher's join on the person. An Erroneous
-record leaves every view. A retraction takes a judgment back; none is edited.
+record leaves every view; one over a revision only stops it being current. A
+`before` names two revisions, of one record or of two an entry joins, as
+`record/Its revisions, in the order they arrived` or `record/What needs review`
+gives them, the earlier first: it outranks every clock, so it is how the person
+fixes a pick `record/What needs review` lists, and picks which member of an
+entry leads. A retraction takes a judgment back; none is edited.
 `cascade:OwnerStatement` is the one basis a person states.
 
 ## When an export holds someone else's records

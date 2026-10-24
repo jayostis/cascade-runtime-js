@@ -1,5 +1,5 @@
 import { boundToRecords } from "./bound-records.js";
-import { Derivations, QUERIES } from "./derive.js";
+import { derivationsOf, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
@@ -288,8 +288,6 @@ async function subjectRecords(
   return found;
 }
 
-const derivations = new WeakMap<Files, Promise<Derivations>>();
-
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
  * union of a new store.
@@ -300,14 +298,9 @@ export async function matcherView(
     "layout" | "pod" | "address" | "vocabulary" | "newStore"
   >,
 ): Promise<Union> {
-  let read = derivations.get(context.vocabulary);
-  if (read === undefined) {
-    read = Derivations.of(context.vocabulary);
-    derivations.set(context.vocabulary, read);
-  }
   const union = new Union(context.newStore());
   await podFiles(context.pod, context.layout, context.address, union);
-  await (await read).derive(union, LENS);
+  await (await derivationsOf(context.vocabulary)).derive(union, LENS);
   return union;
 }
 
