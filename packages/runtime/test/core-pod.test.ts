@@ -147,6 +147,7 @@ test("a read names the pod's current version of a series its tables do not hold,
 <urn:x:map-2> prov:specializationOf <urn:x:map> ; pav:version "2" ; prov:wasRevisionOf <urn:x:map-1> .
 <urn:x:claim> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;
     cascade:matcherRule cascade:SameMappedCodeRule ; prov:used <urn:x:map-1> ; prov:hadMember <urn:x:a> , <urn:x:b> .
+<urn:x:assertion> a cascade:ClaimAssertion ; cascade:assertedClaim <urn:x:claim> .
 `),
   );
   const held = {

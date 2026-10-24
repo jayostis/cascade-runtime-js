@@ -36,6 +36,12 @@ const MEMBERS = `${PREFIXES}SELECT DISTINCT ?claim ?member ?current WHERE {
   OPTIONAL { ?member pav:hasCurrentVersion ?current }
 }`;
 
+/** Each matcher claim with an assertion no retraction invalidates: one whose every assertion a release retracted is kept by none. */
+const ASSERTED = `${PREFIXES}SELECT DISTINCT ?claim WHERE {
+  ?assertion cascade:assertedClaim ?claim .
+  FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
+}`;
+
 /** The query hash each rule's row carries in the current version of a rule list. */
 const HASHES = `${PREFIXES}SELECT DISTINCT ?rule ?hash WHERE {
   ?ruleList pav:hasCurrentVersion ?current .
@@ -127,12 +133,16 @@ export class KeptClaims {
       of.set(value(row, "member"), value(row, "current"));
       members.set(claim, of);
     }
+    const asserted = new Set(
+      (await union.select(ASSERTED)).rows.map((row) => value(row, "claim")),
+    );
     const unheld = new Set<string>();
     const stale = new Map<string, Stale>();
     for (const row of rows) {
       const [claim, rule, now] = ["claim", "rule", "now"].map((name) =>
         value(row, name),
       ) as [string, string, string];
+      if (!asserted.has(claim)) continue;
       if (references.seriesOf(now) === undefined) {
         unheld.add(now);
         continue;
