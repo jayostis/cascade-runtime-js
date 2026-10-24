@@ -82,7 +82,7 @@ test("a view written relative to itself writes another view's entry as a relativ
     [view, variants],
   );
   const text = new TextDecoder().decode(bytes);
-  assert.match(text, /^<#ab> S+ <variants.ttl#cd> .$/m);
+  assert.match(text, /^<#ab> \S+ <variants\.ttl#cd> \.$/m);
   assert.deepEqual(podAddressesIn(bytes, "https://pod.example/"), [
     folder,
     `${folder}a:b`,

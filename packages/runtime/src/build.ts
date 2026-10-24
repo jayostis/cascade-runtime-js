@@ -92,7 +92,11 @@ export function builtFileBytes(
   triples: Iterable<Triple>,
 ): Uint8Array {
   return layout.views.some(({ file }) => file === path)
-    ? relativeTurtle(triples, address + path)
+    ? relativeTurtle(
+        triples,
+        address + path,
+        layout.views.map(({ file }) => address + (file ?? "")),
+      )
     : ntriples(triples);
 }
 

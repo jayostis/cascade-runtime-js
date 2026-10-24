@@ -101,22 +101,32 @@ export function ntriples(triples: Iterable<Triple>): Uint8Array {
 
 /**
  * The triples as Turtle, a triple to a line, with every IRI that is the file's own or a node inside it written
- * relative to it (`<>`, `<#…>`), so the file holds no address of its own.
+ * relative to it (`<>`, `<#…>`), and every IRI of one of `siblings` in the file's folder, or a node inside it, as its
+ * name in that folder (`<variants.ttl#…>`), so the file holds no address of its own.
  */
 export function relativeTurtle(
   triples: Iterable<Triple>,
   file: string,
+  siblings: readonly string[] = [],
 ): Uint8Array {
   const folder = file.slice(0, file.lastIndexOf("/") + 1);
-  return lines(triples, (term) =>
-    term.termType !== "NamedNode"
-      ? written(term)
-      : term.value === file || term.value.startsWith(`${file}#`)
-        ? `<${term.value.slice(file.length)}>`
-        : folder !== "" && term.value.startsWith(folder)
-          ? `<${term.value.slice(folder.length)}>`
-          : written(term),
+  const named = siblings.filter(
+    (sibling) =>
+      sibling !== file &&
+      sibling.startsWith(folder) &&
+      /^[^/:#?]+$/.test(sibling.slice(folder.length)),
   );
+  return lines(triples, (term) => {
+    if (term.termType !== "NamedNode") return written(term);
+    if (term.value === file || term.value.startsWith(`${file}#`))
+      return `<${term.value.slice(file.length)}>`;
+    const sibling = named.find(
+      (each) => term.value === each || term.value.startsWith(`${each}#`),
+    );
+    return sibling === undefined
+      ? written(term)
+      : `<${term.value.slice(folder.length)}>`;
+  });
 }
 
 function lines(
