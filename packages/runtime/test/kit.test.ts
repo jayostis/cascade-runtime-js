@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { runConformance } from "../src/conformance.js";
 import { MemoryFiles } from "../src/files.js";
 import { KIT_CHECKS, podAddressesIn } from "../src/kit.js";
+import { iri, relativeTurtle } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Shapes } from "../src/shapes.js";
 import { layout } from "./vocabulary.js";
@@ -61,5 +62,25 @@ test("check 6 finds each IRI a view's bytes write that begins with the pod's add
       "https://pod.example/clinical/",
       "https://pod.example/clinical/allergies.ttl#ab",
     ],
+  );
+});
+
+test("a view written relative to itself writes an entry of another view in its folder as a relative reference, and holds no pod address", () => {
+  const view = "https://pod.example/clinical/variant-interpretations.ttl";
+  const bytes = relativeTurtle(
+    [
+      [
+        iri(`${view}#ab`),
+        iri("https://ns.cascadeprotocol.org/cascade#variantInterpreted"),
+        iri("https://pod.example/clinical/variants.ttl#cd"),
+      ],
+      [iri(view), iri("urn:example:p"), iri("https://other.example/x")],
+    ],
+    view,
+  );
+  assert.deepEqual(podAddressesIn(bytes, "https://pod.example/"), []);
+  assert.match(
+    new TextDecoder().decode(bytes),
+    /^<#ab> \S+ <variants\.ttl#cd> \.$/m,
   );
 });
