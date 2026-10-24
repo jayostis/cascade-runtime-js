@@ -147,7 +147,7 @@ export function arrivalInRevision(
   );
 }
 
-/** The arrival's selectors' nodes and every blank node inside them, which a revision carries renamed. */
+/** The arrival's selectors' nodes and every blank node inside them: a revision carries a selector as `<revision>#selector`, the blank nodes under it as they are. */
 export function selectorNodes(graph: Graph, arrival: Term): Set<string> {
   return new Set(
     selectorsOf(graph, arrival).flatMap((selector) => [

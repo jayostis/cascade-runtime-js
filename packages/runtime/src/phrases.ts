@@ -1278,7 +1278,7 @@ const DEFINITIONS: Definition[] = [
     return async (reading) => {
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
-      const described: string[] = [];
+      const described = new Map<string, string[]>();
       for (const thing of valuesOf(
         await inWritten(
           reading,
@@ -1289,9 +1289,10 @@ const DEFINITIONS: Definition[] = [
             } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any }`,
         ),
         "thing",
-      ))
-        if ((await reading.words.described(thing)).length > 0)
-          described.push(thing);
+      )) {
+        const said = await reading.words.described(thing);
+        if (said.length > 0) described.set(thing, said);
+      }
       const expected: string[] = [];
       for (const row of rows) {
         const name = await reading.words.reference(row.reference ?? "");
@@ -1301,16 +1302,16 @@ const DEFINITIONS: Definition[] = [
       }
       const problem = compared(
         expected,
-        described.map((thing) => reading.words.shown(thing)),
+        [...described.keys()].map((thing) => reading.words.shown(thing)),
       );
       if (problem !== undefined) return problem;
       const heldTriples = (await wroteGraph(reading, [step])).triples.map(
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      for (const thing of described) {
+      for (const [thing, said] of described) {
         const why = compared(
-          await reading.words.described(thing),
+          said,
           heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
         );
         if (why !== undefined)
