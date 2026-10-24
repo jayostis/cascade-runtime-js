@@ -20,6 +20,9 @@ function key(triple: Triple): string {
 /** What a runtime derives just before the lens that no query can: the Sames M7 leaves as they were across a table version. */
 export type Keep = (union: Union) => Promise<readonly Triple[]>;
 
+/** The term `Keep` derives, which only a lens that names it reads. */
+const KEPT_TERM = "membersJoinedByCurrentTableVersion";
+
 /** One derivation, or the lens, by its path in the vocabulary, and what it added that the store did not hold. */
 export interface DerivedStep {
   readonly path: string;
@@ -82,7 +85,7 @@ export class Derivations {
   /**
    * Runs the lens's derivations in turn over the union, each adding to `urn:cascade:derived:<lens>`, and so to the
    * union, what it constructs that the union did not already hold; returns what each added. What `keep` gives is
-   * added just before the lens, as the lens's.
+   * added just before a lens that reads it, as the lens's.
    */
   async derive(
     union: Union,
@@ -92,7 +95,9 @@ export class Derivations {
     const added: DerivedStep[] = [];
     for (const { path, query } of this.for(lens)) {
       const kept =
-        keep !== undefined && under(LENSES, path) ? await keep(union) : [];
+        keep !== undefined && under(LENSES, path) && query.includes(KEPT_TERM)
+          ? await keep(union)
+          : [];
       if (kept.length > 0) await union.add(kept, DERIVED + lens);
       const constructed = await union.construct(query);
       const held = await union.holds(constructed);

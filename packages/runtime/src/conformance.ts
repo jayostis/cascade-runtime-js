@@ -47,12 +47,14 @@ const REFERENCES_GRAPH = "urn:cascade:references";
  * the version, outside the default graph, and the descriptions of those versions and their series as
  * `urn:cascade:references`, in it. A series whose current version is not in the folder is left out, as the matcher
  * leaves it; so is a series the pod names several current versions of, which the matcher refuses its step over: a read
- * refuses nothing.
+ * refuses nothing. The rows of a version in `added` are not added again, and without `describe` no description is.
  */
 async function addTables(
   union: Union,
   tables: References,
   rows: (version: string) => Promise<readonly Triple[]>,
+  added: Set<string>,
+  describe = true,
 ): Promise<void> {
   const named = await namedVersions(union);
   const described: Triple[] = [];
@@ -68,13 +70,17 @@ async function addTables(
       throw error;
     }
     if (version === undefined) continue;
-    await union.store.add(await rows(version), { graph: version });
+    if (!added.has(version)) {
+      added.add(version);
+      await union.store.add(await rows(version), { graph: version });
+    }
     described.push(
       ...tables.description(version),
       ...tables.description(series),
     );
   }
-  await union.add(await unstated(union, described), REFERENCES_GRAPH);
+  if (describe)
+    await union.add(await unstated(union, described), REFERENCES_GRAPH);
 }
 
 /**
@@ -358,6 +364,9 @@ class Run {
                     ? undefined
                     : await this.#tables(folder, replayed);
                 const { vocabulary, newStore } = this.#options;
+                const rowsOf = (held: References) => (version: string) =>
+                  this.#rows(held, version);
+                const added = new Set<string>();
                 const union = await dataset(
                   replayed,
                   replayed.steps.at(-1)?.step.name ?? "",
@@ -366,17 +375,23 @@ class Run {
                   this.#options.derive,
                   tables === undefined
                     ? undefined
-                    : (held) =>
-                        keptClaims(held, {
+                    : async (held) => {
+                        await addTables(
+                          held,
+                          tables,
+                          rowsOf(tables),
+                          added,
+                          false,
+                        );
+                        return keptClaims(held, {
                           vocabulary,
                           newStore,
                           references: () => Promise.resolve(tables),
-                        }),
+                        });
+                      },
                 );
                 if (tables !== undefined)
-                  await addTables(union, tables, (version) =>
-                    this.#rows(tables, version),
-                  );
+                  await addTables(union, tables, rowsOf(tables), added);
                 return union;
               })();
       found.catch(() => undefined);

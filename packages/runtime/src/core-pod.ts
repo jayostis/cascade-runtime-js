@@ -7,7 +7,7 @@ import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
-import { keptClaims } from "./kept.js";
+import { type Kept, KeptClaims } from "./kept.js";
 import type { Layout } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import {
@@ -36,6 +36,7 @@ const OPENED = "opened";
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
 const REVISION = "revision";
+const KEPT = "kept";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -272,10 +273,13 @@ export class CorePod {
   #headHeld = false;
   /** The SHA-256 of each file of the set read so far, by path: no file, once written, changes. */
   readonly #digests = new Map<string, Uint8Array>();
+  /** The answers M7 gives across table versions, kept across steps: what decides each never changes. */
+  #keptClaims: KeptClaims;
 
   /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
+    this.#keptClaims = new KeptClaims(options);
     this.#head = options.head;
     if (opened !== undefined) this.#kept.set(OPENED, Promise.resolve(opened));
   }
@@ -483,6 +487,7 @@ export class CorePod {
       time,
     });
     fork.#references = this.#references;
+    fork.#keptClaims = this.#keptClaims;
     fork.#head = this.#head;
     fork.#headHeld = this.#headHeld;
     if (this.#readShapes !== undefined) fork.#holdShapes(this.#readShapes);
@@ -494,15 +499,30 @@ export class CorePod {
     return this.#references;
   }
 
-  /** The Sames M7 leaves as they were across a table version, over the tables the pod is read with. */
+  /**
+   * The Sames M7 leaves as they were across a table version, over the tables the pod is read with: found once a step for
+   * every union read under a lens that reads them, each holding the same files.
+   */
   #keep(): Keep {
-    const { vocabulary, newStore } = this.#options;
-    return (union) =>
-      keptClaims(union, {
-        vocabulary,
-        newStore,
-        references: () => this.#tables(),
-      });
+    return async (union) =>
+      (
+        await this.#held(KEPT, () =>
+          this.#keptClaims.of(union, () => this.#tables()),
+        )
+      ).triples;
+  }
+
+  /**
+   * The current table versions the pod names that its tables do not hold, of each series a matcher Same used another
+   * version of: the Same counts on where a device holds the version and its rows join the members, and not here (M7).
+   */
+  async unheldTableVersions(): Promise<readonly string[]> {
+    let kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+    if (kept === undefined) {
+      await this.#matcherView();
+      kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+    }
+    return (await kept)?.unheld ?? [];
   }
 
   #shapes(): Promise<Shapes> {
