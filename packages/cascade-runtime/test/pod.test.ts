@@ -506,6 +506,41 @@ test("an entry is filed and matched by default; a person's judgment records the 
   assert.deepEqual(await filesIn(folder), held);
 });
 
+test("a connect is matched by default, so a hospital's server at a new path on its host is judged the server it was", async () => {
+  const connects = "runtime/scripted-input/finn/connects";
+  const saved = async (name: string): Promise<Exported> =>
+    new Map(
+      await Promise.all(
+        ["connect.json", "capability.json", "smart-configuration.json"].map(
+          async (file) =>
+            [
+              `${name}/${file}`,
+              await readFile(inKit(`${connects}/${name}/${file}`)),
+            ] as const,
+        ),
+      ),
+    );
+  const fresh = await openPod();
+  try {
+    const first = await fresh.connect(await saved("hospital"));
+    assert.deepEqual(first.matched?.wrote, []);
+    const moved = await fresh.connect(await saved("hospital-at-a-new-path"));
+    assert.ok(moved.matched?.wrote.length);
+    const sames = await fresh.ask({
+      query: `${PREFIXES}SELECT ?base WHERE {
+        ?claim cascade:justification cascade:SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost ;
+          prov:hadMember ?server .
+        ?server cascade:serverBaseUrl ?base }`,
+    });
+    assert.deepEqual(sames.map(({ base }) => base).sort(), [
+      "https://fhir.example-hospital.example/api/FHIR/R4",
+      "https://fhir.example-hospital.example/r4",
+    ]);
+  } finally {
+    await fresh.close();
+  }
+});
+
 test("the app keeps its last snapshot in a pod beside the pod's name, so a session after a reopen chains to it with no merge", async () => {
   const at = join(pods, "two-sessions");
   const people = await triplesOf(`${KIT}/scripted-input/people.ttl`);
