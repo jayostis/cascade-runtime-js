@@ -6,7 +6,8 @@ import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, XSD } from "../src/rdf.js";
-import { layout, RUNTIME } from "./vocabulary.js";
+import type { References } from "../src/references.js";
+import { layout, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
 const ADDRESS = "https://pod.example/";
@@ -131,4 +132,59 @@ test("a step whose files are written one by one and fail part way reads the pod 
     await pod.revision(),
     await new CorePod(options(files, laidOut, state)).revision(),
   );
+});
+
+test("a read names the pod's current version of a series its tables do not hold, which a matcher Same that used another version is read without (M7)", async () => {
+  const pod = new MemoryFiles(ADDRESS);
+  await pod.write(
+    "judgments/claim.ttl",
+    new TextEncoder()
+      .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+<urn:x:map> a cascade:ReferenceSeries ; cascade:tableKind cascade:SubstanceIngredients .
+<urn:x:map-1> prov:specializationOf <urn:x:map> ; pav:version "1" .
+<urn:x:map-2> prov:specializationOf <urn:x:map> ; pav:version "2" ; prov:wasRevisionOf <urn:x:map-1> .
+<urn:x:claim> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;
+    cascade:matcherRule cascade:SameMappedCodeRule ; prov:used <urn:x:map-1> ; prov:hadMember <urn:x:a> , <urn:x:b> .
+<urn:x:assertion> a cascade:ClaimAssertion ; cascade:assertedClaim <urn:x:claim> .
+`),
+  );
+  const held = {
+    seriesOf: (version: string) =>
+      version === "urn:x:map-1" ? "urn:x:map" : undefined,
+  } as unknown as References;
+  const core = new CorePod({
+    ...options(pod, await layout(), { now: "2026-02-01T08:00:00Z" }),
+    vocabulary: await vocabulary(),
+    references: () => Promise.resolve(held),
+  });
+  assert.deepEqual(await core.unheldTableVersions(), ["urn:x:map-2"]);
+});
+
+test("a person's retraction that also states prov:used is filed with the retractions, not the imports (cascade:Placement)", async () => {
+  const laidOut = await layout();
+  const pod = new CorePod(
+    options(new MemoryFiles(ADDRESS), laidOut, { now: "2026-02-01T08:00:00Z" }),
+  );
+  const name = "urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63";
+  const { wrote } = await pod.judge({
+    name: "retraction.ttl",
+    base: ADDRESS,
+    bytes: new TextEncoder()
+      .encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+<${name}> a prov:Activity ;
+  prov:invalidated <urn:uuid:0f6c2a9e-4d71-4b38-9e05-c8a3f2d61b7e> ;
+  prov:used <urn:uuid:c41d7e90-2b6a-4f3c-8d15-a9e0b7f26c48> ;
+  prov:wasAssociatedWith <https://pod.example/profile/card.ttl#me> .
+`),
+  });
+  assert.deepEqual(wrote, [
+    laidOut
+      .place("http://www.w3.org/ns/prov#Activity", [
+        "http://www.w3.org/ns/prov#invalidated",
+      ])
+      .path(name),
+  ]);
+  assert.ok(wrote[0]?.startsWith("judgments/retractions/"));
 });

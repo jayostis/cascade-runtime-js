@@ -514,13 +514,13 @@ export function assertionName(
   return derivedName(NAMING_RULES.Assertion, [ruleListVersion, claim]);
 }
 
-/** A release's retraction of a claim, made by the matcher rule it declares wrong. */
+/** A release's retraction of an assertion of a claim made by the matcher rule it declares wrong. */
 export function retractionName(
   release: string,
-  claim: string,
+  assertion: string,
   rule: string,
 ): Promise<string> {
-  return derivedName(NAMING_RULES.Retraction, [release, claim, rule]);
+  return derivedName(NAMING_RULES.Retraction, [release, assertion, rule]);
 }
 
 /**

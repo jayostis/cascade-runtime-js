@@ -21,9 +21,10 @@ const newStore = (): OxigraphStore => new OxigraphStore();
 async function replayed(
   example: string,
   source?: (files: Files, folder: string) => Promise<Files>,
+  feature = FEATURE,
 ) {
   const files = await vocabulary();
-  const { story, folder } = await storyFrom(FEATURE, example);
+  const { story, folder } = await storyFrom(feature, example);
   const pod = new MemoryFiles(story.address);
   const { steps } = await replay({
     runtime: RUNTIME,
@@ -41,7 +42,7 @@ async function replayed(
 
 test("an open writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last (W1)", async () => {
   const { pod, opened } = await replayed(
-    "adopting files again each Same the adopted rows still join, and a Same of each pair only they join",
+    "adopting files no Same the adopted rows still join, and a Same of each pair only they join",
   );
   const kinds: string[] = [];
   for (const path of opened?.wrote ?? []) {
@@ -64,8 +65,6 @@ test("an open writes its judgments first, then the descriptions of the versions 
     );
   }
   assert.deepEqual(kinds, [
-    "judgment",
-    "assertion",
     "judgment",
     "assertion",
     "version 2",
@@ -400,4 +399,30 @@ test("what the pod answers after a match and an open still holds the pod's refer
     ]),
   );
   assert.deepEqual((await versions()).sort(), [V1, V2]);
+});
+
+test("two writers on one release write its retractions under one name with one content, before the open's run (N15)", async () => {
+  const runs = await Promise.all(
+    [0, 1].map(() =>
+      replayed(
+        "adopting a release that declares R4 wrong retracts the assertions of R4's two claims before the open's matcher runs, and neither claim counts nor lapses",
+        undefined,
+        "runtime/naming.feature",
+      ),
+    ),
+  );
+  const [first, second] = await Promise.all(
+    runs.map(async ({ pod, opened }) => {
+      const retractions: [string, string][] = [];
+      for (const path of opened?.wrote ?? [])
+        if (path.startsWith("judgments/retractions/"))
+          retractions.push([
+            path,
+            new TextDecoder().decode(await pod.read(path)),
+          ]);
+      return retractions;
+    }),
+  );
+  assert.equal(first?.length, 2);
+  assert.deepEqual(first, second);
 });

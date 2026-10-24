@@ -1,13 +1,23 @@
-import { fileEntry, fileExport } from "./arrivals.js";
+import { ConnectRefused, readConnect } from "@cascade-runtime/fhir-pull";
+import { fileConnect, fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import { builtFileBytes, type Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
+import type { Keep } from "./derive.js";
 import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
+import { type Kept, KeptClaims } from "./kept.js";
 import { type Layout, SYNC } from "./layout.js";
-import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
+import {
+  matcherView,
+  migrateRuleListVersions,
+  openPod,
+  podCodes,
+  releaseRetractions,
+  runMatcher,
+} from "./matcher.js";
 import {
   actDescriptionName,
   documentName,
@@ -34,6 +44,7 @@ const OPENED = "opened";
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
 const REVISION = "revision";
+const KEPT = "kept";
 
 export interface CorePodOptions {
   /** The pod's files, named by its address. */
@@ -356,6 +367,8 @@ export class CorePod {
   #headHeld = false;
   /** The SHA-256 of each file of the set read so far, by path: no file, once written, changes. */
   readonly #digests = new Map<string, Uint8Array>();
+  /** The answers M7 gives across table versions, kept across steps: what decides each never changes. */
+  #keptClaims: KeptClaims;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
@@ -364,6 +377,7 @@ export class CorePod {
   /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
+    this.#keptClaims = new KeptClaims(options);
     this.#head = options.head;
     if (opened !== undefined) this.#kept.set(OPENED, Promise.resolve(opened));
   }
@@ -404,7 +418,7 @@ export class CorePod {
       }
     } else {
       const at = (await podStated(pod, layout, union.store)).at ?? time.now();
-      await build.derive(union, lens, { address, at, title });
+      await build.derive(union, lens, { address, at, title }, this.#keep());
     }
     await addLayout(union, layout, address);
     return union;
@@ -471,6 +485,20 @@ export class CorePod {
     });
   }
 
+  /** A connect to a server, as the folder of the files saves it (A16, A14). */
+  connect(saved: Pick<Files, "read">, folder: string): Promise<Performed> {
+    return this.#step(async (context) => {
+      let reported;
+      try {
+        reported = await readConnect(saved, folder);
+      } catch (error) {
+        if (!(error instanceof ConnectRefused)) throw error;
+        throw new Refusal(`${folder}: ${error.message}`);
+      }
+      return fileConnect(context, reported);
+    });
+  }
+
   /** An entry (A12), refused where its statements break the vocabulary's shapes. */
   enter(entry: StepFile): Promise<Performed> {
     return this.#step(async (context) =>
@@ -495,8 +523,13 @@ export class CorePod {
     );
   }
 
-  /** The pod opened with the tables (O1, O2), which it matches with from then on. */
+  /**
+   * The pod opened with the tables (O1, O2), which it matches with from then on: first, when the rule list version it
+   * adopts, or one that version revises, declares a rule wrong, the rule list version migration (N15), an act of its
+   * own, then the open's matcher run.
+   */
   async open(tables: References): Promise<Performed> {
+    const migrated = await this.#migrated(tables, true);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
       const opened = await openPod(context, tables);
@@ -504,7 +537,27 @@ export class CorePod {
       this.#references = Promise.resolve(tables);
       return opened.activity;
     });
-    return unheld.length === 0 ? performed : { ...performed, unheld };
+    return {
+      ...performed,
+      wrote: [...(migrated?.wrote ?? []), ...performed.wrote],
+      ...(unheld.length === 0 ? {} : { unheld }),
+    };
+  }
+
+  /**
+   * A matcher run taking the import or entry session given, or the records a sync brought, or, given none, a recheck
+   * (M7): first, as at an open, the rule list version migration, when the pod's current rule list version or one it
+   * revises declares a rule wrong (N15).
+   */
+  async match(activity?: string): Promise<Performed> {
+    const tables = await this.#tables();
+    const migrated = await this.#migrated(tables, false);
+    const performed = await this.#step((context) =>
+      runMatcher(context, tables, activity),
+    );
+    return migrated === undefined
+      ? performed
+      : { ...performed, wrote: [...migrated.wrote, ...performed.wrote] };
   }
 
   /**
@@ -514,7 +567,9 @@ export class CorePod {
    * than a sync, whose snapshot is no ancestor of the writer's last, naming each such act; with none, a writer that
    * then holds one head takes it as its last snapshot, as git fast-forwards. What it writes depends on what the pod
    * holds, never on what this call wrote, so a call that stops partway and is made again writes the same sync. Only
-   * the files that arrived and the act files not read before are read.
+   * the files that arrived and the act files not read before are read. Then, when the pod's current rule list version
+   * or one it revises declares a rule wrong, the rule list version migration, an act of its own (N15); a writer with no
+   * tables to read has none.
    */
   async receive(other: Pick<Files, "list" | "read">): Promise<Performed> {
     const arrived: string[] = [];
@@ -611,7 +666,16 @@ export class CorePod {
       this.#headHeld = true;
       await this.#options.keepHead?.(fastForward).catch(() => undefined);
     }
-    return { ...performed, arrived };
+    const tables = await this.#tables().catch(() => undefined);
+    const migrated =
+      tables === undefined ? undefined : await this.#migrated(tables, false);
+    return migrated === undefined
+      ? { ...performed, arrived }
+      : {
+          ...performed,
+          arrived,
+          wrote: [...performed.wrote, ...migrated.wrote],
+        };
   }
 
   /**
@@ -634,10 +698,22 @@ export class CorePod {
     return [...this.#chain.values(), ...this.#writing.values()];
   }
 
-  /** A matcher run taking the import or entry session given, or the records a sync brought, or, given none, a recheck (M7). */
-  match(activity?: string): Promise<Performed> {
+  /**
+   * The rule list version migration (N15), a step of its own, when it has a retraction to write. Finding none reads the
+   * matcher's view the step after it reads, and writes nothing.
+   */
+  async #migrated(
+    tables: References,
+    opening: boolean,
+  ): Promise<Performed | undefined> {
+    const retractions = await releaseRetractions(
+      () => this.#matcherView(),
+      tables,
+      opening,
+    );
+    if (retractions.length === 0) return undefined;
     return this.#step(async (context) =>
-      runMatcher(context, await this.#tables(), activity),
+      migrateRuleListVersions(context, retractions),
     );
   }
 
@@ -672,7 +748,9 @@ export class CorePod {
   }
 
   #matcherView(): Promise<Union> {
-    return this.#held(MATCHER_VIEW, () => matcherView(this.#options));
+    return this.#held(MATCHER_VIEW, () =>
+      matcherView(this.#options, this.#keep()),
+    );
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -696,6 +774,7 @@ export class CorePod {
       time,
     });
     fork.#references = this.#references;
+    fork.#keptClaims = this.#keptClaims;
     fork.#head = this.#head;
     fork.#headHeld = this.#headHeld;
     for (const [path, file] of this.#chain) fork.#chain.set(path, file);
@@ -720,6 +799,32 @@ export class CorePod {
   #tables(): Promise<References> {
     this.#references ??= this.#options.references();
     return this.#references;
+  }
+
+  /**
+   * The Sames M7 leaves as they were across a table version, over the tables the pod is read with: found once a step for
+   * every union read under a lens that reads them, each holding the same files.
+   */
+  #keep(): Keep {
+    return async (union) =>
+      (
+        await this.#held(KEPT, () =>
+          this.#keptClaims.of(union, () => this.#tables()),
+        )
+      ).triples;
+  }
+
+  /**
+   * The current table versions the pod names that its tables do not hold, of each series a matcher Same used another
+   * version of: the Same counts on where a device holds the version and its rows join the members, and not here (M7).
+   */
+  async unheldTableVersions(): Promise<readonly string[]> {
+    let kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+    if (kept === undefined) {
+      await this.#matcherView();
+      kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+    }
+    return (await kept)?.unheld ?? [];
   }
 
   #shapes(): Promise<Shapes> {
@@ -914,6 +1019,7 @@ export class CorePod {
       build.lens,
       union,
       build.derive,
+      this.#keep(),
     );
     await writeAll(
       pod,
