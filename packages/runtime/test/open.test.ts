@@ -7,6 +7,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { References } from "../src/references.js";
 import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
+import { ntriples } from "../src/rdf.js";
 import { CASCADE } from "../src/step.js";
 import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
@@ -196,4 +197,198 @@ test("a refused open leaves the pod matching with the tables it had", async () =
   await pod.create();
   assert.ok((await pod.open(await References.of(empty, "", newStore))).refused);
   assert.equal((await pod.match()).refused, undefined);
+});
+
+const VARIANTS = "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b10";
+const [V1, V2, V3] = [
+  "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b11",
+  "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b12",
+  "urn:uuid:3f0c1b52-6a4e-4d8e-9b1f-2c7a5e9d4b13",
+];
+const RULES_10 = "urn:uuid:ddb435a8-0aa6-4b17-a830-469bc38186cd";
+const HGVS = "https://ns.cascadeprotocol.org/codes/hgvs/";
+const SAME_VARIATION = `${CASCADE}SameVariationThroughTable`;
+
+/**
+ * The vocabulary's rule list, at version 10 by default, and a variant classifications series whose versions each hold
+ * the ClinVar rows given, by ID, each with its HGVS expression, revising the version before it, the last the default.
+ */
+async function variantTables(
+  versions: readonly (readonly [
+    string,
+    readonly (readonly [number, string])[],
+  ])[],
+): Promise<References> {
+  const files = await vocabulary();
+  const tables = new MemoryFiles("https://tables.example/");
+  const index = [
+    new TextDecoder().decode(
+      await files.read("runtime/rule-list/references.ttl"),
+    ),
+    `<${VARIANTS}> a cascade:ReferenceSeries ; rdfs:label "ClinVar" ; cascade:tableKind cascade:VariantClassifications ; cascade:defaultTableVersion <${versions.at(-1)?.[0] ?? ""}> .`,
+    ...versions.map(
+      ([version], at) =>
+        `<${version}> a prov:Entity ; prov:specializationOf <${VARIANTS}> ; pav:version "${at + 1}"${at === 0 ? "" : ` ; prov:wasRevisionOf <${versions[at - 1]?.[0] ?? ""}>`} .`,
+    ),
+  ].join("\n");
+  await tables.write("references.ttl", new TextEncoder().encode(index));
+  for (const [version, rows] of versions)
+    await tables.write(
+      `${version.slice("urn:uuid:".length)}.ttl`,
+      new TextEncoder().encode(
+        rows
+          .map(
+            ([id, expression]) =>
+              `<https://identifiers.org/clinvar:${id}> <${CASCADE}hgvsExpression> <${HGVS}${encodeURIComponent(expression)}> ; <${CASCADE}clinvarClassification> <${CASCADE}Pathogenic> .`,
+          )
+          .join("\n"),
+      ),
+    );
+  return References.of(tables, "", newStore, files);
+}
+
+/** The pod's files describing each series or version of the tables as a pod states it (M8), by path. */
+async function described(
+  tables: References,
+  things: readonly string[],
+): Promise<Map<string, Uint8Array>> {
+  const placed = (await layout()).place(`${CASCADE}ReferenceSeries`);
+  const files = new Map<string, Uint8Array>();
+  for (const thing of things)
+    files.set(
+      tables.isVersion(thing)
+        ? (await layout()).version(placed, thing)
+        : placed.path(thing),
+      ntriples(await tables.podDescription(thing)),
+    );
+  return files;
+}
+
+/** A new pod for Ivo, opened with the tables, holding the files given before it enters two variants of one expression. */
+async function variantPod(
+  tables: References,
+  held: ReadonlyMap<string, Uint8Array>,
+) {
+  const story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:c1643cc9-f0c4-447e-8b47-ecc71130d83b",
+  };
+  let tick = Date.parse("2026-07-01T09:00:00Z");
+  const options = {
+    pod: new MemoryFiles(story.address),
+    address: story.address,
+    subject: story.subject,
+    title: "",
+    vocabulary: await vocabulary(),
+    layout: await layout(),
+    newStore,
+    time: {
+      newId: randomId,
+      now: () => new Date((tick += 60_000)).toISOString(),
+    },
+    importers: [],
+    references: () => Promise.resolve(tables),
+  };
+  const created = new CorePod(options);
+  await created.create();
+  await created.open(tables);
+  for (const [path, bytes] of held) await options.pod.write(path, bytes);
+  const pod = new CorePod(options);
+  const variant = (n: number) =>
+    `<urn:cascade:output-${n}> a cascade:GeneticVariantFinding .
+<urn:cascade:output-${n}-version> prov:specializationOf <urn:cascade:output-${n}> ;
+  cascade:hgvsCodingDnaExpression "NM_000249.3:c.2042C>T" ; cascade:patient <${story.subject}> .`;
+  const { activity } = await pod.enter({
+    bytes: new TextEncoder().encode(`@prefix cascade: <${CASCADE}> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<urn:uuid:9d3e7a14-52b8-4c61-a0f2-6e8b1d4c7a95> a prov:Activity ; rdfs:label "entered in the Cascade app" ;
+  prov:qualifiedAssociation [ prov:agent <${story.address}profile/card.ttl#me> ; prov:hadRole cascade:PatientRole ] .
+${variant(0)}
+${variant(1)}`),
+    base: "https://tables.example/variants.ttl",
+    name: "variants",
+  });
+  return { pod, matched: await pod.match(activity) };
+}
+
+/** The justifications of the matcher judgments among the files written. */
+async function justifications(
+  pod: CorePod,
+  wrote: readonly string[],
+): Promise<string[]> {
+  const found: string[] = [];
+  for (const path of wrote) {
+    const { triples } = await parseGraph(
+      (await pod.files.read(path)) ?? new Uint8Array(),
+      pod.files.iri + path,
+      newStore,
+    );
+    if (triples.some(([, , object]) => object.value === JUDGMENT))
+      found.push(
+        ...triples.flatMap(([, predicate, object]) =>
+          predicate.value === `${CASCADE}justification` ? [object.value] : [],
+        ),
+      );
+  }
+  return found;
+}
+
+test("an open judges a pair its adopted version joins on one row as new though the version it replaces holds that expression on two, and reads neither version's rows with the other's (O1)", async () => {
+  const before: [number, string][] = [
+    [90011, "NM_000249.3:c.2042C>T"],
+    [90099, "NM_000249.3:c.2042C>T"],
+  ];
+  const tables = await variantTables([[V1, before]]);
+  const { pod, matched } = await variantPod(
+    tables,
+    await described(tables, [VARIANTS, V1, await tables.ruleList(), RULES_10]),
+  );
+  assert.deepEqual(await justifications(pod, matched.wrote), []);
+  const opened = await pod.open(
+    await variantTables([
+      [V1, before],
+      [
+        V2,
+        [
+          [90011, "NM_000249.3:c.2042C>T"],
+          [90099, "NM_000249.3:c.9999A>G"],
+        ],
+      ],
+    ]),
+  );
+  assert.deepEqual(await justifications(pod, opened.wrote), [SAME_VARIATION]);
+});
+
+test("a pod holding the description of a version newer than the tables' current one is matched by the current one's rows (M13)", async () => {
+  const newer = await variantTables([
+    [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
+    [V3, []],
+  ]);
+  const { pod, matched } = await variantPod(
+    await variantTables([[V2, [[90011, "NM_000249.3:c.2042C>T"]]]]),
+    await described(newer, [V3]),
+  );
+  assert.deepEqual(await justifications(pod, matched.wrote), [SAME_VARIATION]);
+});
+
+test("what the pod answers after a match and an open still holds the pod's reference descriptions, which the matcher leaves out of its comparisons", async () => {
+  const tables = await variantTables([
+    [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+  ]);
+  const { pod } = await variantPod(tables, await described(tables, [V1]));
+  const versions = async () =>
+    (
+      await pod.select(
+        `SELECT ?version WHERE { ?version <http://www.w3.org/ns/prov#specializationOf> <${VARIANTS}> }`,
+      )
+    ).rows.map((row) => row.get("version")?.value);
+  assert.deepEqual(await versions(), [V1]);
+  await pod.open(
+    await variantTables([
+      [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+      [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
+    ]),
+  );
+  assert.deepEqual((await versions()).sort(), [V1, V2]);
 });

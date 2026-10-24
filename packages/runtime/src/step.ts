@@ -41,6 +41,8 @@ export interface StepContext {
    * to it: the pod drops it when the step ends.
    */
   matcherView(): Promise<Union>;
+  /** Takes the matcher's view out of what the pod keeps, so whatever reads the pod next builds a view of its own. */
+  releaseMatcherView(): void;
 }
 
 /** A file a step is given: an entry's or a person's judgment's Turtle. */
