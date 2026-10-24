@@ -507,30 +507,28 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
   };
 }
 
-const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used ?rule WHERE {
+const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used ?rule WHERE {
   ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
     <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
-  OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
+  OPTIONAL { ?judgment <${JDG}matcherRule> ?rule }
+  OPTIONAL { ?assertion <${JDG}assertedClaim> ?judgment ; <${JDG}assertedUnderRuleListVersion> ?under }
   OPTIONAL { ?judgment <${PROV}used> ?used }
-  OPTIONAL {
-    ?judgment <${PROV}used> ?list .
-    GRAPH ?list { ?row <${REC}justifiedAs> ?justification ; <${REC}matcherRule> ?rule }
-  }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
-  /** The matcher rule terms the rule list versions it used give its justification. */
+  /** The matcher rule terms the claim cites. */
   readonly rules: Set<string>;
   readonly members: Set<string>;
-  readonly at: Set<string>;
+  /** The rule list versions the claim is asserted under. */
+  readonly assertedUnder: Set<string>;
   readonly used: Set<string>;
 }
 
 async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used, rule] of await selected(
+  for (const [name, justification, member, under, used, rule] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -541,11 +539,11 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
         justification: justification ?? "",
         rules: new Set(),
         members: new Set(),
-        at: new Set(),
+        assertedUnder: new Set(),
         used: new Set(),
       } satisfies Judged);
     judged.members.add(member ?? "");
-    if (at) judged.at.add(shownTime(at));
+    if (under) judged.assertedUnder.add(under);
     if (used) judged.used.add(used);
     if (rule) judged.rules.add(rule);
     found.set(judged.name, judged);
@@ -575,8 +573,8 @@ function judgmentRow(
           return JUSTIFIED[judged.justification] ?? `<${judged.justification}>`;
         case "members":
           return sorted(judged.members);
-        case "at":
-          return [...judged.at].join(", ");
+        case "asserted under":
+          return sorted(judged.assertedUnder);
         case "used":
           return sorted(judged.used);
         case "inputs":
@@ -620,8 +618,7 @@ async function expectedJudgmentRow(
       cells.push(cell);
     } else if (column === "members")
       cells.push(await things(cell, (words) => reading.words.record(words)));
-    else if (column === "at") cells.push(cellTime(cell));
-    else if (column === "used")
+    else if (column === "used" || column === "asserted under")
       cells.push(await things(cell, (words) => reading.words.thing(words)));
     else cells.push(cell);
   }
@@ -631,7 +628,7 @@ async function expectedJudgmentRow(
 const JUDGMENT_COLUMNS = [
   "justification",
   "members",
-  "at",
+  "asserted under",
   "used",
   "inputs",
   "name",
@@ -1191,10 +1188,7 @@ const DEFINITIONS: Definition[] = [
     judgmentsHolding(words as string, [], ["justification", "members"]),
   ),
   then("{step} wrote these matcher judgments:", ([said], stated) => {
-    const rows = table(
-      stated,
-      JUDGMENT_COLUMNS.filter((column) => column !== "at"),
-    );
+    const rows = table(stated, JUDGMENT_COLUMNS);
     const columns = JUDGMENT_COLUMNS.filter((column) =>
       stated.table?.[0]?.includes(column),
     );
@@ -1203,45 +1197,64 @@ const DEFINITIONS: Definition[] = [
       if (step === undefined) return "no such step";
       const failures: string[] = [];
       const heldGraph = await wroteGraph(reading, [step]);
-      const judgments = new Set(
+      const claims = new Set(
         heldGraph
           .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
           .map(({ value }) => value),
       );
-      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
-        judgments.has(name),
+      const assertions = new Set(
+        heldGraph
+          .subjects(`${RDF}type`, iri(`${JDG}ClaimAssertion`))
+          .map(({ value }) => value),
       );
-      const allowed = new Set([
-        `${RDF}type`,
-        `${JDG}verdict`,
-        `${JDG}justification`,
-        `${PROV}wasAttributedTo`,
-        `${PROV}generatedAtTime`,
-        `${PROV}hadMember`,
-        `${PROV}used`,
-      ]);
-      for (const name of judgments) {
-        for (const [, p, o] of heldGraph.match(iri(name)))
-          if (
-            !allowed.has(p.value) ||
-            (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
-          )
-            failures.push(`${name} also states ${p.value} ${written(o)}`);
-        const at = heldGraph
-          .objects(iri(name), `${PROV}generatedAtTime`)
-          .map(({ value }) => shownTime(value));
-        if (at.length !== 1 || at[0] !== shownTime(step.step.when))
-          failures.push(
-            `${name} is made at ${at.join(", ") || "no time"}, not the step's ${step.step.when}`,
-          );
+      const asserted = new Set(
+        [...assertions].flatMap((assertion) =>
+          heldGraph
+            .objects(iri(assertion), `${JDG}assertedClaim`)
+            .map(({ value }) => value),
+        ),
+      );
+      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
+        asserted.has(name),
+      );
+      const allowed = {
+        [`${JDG}Judgment`]: new Set([
+          `${RDF}type`,
+          `${JDG}verdict`,
+          `${JDG}justification`,
+          `${JDG}matcherRule`,
+          `${PROV}wasAttributedTo`,
+          `${PROV}hadMember`,
+          `${PROV}used`,
+        ]),
+        [`${JDG}ClaimAssertion`]: new Set([
+          `${RDF}type`,
+          `${JDG}assertedClaim`,
+          `${JDG}assertedUnderRuleListVersion`,
+        ]),
+      };
+      for (const [kind, names] of [
+        [`${JDG}Judgment`, claims],
+        [`${JDG}ClaimAssertion`, assertions],
+      ] as const)
+        for (const name of names)
+          for (const [, p, o] of heldGraph.match(iri(name)))
+            if (
+              !(allowed[kind]?.has(p.value) ?? false) ||
+              (p.value === `${RDF}type` && o.value !== kind)
+            )
+              failures.push(`${name} also states ${p.value} ${written(o)}`);
+      for (const name of claims)
+        if (!asserted.has(name))
+          failures.push(`${name} is written and not asserted`);
+      for (const name of asserted)
         if (!found.some((judged) => judged.name === name))
           failures.push(`${name} is no Same the matcher made`);
-      }
       for (const subject of heldGraph
         .subjects(`${RDF}type`)
         .concat(heldGraph.triples.map(([s]) => s))) {
         const value = subject.value;
-        if (judgments.has(value)) continue;
+        if (claims.has(value) || assertions.has(value)) continue;
         if (value === MATCHER) {
           const described = heldGraph
             .match(iri(MATCHER))
@@ -1263,7 +1276,8 @@ const DEFINITIONS: Definition[] = [
             `${RDF}type`,
             iri(`${REC}ReferenceSeries`),
           ).length > 0 ||
-          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
+          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0 ||
+          heldGraph.match(iri(value), `${REC}rowOfRuleListVersion`).length > 0;
         if (!isReference) failures.push(`the step also wrote of ${value}`);
       }
       const problem = await comparedJudgments(reading, rows, found, columns);
@@ -1309,7 +1323,15 @@ const DEFINITIONS: Definition[] = [
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
+      const rowOf = `<${REC}rowOfRuleListVersion>`;
       for (const [thing, said] of described) {
+        const rows = heldTriples.filter((triple) =>
+          triple.endsWith(` ${rowOf} <${thing}>`),
+        );
+        if (rows.length > 0 !== (await reading.words.isRuleListVersion(thing)))
+          wrong.push(
+            `${reading.words.shown(thing)} has ${rows.length} rows, and is ${rows.length > 0 ? "no" : "a"} rule list version`,
+          );
         const why = compared(
           said,
           heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
