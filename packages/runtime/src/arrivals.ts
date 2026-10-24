@@ -1,3 +1,4 @@
+import type { Reported } from "@cascade-runtime/fhir-pull";
 import {
   type AdaptersOf,
   type BridgeDocument,
@@ -14,6 +15,8 @@ import {
   documentName,
   enteredRecordName,
   inUtc,
+  normalisedBaseUrl,
+  serverName,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -52,6 +55,8 @@ const USED = `${PROV}used`;
 const DATE_TIME = `${XSD}dateTime`;
 const HAS_SELECTOR = "http://www.w3.org/ns/oa#hasSelector";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
+const SERVER = `${CASCADE}Server`;
+const SERVER_BASE_URL = `${CASCADE}serverBaseUrl`;
 
 /** One arrival of a record, as a revision would carry it (runtime/rules.md, N4). */
 interface Arrival {
@@ -454,6 +459,35 @@ async function accepting(
   );
 }
 
+/** A server's record, named by its base URL and stating it normalised (A16, A17); a base that names nothing is refused (A14). */
+async function serverRecord(
+  layout: Layout,
+  base: string,
+  where: string,
+): Promise<{ record: NamedNode; place: Placement; triples: Triple[] }> {
+  const place = layout.records(SERVER);
+  if (place === undefined)
+    throw new Error(`the layout files no ${SERVER} under records/`);
+  let record: NamedNode;
+  let normalised: string;
+  try {
+    record = iri(await serverName(base));
+    normalised = normalisedBaseUrl(base);
+  } catch (error) {
+    throw new Refusal(
+      `${where} names its server by a base URL that names nothing: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return {
+    record,
+    place,
+    triples: [
+      [record, iri(TYPE), iri(SERVER)],
+      [record, iri(SERVER_BASE_URL), literal(normalised)],
+    ],
+  };
+}
+
 /**
  * Files an export's documents, each converted by the first adapter of its media type that accepts it: A1 to A11, with
  * the import named by a new random ID (N7), and the refusals of A14. `onProgress` is told of each conversion as its
@@ -511,6 +545,13 @@ export async function fileExport(
         documentIri,
         importDescription(graph, subject, name, found.path),
       );
+      for (const base of graph.objects(subject, SERVER_BASE_URL)) {
+        const server = await serverRecord(layout, base.value, found.path);
+        writes.add(
+          server.place.path(server.record.value),
+          ntriples(server.triples),
+        );
+      }
     }
   }
   revisions.write(writes);
@@ -636,4 +677,64 @@ export async function fileEntry(
     triples: graph.closure(session),
   });
   return session.value;
+}
+
+/** The version property each fact a connect reports is held as (A16). */
+const REPORTED: readonly (readonly [keyof Reported, string])[] = [
+  ["selfAssertedBaseUrl", `${CASCADE}selfAssertedBaseUrl`],
+  ["authorizationEndpoint", `${CASCADE}authorizationEndpoint`],
+  ["softwareName", `${CASCADE}serverSoftwareName`],
+  ["softwareVersion", `${CASCADE}serverSoftwareVersion`],
+  ["clientId", `${CASCADE}connectClientId`],
+];
+
+/**
+ * A connect (A16): its act, named by a new random ID (N7), and a version of its server's record holding what the
+ * server reported, with a revision after the record's last; a connect whose version is the one the record is at writes
+ * nothing.
+ */
+export async function fileConnect(
+  context: StepContext,
+  connect: Reported,
+): Promise<string | undefined> {
+  const { pod, writes, newStore, time, layout } = context;
+  const name = time.newId();
+  const started = time.now();
+  const server = await serverRecord(layout, connect.fhirBase, "the connect");
+  const placeholder = iri(THIS_VERSION);
+  const content: Triple[] = [
+    [placeholder, iri(SPECIALIZATION_OF), server.record],
+    ...REPORTED.flatMap(([fact, property]): Triple[] => {
+      const value = connect[fact];
+      return value === undefined
+        ? []
+        : [[placeholder, iri(property), literal(value)]];
+    }),
+  ];
+  const version = await named(content, "the connect's version");
+  const revisions = await Revisions.of(pod, newStore, layout);
+  const arrival: Arrival = {
+    record: server.record,
+    place: server.place,
+    recordTriples: server.triples,
+    version,
+    versionTriples: renamed(content, placeholder, version),
+    statements: [],
+    at: started,
+    by: name,
+  };
+  if (revisions.repeats(arrival)) return undefined;
+  await revisions.revise(arrival, writes);
+  revisions.write(writes);
+  const act = iri(name);
+  writes.act({
+    name,
+    path: layout.place(`${PROV}Activity`).path(name),
+    triples: [
+      [act, iri(TYPE), iri(`${PROV}Activity`)],
+      [act, iri(TYPE), iri(`${CASCADE}ConnectToServer`)],
+      [act, iri(STARTED), literal(started, DATE_TIME)],
+    ],
+  });
+  return name;
 }

@@ -5,6 +5,7 @@ import { type StoreFactory, Union } from "./store.js";
 export const LAYOUT_FILE = "runtime/pod-layout.ttl";
 export const LAYOUT_GRAPH = "urn:cascade:pod-layout";
 const BASE = "https://pod.invalid/";
+const RECORDS = "records/";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const DCT = "http://purl.org/dc/terms/";
@@ -235,16 +236,20 @@ export class Layout {
     return this.placements.filter(({ writtenBy }) => writtenBy !== undefined);
   }
 
-  /** Where a record of the class is filed, with its versions and revisions; only a class a view lists is filed. */
+  /**
+   * Where a record of the class is filed, with its versions and revisions: only a class the layout gives a folder under
+   * records/ is filed, whether or not a view lists it, as no view lists an organization.
+   */
   records(kind: string): Placement | undefined {
-    return this.views.some((view) => view.kind === kind)
-      ? this.find(kind)
-      : undefined;
+    const found = this.find(kind);
+    return found?.folder?.startsWith(RECORDS) ? found : undefined;
   }
 
   get recordPlacements(): readonly Placement[] {
-    return this.views.flatMap(({ kind }) =>
-      kind === undefined ? [] : (this.find(kind) ?? []),
+    return this.placements.filter(
+      (placement) =>
+        placement.kind !== undefined &&
+        this.records(placement.kind) === placement,
     );
   }
 

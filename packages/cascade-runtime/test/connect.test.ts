@@ -8,6 +8,7 @@ import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   ConnectionFailure,
+  connectFiles,
   type DirectoryRow,
   type FailureKind,
   type Pull,
@@ -36,7 +37,7 @@ let south: Loaded;
 let row: DirectoryRow;
 let happy: { pull: Pull; seen: Seen };
 
-function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
+function pulled(setup: Setup = {}): ReturnType<typeof pulledAt> {
   return pulledAt(north, A_NORTH, setup);
 }
 
@@ -162,6 +163,22 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   seen.requests.forEach((r, at) =>
     assert.equal(r.headers.has("Authorization"), at > token, r.url),
   );
+});
+
+test("the server's report is its CapabilityStatement, asked with no token, with the base and the client id, which connectFiles saves", async () => {
+  const { report, seen } = await pulled({ report: true });
+  assert.equal(report?.fhirBase, north.hospital.fhirBase);
+  assert.equal(report?.clientId, REGISTRATION.clientId);
+  const capability = report?.capability as {
+    resourceType?: unknown;
+    implementation?: { url?: unknown };
+  };
+  assert.equal(capability.resourceType, "CapabilityStatement");
+  assert.equal(capability.implementation?.url, north.hospital.fhirBase);
+  const asked = seen.requests.at(-1)!;
+  assert.equal(new URL(asked.url).href, `${north.hospital.fhirBase}/metadata`);
+  assert.equal(asked.headers.has("Authorization"), false);
+  assert.equal(connectFiles(report!, "north").size, 2);
 });
 
 test("a pull retries a 503, a 429 and a transport error, and from a base written with a trailing slash names everything without it", async () => {

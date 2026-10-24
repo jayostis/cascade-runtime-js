@@ -1,3 +1,4 @@
+import type { SavedConnect } from "@cascade-runtime/fhir-pull";
 import { ConnectionFailure } from "./outcome.js";
 import {
   type DirectoryRow,
@@ -25,6 +26,8 @@ export interface Connection {
   readonly fhirBase: string;
   /** The patient the token is for, by the hospital's id. */
   readonly patient: string;
+  /** The OAuth 2.0 client id the app signed in with. */
+  readonly clientId: string;
   readonly scope: string;
   readonly expiresAt: Date | undefined;
 }
@@ -249,6 +252,7 @@ export async function connect(
     row,
     fhirBase,
     patient,
+    clientId: registration.clientId,
     scope:
       typeof answer.scope === "string" && answer.scope !== ""
         ? answer.scope
@@ -306,4 +310,39 @@ function redirected(
       { origin },
     );
   return code;
+}
+
+export interface ReportOptions {
+  readonly limits?: Partial<Limits>;
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * What the connected server says of itself, its CapabilityStatement at `GET <fhirBase>/metadata`, asked of the FHIR
+ * base's origin with no token, with the base and the client id: a connect as `connectFiles` saves it (A16).
+ */
+export async function serverReport(
+  connection: Connection,
+  options: ReportOptions = {},
+): Promise<SavedConnect> {
+  const { fetch } = held(connection);
+  const requests = new Requests(fetch, limited(options.limits), options.signal);
+  const url = new URL(`${connection.fhirBase}/metadata`);
+  const answer = await requests.send(url, {
+    what: "metadata",
+    headers: { Accept: "application/fhir+json" },
+    retry: true,
+    follow: url.origin,
+  });
+  if (answer.status !== 200)
+    throw new ConnectionFailure(
+      "hospital-error",
+      `${url.origin} answered ${answer.status} to metadata`,
+      { origin: url.origin, status: answer.status, resourceType: "metadata" },
+    );
+  return {
+    fhirBase: connection.fhirBase,
+    clientId: connection.clientId,
+    capability: parsed(answer, url, "metadata"),
+  };
 }

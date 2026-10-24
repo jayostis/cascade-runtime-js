@@ -5,6 +5,7 @@ export type Happened =
       readonly export: string;
       readonly converted: string;
     }
+  | { readonly kind: "connect"; readonly folder: string }
   | { readonly kind: "entry"; readonly file: string }
   | { readonly kind: "judgment"; readonly file: string }
   | { readonly kind: "reference"; readonly name: string }

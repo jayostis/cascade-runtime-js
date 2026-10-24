@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as oxigraph from "oxigraph";
-import { fhirPull, type PullFiles, pullFiles } from "../src/index.js";
+import {
+  connectFiles,
+  fhirPull,
+  type PullFiles,
+  pullFiles,
+  readConnect,
+  type SavedConnect,
+} from "../src/index.js";
 
 const BASE = "https://cascade-north.demo.invalid/fhir";
 const BUNDLE = {
@@ -219,4 +226,86 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
       { message: why },
       name,
     );
+});
+
+const CAPABILITY = {
+  resourceType: "CapabilityStatement",
+  software: { name: "Example EHR", version: "" },
+  implementation: { url: `${BASE}/` },
+  rest: [
+    { mode: "client" },
+    {
+      mode: "server",
+      security: {
+        extension: [
+          {
+            url: "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
+            extension: [
+              { url: "token", valueUri: `${BASE}/token` },
+              { url: "authorize", valueUri: `${BASE}/authorize` },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+};
+const CONNECT: SavedConnect = {
+  fhirBase: BASE,
+  clientId: "cascade-app",
+  capability: CAPABILITY,
+};
+
+test("a saved connect reports each string the server wrote and the client id, and a connect the rules refuse is refused with why, and never saved", async () => {
+  assert.deepEqual(
+    await readConnect(filesOf(connectFiles(CONNECT, "north")), "north"),
+    {
+      fhirBase: BASE,
+      clientId: "cascade-app",
+      selfAssertedBaseUrl: `${BASE}/`,
+      authorizationEndpoint: `${BASE}/authorize`,
+      softwareName: "Example EHR",
+    },
+  );
+  const rows: [string, SavedConnect, string][] = [
+    [
+      "an http: base",
+      { ...CONNECT, fhirBase: "http://cascade-north.demo.invalid/fhir" },
+      "connect.json's fhirBase is not an https: URL with no query, fragment or trailing slash",
+    ],
+    [
+      "no client id",
+      { ...CONNECT, clientId: "" },
+      "connect.json names no client id",
+    ],
+    [
+      "no CapabilityStatement",
+      { ...CONNECT, capability: { resourceType: "Bundle" } },
+      "capability.json is no CapabilityStatement",
+    ],
+  ];
+  for (const [name, connect, why] of rows) {
+    assert.throws(() => connectFiles(connect, "north"), { message: why }, name);
+    const encoder = new TextEncoder();
+    const { capability, ...saved } = connect;
+    await assert.rejects(
+      readConnect(
+        filesOf(
+          new Map([
+            ["north/connect.json", encoder.encode(JSON.stringify(saved))],
+            [
+              "north/capability.json",
+              encoder.encode(JSON.stringify(capability)),
+            ],
+          ]),
+        ),
+        "north",
+      ),
+      { message: why },
+      name,
+    );
+  }
+  await assert.rejects(readConnect(filesOf(new Map()), "north"), {
+    message: "north holds no connect.json",
+  });
 });
