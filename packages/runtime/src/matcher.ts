@@ -541,21 +541,22 @@ class Matcher {
             });
     const { address, layout } = context;
     const folder = layout.place(`${CASCADE}ReferenceSeries`).folder;
-    const described =
-      folder === undefined
-        ? []
-        : [...union.graphs].filter((graph) =>
-            graph.startsWith(address + folder),
-          );
-    for (const graph of described) await union.store.drop(graph);
+    const described = new Map<string, Triple[]>();
+    for (const graph of union.graphs) {
+      if (folder === undefined || !graph.startsWith(address + folder)) continue;
+      const { rows } = await union.select(
+        `SELECT ?s ?p ?o WHERE { GRAPH <${graph}> { ?s ?p ?o } }`,
+      );
+      described.set(
+        graph,
+        rows.map((row) => [row.get("s"), row.get("p"), row.get("o")] as Triple),
+      );
+      await union.store.drop(graph);
+    }
     const known =
       foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
     const matched = await over(versions, found);
-    for (const graph of described) {
-      const bytes = await context.pod.read(graph.slice(address.length));
-      if (bytes === undefined) throw new Error(`${graph} is gone`);
-      await union.loadTurtle(bytes, graph);
-    }
+    for (const [graph, triples] of described) await union.add(triples, graph);
     if (adopted === undefined)
       return new Matcher(
         context,
