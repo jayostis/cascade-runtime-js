@@ -211,14 +211,14 @@ async function ruleListRevised(): Promise<Files> {
   };
 }
 
-/** The vocabulary with its records ontology changed by `change`. */
+/** The vocabulary with its ontology changed by `change`. */
 function recordsChanged(change: (turtle: string) => string): Files {
   const { vocabulary } = parts;
   return {
     iri: vocabulary.iri,
     read: async (path) => {
       const bytes = await vocabulary.read(path);
-      return bytes === undefined || !path.endsWith("records.ttl")
+      return bytes === undefined || !path.endsWith("ontologies/cascade.ttl")
         ? bytes
         : new TextEncoder().encode(change(new TextDecoder().decode(bytes)));
     },
@@ -1663,7 +1663,7 @@ test("a check whose read of the vocabulary fails keeps the version a later check
   const once: Files = {
     iri: vocabulary.iri,
     read: async (path) => {
-      if (path.endsWith("records.ttl") && !failed) {
+      if (path.endsWith("ontologies/cascade.ttl") && !failed) {
         failed = true;
         throw new Error("the vocabulary could not be read");
       }
@@ -2490,19 +2490,19 @@ test("a product is in its own precise ingredient's class, else in its ingredient
   const { tables } = await plantedTables();
   assert.deepEqual(await classLines(tables, "197658"), [
     `establishedPharmacologicClass N0000175825 through ${ESTRADIOL}`,
-    `mechanismOfAction N0000000100 through ${ESTRADIOL}`,
+    `mechanismOfActionClass N0000000100 through ${ESTRADIOL}`,
   ]);
   assert.deepEqual(await classLines(tables, "2588848"), [
     `establishedPharmacologicClass N0000193183 through ${LEVOKETOCONAZOLE}`,
-    `chemicalStructure ${AZOLES} through ${KETOCONAZOLE}`,
+    `chemicalStructureClass ${AZOLES} through ${KETOCONAZOLE}`,
   ]);
   assert.deepEqual(await classLines(tables, "314076"), [
     `establishedPharmacologicClass withheld, a different form of ${LISINOPRIL}`,
-    `mechanismOfAction withheld, a different form of ${LISINOPRIL}`,
+    `mechanismOfActionClass withheld, a different form of ${LISINOPRIL}`,
   ]);
   assert.deepEqual(await classLines(tables, FLUOROESTRADIOL), [
     "establishedPharmacologicClass N0000177914",
-    "mechanismOfAction N0000175869",
+    "mechanismOfActionClass N0000175869",
   ]);
   assert.deepEqual(
     await tables.classedElsewhere([
@@ -2548,7 +2548,7 @@ test("a product ingredients version that states no precise ingredient gives a pr
   );
   assert.deepEqual(await classed(after.served), [
     `establishedPharmacologicClass N0000175825 through ${ESTRADIOL}`,
-    `mechanismOfAction N0000000100 through ${ESTRADIOL}`,
+    `mechanismOfActionClass N0000000100 through ${ESTRADIOL}`,
   ]);
 });
 
@@ -2608,7 +2608,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
         ],
         [
           "Estradiol 1 MG Oral Tablet",
-          "mechanismOfAction",
+          "mechanismOfActionClass",
           "N0000000100",
           ESTRADIOL,
           "false",
@@ -2624,7 +2624,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
         ],
         [
           "Fluoroestradiol F-18",
-          "mechanismOfAction",
+          "mechanismOfActionClass",
           "N0000175869",
           FLUOROESTRADIOL,
           "true",
@@ -2632,7 +2632,7 @@ ${Object.keys(names).map(medication).join("\n")}`);
         ],
         [
           "Levoketoconazole 150 MG Oral Tablet",
-          "chemicalStructure",
+          "chemicalStructureClass",
           AZOLES,
           KETOCONAZOLE,
           "false",
