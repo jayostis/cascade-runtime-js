@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { vocabularyDerive } from "../src/build.js";
-import { dataset } from "../src/dataset.js";
+import { dataset, podDataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
@@ -13,8 +13,15 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import { type Dataset, Union } from "../src/store.js";
+import { localVocabulary } from "../src/node/runtime.js";
+import { featurePod } from "../src/node/story-pod.js";
 import { notIsomorphic } from "./graphs.js";
-import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
+import {
+  layout as readLayout,
+  ROOT,
+  storyFrom,
+  vocabulary,
+} from "./vocabulary.js";
 
 const FEATURE = "runtime/matcher.feature";
 const EXAMPLE =
@@ -354,4 +361,47 @@ test("each entry of a view is named in the view, its address, # and the hash of 
   assert.match(text, /^<#[0-9a-f]{64}> /m);
   assert.ok(!text.includes(address), text);
   assert.ok(!text.includes("urn:cascade:entry:"), text);
+});
+
+test("an entry another view points to is named in the view that gives it members: each variant interpretation's variant is an entry of the variants view", async () => {
+  const kit = await localVocabulary(ROOT);
+  const replayed = await featurePod(
+    kit,
+    "conformance/martin-okafor/martin-okafor.feature",
+    new MemoryFiles("https://pod.example/"),
+  );
+  const last = replayed.steps.at(-1);
+  assert.ok(last);
+  const { store: martin, address: martinAt } = await podDataset(
+    replayed.pod,
+    kit.layout,
+    kit.build,
+    kit.config.lens,
+    new OxigraphStore(),
+    { title: replayed.title, at: last.step.when },
+  );
+  const variants = `${martinAt}clinical/variants.ttl`;
+  const { rows } = await martin.select(
+    `SELECT ?interpretation ?variant ?member WHERE {
+      GRAPH ?view { ?view a cascade:View . ?interpretation cascade:variantInterpreted ?variant }
+      OPTIONAL { GRAPH <${variants}> { ?variant cascade:mergedFrom ?member } }
+    }`.replace(
+      /^/,
+      `${PREFIXES}
+`,
+    ),
+  );
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    const variant = row.get("variant")?.value ?? "";
+    assert.ok(
+      variant.startsWith(`${variants}#`) &&
+        /^[0-9a-f]{64}$/.test(variant.slice(variants.length + 1)),
+      variant,
+    );
+    assert.ok(
+      row.get("member"),
+      `${variant} has no member in the variants view`,
+    );
+  }
 });
