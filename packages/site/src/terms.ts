@@ -20,7 +20,6 @@ const PREFIXES: Readonly<Record<string, string>> = {
   dct: "http://purl.org/dc/terms/",
   foaf: "http://xmlns.com/foaf/0.1/",
   ldp: "http://www.w3.org/ns/ldp#",
-  npx: "http://purl.org/nanopub/x/",
   oa: "http://www.w3.org/ns/oa#",
   pav: "http://purl.org/pav/",
   pim: "http://www.w3.org/ns/pim/space#",

@@ -10,7 +10,14 @@ import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import { type Kept, KeptClaims } from "./kept.js";
 import { type Layout, SYNC } from "./layout.js";
-import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
+import {
+  matcherView,
+  migrateRuleListVersions,
+  openPod,
+  podCodes,
+  releaseRetractions,
+  runMatcher,
+} from "./matcher.js";
 import {
   actDescriptionName,
   documentName,
@@ -516,8 +523,13 @@ export class CorePod {
     );
   }
 
-  /** The pod opened with the tables (O1, O2), which it matches with from then on. */
+  /**
+   * The pod opened with the tables (O1, O2), which it matches with from then on: first, when the rule list version it
+   * adopts, or one that version revises, declares a rule wrong, the rule list version migration (N15), an act of its
+   * own, then the open's matcher run.
+   */
   async open(tables: References): Promise<Performed> {
+    const migrated = await this.#migrated(tables, true);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
       const opened = await openPod(context, tables);
@@ -525,7 +537,27 @@ export class CorePod {
       this.#references = Promise.resolve(tables);
       return opened.activity;
     });
-    return unheld.length === 0 ? performed : { ...performed, unheld };
+    return {
+      ...performed,
+      wrote: [...(migrated?.wrote ?? []), ...performed.wrote],
+      ...(unheld.length === 0 ? {} : { unheld }),
+    };
+  }
+
+  /**
+   * A matcher run taking the import or entry session given, or the records a sync brought, or, given none, a recheck
+   * (M7): first, as at an open, the rule list version migration, when the pod's current rule list version or one it
+   * revises declares a rule wrong (N15).
+   */
+  async match(activity?: string): Promise<Performed> {
+    const tables = await this.#tables();
+    const migrated = await this.#migrated(tables, false);
+    const performed = await this.#step((context) =>
+      runMatcher(context, tables, activity),
+    );
+    return migrated === undefined
+      ? performed
+      : { ...performed, wrote: [...migrated.wrote, ...performed.wrote] };
   }
 
   /**
@@ -535,7 +567,9 @@ export class CorePod {
    * than a sync, whose snapshot is no ancestor of the writer's last, naming each such act; with none, a writer that
    * then holds one head takes it as its last snapshot, as git fast-forwards. What it writes depends on what the pod
    * holds, never on what this call wrote, so a call that stops partway and is made again writes the same sync. Only
-   * the files that arrived and the act files not read before are read.
+   * the files that arrived and the act files not read before are read. Then, when the pod's current rule list version
+   * or one it revises declares a rule wrong, the rule list version migration, an act of its own (N15); a writer with no
+   * tables to read has none.
    */
   async receive(other: Pick<Files, "list" | "read">): Promise<Performed> {
     const arrived: string[] = [];
@@ -632,7 +666,16 @@ export class CorePod {
       this.#headHeld = true;
       await this.#options.keepHead?.(fastForward).catch(() => undefined);
     }
-    return { ...performed, arrived };
+    const tables = await this.#tables().catch(() => undefined);
+    const migrated =
+      tables === undefined ? undefined : await this.#migrated(tables, false);
+    return migrated === undefined
+      ? { ...performed, arrived }
+      : {
+          ...performed,
+          arrived,
+          wrote: [...performed.wrote, ...migrated.wrote],
+        };
   }
 
   /**
@@ -655,10 +698,22 @@ export class CorePod {
     return [...this.#chain.values(), ...this.#writing.values()];
   }
 
-  /** A matcher run taking the import or entry session given, or the records a sync brought, or, given none, a recheck (M7). */
-  match(activity?: string): Promise<Performed> {
+  /**
+   * The rule list version migration (N15), a step of its own, when it has a retraction to write. Finding none reads the
+   * matcher's view the step after it reads, and writes nothing.
+   */
+  async #migrated(
+    tables: References,
+    opening: boolean,
+  ): Promise<Performed | undefined> {
+    const retractions = await releaseRetractions(
+      () => this.#matcherView(),
+      tables,
+      opening,
+    );
+    if (retractions.length === 0) return undefined;
     return this.#step(async (context) =>
-      runMatcher(context, await this.#tables(), activity),
+      migrateRuleListVersions(context, retractions),
     );
   }
 

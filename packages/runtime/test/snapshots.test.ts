@@ -335,3 +335,33 @@ test("three writers, one receiving the others' files in either order, hold one s
     await receiving([third, second]),
   );
 });
+
+test("an open that migrates a release leaves two acts in one step, each with its own snapshot naming its own files, the run's chained to the migration's (N14, N15)", async () => {
+  const local = await localVocabulary(ROOT);
+  const story = await featurePod(
+    local,
+    "runtime/naming.feature",
+    new MemoryFiles(ADDRESS),
+    {
+      example:
+        "adopting a release that declares R4 wrong retracts the assertions of R4's two claims before the open's matcher runs, and neither claim counts nor lapses",
+    },
+  );
+  const opened = story.steps.at(-1);
+  const snapshots = [];
+  for (const path of opened?.wrote ?? [])
+    if (path.startsWith("provenance/"))
+      snapshots.push(await snapshotIn(story.pod, path));
+  assert.equal(snapshots.length, 2);
+  const [migration, run] = snapshots;
+  assert.deepEqual(run?.values("firstParentSnapshot"), [migration?.name]);
+  assert.ok(
+    migration
+      ?.values("fileAddedToSet")
+      .some((path) => path.startsWith("judgments/retractions/")),
+  );
+  assert.deepEqual(
+    await snapshotsFollowTheirRule(story, local.layout, newStore),
+    [],
+  );
+});

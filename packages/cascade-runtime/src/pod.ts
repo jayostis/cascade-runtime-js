@@ -57,6 +57,7 @@ const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
+const STARTED_AT = `${PROV}startedAtTime`;
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
 /** What an app names the judgment it hands to `judge`, which the package names in its place. */
 const THIS_JUDGMENT = "urn:cascade:this-judgment";
@@ -837,10 +838,15 @@ class OpenPod implements Pod {
         ([, p, o]) => p.value === TYPE && o.value === `${CASCADE}Judgment`,
       )
       .map(([s]) => s.value);
-    if (judgments.length !== 1 || judgments[0] !== THIS_JUDGMENT)
+    const retractions = stated
+      .filter(([, p]) => p.value === `${PROV}invalidated`)
+      .map(([s]) => s.value);
+    const found = [...new Set([...judgments, ...retractions])];
+    if (found.length !== 1 || found[0] !== THIS_JUDGMENT)
       throw new Error(
-        `the judgment's Turtle holds ${judgments.length === 0 ? "no judgment" : judgments.join(", ")}; it holds one, named <${THIS_JUDGMENT}>`,
+        `the judgment's Turtle holds ${found.length === 0 ? "no judgment or retraction" : found.join(", ")}; it holds one judgment or one retraction, named <${THIS_JUDGMENT}>`,
       );
+    const retracting = retractions.length > 0;
     const name = randomId();
     const judgment = iri(name);
     const named = stated
@@ -854,7 +860,12 @@ class OpenPod implements Pod {
       )
       .filter(
         ([s, p]) =>
-          !(s.value === name && (p.value === USED || p.value === GENERATED_AT)),
+          !(
+            s.value === name &&
+            (p.value === USED ||
+              p.value === GENERATED_AT ||
+              p.value === STARTED_AT)
+          ),
       );
     const of = (predicate: string): string[] =>
       named.flatMap(([s, p, o]) =>
@@ -879,7 +890,11 @@ class OpenPod implements Pod {
       bytes: ntriples([
         ...named,
         ...used,
-        [judgment, iri(GENERATED_AT), literal(clock.now(), `${XSD}dateTime`)],
+        [
+          judgment,
+          iri(retracting ? STARTED_AT : GENERATED_AT),
+          literal(clock.now(), `${XSD}dateTime`),
+        ],
       ]),
       base: this.address,
       name: "the judgment",
