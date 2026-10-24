@@ -9,7 +9,6 @@ import {
   LAYOUT_FILE,
   loadAdapters,
   OxigraphStore,
-  packedCommit,
   parseConfig,
   type Placed,
   readText,
@@ -459,7 +458,7 @@ const resolved = once(async (): Promise<Resolved> => {
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
-    performer: performerOf(read.runtime),
+    performer: performer(),
     runtime: read.runtime,
     exportAt: (path) =>
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
@@ -900,12 +899,13 @@ export async function deletePod(name: string): Promise<void> {
   );
 }
 
-/** The runtime this packed entry is, as every act it performs names it (N7), from the commit its version names. */
-function performerOf(version: string): string {
-  const commit = packedCommit(version);
-  if (commit === undefined)
+declare const CASCADE_RUNTIME_COMMIT: string | undefined;
+
+/** The runtime this packed entry is, as every act it performs names it (N7): the commit it was packed from. */
+function performer(): string {
+  if (typeof CASCADE_RUNTIME_COMMIT !== "string")
     throw new Error(
-      `this browser entry's version, ${version}, names no commit`,
+      "this browser entry was not packed: its commit is fixed by `npm run build:package`",
     );
-  return runtimeIri(commit);
+  return runtimeIri(CASCADE_RUNTIME_COMMIT);
 }

@@ -73,7 +73,10 @@ export async function bundleBrowser(
       "argon2-worker": join(WEB, "argon2-worker.js"),
     },
     outdir: out,
-    define: { CASCADE_ENTRY_VERSION: JSON.stringify(version) },
+    define: {
+      CASCADE_ENTRY_VERSION: JSON.stringify(version),
+      CASCADE_RUNTIME_COMMIT: JSON.stringify(packing.commit),
+    },
   });
   const glue = join(packing.bridge, BRIDGE_GLUE).replaceAll("\\", "/");
   await build({
