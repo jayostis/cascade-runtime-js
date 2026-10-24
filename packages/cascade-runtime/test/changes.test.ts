@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { changesIn, compact, type Row } from "cascade-runtime";
+import { changesIn, compact, type Row, timelineIn } from "cascade-runtime";
 
 const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
 const LOINC = "http://loinc.org/";
@@ -183,4 +183,30 @@ test("a stop is a day of its own, and a finding's compact form drops its rows an
   assert.equal("entry" in small.medication, false);
   assert.equal(small.medication.date, "2024-04-15");
   assert.ok(JSON.stringify(small).length < JSON.stringify(finding).length / 2);
+});
+
+test("a medication with no start of use starts on the day its prescription was written, and the timeline dates it so", () => {
+  const written: Row = { ...medicine("333", undefined), written: "2024-03-04" };
+  const [finding] = changesIn(
+    [written],
+    series(
+      "LDL",
+      "mg/dL",
+      ["2024-01-01", "160"],
+      ["2024-02-01", "158"],
+      ["2024-03-01", "165"],
+      ["2024-05-01", "100"],
+      ["2024-06-01", "98"],
+      ["2024-07-01", "96"],
+    ),
+  );
+  assert.deepEqual(
+    [finding?.key, finding?.medication.date],
+    ["start:333:LDL", "2024-03-04"],
+  );
+  assert.equal(timelineIn([written])[0]?.started, "2024-03-04");
+  assert.equal(
+    timelineIn([{ ...written, started: "2024-03-10" }])[0]?.started,
+    "2024-03-10",
+  );
 });
