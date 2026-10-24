@@ -8,6 +8,7 @@ import {
   byCodePoint,
   claimName,
   documentName,
+  findingName,
   inUtc,
   retractionName,
 } from "./names.js";
@@ -21,10 +22,13 @@ const PAV = "http://purl.org/pav/";
 const DCT = "http://purl.org/dc/terms/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
+const OA = "http://www.w3.org/ns/oa#";
 const TYPE = `${RDF}type`;
 /** The graph holding the descriptions of the versions a comparison reads and of their series, and no others. */
 const DESCRIBED = "urn:cascade:references";
-const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX dct: <${DCT}>`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX dct: <${DCT}> PREFIX oa: <${OA}>`;
+const NO_LONGER_REACHED = `${CASCADE}ClaimsNoLongerReached`;
+const THIS_FINDING = "urn:cascade:this-finding";
 
 export const MATCHER = `${CASCADE}CascadeMatcher`;
 const LENS = "everyday";
@@ -334,6 +338,8 @@ interface Pod {
   readonly revised: ReadonlySet<string>;
   /** Each ordered pair of members of a retracted matcher Same. */
   readonly retracted: ReadonlySet<string>;
+  /** Each rule list version a finding of the claims it no longer reaches names. */
+  readonly noLongerReachedUnder: ReadonlySet<string>;
 }
 
 /**
@@ -902,6 +908,63 @@ class Matcher {
   }
 
   /**
+   * Files the rule list version's finding of the claims it no longer reaches (M18), when the version revises another and
+   * the pod holds no such finding of it: every claim of the matcher's nothing withdraws that is asserted with the query
+   * hash of its rule's row in the version this one revises and with none of this version's row for it, this run's
+   * assertions counted. None when it would name none.
+   */
+  async fileNoLongerReached(): Promise<void> {
+    const version = this.rulesVersion;
+    const before =
+      version === "" ? undefined : this.references.revisionOf(version);
+    if (before === undefined || this.pod.noLongerReachedUnder.has(version))
+      return;
+    let hashesBefore: Map<string, string>;
+    try {
+      hashesBefore = ruleHashes(new Graph(await this.references.rows(before)));
+    } catch (error) {
+      if (error instanceof Refusal) return;
+      throw error;
+    }
+    const hashesNow = new Map(this.rules.map(({ term, hash }) => [term, hash]));
+    const claims: string[] = [];
+    for (const judged of this.pod.judgments) {
+      if (this.#filed.has(judged.name)) continue;
+      const asserted = this.pod.asserted.get(judged.name);
+      const was = hashesBefore.get(judged.rule);
+      const now = hashesNow.get(judged.rule);
+      if (
+        was === undefined ||
+        asserted?.has(was) !== true ||
+        (now !== undefined && asserted.has(now))
+      )
+        continue;
+      claims.push(judged.name);
+    }
+    if (claims.length === 0) return;
+    const content = (subject: string): Triple[] => [
+      [iri(subject), iri(TYPE), iri(`${CASCADE}FindingForReview`)],
+      [iri(subject), iri(`${OA}hasBody`), iri(NO_LONGER_REACHED)],
+      [
+        iri(subject),
+        iri(`${CASCADE}noLongerReachedUnderRuleListVersion`),
+        iri(version),
+      ],
+      ...claims.map((claim): Triple => [
+        iri(subject),
+        iri(`${OA}hasTarget`),
+        iri(claim),
+      ]),
+    ];
+    const name = await findingName(content(THIS_FINDING));
+    const { layout, writes } = this.context;
+    writes.add(
+      layout.place(`${CASCADE}FindingForReview`).path(name),
+      ntriples(content(name)),
+    );
+  }
+
+  /**
    * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
    * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
    * (M7). A star filed again joins it, so a claim triggers this once.
@@ -965,6 +1028,18 @@ interface Judged {
   readonly rule: string;
   readonly members: readonly string[];
   readonly used: readonly string[];
+}
+
+/** The query hash of each matcher rule a version of the rule list holds a row for, as its rows give it. */
+function ruleHashes(rows: Graph): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const row of rows.subjects(TYPE, iri(`${CASCADE}RuleListRow`))) {
+    const [rule] = rows.objects(row, `${CASCADE}matcherRule`);
+    const [hash] = rows.objects(row, `${CASCADE}queryHash`);
+    if (rule !== undefined && hash !== undefined)
+      found.set(rule.value, hash.value);
+  }
+  return found;
 }
 
 function pair(record: string | undefined, other: string | undefined): string {
@@ -1042,10 +1117,21 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
   const sames = grouped(
     await column(
       dataset,
-      "SELECT DISTINCT ?same ?member WHERE { ?same cascade:countsUnderLens true ; cascade:verdict cascade:Same ; prov:hadMember ?member }",
+      `SELECT DISTINCT ?same ?member WHERE {
+        { ?same cascade:countsUnderLens true ; cascade:verdict cascade:Same ; prov:hadMember ?member }
+        UNION
+        { ?answer cascade:countsUnderLens true ; cascade:verdict cascade:Same ; prov:hadMember ?finding .
+          ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?same .
+          ?same prov:hadMember ?member }
+      }`,
       "same",
       "member",
     ),
+  );
+  const noLongerReachedUnder = await column(
+    dataset,
+    `SELECT DISTINCT ?version WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; cascade:noLongerReachedUnderRuleListVersion ?version }`,
+    "version",
   );
   const different = await column(
     dataset,
@@ -1091,6 +1177,9 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       ),
     ),
     revised: references.revised(),
+    noLongerReachedUnder: new Set(
+      noLongerReachedUnder.flatMap(([version]) => version ?? []),
+    ),
     retracted: new Set(
       [...retracted.values()].flatMap((members) =>
         members.flatMap((record) =>
@@ -1161,8 +1250,10 @@ export async function runMatcher(
   const takes =
     activity === undefined ? undefined : await actsTaken(context, activity);
   const matcher = await Matcher.of(context, references, undefined, takes);
-  if (takes === undefined) await matcher.recheck();
-  else await matcher.take(takes);
+  if (takes === undefined) {
+    await matcher.recheck();
+    await matcher.fileNoLongerReached();
+  } else await matcher.take(takes);
   matcher.finish();
   return actOfRun(context, activity);
 }
@@ -1365,6 +1456,7 @@ export async function openPod(
   for (const version of line) await matcher.describe(version);
   await matcher.recheck();
   await matcher.rejoin();
+  await matcher.fileNoLongerReached();
   matcher.finish();
   const activity = actOfRun(context);
   return activity === undefined

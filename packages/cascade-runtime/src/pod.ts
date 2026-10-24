@@ -877,8 +877,10 @@ class OpenPod implements Pod {
     if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
       const members = of(`${PROV}hadMember`);
       const current = await this.#currentVersions(members);
+      const findings = await this.#findings(members);
       for (const member of members) {
         const version = current.get(member);
+        if (version === undefined && findings.has(member)) continue;
         if (version === undefined)
           throw new Error(
             `${member} has no current version in the pod: it names no record`,
@@ -903,6 +905,17 @@ class OpenPod implements Pod {
   }
 
   /** Each record's current version, under the everyday lens, by the record. */
+  /** Those of the things given that are findings for review, which have no versions: a Same may name one alone. */
+  async #findings(things: readonly string[]): Promise<Set<string>> {
+    if (things.length === 0) return new Set();
+    const { rows } = await this.#core.select(`${PREFIXES}
+      SELECT ?thing WHERE {
+        VALUES ?thing { ${things.map((thing) => `<${thing}>`).join(" ")} }
+        ?thing a cascade:FindingForReview .
+      }`);
+    return new Set(rows.flatMap((row) => row.get("thing")?.value ?? []));
+  }
+
   async #currentVersions(
     records: readonly string[],
   ): Promise<Map<string, string>> {

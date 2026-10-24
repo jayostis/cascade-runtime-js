@@ -668,6 +668,13 @@ rejoin them. `sameInstead` rests the matcher's join on the person. An Erroneous
 record leaves every view. A retraction takes a judgment back; none is edited.
 `cascade:OwnerStatement` is the one basis a person states.
 
+When a newer rule list stops joining pairs the matcher joined, its first run
+files one finding naming those claims, and `entry/What needs review` lists it
+as rows sharing one `finding`, one per pair now apart. Show it as one line the
+person answers once: a Same whose one member is the finding joins every pair,
+`cascade:Acknowledged` with the finding as its member takes the line off and
+changes nothing else, or the person judges the pairs one by one.
+
 ## When an export holds someone else's records
 
 An export can carry another person's records, a child's, under a hospital the

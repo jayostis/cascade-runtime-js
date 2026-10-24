@@ -15,6 +15,7 @@ import {
   containedRecordName,
   documentName,
   enteredRecordName,
+  findingName,
   recordFromCcdaName,
   recordFromCcdaWithoutIdName,
   recordFromDocumentName,
@@ -46,6 +47,13 @@ import {
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
+const FINDING = `${CASCADE}FindingForReview`;
+const OA = "http://www.w3.org/ns/oa#";
+const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
+/** Each kind of finding, by its words: its skos:prefLabel. */
+const FINDING_KINDS: Readonly<Record<string, string>> = {
+  "claims no longer reached": `${CASCADE}ClaimsNoLongerReached`,
+};
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -642,6 +650,8 @@ async function expectedJudgmentRow(
 }
 
 const RETRACTION_COLUMNS = ["justification", "members", "inputs", "name"];
+
+const FINDING_COLUMNS = ["kind", "under", "justification", "members", "name"];
 
 const JUDGMENT_COLUMNS = [
   "justification",
@@ -1285,6 +1295,7 @@ const DEFINITIONS: Definition[] = [
             iri(`${CASCADE}RuleListVersionMigration`),
           ),
           ...heldGraph.subjects(`${PROV}invalidated`),
+          ...heldGraph.subjects(`${RDF}type`, iri(FINDING)),
           ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}Snapshot`)),
           ...heldGraph.triples
             .filter(([, p]) => p.value === `${PROV}wasAssociatedWith`)
@@ -1437,6 +1448,107 @@ const DEFINITIONS: Definition[] = [
       }
       const expected = await Promise.all(
         rows.map((row) => expectedJudgmentRow(reading, row, columns)),
+      );
+      const problem = compared(
+        expected,
+        found.map((row) => row()),
+      );
+      if (problem !== undefined) failures.push(problem);
+      return failures.length === 0 ? undefined : failures.join("\n");
+    };
+  }),
+  then("{step} wrote these findings:", ([said], stated) => {
+    const rows = table(stated, FINDING_COLUMNS);
+    const columns = FINDING_COLUMNS.filter((column) =>
+      stated.table?.[0]?.includes(column),
+    );
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const held = await wroteGraph(reading, [step]);
+      const claims = new Map(
+        (await matcherJudgments(reading.store)).map((judged) => [
+          judged.name,
+          judged,
+        ]),
+      );
+      const kinds = Object.fromEntries(
+        Object.entries(FINDING_KINDS).map(([words, kind]) => [kind, words]),
+      );
+      const failures: string[] = [];
+      const found: (() => string)[] = [];
+      for (const finding of held.subjects(`${RDF}type`, iri(FINDING))) {
+        const [body = ""] = held
+          .objects(finding, `${OA}hasBody`)
+          .map(({ value }) => value);
+        const [under = ""] = held
+          .objects(finding, NO_LONGER_REACHED_UNDER)
+          .map(({ value }) => value);
+        const stated = held.match(finding);
+        const allowed = new Set([
+          `${RDF}type`,
+          `${OA}hasBody`,
+          `${OA}hasTarget`,
+          NO_LONGER_REACHED_UNDER,
+        ]);
+        for (const [, p, o] of stated)
+          if (!allowed.has(p.value))
+            failures.push(
+              `${finding.value} also states ${p.value} ${written(o)}`,
+            );
+        const named = await findingName(
+          stated.map(([, p, o]): Triple => [
+            iri("urn:cascade:this-finding"),
+            p,
+            o,
+          ]),
+        );
+        if (named !== finding.value)
+          failures.push(`${finding.value} is named ${named} by its triples`);
+        for (const { value: target } of held.objects(
+          finding,
+          `${OA}hasTarget`,
+        )) {
+          const judged = claims.get(target);
+          if (judged === undefined) {
+            failures.push(
+              `${finding.value} names ${target}, no claim of the matcher's`,
+            );
+            continue;
+          }
+          found.push(() =>
+            columns
+              .map((column) =>
+                column === "kind"
+                  ? (kinds[body] ?? `<${body}>`)
+                  : column === "under"
+                    ? reading.words.shown(under)
+                    : column === "name"
+                      ? finding.value
+                      : judgmentRow(reading, judged, [column]),
+              )
+              .join(" | "),
+          );
+        }
+      }
+      const expected = await Promise.all(
+        rows.map(async (row) =>
+          (
+            await Promise.all(
+              columns.map((column) =>
+                column === "kind" || column === "name"
+                  ? (row[column] ?? "")
+                  : column === "under"
+                    ? expectedJudgmentRow(
+                        reading,
+                        { "asserted under": row.under ?? "" },
+                        ["asserted under"],
+                      )
+                    : expectedJudgmentRow(reading, row, [column]),
+              ),
+            )
+          ).join(" | "),
+        ),
       );
       const problem = compared(
         expected,
