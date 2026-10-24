@@ -13,7 +13,7 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
   `packages/runtime/src/node/`; nothing else imports from there. What needs a
   browser is under `packages/runtime/src/web/`; only the package's browser
   entry, `packages/cascade-runtime/src/browser/`, imports from there.
-- **In the core, only an import and an entry session get a random ID**, from
+- **In the core, only an import and a matcher run get a random ID**, from
   `IdsAndTime.newId`, random on every run, in use and in replay. Outside it, the
   package `cascade-runtime` mints a new pod's naming base and subject's ID, and
   each person's judgment's IRI, on an app's behalf; nothing else ever does.

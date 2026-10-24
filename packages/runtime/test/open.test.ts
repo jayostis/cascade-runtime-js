@@ -13,6 +13,7 @@ import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 const FEATURE = "runtime/opening.feature";
 const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
 const ASSERTION = "https://ns.cascadeprotocol.org/cascade#ClaimAssertion";
+const MATCHER_RUN = "https://ns.cascadeprotocol.org/cascade#MatcherRun";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 /** The example replayed, its story's files those `source` gives for its folder, and otherwise the vocabulary's. */
@@ -37,7 +38,7 @@ async function replayed(
   return { pod, folder, opened: steps.at(-1) };
 }
 
-test("an open writes its judgments first and the descriptions of the versions it adopts last, oldest first (W1)", async () => {
+test("an open writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last (W1)", async () => {
   const { pod, opened } = await replayed(
     "adopting files again each Same the adopted rows still join, and a Same of each pair only they join",
   );
@@ -52,11 +53,13 @@ test("an open writes its judgments first and the descriptions of the versions it
       ([, predicate]) => predicate.value === "http://purl.org/pav/version",
     );
     kinds.push(
-      triples.some(([, , object]) => object.value === JUDGMENT)
-        ? "judgment"
-        : triples.some(([, , object]) => object.value === ASSERTION)
-          ? "assertion"
-          : `version ${version?.[2].value ?? "?"}`,
+      triples.some(([, , object]) => object.value === MATCHER_RUN)
+        ? "run"
+        : triples.some(([, , object]) => object.value === JUDGMENT)
+          ? "judgment"
+          : triples.some(([, , object]) => object.value === ASSERTION)
+            ? "assertion"
+            : `version ${version?.[2].value ?? "?"}`,
     );
   }
   assert.deepEqual(kinds, [
@@ -66,6 +69,7 @@ test("an open writes its judgments first and the descriptions of the versions it
     "assertion",
     "version 2",
     "version 3",
+    "run",
   ]);
 });
 
