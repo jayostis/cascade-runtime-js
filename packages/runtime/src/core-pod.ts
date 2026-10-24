@@ -9,6 +9,7 @@ import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import { type Kept, KeptClaims } from "./kept.js";
+import { HashedSet, type KeptSet } from "./kept-set.js";
 import { type Layout, SYNC } from "./layout.js";
 import {
   matcherView,
@@ -22,7 +23,6 @@ import {
   actDescriptionName,
   documentName,
   fileDigest,
-  setHash,
   snapshotName,
 } from "./names.js";
 import { type Act, same, StepWrites } from "./pod.js";
@@ -75,10 +75,11 @@ export interface CorePodOptions {
   readonly build?: { readonly lens: string; readonly derive: Derive };
 }
 
-/** A writer's last snapshot: its name and its set hash. */
+/** A writer's last snapshot: its name and its set hash, and what it keeps of the set it hashed. */
 export interface Head {
   readonly snapshot: string;
   readonly setHash: string;
+  readonly set?: KeptSet;
 }
 
 /** What a step did. */
@@ -365,8 +366,8 @@ export class CorePod {
   /** The writer's last snapshot, and whether the pod is known to hold it. */
   #head: Head | undefined;
   #headHeld = false;
-  /** The SHA-256 of each file of the set read so far, by path: no file, once written, changes. */
-  readonly #digests = new Map<string, Uint8Array>();
+  /** The set the writer's last act hashed and the files written since, held while no step fails after hashing it. */
+  #hashed: HashedSet | undefined;
   /** The answers M7 gives across table versions, kept across steps: what decides each never changes. */
   #keptClaims: KeptClaims;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
@@ -662,6 +663,9 @@ export class CorePod {
     );
     if (performed.refused !== undefined) return performed;
     if (fastForward !== undefined) {
+      const hashed = await this.#hashedSet(new Map());
+      this.#hashed = hashed;
+      fastForward = { ...fastForward, set: await hashed.kept() };
       this.#head = fastForward;
       this.#headHeld = true;
       await this.#options.keepHead?.(fastForward).catch(() => undefined);
@@ -777,6 +781,7 @@ export class CorePod {
     fork.#keptClaims = this.#keptClaims;
     fork.#head = this.#head;
     fork.#headHeld = this.#headHeld;
+    fork.#hashed = this.#hashed?.copy();
     for (const [path, file] of this.#chain) fork.#chain.set(path, file);
     if (this.#readShapes !== undefined) fork.#holdShapes(this.#readShapes);
     return fork;
@@ -791,6 +796,7 @@ export class CorePod {
       keepHead: undefined,
     });
     writer.#references = this.#references;
+    writer.#hashed = this.#hashed?.copy();
     for (const [path, file] of this.#chain) writer.#chain.set(path, file);
     if (this.#readShapes !== undefined) writer.#holdShapes(this.#readShapes);
     return writer;
@@ -866,11 +872,13 @@ export class CorePod {
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
       });
       let head: Head | undefined;
+      let hashed: { readonly set: HashedSet; readonly act: string } | undefined;
       const wrote = await writes.commit(
         options.pod,
         async (act, fresh, arrived) => {
           const finished = await this.#finished(act, fresh, arrived);
           head = finished.head;
+          hashed = { set: finished.hashed, act: act.path };
           return finished.triples;
         },
       );
@@ -878,6 +886,8 @@ export class CorePod {
       if (head !== undefined) {
         this.#head = head;
         this.#headHeld = true;
+        const kept = await this.#keptAfter(hashed);
+        if (kept !== undefined) this.#head = head = { ...head, set: kept };
         await options.keepHead?.(head).catch(() => undefined);
       }
       performed =
@@ -910,25 +920,15 @@ export class CorePod {
     act: Act,
     fresh: readonly (readonly [string, Uint8Array])[],
     arrived: ReadonlySet<string>,
-  ): Promise<{ readonly triples: Triple[]; readonly head: Head }> {
-    const { pod, layout, runtime } = this.#options;
+  ): Promise<{
+    readonly triples: Triple[];
+    readonly head: Head;
+    readonly hashed: HashedSet;
+  }> {
+    const { layout, runtime } = this.#options;
     const written = new Map(fresh);
-    const set = [...new Set([...(await pod.list("")), ...written.keys()])]
-      .filter((path) => path !== act.path && layout.inSnapshotSet(path))
-      .sort();
-    const files: [string, Uint8Array][] = [];
-    for (const path of set) {
-      let digest = this.#digests.get(path);
-      if (digest === undefined) {
-        const bytes = written.get(path) ?? (await pod.read(path));
-        if (bytes === undefined)
-          throw new Error(`${path} is listed but not held`);
-        digest = await fileDigest(bytes);
-        this.#digests.set(path, digest);
-      }
-      files.push([path, digest]);
-    }
-    const hash = await setHash(files);
+    const hashed = await this.#hashedSet(written, act.path);
+    const hash = await hashed.setHash();
     const sync = act.triples.some(
       ([, p, o]) => p.value === TYPE && o.value === SYNC,
     );
@@ -973,6 +973,7 @@ export class CorePod {
     );
     return {
       head: { snapshot, setHash: hash },
+      hashed,
       triples: [
         ...description.slice(act.triples.length),
         [node, iri(TYPE), iri(`${CASCADE}Snapshot`)],
@@ -999,6 +1000,71 @@ export class CorePod {
         ]),
       ],
     };
+  }
+
+  /**
+   * The set the writer has hashed, with every file of the set the pod lists, and each written, but the one `leaving`,
+   * multiplied in once. It starts from the one held across steps, else from the one kept beside the writer's head when
+   * the pod lists exactly its files, else, as for a new writer or when the pod no longer holds a file of it, from every
+   * file read. It is held again only once the step that hashed it is written.
+   */
+  async #hashedSet(
+    written: ReadonlyMap<string, Uint8Array>,
+    leaving?: string,
+  ): Promise<HashedSet> {
+    const { pod, layout } = this.#options;
+    const listing = await pod.list("");
+    const inSet = (path: string) =>
+      path !== leaving && layout.inSnapshotSet(path);
+    const kept = this.#head?.set;
+    const held =
+      this.#hashed ??
+      (kept === undefined
+        ? undefined
+        : await HashedSet.kept(kept, new Set(listing.filter(inSet))));
+    this.#hashed = undefined;
+    const paths = [...listing, ...written.keys()];
+    const missing = held?.missing(paths, inSet);
+    const digests = async (paths: Iterable<string>) => {
+      const files = new Map<string, Uint8Array>();
+      for (const path of paths)
+        files.set(path, await this.#digestOf(path, written));
+      return files;
+    };
+    if (held === undefined || missing === undefined)
+      return HashedSet.of(await digests(new Set(paths.filter(inSet))));
+    await held.add(await digests(missing));
+    return held;
+  }
+
+  /**
+   * What the writer keeps of the set its act hashed, with the act's own file once written unless a sync's; held from
+   * then on. When the act's file cannot be read back, nothing is held or kept, and the next act hashes the whole set.
+   */
+  async #keptAfter(
+    hashed: { readonly set: HashedSet; readonly act: string } | undefined,
+  ): Promise<KeptSet | undefined> {
+    if (hashed === undefined) return undefined;
+    const { set, act } = hashed;
+    try {
+      if (this.#options.layout.inSnapshotSet(act))
+        await set.add([[act, await this.#digestOf(act, new Map())]]);
+      const kept = await set.kept();
+      this.#hashed = set;
+      return kept;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The SHA-256 of the file's bytes, as written or as the pod holds them. */
+  async #digestOf(
+    path: string,
+    written: ReadonlyMap<string, Uint8Array>,
+  ): Promise<Uint8Array> {
+    const bytes = written.get(path) ?? (await this.#options.pod.read(path));
+    if (bytes === undefined) throw new Error(`${path} is listed but not held`);
+    return fileDigest(bytes);
   }
 
   async #rebuild(

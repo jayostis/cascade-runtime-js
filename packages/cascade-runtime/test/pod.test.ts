@@ -16,15 +16,20 @@ import { after, before, test } from "node:test";
 import {
   type DeriveKey,
   EncryptedFiles,
+  findingName,
   type FolderPack,
+  iri,
   JUSTIFICATIONS,
   Layout,
   MATCHER,
   MemoryFiles,
+  ntriples,
   OxigraphStore,
   type Placed,
   questions,
+  RDF,
   recordFromServerName,
+  type Triple,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -63,6 +68,8 @@ const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pav: <http://purl.org/pav/>
 `;
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+const OA = "http://www.w3.org/ns/oa#";
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
@@ -190,12 +197,16 @@ function about(profile: string, named = "urn:cascade:this-judgment"): string {
 <${pod.owner}> a prov:Person .`;
 }
 
-function judgment(verdict: string, members: readonly string[]): string {
+function judgment(
+  verdict: string,
+  members: readonly string[],
+  by: Pod = pod,
+): string {
   return `${PREFIXES}
 <urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:${verdict} ;
     ${members.map((member) => `prov:hadMember <${member}> ;`).join(" ")}
-    prov:wasAttributedTo <${pod.owner}> .
-<${pod.owner}> a prov:Person .`;
+    prov:wasAttributedTo <${by.owner}> .
+<${by.owner}> a prov:Person .`;
 }
 
 async function allergens(of: Pod = pod): Promise<string[]> {
@@ -540,6 +551,44 @@ test("a connect is matched by default, so a hospital's server at a new path on i
     ]);
   } finally {
     await fresh.close();
+  }
+});
+
+test("a Same whose one member is a finding the pod holds is filed naming no version; a Different over it, or a Same over a thing the pod does not hold, is refused", async () => {
+  const at = join(pods, "a-finding");
+  await (await openPodWith(kept, at)).close();
+  const content = (subject: string): Triple[] => [
+    [iri(subject), iri(`${RDF}type`), iri(`${CASCADE}FindingForReview`)],
+    [iri(subject), iri(`${OA}hasBody`), iri(`${CASCADE}ClaimsNoLongerReached`)],
+  ];
+  const finding = await findingName(content("urn:cascade:this-finding"));
+  const path = join(
+    at,
+    ...kept.layout.place(`${CASCADE}FindingForReview`).path(finding).split("/"),
+  );
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, ntriples(content(finding)));
+  const held = await openPodWith(kept, at);
+  try {
+    const same = await held.judge(judgment("Same", [finding], held));
+    assert.ok(same.judgment);
+    assert.deepEqual(
+      await held.ask({
+        query: `${PREFIXES}SELECT ?version WHERE { <${same.judgment}> prov:used ?version }`,
+      }),
+      [],
+    );
+    await assert.rejects(
+      held.judge(judgment("Different", [finding], held)),
+      (error: Error) => error.message.includes(finding),
+    );
+    const unknown = "urn:uuid:3f6c2a8e-7d41-4b9a-a5e2-0c8d9b1f4e67";
+    await assert.rejects(
+      held.judge(judgment("Same", [unknown], held)),
+      (error: Error) => error.message.includes(unknown),
+    );
+  } finally {
+    await held.close();
   }
 });
 

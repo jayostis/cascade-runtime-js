@@ -5,6 +5,7 @@ export * from "./compare.js";
 export * from "./config.js";
 export * from "./conformance.js";
 export * from "./core-pod.js";
+export type { KeptSet } from "./kept-set.js";
 export * from "./dataset.js";
 export * from "./features.js";
 export * from "./derive.js";

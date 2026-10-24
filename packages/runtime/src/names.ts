@@ -613,7 +613,7 @@ function chacha20Number(key: Uint8Array, blocks: number): bigint {
   CHACHA20_CONSTANTS.forEach((word, index) => (state[index] = word));
   for (let index = 0; index < 8; index++)
     state[4 + index] = keyWords.getUint32(index * 4, true);
-  const words = new Uint32Array(blocks * 16);
+  const stream = new DataView(new ArrayBuffer(blocks * 64));
   const x = new Uint32Array(16);
   for (let block = 0; block < blocks; block++) {
     state[12] = block;
@@ -629,12 +629,16 @@ function chacha20Number(key: Uint8Array, blocks: number): bigint {
       quarter(x, 3, 4, 9, 14);
     }
     for (let index = 0; index < 16; index++)
-      words[block * 16 + index] = (x[index] ?? 0) + (state[index] ?? 0);
+      stream.setUint32(
+        (block * 16 + index) * 4,
+        (x[index] ?? 0) + (state[index] ?? 0),
+        true,
+      );
   }
-  let text = "0x";
-  for (let index = words.length - 1; index >= 0; index--)
-    text += (words[index] ?? 0).toString(16).padStart(8, "0");
-  return BigInt(text);
+  let number = 0n;
+  for (let offset = stream.byteLength - 8; offset >= 0; offset -= 8)
+    number = (number << 64n) | stream.getBigUint64(offset, true);
+  return number;
 }
 
 function toLittleEndian(value: bigint, length: number): Uint8Array {
@@ -656,6 +660,13 @@ function reduced(value: bigint): bigint {
   return left >= MUHASH_MODULUS ? left - MUHASH_MODULUS : left;
 }
 
+/** The number a member multiplies into a MuHash3072 product: its SHA-256's ChaCha20 keystream. */
+function memberNumber(hasher: IHasher, member: Uint8Array): bigint {
+  hasher.init();
+  hasher.update(member);
+  return chacha20Number(hasher.digest("binary"), MUHASH_BYTES / 64);
+}
+
 /**
  * Bitcoin Core's MuHash3072 over the byte strings, each inserted once: the SHA-256 of the product, modulo
  * 2^3072 - 1103717, of each one's ChaCha20 keystream under its SHA-256 read as a 384-byte little-endian number, the
@@ -666,14 +677,71 @@ export async function muhash3072(
 ): Promise<Uint8Array> {
   const hasher = await sha256Hasher();
   let product = 1n;
-  for (const member of members) {
-    hasher.init();
-    hasher.update(member);
-    product = reduced(
-      product * chacha20Number(hasher.digest("binary"), MUHASH_BYTES / 64),
-    );
-  }
+  for (const member of members)
+    product = reduced(product * memberNumber(hasher, member));
   return sha256(toLittleEndian(product, MUHASH_BYTES));
+}
+
+/** A set hash's member: the file's path in UTF-8, a 0x00 byte and the SHA-256 of its bytes. */
+function setMember(path: string, digest: Uint8Array): Uint8Array {
+  const encoded = new TextEncoder().encode(path);
+  const member = new Uint8Array(encoded.length + 1 + digest.length);
+  member.set(encoded);
+  member.set(digest, encoded.length + 1);
+  return member;
+}
+
+/**
+ * The MuHash3072 product of a set hash's members, so that a file added to the set is one multiplication: whatever
+ * order the files are added in, its set hash is `setHash`'s of the same files. Each file is added once.
+ */
+export class SetHashProduct {
+  #product: bigint;
+
+  private constructor(product: bigint) {
+    this.#product = product;
+  }
+
+  /** The product of no member. */
+  static empty(): SetHashProduct {
+    return new SetHashProduct(1n);
+  }
+
+  /** The product `bytes()` wrote; undefined for bytes no product writes. */
+  static read(bytes: Uint8Array): SetHashProduct | undefined {
+    if (bytes.length !== MUHASH_BYTES) return undefined;
+    let text = "0x";
+    for (let index = bytes.length - 1; index >= 0; index--)
+      text += (bytes[index] ?? 0).toString(16).padStart(2, "0");
+    const product = BigInt(text);
+    return product === 0n || product >= MUHASH_MODULUS
+      ? undefined
+      : new SetHashProduct(product);
+  }
+
+  copy(): SetHashProduct {
+    return new SetHashProduct(this.#product);
+  }
+
+  /** Multiplies in each file, given by its path and the SHA-256 of its bytes. */
+  async add(
+    files: Iterable<readonly [path: string, sha256: Uint8Array]>,
+  ): Promise<void> {
+    const hasher = await sha256Hasher();
+    for (const [path, digest] of files)
+      this.#product = reduced(
+        this.#product * memberNumber(hasher, setMember(path, digest)),
+      );
+  }
+
+  /** The product as 384 bytes little-endian. */
+  bytes(): Uint8Array {
+    return toLittleEndian(this.#product, MUHASH_BYTES);
+  }
+
+  async setHash(): Promise<string> {
+    return hex(await sha256(this.bytes()));
+  }
 }
 
 /**
@@ -683,16 +751,9 @@ export async function muhash3072(
 export async function setHash(
   files: Iterable<readonly [path: string, sha256: Uint8Array]>,
 ): Promise<string> {
-  const encoder = new TextEncoder();
-  const members: Uint8Array[] = [];
-  for (const [path, digest] of new Map(files)) {
-    const encoded = encoder.encode(path);
-    const member = new Uint8Array(encoded.length + 1 + digest.length);
-    member.set(encoded);
-    member.set(digest, encoded.length + 1);
-    members.push(member);
-  }
-  return hex(await muhash3072(members));
+  const product = SetHashProduct.empty();
+  await product.add(new Map(files));
+  return product.setHash();
 }
 
 /** The SHA-256 of the bytes, as `setHash` takes a file's. */
