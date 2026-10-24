@@ -7,20 +7,48 @@ const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
 
+/** Frees what Oxigraph holds in its WebAssembly memory for each object now, rather than when the object is collected. */
+function free(...objects: readonly unknown[]): void {
+  for (const object of objects) (object as { free?: () => void }).free?.();
+}
+
 function fromOxigraph(term: oxigraph.Term): Term {
-  switch (term.termType) {
-    case "NamedNode":
-      return iri(term.value);
-    case "BlankNode":
-      return blank(term.value);
-    case "Literal":
-      return term.language
-        ? literal(term.value, { language: term.language })
-        : literal(term.value, term.datatype.value);
-    default:
-      throw new Error(
-        `Oxigraph gave a ${term.termType} where a triple's term was expected`,
-      );
+  try {
+    switch (term.termType) {
+      case "NamedNode":
+        return iri(term.value);
+      case "BlankNode":
+        return blank(term.value);
+      case "Literal": {
+        if (term.language)
+          return literal(term.value, { language: term.language });
+        const datatype = term.datatype;
+        try {
+          return literal(term.value, datatype.value);
+        } finally {
+          free(datatype);
+        }
+      }
+      default:
+        throw new Error(
+          `Oxigraph gave a ${term.termType} where a triple's term was expected`,
+        );
+    }
+  } finally {
+    free(term);
+  }
+}
+
+/** The quad's triple, the quad and its terms freed. */
+function tripleOf(quad: oxigraph.Quad): Triple {
+  try {
+    return [
+      fromOxigraph(quad.subject) as Triple[0],
+      fromOxigraph(quad.predicate) as Triple[1],
+      fromOxigraph(quad.object),
+    ];
+  } finally {
+    free(quad);
   }
 }
 
@@ -32,17 +60,28 @@ function toOxigraph(
       return oxigraph.namedNode(term.value);
     case "BlankNode":
       return oxigraph.blankNode(term.value);
-    case "Literal":
-      return term.language
-        ? oxigraph.literal(term.value, { language: term.language })
-        : oxigraph.literal(term.value, oxigraph.namedNode(term.datatype.value));
+    case "Literal": {
+      if (term.language)
+        return oxigraph.literal(term.value, { language: term.language });
+      const datatype = oxigraph.namedNode(term.datatype.value);
+      try {
+        return oxigraph.literal(term.value, datatype);
+      } finally {
+        free(datatype);
+      }
+    }
   }
 }
 
 /** The Store on Oxigraph's JavaScript build. */
 export class OxigraphStore implements Store {
-  readonly #store = new oxigraph.Store();
+  #oxigraph: oxigraph.Store | undefined;
   readonly #graphs = new Set<string>();
+
+  /** Made on first use, so a store only parsed with holds nothing in Oxigraph's memory. */
+  get #store(): oxigraph.Store {
+    return (this.#oxigraph ??= new oxigraph.Store());
+  }
 
   /**
    * Oxigraph reads the union of every graph it holds about as fast as one graph, and a union it is given as a list
@@ -76,11 +115,7 @@ export class OxigraphStore implements Store {
   async parse(turtle: Uint8Array | string, base: string): Promise<Triple[]> {
     return oxigraph
       .parse(turtle, { format: TURTLE, base_iri: base })
-      .map((quad): Triple => [
-        fromOxigraph(quad.subject) as Triple[0],
-        fromOxigraph(quad.predicate) as Triple[1],
-        fromOxigraph(quad.object),
-      ]);
+      .map(tripleOf);
   }
 
   async add(triples: Iterable<Triple>, options: LoadOptions): Promise<void> {
@@ -94,14 +129,19 @@ export class OxigraphStore implements Store {
         ground.push(`${triple.map(written).join(" ")} .\n`);
         continue;
       }
-      this.#store.add(
-        oxigraph.quad(
-          toOxigraph(subject) as oxigraph.NamedNode | oxigraph.BlankNode,
-          oxigraph.namedNode(predicate.value),
-          toOxigraph(object),
-          graph,
-        ),
+      const terms = [
+        toOxigraph(subject),
+        oxigraph.namedNode(predicate.value),
+        toOxigraph(object),
+      ] as const;
+      const quad = oxigraph.quad(
+        terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
+        terms[1],
+        terms[2],
+        graph,
       );
+      this.#store.add(quad);
+      free(quad, ...terms);
     }
     if (ground.length > 0) {
       this.#store.load(ground.join(""), {
@@ -109,6 +149,7 @@ export class OxigraphStore implements Store {
         to_graph_name: graph,
       });
     }
+    free(graph);
     if (any) this.#graphs.add(options.graph);
   }
 
@@ -140,19 +181,29 @@ export class OxigraphStore implements Store {
     triples: readonly Triple[],
     union: ReadonlySet<string>,
   ): Promise<boolean[]> {
-    return triples.map(([subject, predicate, object]) =>
-      this.#store
-        .match(
-          toOxigraph(subject) as oxigraph.NamedNode | oxigraph.BlankNode,
-          oxigraph.namedNode(predicate.value),
-          toOxigraph(object),
-          null,
-        )
-        .some(
-          ({ graph }) =>
-            graph.termType === "NamedNode" && union.has(graph.value),
-        ),
-    );
+    return triples.map(([subject, predicate, object]) => {
+      const terms = [
+        toOxigraph(subject),
+        oxigraph.namedNode(predicate.value),
+        toOxigraph(object),
+      ] as const;
+      const quads = this.#store.match(
+        terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
+        terms[1],
+        terms[2],
+        null,
+      );
+      const held = quads.some((quad) => {
+        const graph = quad.graph;
+        try {
+          return graph.termType === "NamedNode" && union.has(graph.value);
+        } finally {
+          free(graph);
+        }
+      });
+      free(...terms, ...quads);
+      return held;
+    });
   }
 
   async construct(
@@ -163,10 +214,6 @@ export class OxigraphStore implements Store {
     if (!Array.isArray(answer) || answer.some((item) => item instanceof Map)) {
       throw new Error("a query that is no CONSTRUCT was run as one");
     }
-    return (answer as oxigraph.Quad[]).map((quad): Triple => [
-      fromOxigraph(quad.subject) as Triple[0],
-      fromOxigraph(quad.predicate) as Triple[1],
-      fromOxigraph(quad.object),
-    ]);
+    return (answer as oxigraph.Quad[]).map(tripleOf);
   }
 }
