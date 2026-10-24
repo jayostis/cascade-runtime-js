@@ -1,4 +1,5 @@
-import { fileEntry, fileExport } from "./arrivals.js";
+import { ConnectRefused, readConnect } from "@cascade-runtime/fhir-pull";
+import { fileConnect, fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
 import { builtFileBytes, type Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
@@ -468,6 +469,20 @@ export class CorePod {
       );
       await onProgress?.({ part: "saving" });
       return activity;
+    });
+  }
+
+  /** A connect to a server, as the folder of the files saves it (A16, A14). */
+  connect(saved: Pick<Files, "read">, folder: string): Promise<Performed> {
+    return this.#step(async (context) => {
+      let reported;
+      try {
+        reported = await readConnect(saved, folder);
+      } catch (error) {
+        if (!(error instanceof ConnectRefused)) throw error;
+        throw new Refusal(`${folder}: ${error.message}`);
+      }
+      return fileConnect(context, reported);
     });
   }
 

@@ -86,6 +86,12 @@ export const PERFORMERS: Performers = {
     return pod.create();
   },
   import: importSaved,
+  connect: (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "connect") throw new Error("the step is no connect");
+    begun(story, step);
+    return pod.connect(story.source, inStory(story.folder, happened.folder));
+  },
   entry: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "entry") throw new Error("the step is no entry");

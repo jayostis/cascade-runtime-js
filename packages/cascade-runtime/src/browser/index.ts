@@ -618,6 +618,10 @@ class BrowserPod implements Pod {
     );
   }
 
+  async connect(saved: Exported): Promise<Done> {
+    return (await this.#pod()).connect(saved);
+  }
+
   async enter(turtle: string, options?: { match?: boolean }): Promise<Done> {
     return (await this.#pod()).enter(turtle, options);
   }
