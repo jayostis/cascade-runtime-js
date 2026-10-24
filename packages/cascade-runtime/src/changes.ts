@@ -28,6 +28,8 @@ export interface Finding {
     code?: string;
     notation?: string;
     date: string;
+    /** Which of the medication's dates `date` is: a prescription with no start of use is placed on the day it was written. */
+    dateIs: DateIs;
     entry: string;
   };
   test: { code: string; notation?: string; name?: string };
@@ -45,6 +47,9 @@ export interface Finding {
   /** The pod's lab rows, as `ask` gave them. */
   rows: { before: Row[]; after: Row[]; left: Row[] };
 }
+
+/** The medication date a finding is placed on (decision row 9 of one-meaning-per-term). */
+export type DateIs = "start of use" | "prescription written" | "end of use";
 
 export type CompactFinding = Omit<Finding, "rows" | "medication"> & {
   medication: Omit<Finding["medication"], "entry">;
@@ -96,6 +101,7 @@ interface Result {
 interface Event {
   kind: Finding["kind"];
   day: string;
+  dateIs: DateIs;
   row: Row;
 }
 
@@ -226,6 +232,7 @@ function pair(
       ...(event.row.code ? { code: event.row.code } : {}),
       ...(notation ? { notation } : {}),
       date: event.day,
+      dateIs: event.dateIs,
       entry: event.row.entry ?? "",
     },
     test: {
@@ -255,6 +262,14 @@ function pair(
   return finding;
 }
 
+/** A medication's place in time: its start of use, else the day its prescription was written, and which it is. */
+function placeOf(row: Row): { day: string; dateIs: DateIs } | undefined {
+  const started = dayOf(row.started);
+  if (started) return { day: started, dateIs: "start of use" };
+  const written = dayOf(row.written);
+  return written ? { day: written, dateIs: "prescription written" } : undefined;
+}
+
 /**
  * A drug's entries as one therapy, keyed as a finding's key is: the earliest start and the latest end, so yearly
  * renewals of one drug are one start, not as many as there are renewals. The first entry with the earliest start
@@ -263,11 +278,11 @@ function pair(
 function therapies(medications: readonly Row[]) {
   const byDrug = new Map<
     string,
-    { row: Row; started?: string; ended?: string }
+    { row: Row; started?: { day: string; dateIs: DateIs }; ended?: string }
   >();
   for (const row of medications) {
     const label = notationOf(row.code) ?? row.medication ?? "";
-    const started = dayOf(row.started);
+    const started = placeOf(row);
     const ended = dayOf(row.ended);
     const kept = byDrug.get(label);
     if (kept === undefined) {
@@ -278,7 +293,10 @@ function therapies(medications: readonly Row[]) {
       });
       continue;
     }
-    if (started && (kept.started === undefined || started < kept.started)) {
+    if (
+      started &&
+      (kept.started === undefined || started.day < kept.started.day)
+    ) {
       kept.started = started;
       kept.row = row;
     }
@@ -322,8 +340,14 @@ export function changesIn(
   const found = new Map<string, Finding>();
   for (const { row, started, ended } of therapies(chosen)) {
     const events: Event[] = [];
-    if (started) events.push({ kind: "after start", day: started, row });
-    if (ended) events.push({ kind: "after stop", day: ended, row });
+    if (started) events.push({ kind: "after start", ...started, row });
+    if (ended)
+      events.push({
+        kind: "after stop",
+        day: ended,
+        dateIs: "end of use",
+        row,
+      });
     for (const event of events)
       for (const test of tests) {
         const finding = pair(
@@ -374,7 +398,7 @@ export function compact(finding: Finding): CompactFinding {
     left,
     score,
   } = finding;
-  const { name, code, notation, date } = medication;
+  const { name, code, notation, date, dateIs } = medication;
   return {
     key,
     kind,
@@ -383,6 +407,7 @@ export function compact(finding: Finding): CompactFinding {
       ...(code ? { code } : {}),
       ...(notation ? { notation } : {}),
       date,
+      dateIs,
     },
     test,
     unit,
@@ -442,11 +467,14 @@ export interface TimelineEntry {
   code?: string;
   notation?: string;
   status?: string;
+  /** The day its use started, as a source stated it. */
   started?: string;
+  /** The day its prescription was written. */
+  written?: string;
   ended?: string;
 }
 
-/** Each medication with its start and end, by start. */
+/** Each medication with its start, the day its prescription was written and its end, by start, else by that day. */
 export function timelineIn(medications: readonly Row[]): TimelineEntry[] {
   const timed = medications.map((row): TimelineEntry => {
     const notation = notationOf(row.code);
@@ -456,13 +484,16 @@ export function timelineIn(medications: readonly Row[]): TimelineEntry[] {
       ...(notation ? { notation } : {}),
       ...(row.status ? { status: row.status } : {}),
       ...(dayOf(row.started) ? { started: dayOf(row.started) } : {}),
+      ...(dayOf(row.written) ? { written: dayOf(row.written) } : {}),
       ...(dayOf(row.ended) ? { ended: dayOf(row.ended) } : {}),
     };
   });
+  const place = (entry: TimelineEntry): string =>
+    entry.started ?? entry.written ?? "9999";
   return timed.sort((a, b) =>
-    (a.started ?? "9999") < (b.started ?? "9999")
+    place(a) < place(b)
       ? -1
-      : (a.started ?? "9999") > (b.started ?? "9999")
+      : place(a) > place(b)
         ? 1
         : a.name < b.name
           ? -1
@@ -507,7 +538,7 @@ export function changeTools(pod: ChangesPod): ChangeTool[] {
   return [
     tool(
       "find_changes",
-      "What changed in a person's lab results after a medication started or stopped, strongest first. States what changed, never why.",
+      "What changed in a person's lab results after a medication started or stopped, strongest first: a medication with no start of use is placed on the day its prescription was written, and each finding says which date it used. States what changed, never why.",
       {
         type: "object",
         properties: {
@@ -557,7 +588,7 @@ export function changeTools(pod: ChangesPod): ChangeTool[] {
     ),
     tool(
       "timeline",
-      "Each medication with the day it started and the day it ended.",
+      "Each medication with the day its use started, the day its prescription was written and the day it ended, each where the pod states it, placed by its start, else by the day it was written.",
       { type: "object", properties: {}, additionalProperties: false },
       () => timeline(pod),
     ),

@@ -1,6 +1,6 @@
 import { iri } from "@cascade-runtime/runtime";
 import { type Listed, notation } from "../rows.js";
-import { PAGE_SIZE, REC, SHIPS_WITH } from "./constants.js";
+import { PAGE_SIZE, CASCADE, DEFAULT_TABLE_VERSION } from "./constants.js";
 import { currentOfKind, ofAKind } from "./references-index.js";
 import type { Searched, TablesContext } from "./types.js";
 
@@ -81,7 +81,7 @@ async function versionsOf(
   const { index } = await context.references();
   return (typeof series === "string" ? [series] : series).flatMap((each) =>
     ofAKind(index, iri(each))
-      ? (index.objects(iri(each), SHIPS_WITH)[0]?.value ?? [])
+      ? (index.objects(iri(each), DEFAULT_TABLE_VERSION)[0]?.value ?? [])
       : [],
   );
 }
@@ -93,7 +93,7 @@ async function namesListed(context: TablesContext): Promise<Listed["names"][]> {
     currentOfKind(
       references,
       context.options.preference,
-      `${REC}CodeNames`,
+      `${CASCADE}CodeNames`,
     ).map(async ({ version }) => (await context.indexes.listed(version)).names),
   );
 }

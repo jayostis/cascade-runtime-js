@@ -2,48 +2,50 @@ import { Derivations, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
-import { documentName, inUtc, recordName } from "./names.js";
 import {
-  codeIri,
-  iri,
-  literal,
-  ntriples,
-  RDF,
-  type Triple,
-  XSD,
-} from "./rdf.js";
+  assertionName,
+  byCodePoint,
+  claimName,
+  documentName,
+  inUtc,
+} from "./names.js";
+import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
-import { REC, Refusal, type StepContext } from "./step.js";
+import { CASCADE, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const NPX = "http://purl.org/nanopub/x/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const TYPE = `${RDF}type`;
-const PREFIXES = `PREFIX rec: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX jdg: <${JDG}> PREFIX npx: <${NPX}>`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX npx: <${NPX}>`;
 
-export const MATCHER = "urn:uuid:80bcb9f7-34ae-432b-bd78-ba2616a81f76";
+export const MATCHER = `${CASCADE}CascadeMatcher`;
 const LENS = "everyday";
 const COMPARISONS = `${QUERIES}matcher/`;
 
 export interface MatcherRule {
+  /** The matcher rule term the row names. */
+  readonly term: string;
   readonly justification: string;
+  /** The record classes it compares. */
   readonly appliesTo: ReadonlySet<string>;
   readonly query: string;
+  /** The name of the query's bytes, which the rule's claims are asserted with. */
+  readonly hash: string;
   readonly kind?: string;
 }
 
 interface SubjectRecord {
   readonly name: string;
-  readonly kind: string;
+  readonly classes: ReadonlySet<string>;
   readonly version: string;
   readonly arrived: readonly [string, string];
   readonly activity?: string;
 }
 
-/** The path a rule's query names under `queries/v1-draft/`, when it resolves inside `matcher/` and holds no backslash. */
+/** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
 function comparison(query: string): string | undefined {
   if (query.includes("\\") || /^(\/|[a-z][a-z0-9+.-]*:)/i.test(query))
     return undefined;
@@ -63,17 +65,18 @@ export async function matcherRules(
   vocabulary: Files,
 ): Promise<{ rule: MatcherRule; text: string }[]> {
   const found: { rule: MatcherRule; text: string }[] = [];
-  for (const row of rows.subjects(TYPE, iri(`${REC}MatcherRule`))) {
+  for (const row of rows.subjects(TYPE, iri(`${CASCADE}RuleListRow`))) {
     const one = (predicate: string): string => {
-      const values = rows.objects(row, `${REC}${predicate}`);
+      const values = rows.objects(row, `${CASCADE}${predicate}`);
       if (values.length !== 1)
         throw new Refusal(
-          `a rule of the rule list gives ${values.length} rec:${predicate}, not one`,
+          `a rule of the rule list gives ${values.length} cascade:${predicate}, not one`,
         );
       return values[0]?.value ?? "";
     };
+    const term = one("matcherRule");
     const justification = one("justifiedAs");
-    const query = one("query");
+    const query = one("queryPath");
     const expected = one("queryHash");
     const path = comparison(query);
     if (path === undefined)
@@ -85,18 +88,22 @@ export async function matcherRules(
       throw new Refusal(
         `${query} does not hash to ${expected}, as the rule for ${justification} says it does`,
       );
-    const kinds = rows.objects(row, `${REC}tableKind`);
+    const kinds = rows.objects(row, `${CASCADE}tableKind`);
     if (kinds.length > 1)
       throw new Refusal(
         `the rule for ${justification} reads ${kinds.length} table kinds, not one`,
       );
     found.push({
       rule: {
+        term,
         justification,
         appliesTo: new Set(
-          rows.objects(row, `${REC}appliesTo`).map(({ value }) => value),
+          rows
+            .objects(row, `${CASCADE}appliesToClass`)
+            .map(({ value }) => value),
         ),
         query: path,
+        hash: expected,
         ...(kinds[0] === undefined ? {} : { kind: kinds[0].value }),
       },
       text: new TextDecoder().decode(bytes),
@@ -181,24 +188,24 @@ async function subjectRecords(
 ): Promise<Map<string, SubjectRecord>> {
   const subjects = await column(
     dataset,
-    "SELECT DISTINCT ?subject WHERE { ?subject a rec:Subject }",
+    "SELECT DISTINCT ?subject WHERE { ?subject a cascade:Subject }",
     "subject",
   );
   const [subject] = subjects;
   if (subjects.length !== 1 || subject?.[0] === undefined)
     throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
-  const theirs = `?record rec:subject <${subject[0]}> .`;
+  const theirs = `?record a cascade:Record ; cascade:subject <${subject[0]}> .`;
   const records = await column(
     dataset,
     `SELECT DISTINCT ?record WHERE { ${theirs} }`,
     "record",
   );
-  const kinds = grouped(
+  const classes = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?record ?kind WHERE { ${theirs} ?record rec:kind ?kind }`,
+      `SELECT DISTINCT ?record ?class WHERE { ${theirs} ?record a ?class }`,
       "record",
-      "kind",
+      "class",
     ),
   );
   const versions = grouped(
@@ -212,7 +219,7 @@ async function subjectRecords(
   const firsts = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
+      `SELECT DISTINCT ?record ?first WHERE { ${theirs} ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier } }`,
       "record",
       "first",
     ),
@@ -220,7 +227,7 @@ async function subjectRecords(
   const times = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:generatedAtTime ?at }`,
+      `SELECT DISTINCT ?first ?at WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:generatedAtTime ?at }`,
       "first",
       "at",
     ),
@@ -228,7 +235,7 @@ async function subjectRecords(
   const activities = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first rec:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
+      `SELECT DISTINCT ?first ?activity WHERE { ${theirs} ?first cascade:revisionOf ?record ; prov:wasGeneratedBy ?activity }`,
       "first",
       "activity",
     ),
@@ -246,7 +253,7 @@ async function subjectRecords(
     const activity = activities.get(first[0] ?? "")?.[0];
     found.set(name, {
       name,
-      kind: kinds.get(name)?.[0] ?? "",
+      classes: new Set(classes.get(name) ?? []),
       version,
       arrived: arrival(at),
       ...(activity === undefined ? {} : { activity }),
@@ -281,6 +288,16 @@ export async function matcherView(
 /** What the matcher reads of the pod and its derived state, before any table's rows are added to it. */
 interface Pod {
   readonly held: ReadonlySet<string>;
+  /** The members of each Same that counts under the lens before the run. */
+  readonly sames: readonly (readonly string[])[];
+  /** Each ordered pair of records that are currently different. */
+  readonly different: ReadonlySet<string>;
+  /** The entry each of the subject's records is in, as the derived state the run reads gives it. */
+  readonly entryOf: ReadonlyMap<string, string>;
+  /** The matcher's claims a person retracted, or superseded by a judgment not itself retracted. */
+  readonly withdrawn: ReadonlySet<string>;
+  /** The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under. */
+  readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
   readonly judgments: readonly Judged[];
   readonly revised: ReadonlySet<string>;
@@ -323,7 +340,7 @@ export async function namedVersions(
   return grouped(
     await column(
       union,
-      "SELECT DISTINCT ?series ?version WHERE { ?series a rec:ReferenceSeries ; pav:hasCurrentVersion ?version }",
+      "SELECT DISTINCT ?series ?version WHERE { ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?version }",
       "series",
       "version",
     ),
@@ -365,6 +382,13 @@ class Matcher {
   readonly #descriptions = new Map<string, Uint8Array>();
   /** The Sames the run has written, which its recheck and its new joins may both give. */
   readonly #filed = new Set<string>();
+  #sames?: (readonly string[])[];
+
+  /** The members of each Same that counts: the pod's, then each the run files. */
+  private get sames(): (readonly string[])[] {
+    this.#sames ??= [...this.pod.sames];
+    return this.#sames;
+  }
 
   private constructor(
     readonly context: StepContext,
@@ -542,7 +566,8 @@ class Matcher {
     record: SubjectRecord,
     other: SubjectRecord,
   ): ReadonlySet<string> {
-    if (!rule.appliesTo.has(record.kind)) return new Set();
+    if (![...record.classes].some((found) => rule.appliesTo.has(found)))
+      return new Set();
     return (
       joined.get(rule.justification)?.get(pair(record.name, other.name)) ??
       new Set()
@@ -550,17 +575,17 @@ class Matcher {
   }
 
   /** Writes, after every judgment, what the pod lacks of the series or version's description (M8, W1). */
-  describe(thing: string): void {
+  async describe(thing: string): Promise<void> {
     if (this.pod.held.has(thing)) return;
     const { layout } = this.context;
-    const place = layout.place(`${REC}ReferenceSeries`);
+    const place = layout.place(`${CASCADE}ReferenceSeries`);
     const path = this.references.isVersion(thing)
       ? layout.version(place, thing)
       : place.path(thing);
     if (!this.#descriptions.has(path))
       this.#descriptions.set(
         path,
-        ntriples(this.references.description(thing)),
+        ntriples(await this.references.podDescription(thing)),
       );
   }
 
@@ -570,52 +595,140 @@ class Matcher {
       this.context.writes.add(path, bytes);
   }
 
-  /** Writes the rule's Same of the members by the origin's rows, unless the pod holds it (M5, M8, M9). */
+  /**
+   * Writes the rule's claim of the members by the origin's rows, unless the pod holds it, and its assertion under the
+   * rule list's version, unless the claim is asserted with the rule's query hash already (M5, M8, M9).
+   */
   private async same(
     rule: MatcherRule,
     origin: string,
     members: readonly SubjectRecord[],
   ): Promise<void> {
-    const { layout, writes, time } = this.context;
-    const applied = [this.rulesVersion, ...(origin === "" ? [] : [origin])];
+    const { layout, writes } = this.context;
     const used = [
-      ...new Set([...applied, ...members.map(({ version }) => version)]),
-    ].sort();
-    const names = members.map(({ name }) => name).sort();
-    const name = await recordName([
-      MATCHER,
-      rule.justification,
-      ...names,
-      ...used,
-    ]);
-    for (const version of applied) {
-      this.describe(this.references.seriesOf(version) ?? "");
-      this.describe(version);
-    }
-    if (this.pod.held.has(name) || this.#filed.has(name)) return;
-    this.#filed.add(name);
-    const same = iri(name);
-    const matcher = iri(MATCHER);
-    const triples: Triple[] = [
-      [same, iri(TYPE), iri(`${JDG}Judgment`)],
-      [same, iri(`${JDG}verdict`), iri(`${JDG}Same`)],
-      [same, iri(`${JDG}justification`), iri(rule.justification)],
-      ...names.map((member): Triple => [
-        same,
-        iri(`${PROV}hadMember`),
-        iri(member),
+      ...new Set([
+        ...(origin === "" ? [] : [origin]),
+        ...members.map(({ version }) => version),
       ]),
-      ...used.map((thing): Triple => [same, iri(`${PROV}used`), iri(thing)]),
-      [same, iri(`${PROV}wasAttributedTo`), matcher],
-      [
-        same,
-        iri(`${PROV}generatedAtTime`),
-        literal(time.now(), `${XSD}dateTime`),
-      ],
-      [matcher, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
-      [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
-    ];
-    writes.add(layout.place(`${JDG}Judgment`).path(name), ntriples(triples));
+    ].sort(byCodePoint);
+    const names = [...new Set(members.map(({ name }) => name))].sort(
+      byCodePoint,
+    );
+    const name = await claimName({
+      maker: MATCHER,
+      rule: rule.term,
+      justification: rule.justification,
+      members: names,
+      used,
+    });
+    for (const version of [
+      this.rulesVersion,
+      ...(origin === "" ? [] : [origin]),
+    ]) {
+      await this.describe(this.references.seriesOf(version) ?? "");
+      await this.describe(version);
+    }
+    const asserted = this.pod.asserted.get(name);
+    if (
+      asserted?.has(rule.hash) === true ||
+      this.#filed.has(name) ||
+      this.pod.withdrawn.has(name)
+    )
+      return;
+    this.#filed.add(name);
+    this.sames.push(names);
+    const claim = iri(name);
+    const matcher = iri(MATCHER);
+    if (!this.pod.held.has(name))
+      writes.add(
+        layout.place(`${CASCADE}Judgment`).path(name),
+        ntriples([
+          [claim, iri(TYPE), iri(`${CASCADE}Judgment`)],
+          [claim, iri(`${CASCADE}verdict`), iri(`${CASCADE}Same`)],
+          [claim, iri(`${CASCADE}justification`), iri(rule.justification)],
+          [claim, iri(`${CASCADE}matcherRule`), iri(rule.term)],
+          ...names.map((member): Triple => [
+            claim,
+            iri(`${PROV}hadMember`),
+            iri(member),
+          ]),
+          ...used.map((thing): Triple => [
+            claim,
+            iri(`${PROV}used`),
+            iri(thing),
+          ]),
+          [claim, iri(`${PROV}wasAttributedTo`), matcher],
+          [matcher, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
+          [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
+        ]),
+      );
+    const assertion = await assertionName(this.rulesVersion, name);
+    writes.add(
+      layout.place(`${CASCADE}ClaimAssertion`).path(assertion),
+      ntriples([
+        [iri(assertion), iri(TYPE), iri(`${CASCADE}ClaimAssertion`)],
+        [iri(assertion), iri(`${CASCADE}assertedClaim`), claim],
+        [
+          iri(assertion),
+          iri(`${CASCADE}assertedUnderRuleListVersion`),
+          iri(this.rulesVersion),
+        ],
+      ]),
+    );
+  }
+
+  /**
+   * The record and, of each entry among the records it matched, the least of those it matched and is not judged different
+   * from, or the least of them all when it is judged different from each, in code point order of their names: a star, so a record matched with every earlier copy of one fact names one of them (M5). The entries
+   * are those the counting Sames make as same-pairs.rq derives them, with the Sames the run has filed so far and
+   * without any Same that holds the record, so a run again over the same records reaches the same claims (M9).
+   */
+  private star(
+    record: SubjectRecord,
+    matched: readonly SubjectRecord[],
+  ): SubjectRecord[] {
+    const parent = new Map<string, string>();
+    const root = (name: string): string => {
+      let at = name;
+      for (
+        let up = parent.get(at);
+        up !== undefined && up !== at;
+        up = parent.get(at)
+      )
+        at = up;
+      parent.set(name, at);
+      return at;
+    };
+    const { different } = this.pod;
+    const later = (name: string): boolean => {
+      const other = this.pod.theirs.get(name);
+      return other !== undefined && byArrival(other, record) >= 0;
+    };
+    for (const members of this.sames) {
+      if (members.some(later)) continue;
+      const split = members.some((one) =>
+        members.some((other) => different.has(pair(one, other))),
+      );
+      const [least = ""] = [...members].sort(byCodePoint);
+      for (const one of members)
+        for (const other of split ? members : [least])
+          if (one !== other && !different.has(pair(one, other)))
+            parent.set(root(one), root(other));
+    }
+    const kept = new Map<string, SubjectRecord>();
+    const apart = (other: SubjectRecord): boolean =>
+      different.has(pair(record.name, other.name));
+    for (const other of matched) {
+      const entry = root(other.name);
+      const was = kept.get(entry);
+      if (
+        was === undefined ||
+        (apart(was) && !apart(other)) ||
+        (apart(was) === apart(other) && byCodePoint(other.name, was.name) < 0)
+      )
+        kept.set(entry, other);
+    }
+    return [record, ...kept.values()];
   }
 
   /** Files a Same for each record taken, in arrival order, of it and what it joins among the records before it (M3-M5). */
@@ -635,7 +748,7 @@ class Matcher {
         for (const [origin, matched] of [...byOrigin].sort(([a], [b]) =>
           a < b ? -1 : 1,
         ))
-          await this.same(rule, origin, [record, ...matched]);
+          await this.same(rule, origin, this.star(record, matched));
       }
       compared.push(record);
     }
@@ -668,16 +781,21 @@ class Matcher {
     );
   }
 
-  /** Files again each Same of the matcher's that used a version the tables revise and still joins two of its members (M7). */
+  /**
+   * Files again each claim of the matcher's that used a version the tables revise, or whose rule the current rule list
+   * runs with a query it is not asserted with, and still joins two of its members (M7).
+   */
   async recheck(): Promise<void> {
     if (this.rulesVersion === "") return;
-    const byJustification = new Map(
-      this.rules.map((rule) => [rule.justification, rule]),
-    );
+    const byTerm = new Map(this.rules.map((rule) => [rule.term, rule]));
     for (const judged of this.pod.judgments) {
-      if (!judged.used.some((thing) => this.pod.revised.has(thing))) continue;
-      const rule = byJustification.get(judged.justification);
+      const rule = byTerm.get(judged.rule);
       if (rule === undefined) continue;
+      if (
+        !judged.used.some((thing) => this.pod.revised.has(thing)) &&
+        this.pod.asserted.get(judged.name)?.has(rule.hash) === true
+      )
+        continue;
       const series =
         rule.kind === undefined
           ? undefined
@@ -702,12 +820,71 @@ class Matcher {
       );
       if (still.length >= 2) await this.same(rule, origin, still);
     }
+    await this.resplit(byTerm);
+  }
+
+  /**
+   * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
+   * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
+   * (M7). A star filed again joins it, so a claim triggers this once.
+   */
+  private async resplit(
+    byTerm: ReadonlyMap<string, MatcherRule>,
+  ): Promise<void> {
+    const { different, theirs, entryOf } = this.pod;
+    const neighbours = new Map<string, Map<string, string[]>>();
+    for (const [justification, pairs] of this.matched) {
+      const of = new Map<string, string[]>();
+      for (const key of pairs.keys()) {
+        const [record = "", other = ""] = key.split(" ");
+        of.set(record, [...(of.get(record) ?? []), other]);
+      }
+      neighbours.set(justification, of);
+    }
+    for (const judged of this.pod.judgments) {
+      const rule = byTerm.get(judged.rule);
+      if (rule === undefined) continue;
+      const members = judged.members.flatMap(
+        (member) => theirs.get(member) ?? [],
+      );
+      const [record] = [...members].sort(byArrival).slice(-1);
+      if (record === undefined) continue;
+      const origin =
+        rule.kind === undefined
+          ? ""
+          : (judged.used.find(
+              (thing) =>
+                this.references.kindOf(
+                  this.references.seriesOf(thing) ?? "",
+                ) === rule.kind,
+            ) ?? "");
+      const matched = (
+        neighbours.get(rule.justification)?.get(record.name) ?? []
+      )
+        .flatMap((name) => theirs.get(name) ?? [])
+        .filter(
+          (other) =>
+            byArrival(other, record) < 0 &&
+            this.origins(this.matched, rule, record, other).has(origin),
+        );
+      const entry = entryOf.get(record.name);
+      if (
+        entry !== undefined &&
+        matched.some(
+          (other) =>
+            !different.has(pair(record.name, other.name)) &&
+            entryOf.get(other.name) !== undefined &&
+            entryOf.get(other.name) !== entry,
+        )
+      )
+        await this.same(rule, origin, this.star(record, matched));
+    }
   }
 }
 
 interface Judged {
   readonly name: string;
-  readonly justification: string;
+  readonly rule: string;
   readonly members: readonly string[];
   readonly used: readonly string[];
 }
@@ -718,15 +895,15 @@ function pair(record: string | undefined, other: string | undefined): string {
 
 /** The matcher's Sames that nothing retracts and no unretracted judgment supersedes, in order of name. */
 async function recheckable(dataset: Dataset): Promise<Judged[]> {
-  const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same .
+  const ours = `?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same .
     FILTER NOT EXISTS {
       ?superseding npx:supersedes ?judgment
       OPTIONAL { ?undoing npx:retracts ?superseding }
       FILTER (!BOUND(?undoing))
     }
     FILTER NOT EXISTS { ?retracting npx:retracts ?judgment }`;
-  const [justifications, members, used] = await Promise.all(
-    ["jdg:justification", "prov:hadMember", "prov:used"].map(
+  const [rules, members, used] = await Promise.all(
+    ["cascade:matcherRule", "prov:hadMember", "prov:used"].map(
       async (predicate) =>
         grouped(
           await column(
@@ -748,7 +925,7 @@ async function recheckable(dataset: Dataset): Promise<Judged[]> {
     .sort()
     .map((name) => ({
       name,
-      justification: justifications?.get(name)?.[0] ?? "",
+      rule: rules?.get(name)?.[0] ?? "",
       members: [...(members?.get(name) ?? [])].sort(),
       used: used?.get(name) ?? [],
     }));
@@ -764,17 +941,76 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     await column(
       dataset,
       `SELECT DISTINCT ?judgment ?member WHERE {
-        ?judgment prov:wasAttributedTo <${MATCHER}> ; jdg:verdict jdg:Same ; prov:hadMember ?member .
+        ?judgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same ; prov:hadMember ?member .
         ?retracting npx:retracts ?judgment
       }`,
       "judgment",
       "member",
     ),
   );
+  const judgments = await recheckable(dataset);
+  const counted = new Set(judgments.map(({ name }) => name));
+  const entries = await column(
+    dataset,
+    "SELECT DISTINCT ?record ?entry WHERE { ?record cascade:inEntry ?entry }",
+    "record",
+    "entry",
+  );
+  const claims = await column(
+    dataset,
+    `SELECT DISTINCT ?claim WHERE { ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
+    "claim",
+  );
+  const sames = grouped(
+    await column(
+      dataset,
+      "SELECT DISTINCT ?same ?member WHERE { ?same cascade:countsUnderLens true ; cascade:verdict cascade:Same ; prov:hadMember ?member }",
+      "same",
+      "member",
+    ),
+  );
+  const different = await column(
+    dataset,
+    "SELECT DISTINCT ?record ?other WHERE { ?record cascade:currentlyDifferent ?other }",
+    "record",
+    "other",
+  );
+  const asserted = grouped(
+    await column(
+      dataset,
+      `SELECT DISTINCT ?claim ?hash WHERE {
+        ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+        ?claim cascade:matcherRule ?rule .
+        ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash
+      }`,
+      "claim",
+      "hash",
+    ),
+  );
   return {
     held: new Set(held.flatMap(([thing]) => thing ?? [])),
+    sames: [...sames.values()],
+    different: new Set(
+      different.flatMap(([record, other]) => [
+        pair(record, other),
+        pair(other, record),
+      ]),
+    ),
+    asserted: new Map(
+      [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
+    ),
     theirs: await subjectRecords(dataset),
-    judgments: await recheckable(dataset),
+    judgments,
+    withdrawn: new Set(
+      claims.flatMap(([claim]) =>
+        claim === undefined || counted.has(claim) ? [] : [claim],
+      ),
+    ),
+    entryOf: new Map(
+      entries.flatMap(([record, entry]) =>
+        record === undefined || entry === undefined ? [] : [[record, entry]],
+      ),
+    ),
     revised: references.revised(),
     retracted: new Set(
       [...retracted.values()].flatMap((members) =>
@@ -840,7 +1076,7 @@ export async function openPod(
     line.push(...after);
   }
   const matcher = await Matcher.of(context, references, adopted);
-  for (const version of line) matcher.describe(version);
+  for (const version of line) await matcher.describe(version);
   await matcher.recheck();
   await matcher.rejoin();
   matcher.finish();

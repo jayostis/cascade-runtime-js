@@ -57,7 +57,7 @@ test("an export's documents are its clinical record files, each with what export
   const answer = (store: oxigraph.Store, query: string): unknown =>
     store.query(`PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
       PREFIX pav: <http://purl.org/pav/> PREFIX prov: <http://www.w3.org/ns/prov#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       ${query}`);
   assert.equal(
@@ -67,9 +67,9 @@ test("an export's documents are its clinical record files, each with what export
         bridge:thisImport rdfs:label "Apple Health export" ; prov:startedAtTime "2026-01-02T10:00:00Z"^^xsd:dateTime .
         bridge:thisDocument pav:retrievedFrom <https://fhir.example.org/r4/AllergyIntolerance/peanut> ;
           pav:retrievedOn "2026-01-02T10:00:00Z"^^xsd:dateTime ;
-          bridge:serverBaseUrl "https://fhir.example.org/r4" ; bridge:sourceFormatVersion "4.0.1" ;
-          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Apple Health" ] ; prov:hadRole rec:transmitter ] ,
-            [ prov:agent [ rdfs:label "Example Hospital" ] ; prov:hadRole rec:author ] .
+          cascade:serverBaseUrl "https://fhir.example.org/r4" ; cascade:sourceFormatVersion "4.0.1" ;
+          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Apple Health" ] ; prov:hadRole cascade:TransmitterRole ] ,
+            [ prov:agent [ rdfs:label "Example Hospital" ] ; prov:hadRole cascade:AuthorRole ] .
       }`,
     ),
     true,
@@ -77,7 +77,7 @@ test("an export's documents are its clinical record files, each with what export
   assert.equal(
     answer(
       facts(1),
-      `ASK { bridge:thisDocument prov:qualifiedAttribution/prov:hadRole ?role FILTER (?role != rec:transmitter) }`,
+      `ASK { bridge:thisDocument prov:qualifiedAttribution/prov:hadRole ?role FILTER (?role != cascade:TransmitterRole) }`,
     ),
     false,
   );

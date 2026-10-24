@@ -19,9 +19,9 @@ export interface ExportDocument {
 export interface IndexEntry {
   /** The name of the source the document came from. */
   readonly source?: string;
-  /** That source's server base URL, as the importer states `bridge:serverBaseUrl` in the document's facts. */
+  /** That source's server base URL, as the importer states `cascade:serverBaseUrl` in the document's facts. */
   readonly server?: string;
-  /** The kind of record, as the word `rec:kind` gives it. */
+  /** The kind of record, as the word `cascade:recordKind` gives it. */
   readonly kind?: string;
   /** The title of the section of the document it is an entry of, where the export has sections. */
   readonly section?: string;

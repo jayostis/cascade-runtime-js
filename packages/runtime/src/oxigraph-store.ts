@@ -112,6 +112,11 @@ export class OxigraphStore implements Store {
     if (any) this.#graphs.add(options.graph);
   }
 
+  async drop(graph: string): Promise<void> {
+    this.#store.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
+    this.#graphs.delete(graph);
+  }
+
   async select(query: string, union: ReadonlySet<string>): Promise<Rows> {
     const answer = parseResults(
       this.#store.query(query, {

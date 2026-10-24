@@ -19,7 +19,7 @@ import { kitsOf } from "../src/kit.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
-import { REC } from "../src/step.js";
+import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
 import {
   compiledBridge,
@@ -45,7 +45,7 @@ import { layout, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
-const REVISION = `${REC}Revision`;
+const REVISION = `${CASCADE}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -349,7 +349,8 @@ async function filed(pod: MemoryFiles): Promise<Triple[]> {
     ),
   );
   const blanked = <T extends Term>(term: T): T | BlankNode =>
-    term.termType === "NamedNode" && runDependent.has(term.value)
+    term.termType === "NamedNode" &&
+    runDependent.has(term.value.split("#")[0] ?? "")
       ? blank(term.value)
       : term;
   return triples.map(

@@ -10,7 +10,16 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
-import { documentName, inUtc } from "./names.js";
+import {
+  byCodePoint,
+  containedRecordName,
+  documentName,
+  enteredRecordName,
+  recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import {
   iri,
   literal,
@@ -23,12 +32,9 @@ import {
 import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { type Row, selected, type Dataset } from "./store.js";
-import { REC } from "./step.js";
+import { CASCADE } from "./step.js";
 import type { Happened, Step } from "./story.js";
 import {
-  CLINICAL,
-  HEALTH,
-  JDG,
   JUSTIFICATIONS,
   KINDS,
   listed,
@@ -39,7 +45,6 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -52,10 +57,7 @@ export const PREFIXES: Readonly<Record<string, string>> = {
   prov: PROV,
   pav: PAV,
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
-  rec: REC,
-  jdg: JDG,
-  health: HEALTH,
-  clinical: CLINICAL,
+  oa: "http://www.w3.org/ns/oa#",
   cascade: CASCADE,
 };
 
@@ -328,16 +330,23 @@ const FIELDS: Readonly<Record<string, Field>> = {
     entry: true,
     shows: ({ value }) => localName(value),
   },
-  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`], entry: true },
+  status: {
+    predicates: [`${CASCADE}clinicalStatus`, `${CASCADE}workflowStatus`],
+    entry: true,
+  },
   criticality: {
-    predicates: [`${CLINICAL}criticality`],
+    predicates: [`${CASCADE}allergyCriticality`],
     entry: true,
     of: "version",
   },
-  "abatement date": { predicates: [`${CLINICAL}abatementDate`], entry: true },
-  "status from": { predicates: [`${REC}statusFrom`], entry: true, thing: true },
+  "abatement date": { predicates: [`${CASCADE}abatementDate`], entry: true },
+  "status from": {
+    predicates: [`${CASCADE}statusFrom`],
+    entry: true,
+    thing: true,
+  },
   "latest member": {
-    predicates: [`${REC}latestMember`],
+    predicates: [`${CASCADE}latestMember`],
     entry: true,
     thing: true,
   },
@@ -352,8 +361,8 @@ const FIELDS: Readonly<Record<string, Field>> = {
     shows: async ({ value }, reading, record) =>
       String((await reading.words.versions(record)).indexOf(value) + 1),
   },
-  subject: { predicates: [`${REC}subject`], of: "record", thing: true },
-  patient: { predicates: [`${REC}patient`], of: "version", thing: true },
+  subject: { predicates: [`${CASCADE}subject`], of: "record", thing: true },
+  patient: { predicates: [`${CASCADE}patient`], of: "version", thing: true },
   "influenced by": {
     predicates: [`${PROV}wasInfluencedBy`],
     of: "version",
@@ -448,7 +457,7 @@ async function revisionsOf(
   for (const [, version, at, after] of await selected(
     reading.store,
     `SELECT ?revision ?version ?at ?after WHERE {
-        ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at .
+        ?revision <${CASCADE}revisionOf> <${record}> ; <${CASCADE}version> ?version ; <${PROV}generatedAtTime> ?at .
         OPTIONAL { ?revision <${PROV}wasRevisionOf> ?previous . ?previous <${PROV}generatedAtTime> ?after }
       }`,
   )) {
@@ -498,24 +507,28 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
   };
 }
 
-const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
-  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
-    <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
-  OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
+const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used ?rule WHERE {
+  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}verdict> <${CASCADE}Same> ;
+    <${CASCADE}justification> ?justification ; <${PROV}hadMember> ?member .
+  OPTIONAL { ?judgment <${CASCADE}matcherRule> ?rule }
+  OPTIONAL { ?assertion <${CASCADE}assertedClaim> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
   OPTIONAL { ?judgment <${PROV}used> ?used }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
+  /** The matcher rule terms the claim cites. */
+  readonly rules: Set<string>;
   readonly members: Set<string>;
-  readonly at: Set<string>;
+  /** The rule list versions the claim is asserted under. */
+  readonly assertedUnder: Set<string>;
   readonly used: Set<string>;
 }
 
 async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used] of await selected(
+  for (const [name, justification, member, under, used, rule] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -524,13 +537,15 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
       ({
         name: name ?? "",
         justification: justification ?? "",
+        rules: new Set(),
         members: new Set(),
-        at: new Set(),
+        assertedUnder: new Set(),
         used: new Set(),
       } satisfies Judged);
     judged.members.add(member ?? "");
-    if (at) judged.at.add(shownTime(at));
+    if (under) judged.assertedUnder.add(under);
     if (used) judged.used.add(used);
+    if (rule) judged.rules.add(rule);
     found.set(judged.name, judged);
   }
   return [...found.values()];
@@ -558,16 +573,16 @@ function judgmentRow(
           return JUSTIFIED[judged.justification] ?? `<${judged.justification}>`;
         case "members":
           return sorted(judged.members);
-        case "at":
-          return [...judged.at].join(", ");
+        case "asserted under":
+          return sorted(judged.assertedUnder);
         case "used":
           return sorted(judged.used);
         case "inputs":
           return [
-            MATCHER,
-            judged.justification,
-            ...[...judged.members].sort(),
-            ...[...judged.used].sort(),
+            "cascade:ClaimNamingRule",
+            ...[MATCHER, ...judged.rules, judged.justification].map(termShown),
+            `(${[...judged.members].sort(byCodePoint).join(", ")})`,
+            `(${[...judged.used].sort(byCodePoint).join(", ")})`,
           ].join(", ");
         case "name":
           return judged.name;
@@ -603,8 +618,7 @@ async function expectedJudgmentRow(
       cells.push(cell);
     } else if (column === "members")
       cells.push(await things(cell, (words) => reading.words.record(words)));
-    else if (column === "at") cells.push(cellTime(cell));
-    else if (column === "used")
+    else if (column === "used" || column === "asserted under")
       cells.push(await things(cell, (words) => reading.words.thing(words)));
     else cells.push(cell);
   }
@@ -614,7 +628,7 @@ async function expectedJudgmentRow(
 const JUDGMENT_COLUMNS = [
   "justification",
   "members",
-  "at",
+  "asserted under",
   "used",
   "inputs",
   "name",
@@ -758,34 +772,80 @@ async function queryAnswers(
   });
 }
 
+/** A vocabulary term as a feature's cells write it, `cascade:` and its local name. */
+const termShown = (iri: string): string =>
+  iri.startsWith(CASCADE) ? `cascade:${iri.slice(CASCADE.length)}` : iri;
+
+/** The record name rules a `these are named:` table gives inputs to, by the rule term's local name. */
+const RECORD_RULES: Readonly<
+  Record<string, (inputs: readonly string[]) => Promise<string>>
+> = {
+  RecordFromServerNamingRule: ([base = "", type = "", id = ""]) =>
+    recordFromServerName(base, type, id),
+  RecordFromDocumentNamingRule: ([document = "", selector = ""]) =>
+    recordFromDocumentName(document, selector),
+  RecordFromCcdaNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    er = "",
+    ee = "",
+  ]) =>
+    recordFromCcdaName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entry: { root: er, extension: ee },
+    }),
+  RecordFromCcdaWithoutIdNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    entryClass = "",
+    key = "",
+    members = "",
+  ]) =>
+    recordFromCcdaWithoutIdName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entryClass: entryClass.replace(/^cascade:/, CASCADE),
+      keyFingerprint: key,
+      membersFingerprint: members,
+    }),
+  ContainedRecordNamingRule: ([container = "", versionId = "", id = ""]) =>
+    containedRecordName(container, { versionId }, id),
+  EnteredRecordNamingRule: ([session = "", position = ""]) =>
+    enteredRecordName(session, Number(position)),
+};
+
 /**
- * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
- * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ * Whether the inputs a record is named from, its rule first, give the name; an entered record's session must also be
+ * the session its first revision came from, which the pod holds where the position reaches it only through the name.
  */
-async function entryInputs(
+async function recordInputs(
   reading: Reading,
   words: string,
   inputs: string,
+  name: string,
 ): Promise<string | undefined> {
-  const [subject, start, position] = inputs.split(", ");
-  if (position === undefined || !/^\d+$/.test(position))
-    return `"${inputs}" is no subject, start and position`;
-  const record = await reading.words.record(words);
-  const [first] = await selected(
-    reading.store,
-    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
-      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
-  );
-  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
-  const wrong = [
-    ...(held[0] === subject
-      ? []
-      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
-    ...(held[1] === start
-      ? []
-      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
-  ];
-  return wrong.length === 0 ? undefined : wrong.join("; ");
+  const [rule = "", ...given] = inputs.split(", ");
+  const named = RECORD_RULES[rule.replace(/^cascade:/, "")];
+  if (named === undefined) return `"${rule}" is no record naming rule`;
+  if (rule.endsWith("EnteredRecordNamingRule")) {
+    const record = await reading.words.record(words);
+    const [first] = await selected(
+      reading.store,
+      `SELECT ?session WHERE { ?revision <${CASCADE}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
+        FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+    );
+    if (first?.[0] !== given[0])
+      return `its entry's session is ${first?.[0] ?? "none"}, not ${given[0] ?? ""}`;
+  }
+  const computed = await named(given);
+  return computed === name
+    ? undefined
+    : `its inputs give ${computed}, not ${name}`;
 }
 
 /** The entry holding the record shows the table's fields; with `only`, nothing else but its members. */
@@ -1020,7 +1080,7 @@ const DEFINITIONS: Definition[] = [
     "the pod holds no revision",
     () =>
       async ({ store }) =>
-        (await store.ask(`ASK { ?revision a <${REC}Revision> }`))
+        (await store.ask(`ASK { ?revision a <${CASCADE}Revision> }`))
           ? "the pod holds a revision"
           : undefined,
   ),
@@ -1128,10 +1188,7 @@ const DEFINITIONS: Definition[] = [
     judgmentsHolding(words as string, [], ["justification", "members"]),
   ),
   then("{step} wrote these matcher judgments:", ([said], stated) => {
-    const rows = table(
-      stated,
-      JUDGMENT_COLUMNS.filter((column) => column !== "at"),
-    );
+    const rows = table(stated, JUDGMENT_COLUMNS);
     const columns = JUDGMENT_COLUMNS.filter((column) =>
       stated.table?.[0]?.includes(column),
     );
@@ -1140,45 +1197,64 @@ const DEFINITIONS: Definition[] = [
       if (step === undefined) return "no such step";
       const failures: string[] = [];
       const heldGraph = await wroteGraph(reading, [step]);
-      const judgments = new Set(
+      const claims = new Set(
         heldGraph
-          .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
+          .subjects(`${RDF}type`, iri(`${CASCADE}Judgment`))
           .map(({ value }) => value),
       );
-      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
-        judgments.has(name),
+      const assertions = new Set(
+        heldGraph
+          .subjects(`${RDF}type`, iri(`${CASCADE}ClaimAssertion`))
+          .map(({ value }) => value),
       );
-      const allowed = new Set([
-        `${RDF}type`,
-        `${JDG}verdict`,
-        `${JDG}justification`,
-        `${PROV}wasAttributedTo`,
-        `${PROV}generatedAtTime`,
-        `${PROV}hadMember`,
-        `${PROV}used`,
-      ]);
-      for (const name of judgments) {
-        for (const [, p, o] of heldGraph.match(iri(name)))
-          if (
-            !allowed.has(p.value) ||
-            (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
-          )
-            failures.push(`${name} also states ${p.value} ${written(o)}`);
-        const at = heldGraph
-          .objects(iri(name), `${PROV}generatedAtTime`)
-          .map(({ value }) => shownTime(value));
-        if (at.length !== 1 || at[0] !== shownTime(step.step.when))
-          failures.push(
-            `${name} is made at ${at.join(", ") || "no time"}, not the step's ${step.step.when}`,
-          );
+      const asserted = new Set(
+        [...assertions].flatMap((assertion) =>
+          heldGraph
+            .objects(iri(assertion), `${CASCADE}assertedClaim`)
+            .map(({ value }) => value),
+        ),
+      );
+      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
+        asserted.has(name),
+      );
+      const allowed = {
+        [`${CASCADE}Judgment`]: new Set([
+          `${RDF}type`,
+          `${CASCADE}verdict`,
+          `${CASCADE}justification`,
+          `${CASCADE}matcherRule`,
+          `${PROV}wasAttributedTo`,
+          `${PROV}hadMember`,
+          `${PROV}used`,
+        ]),
+        [`${CASCADE}ClaimAssertion`]: new Set([
+          `${RDF}type`,
+          `${CASCADE}assertedClaim`,
+          `${CASCADE}assertedUnderRuleListVersion`,
+        ]),
+      };
+      for (const [kind, names] of [
+        [`${CASCADE}Judgment`, claims],
+        [`${CASCADE}ClaimAssertion`, assertions],
+      ] as const)
+        for (const name of names)
+          for (const [, p, o] of heldGraph.match(iri(name)))
+            if (
+              !(allowed[kind]?.has(p.value) ?? false) ||
+              (p.value === `${RDF}type` && o.value !== kind)
+            )
+              failures.push(`${name} also states ${p.value} ${written(o)}`);
+      for (const name of claims)
+        if (!asserted.has(name))
+          failures.push(`${name} is written and not asserted`);
+      for (const name of asserted)
         if (!found.some((judged) => judged.name === name))
           failures.push(`${name} is no Same the matcher made`);
-      }
       for (const subject of heldGraph
         .subjects(`${RDF}type`)
         .concat(heldGraph.triples.map(([s]) => s))) {
         const value = subject.value;
-        if (judgments.has(value)) continue;
+        if (claims.has(value) || assertions.has(value)) continue;
         if (value === MATCHER) {
           const described = heldGraph
             .match(iri(MATCHER))
@@ -1198,9 +1274,11 @@ const DEFINITIONS: Definition[] = [
           heldGraph.match(
             iri(value),
             `${RDF}type`,
-            iri(`${REC}ReferenceSeries`),
+            iri(`${CASCADE}ReferenceSeries`),
           ).length > 0 ||
-          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
+          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0 ||
+          heldGraph.match(iri(value), `${CASCADE}rowOfRuleListVersion`).length >
+            0;
         if (!isReference) failures.push(`the step also wrote of ${value}`);
       }
       const problem = await comparedJudgments(reading, rows, found, columns);
@@ -1215,17 +1293,21 @@ const DEFINITIONS: Definition[] = [
     return async (reading) => {
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
-      const described = valuesOf(
+      const described = new Map<string, string[]>();
+      for (const thing of valuesOf(
         await inWritten(
           reading,
           [step],
           "DISTINCT ?thing",
           `GRAPH ?file {
-              { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:"))`,
+              { ?thing a <${CASCADE}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
+            } FILTER NOT EXISTS { ?thing <${CASCADE}revisionOf> ?any }`,
         ),
         "thing",
-      );
+      )) {
+        const said = await reading.words.described(thing);
+        if (said.length > 0) described.set(thing, said);
+      }
       const expected: string[] = [];
       for (const row of rows) {
         const name = await reading.words.reference(row.reference ?? "");
@@ -1235,16 +1317,24 @@ const DEFINITIONS: Definition[] = [
       }
       const problem = compared(
         expected,
-        described.map((thing) => reading.words.shown(thing)),
+        [...described.keys()].map((thing) => reading.words.shown(thing)),
       );
       if (problem !== undefined) return problem;
       const heldTriples = (await wroteGraph(reading, [step])).triples.map(
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      for (const thing of described) {
+      const rowOf = `<${CASCADE}rowOfRuleListVersion>`;
+      for (const [thing, said] of described) {
+        const rows = heldTriples.filter((triple) =>
+          triple.endsWith(` ${rowOf} <${thing}>`),
+        );
+        if (rows.length > 0 !== (await reading.words.isRuleListVersion(thing)))
+          wrong.push(
+            `${reading.words.shown(thing)} has ${rows.length} rows, and is ${rows.length > 0 ? "no" : "a"} rule list version`,
+          );
         const why = compared(
-          await reading.words.described(thing),
+          said,
           heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
         );
         if (why !== undefined)
@@ -1262,7 +1352,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const does = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
+            `ASK { <${judgment}> <${CASCADE}countsUnderLens> true }`,
           );
           if (does === counts) return undefined;
           return does ? "it counts" : "it does not count";
@@ -1276,7 +1366,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const has = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}lapsed> true }`,
+            `ASK { <${judgment}> <${CASCADE}lapsed> true }`,
           );
           if (has === lapsed) return undefined;
           return has ? "it has lapsed" : "it has not lapsed";
@@ -1364,7 +1454,7 @@ const DEFINITIONS: Definition[] = [
           found.push(`${words} is in a view`);
         for (const [why, because] of await selected(
           reading.store,
-          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
+          `SELECT ?why ?because WHERE { <${record}> <${CASCADE}leftOutFor> ?left . ?left <${CASCADE}leftOutReason> ?why . OPTIONAL { ?left <${CASCADE}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
             `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
@@ -1379,7 +1469,12 @@ const DEFINITIONS: Definition[] = [
       const failures: string[] = [];
       for (const row of rows) {
         if (row.inputs !== undefined && row.inputs !== "") {
-          const why = await entryInputs(reading, row.thing ?? "", row.inputs);
+          const why = await recordInputs(
+            reading,
+            row.thing ?? "",
+            row.inputs,
+            row.name ?? "",
+          );
           if (why !== undefined) {
             failures.push(`${row.thing ?? ""}: ${why}`);
             continue;

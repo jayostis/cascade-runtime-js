@@ -1,6 +1,6 @@
 import { fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
-import type { Derive } from "./build.js";
+import { builtFileBytes, type Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
 import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
@@ -10,7 +10,6 @@ import type { Layout } from "./layout.js";
 import { matcherView, openPod, podCodes, runMatcher } from "./matcher.js";
 import { documentName } from "./names.js";
 import { same, StepWrites } from "./pod.js";
-import { ntriples } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
 import { Shapes } from "./shapes.js";
 import {
@@ -482,7 +481,10 @@ export class CorePod {
     );
     await writeAll(
       pod,
-      [...made].map(([path, triples]) => [path, ntriples(triples)] as const),
+      [...made].map(
+        ([path, triples]) =>
+          [path, builtFileBytes(layout, address, path, triples)] as const,
+      ),
     );
     await addLayout(union, layout, address);
     this.#kept.set(DATASET + build.lens, Promise.resolve(union));

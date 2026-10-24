@@ -96,11 +96,45 @@ export function written(term: Term): string {
 
 /** The triples as N-Triples, which every Turtle reader also reads. */
 export function ntriples(triples: Iterable<Triple>): Uint8Array {
-  const lines = new Set<string>();
-  for (const [subject, predicate, object] of triples) {
-    lines.add(
-      `${written(subject)} ${written(predicate)} ${written(object)} .\n`,
+  return lines(triples, written);
+}
+
+/**
+ * The triples as Turtle, a triple to a line, with every IRI that is the file's own or a node inside it written
+ * relative to it (`<>`, `<#…>`), and every IRI of one of `siblings` in the file's folder, or a node inside it, as its
+ * name in that folder (`<variants.ttl#…>`), so the file holds no address of its own.
+ */
+export function relativeTurtle(
+  triples: Iterable<Triple>,
+  file: string,
+  siblings: readonly string[] = [],
+): Uint8Array {
+  const folder = file.slice(0, file.lastIndexOf("/") + 1);
+  const named = siblings.filter(
+    (sibling) =>
+      sibling !== file &&
+      sibling.startsWith(folder) &&
+      /^[^/:#?]+$/.test(sibling.slice(folder.length)),
+  );
+  return lines(triples, (term) => {
+    if (term.termType !== "NamedNode") return written(term);
+    if (term.value === file || term.value.startsWith(`${file}#`))
+      return `<${term.value.slice(file.length)}>`;
+    const sibling = named.find(
+      (each) => term.value === each || term.value.startsWith(`${each}#`),
     );
-  }
-  return new TextEncoder().encode([...lines].sort().join(""));
+    return sibling === undefined
+      ? written(term)
+      : `<${term.value.slice(folder.length)}>`;
+  });
+}
+
+function lines(
+  triples: Iterable<Triple>,
+  write: (term: Term) => string,
+): Uint8Array {
+  const found = new Set<string>();
+  for (const [subject, predicate, object] of triples)
+    found.add(`${write(subject)} ${write(predicate)} ${write(object)} .\n`);
+  return new TextEncoder().encode([...found].sort().join(""));
 }

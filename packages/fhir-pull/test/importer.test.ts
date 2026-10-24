@@ -106,14 +106,14 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
     store.query(`PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
       PREFIX prov: <http://www.w3.org/ns/prov#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#> PREFIX pav: <http://purl.org/pav/>
-      PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
+      PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       ASK {
         bridge:thisImport rdfs:label "FHIR pull" ; prov:startedAtTime "2026-10-07T08:00:00Z"^^xsd:dateTime .
-        bridge:thisDocument bridge:serverBaseUrl "${BASE}" ;
+        bridge:thisDocument cascade:serverBaseUrl "${BASE}" ;
           pav:retrievedOn "2026-10-07T07:00:00.000Z"^^xsd:dateTime ;
-          bridge:authenticatedPatient "Patient/p1" ;
-          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Cascade North Demo Hospital" ] ; prov:hadRole rec:author ] .
-        FILTER NOT EXISTS { ?attribution prov:hadRole rec:transmitter }
+          cascade:authenticatedPatient "Patient/p1" ;
+          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Cascade North Demo Hospital" ] ; prov:hadRole cascade:AuthorRole ] .
+        FILTER NOT EXISTS { ?attribution prov:hadRole cascade:TransmitterRole }
       }`),
     true,
   );
@@ -128,7 +128,7 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
     });
     return (
       facts.query(
-        `SELECT ?p ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?at FILTER (?p IN (<https://ns.cascadeprotocol.org/records/v1-draft#answeredAsOf>, <http://www.w3.org/ns/prov#generatedAtTime>)) }`,
+        `SELECT ?p ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?at FILTER (?p IN (<https://ns.cascadeprotocol.org/cascade#answeredAsOf>, <http://www.w3.org/ns/prov#generatedAtTime>)) }`,
       ) as Map<string, oxigraph.Term>[]
     ).map((row) => [
       row.get("p")!.value.split(/[#/]/).pop(),

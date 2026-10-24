@@ -49,19 +49,20 @@ import {
 } from "./answers.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
-const PREFIXES = `PREFIX rec: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX jdg: <${JDG}> PREFIX bridge: <${BRIDGE}>`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
 /** What an app names the judgment it hands to `judge`, which the package names in its place. */
 const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
+const SEEN = new Set(
+  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
+);
 const UUID = "urn:uuid:";
 
 /** A name as a person reads it, its runs of white space one space. */
@@ -91,7 +92,7 @@ export interface ImportOptions {
 export interface Pod {
   /** The pod's naming base, ending in a slash. */
   readonly address: string;
-  /** The one rec:Subject. */
+  /** The one cascade:Subject. */
   readonly subject: string;
   /** The owner's profile's #me. */
   readonly owner: string;
@@ -318,18 +319,17 @@ const AGREEMENT_QUERY = `${QUERIES}${AGREEMENT}.rq`;
 /** The medicines in a class are asked of the tables the app holds, beside the verdicts: a query beside the questions. */
 const CLASSES_QUERY = `${QUERIES}tables/medication-classes-through-precise-ingredients.rq`;
 /** The statements of the medication entries, which the classes query reads of the pod. */
-const MEDICATION_ENTRIES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
-CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a clinical:Medication ; ?property ?value }`;
-const SELECTED_CODE = `${REC}selectedCode`;
-const RXNORM_CODE = "https://ns.cascadeprotocol.org/clinical/v1#rxNormCode";
+const MEDICATION_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a cascade:PrescribedOrReportedMedication ; ?property ?value }`;
+const SELECTED_CODE = `${CASCADE}userSelectedCode`;
+const RXNORM_CODE = "https://ns.cascadeprotocol.org/cascade#rxNormCode";
 
 /** A person's results in a panel are asked of the tables the app holds the same way. */
 const PANEL_RESULTS_QUERY = `${QUERIES}tables/panel-results.rq`;
 /** The lab result entries `tables/panel-results.rq` reads of the pod: their test codes. */
-const LAB_ENTRIES = `PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
-PREFIX rec: <${REC}>
-CONSTRUCT { ?entry health:testCode ?code ; rec:latestMember ?latest }
-WHERE { ?entry health:testCode ?code ; rec:latestMember ?latest }`;
+const LAB_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+CONSTRUCT { ?entry cascade:testCode ?code ; cascade:latestMember ?latest }
+WHERE { ?entry cascade:testCode ?code ; cascade:latestMember ?latest }`;
 
 /** Which tables joined an entry is asked of the pod alone: its judgments name the versions, and it holds their descriptions. */
 const JOINED_BY_QUERY = `${QUERIES}tables/joined-by.rq`;
@@ -484,12 +484,12 @@ function failure(error: unknown): string {
 
 /** The About the claim records: the profile is the subject's, by the owner's statement. */
 function about(subject: string, profile: string, owner: string): string {
-  return `@prefix jdg: <${JDG}> .
+  return `@prefix cascade: <${CASCADE}> .
 @prefix prov: <${PROV}> .
-<${THIS_JUDGMENT}> a jdg:Judgment ;
-    jdg:verdict jdg:About ; jdg:subject <${subject}> ; jdg:basis jdg:OwnerStatement ;
+<${THIS_JUDGMENT}> a cascade:Judgment ;
+    cascade:verdict cascade:About ; cascade:subject <${subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${owner}> ; prov:hadRole jdg:patient ] .
+    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
 <${owner}> a prov:Person .
 `;
 }
@@ -656,13 +656,13 @@ class OpenPod implements Pod {
       throw new Error(`no importer of ${this.#importerNames()} reads ${shown}`);
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?server ?author WHERE {
-        ?record rec:subject <${this.subject}> .
-        ?revision rec:revisionOf ?record ; prov:wasDerivedFrom ?document .
-        OPTIONAL { ?document bridge:serverBaseUrl ?server }
+        ?record cascade:subject <${this.subject}> .
+        ?revision cascade:revisionOf ?record ; prov:wasDerivedFrom ?document .
+        OPTIONAL { ?document cascade:serverBaseUrl ?server }
         OPTIONAL {
-          FILTER NOT EXISTS { ?document bridge:serverBaseUrl ?anyServer }
+          FILTER NOT EXISTS { ?document cascade:serverBaseUrl ?anyServer }
           ?document prov:qualifiedAttribution ?attribution .
-          ?attribution prov:hadRole rec:author ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
+          ?attribution prov:hadRole cascade:AuthorRole ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
         }
       }`);
     const claimedServers = new Set(
@@ -779,12 +779,12 @@ class OpenPod implements Pod {
   async #unclaimed(activity: string): Promise<string[]> {
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?profile WHERE {
-        ?revision prov:wasGeneratedBy <${activity}> ; rec:version ?version .
-        ?version rec:patient ?profile .
+        ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
+        ?version cascade:patient ?profile .
         FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
         FILTER NOT EXISTS {
-          ?judgment rec:counts true ; jdg:verdict jdg:About ;
-            prov:hadMember ?profile ; jdg:subject <${this.subject}> .
+          ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
+            prov:hadMember ?profile ; cascade:subject <${this.subject}> .
         }
       } ORDER BY ?profile`);
     return rows.flatMap((row) => row.get("profile")?.value ?? []);
@@ -800,7 +800,9 @@ class OpenPod implements Pod {
       });
     }
     const judgments = stated
-      .filter(([, p, o]) => p.value === TYPE && o.value === `${JDG}Judgment`)
+      .filter(
+        ([, p, o]) => p.value === TYPE && o.value === `${CASCADE}Judgment`,
+      )
       .map(([s]) => s.value);
     if (judgments.length !== 1 || judgments[0] !== THIS_JUDGMENT)
       throw new Error(
@@ -828,7 +830,7 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${JDG}verdict`).some((verdict) => SEEN.has(verdict))) {
+    if (of(`${CASCADE}verdict`).some((verdict) => SEEN.has(verdict))) {
       const members = of(`${PROV}hadMember`);
       const current = await this.#currentVersions(members);
       for (const member of members) {
@@ -894,7 +896,7 @@ class OpenPod implements Pod {
     }
     const { rows } = await this.#core.selectWithRows(
       text,
-      `${REC}VariantClassifications`,
+      `${CASCADE}VariantClassifications`,
     );
     const verdicts = rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
@@ -1141,7 +1143,7 @@ export async function openPodWith(
     opened = new Union(store);
     await podFiles(disk.files, parts.layout, address, opened);
     const { rows } = await opened.select(
-      `SELECT DISTINCT ?subject WHERE { ?subject a <${REC}Subject> }`,
+      `SELECT DISTINCT ?subject WHERE { ?subject a <${CASCADE}Subject> }`,
     );
     const [found, ...others] = rows.flatMap(
       (row) => row.get("subject")?.value ?? [],

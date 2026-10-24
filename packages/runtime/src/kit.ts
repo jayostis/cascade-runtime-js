@@ -1,16 +1,19 @@
+import { arrivalInRevision, selectorNodes } from "./arrivals.js";
+import { builtFileBytes } from "./build.js";
 import type { Assertion } from "./conformance.js";
 import { type Files, readText } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
 import {
+  assertionName,
   canonical,
   contentName,
   documentName,
   earlierInUtc,
+  claimName,
+  enteredRecordName,
   fileStem,
-  inUtc,
-  recordName,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -20,18 +23,15 @@ import type { Shapes } from "./shapes.js";
 import type { Dataset, StoreFactory } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const PAV = "http://purl.org/pav/";
-const MERGED_FROM = "https://ns.cascadeprotocol.org/core/v1#mergedFrom";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 const TYPE = `${RDF}type`;
-const ENTRY = "urn:cascade:entry:";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const UUID_V4 =
   /^urn:uuid:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
-const OUT_OF_PLACE =
-  "queries/v1-draft/questions/pod/Which files are out of place.rq";
+const OUT_OF_PLACE = "queries/questions/pod/Which files are out of place.rq";
 /** The lens the final views are built under, as the kit's check 2 says. */
 export const KIT_LENS = "everyday";
 
@@ -41,6 +41,7 @@ export const KIT_CHECKS = {
   shapes: "check-3-every-file-conforms-to-the-shapes",
   names: "check-4-every-name-follows-its-rule",
   layout: "check-5-every-file-is-where-the-layout-says",
+  address: "check-6-no-view-holds-the-pods-address",
 } as const;
 
 /** What the kit's checks read: one replay of its story, and the pod at its last step under `everyday`. */
@@ -84,14 +85,18 @@ async function podFiles(
   return files;
 }
 
-/** Check 2: a view's entries with what they state, each entry IRI a blank node. */
-function entriesOf(triples: readonly Triple[]): Triple[] {
+/** Check 2: a view's entries with what they state, each entry, named in its view, a blank node, whichever view names it. */
+function entriesOf(
+  views: readonly string[],
+  triples: readonly Triple[],
+): Triple[] {
   const kept = new Set(
     triples.filter(([, p]) => p.value === MERGED_FROM).map(([s]) => written(s)),
   );
   const node = (term: Term): Term =>
-    term.termType === "NamedNode" && term.value.startsWith(ENTRY)
-      ? blank(term.value.slice(ENTRY.length))
+    term.termType === "NamedNode" &&
+    views.some((view) => term.value.startsWith(`${view}#`))
+      ? blank(term.value.slice(term.value.indexOf("#") + 1))
       : term;
   return triples
     .filter(([s]) => kept.has(written(s)))
@@ -169,7 +174,10 @@ async function viewsEqualExpected(
       await readText(vocabulary, path),
       vocabulary.iri + path,
     );
-    const found = entriesOf(pod.get(view) ?? []);
+    const found = entriesOf(
+      layout.views.map(({ file }) => replayed.story.address + (file ?? "")),
+      pod.get(view) ?? [],
+    );
     if ((await canonical(expected)) !== (await canonical(found)))
       failures.push(
         `${replayed.story.address}${view} is not ${path}:`,
@@ -244,14 +252,15 @@ async function namesFollowTheirRules(
     ),
   );
 
-  // N1, N2: each record is named by the Bridge, or from an entry by the record rule.
+  // N1, N2: each record is named by the Bridge, or from an entry by EnteredRecordNamingRule.
   const expectedRecords = new Set<string>();
-  for (const { name, when, happened } of story.steps) {
+  for (const { name, happened } of story.steps) {
     if (happened.kind === "import") {
       for (const path of await vocabulary.list(at(happened.converted))) {
         if (!path.endsWith("/graph.ttl")) continue;
         const graph = await inputGraph(run, path);
-        for (const record of graph?.subjects(TYPE, iri(`${REC}Record`)) ?? [])
+        for (const record of graph?.subjects(TYPE, iri(`${CASCADE}Record`)) ??
+          [])
           expectedRecords.add(record.value);
         for (const [, p, o] of graph?.triples ?? [])
           if (p.value === `${PROV}specializationOf`)
@@ -265,16 +274,18 @@ async function namesFollowTheirRules(
           triple.flatMap((term) => DRAFT.exec(term.value)?.[1] ?? []),
         ),
       );
-      for (const position of drafts)
-        expectedRecords.add(
-          await recordName([story.subject, inUtc(when), position]),
-        );
+      const session = activityOf.get(name);
+      if (session !== undefined)
+        for (const position of drafts)
+          expectedRecords.add(
+            await enteredRecordName(session, Number(position)),
+          );
       if (drafts.size === 0) failures.push(`entry ${name} holds no draft`);
     }
   }
   const records = new Set(
     whole.triples
-      .filter(([, p]) => p.value === `${REC}revisionOf`)
+      .filter(([, p]) => p.value === `${CASCADE}revisionOf`)
       .map(([, , o]) => o.value),
   );
   for (const record of records)
@@ -301,7 +312,7 @@ async function namesFollowTheirRules(
           `N3: ${version.value} in ${path} is not named from its content`,
         );
     }
-    for (const revision of graph.subjects(TYPE, iri(`${REC}Revision`))) {
+    for (const revision of graph.subjects(TYPE, iri(`${CASCADE}Revision`))) {
       named++;
       if (
         (await contentName(
@@ -321,10 +332,10 @@ async function namesFollowTheirRules(
         failures.push(
           `N4: ${revision.value} is generated by ${generatedBy.join(", ")}, not by the activity its step made`,
         );
-      const record = graph.objects(revision, `${REC}revisionOf`)[0];
+      const record = graph.objects(revision, `${CASCADE}revisionOf`)[0];
       const time = graph.objects(revision, `${PROV}generatedAtTime`)[0];
       for (const earlier of graph.objects(revision, `${PROV}wasRevisionOf`)) {
-        const earlierRecord = whole.objects(earlier, `${REC}revisionOf`)[0];
+        const earlierRecord = whole.objects(earlier, `${CASCADE}revisionOf`)[0];
         const earlierTime = whole.objects(earlier, `${PROV}generatedAtTime`)[0];
         if (
           record === undefined ||
@@ -355,31 +366,57 @@ async function namesFollowTheirRules(
       failures.push(`N5: ${name}, stored at ${path}, is not described`);
   }
 
-  // N6: each matcher judgment is named by the record rule from what it judged and used.
+  // N6: each matcher claim is named by the claim rule from its rule, what it judged and what it used, and each of its
+  // assertions by the assertion rule from the rule list version and the claim.
   const judged = whole.subjects(`${PROV}wasAttributedTo`, iri(MATCHER));
   for (const judgment of judged) {
-    const sorted = (predicate: string): string[] =>
-      whole
-        .objects(judgment, predicate)
-        .map((t) => t.value)
-        .sort();
-    const name = await recordName([
-      MATCHER,
-      ...whole.objects(judgment, `${JDG}justification`).map((t) => t.value),
-      ...sorted(`${PROV}hadMember`),
-      ...sorted(`${PROV}used`),
-    ]);
+    const values = (predicate: string): string[] =>
+      whole.objects(judgment, predicate).map((t) => t.value);
+    const [justification = ""] = values(`${CASCADE}justification`);
+    const rules = values(`${CASCADE}matcherRule`);
+    const [rule] = rules;
+    if (rules.length !== 1 || rule === undefined) {
+      failures.push(
+        `N6: ${judgment.value} cites ${rules.length} matcher rules, not one`,
+      );
+      continue;
+    }
+    const name = await claimName({
+      maker: MATCHER,
+      rule,
+      justification,
+      members: values(`${PROV}hadMember`),
+      used: values(`${PROV}used`),
+    });
     if (name !== judgment.value)
       failures.push(
         `N6: ${judgment.value} is not named from its members and what it used`,
       );
   }
+  for (const assertion of whole.subjects(
+    TYPE,
+    iri(`${CASCADE}ClaimAssertion`),
+  )) {
+    const [claim] = whole.objects(assertion, `${CASCADE}assertedClaim`);
+    const [version] = whole.objects(
+      assertion,
+      `${CASCADE}assertedUnderRuleListVersion`,
+    );
+    if (
+      claim === undefined ||
+      version === undefined ||
+      (await assertionName(version.value, claim.value)) !== assertion.value
+    )
+      failures.push(
+        `N6: ${assertion.value} is not named from its rule list version and its claim`,
+      );
+  }
 
-  // N7: each import and entry session is a new version 4 UUID that no input gives.
+  // N7: each import is a new version 4 UUID that no input gives.
   const given = await everyInput(vocabulary, kit);
   const made = story.steps.filter(
     ({ name, happened }) =>
-      (happened.kind === "import" || happened.kind === "entry") &&
+      happened.kind === "import" &&
       replayed.steps.some(
         (done) => done.step.name === name && done.wrote.length > 0,
       ),
@@ -423,7 +460,8 @@ async function namesFollowTheirRules(
   for (const { name, happened } of story.steps) {
     if (happened.kind !== "judgment") continue;
     const input = await inputGraph(run, at(happened.file));
-    for (const judgment of input?.subjects(TYPE, iri(`${JDG}Judgment`)) ?? []) {
+    for (const judgment of input?.subjects(TYPE, iri(`${CASCADE}Judgment`)) ??
+      []) {
       const wrote = [...by]
         .filter(([, step]) => step.step.name === name)
         .map(([path]) => path);
@@ -448,7 +486,7 @@ async function namesFollowTheirRules(
   /** The record's revisions written before the moment, latest last. */
   const revisionsBefore = (record: Term, moment: string): Term[] =>
     whole
-      .subjects(`${REC}revisionOf`, record)
+      .subjects(`${CASCADE}revisionOf`, record)
       .map((r) => [r, whole.objects(r, `${PROV}generatedAtTime`)[0]] as const)
       .filter(
         ([, t]) => t !== undefined && Date.parse(t.value) < Date.parse(moment),
@@ -484,7 +522,12 @@ async function namesFollowTheirRules(
         continue;
       }
       const arrivals = new Set(
-        graph.subjects(`${BRIDGE}arrivedAs`).map(written),
+        graph
+          .subjects(`${BRIDGE}arrivedAs`)
+          .flatMap((arrival) => [
+            written(arrival),
+            ...selectorNodes(graph, arrival),
+          ]),
       );
       const swap = (term: Term): Term =>
         written(term) === written(activity) ? iri(thisImport) : term;
@@ -517,15 +560,8 @@ async function namesFollowTheirRules(
         );
       for (const arrival of graph.subjects(`${BRIDGE}arrivedAs`)) {
         const version = graph.objects(arrival, `${BRIDGE}arrivedAs`)[0];
-        const statements = graph
-          .match(arrival)
-          .filter(
-            ([, p]) =>
-              p.value !== `${BRIDGE}arrivedAs` &&
-              p.value !== `${PROV}wasGeneratedBy`,
-          );
         const revisions = whole
-          .subjects(`${REC}version`, version)
+          .subjects(`${CASCADE}version`, version)
           .filter(
             (r) => whole.match(r, `${PROV}wasDerivedFrom`, document).length > 0,
           );
@@ -537,7 +573,7 @@ async function namesFollowTheirRules(
           const sourceVersion = graph.objects(arrival, `${PAV}version`)[0];
           if (
             (current !== undefined &&
-              whole.match(current, `${REC}version`, version).length > 0) ||
+              whole.match(current, `${CASCADE}version`, version).length > 0) ||
             (sourceVersion !== undefined &&
               earlier.some(
                 (r) =>
@@ -546,15 +582,12 @@ async function namesFollowTheirRules(
           )
             continue;
         }
-        const held = new Set(
-          revisions.flatMap((r) =>
-            whole.match(r).map(([, p, o]) => `${written(p)} ${written(o)}`),
-          ),
-        );
+        const [revision] = revisions;
         if (
           revisions.length !== 1 ||
-          statements.some(
-            ([, p, o]) => !held.has(`${written(p)} ${written(o)}`),
+          revision === undefined ||
+          arrivalInRevision(graph, arrival, revision.value).some(
+            ([s, p, o]) => whole.match(s, p.value, o).length === 0,
           )
         )
           failures.push(
@@ -603,7 +636,30 @@ async function whereTheLayoutSays(
   return failures;
 }
 
-/** Checks 2 to 5 of the kit, each one assertion, named under the kit's folder. */
+/** Each IRI the Turtle's bytes write that begins with the pod's address, in the order written. */
+export function podAddressesIn(bytes: Uint8Array, address: string): string[] {
+  return [...new TextDecoder().decode(bytes).matchAll(/<([^<>"{}|^`\s]*)>/g)]
+    .map(([, written = ""]) => written)
+    .filter((written) => written.startsWith(address));
+}
+
+/** Check 6: no view, as the runtime writes or shares it, holds the pod's address. */
+function viewsHoldNoAddress(
+  run: KitRun,
+  pod: ReadonlyMap<string, Triple[]>,
+): string[] {
+  const address = run.replayed.story.address;
+  return run.layout.views.flatMap(({ file = "" }) => {
+    const triples = pod.get(file);
+    if (triples === undefined) return [];
+    return podAddressesIn(
+      builtFileBytes(run.layout, address, file, triples),
+      address,
+    ).map((written) => `${address}${file} writes <${written}>`);
+  });
+}
+
+/** Checks 2 to 6 of the kit, each one assertion, named under the kit's folder. */
 export async function kitChecks(run: KitRun): Promise<Assertion[]> {
   const address = run.replayed.story.address;
   const pod = await podFiles(run.final, address);
@@ -623,6 +679,7 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
     [KIT_CHECKS.shapes, () => conformsToShapes(run, pod)],
     [KIT_CHECKS.names, () => namesFollowTheirRules(run, held)],
     [KIT_CHECKS.layout, () => whereTheLayoutSays(run, by)],
+    [KIT_CHECKS.address, () => Promise.resolve(viewsHoldNoAddress(run, pod))],
   ];
   const assertions: Assertion[] = [];
   for (const [check, made] of checks) {

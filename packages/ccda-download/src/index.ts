@@ -1,6 +1,7 @@
 import { SaxesParser, type SaxesTagNS } from "saxes";
 
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
@@ -14,6 +15,7 @@ const CUSTODIAN = [
   "assignedCustodian",
   "representedCustodianOrganization",
 ];
+const PATIENT = ["ClinicalDocument", "recordTarget", "patientRole"];
 const SECTION = [
   "ClinicalDocument",
   "component",
@@ -45,22 +47,58 @@ interface Section {
   entries: number;
 }
 
+/** A CDA `id`: its root, and its extension where it has one. */
+export interface CdaId {
+  readonly root: string;
+  readonly extension?: string;
+}
+
 /** What the header and the body's sections say. */
 interface Header {
   version?: string;
   effectiveTime?: string;
   custodian?: string;
+  custodianId?: CdaId;
+  patients: number;
+  patientId?: CdaId;
   readonly sections: Section[];
 }
 
 const OTHER = Symbol("another document element");
+
+/** An `id` with a root and no `nullFlavor`, its extension only where it is not empty. */
+function idOf(tag: SaxesTagNS): CdaId | undefined {
+  const root = tag.attributes.root?.value;
+  const extension = tag.attributes.extension?.value;
+  if (root === undefined || root === "" || tag.attributes.nullFlavor)
+    return undefined;
+  return extension === undefined || extension === ""
+    ? { root }
+    : { root, extension };
+}
+
+/**
+ * The ids that scope a C-CDA document's records, its custodian's first `id` and its one patient's; null where it states
+ * no custodian id or not exactly one patient with an id, so that its records are named by the document; undefined where
+ * the file is no C-CDA document.
+ */
+export function scopesOf(
+  bytes: Uint8Array,
+): { readonly custodian: CdaId; readonly patient: CdaId } | null | undefined {
+  const header = headerOf(bytes);
+  if (header === undefined) return undefined;
+  const { custodianId: custodian, patientId: patient, patients } = header;
+  return custodian === undefined || patient === undefined || patients !== 1
+    ? null
+    : { custodian, patient };
+}
 
 /**
  * The header of the file's `ClinicalDocument`, or undefined where its document element is another, read no further
  * than that element; it throws where a CDA is not well-formed XML.
  */
 function headerOf(bytes: Uint8Array): Header | undefined {
-  const header: Header = { sections: [] };
+  const header: Header = { patients: 0, sections: [] };
   const path: string[] = [];
   let section: Section | undefined;
   let capture: { depth: number; text: string } | undefined;
@@ -85,6 +123,10 @@ function headerOf(bytes: Uint8Array): Header | undefined {
       header.version ??= tag.attributes.extension?.value;
     else if (at(HEADER, "effectiveTime"))
       header.effectiveTime = tag.attributes.value?.value;
+    else if (at(CUSTODIAN, "id")) header.custodianId ??= idOf(tag);
+    else if (at(PATIENT)) header.patients++;
+    else if (at(PATIENT, "id") && header.patients === 1)
+      header.patientId ??= idOf(tag);
     else if (at(CUSTODIAN, "name") || at(SECTION, "title"))
       capture = { depth: path.length, text: "" };
     else if (at(SECTION)) {
@@ -169,7 +211,7 @@ function facts(header: Header, importStarted: string): Uint8Array {
   ];
   if (header.version !== undefined)
     lines.push(
-      `<${BRIDGE}thisDocument> <${BRIDGE}sourceFormatVersion> ${quoted(header.version)} .`,
+      `<${BRIDGE}thisDocument> <${CASCADE}sourceFormatVersion> ${quoted(header.version)} .`,
     );
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
