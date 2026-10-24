@@ -186,11 +186,28 @@ test("$this is pre-bound where a sub-select returns it, in GROUP BY and ORDER BY
     assert.deepEqual(await answers(select), pyshacl, select);
 });
 
-test("$this is found by SPARQL's grammar: beside an unspaced <, after a prefixed name spelled like a keyword, after a long string ending in a backslash", async () => {
-  const cases: [select: string, pyshacl: string[]][] = [
+test("$this is found by SPARQL's grammar: beside an unspaced < after any operand but not in a collection, after a prefixed name spelled like a keyword, after a long string ending in a backslash", async () => {
+  const cases: [select: string, pyshacl: string[], turtle?: string][] = [
     [
       `SELECT $this WHERE { $this ex:n ?v FILTER(?v<5&&STR($this)>"") }`,
       ["ex:a|m {?v}"],
+    ],
+    [
+      `SELECT $this ?v WHERE { $this ex:n ?v FILTER(1e0<?v&&STR($this)>"") }`,
+      ["ex:a|m 2", "ex:other|m 9"],
+    ],
+    [
+      `SELECT $this ?v WHERE { $this ex:n ?v FILTER("a"@en<?v&&STR($this)>"") }`,
+      [],
+    ],
+    [
+      `SELECT $this ?v WHERE { $this ex:n ?v FILTER(<http://www.w3.org/2001/XMLSchema#integer>(?v)<5&&STR($this)>"") }`,
+      ["ex:a|m 2"],
+    ],
+    [
+      "SELECT $this WHERE { ?s ex:list (<urn:a> <http://e/#b>) . $this ex:q ?v }",
+      ["ex:a|m {?v}"],
+      `${DATA} ex:k ex:list (<urn:a> <http://e/#b>) .`,
     ],
     ["SELECT $this WHERE { ?k ex:select ?l . $this ex:q ?v }", ["ex:a|m {?v}"]],
     [
@@ -198,8 +215,8 @@ test("$this is found by SPARQL's grammar: beside an unspaced <, after a prefixed
       ["ex:a|m {?v}"],
     ],
   ];
-  for (const [select, pyshacl] of cases)
-    assert.deepEqual(await answers(select), pyshacl, select);
+  for (const [select, pyshacl, turtle] of cases)
+    assert.deepEqual(await answers(select, turtle), pyshacl, select);
 });
 
 test("a blank node is a focus node of a SPARQL constraint, as pyshacl reports it", async () => {
