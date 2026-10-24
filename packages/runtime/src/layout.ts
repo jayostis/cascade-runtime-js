@@ -11,6 +11,9 @@ const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+/** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
+const FILE_STEM =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
 
 /** One entry of the layout: a file, a folder, or the property whose value's folder a thing goes in. */
 export class Placement {
@@ -26,6 +29,8 @@ export class Placement {
     readonly storesBytes: boolean,
     /** Whether the build writes this view at every build, not only once the pod holds a record of its kind. */
     readonly writtenAlways: boolean = false,
+    /** Whether this folder holds the records of its class, with their versions and revisions. */
+    readonly holdsRecords: boolean = false,
   ) {}
 
   /** The path of the file holding the thing named `name`: this placement's file, or one in `folder` or its own. */
@@ -58,6 +63,8 @@ export class Layout {
       throw new Error(`${LAYOUT_FILE} gives no one folder for the views`);
     this.viewsPlacement = placement;
     this.viewsFolder = placement.folder;
+    if (!placements.some(({ holdsRecords }) => holdsRecords))
+      throw new Error(`${LAYOUT_FILE} gives no folder that holds records`);
   }
 
   /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
@@ -77,6 +84,7 @@ export class Layout {
             placed.title,
             placed.storesBytes,
             placed.writtenAlways,
+            placed.holdsRecords,
           ),
       ),
     );
@@ -93,13 +101,14 @@ export class Layout {
       PREFIX cascade: <${CASCADE}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
-      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
+      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways ?holdsRecords WHERE {
         ?placement a cascade:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
         OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement cascade:filedWith ?filedWith }
         OPTIONAL { ?placement cascade:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement cascade:subfolderPrefixLength ?fanOut }
         OPTIONAL { ?placement cascade:writtenByQueryPath ?writtenBy } OPTIONAL { ?placement dct:title ?title }
         OPTIONAL { ?placement cascade:storesBytes ?storesBytes } OPTIONAL { ?placement cascade:writtenAlways ?writtenAlways }
+        OPTIONAL { ?placement cascade:holdsRecords ?holdsRecords }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -129,6 +138,7 @@ export class Layout {
         value("title"),
         value("storesBytes") === "true",
         value("writtenAlways") === "true",
+        value("holdsRecords") === "true",
       );
     });
     return new Layout(turtle, placements);
@@ -138,6 +148,26 @@ export class Layout {
     return (placement.file ?? placement.folder ?? "").startsWith(
       this.viewsFolder,
     );
+  }
+
+  /**
+   * Whether the file at the path is in a snapshot's set (cascade:Snapshot): named as N9 names a file in a folder the
+   * layout gives, the views' folder aside. A file the layout gives by itself changes in place, and is outside it, and
+   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`.
+   */
+  inSnapshotSet(path: string): boolean {
+    if (path.startsWith(this.viewsFolder)) return false;
+    return this.placements.some(({ folder, fanOut, storesBytes }) => {
+      if (folder === undefined || !path.startsWith(folder)) return false;
+      const extension = storesBytes ? "" : ".ttl";
+      const rest = path.slice(folder.length);
+      if (!rest.endsWith(extension)) return false;
+      const parts = rest.slice(0, rest.length - extension.length).split("/");
+      const stem = parts.at(-1) ?? "";
+      if (parts.length !== (fanOut > 0 ? 2 : 1)) return false;
+      if (fanOut > 0 && parts[0] !== stem.slice(0, fanOut)) return false;
+      return FILE_STEM.test(stem);
+    });
   }
 
   /**
@@ -212,16 +242,20 @@ export class Layout {
     return this.placements.filter(({ writtenBy }) => writtenBy !== undefined);
   }
 
-  /** Where a record of the class is filed, with its versions and revisions; only a class a view lists is filed. */
+  /**
+   * Where a record of the class is filed, with its versions and revisions: only a class whose placement the layout says
+   * holds records is filed, whether or not a view lists it, as no view lists an organization.
+   */
   records(kind: string): Placement | undefined {
-    return this.views.some((view) => view.kind === kind)
-      ? this.find(kind)
-      : undefined;
+    const found = this.find(kind);
+    return found?.holdsRecords === true ? found : undefined;
   }
 
   get recordPlacements(): readonly Placement[] {
-    return this.views.flatMap(({ kind }) =>
-      kind === undefined ? [] : (this.find(kind) ?? []),
+    return this.placements.filter(
+      (placement) =>
+        placement.kind !== undefined &&
+        this.records(placement.kind) === placement,
     );
   }
 

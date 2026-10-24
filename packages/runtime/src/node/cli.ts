@@ -36,6 +36,7 @@ import {
   readConfig,
   resolveVocabulary,
   siblingsOf,
+  thisRuntime,
 } from "./runtime.js";
 import { featurePod } from "./story-pod.js";
 import { OxigraphStore } from "../oxigraph-store.js";
@@ -104,6 +105,7 @@ async function conformance(args: string[]): Promise<number> {
   const layout = await Layout.read(files, () => new OxigraphStore());
   const assertions = await runConformance({
     vocabulary: files,
+    runtime: await thisRuntime(),
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
     importers: importersNamed(config.importers),

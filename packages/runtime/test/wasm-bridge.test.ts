@@ -41,7 +41,7 @@ import {
   WasmBridge,
 } from "../src/wasm-bridge.js";
 import { notIsomorphic, triples } from "./graphs.js";
-import { layout, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
@@ -389,6 +389,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
     const time = new StoryTime();
     await perform(
       new CorePod({
+        runtime: RUNTIME,
         pod,
         address: story.address,
         subject: story.subject,

@@ -9,11 +9,12 @@ import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
 import { ntriples } from "../src/rdf.js";
 import { CASCADE } from "../src/step.js";
-import { layout, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
 const JUDGMENT = "https://ns.cascadeprotocol.org/cascade#Judgment";
 const ASSERTION = "https://ns.cascadeprotocol.org/cascade#ClaimAssertion";
+const MATCHER_RUN = "https://ns.cascadeprotocol.org/cascade#MatcherRun";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
 /** The example replayed, its story's files those `source` gives for its folder, and otherwise the vocabulary's. */
@@ -25,6 +26,7 @@ async function replayed(
   const { story, folder } = await storyFrom(FEATURE, example);
   const pod = new MemoryFiles(story.address);
   const { steps } = await replay({
+    runtime: RUNTIME,
     story,
     source: source === undefined ? files : await source(files, folder),
     vocabulary: files,
@@ -37,7 +39,7 @@ async function replayed(
   return { pod, folder, opened: steps.at(-1) };
 }
 
-test("an open writes its judgments first and the descriptions of the versions it adopts last, oldest first (W1)", async () => {
+test("an open writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last (W1)", async () => {
   const { pod, opened } = await replayed(
     "adopting files no Same the adopted rows still join, and a Same of each pair only they join",
   );
@@ -52,14 +54,22 @@ test("an open writes its judgments first and the descriptions of the versions it
       ([, predicate]) => predicate.value === "http://purl.org/pav/version",
     );
     kinds.push(
-      triples.some(([, , object]) => object.value === JUDGMENT)
-        ? "judgment"
-        : triples.some(([, , object]) => object.value === ASSERTION)
-          ? "assertion"
-          : `version ${version?.[2].value ?? "?"}`,
+      triples.some(([, , object]) => object.value === MATCHER_RUN)
+        ? "run"
+        : triples.some(([, , object]) => object.value === JUDGMENT)
+          ? "judgment"
+          : triples.some(([, , object]) => object.value === ASSERTION)
+            ? "assertion"
+            : `version ${version?.[2].value ?? "?"}`,
     );
   }
-  assert.deepEqual(kinds, ["judgment", "assertion", "version 2", "version 3"]);
+  assert.deepEqual(kinds, [
+    "judgment",
+    "assertion",
+    "version 2",
+    "version 3",
+    "run",
+  ]);
 });
 
 test("an open of a pod on series the tables lack writes nothing of them and names their versions as unheld (O2)", async () => {
@@ -117,6 +127,7 @@ test("an open on a clock that moves between judgments writes nothing for a claim
   );
   const pod = new MemoryFiles(story.address);
   await replay({
+    runtime: RUNTIME,
     story: { ...story, steps: story.steps.slice(0, -1) },
     source: files,
     vocabulary: files,
@@ -130,6 +141,7 @@ test("an open on a clock that moves between judgments writes nothing for a claim
     References.of(files, `${folder}/tables/${name}/`, newStore, files);
   let tick = Date.parse("2026-07-03T09:00:00Z");
   const reopened = new CorePod({
+    runtime: RUNTIME,
     pod,
     address: story.address,
     subject: story.subject,
@@ -176,6 +188,7 @@ test("a refused open leaves the pod matching with the tables it had", async () =
   const empty = new MemoryFiles("https://tables.example/");
   await empty.write("references.ttl", new Uint8Array());
   const pod = new CorePod({
+    runtime: RUNTIME,
     pod: new MemoryFiles(story.address),
     address: story.address,
     subject: story.subject,
@@ -268,6 +281,7 @@ async function variantPod(
   };
   let tick = Date.parse("2026-07-01T09:00:00Z");
   const options = {
+    runtime: RUNTIME,
     pod: new MemoryFiles(story.address),
     address: story.address,
     subject: story.subject,

@@ -19,6 +19,7 @@ const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const NPX = "http://purl.org/nanopub/x/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+const XSD = "http://www.w3.org/2001/XMLSchema#";
 const TYPE = `${RDF}type`;
 /** The graph holding the descriptions of the versions a comparison reads and of their series, and no others. */
 const DESCRIBED = "urn:cascade:references";
@@ -1077,16 +1078,44 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
   };
 }
 
-/** A matcher run: the records the import or entry session it takes made, or, taking none, a recheck. */
+/**
+ * The run as an act, a new random ID (N7), informed by the act whose records it took: written only when the run writes
+ * something else, so a run that finds nothing new writes nothing.
+ */
+function actOfRun(
+  context: StepContext,
+  informedBy?: string,
+): string | undefined {
+  const { writes, time, layout } = context;
+  if (writes.size === 0) return undefined;
+  const name = time.newId();
+  const run = iri(name);
+  writes.act({
+    name,
+    path: layout.place(`${PROV}Activity`).path(name),
+    triples: [
+      [run, iri(TYPE), iri(`${PROV}Activity`)],
+      [run, iri(TYPE), iri(`${CASCADE}MatcherRun`)],
+      [run, iri(`${PROV}startedAtTime`), literal(time.now(), `${XSD}dateTime`)],
+      ...(informedBy === undefined
+        ? []
+        : [[run, iri(`${PROV}wasInformedBy`), iri(informedBy)] as Triple]),
+    ],
+  });
+  return name;
+}
+
+/** A matcher run: the records the import or entry session it takes made, or, taking none, a recheck. Gives the run's act, if it wrote one. */
 export async function runMatcher(
   context: StepContext,
   references: References,
   activity?: string,
-): Promise<void> {
+): Promise<string | undefined> {
   const matcher = await Matcher.of(context, references, undefined, activity);
   if (activity === undefined) await matcher.recheck();
   else await matcher.take(activity);
   matcher.finish();
+  return actOfRun(context, activity);
 }
 
 /** The versions after `from` on the line that ends at `to`, oldest first: none when `to` does not descend from it. */
@@ -1106,12 +1135,12 @@ function descent(references: References, to: string, from: string): string[] {
 /**
  * Opens the pod with the tables: adopts each series' default that descends from the version the pod names, and files
  * what that and any rule or series new to the pod join (O1); a version the tables do not hold is left out (O2). Gives
- * the versions the pod names that the tables do not hold.
+ * the versions the pod names that the tables do not hold, and the run's act, if it wrote one.
  */
 export async function openPod(
   context: StepContext,
   references: References,
-): Promise<string[]> {
+): Promise<{ readonly unheld: string[]; readonly activity?: string }> {
   const named = await namedVersions(await context.matcherView());
   const adopted = new Map<string, string>();
   const line: string[] = [];
@@ -1133,5 +1162,7 @@ export async function openPod(
   await matcher.recheck();
   await matcher.rejoin();
   matcher.finish();
-  return unheld.sort();
+  const activity = actOfRun(context);
+  unheld.sort();
+  return activity === undefined ? { unheld } : { unheld, activity };
 }

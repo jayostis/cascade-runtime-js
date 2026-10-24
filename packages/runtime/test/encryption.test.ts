@@ -18,7 +18,7 @@ import { FolderFiles } from "../src/node/folder-files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Refusal } from "../src/step.js";
 import { argon2idOnce, podEncryptionVectors } from "./pod-encryption.js";
-import { layout } from "./vocabulary.js";
+import { layout, RUNTIME } from "./vocabulary.js";
 
 const SECRET = "abacus abdomen abdominal abide abiding zoom";
 const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
@@ -224,6 +224,7 @@ test("a sealed file is opened only when its path is read, and listing opens none
 test("a step writing a file larger than the sealing limit is refused and writes nothing", async () => {
   const { memory, files } = await sealedPod({ maxBytes: 64 });
   const pod = new CorePod({
+    runtime: RUNTIME,
     pod: files,
     address: "https://pod.example/",
     subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",

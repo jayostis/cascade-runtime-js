@@ -5,6 +5,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   type Files,
+  type Head,
   type Importer,
   type ImportProgress,
   type IndexEntry,
@@ -100,6 +101,11 @@ export interface Pod {
   readonly opened?: Opened;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
   readonly encrypted: boolean;
+  /**
+   * The app's last snapshot in the pod (N14), which the app's tables store keeps beside the pod's name and hands back
+   * as the writer's head at the next open; none until the app performs an act in it, so a first act is a new writer's.
+   */
+  readonly head: Head | undefined;
   /** The export or download at the path, or the files the app holds of one. */
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
@@ -232,6 +238,8 @@ export async function bridgeLoaded(
 /** What a pod is opened with. */
 export interface Parts {
   readonly vocabulary: Files;
+  /** The runtime performing a pod's acts, as N7 names it. */
+  readonly performer: string;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
   /** The lens `cascade-runtime.json` names. */
@@ -529,6 +537,10 @@ class OpenPod implements Pod {
     return `${this.address}${this.#parts.layout.card}#me`;
   }
 
+  get head(): Head | undefined {
+    return this.#core.head;
+  }
+
   look(exported: string | Exported): Promise<readonly ExportSource[]> {
     return this.#next(() => this.#look(exported));
   }
@@ -662,7 +674,9 @@ class OpenPod implements Pod {
         OPTIONAL {
           FILTER NOT EXISTS { ?document cascade:serverBaseUrl ?anyServer }
           ?document prov:qualifiedAttribution ?attribution .
-          ?attribution prov:hadRole cascade:AuthorRole ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
+          ?attribution prov:hadRole ?role ;
+            prov:agent/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
+          FILTER (?role IN (cascade:AuthorRole, cascade:CustodianRole))
         }
       }`);
     const claimedServers = new Set(
@@ -1024,6 +1038,10 @@ class OpenPod implements Pod {
   }
 }
 
+/**
+ * The core over the pod's files. `writer`, given for a pod kept in a folder, holds the head the app's tables store kept
+ * for it, and each new head is kept there; a pod in memory keeps none.
+ */
 function coreOver(
   parts: Parts,
   references: References,
@@ -1032,6 +1050,7 @@ function coreOver(
   subject: string,
   title: string,
   opened?: Union,
+  writer?: { readonly head: Head | undefined },
 ): CorePod {
   const { build } = parts;
   return new CorePod(
@@ -1045,6 +1064,11 @@ function coreOver(
       newStore: parts.newStore,
       time: clock,
       importers: parts.importers,
+      runtime: parts.performer,
+      ...(writer?.head === undefined ? {} : { head: writer.head }),
+      ...(writer === undefined
+        ? {}
+        : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
       references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,
@@ -1113,7 +1137,16 @@ export async function openPodWith(
       folder === undefined
         ? new MemoryFiles(address)
         : parts.folder(folder, address).files;
-    const core = coreOver(parts, references, files, address, subject, title);
+    const core = coreOver(
+      parts,
+      references,
+      files,
+      address,
+      subject,
+      title,
+      undefined,
+      folder === undefined ? undefined : { head: undefined },
+    );
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
@@ -1162,6 +1195,7 @@ export async function openPodWith(
     subject,
     title,
     opened,
+    { head: await parts.tables.headOf(address) },
   );
   return new OpenPod(
     parts,

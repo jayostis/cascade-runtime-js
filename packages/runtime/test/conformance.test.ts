@@ -12,7 +12,7 @@ import { KIT_CHECKS, kitsOf } from "../src/kit.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
 import { Union } from "../src/store.js";
-import { layout, ROOT, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, ROOT, vocabulary } from "./vocabulary.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
 const CLI = join(ROOT, "packages", "runtime", "dist", "src", "node", "cli.js");
@@ -220,6 +220,7 @@ async function runBroken(): ReturnType<typeof runConformance> {
 `,
   );
   return runConformance({
+    runtime: RUNTIME,
     vocabulary: files,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),
@@ -364,6 +365,7 @@ async function runPlanted(): ReturnType<typeof runConformance> {
 `,
   );
   return runConformance({
+    runtime: RUNTIME,
     vocabulary: files,
     newStore: () => new OxigraphStore(),
     newPod: (address) => new MemoryFiles(address),

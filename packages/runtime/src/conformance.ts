@@ -118,6 +118,8 @@ export interface Assertion {
 export interface ConformanceOptions {
   /** The vocabulary, named by its tree's IRI, which every feature file and the files its steps name are under. */
   readonly vocabulary: Files;
+  /** The runtime performing the examples' acts, as N7 names it. */
+  readonly runtime: string;
   readonly newStore: StoreFactory;
   /** An empty pod at the address, for an example to be replayed into. */
   readonly newPod: (address: string) => Files;
@@ -442,6 +444,7 @@ class Run {
           title: await titleOf(options.vocabulary, feature.folder),
           pod: options.newPod(person.address),
           layout: this.layout,
+          runtime: options.runtime,
           newStore: options.newStore,
           importers: options.importers ?? [],
           ...(options.performers === undefined

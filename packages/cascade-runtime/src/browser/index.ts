@@ -3,6 +3,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   type Followed,
+  type Head,
   HEADER,
   importersNamed,
   Layout,
@@ -18,6 +19,7 @@ import {
   type Source,
   type TablesSettings as ConfigSettings,
   tablesSettings,
+  runtimeIri,
   treeIri,
   type VocabularyBuild,
   vocabularyBuild,
@@ -457,6 +459,7 @@ const resolved = once(async (): Promise<Resolved> => {
     folder: () => {
       throw new Error("the browser build of cascade-runtime opens no folder");
     },
+    performer: performer(),
     runtime: read.runtime,
     exportAt: (path) =>
       `the browser build of cascade-runtime reads no path, such as ${path}: hand look and import the files the person picked, each by its path`,
@@ -585,6 +588,10 @@ class BrowserPod implements Pod {
 
   get owner(): string {
     return this.#known().owner;
+  }
+
+  get head(): Head | undefined {
+    return this.#opened?.head;
   }
 
   async look(exported: string | Exported): Promise<readonly ExportSource[]> {
@@ -895,4 +902,22 @@ export async function deletePod(name: string): Promise<void> {
       IndexedDbFiles.delete(prefix + name),
     ),
   );
+}
+
+declare const CASCADE_RUNTIME_COMMIT: string | undefined;
+declare const CASCADE_RUNTIME_DIRTY: boolean | undefined;
+
+/**
+ * The runtime this packed entry is, as every act it performs names it (N7): the commit it was packed from, marked
+ * `#uncommitted` when the checkout held changes, since the tree at the commit is not what runs.
+ */
+function performer(): string {
+  if (typeof CASCADE_RUNTIME_COMMIT !== "string")
+    throw new Error(
+      "this browser entry was not packed: its commit is fixed by `npm run build:package`",
+    );
+  const tree = runtimeIri(CASCADE_RUNTIME_COMMIT);
+  return typeof CASCADE_RUNTIME_DIRTY === "boolean" && CASCADE_RUNTIME_DIRTY
+    ? `${tree}#uncommitted`
+    : tree;
 }

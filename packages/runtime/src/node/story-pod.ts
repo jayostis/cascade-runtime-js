@@ -5,7 +5,7 @@ import { type Replayed, replay, titleOf } from "../replay.js";
 import { vocabularyDerive } from "../build.js";
 import { importersNamed } from "../importers.js";
 import type { References } from "../references.js";
-import type { LocalVocabulary } from "./runtime.js";
+import { type LocalVocabulary, thisRuntime } from "./runtime.js";
 
 /**
  * The steps of a feature file of the vocabulary replayed into the pod through the step named, all of them when none
@@ -50,6 +50,7 @@ export async function featurePod(
     pod,
     layout: vocabulary.layout,
     newStore,
+    runtime: await thisRuntime(),
     importers: importersNamed(vocabulary.config.importers),
     ...(tables === undefined ? {} : { references: tables }),
     build: {

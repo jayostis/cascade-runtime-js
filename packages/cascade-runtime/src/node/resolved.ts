@@ -24,6 +24,7 @@ import {
   inWorker,
   loadConfiguredAdapters,
   type LocalVocabulary,
+  thisRuntime,
   vocabularyOf,
 } from "@cascade-runtime/runtime/node";
 import { bridgeLoaded, type Parts } from "../pod.js";
@@ -179,6 +180,7 @@ export async function partsOf(
     });
   return {
     local,
+    performer: await thisRuntime(),
     vocabulary: files,
     layout,
     build,
