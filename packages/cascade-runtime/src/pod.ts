@@ -1036,6 +1036,10 @@ class OpenPod implements Pod {
   }
 }
 
+/**
+ * The core over the pod's files. `writer`, given for a pod kept in a folder, holds the head the app's tables store kept
+ * for it, and each new head is kept there; a pod in memory keeps none.
+ */
 function coreOver(
   parts: Parts,
   references: References,
@@ -1044,7 +1048,7 @@ function coreOver(
   subject: string,
   title: string,
   opened?: Union,
-  head?: Head,
+  writer?: { readonly head: Head | undefined },
 ): CorePod {
   const { build } = parts;
   return new CorePod(
@@ -1059,8 +1063,10 @@ function coreOver(
       time: clock,
       importers: parts.importers,
       runtime: parts.performer,
-      ...(head === undefined ? {} : { head }),
-      keepHead: (kept) => parts.tables.keptHead(address, kept),
+      ...(writer?.head === undefined ? {} : { head: writer.head }),
+      ...(writer === undefined
+        ? {}
+        : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
       references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,
@@ -1129,7 +1135,16 @@ export async function openPodWith(
       folder === undefined
         ? new MemoryFiles(address)
         : parts.folder(folder, address).files;
-    const core = coreOver(parts, references, files, address, subject, title);
+    const core = coreOver(
+      parts,
+      references,
+      files,
+      address,
+      subject,
+      title,
+      undefined,
+      folder === undefined ? undefined : { head: undefined },
+    );
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
@@ -1178,7 +1193,7 @@ export async function openPodWith(
     subject,
     title,
     opened,
-    await parts.tables.headOf(address),
+    { head: await parts.tables.headOf(address) },
   );
   return new OpenPod(
     parts,
