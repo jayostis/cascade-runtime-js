@@ -300,7 +300,7 @@ async function buildSpec(args: string[]): Promise<number> {
     undefined,
     log,
   );
-  let report: SpecReport = { results: new Map(), ranWith: [] };
+  let report: SpecReport = { results: new Map(), ranWith: [], repeated: [] };
   if (existsSync(reportFile))
     report = await readSpecReport(await readFile(reportFile));
   else

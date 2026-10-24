@@ -29,9 +29,11 @@ export interface SpecResult {
 /** What a conformance report says: each test's result, and what the runtime was run with. */
 export interface SpecReport {
   readonly results: ReadonlyMap<string, SpecResult>;
-  /** The vocabulary's IRI the run read, which each of its tests' IRIs begins with. */
+  /** The vocabulary's IRI the run read, ending in a slash, which each of its tests' IRIs begins with. */
   readonly vocabulary?: string;
   readonly ranWith: readonly Ingredient[];
+  /** Each test the report holds more than one assertion of, as {@link results} keys it. */
+  readonly repeated: readonly string[];
 }
 
 export interface SpecOptions {
@@ -50,7 +52,10 @@ export interface SpecWarning {
     | "row names no rule"
     | "pointer names nothing"
     | "row does not name the rule back"
-    | "no Why paragraph for the row";
+    | "no Why paragraph names the row"
+    | "two examples share a test"
+    | "page name taken"
+    | "report";
   readonly where: string;
   readonly what: string;
 }
@@ -75,44 +80,64 @@ export async function readSpecReport(bytes: Uint8Array): Promise<SpecReport> {
       href: row.get("used")?.value ?? "",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const vocabulary = ranWith.find(({ name }) => name === VOCABULARY)?.href;
+  const named = ranWith.find(({ name }) => name === VOCABULARY)?.href;
+  const vocabulary = named === undefined ? undefined : withSlash(named);
   const { rows } = await store.select(`PREFIX earl: <${EARL}>
-    SELECT ?test ?outcome ?why WHERE {
+    SELECT ?assertion ?test ?outcome ?why WHERE {
       ?assertion a earl:Assertion ; earl:test ?test ; earl:result ?result . ?result earl:outcome ?outcome
       OPTIONAL { ?result <http://purl.org/dc/terms/description> ?why }
     }`);
   const results = new Map<string, SpecResult>();
+  const assertions = new Map<string, Set<string>>();
   for (const row of rows) {
     const test = row.get("test")?.value ?? "";
     const why = row.get("why")?.value;
-    results.set(
+    const key =
       vocabulary !== undefined && test.startsWith(vocabulary)
         ? test.slice(vocabulary.length)
-        : test,
-      {
-        outcome: (row.get("outcome")?.value ?? "").slice(
-          EARL.length,
-        ) as Outcome,
-        ...(why === undefined ? {} : { why }),
-      },
-    );
+        : test;
+    const seen = assertions.get(key) ?? new Set();
+    seen.add(termKey(row.get("assertion")));
+    assertions.set(key, seen);
+    const result: SpecResult = {
+      outcome: (row.get("outcome")?.value ?? "").slice(EARL.length) as Outcome,
+      ...(why === undefined ? {} : { why }),
+    };
+    const held = results.get(key);
+    if (held === undefined || RANK(result) > RANK(held))
+      results.set(key, result);
   }
   return {
     results,
     ranWith,
+    repeated: [...assertions]
+      .filter(([, seen]) => seen.size > 1)
+      .map(([key]) => key)
+      .sort(),
     ...(vocabulary === undefined ? {} : { vocabulary }),
   };
 }
 
+const withSlash = (iri: string): string =>
+  iri.endsWith("/") ? iri : `${iri}/`;
+
+/** Of two results for one test, a fail outranks a pass, which outranks anything else. */
+const RANK = ({ outcome }: SpecResult): number =>
+  outcome === "failed" ? 2 : outcome === "passed" ? 1 : 0;
+
+const termKey = (
+  term: { readonly termType: string; readonly value: string } | undefined,
+): string => (term === undefined ? "" : `${term.termType}:${term.value}`);
+
 interface ChoiceRow {
   readonly thing: string;
-  readonly text: string;
   readonly rules: readonly string[];
   readonly issues: readonly string[];
 }
 
 interface WhyParagraph {
-  readonly lead: string;
+  /** The Choice rows the paragraph names right after its bold lead, as `(row "version")`. */
+  readonly rows: readonly string[];
   readonly text: string;
 }
 
@@ -172,34 +197,38 @@ function readNote(
 ): Note {
   const sections = sectionsOf(text);
   const rows: ChoiceRow[] = [];
-  let previous = "";
-  let header = false;
-  for (const line of sections.get("Choice") ?? []) {
-    const isRow = line.startsWith("|");
-    if (isRow && !previous.startsWith("|")) header = true;
-    else if (isRow && /^\|[\s|:-]+$/.test(line)) header = false;
-    else if (isRow && !header) {
-      const cells = cellsOf(line);
-      rows.push({
-        thing: cells[0] ?? "",
-        text: line,
-        rules: [
-          ...new Set(
-            [...line.matchAll(/\b([A-Z]{1,2}\d+)\b/g)]
-              .map((match) => match[1] ?? "")
-              .filter((number) => rules.has(number)),
-          ),
-        ],
-        issues: [
-          ...new Set(
-            [...line.matchAll(/(?:#|\/issues\/)(\d+)\b/g)].map(
-              (match) => `#${match[1] ?? ""}`,
-            ),
-          ),
-        ],
-      });
+  const lines = sections.get("Choice") ?? [];
+  const SEPARATOR = /^\|[\s|:-]+$/;
+  // A table's header is the row above its separator; a table broken by a line is the one above it continued.
+  let ruling = -1;
+  for (const [index, line] of lines.entries()) {
+    if (!line.startsWith("|") || SEPARATOR.test(line)) continue;
+    if (SEPARATOR.test(lines[index + 1] ?? "")) {
+      ruling = cellsOf(line).findIndex(
+        (cell) => cell.toLowerCase() === "what we do",
+      );
+      continue;
     }
-    previous = line;
+    if (ruling < 0) continue;
+    const cells = cellsOf(line);
+    const done = cells[ruling] ?? "";
+    rows.push({
+      thing: cells[0] ?? "",
+      rules: [
+        ...new Set(
+          [...done.matchAll(/\b([A-Z]{1,2}\d+)\b/g)]
+            .map((match) => match[1] ?? "")
+            .filter((number) => rules.has(number)),
+        ),
+      ],
+      issues: [
+        ...new Set(
+          [...line.matchAll(/(?:#|\/issues\/)(\d+)\b/g)].map(
+            (match) => `#${match[1] ?? ""}`,
+          ),
+        ),
+      ],
+    });
   }
   const why = (sections.get("Why") ?? [])
     .join("\n")
@@ -211,9 +240,15 @@ function readNote(
         .join(" ")
         .trim(),
     )
-    .flatMap((paragraph) => {
-      const lead = /^\*\*(.+?)\*\*/.exec(paragraph)?.[1];
-      return lead === undefined ? [] : [{ lead, text: paragraph }];
+    .flatMap((paragraph): WhyParagraph[] => {
+      const led = /^(\*\*.+?\*\*)\s*\((rows? [^)]*)\)\s*/.exec(paragraph);
+      if (led === null) return [];
+      return [
+        {
+          rows: quoted(led[2] ?? ""),
+          text: `${led[1] ?? ""} ${paragraph.slice(led[0].length)}`,
+        },
+      ];
     });
   const title = /^# (.+)$/m.exec(text)?.[1]?.trim() ?? path;
   return { path, title, rows, why };
@@ -227,60 +262,53 @@ function pointersOf(description: string): {
   const flat = description.replace(/\s+/g, " ").trim();
   if (!flat.startsWith("decisions/"))
     return { pointers: [], rest: description };
-  const end = /\.(\s|$)/.exec(flat.replace(/\.md\b/g, "_md"));
-  const sentence = end === null ? flat : flat.slice(0, end.index);
-  const pointers = sentence
+  // The sentence ends at a full stop outside quotes that is not a note's ".md".
+  let end = flat.length;
+  let quote = "";
+  for (let at = 0; at < flat.length; at++) {
+    const char = flat[at] ?? "";
+    if (quote === "" && (char === '"' || char === "“"))
+      quote = char === "“" ? "”" : '"';
+    else if (quote !== "" && char === quote) quote = "";
+    else if (
+      quote === "" &&
+      char === "." &&
+      !flat.startsWith(".md", at) &&
+      /\s/.test(flat[at + 1] ?? " ")
+    ) {
+      end = at;
+      break;
+    }
+  }
+  const pointers = flat
+    .slice(0, end)
     .split(/(?=decisions\/)/)
     .flatMap((part): Pointer[] => {
       const note = /^decisions\/[\w.-]+\.md/.exec(part)?.[0];
-      return note === undefined
-        ? []
-        : [
-            {
-              note,
-              rows: [...part.matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? ""),
-            },
-          ];
+      return note === undefined ? [] : [{ note, rows: quoted(part) }];
     });
-  return {
-    pointers,
-    rest: end === null ? "" : flat.slice(end.index + 1).trim(),
-  };
+  return { pointers, rest: flat.slice(end + 1).trim() };
 }
 
-const STOP = new Set([
-  "the",
-  "and",
-  "from",
-  "for",
-  "one",
-  "with",
-  "its",
-  "per",
-]);
-const wordsOf = (text: string): string[] =>
-  (text.toLowerCase().match(/[a-z][a-z-]{2,}/g) ?? [])
-    .filter((word) => !STOP.has(word))
-    .map((word) => word.replace(/s$/, ""));
+/** Each string quoted in the text, in straight or curly double quotes. */
+const quoted = (text: string): string[] =>
+  [...text.matchAll(/"([^"]+)"|“([^”]+)”/g)].map((m) => m[1] ?? m[2] ?? "");
 
-/** The paragraph of the note's Why whose bold lead names most of the row's words. */
+/**
+ * The paragraph of the note's Why that names the row right after its bold lead, as
+ * `**Why content names a version.** (row "version") Many servers…`; none until a note does.
+ */
 function whyOf(note: Note, row: string): WhyParagraph | undefined {
-  const wanted = wordsOf(row.replaceAll("`", ""));
-  let best: WhyParagraph | undefined;
-  let score = 0;
-  for (const paragraph of note.why) {
-    const lead = new Set(wordsOf(paragraph.lead));
-    const found = wanted.filter((word) => lead.has(word)).length;
-    if (found > score) {
-      best = paragraph;
-      score = found;
-    }
-  }
-  return best;
+  return note.why.find(({ rows }) =>
+    rows.some((named) => thingKey(named) === thingKey(row)),
+  );
 }
 
-/** Markdown's code spans, strong text and links, the rest as text; a relative link is to a file beside the note. */
-function inline(text: string, base: string): Html {
+/**
+ * Markdown's code spans, strong text and links, the rest as text. A relative link is to a file beside the note, `#…`
+ * to a place in it; a link that is not then http or https is left as its text.
+ */
+function inline(text: string, base: string, note: string): Html {
   return new Html(
     escape(text)
       .split(/(`[^`]+`|\*\*.+?\*\*|\[[^\]]+\]\([^)]+\))/)
@@ -292,7 +320,14 @@ function inline(text: string, base: string): Html {
         const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
         if (link === null) return part;
         const href = link[2] ?? "";
-        return `<a href="${/^[a-z]+:/.test(href) ? href : base + href}">${link[1] ?? ""}</a>`;
+        const resolved = /^[a-z][a-z0-9+.-]*:/i.test(href)
+          ? href
+          : href.startsWith("#")
+            ? note + href
+            : base + href;
+        return /^https?:\/\//i.test(resolved)
+          ? `<a href="${resolved}">${link[1] ?? ""}</a>`
+          : (link[1] ?? "");
       })
       .join(""),
   );
@@ -352,14 +387,79 @@ class Spec {
     this.#notes = notes;
     this.features = features;
     this.kits = kits;
-    this.blob = options.vocabulary.iri.replace("/tree/", "/blob/");
+    const { iri } = options.vocabulary;
+    this.blob = iri.includes("/tree/") ? iri.replace("/tree/", "/blob/") : iri;
+    this.tree = iri;
+  }
+
+  readonly tree: string;
+  /** Each feature file's page, where it is not the one its name gives. */
+  readonly pages = new Map<string, string>();
+
+  pageOf(path: string): string {
+    return this.pages.get(path) ?? pageNameOf(path);
   }
 
   result(example: Pick<WrittenExample, "iri">): SpecResult | undefined {
     const { iri } = this.#options.vocabulary;
-    return this.#options.report.results.get(
-      example.iri.startsWith(iri) ? example.iri.slice(iri.length) : example.iri,
-    );
+    const { results } = this.#options.report;
+    return example.iri.startsWith(iri)
+      ? (results.get(example.iri.slice(iri.length)) ?? results.get(example.iri))
+      : results.get(example.iri);
+  }
+
+  /** What keeps the report's results from joining the pages, as warnings on the index. */
+  joined(): void {
+    const { report, vocabulary } = this.#options;
+    if (report.results.size === 0) return;
+    for (const test of report.repeated)
+      this.#warn(
+        "report",
+        test,
+        "the report holds more than one result for this test; the worst is shown",
+      );
+    if (report.vocabulary === undefined)
+      this.#warn(
+        "report",
+        "",
+        `the report names no ${VOCABULARY} it was run with`,
+      );
+    else if (report.vocabulary !== vocabulary.iri)
+      this.#warn(
+        "report",
+        "",
+        `the report was run with ${report.vocabulary}, the pages are built from ${vocabulary.iri}`,
+      );
+    const all = [...this.features, ...this.kits.map(({ feature }) => feature)];
+    if (
+      all.every(({ rules }) =>
+        rules.every(({ examples }) =>
+          examples.every((e) => this.result(e) === undefined),
+        ),
+      )
+    )
+      this.#warn(
+        "report",
+        "",
+        "no result of the report joins an example of the pages",
+      );
+    for (const feature of all) {
+      const seen = new Set<string>();
+      for (const { examples } of feature.rules)
+        for (const { iri, name } of examples) {
+          if (seen.has(iri))
+            this.#warn(
+              "two examples share a test",
+              feature.path,
+              `more than one example is "${name}"`,
+            );
+          seen.add(iri);
+        }
+    }
+  }
+
+  warn(kind: SpecWarning["kind"], where: string, what: string): void {
+    this.#warn(kind, where, what);
   }
 
   check(kit: string, number: string): SpecResult | undefined {
@@ -378,7 +478,7 @@ class Spec {
     );
     if (counted.failed > 0)
       return { outcome: "failed", why: `${counted.failed} examples fail` };
-    if (counted.notRun > 0) return undefined;
+    if (counted.notRun > 0 || counted.passed === 0) return undefined;
     return { outcome: "passed" };
   }
 
@@ -433,9 +533,9 @@ class Spec {
           const paragraph = whyOf(note, row.thing);
           if (paragraph === undefined)
             this.#warn(
-              "no Why paragraph for the row",
+              "no Why paragraph names the row",
               note.path,
-              `no paragraph of its Why leads with the words of row "${row.thing}", which ${number} names`,
+              `no paragraph of its Why names row "${row.thing}", which ${number} names`,
             );
           else why = { note, paragraph };
         }
@@ -461,7 +561,7 @@ class Spec {
   }
 }
 
-const pageOf = (path: string): string =>
+const pageNameOf = (path: string): string =>
   `${path.startsWith("runtime/") ? path.slice(path.lastIndexOf("/") + 1, -".feature".length) : (path.split("/").at(-2) ?? path)}.html`;
 
 function page(spec: Spec, title: string, main: Content): Uint8Array {
@@ -477,7 +577,7 @@ function page(spec: Spec, title: string, main: Content): Uint8Array {
 <body>
 <nav>
 <a href="${SPEC_INDEX}">The rules</a>
-${spec.features.map((feature) => markup`<a href="${pageOf(feature.path)}">${feature.name}</a>\n`)}</nav>
+${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}</nav>
 <main>
 ${main}
 </main>
@@ -519,7 +619,7 @@ ${spec.kits.map(({ folder, feature }) => {
     number === "Check 1"
       ? spec.everyExample(feature)
       : spec.check(folder, number);
-  return markup`<tr><td data-label="kit"><a href="${pageOf(feature.path)}">${feature.name}</a></td><td data-label="result">${badge(result)}${result?.outcome === "failed" && result.why !== undefined ? markup`<details><summary>why</summary><pre class="failure">${result.why}</pre></details>` : ""}</td></tr>\n`;
+  return markup`<tr><td data-label="kit"><a href="${spec.pageOf(feature.path)}">${feature.name}</a></td><td data-label="result">${badge(result)}${result?.outcome === "failed" && result.why !== undefined ? markup`<details><summary>why</summary><pre class="failure">${result.why}</pre></details>` : ""}</td></tr>\n`;
 })}</tbody>
 </table>
 `;
@@ -547,10 +647,17 @@ ${
             markup`${index === 0 ? "" : "; "}<a href="${spec.blob}${path}">${note?.title ?? path}</a>${rows.length === 0 ? ", its Why" : markup`, ${rows.length === 1 ? "row" : "rows"} ${rows.map((row, i) => markup`${i === 0 ? "" : ", "}<q>${row}</q>`)}`}`,
         )}</p>\n`
 }${prose(ruled === undefined ? rule.description : ruled.rest)}${
-      ruled?.why === undefined
+      ruled === undefined
         ? ""
-        : markup`<blockquote class="why">
-<p>${inline(ruled.why.paragraph.text, `${spec.blob}decisions/`)}</p>
+        : ruled.why === undefined
+          ? ruled.shown
+              .filter(({ note }) => note !== undefined)
+              .map(
+                ({ note }) =>
+                  markup`<p class="also">Why: <a href="${spec.blob}${note?.path ?? ""}#why">${note?.title ?? ""}</a>, with the alternatives that lost and what would change our mind.</p>\n`,
+              )
+          : markup`<blockquote class="why">
+<p>${inline(ruled.why.paragraph.text, `${spec.blob}decisions/`, `${spec.blob}${ruled.why.note.path}`)}</p>
 <p class="also"><a href="${spec.blob}${ruled.why.note.path}#why">${ruled.why.note.title}</a>: the whole Why, the alternatives that lost and what would change our mind.</p>
 </blockquote>
 `
@@ -608,7 +715,7 @@ ${checkRules.map((rule) => {
     number === "Check 1"
       ? spec.everyExample(feature)
       : spec.check(folder, number);
-  return markup`<tr><td data-label="check"><a href="${checks === undefined ? "" : pageOf(checks.path)}#${anchorOf(number)}">${rule.name}</a></td><td data-label="result">${badge(result)}${result?.outcome === "failed" && result.why !== undefined ? markup`<details><summary>why</summary><pre class="failure">${result.why}</pre></details>` : ""}</td></tr>\n`;
+  return markup`<tr><td data-label="check"><a href="${checks === undefined ? "" : spec.pageOf(checks.path)}#${anchorOf(number)}">${rule.name}</a></td><td data-label="result">${badge(result)}${result?.outcome === "failed" && result.why !== undefined ? markup`<details><summary>why</summary><pre class="failure">${result.why}</pre></details>` : ""}</td></tr>\n`;
 })}</tbody>
 </table>
 <h2 class="part">The story</h2>
@@ -618,7 +725,7 @@ ${checkRules.map((rule) => {
 </details>
 <h2 class="part">The scripted input</h2>
 <ul class="files">
-${inputs.map(([path, count]) => markup`<li><a href="${(path.endsWith("/") ? spec.blob.replace("/blob/", "/tree/") : spec.blob) + folder}/scripted-input/${path}">${path}</a>${count > 1 ? markup` <span class="about">${plural(count, "file")}</span>` : ""}</li>\n`)}</ul>
+${inputs.map(([path, count]) => markup`<li><a href="${(path.endsWith("/") ? spec.tree : spec.blob) + folder}/scripted-input/${path}">${path}</a>${count > 1 ? markup` <span class="about">${plural(count, "file")}</span>` : ""}</li>\n`)}</ul>
 <h2 class="part">The expected views</h2>
 <ul class="files">
 ${expected.map((path) => markup`<li><a href="${spec.blob}${folder}/expected/${path}">${path}</a></li>\n`)}</ul>
@@ -634,7 +741,7 @@ function indexPage(spec: Spec, options: SpecOptions): Uint8Array {
         listed.map((e) => spec.result(e)),
       ),
     );
-    return markup`<tr><td data-label="feature"><a href="${pageOf(path)}">${feature.name}</a></td><td data-label="rules">${feature.rules.length}</td><td data-label="pass">${counted.passed}</td><td data-label="fail">${counted.failed}</td><td data-label="not run">${counted.notRun}</td></tr>\n`;
+    return markup`<tr><td data-label="feature"><a href="${spec.pageOf(path)}">${feature.name}</a></td><td data-label="rules">${feature.rules.length}</td><td data-label="pass">${counted.passed}</td><td data-label="fail">${counted.failed}</td><td data-label="not run">${counted.notRun}</td></tr>\n`;
   };
   const head = markup`<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th></tr></thead>`;
   const footer = (heading: string, listed: readonly Ingredient[]) =>
@@ -668,7 +775,7 @@ ${spec.kits.map(({ feature }) => row(feature, feature.path))}</tbody>
 <p class="prose">A rule and the Choice row that ruled it name each other (<a href="${spec.blob}decisions/README.md">decisions/README.md</a>).
 ${plural(spec.warnings.length, "place")} where they do not yet:</p>
 <ul class="warnings">
-${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> <a href="${spec.blob}${where}">${where}</a>: ${what}</li>\n`)}</ul>
+${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.blob}${where}">${where}</a>: `}${what}</li>\n`)}</ul>
 <footer>
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">
@@ -746,9 +853,24 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
     ),
   );
   const spec = new Spec(options, notes, features, kits);
+  const taken = new Set([
+    SPEC_INDEX,
+    ...features.map(({ path }) => pageNameOf(path)),
+  ]);
+  for (const { folder, feature } of kits) {
+    const name = pageNameOf(feature.path);
+    if (!taken.has(name)) continue;
+    spec.pages.set(feature.path, `kit-${name}`);
+    spec.warn(
+      "page name taken",
+      folder,
+      `the kit's page would be ${name}, a feature's, so it is kit-${name}`,
+    );
+  }
+  spec.joined();
   const files = new Map<string, Uint8Array>();
   for (const feature of features)
-    files.set(pageOf(feature.path), featurePage(spec, feature));
+    files.set(spec.pageOf(feature.path), featurePage(spec, feature));
   spec.unruledRows();
   for (const { folder, feature } of kits) {
     const listed = await vocabulary.list(`${folder}/scripted-input`);
@@ -765,7 +887,7 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
       .map((path) => path.slice(folder.length + "/expected/".length))
       .sort();
     files.set(
-      pageOf(feature.path),
+      spec.pageOf(feature.path),
       kitPage(
         spec,
         folder,

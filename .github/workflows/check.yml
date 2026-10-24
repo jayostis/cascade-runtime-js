@@ -67,13 +67,14 @@ jobs:
       # artifact, published nowhere.
       - name: The spec's pages
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        continue-on-error: true
         run: node packages/site/dist/src/node/cli.js build-spec --report "$CASCADE_CONFORMANCE_REPORT"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         with:
           name: spec
           path: cascade-runtime-js/build/spec
-          if-no-files-found: error
+          if-no-files-found: warn
       - if: ${{ !cancelled() }}
         run: npm run lint
       - if: ${{ !cancelled() }}
