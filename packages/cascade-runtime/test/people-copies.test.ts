@@ -96,8 +96,8 @@ const KIT_PULLS = join(
 
 test("Martin's two pulls in the kit are the adapter's two fixtures", async () => {
   for (const [pull, fixture] of [
-    ["harbourline-2022", "martin-okafor-harbourline-panel-2022.json"],
-    ["st-columba-2024", "martin-okafor-st-columba-exome-2024.json"],
+    ["harbourline-2022", "martin-okafor-harbourline-panel-2022-with-lab.json"],
+    ["st-columba-2024", "martin-okafor-st-columba-exome-2024-with-lab.json"],
   ] as const) {
     const kit = join(KIT_PULLS, pull, "bundle.json");
     const copy = join(fhirAdapter, "fixtures", "in", fixture);
@@ -113,8 +113,8 @@ test("the adapter's Patients for Alex and Martin agree with their person.json", 
   const copies: Record<string, string[]> = {
     "alex-rivera": ["patient-with-id.json", "bundle-urn-uuid-full-urls.json"],
     "martin-okafor": [
-      "martin-okafor-harbourline-panel-2022.json",
-      "martin-okafor-st-columba-exome-2024.json",
+      "martin-okafor-harbourline-panel-2022-with-lab.json",
+      "martin-okafor-st-columba-exome-2024-with-lab.json",
       "bundle-genomics-variants.json",
       "bundle-genomics-interpretations.json",
     ],
