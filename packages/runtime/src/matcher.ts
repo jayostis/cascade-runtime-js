@@ -410,7 +410,8 @@ class Matcher {
    * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
-   * describes but the tables do not load revises one they do (M13, O1).
+   * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
+   * takes the view out of what the pod keeps and swaps its graphs, so it is never read again.
    */
   static async of(
     context: StepContext,
@@ -541,22 +542,13 @@ class Matcher {
             });
     const { address, layout } = context;
     const folder = layout.place(`${CASCADE}ReferenceSeries`).folder;
-    const described = new Map<string, Triple[]>();
-    for (const graph of union.graphs) {
-      if (folder === undefined || !graph.startsWith(address + folder)) continue;
-      const { rows } = await union.select(
-        `SELECT ?s ?p ?o WHERE { GRAPH <${graph}> { ?s ?p ?o } }`,
-      );
-      described.set(
-        graph,
-        rows.map((row) => [row.get("s"), row.get("p"), row.get("o")] as Triple),
-      );
-      await union.store.drop(graph);
-    }
+    context.releaseMatcherView();
+    for (const graph of union.graphs)
+      if (folder !== undefined && graph.startsWith(address + folder))
+        await union.store.drop(graph);
     const known =
       foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
     const matched = await over(versions, found);
-    for (const [graph, triples] of described) await union.add(triples, graph);
     if (adopted === undefined)
       return new Matcher(
         context,

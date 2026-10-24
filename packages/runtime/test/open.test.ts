@@ -371,3 +371,24 @@ test("a pod holding the description of a version newer than the tables' current 
   );
   assert.deepEqual(await justifications(pod, matched.wrote), [SAME_VARIATION]);
 });
+
+test("what the pod answers after a match and an open still holds the pod's reference descriptions, which the matcher leaves out of its comparisons", async () => {
+  const tables = await variantTables([
+    [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+  ]);
+  const { pod } = await variantPod(tables, await described(tables, [V1]));
+  const versions = async () =>
+    (
+      await pod.select(
+        `SELECT ?version WHERE { ?version <http://www.w3.org/ns/prov#specializationOf> <${VARIANTS}> }`,
+      )
+    ).rows.map((row) => row.get("version")?.value);
+  assert.deepEqual(await versions(), [V1]);
+  await pod.open(
+    await variantTables([
+      [V1, [[90011, "NM_000249.3:c.2042C>T"]]],
+      [V2, [[90011, "NM_000249.3:c.2042C>T"]]],
+    ]),
+  );
+  assert.deepEqual((await versions()).sort(), [V1, V2]);
+});
