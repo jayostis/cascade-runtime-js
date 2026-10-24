@@ -134,6 +134,31 @@ function revisionStatements(graph: Graph, arrival: Term): Triple[] {
     );
 }
 
+/** The arrival's statements as the named revision carries them, its selector's node `<revision>#selector` (N4). */
+export function arrivalInRevision(
+  graph: Graph,
+  arrival: Term,
+  revision: string,
+): Triple[] {
+  return renamedWithin(
+    revisionStatements(graph, arrival),
+    THIS_REVISION,
+    revision,
+  );
+}
+
+/** The arrival's selectors' nodes and every blank node inside them, which a revision carries renamed. */
+export function selectorNodes(graph: Graph, arrival: Term): Set<string> {
+  return new Set(
+    selectorsOf(graph, arrival).flatMap((selector) => [
+      written(selector),
+      ...graph
+        .closure(selector)
+        .flatMap(([, , o]) => (o.termType === "BlankNode" ? [written(o)] : [])),
+    ]),
+  );
+}
+
 /** The name of a version's or a revision's content (N3, N4); content that cannot be named is refused. */
 async function named(
   triples: readonly Triple[],

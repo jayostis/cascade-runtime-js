@@ -1,3 +1,4 @@
+import { arrivalInRevision, selectorNodes } from "./arrivals.js";
 import { builtFileBytes } from "./build.js";
 import type { Assertion } from "./conformance.js";
 import { type Files, readText } from "./files.js";
@@ -509,7 +510,12 @@ async function namesFollowTheirRules(
         continue;
       }
       const arrivals = new Set(
-        graph.subjects(`${BRIDGE}arrivedAs`).map(written),
+        graph
+          .subjects(`${BRIDGE}arrivedAs`)
+          .flatMap((arrival) => [
+            written(arrival),
+            ...selectorNodes(graph, arrival),
+          ]),
       );
       const swap = (term: Term): Term =>
         written(term) === written(activity) ? iri(thisImport) : term;
@@ -542,13 +548,6 @@ async function namesFollowTheirRules(
         );
       for (const arrival of graph.subjects(`${BRIDGE}arrivedAs`)) {
         const version = graph.objects(arrival, `${BRIDGE}arrivedAs`)[0];
-        const statements = graph
-          .match(arrival)
-          .filter(
-            ([, p]) =>
-              p.value !== `${BRIDGE}arrivedAs` &&
-              p.value !== `${PROV}wasGeneratedBy`,
-          );
         const revisions = whole
           .subjects(`${REC}version`, version)
           .filter(
@@ -571,15 +570,12 @@ async function namesFollowTheirRules(
           )
             continue;
         }
-        const held = new Set(
-          revisions.flatMap((r) =>
-            whole.match(r).map(([, p, o]) => `${written(p)} ${written(o)}`),
-          ),
-        );
+        const [revision] = revisions;
         if (
           revisions.length !== 1 ||
-          statements.some(
-            ([, p, o]) => !held.has(`${written(p)} ${written(o)}`),
+          revision === undefined ||
+          arrivalInRevision(graph, arrival, revision.value).some(
+            ([s, p, o]) => whole.match(s, p.value, o).length === 0,
           )
         )
           failures.push(
