@@ -85,14 +85,18 @@ async function podFiles(
   return files;
 }
 
-/** Check 2: a view's entries with what they state, each entry, named in the view, a blank node. */
-function entriesOf(view: string, triples: readonly Triple[]): Triple[] {
+/** Check 2: a view's entries with what they state, each entry, named in its view, a blank node, whichever view names it. */
+function entriesOf(
+  views: readonly string[],
+  triples: readonly Triple[],
+): Triple[] {
   const kept = new Set(
     triples.filter(([, p]) => p.value === MERGED_FROM).map(([s]) => written(s)),
   );
   const node = (term: Term): Term =>
-    term.termType === "NamedNode" && term.value.startsWith(`${view}#`)
-      ? blank(term.value.slice(view.length + 1))
+    term.termType === "NamedNode" &&
+    views.some((view) => term.value.startsWith(`${view}#`))
+      ? blank(term.value.slice(term.value.indexOf("#") + 1))
       : term;
   return triples
     .filter(([s]) => kept.has(written(s)))
@@ -170,7 +174,10 @@ async function viewsEqualExpected(
       await readText(vocabulary, path),
       vocabulary.iri + path,
     );
-    const found = entriesOf(replayed.story.address + view, pod.get(view) ?? []);
+    const found = entriesOf(
+      layout.views.map(({ file }) => replayed.story.address + (file ?? "")),
+      pod.get(view) ?? [],
+    );
     if ((await canonical(expected)) !== (await canonical(found)))
       failures.push(
         `${replayed.story.address}${view} is not ${path}:`,

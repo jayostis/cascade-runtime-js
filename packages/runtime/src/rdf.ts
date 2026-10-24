@@ -107,11 +107,15 @@ export function relativeTurtle(
   triples: Iterable<Triple>,
   file: string,
 ): Uint8Array {
+  const folder = file.slice(0, file.lastIndexOf("/") + 1);
   return lines(triples, (term) =>
-    term.termType === "NamedNode" &&
-    (term.value === file || term.value.startsWith(`${file}#`))
-      ? `<${term.value.slice(file.length)}>`
-      : written(term),
+    term.termType !== "NamedNode"
+      ? written(term)
+      : term.value === file || term.value.startsWith(`${file}#`)
+        ? `<${term.value.slice(file.length)}>`
+        : folder !== "" && term.value.startsWith(folder)
+          ? `<${term.value.slice(folder.length)}>`
+          : written(term),
   );
 }
 

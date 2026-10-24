@@ -43,12 +43,37 @@ export const RUNTIME = "cascade-runtime-js";
 
 /** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
 const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 
-/** A view's triples with each entry named in the view (N13): its address, `#`, and the hash its placeholder carries. */
-function entriesInView(view: string, triples: readonly Triple[]): Triple[] {
+/** Each entry placeholder a view gives members (`cascade:mergedFrom`), by the view's address. */
+function entryViews(
+  views: readonly { view: string; triples: readonly Triple[] }[],
+): Map<string, string> {
+  const owner = new Map<string, string>();
+  for (const { view, triples } of views)
+    for (const [subject, predicate] of triples)
+      if (
+        predicate.value === MERGED_FROM &&
+        subject.value.startsWith(ENTRY_PLACEHOLDER)
+      )
+        owner.set(subject.value, view);
+  return owner;
+}
+
+/**
+ * A view's triples with each entry named in the view that holds it (N13): that view's address, `#`, and the hash its
+ * placeholder carries, so an entry another view points to keeps its own view's name.
+ */
+function entriesInView(
+  view: string,
+  triples: readonly Triple[],
+  owner: ReadonlyMap<string, string>,
+): Triple[] {
   const named = (term: Term): Term =>
     term.termType === "NamedNode" && term.value.startsWith(ENTRY_PLACEHOLDER)
-      ? iri(`${view}#${term.value.slice(ENTRY_PLACEHOLDER.length)}`)
+      ? iri(
+          `${owner.get(term.value) ?? view}#${term.value.slice(ENTRY_PLACEHOLDER.length)}`,
+        )
       : term;
   return triples.map(
     ([subject, predicate, object]) =>
@@ -222,21 +247,24 @@ export async function vocabularyBuild(
       const made = await Promise.all(
         group
           .filter(({ file }) => !views.includes(file) || held.has(file))
-          .map(async ({ file, query: path }) => {
-            const triples = await union.construct(query(path));
-            return {
-              file,
-              triples: marked(
-                pod.address + file,
-                views.includes(file)
-                  ? entriesInView(pod.address + file, triples)
-                  : triples,
-                used,
-              ),
-            };
-          }),
+          .map(async ({ file, query: path }) => ({
+            file,
+            view: pod.address + file,
+            triples: await union.construct(query(path)),
+          })),
       );
-      for (const { file, triples } of made) await add(file, triples);
+      const owner = entryViews(made.filter(({ file }) => views.includes(file)));
+      for (const { file, view, triples } of made)
+        await add(
+          file,
+          marked(
+            view,
+            views.includes(file)
+              ? entriesInView(view, triples, owner)
+              : triples,
+            used,
+          ),
+        );
     }
     await add(layout.typeIndex, typeIndex(pod.address, layout, held));
     await add(
