@@ -127,7 +127,7 @@ test("each story patient's pull is denied nothing, and imports with every result
         active.some(
           (row) =>
             row.code?.endsWith(`/${code}`) &&
-            row.started === request.authoredOn,
+            row.written === request.authoredOn,
         ),
         `${patient}: ${code} started ${String(request.authoredOn)}`,
       );

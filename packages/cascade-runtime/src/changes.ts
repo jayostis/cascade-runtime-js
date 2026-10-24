@@ -255,6 +255,11 @@ function pair(
   return finding;
 }
 
+/** A medication's day: its start of use, else the day its prescription was written. */
+function startOf(row: Row): string | undefined {
+  return dayOf(row.started) ?? dayOf(row.written);
+}
+
 /**
  * A drug's entries as one therapy, keyed as a finding's key is: the earliest start and the latest end, so yearly
  * renewals of one drug are one start, not as many as there are renewals. The first entry with the earliest start
@@ -267,7 +272,7 @@ function therapies(medications: readonly Row[]) {
   >();
   for (const row of medications) {
     const label = notationOf(row.code) ?? row.medication ?? "";
-    const started = dayOf(row.started);
+    const started = startOf(row);
     const ended = dayOf(row.ended);
     const kept = byDrug.get(label);
     if (kept === undefined) {
@@ -455,7 +460,7 @@ export function timelineIn(medications: readonly Row[]): TimelineEntry[] {
       ...(row.code ? { code: row.code } : {}),
       ...(notation ? { notation } : {}),
       ...(row.status ? { status: row.status } : {}),
-      ...(dayOf(row.started) ? { started: dayOf(row.started) } : {}),
+      ...(startOf(row) ? { started: startOf(row) } : {}),
       ...(dayOf(row.ended) ? { ended: dayOf(row.ended) } : {}),
     };
   });
