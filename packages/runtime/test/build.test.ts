@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { vocabularyDerive } from "../src/build.js";
+import { builtFileBytes, vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
@@ -193,7 +193,13 @@ test("a build after each step reads no file back, or one the pod held at its ope
     }
     assert.ok(bytes, path);
     assert.equal(
-      notIsomorphic(full, await parser.parse(bytes, address + path)),
+      notIsomorphic(
+        await parser.parse(
+          builtFileBytes(layout, address, path, full),
+          address + path,
+        ),
+        await parser.parse(bytes, address + path),
+      ),
       undefined,
       path,
     );
@@ -345,17 +351,18 @@ test("each entry of a view is the placeholder of the hash of its least member, a
     members.set(entry, found);
   }
   assert.ok(members.size > 0);
-  const derived = new Set(
+  const inEntry = new Map(
     (
       await store.select(
-        `SELECT DISTINCT ?entry WHERE { ?record <https://ns.cascadeprotocol.org/cascade#inEntry> ?entry }`,
+        `SELECT ?record ?entry WHERE { ?record <https://ns.cascadeprotocol.org/cascade#inEntry> ?entry }`,
       )
-    ).rows.map((row) => row.get("entry")?.value),
+    ).rows.map((row) => [row.get("record")?.value, row.get("entry")?.value]),
   );
   for (const [entry, { view, members: of }] of members) {
     const named = await viewEntryName(view, of);
     assert.equal(entry, `urn:cascade:entry:${named.slice(view.length + 1)}`);
-    assert.ok(derived.has(entry), entry);
+    for (const member of of)
+      if (inEntry.has(member)) assert.equal(inEntry.get(member), entry, member);
   }
   const [[entry, { view, members: of }] = ["", { view: "", members: [] }]] = [
     ...members,
