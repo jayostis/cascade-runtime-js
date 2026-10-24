@@ -473,7 +473,7 @@ export function serverName(baseUrl: string): Promise<string> {
 
 /**
  * An organization: from a server, by the server's base URL and its `Organization` resource's id; from a document, by
- * the identifier's system and value as the document writes them (a C-CDA custodian's id root and extension).
+ * the identifier as its version's `org:identifier` states it: the literal's datatype IRI and its lexical form.
  */
 export function organizationName(
   from:
