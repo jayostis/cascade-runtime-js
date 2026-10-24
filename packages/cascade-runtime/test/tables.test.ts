@@ -458,7 +458,7 @@ async function withVersions(
   };
 }
 
-test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files again the Same that used the replaced one, a brand allergy and its ingredient's among them by the vocabulary's R3 and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing; and opened while a check has kept one version and not yet the next, its answers are kept under the versions of the references it computes with, which what is held names after each version kept", async () => {
+test("a pod keeps the tables it was opened with; opened after a check keeps the planted newer version, it adopts it: it records the version, files the Same it newly joins and files nothing again for a Same the replaced one joined that it joins too, a brand allergy and its ingredient's among them by the vocabulary's R3, and, from a series it newly holds, a condition on a retired code and its conversion's by R7, and two conditions of one code whose periods overlap, and not one of a later episode, by R8; and opened after the rule list is revised, it is opened with that; a pod in memory is recorded as opened with nothing; and opened while a check has kept one version and not yet the next, its answers are kept under the versions of the references it computes with, which what is held names after each version kept", async () => {
   const advil: [string, string] = ["153010", "5640"];
   const ibuprofen: [string, string] = ["5640", "5640"];
   const ingredientsFirst = await withMappings(first, INGREDIENTS, [
@@ -566,7 +566,6 @@ ${records.join("\n")}`);
     assert.deepEqual(sames.map(codes).sort(), [
       "first: 141 150",
       "second: 140 141",
-      "second: 141 150",
     ]);
     const [held] = ingredientsFirst.versions;
     const [, adopted] = ingredientsLater.versions;
@@ -579,10 +578,7 @@ ${records.join("\n")}`);
     });
     const allergens = ({ used = "", codes = "" }) =>
       `${used === held ? "held" : "adopted"}: ${codes.replaceAll(RXNORM, "").split(" ").sort().join(" ")}`;
-    assert.deepEqual(brands.map(allergens).sort(), [
-      "adopted: 153010 5640",
-      "held: 153010 5640",
-    ]);
+    assert.deepEqual(brands.map(allergens).sort(), ["held: 153010 5640"]);
     const [converted] = later.versions;
     const { shipped } = await ruleList();
     const conversions = await pod.ask({
@@ -625,11 +621,11 @@ ${records.join("\n")}`);
     };
     assert.deepEqual(
       await citedBy("allergenCode", `<${RXNORM}5640>`),
-      [adopted],
-      "a brand join cites the version that counts, not the one that lapsed",
+      [held],
+      "a brand join cites the version its claim used, which the adopted one still joins",
     );
     assert.deepEqual(await citedBy("vaccineCode", `<${CVX}150>`), [
-      groups.second,
+      groups.first,
     ]);
     assert.deepEqual(await citedBy("vaccineCode", `<${CVX}140>`), [
       groups.second,
