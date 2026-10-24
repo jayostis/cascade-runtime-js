@@ -7,6 +7,7 @@ import { after, before, test } from "node:test";
 import {
   canonical,
   codeIri,
+  fileStem,
   type Files,
   Layout,
   MemoryFiles,
@@ -46,7 +47,7 @@ const TURTLE = `@prefix cascade: <${GENOMICS}> .
 @prefix spdx: <http://spdx.org/rdf/terms#> .
 `;
 const HGVS = "https://ns.cascadeprotocol.org/codes/hgvs/";
-const CLINVAR = "http://www.ncbi.nlm.nih.gov/clinvar/";
+const CLINVAR = "https://identifiers.org/clinvar:";
 const A = "urn:uuid:0a1e2c3d-4b5a-4c6d-8e7f-a1b2c3d4e5f6";
 const B = "urn:uuid:0b1e2c3d-4b5a-4c6d-8e7f-a1b2c3d4e5f6";
 const CREDIT =
@@ -355,7 +356,7 @@ test("an index of rows by code that is missing or was built for other properties
   const app = await appOver(served, files);
   await app.start();
   const path = (await files.list("")).find((each) =>
-    each.endsWith(".codes.json"),
+    each.endsWith(`${fileStem(a)}.codes.json`),
   );
   assert.ok(path);
   await files.write(path, new TextEncoder().encode('{"foundBy":[],"rows":{}}'));
