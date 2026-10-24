@@ -612,7 +612,7 @@ ${records.join("\n")}`);
       joined.set(entry, [...(joined.get(entry) ?? []), used]);
     const citedBy = async (field: string, value: string): Promise<string[]> => {
       const entries = await pod.ask({
-        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/cascade:${field} ${value} ; cascade:inEntry ?entry }`,
+        query: `${PREFIXES}SELECT DISTINCT ?entry WHERE { ?record pav:hasCurrentVersion/cascade:${field} ${value} . ?entry cascade:mergedFrom ?record }`,
       });
       assert.equal(
         entries.length,
@@ -884,7 +884,7 @@ test("a code's facts hold what each held kind says of it, each with its series a
     version,
   });
   assert.deepEqual(facts.names.map(from), [fact("CodeNames")]);
-  assert.deepEqual(facts.status.map(from), [fact("CodeStatus")]);
+  assert.deepEqual(facts.status.map(from), [fact("RetiredCodes")]);
   assert.deepEqual(facts.mappings.map(from), [fact("VaccineGroups")]);
 
   const all = await tables.search(
