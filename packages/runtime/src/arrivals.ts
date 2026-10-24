@@ -210,7 +210,11 @@ function recordPlace(
 
 /** Each record's revisions as the pod holds them, and the revisions a step adds after them. */
 class Revisions {
-  readonly #last = new Map<string, { revision: string; version: string }>();
+  /** Each record's heads: its revisions that none revises, one unless two writers revised it apart. */
+  readonly #heads = new Map<
+    string,
+    readonly { readonly revision: string; readonly version: string }[]
+  >();
   readonly #sourceVersions = new Map<string, Set<string>>();
   readonly #files: [string, Uint8Array][] = [];
 
@@ -246,10 +250,9 @@ class Revisions {
       const found = row.get("sourceVersion")?.value;
       if (found !== undefined) revisions.#sourceVersionsOf(record).add(found);
       if (revised.has(revision)) continue;
-      const last = revisions.#last.get(record);
-      if (last !== undefined && last.revision !== revision)
-        throw new Error(`${record} has two revisions that none revises`);
-      revisions.#last.set(record, { revision, version });
+      const heads = revisions.#heads.get(record) ?? [];
+      if (!heads.some((head) => head.revision === revision))
+        revisions.#heads.set(record, [...heads, { revision, version }]);
     }
     return revisions;
   }
@@ -263,17 +266,19 @@ class Revisions {
     return found;
   }
 
-  /** Whether the arrival repeats a source version the record's revisions carry (A3) or the version it is at (A4). */
+  /** Whether the arrival repeats a source version the record's revisions carry (A3) or the version a head is at (A4). */
   repeats(arrival: Arrival): boolean {
     const source = sourceVersion(arrival);
     return (
       (source !== undefined &&
         this.#sourceVersionsOf(arrival.record.value).has(source)) ||
-      this.#last.get(arrival.record.value)?.version === arrival.version.value
+      (this.#heads.get(arrival.record.value) ?? []).some(
+        ({ version }) => version === arrival.version.value,
+      )
     );
   }
 
-  /** Adds the record and its version, and holds the revision after the record's last (A2, A5) until `write`. */
+  /** Adds the record and its version, and holds the revision after each of the record's heads (A2, A5) until `write`. */
   async revise(arrival: Arrival, writes: StepWrites): Promise<void> {
     const record = arrival.record.value;
     writes.add(arrival.place.path(record), ntriples(arrival.recordTriples));
@@ -282,7 +287,9 @@ class Revisions {
       ntriples(arrival.versionTriples),
     );
     const placeholder = iri(THIS_REVISION);
-    const previous = this.#last.get(record)?.revision;
+    const previous = (this.#heads.get(record) ?? [])
+      .map(({ revision }) => revision)
+      .sort();
     const triples: Triple[] = [
       ...arrival.statements,
       [placeholder, iri(TYPE), iri(`${CASCADE}Revision`)],
@@ -294,18 +301,20 @@ class Revisions {
         literal(arrival.at, DATE_TIME),
       ],
       [placeholder, iri(GENERATED_BY), iri(arrival.by)],
-      ...(previous === undefined
-        ? []
-        : [
-            [placeholder, iri(`${PROV}wasRevisionOf`), iri(previous)] as Triple,
-          ]),
+      ...previous.map((head): Triple => [
+        placeholder,
+        iri(`${PROV}wasRevisionOf`),
+        iri(head),
+      ]),
     ];
     const { value: name } = await named(triples, `the revision of ${record}`);
     this.#files.push([
       this.layout.revision(arrival.place, name),
       ntriples(renamedWithin(triples, THIS_REVISION, name)),
     ]);
-    this.#last.set(record, { revision: name, version: arrival.version.value });
+    this.#heads.set(record, [
+      { revision: name, version: arrival.version.value },
+    ]);
     const source = sourceVersion(arrival);
     if (source !== undefined) this.#sourceVersionsOf(record).add(source);
   }

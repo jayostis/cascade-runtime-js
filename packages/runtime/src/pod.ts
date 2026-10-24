@@ -15,12 +15,14 @@ export interface Act {
 }
 
 /**
- * Given the act and every other file its step writes new to the pod, each path with its bytes, what the act's file
- * holds beside the act's description: the runtime that performed it and its snapshot (N7, N14).
+ * Given the act and every other file its step writes new to the pod, each path with its bytes, and those of them that
+ * arrived from another writer, what the act's file holds beside the act's description: the runtime that performed it
+ * and its snapshot (N7, N14).
  */
 export type FinishAct = (
   act: Act,
   fresh: readonly (readonly [string, Uint8Array])[],
+  arrived: ReadonlySet<string>,
 ) => Promise<readonly Triple[]>;
 
 /**
@@ -29,6 +31,7 @@ export type FinishAct = (
  */
 export class StepWrites {
   readonly #files = new Map<string, Uint8Array>();
+  readonly #arrived = new Set<string>();
   #act: Act | undefined;
 
   add(path: string, bytes: Uint8Array): void {
@@ -38,6 +41,12 @@ export class StepWrites {
     if (held !== undefined && !same(held, bytes))
       throw new Error(`${path} would be written twice with different bytes`);
     this.#files.set(path, bytes);
+  }
+
+  /** A file that arrived from another writer, which the step writes but its act did not write (S3). */
+  arrive(path: string, bytes: Uint8Array): void {
+    this.add(path, bytes);
+    this.#arrived.add(path);
   }
 
   /** The step's act, described by the triples, which its file holds with what `commit`'s `finish` adds. */
@@ -57,8 +66,8 @@ export class StepWrites {
   }
 
   /**
-   * Writes each file the pod lacks, the act's last, in one `writeAll`, and returns their paths; a file the pod holds
-   * with other bytes is refused.
+   * Writes each file the pod lacks, the act's last, in one `writeAll`, and returns the paths of those that did not
+   * arrive from another writer; a file the pod holds with other bytes is refused.
    */
   async commit(pod: Files, finish?: FinishAct): Promise<string[]> {
     const fresh: [string, Uint8Array][] = [];
@@ -72,10 +81,10 @@ export class StepWrites {
     if (act !== undefined) {
       if ((await pod.read(act.path)) !== undefined)
         throw new Error(`${act.path} is in the pod already`);
-      const finished = (await finish?.(act, [...fresh])) ?? [];
+      const finished = (await finish?.(act, [...fresh], this.#arrived)) ?? [];
       fresh.push([act.path, ntriples([...act.triples, ...finished])]);
     }
     await writeAll(pod, fresh);
-    return fresh.map(([path]) => path);
+    return fresh.flatMap(([path]) => (this.#arrived.has(path) ? [] : [path]));
   }
 }

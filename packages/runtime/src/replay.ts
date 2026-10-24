@@ -21,6 +21,8 @@ interface StorySide {
   /** The time the pod's steps are performed at, which a performer begins at its step's. */
   readonly time: StoryTime;
   readonly newStore: StoreFactory;
+  /** The pod of the writer so numbered, the first's 0. */
+  readonly writer: (index: number) => CorePod;
 }
 
 /** Performs a story's step by turning it into its inputs and calling the pod's step of its kind. */
@@ -126,6 +128,12 @@ export const PERFORMERS: Performers = {
       ? Promise.resolve({ wrote: [] })
       : pod.match(activity);
   },
+  sync: (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "sync") throw new Error("the step is no sync");
+    begun(story, step);
+    return pod.receive(story.writer(happened.from).files);
+  },
   open: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "open") throw new Error("the step is no open");
@@ -211,7 +219,8 @@ export async function titleOf(source: Files, folder: string): Promise<string> {
 
 /** Where a fork of a replay stands. */
 interface Standing {
-  readonly pod: CorePod;
+  /** The pod of each writer, the first's first. */
+  readonly pods: readonly CorePod[];
   readonly time: StoryTime;
   readonly steps: readonly ReplayedStep[];
   readonly stopped: Replayed["stopped"];
@@ -220,7 +229,7 @@ interface Standing {
 /** A story being replayed step by step, which can be forked to replay two ways from where it stands. */
 export class Replay {
   readonly #options: ReplayOptions;
-  readonly #pod: CorePod;
+  readonly #pods: CorePod[];
   readonly #time: StoryTime;
   readonly #steps: ReplayedStep[];
   readonly #activities: Map<string, string>;
@@ -229,29 +238,28 @@ export class Replay {
   constructor(options: ReplayOptions, standing?: Standing) {
     this.#options = options;
     this.#time = standing?.time ?? new StoryTime();
-    this.#pod =
-      standing?.pod ??
-      new CorePod({
-        pod: options.pod,
-        address: options.story.address,
-        subject: options.story.subject,
-        title: options.title,
-        vocabulary: options.vocabulary,
-        layout: options.layout,
-        newStore: options.newStore,
-        time: this.#time,
-        importers: options.importers ?? [],
-        runtime: options.runtime,
-        references:
-          options.references ??
-          (() =>
-            References.of(
-              options.source,
-              inStory(options.folder, "references/"),
-              options.newStore,
-            )),
-        ...(options.build === undefined ? {} : { build: options.build }),
-      });
+    this.#pods = standing === undefined ? [] : [...standing.pods];
+    this.#pods[0] ??= new CorePod({
+      pod: options.pod,
+      address: options.story.address,
+      subject: options.story.subject,
+      title: options.title,
+      vocabulary: options.vocabulary,
+      layout: options.layout,
+      newStore: options.newStore,
+      time: this.#time,
+      importers: options.importers ?? [],
+      runtime: options.runtime,
+      references:
+        options.references ??
+        (() =>
+          References.of(
+            options.source,
+            inStory(options.folder, "references/"),
+            options.newStore,
+          )),
+      ...(options.build === undefined ? {} : { build: options.build }),
+    });
     const steps = standing?.steps ?? [];
     this.#steps = [...steps];
     this.#activities = new Map(
@@ -266,6 +274,14 @@ export class Replay {
   async perform(step: Step): Promise<void> {
     if (this.#stopped !== undefined) return;
     const options = this.#options;
+    const writer = step.writer ?? 0;
+    if (step.happened.kind === "writer") {
+      this.#pods[writer] = await (this.#pods[0] as CorePod).newWriter();
+      this.#record(step, { wrote: [] });
+      return;
+    }
+    const pod = this.#pods[writer];
+    if (pod === undefined) throw new Error(`the pod has no writer ${writer}`);
     const perform = (options.performers ?? PERFORMERS)[step.happened.kind];
     if (perform === undefined) {
       this.#stopped = {
@@ -276,13 +292,19 @@ export class Replay {
     }
     let performed: Performed;
     try {
-      performed = await perform(this.#pod, step, {
+      performed = await perform(pod, step, {
         source: options.source,
         folder: options.folder,
         vocabulary: options.vocabulary,
         activities: this.#activities,
         time: this.#time,
         newStore: options.newStore,
+        writer: (index) => {
+          const found = this.#pods[index];
+          if (found === undefined)
+            throw new Error(`the pod has no writer ${index}`);
+          return found;
+        },
       });
     } catch (error) {
       if (error instanceof BuildFailure) {
@@ -304,11 +326,13 @@ export class Replay {
     this.#steps.push({ step, ...performed });
   }
 
-  /** A replay that stands where this one does, over a copy of its pod. */
+  /** A replay that stands where this one does, over a copy of each writer's pod. */
   async fork(): Promise<Replay> {
     const time = new StoryTime();
+    const pods: CorePod[] = [];
+    for (const pod of this.#pods) pods.push(await pod.fork(time));
     return new Replay(this.#options, {
-      pod: await this.#pod.fork(time),
+      pods,
       time,
       steps: this.#steps,
       stopped: this.#stopped,
@@ -325,7 +349,7 @@ export class Replay {
       title: this.#options.title,
       layout: this.#options.layout,
       runtime: this.#options.runtime,
-      pod: this.#pod.files,
+      pod: (this.#pods[this.#steps.at(-1)?.step.writer ?? 0] as CorePod).files,
       steps: [...this.#steps],
       ...(this.#stopped === undefined ? {} : { stopped: this.#stopped }),
     };

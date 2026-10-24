@@ -228,8 +228,13 @@ function grow(root: Node, steps: readonly Step[]): Node[] {
               ),
             }
           : happened,
+      ...(step.writer === undefined ? {} : { writer: step.writer }),
     };
-    const key = JSON.stringify([positioned.when, positioned.happened]);
+    const key = JSON.stringify(
+      step.writer === undefined
+        ? [positioned.when, positioned.happened]
+        : [positioned.when, positioned.happened, step.writer],
+    );
     let child = node.children.get(key);
     if (child === undefined) {
       child = newNode(positioned);
