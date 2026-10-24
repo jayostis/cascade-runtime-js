@@ -536,13 +536,13 @@ const condition = (pod, name, status, onset) =>
 const immunization = (pod, vaccine, code, given) =>
   entry(pod, "cascade:Vaccination", [
     `cascade:vaccineName ${text(vaccine)}`,
-    `cascade:vaccineCode ${text(code)}`,
+    `cascade:vaccineCode ${iri(code)}`,
     `cascade:vaccinationOccurrenceTime ${day(given)}`,
   ]);
 const procedure = (pod, name, snomed, performed) =>
   entry(pod, "cascade:MedicalProcedure", [
     `cascade:procedureName ${text(name)}`,
-    `cascade:snomedCode ${text(snomed)}`,
+    `cascade:snomedCode ${iri(snomed)}`,
     `cascade:procedureDate ${day(performed)}`,
   ]);
 
@@ -556,14 +556,24 @@ const entered = (turtle) => saved(pod.enter(turtle));
 const reaction = 'Hives, then "my throat closed"\nwithin minutes';
 await entered(allergy(pod, { allergen: "Peanuts", reaction }));
 await entered(condition(pod, "High blood pressure", "active", "2021-03-01"));
-await entered(immunization(pod, "Hepatitis B", "08", "2004-06-01"));
-await entered(procedure(pod, "Appendectomy", "80146002", "2012-07-15"));
+await entered(
+  immunization(
+    pod,
+    "Hepatitis B",
+    "https://ns.cascadeprotocol.org/codes/cvx/08",
+    "2004-06-01",
+  ),
+);
+await entered(
+  procedure(pod, "Appendectomy", "http://snomed.info/id/80146002", "2012-07-15"),
+);
 ```
 
 `criticality` is `low`, `high` or `unable-to-assess`; a condition's `status` is
 `active`, `recurrence`, `relapse`, `inactive`, `remission` or `resolved`; an
 allergen or condition name is never blank, else `enter` refuses it; an allergen
-code is an absolute IRI, else `iri()` throws. `enter` runs the matcher. Only a
+code, a vaccine code and a procedure's SNOMED code are each an absolute IRI in
+their system, else `iri()` throws. `enter` runs the matcher. Only a
 hospital's record gives an entry a status: an entered allergy joined to none is
 in `search`, never in `pod/My active allergies`.
 
