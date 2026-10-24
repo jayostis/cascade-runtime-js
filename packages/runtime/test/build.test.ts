@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { builtFileBytes, vocabularyDerive } from "../src/build.js";
+import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
@@ -193,13 +193,7 @@ test("a build after each step reads no file back, or one the pod held at its ope
     }
     assert.ok(bytes, path);
     assert.equal(
-      notIsomorphic(
-        await parser.parse(
-          builtFileBytes(layout, address, path, full),
-          address + path,
-        ),
-        await parser.parse(bytes, address + path),
-      ),
+      notIsomorphic(full, await parser.parse(bytes, address + path)),
       undefined,
       path,
     );
@@ -336,7 +330,7 @@ test("the matcher reads a statement two files of the pod make as one", async () 
   assert.equal((await restated.match()).refused, undefined);
 });
 
-test("each entry of a view is the placeholder of the hash of its least member, as the derived state names it, and is written <#hash>, which reads back as the view's address, # and that hash", async () => {
+test("each entry of a view is named in the view, its address, # and the hash of its least member, and is written <#hash>", async () => {
   const { rows } = await store.select(
     `SELECT ?view ?entry ?member WHERE { GRAPH ?view { ?view a <https://ns.cascadeprotocol.org/cascade#View> . ?entry <https://ns.cascadeprotocol.org/cascade#mergedFrom> ?member } }`,
   );
@@ -351,33 +345,13 @@ test("each entry of a view is the placeholder of the hash of its least member, a
     members.set(entry, found);
   }
   assert.ok(members.size > 0);
-  const inEntry = new Map(
-    (
-      await store.select(
-        `SELECT ?record ?entry WHERE { ?record <https://ns.cascadeprotocol.org/cascade#inEntry> ?entry }`,
-      )
-    ).rows.map((row) => [row.get("record")?.value, row.get("entry")?.value]),
+  for (const [entry, { view, members: of }] of members)
+    assert.equal(entry, await viewEntryName(view, of));
+  const [view = ""] = [...new Set([...members.values()].map((m) => m.view))];
+  const text = new TextDecoder().decode(
+    await pod.read(view.slice(address.length)),
   );
-  for (const [entry, { view, members: of }] of members) {
-    const named = await viewEntryName(view, of);
-    assert.equal(entry, `urn:cascade:entry:${named.slice(view.length + 1)}`);
-    for (const member of of)
-      if (inEntry.has(member)) assert.equal(inEntry.get(member), entry, member);
-  }
-  const [[entry, { view, members: of }] = ["", { view: "", members: [] }]] = [
-    ...members,
-  ];
-  const bytes = await pod.read(view.slice(address.length));
-  const text = new TextDecoder().decode(bytes);
   assert.match(text, /^<#[0-9a-f]{64}> /m);
   assert.ok(!text.includes(address), text);
   assert.ok(!text.includes("urn:cascade:entry:"), text);
-  const read = await new OxigraphStore().parse(bytes!, view);
-  assert.ok(
-    read.some(
-      ([subject]) =>
-        subject.value === entry.replace("urn:cascade:entry:", `${view}#`),
-    ),
-    await viewEntryName(view, of),
-  );
 });

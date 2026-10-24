@@ -85,7 +85,7 @@ async function podFiles(
   return files;
 }
 
-/** Check 2: a view's entries with what they state, as its file is read back, each entry, named in the view, a blank node. */
+/** Check 2: a view's entries with what they state, each entry, named in the view, a blank node. */
 function entriesOf(view: string, triples: readonly Triple[]): Triple[] {
   const kept = new Set(
     triples.filter(([, p]) => p.value === MERGED_FROM).map(([s]) => written(s)),
@@ -170,19 +170,7 @@ async function viewsEqualExpected(
       await readText(vocabulary, path),
       vocabulary.iri + path,
     );
-    const address = replayed.story.address + view;
-    const found = entriesOf(
-      address,
-      await newStore().parse(
-        builtFileBytes(
-          layout,
-          replayed.story.address,
-          view,
-          pod.get(view) ?? [],
-        ),
-        address,
-      ),
-    );
+    const found = entriesOf(replayed.story.address + view, pod.get(view) ?? []);
     if ((await canonical(expected)) !== (await canonical(found)))
       failures.push(
         `${replayed.story.address}${view} is not ${path}:`,

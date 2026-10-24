@@ -57,8 +57,8 @@ function entriesInView(view: string, triples: readonly Triple[]): Triple[] {
 }
 
 /**
- * A built file's bytes: a view as Turtle relative to itself, each entry written `<#hash>` (N13), so that it holds no
- * address of the pod; any other file as N-Triples.
+ * A built file's bytes: a view as Turtle relative to itself, so that it holds no address of the pod; any other file as
+ * N-Triples.
  */
 export function builtFileBytes(
   layout: Layout,
@@ -67,10 +67,7 @@ export function builtFileBytes(
   triples: Iterable<Triple>,
 ): Uint8Array {
   return layout.views.some(({ file }) => file === path)
-    ? relativeTurtle(
-        entriesInView(address + path, [...triples]),
-        address + path,
-      )
+    ? relativeTurtle(triples, address + path)
     : ntriples(triples);
 }
 
@@ -229,7 +226,13 @@ export async function vocabularyBuild(
             const triples = await union.construct(query(path));
             return {
               file,
-              triples: marked(pod.address + file, triples, used),
+              triples: marked(
+                pod.address + file,
+                views.includes(file)
+                  ? entriesInView(pod.address + file, triples)
+                  : triples,
+                used,
+              ),
             };
           }),
       );
