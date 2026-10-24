@@ -1,3 +1,4 @@
+import { boundToRecords } from "./bound-records.js";
 import { Derivations, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
@@ -403,12 +404,14 @@ class Matcher {
 
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
-   * `fresh` holds the joins the pod's own rule list and versions do not make (O1).
+   * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the import or entry session a run
+   * takes, each comparison is evaluated with ?record bound to the subject's records it began (M1, M4).
    */
   static async of(
     context: StepContext,
     references: References,
     adopted?: ReadonlyMap<string, string>,
+    activity?: string,
   ): Promise<Matcher> {
     const union = await context.matcherView();
     const named = await namedVersions(union);
@@ -416,6 +419,12 @@ class Matcher {
       adopted?.get(series) ??
       references.current(series, named.get(series) ?? []);
     const pod = await read(union, references);
+    const bound =
+      activity === undefined
+        ? undefined
+        : [...pod.theirs.values()].flatMap((record) =>
+            record.activity === activity ? [record.name] : [],
+          );
     const rulesVersion = current(await references.ruleList());
     const none: Joins = new Map();
     if (rulesVersion === undefined)
@@ -491,7 +500,9 @@ class Matcher {
     const rowsOf = (query: string): Promise<readonly Row[]> => {
       let rows = selected.get(query);
       if (rows === undefined) {
-        rows = union.select(query).then((answer) => answer.rows);
+        rows = union
+          .select(bound === undefined ? query : boundToRecords(query, bound))
+          .then((answer) => answer.rows);
         selected.set(query, rows);
       }
       return rows;
@@ -1030,7 +1041,7 @@ export async function runMatcher(
   references: References,
   activity?: string,
 ): Promise<void> {
-  const matcher = await Matcher.of(context, references);
+  const matcher = await Matcher.of(context, references, undefined, activity);
   if (activity === undefined) await matcher.recheck();
   else await matcher.take(activity);
   matcher.finish();
