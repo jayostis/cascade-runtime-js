@@ -53,7 +53,12 @@ const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
 /** Each kind of finding, by its words: its skos:prefLabel. */
 const FINDING_KINDS: Readonly<Record<string, string>> = {
   "claims no longer reached": `${CASCADE}ClaimsNoLongerReached`,
+  "different result values at one instant": `${CASCADE}DifferentResultValuesAtOneInstant`,
 };
+/** The kinds of finding whose body applies to their targets together, records, read as one row of members. */
+const FINDINGS_OF_RECORDS: ReadonlySet<string> = new Set([
+  `${CASCADE}DifferentResultValuesAtOneInstant`,
+]);
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -1491,6 +1496,7 @@ const DEFINITIONS: Definition[] = [
           `${OA}motivatedBy`,
           `${OA}hasTarget`,
           NO_LONGER_REACHED_UNDER,
+          ...(FINDINGS_OF_RECORDS.has(body) ? [`${PROV}used`] : []),
         ]);
         const motivations = held
           .objects(finding, `${OA}motivatedBy`)
@@ -1513,6 +1519,30 @@ const DEFINITIONS: Definition[] = [
         );
         if (named !== finding.value)
           failures.push(`${finding.value} is named ${named} by its triples`);
+        if (FINDINGS_OF_RECORDS.has(body)) {
+          const targets = held
+            .objects(finding, `${OA}hasTarget`)
+            .map(({ value }) => value);
+          const members = (): string =>
+            targets
+              .map((target) => reading.words.shown(target))
+              .sort()
+              .join(", ");
+          found.push(() =>
+            columns
+              .map((column) =>
+                column === "kind"
+                  ? (kinds[body] ?? `<${body}>`)
+                  : column === "members"
+                    ? members()
+                    : column === "name"
+                      ? finding.value
+                      : "",
+              )
+              .join(" | "),
+          );
+          continue;
+        }
         for (const { value: target } of held.objects(
           finding,
           `${OA}hasTarget`,
@@ -1544,7 +1574,10 @@ const DEFINITIONS: Definition[] = [
           (
             await Promise.all(
               columns.map((column) =>
-                column === "kind" || column === "name"
+                column === "kind" ||
+                column === "name" ||
+                (FINDINGS_OF_RECORDS.has(FINDING_KINDS[row.kind ?? ""] ?? "") &&
+                  column !== "members")
                   ? (row[column] ?? "")
                   : column === "under"
                     ? expectedJudgmentRow(
