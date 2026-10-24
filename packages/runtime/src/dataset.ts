@@ -60,8 +60,9 @@ export async function built(
 
 /**
  * The pod as it stood after the step, in the store: each RDF file a named graph, named by the pod's address plus its
- * path; what `derive` adds for the lens; and `urn:cascade:steps`, outside the union, listing each file new to the pod
- * that each step through this one wrote.
+ * path, as the writer that took the step holds it; what `derive` adds for the lens; and `urn:cascade:steps`, outside the
+ * union, listing each file new to the pod that each step through this one wrote, the files that arrived from another
+ * writer under the step that wrote them there.
  */
 export async function dataset(
   replayed: Replayed,
@@ -83,13 +84,25 @@ export async function dataset(
     throw new Error(`the story has no step ${through}`);
   }
   const steps = replayed.steps.slice(0, index + 1);
+  const reader = steps.at(-1)?.step.writer ?? 0;
+  const started =
+    reader === 0
+      ? 0
+      : steps.findIndex(
+          ({ step }) =>
+            step.happened.kind === "writer" && step.writer === reader,
+        );
   const address = replayed.story.address;
   const union = new Union(store);
   await built(
     replayed.pod,
     replayed.layout,
     address,
-    steps.flatMap(({ wrote }) => wrote),
+    steps.flatMap(({ step, wrote, arrived }, at) =>
+      at < started || (step.writer ?? 0) === reader
+        ? [...wrote, ...(arrived ?? [])]
+        : [],
+    ),
     steps.at(-1)?.step.when,
     replayed.title,
     lens,

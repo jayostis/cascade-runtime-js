@@ -177,3 +177,161 @@ test("a writer handed no head the pod holds is a new writer, whose snapshot merg
   ]);
   assert.deepEqual(next.snapshot.values("mergedParentSnapshot"), []);
 });
+
+/** Cleo's writer over the pod, handed the head, its time fixed. */
+async function cleosWriter(pod: Files, head: Head | undefined) {
+  const { local, replayed: story } = await replayed;
+  return new CorePod({
+    runtime: RUNTIME,
+    pod,
+    address: ADDRESS,
+    subject: story.story.subject,
+    title: "",
+    vocabulary: await vocabulary(),
+    layout: local.layout,
+    newStore,
+    time: { newId: randomId, now: () => "2026-03-04T08:00:00Z" },
+    importers: [],
+    references: () => Promise.reject(new Error("no tables")),
+    ...(head === undefined ? {} : { head }),
+  });
+}
+
+/** A writer that, from the replay's last snapshot, entered Cleo's entry. */
+async function entered(entry: string): Promise<CorePod> {
+  const { replayed: story } = await replayed;
+  const last = await snapshotIn(
+    story.pod,
+    story.steps.at(-1)?.wrote.at(-1) ?? "",
+  );
+  const writer = await cleosWriter(await copied(story.pod), {
+    snapshot: last.name,
+    setHash: last.values("setHash")[0] ?? "",
+  });
+  const files = await vocabulary();
+  const path = `runtime/scripted-input/cleo/entries/${entry}.ttl`;
+  const bytes = await files.read(path);
+  assert.ok(bytes !== undefined);
+  await writer.enter({ bytes, base: files.iri + path, name: path });
+  return writer;
+}
+
+/** The pod's heads: the snapshots its act files hold that none of them names as a parent. */
+async function headsIn(pod: Files): Promise<string[]> {
+  const snapshots = new Set<string>();
+  const parents = new Set<string>();
+  for (const path of await pod.list("provenance/")) {
+    const bytes = await pod.read(path);
+    assert.ok(bytes !== undefined);
+    const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
+    for (const snapshot of graph.subjects(
+      `${RDF}type`,
+      iri(`${CASCADE}Snapshot`),
+    )) {
+      snapshots.add(snapshot.value);
+      for (const local of ["firstParentSnapshot", "mergedParentSnapshot"])
+        for (const { value } of graph.objects(snapshot, `${CASCADE}${local}`))
+          parents.add(value);
+    }
+  }
+  return [...snapshots].filter((snapshot) => !parents.has(snapshot)).sort();
+}
+
+/** The one sync the pod's syncs' folder holds: the acts it names, and its snapshot's merged parents and set hash. */
+async function theSync(pod: Files, layout: Layout) {
+  const paths = await pod.list(layout.syncsFolder ?? "");
+  assert.equal(paths.length, 1, paths.join(", "));
+  const path = paths[0] ?? "";
+  const bytes = await pod.read(path);
+  assert.ok(bytes !== undefined);
+  const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
+  const snapshot = await snapshotIn(pod, path);
+  return {
+    named: graph
+      .match(undefined, `http://www.w3.org/ns/prov#wasInformedBy`, undefined)
+      .map(([, , act]) => act.value)
+      .sort(),
+    merged: snapshot.values("mergedParentSnapshot").sort(),
+    setHash: snapshot.values("setHash"),
+  };
+}
+
+/** The pod's files, its writes stopping with an error at the one numbered `stopAt`, counting from 0, once. */
+class StopsAtOneWrite implements Files {
+  writes = 0;
+  constructor(
+    readonly inner: Files,
+    readonly stopAt: number,
+  ) {}
+
+  get iri(): string {
+    return this.inner.iri;
+  }
+
+  read(pathOrIri: string): Promise<Uint8Array | undefined> {
+    return this.inner.read(pathOrIri);
+  }
+
+  list(folder: string): Promise<string[]> {
+    return this.inner.list(folder);
+  }
+
+  async write(pathOrIri: string, bytes: Uint8Array): Promise<void> {
+    if (this.writes++ === this.stopAt) throw new Error("the write stopped");
+    await this.inner.write(pathOrIri, bytes);
+  }
+}
+
+test("a receive that stops at any of its writes and is made again writes the sync an unstopped one writes, naming the same acts", async () => {
+  const { local, replayed: story } = await replayed;
+  const last = await snapshotIn(
+    story.pod,
+    story.steps.at(-1)?.wrote.at(-1) ?? "",
+  );
+  const head = {
+    snapshot: last.name,
+    setHash: last.values("setHash")[0] ?? "",
+  };
+  const other = await entered("second-entry");
+  const unstopped = new StopsAtOneWrite(await copied(story.pod), -1);
+  await (await cleosWriter(unstopped, head)).receive(other.files);
+  const expected = await theSync(unstopped, local.layout);
+  assert.ok(unstopped.writes > 2, String(unstopped.writes));
+  for (let stopAt = 0; stopAt < unstopped.writes; stopAt++) {
+    const pod = new StopsAtOneWrite(await copied(story.pod), stopAt);
+    const writer = await cleosWriter(pod, head);
+    await assert.rejects(writer.receive(other.files), /the write stopped/);
+    await writer.receive(other.files);
+    assert.deepEqual(
+      await theSync(pod, local.layout),
+      expected,
+      `stopped at write ${stopAt}`,
+    );
+  }
+});
+
+test("three writers, one receiving the others' files in either order, hold one set hash and leave no head but their own", async () => {
+  const { replayed: story } = await replayed;
+  const last = await snapshotIn(
+    story.pod,
+    story.steps.at(-1)?.wrote.at(-1) ?? "",
+  );
+  const head = {
+    snapshot: last.name,
+    setHash: last.values("setHash")[0] ?? "",
+  };
+  const [second, third] = [
+    await entered("second-entry"),
+    await entered("third-entry"),
+  ];
+  const receiving = async (order: CorePod[]) => {
+    const writer = await cleosWriter(await copied(story.pod), head);
+    for (const from of order) await writer.receive(from.files);
+    assert.deepEqual(await headsIn(writer.files), [writer.head?.snapshot]);
+    return writer.head?.setHash;
+  };
+  assert.equal(
+    await receiving([second, third]),
+    await receiving([third, second]),
+  );
+});
