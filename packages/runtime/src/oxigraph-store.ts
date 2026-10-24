@@ -83,32 +83,58 @@ export class OxigraphStore implements Store {
     return (this.#oxigraph ??= new oxigraph.Store());
   }
 
+  /** Frees what the store holds in Oxigraph's memory now, rather than when it is collected. */
+  free(): void {
+    free(this.#oxigraph);
+    this.#oxigraph = undefined;
+    this.#graphs.clear();
+  }
+
+  [Symbol.dispose](): void {
+    this.free();
+  }
+
   /**
    * Oxigraph reads the union of every graph it holds about as fast as one graph, and a union it is given as a list
    * many times slower, so a union naming every graph held is read as the former.
    */
-  #over(
+  #query(
+    query: string,
     union: ReadonlySet<string>,
-  ):
-    | { use_default_graph_as_union: true }
-    | { default_graph: oxigraph.NamedNode[] } {
+    options: { results_format?: string } = {},
+  ): ReturnType<oxigraph.Store["query"]> {
+    let named: oxigraph.NamedNode[] | undefined;
     for (const graph of this.#graphs)
-      if (!union.has(graph))
-        return {
-          default_graph: [...union].map((graph) => oxigraph.namedNode(graph)),
-        };
-    return { use_default_graph_as_union: true };
+      if (!union.has(graph)) {
+        named = [...union].map((graph) => oxigraph.namedNode(graph));
+        break;
+      }
+    try {
+      return this.#store.query(query, {
+        ...options,
+        ...(named === undefined
+          ? { use_default_graph_as_union: true }
+          : { default_graph: named }),
+      });
+    } finally {
+      free(...(named ?? []));
+    }
   }
 
   async loadTurtle(
     turtle: Uint8Array | string,
     options: LoadOptions,
   ): Promise<void> {
-    this.#store.load(turtle, {
-      format: TURTLE,
-      base_iri: options.graph,
-      to_graph_name: oxigraph.namedNode(options.graph),
-    });
+    const graph = oxigraph.namedNode(options.graph);
+    try {
+      this.#store.load(turtle, {
+        format: TURTLE,
+        base_iri: options.graph,
+        to_graph_name: graph,
+      });
+    } finally {
+      free(graph);
+    }
     this.#graphs.add(options.graph);
   }
 
@@ -122,48 +148,52 @@ export class OxigraphStore implements Store {
     const graph = oxigraph.namedNode(options.graph);
     const ground: string[] = [];
     let any = false;
-    for (const triple of triples) {
-      any = true;
-      const [subject, predicate, object] = triple;
-      if (subject.termType !== "BlankNode" && object.termType !== "BlankNode") {
-        ground.push(`${triple.map(written).join(" ")} .\n`);
-        continue;
+    try {
+      for (const triple of triples) {
+        any = true;
+        const [subject, predicate, object] = triple;
+        if (
+          subject.termType !== "BlankNode" &&
+          object.termType !== "BlankNode"
+        ) {
+          ground.push(`${triple.map(written).join(" ")} .\n`);
+          continue;
+        }
+        const terms = [
+          toOxigraph(subject),
+          oxigraph.namedNode(predicate.value),
+          toOxigraph(object),
+        ] as const;
+        const quad = oxigraph.quad(
+          terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
+          terms[1],
+          terms[2],
+          graph,
+        );
+        this.#store.add(quad);
+        free(quad, ...terms);
       }
-      const terms = [
-        toOxigraph(subject),
-        oxigraph.namedNode(predicate.value),
-        toOxigraph(object),
-      ] as const;
-      const quad = oxigraph.quad(
-        terms[0] as oxigraph.NamedNode | oxigraph.BlankNode,
-        terms[1],
-        terms[2],
-        graph,
-      );
-      this.#store.add(quad);
-      free(quad, ...terms);
+      if (ground.length > 0) {
+        this.#store.load(ground.join(""), {
+          format: N_TRIPLES,
+          to_graph_name: graph,
+        });
+      }
+    } finally {
+      free(graph);
     }
-    if (ground.length > 0) {
-      this.#store.load(ground.join(""), {
-        format: N_TRIPLES,
-        to_graph_name: graph,
-      });
-    }
-    free(graph);
     if (any) this.#graphs.add(options.graph);
   }
 
   async drop(graph: string): Promise<void> {
-    this.#store.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
+    if (this.#oxigraph === undefined) return;
+    this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
     this.#graphs.delete(graph);
   }
 
   async select(query: string, union: ReadonlySet<string>): Promise<Rows> {
     const answer = parseResults(
-      this.#store.query(query, {
-        results_format: RESULTS_JSON,
-        ...this.#over(union),
-      }) as string,
+      this.#query(query, union, { results_format: RESULTS_JSON }) as string,
     );
     if (typeof answer === "boolean")
       throw new Error("an ASK query was run as a SELECT");
@@ -171,7 +201,7 @@ export class OxigraphStore implements Store {
   }
 
   async ask(query: string, union: ReadonlySet<string>): Promise<boolean> {
-    const answer = this.#store.query(query, this.#over(union));
+    const answer = this.#query(query, union);
     if (typeof answer !== "boolean")
       throw new Error("a query that is no ASK was run as one");
     return answer;
@@ -210,7 +240,7 @@ export class OxigraphStore implements Store {
     query: string,
     union: ReadonlySet<string>,
   ): Promise<Triple[]> {
-    const answer = this.#store.query(query, this.#over(union));
+    const answer = this.#query(query, union);
     if (!Array.isArray(answer) || answer.some((item) => item instanceof Map)) {
       throw new Error("a query that is no CONSTRUCT was run as one");
     }
