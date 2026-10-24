@@ -107,6 +107,109 @@ export async function readFeature(
   };
 }
 
+/** An example as the feature file writes it: its name, its test, and its lines, dedented. */
+export interface WrittenExample {
+  readonly name: string;
+  readonly iri: string;
+  readonly text: string;
+}
+
+/** A rule as the feature file writes it; the examples outside any rule are under one with no name. */
+export interface WrittenRule {
+  readonly name: string;
+  readonly description: string;
+  readonly examples: readonly WrittenExample[];
+}
+
+/** A feature file as written, for a reader rather than a run. */
+export interface WrittenFeature {
+  readonly path: string;
+  readonly name: string;
+  readonly description: string;
+  /** The lines of its own background, dedented, or empty. */
+  readonly background: string;
+  readonly rules: readonly WrittenRule[];
+}
+
+function dedented(lines: readonly string[]): string {
+  const kept = [...lines];
+  while (kept.length > 0 && (kept.at(-1) ?? "").trim() === "") kept.pop();
+  const indent = Math.min(
+    ...kept
+      .filter((line) => line.trim() !== "")
+      .map((line) => line.length - line.trimStart().length),
+  );
+  return kept.map((line) => line.slice(indent)).join("\n");
+}
+
+const unindented = (description: string | undefined): string =>
+  (description ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .trim();
+
+/** The feature file at the path, as written: each rule's description and each example's own lines. */
+export async function readWrittenFeature(
+  files: Files,
+  path: string,
+): Promise<WrittenFeature> {
+  const text = await readText(files, path);
+  const lines = text.split(/\r?\n/);
+  const document = new Parser(
+    new AstBuilder(IdGenerator.incrementing()),
+    new GherkinClassicTokenMatcher(),
+  ).parse(text);
+  const feature = document.feature;
+  const children = feature?.children ?? [];
+  const starts: number[] = [];
+  for (const child of children) {
+    const node = child.rule ?? child.scenario ?? child.background;
+    if (node !== undefined) starts.push(node.location.line);
+    for (const inner of child.rule?.children ?? []) {
+      const nested = inner.scenario ?? inner.background;
+      if (nested !== undefined) starts.push(nested.location.line);
+    }
+  }
+  starts.sort((a, b) => a - b);
+  const linesFrom = (line: number): string => {
+    const end = starts.find((start) => start > line) ?? lines.length + 1;
+    return dedented(lines.slice(line - 1, end - 1));
+  };
+  const example = (scenario: {
+    readonly name: string;
+    readonly location: { readonly line: number };
+  }): WrittenExample => ({
+    name: scenario.name,
+    iri: `${files.iri}${path}#${slug(scenario.name)}`,
+    text: linesFrom(scenario.location.line),
+  });
+  const rules: WrittenRule[] = [];
+  const loose: WrittenExample[] = [];
+  for (const child of children) {
+    if (child.scenario !== undefined) loose.push(example(child.scenario));
+    if (child.rule !== undefined)
+      rules.push({
+        name: child.rule.name,
+        description: unindented(child.rule.description),
+        examples: child.rule.children.flatMap(({ scenario }) =>
+          scenario === undefined ? [] : [example(scenario)],
+        ),
+      });
+  }
+  if (loose.length > 0)
+    rules.unshift({ name: "", description: "", examples: loose });
+  const background = children.find((child) => child.background)?.background;
+  return {
+    path,
+    name: feature?.name ?? path,
+    description: unindented(feature?.description),
+    background:
+      background === undefined ? "" : linesFrom(background.location.line),
+    rules,
+  };
+}
+
 /** Every feature file of the rules, under `runtime/`, and of each kit, a folder under `conformance/`. */
 export async function featuresOf(vocabulary: Files): Promise<string[]> {
   return [

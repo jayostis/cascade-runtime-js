@@ -31,6 +31,7 @@
     "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
     "build:example": "tsc -b && node packages/site/dist/src/node/cli.js build-example",
     "build:pages": "tsc -b && node packages/site/dist/src/node/cli.js build-pages",
+    "build:spec": "tsc -b && node packages/site/dist/src/node/cli.js build-spec",
     "build:package": "tsc -b && node packages/cascade-runtime/dist/pack/pack.js",
     "serve:pages": "tsc -b && node packages/site/dist/src/node/cli.js serve-pages",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",

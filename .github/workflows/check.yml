@@ -63,6 +63,17 @@ jobs:
           echo "CASCADE_CONFORMANCE_REPORT=$REPORT" >> "$GITHUB_ENV"
       - if: ${{ !cancelled() }}
         run: npm run typecheck
+      # Every rule beside the note that ruled it and this run's result; its warnings fail nothing yet. Kept as an
+      # artifact, published nowhere.
+      - name: The spec's pages
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        run: node packages/site/dist/src/node/cli.js build-spec --report "$CASCADE_CONFORMANCE_REPORT"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+        with:
+          name: spec
+          path: cascade-runtime-js/build/spec
+          if-no-files-found: error
       - if: ${{ !cancelled() }}
         run: npm run lint
       - if: ${{ !cancelled() }}
