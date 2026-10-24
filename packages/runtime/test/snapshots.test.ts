@@ -186,7 +186,7 @@ test("an open that migrates a release leaves two acts in one step, each with its
     new MemoryFiles(ADDRESS),
     {
       example:
-        "adopting a release that declares R4 wrong retracts R4's two claims before the open's matcher runs, and neither counts nor lapses",
+        "adopting a release that declares R4 wrong retracts the assertions of R4's two claims before the open's matcher runs, and neither claim counts nor lapses",
     },
   );
   const opened = story.steps.at(-1);

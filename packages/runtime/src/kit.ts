@@ -16,6 +16,7 @@ import {
   actDescriptionName,
   fileDigest,
   fileStem,
+  retractionName,
   setHash,
   snapshotName,
   THIS_REVISION,
@@ -240,7 +241,7 @@ async function inputGraph(
     : new Graph(await run.newStore().parse(bytes, run.vocabulary.iri + path));
 }
 
-/** Check 4: N1 to N7, N9 and N10, and A9 and A11, from the run's own inputs. */
+/** Check 4: N1 to N7, N9, N10, N14 and N15, and A9 and A11, from the run's own inputs. */
 async function namesFollowTheirRules(
   run: KitRun,
   held: Written,
@@ -472,12 +473,14 @@ async function namesFollowTheirRules(
       failures.push(`N9: ${path} is named for nothing it holds`);
   }
 
-  // N10: each person's judgment keeps the IRI its input gives it.
+  // N10: each person's judgment, and each person's retraction, keeps the IRI its input gives it.
   for (const { name, happened } of story.steps) {
     if (happened.kind !== "judgment") continue;
     const input = await inputGraph(run, at(happened.file));
-    for (const judgment of input?.subjects(TYPE, iri(`${CASCADE}Judgment`)) ??
-      []) {
+    for (const judgment of new Set([
+      ...(input?.subjects(TYPE, iri(`${CASCADE}Judgment`)) ?? []),
+      ...(input?.subjects(`${PROV}invalidated`) ?? []),
+    ])) {
       const wrote = [...by]
         .filter(([, step]) => step.step.name === name)
         .map(([path]) => path);
@@ -488,6 +491,28 @@ async function namesFollowTheirRules(
       )
         failures.push(`N10: step ${name} files no ${judgment.value}`);
     }
+  }
+
+  // N15: each release's retraction is named from the release, the assertion and the rule of the assertion's claim.
+  for (const retraction of whole.subjects(`${PROV}invalidated`)) {
+    const [release] = whole.objects(retraction, `${PROV}used`);
+    if (release === undefined) continue;
+    const [assertion] = whole.objects(retraction, `${PROV}invalidated`);
+    const [claim] =
+      assertion === undefined
+        ? []
+        : whole.objects(assertion, `${CASCADE}assertedClaim`);
+    const [rule] =
+      claim === undefined ? [] : whole.objects(claim, `${CASCADE}matcherRule`);
+    if (
+      assertion === undefined ||
+      rule === undefined ||
+      (await retractionName(release.value, assertion.value, rule.value)) !==
+        retraction.value
+    )
+      failures.push(
+        `N15: ${retraction.value} is not named from its release, its assertion and its claim's rule`,
+      );
   }
 
   // A9, A11: each saved Bridge output is in the pod less its arrivals, with the import its step wrote.
@@ -656,25 +681,42 @@ export async function snapshotsFollowTheirRule(
   let last: { readonly set: string[]; readonly hash: string } | undefined;
   for (const { step, wrote, activity } of steps) {
     let found = 0;
+    let acts = 0;
     let from = 0;
     for (const [index, path] of wrote.entries()) {
       const bytes = layout.isRdf(path) ? await pod.read(path) : undefined;
+      const text = bytes === undefined ? "" : new TextDecoder().decode(bytes);
       if (
         bytes === undefined ||
-        !new TextDecoder().decode(bytes).includes(`${CASCADE}Snapshot`)
+        !(text.includes(`${CASCADE}Snapshot`) || text.includes(runtime))
       )
         continue;
+      const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
+      const actsHere = new Set(
+        graph.triples
+          .filter(
+            ([, p, o]) =>
+              p.value === `${PROV}wasAssociatedWith` && o.value === runtime,
+          )
+          .map(([s]) => s.value),
+      );
+      acts += actsHere.size;
+      const snapshots = graph.subjects(TYPE, iri(`${CASCADE}Snapshot`));
+      if (snapshots.length === 0) continue;
       const ofSet = wrote
         .slice(from, index + 1)
         .filter((file) => layout.inSnapshotSet(file));
       from = index + 1;
       held.push(...ofSet);
-      const graph = new Graph(await newStore().parse(bytes, pod.iri + path));
-      for (const snapshot of graph.subjects(TYPE, iri(`${CASCADE}Snapshot`))) {
+      for (const snapshot of snapshots) {
         found++;
         const values = (predicate: string): string[] =>
           graph.objects(snapshot, predicate).map(({ value }) => value);
         const [act = ""] = values(`${PROV}wasGeneratedBy`);
+        if (!actsHere.has(act))
+          failures.push(
+            `N14: ${snapshot.value} in ${path} is no snapshot of an act that file describes`,
+          );
         const first = values(`${CASCADE}firstParentSnapshot`);
         const merged = values(`${CASCADE}mergedParentSnapshot`);
         const [hash = ""] = values(`${CASCADE}setHash`);
@@ -726,6 +768,10 @@ export async function snapshotsFollowTheirRule(
     );
     if (activity !== undefined && wrote.length > 0 && found === 0)
       failures.push(`N14: step ${step.name} wrote no snapshot`);
+    else if (found !== acts)
+      failures.push(
+        `N14: step ${step.name} wrote ${acts} acts and ${found} snapshots, not one snapshot per act`,
+      );
   }
   if (last !== undefined) {
     const present = last.set.filter((path) => listed.has(path));

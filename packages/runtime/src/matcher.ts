@@ -301,7 +301,10 @@ interface Pod {
   readonly entryOf: ReadonlyMap<string, string>;
   /** The matcher's claims retracted, or replaced by a judgment not itself retracted. */
   readonly withdrawn: ReadonlySet<string>;
-  /** The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under. */
+  /**
+   * The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under, by an
+   * assertion no retraction invalidates (N15).
+   */
   readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
   readonly theirs: ReadonlyMap<string, SubjectRecord>;
   readonly judgments: readonly Judged[];
@@ -1011,6 +1014,7 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       dataset,
       `SELECT DISTINCT ?claim ?hash WHERE {
         ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+        FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
         ?claim cascade:matcherRule ?rule .
         ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash
       }`,
@@ -1118,11 +1122,10 @@ interface Adoption {
   readonly unheld: readonly string[];
 }
 
-async function adoption(
-  context: StepContext,
+function adoptionOf(
+  named: ReadonlyMap<string, readonly string[]>,
   references: References,
-): Promise<Adoption> {
-  const named = await namedVersions(await context.matcherView());
+): Adoption {
   const adopted = new Map<string, string>();
   const line: string[] = [];
   const unheld: string[] = [];
@@ -1141,6 +1144,97 @@ async function adoption(
   return { adopted, line, unheld: unheld.sort() };
 }
 
+/** A release's retraction of an assertion (N15), as its file states it. */
+export interface ReleaseRetraction {
+  readonly name: string;
+  readonly triples: readonly Triple[];
+}
+
+/**
+ * The retractions the rule list version migration writes (N15): for each version on the line up to the pod's current
+ * rule list version, itself among them, that declares a matcher rule wrong, oldest first, a retraction of each assertion
+ * of that rule's claim under a version it revises that no retraction invalidates. The current version is the one an
+ * open adopts when `opening`. None, without reading the pod, when no version the tables describe declares a rule wrong,
+ * or when the pod's current version is not one the tables can name.
+ */
+export async function releaseRetractions(
+  view: () => Promise<Dataset>,
+  references: References,
+  opening: boolean,
+): Promise<ReleaseRetraction[]> {
+  if (!references.declareARuleWrong()) return [];
+  const union = await view();
+  const named = await namedVersions(union);
+  const series = await references.ruleList();
+  let current: string | undefined;
+  try {
+    current =
+      (opening
+        ? adoptionOf(named, references).adopted.get(series)
+        : undefined) ?? references.current(series, named.get(series) ?? []);
+  } catch (error) {
+    if (error instanceof Refusal) return [];
+    throw error;
+  }
+  const releases: {
+    readonly release: string;
+    readonly wrong: ReadonlySet<string>;
+    readonly revises: ReadonlySet<string>;
+  }[] = [];
+  for (
+    let at = current, seen = new Set<string>();
+    at !== undefined && !seen.has(at);
+    at = references.revisionOf(at)
+  ) {
+    seen.add(at);
+    const wrong = references.rulesDeclaredWrong(at);
+    if (wrong.length > 0)
+      releases.unshift({
+        release: at,
+        wrong: new Set(wrong),
+        revises: revisedBy(references, at),
+      });
+  }
+  if (releases.length === 0) return [];
+  const rules = [...new Set(releases.flatMap(({ wrong }) => [...wrong]))];
+  const held = await column(
+    union,
+    `SELECT DISTINCT ?assertion ?rule ?version WHERE {
+      VALUES ?rule { ${rules.map((rule) => `<${rule}>`).join(" ")} }
+      ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:matcherRule ?rule .
+      ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+      FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
+    }`,
+    "assertion",
+    "rule",
+    "version",
+  );
+  const taken = new Map<string, ReleaseRetraction>();
+  for (const { release, wrong, revises } of releases)
+    for (const [assertion, rule, version] of held) {
+      if (
+        assertion === undefined ||
+        rule === undefined ||
+        version === undefined ||
+        taken.has(assertion) ||
+        !wrong.has(rule) ||
+        !revises.has(version)
+      )
+        continue;
+      const name = await retractionName(release, assertion, rule);
+      const retraction = iri(name);
+      taken.set(assertion, {
+        name,
+        triples: [
+          [retraction, iri(TYPE), iri(`${PROV}Activity`)],
+          [retraction, iri(`${PROV}invalidated`), iri(assertion)],
+          [retraction, iri(`${PROV}used`), iri(release)],
+        ],
+      });
+    }
+  return [...taken.values()].sort((a, b) => byCodePoint(a.name, b.name));
+}
+
 /** Every version the version revises, directly or not. */
 function revisedBy(references: References, version: string): Set<string> {
   const earlier = new Set<string>();
@@ -1154,76 +1248,32 @@ function revisedBy(references: References, version: string): Set<string> {
 }
 
 /**
- * A release's migration (N15), before an open's matcher runs: for each rule list version the open adopts that declares
- * a rule wrong, a retraction of each claim of that rule asserted under a version it revises, unless the pod holds it.
- * Each is named by its rule from the release, the claim and the rule, with no time and no run; the migration is an act,
- * a new random ID (N7), written only when it writes a retraction. Gives the act, if it wrote one.
+ * The rule list version migration (N15): the retractions given, each filed where the layout files what states
+ * prov:invalidated, and the act, a cascade:RuleListVersionMigration named by a new random ID (N7). Gives the act.
  */
-export async function migrateRelease(
+export function migrateRuleListVersions(
   context: StepContext,
-  references: References,
-): Promise<string | undefined> {
-  const { line } = await adoption(context, references);
-  const releases = line.flatMap((version) => {
-    const wrong = references.rulesDeclaredWrong(version);
-    return wrong.length === 0 ? [] : [{ version, wrong: new Set(wrong) }];
-  });
-  if (releases.length === 0) return undefined;
-  const asserted = await column(
-    await context.matcherView(),
-    `SELECT DISTINCT ?claim ?rule ?version WHERE {
-      ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:matcherRule ?rule .
-      ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
-    }`,
-    "claim",
-    "rule",
-    "version",
-  );
-  const { writes, layout, pod, time } = context;
-  const invalidated = iri(`${PROV}invalidated`);
-  const influenced = iri(`${PROV}wasInfluencedBy`);
-  const activity = iri(`${PROV}Activity`);
-  for (const { version: release, wrong } of releases) {
-    const earlier = revisedBy(references, release);
-    const claims = new Map<string, string>();
-    for (const [claim, rule, version] of asserted)
-      if (
-        claim !== undefined &&
-        rule !== undefined &&
-        wrong.has(rule) &&
-        version !== undefined &&
-        earlier.has(version)
-      )
-        claims.set(claim, rule);
-    for (const [claim, rule] of [...claims].sort(([a], [b]) =>
-      byCodePoint(a, b),
-    )) {
-      const name = await retractionName(release, claim, rule);
-      const retraction = iri(name);
-      const triples: Triple[] = [
-        [retraction, iri(TYPE), activity],
-        [retraction, invalidated, iri(claim)],
-        [retraction, influenced, iri(release)],
-      ];
-      const path = layout
+  retractions: readonly ReleaseRetraction[],
+): string {
+  const { writes, layout, time } = context;
+  for (const { name, triples } of retractions)
+    writes.add(
+      layout
         .place(
           `${PROV}Activity`,
           triples.map(([, p]) => p.value),
         )
-        .path(name);
-      if ((await pod.read(path)) === undefined)
-        writes.add(path, ntriples(triples));
-    }
-  }
-  if (writes.size === 0) return undefined;
+        .path(name),
+      ntriples([...triples]),
+    );
   const name = time.newId();
   const act = iri(name);
   writes.act({
     name,
     path: layout.place(`${PROV}Activity`).path(name),
     triples: [
-      [act, iri(TYPE), activity],
-      [act, iri(TYPE), iri(`${CASCADE}ReleaseMigration`)],
+      [act, iri(TYPE), iri(`${PROV}Activity`)],
+      [act, iri(TYPE), iri(`${CASCADE}RuleListVersionMigration`)],
       [act, iri(`${PROV}startedAtTime`), literal(time.now(), `${XSD}dateTime`)],
     ],
   });
@@ -1239,7 +1289,10 @@ export async function openPod(
   context: StepContext,
   references: References,
 ): Promise<{ readonly unheld: string[]; readonly activity?: string }> {
-  const { adopted, line, unheld } = await adoption(context, references);
+  const { adopted, line, unheld } = adoptionOf(
+    await namedVersions(await context.matcherView()),
+    references,
+  );
   const matcher = await Matcher.of(context, references, adopted);
   for (const version of line) await matcher.describe(version);
   await matcher.recheck();

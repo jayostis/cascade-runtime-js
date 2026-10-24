@@ -1221,7 +1221,7 @@ const DEFINITIONS: Definition[] = [
           ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}MatcherRun`)),
           ...heldGraph.subjects(
             `${RDF}type`,
-            iri(`${CASCADE}ReleaseMigration`),
+            iri(`${CASCADE}RuleListVersionMigration`),
           ),
           ...heldGraph.subjects(`${PROV}invalidated`),
           ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}Snapshot`)),
@@ -1320,15 +1320,24 @@ const DEFINITIONS: Definition[] = [
           judged,
         ]),
       );
+      const claimOf = new Map(
+        (
+          await selected(
+            reading.store,
+            `SELECT ?assertion ?claim WHERE { ?assertion <${CASCADE}assertedClaim> ?claim }`,
+          )
+        ).map(([assertion = "", claim = ""]) => [assertion, claim]),
+      );
       const failures: string[] = [];
       /** Each row found, shown once the table's words are read, which names its records. */
       const found: (() => string)[] = [];
       for (const retraction of held.subjects(`${PROV}invalidated`)) {
-        const [claim = ""] = held
+        const [assertion = ""] = held
           .objects(retraction, `${PROV}invalidated`)
           .map(({ value }) => value);
+        const claim = claimOf.get(assertion) ?? "";
         const [release = ""] = held
-          .objects(retraction, `${PROV}wasInfluencedBy`)
+          .objects(retraction, `${PROV}used`)
           .map(({ value }) => value);
         const described = held
           .match(retraction)
@@ -1336,15 +1345,15 @@ const DEFINITIONS: Definition[] = [
           .sort();
         const wanted = [
           `${RDF}type <${PROV}Activity>`,
-          `${PROV}invalidated <${claim}>`,
-          `${PROV}wasInfluencedBy <${release}>`,
+          `${PROV}invalidated <${assertion}>`,
+          `${PROV}used <${release}>`,
         ].sort();
         if (described.join("\n") !== wanted.join("\n"))
           failures.push(`${retraction.value} states ${described.join("; ")}`);
         const judged = claims.get(claim);
         if (judged === undefined) {
           failures.push(
-            `${retraction.value} invalidates ${claim}, no claim of the matcher's`,
+            `${retraction.value} invalidates ${assertion}, no assertion of a claim of the matcher's`,
           );
           continue;
         }
@@ -1355,7 +1364,7 @@ const DEFINITIONS: Definition[] = [
                 ? [
                     "cascade:RetractionNamingRule",
                     release,
-                    claim,
+                    assertion,
                     ...[...judged.rules].map(termShown),
                   ].join(", ")
                 : column === "name"

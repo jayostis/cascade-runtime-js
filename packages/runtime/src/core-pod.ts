@@ -9,9 +9,10 @@ import type { ExportDocument, Importer } from "./importer.js";
 import type { Layout } from "./layout.js";
 import {
   matcherView,
-  migrateRelease,
+  migrateRuleListVersions,
   openPod,
   podCodes,
+  releaseRetractions,
   runMatcher,
 } from "./matcher.js";
 import {
@@ -412,14 +413,12 @@ export class CorePod {
   }
 
   /**
-   * The pod opened with the tables (O1, O2), which it matches with from then on: first, when a version the tables hold
-   * declares a rule wrong, the release's migration (N15), an act of its own, then the open's matcher run.
+   * The pod opened with the tables (O1, O2), which it matches with from then on: first, when the rule list version it
+   * adopts, or one that version revises, declares a rule wrong, the rule list version migration (N15), an act of its
+   * own, then the open's matcher run.
    */
   async open(tables: References): Promise<Performed> {
-    const migrated = tables.declareARuleWrong()
-      ? await this.#step((context) => migrateRelease(context, tables))
-      : undefined;
-    if (migrated?.refused !== undefined) return migrated;
+    const migrated = await this.#migrated(tables, true);
     let unheld: readonly string[] = [];
     const performed = await this.#step(async (context) => {
       const opened = await openPod(context, tables);
@@ -434,10 +433,37 @@ export class CorePod {
     };
   }
 
-  /** A matcher run taking the import or entry session given, or, given none, a recheck (M7). */
-  match(activity?: string): Promise<Performed> {
+  /**
+   * A matcher run taking the import or entry session given, or, given none, a recheck (M7): first, as at an open, the
+   * rule list version migration, when the pod's current rule list version or one it revises declares a rule wrong (N15).
+   */
+  async match(activity?: string): Promise<Performed> {
+    const tables = await this.#tables();
+    const migrated = await this.#migrated(tables, false);
+    const performed = await this.#step((context) =>
+      runMatcher(context, tables, activity),
+    );
+    return migrated === undefined
+      ? performed
+      : { ...performed, wrote: [...migrated.wrote, ...performed.wrote] };
+  }
+
+  /**
+   * The rule list version migration (N15), a step of its own, when it has a retraction to write. Finding none reads the
+   * matcher's view the step after it reads, and writes nothing.
+   */
+  async #migrated(
+    tables: References,
+    opening: boolean,
+  ): Promise<Performed | undefined> {
+    const retractions = await releaseRetractions(
+      () => this.#matcherView(),
+      tables,
+      opening,
+    );
+    if (retractions.length === 0) return undefined;
     return this.#step(async (context) =>
-      runMatcher(context, await this.#tables(), activity),
+      migrateRuleListVersions(context, retractions),
     );
   }
 

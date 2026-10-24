@@ -407,7 +407,7 @@ test("two writers on one release write its retractions under one name with one c
   const runs = await Promise.all(
     [0, 1].map(() =>
       replayed(
-        "adopting a release that declares R4 wrong retracts R4's two claims before the open's matcher runs, and neither counts nor lapses",
+        "adopting a release that declares R4 wrong retracts the assertions of R4's two claims before the open's matcher runs, and neither claim counts nor lapses",
         undefined,
         "runtime/naming.feature",
       ),

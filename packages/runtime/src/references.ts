@@ -12,7 +12,7 @@ const VOID = "http://rdfs.org/ns/void#";
 const SPECIALIZATION_OF = `${PROV}specializationOf`;
 const DEFAULT_TABLE_VERSION = `${CASCADE}defaultTableVersion`;
 const REVISION_OF = `${PROV}wasRevisionOf`;
-const RULE_DECLARED_WRONG = `${CASCADE}ruleDeclaredWrong`;
+const RULE_DECLARED_WRONG = `${CASCADE}matcherRuleDeclaredWrong`;
 /** What follows a version's file stem in the name of the index of its rows by code. */
 export const CODES = ".codes.json";
 const ONTOLOGY = "ontologies/cascade.ttl";
