@@ -983,6 +983,15 @@ const DEFINITIONS: Definition[] = [
   ["the download {name} is imported on {time}", importDownloaded],
   ["the pull {name} is imported on {time}", importDownloaded],
   [
+    "the connect {name} is made on {time}",
+    (compiled, [name, when], _stated, _compiling, label) => {
+      happen(compiled, label, name as string, when as string, {
+        kind: "connect",
+        folder: `connects/${String(name)}`,
+      });
+    },
+  ],
+  [
     "{person} enters {name} on {time}",
     (compiled, [, name, when], _stated, _compiling, label) => {
       happen(compiled, label, name as string, when as string, {

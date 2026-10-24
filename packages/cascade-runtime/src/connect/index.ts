@@ -2,6 +2,8 @@ export {
   connect,
   type ConnectOptions,
   type Connection,
+  type ReportOptions,
+  serverReport,
   type SignIn,
 } from "./connect.js";
 export { directoryOf, searchDirectory, TEST_DIRECTORY } from "./directory.js";
@@ -20,4 +22,10 @@ export {
   type Search,
 } from "./plan.js";
 export { pull, type Pull, type PulledEntry, type PullOptions } from "./pull.js";
-export { PullRefused, pullFiles } from "@cascade-runtime/fhir-pull";
+export {
+  ConnectRefused,
+  connectFiles,
+  PullRefused,
+  pullFiles,
+  type SavedConnect,
+} from "@cascade-runtime/fhir-pull";
