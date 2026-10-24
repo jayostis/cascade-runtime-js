@@ -33,11 +33,10 @@ import {
 } from "../src/tables.js";
 
 const FEED = "https://tables.example/feed.ttl";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
-const GENOMICS = "https://ns.cascadeprotocol.org/cascade#";
-const CLASSIFICATIONS = `${REC}VariantClassifications`;
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
+const CLASSIFICATIONS = `${CASCADE}VariantClassifications`;
 const LYNCH = ["MLH1", "MSH2", "MSH6", "PMS2", "EPCAM"];
-const TURTLE = `@prefix cascade: <${GENOMICS}> .
+const TURTLE = `@prefix cascade: <${CASCADE}> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
@@ -286,11 +285,11 @@ test("what ClinVar says of a variant is read from the app's current version of t
     {
       variation: `${CLINVAR}90011`,
       classification: [
-        { iri: `${GENOMICS}LikelyPathogenic`, label: "Likely pathogenic" },
-        { iri: `${GENOMICS}Pathogenic`, label: "Pathogenic" },
+        { iri: `${CASCADE}LikelyPathogenic`, label: "Likely pathogenic" },
+        { iri: `${CASCADE}Pathogenic`, label: "Pathogenic" },
       ],
       reviewStatus: {
-        iri: `${REC}ClinVarMultipleSubmittersNoConflicts`,
+        iri: `${CASCADE}ClinVarMultipleSubmittersNoConflicts`,
         label: "criteria provided, multiple submitters, no conflicts",
       },
       lastEvaluated: "2024-12-11",
@@ -312,15 +311,15 @@ test("the labels are the vocabulary's, and a classification is a variation's fac
   assert.deepEqual(
     [
       ...(await app.labels([
-        `${GENOMICS}UncertainSignificance`,
-        `${REC}ClinVarConflicting`,
+        `${CASCADE}UncertainSignificance`,
+        `${CASCADE}ClinVarConflicting`,
         "urn:test:unlabelled",
       ])),
     ],
     [
-      [`${GENOMICS}UncertainSignificance`, "Uncertain significance"],
+      [`${CASCADE}UncertainSignificance`, "Uncertain significance"],
       [
-        `${REC}ClinVarConflicting`,
+        `${CASCADE}ClinVarConflicting`,
         "Conflicting classifications of pathogenicity",
       ],
     ],
@@ -472,7 +471,7 @@ function entry(cases: readonly Case[], subject: string, owner: string): string {
   ]);
   return `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 ${TURTLE}
-<urn:cascade:this-entry> a prov:Activity ;
+<urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
   prov:qualifiedAssociation [ prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
 ${records.join("\n")}`;
 }

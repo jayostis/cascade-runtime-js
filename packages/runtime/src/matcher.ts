@@ -11,18 +11,17 @@ import {
 } from "./names.js";
 import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
-import { REC, Refusal, type StepContext } from "./step.js";
+import { CASCADE, Refusal, type StepContext } from "./step.js";
 import { type Dataset, type Row, Union } from "./store.js";
 
-const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
 const NPX = "http://purl.org/nanopub/x/";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const TYPE = `${RDF}type`;
-const PREFIXES = `PREFIX cascade: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX npx: <${NPX}>`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX npx: <${NPX}>`;
 
-export const MATCHER = `${JDG}CascadeMatcher`;
+export const MATCHER = `${CASCADE}CascadeMatcher`;
 const LENS = "everyday";
 const COMPARISONS = `${QUERIES}matcher/`;
 
@@ -66,9 +65,9 @@ export async function matcherRules(
   vocabulary: Files,
 ): Promise<{ rule: MatcherRule; text: string }[]> {
   const found: { rule: MatcherRule; text: string }[] = [];
-  for (const row of rows.subjects(TYPE, iri(`${REC}RuleListRow`))) {
+  for (const row of rows.subjects(TYPE, iri(`${CASCADE}RuleListRow`))) {
     const one = (predicate: string): string => {
-      const values = rows.objects(row, `${REC}${predicate}`);
+      const values = rows.objects(row, `${CASCADE}${predicate}`);
       if (values.length !== 1)
         throw new Refusal(
           `a rule of the rule list gives ${values.length} cascade:${predicate}, not one`,
@@ -89,7 +88,7 @@ export async function matcherRules(
       throw new Refusal(
         `${query} does not hash to ${expected}, as the rule for ${justification} says it does`,
       );
-    const kinds = rows.objects(row, `${REC}tableKind`);
+    const kinds = rows.objects(row, `${CASCADE}tableKind`);
     if (kinds.length > 1)
       throw new Refusal(
         `the rule for ${justification} reads ${kinds.length} table kinds, not one`,
@@ -99,7 +98,9 @@ export async function matcherRules(
         term,
         justification,
         appliesTo: new Set(
-          rows.objects(row, `${REC}appliesToClass`).map(({ value }) => value),
+          rows
+            .objects(row, `${CASCADE}appliesToClass`)
+            .map(({ value }) => value),
         ),
         query: path,
         hash: expected,
@@ -577,7 +578,7 @@ class Matcher {
   async describe(thing: string): Promise<void> {
     if (this.pod.held.has(thing)) return;
     const { layout } = this.context;
-    const place = layout.place(`${REC}ReferenceSeries`);
+    const place = layout.place(`${CASCADE}ReferenceSeries`);
     const path = this.references.isVersion(thing)
       ? layout.version(place, thing)
       : place.path(thing);
@@ -640,12 +641,12 @@ class Matcher {
     const matcher = iri(MATCHER);
     if (!this.pod.held.has(name))
       writes.add(
-        layout.place(`${JDG}Judgment`).path(name),
+        layout.place(`${CASCADE}Judgment`).path(name),
         ntriples([
-          [claim, iri(TYPE), iri(`${JDG}Judgment`)],
-          [claim, iri(`${JDG}verdict`), iri(`${JDG}Same`)],
-          [claim, iri(`${JDG}justification`), iri(rule.justification)],
-          [claim, iri(`${JDG}matcherRule`), iri(rule.term)],
+          [claim, iri(TYPE), iri(`${CASCADE}Judgment`)],
+          [claim, iri(`${CASCADE}verdict`), iri(`${CASCADE}Same`)],
+          [claim, iri(`${CASCADE}justification`), iri(rule.justification)],
+          [claim, iri(`${CASCADE}matcherRule`), iri(rule.term)],
           ...names.map((member): Triple => [
             claim,
             iri(`${PROV}hadMember`),
@@ -663,13 +664,13 @@ class Matcher {
       );
     const assertion = await assertionName(this.rulesVersion, name);
     writes.add(
-      layout.place(`${JDG}ClaimAssertion`).path(assertion),
+      layout.place(`${CASCADE}ClaimAssertion`).path(assertion),
       ntriples([
-        [iri(assertion), iri(TYPE), iri(`${JDG}ClaimAssertion`)],
-        [iri(assertion), iri(`${JDG}assertedClaim`), claim],
+        [iri(assertion), iri(TYPE), iri(`${CASCADE}ClaimAssertion`)],
+        [iri(assertion), iri(`${CASCADE}assertedClaim`), claim],
         [
           iri(assertion),
-          iri(`${JDG}assertedUnderRuleListVersion`),
+          iri(`${CASCADE}assertedUnderRuleListVersion`),
           iri(this.rulesVersion),
         ],
       ]),

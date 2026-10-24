@@ -1,14 +1,14 @@
 import { OWL, rowsAbout, values } from "../rows.js";
-import { REC } from "./constants.js";
+import { CASCADE } from "./constants.js";
 import { currentOfKind, described } from "./references-index.js";
 import type { Described, Fact, TablesContext } from "./types.js";
 
 /** The relations of a drug class row, in the order a code's page lists them. */
 const RELATIONS = [
-  `${REC}establishedPharmacologicClass`,
-  `${REC}mechanismOfActionClass`,
-  `${REC}physiologicEffectClass`,
-  `${REC}chemicalStructureClass`,
+  `${CASCADE}establishedPharmacologicClass`,
+  `${CASCADE}mechanismOfActionClass`,
+  `${CASCADE}physiologicEffectClass`,
+  `${CASCADE}chemicalStructureClass`,
 ];
 
 /** A class row, before `facts` names its codes. */
@@ -30,11 +30,15 @@ export async function classedElsewhere(
 ): Promise<Map<string, string[]>> {
   const references = await context.references();
   const [held, ingredients] = [
-    currentOfKind(references, context.options.preference, `${REC}DrugClasses`),
     currentOfKind(
       references,
       context.options.preference,
-      `${REC}ProductIngredients`,
+      `${CASCADE}DrugClasses`,
+    ),
+    currentOfKind(
+      references,
+      context.options.preference,
+      `${CASCADE}ProductIngredients`,
     ),
   ];
   const found = new Map<string, string[]>();
@@ -224,7 +228,7 @@ export async function reached(
     currentOfKind(references, context.options.preference, kind).map(
       ({ version }) => version,
     );
-  const ingredients = current(`${REC}ProductIngredients`);
+  const ingredients = current(`${CASCADE}ProductIngredients`);
   const on = await classedOn(context, codes, ingredients);
   const read = async (version: string, among: ReadonlySet<string>) => {
     // The rows are found by an index beside them, which is made now if the version came without one.
@@ -245,6 +249,6 @@ export async function reached(
         stating === undefined ? on : new Set(on).add(stating),
       );
     }),
-    ...current(`${REC}DrugClasses`).map((version) => read(version, on)),
+    ...current(`${CASCADE}DrugClasses`).map((version) => read(version, on)),
   ]);
 }

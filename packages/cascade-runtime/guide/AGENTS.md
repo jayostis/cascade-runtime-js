@@ -490,8 +490,10 @@ async function search(word) {
 
 ## Enter what the person wrote
 
-An entry names nothing itself: the session is `<urn:cascade:this-entry>`, the
-record `<urn:cascade:output-0>` and its content `<urn:cascade:output-0-version>`.
+The app names an entry's session once, a new `urn:uuid:` kept in the entry, so
+its records keep their names on every replay; `enter` refuses
+`<urn:cascade:this-entry>`. The record is `<urn:cascade:output-0>` and its content
+`<urn:cascade:output-0-version>`.
 One template per kind; every value typed goes in through `text()`.
 
 ```js
@@ -510,8 +512,9 @@ function iri(value) {
 }
 
 function entry(pod, type, statements) {
+  const session = `urn:uuid:${crypto.randomUUID()}`;
   return `${PREFIXES}
-<urn:cascade:this-entry> a prov:Activity ; rdfs:label "entered by the person" ;
+<${session}> a prov:Activity ; rdfs:label "entered by the person" ;
   prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 <urn:cascade:output-0> a ${type} .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;

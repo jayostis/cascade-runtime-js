@@ -5,9 +5,9 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import type { Replayed } from "../src/replay.js";
 import { MATCHER } from "../src/matcher.js";
 import { documentName, recordFromDocumentName } from "../src/names.js";
-import { REC, Refusal } from "../src/step.js";
+import { CASCADE, Refusal } from "../src/step.js";
 import { Union } from "../src/store.js";
-import { GENOMICS, HEALTH, JDG, KINDS, PROV, Words } from "../src/words.js";
+import { KINDS, PROV, Words } from "../src/words.js";
 
 const RECORDS = "ontologies/cascade.ttl";
 const REGISTRY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
@@ -28,18 +28,18 @@ async function wordsOver(
     await vocabulary.write(path, bytes);
   const store = new Union(new OxigraphStore());
   await store.loadTurtle(
-    `@prefix cascade: <${HEALTH}> . @prefix prov: <${PROV}> .
+    `@prefix cascade: <${CASCADE}> . @prefix prov: <${PROV}> .
 <urn:test:coded> a cascade:AllergyOrIntolerance . <urn:test:coded-v> prov:specializationOf <urn:test:coded> ; cascade:allergenCode <urn:test:snomed/373270004> .
 <urn:test:literal> a cascade:AllergyOrIntolerance . <urn:test:literal-v> prov:specializationOf <urn:test:literal> ; cascade:snomedCode "1234" .
-<urn:test:brand> a cascade:PrescribedOrReportedMedication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${REC}ndcCode> <urn:test:ndc/00378520905> .
-<urn:test:generic> a cascade:PrescribedOrReportedMedication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${REC}ndcCode> <urn:test:ndc/00093101301> .
-<urn:test:martin> a <${GENOMICS}GeneticVariantFinding> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${GENOMICS}hgvsCodingDnaExpression> "NM_000249.4:c.2042C>T" ; <${GENOMICS}clinvarVariationId> "90011" .
-<urn:test:panel> a <${GENOMICS}GeneticVariantFinding> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${GENOMICS}hgvsCodingDnaExpression> "NM_000249.3:c.2042C>T" .
-<urn:test:report> a <${GENOMICS}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${GENOMICS}variantInterpreted> <urn:test:martin> .
-<urn:test:variation> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariation> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
-<urn:test:through> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameVariationThroughTable> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
-<urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .
-<urn:test:product> <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${JDG}SameProductCode> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .`,
+<urn:test:brand> a cascade:PrescribedOrReportedMedication . <urn:test:brand-v> prov:specializationOf <urn:test:brand> ; <${CASCADE}ndcCode> <urn:test:ndc/00378520905> .
+<urn:test:generic> a cascade:PrescribedOrReportedMedication . <urn:test:generic-v> prov:specializationOf <urn:test:generic> ; <${CASCADE}ndcCode> <urn:test:ndc/00093101301> .
+<urn:test:martin> a <${CASCADE}GeneticVariantFinding> . <urn:test:martin-v> prov:specializationOf <urn:test:martin> ; <${CASCADE}hgvsCodingDnaExpression> "NM_000249.4:c.2042C>T" ; <${CASCADE}clinvarVariationId> "90011" .
+<urn:test:panel> a <${CASCADE}GeneticVariantFinding> . <urn:test:panel-v> prov:specializationOf <urn:test:panel> ; <${CASCADE}hgvsCodingDnaExpression> "NM_000249.3:c.2042C>T" .
+<urn:test:report> a <${CASCADE}VariantInterpretation> . <urn:test:report-v> prov:specializationOf <urn:test:report> ; <${CASCADE}variantInterpreted> <urn:test:martin> .
+<urn:test:variation> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameVariation> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
+<urn:test:through> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameVariationThroughTable> ; <${PROV}hadMember> <urn:test:martin>, <urn:test:panel> .
+<urn:test:said> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameBrandGeneric> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .
+<urn:test:product> <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${CASCADE}SameProductCode> ; <${PROV}hadMember> <urn:test:brand>, <urn:test:generic> .`,
     "urn:test:pod",
   );
   const person = {
@@ -166,7 +166,7 @@ test("a handle names a record from a server by its base URL, normalised, its typ
   );
   await assert.rejects(
     words.record("UNSCOPED"),
-    /UNSCOPED names .*unscoped\.xml, which states no custodian id and one patient with an id: handles\.json gives its selector/,
+    /UNSCOPED names .*unscoped\.xml, which states no custodian id, or not exactly one patient with an id: handles\.json gives its selector/,
   );
   assert.equal(
     await words.record("SERVER"),
@@ -190,7 +190,7 @@ test("a handle names a record from a server by its base URL, normalised, its typ
 test("a variant interpretation is a kind and no step names one: it has neither a code nor a name", async () => {
   assert.equal(
     KINDS["variant interpretation"],
-    `${GENOMICS}VariantInterpretation`,
+    `${CASCADE}VariantInterpretation`,
   );
   const words = await wordsOver(REGISTRY);
   await assert.rejects(

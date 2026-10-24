@@ -2,7 +2,6 @@ const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const MEDIA_TYPE = "application/fhir+json";
@@ -172,12 +171,12 @@ function facts(pull: Described, importStarted: string): Uint8Array {
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
     ...(pull.asOf === undefined
       ? []
-      : [`${document} <${REC}answeredAsOf> ${dateTime(pull.asOf)} .`]),
+      : [`${document} <${CASCADE}answeredAsOf> ${dateTime(pull.asOf)} .`]),
     `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,
     `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
-    `_:attribution <${PROV}hadRole> <${REC}AuthorRole> .`,
+    `_:attribution <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
   ];
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }

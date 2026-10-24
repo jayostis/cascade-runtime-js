@@ -5,13 +5,13 @@ import { Graph } from "../src/graph.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, type Triple } from "../src/rdf.js";
 import { linesAbout, References, tableTerms } from "../src/references.js";
-import { REC, Refusal } from "../src/step.js";
+import { CASCADE, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
 const RECORDS = "ontologies/cascade.ttl";
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const URI_SPACE = "http://rdfs.org/ns/void#uriSpace";
-const PAGE_TEMPLATE = `${REC}codePageUrlTemplate`;
+const PAGE_TEMPLATE = `${CASCADE}codePageUrlTemplate`;
 
 test("a version whose name names no file refuses the step rather than aborting the replay", async () => {
   const source = new MemoryFiles("https://story.example/");
@@ -65,7 +65,7 @@ test("a folder without a file for a version of the vocabulary's rule list reads 
   const ruleCount = async (rows: Promise<Triple[]>) =>
     new Graph(await rows).subjects(
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-      iri(`${REC}RuleListRow`),
+      iri(`${CASCADE}RuleListRow`),
     ).length;
   const references = () =>
     References.of(story, folder, () => new OxigraphStore(), files);
@@ -106,7 +106,7 @@ test("the table terms hold one code system for each the vocabulary's records fil
   const registered = registry
     .subjects(
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-      iri(`${REC}CodeSystem`),
+      iri(`${CASCADE}CodeSystem`),
     )
     .map((system) => {
       const template = registry.objects(system, PAGE_TEMPLATE)[0]?.value;
@@ -133,18 +133,19 @@ test("the table terms hold one code system for each the vocabulary's records fil
   for (const { iri: system, uriSpace } of codeSystems)
     assert.match(uriSpace, /[/:]$/, system);
   assert.match(
-    codeSystems.find(({ iri }) => iri === `${REC}ClinVar`)?.pageTemplate ?? "",
+    codeSystems.find(({ iri }) => iri === `${CASCADE}ClinVar`)?.pageTemplate ??
+      "",
     /\{code\}/,
   );
   assert.equal(
-    codeSystems.find(({ iri }) => iri === `${REC}HGVS`)?.pageTemplate,
+    codeSystems.find(({ iri }) => iri === `${CASCADE}HGVS`)?.pageTemplate,
     undefined,
   );
 });
 
 test("a code system registered without a label, without a URI space or with a page template that has no {code} is a broken vocabulary, an Error and never a Refusal", async () => {
   const system = (what: string): string =>
-    `@prefix cascade: <${REC}> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix void: <http://rdfs.org/ns/void#> .
+    `@prefix cascade: <${CASCADE}> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix void: <http://rdfs.org/ns/void#> .
 cascade:Broken a cascade:CodeSystem ; ${what} .`;
   for (const [broken, why] of [
     [system('void:uriSpace "urn:test:broken/"'), "no label"],
@@ -163,7 +164,7 @@ cascade:Broken a cascade:CodeSystem ; ${what} .`;
       (error: unknown) =>
         error instanceof Error &&
         !(error instanceof Refusal) &&
-        error.message.includes(`${REC}Broken`),
+        error.message.includes(`${CASCADE}Broken`),
       why,
     );
   }

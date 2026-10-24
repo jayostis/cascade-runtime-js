@@ -1,5 +1,5 @@
 import { notation, OWL, type Row, rowsAbout, SKOS, values } from "../rows.js";
-import { DCT, REC } from "./constants.js";
+import { DCT, CASCADE } from "./constants.js";
 import { preferred } from "./references-index.js";
 import type { About, TablesContext } from "./types.js";
 
@@ -66,7 +66,7 @@ export async function about(
       return (code: string) => read(rowsAbout(text, code), origin);
     };
   await fill(
-    `${REC}CodeNames`,
+    `${CASCADE}CodeNames`,
     "name",
     fromRows<"name">((rows, origin) => {
       const name = nameOf(rows);
@@ -74,7 +74,7 @@ export async function about(
     }),
   );
   await fill(
-    `${REC}RetiredCodes`,
+    `${CASCADE}RetiredCodes`,
     "status",
     fromRows<"status">((rows, origin) => {
       const status = statusOf(rows);
@@ -82,7 +82,7 @@ export async function about(
     }),
   );
   // A mapping row is named by a urn:uuid, so the rows about a code are found in the version's listing.
-  await fill(`${REC}ProductIngredients`, "ingredients", async (origin) => {
+  await fill(`${CASCADE}ProductIngredients`, "ingredients", async (origin) => {
     const { mapsTo } = await context.indexes.listed(origin);
     return (code) =>
       Object.hasOwn(mapsTo, code) && mapsTo[code]!.length > 0

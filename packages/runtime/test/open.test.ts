@@ -7,7 +7,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { References } from "../src/references.js";
 import { replay } from "../src/replay.js";
 import { randomId } from "../src/ids.js";
-import { REC } from "../src/step.js";
+import { CASCADE } from "../src/step.js";
 import { layout, storyFrom, vocabulary } from "./vocabulary.js";
 
 const FEATURE = "runtime/opening.feature";
@@ -79,7 +79,7 @@ test("an open of a pod on series the tables lack writes nothing of them and name
   );
   const used = [
     await vector.ruleList(),
-    ...vector.seriesOfKind(`${REC}VaccineGroups`),
+    ...vector.seriesOfKind(`${CASCADE}VaccineGroups`),
   ].map((series) => vector.fallback(series));
   assert.deepEqual(opened?.unheld, used.sort());
   assert.equal(opened?.refused, undefined);

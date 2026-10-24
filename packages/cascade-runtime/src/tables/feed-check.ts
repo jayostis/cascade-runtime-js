@@ -16,7 +16,7 @@ import {
   REVISION_OF,
   SPECIALIZATION_OF,
 } from "../rows.js";
-import { DCT, INDEX, PAV, RDFS, REC } from "./constants.js";
+import { DCT, INDEX, PAV, RDFS, CASCADE } from "./constants.js";
 import type { HeldRecord } from "./held-record.js";
 import { currentIn } from "./references-index.js";
 import { LISTED } from "./starter.js";
@@ -36,7 +36,7 @@ const WATCHED = "checked.json";
 const SERIES_KEPT = [
   `${RDF}type`,
   `${RDFS}label`,
-  `${REC}tableKind`,
+  `${CASCADE}tableKind`,
   `${DCT}license`,
   `${DCT}publisher`,
   `${DCT}bibliographicCitation`,
@@ -47,7 +47,7 @@ const VERSION_KEPT = [
   `${PAV}version`,
   REVISION_OF,
   `${DCT}issued`,
-  `${REC}coversGene`,
+  `${CASCADE}coversGene`,
 ];
 
 /** What a check of a feed reads and writes, beside what the other modules do. */
@@ -84,7 +84,7 @@ export async function kindsRead({
       bytes,
       vocabulary.iri + path,
     ))
-      if (predicate.value === `${REC}tableKind`) kinds.add(object.value);
+      if (predicate.value === `${CASCADE}tableKind`) kinds.add(object.value);
   }
   return new Set([...kinds].filter((kind) => declared.has(kind)));
 }
@@ -185,17 +185,17 @@ export async function checkFeed(
   let later: string | undefined;
   for (const series of catalog.subjects(
     `${RDF}type`,
-    iri(`${REC}ReferenceSeries`),
+    iri(`${CASCADE}ReferenceSeries`),
   )) {
     const [version] = catalog.objects(series, `${DCAT}hasCurrentVersion`);
-    const kind = catalog.objects(series, `${REC}tableKind`)[0]?.value ?? "";
+    const kind = catalog.objects(series, `${CASCADE}tableKind`)[0]?.value ?? "";
     if (
       version?.termType !== "NamedNode" ||
       index.match(version, SPECIALIZATION_OF).length > 0 ||
       !(await context.kindsRead()).has(kind)
     )
       continue;
-    const [held] = index.objects(series, `${REC}defaultTableVersion`);
+    const [held] = index.objects(series, `${CASCADE}defaultTableVersion`);
     if (held !== undefined && !descends(catalog, version, held.value)) {
       refused.push({
         version: version.value,
@@ -250,13 +250,13 @@ export async function checkFeed(
         ([subject, predicate]) =>
           !(
             subject.value === series.value &&
-            [...SERIES_KEPT, `${REC}defaultTableVersion`].includes(
+            [...SERIES_KEPT, `${CASCADE}defaultTableVersion`].includes(
               predicate.value,
             )
           ),
       ),
       ...only(catalog, series, SERIES_KEPT),
-      [series, iri(`${REC}defaultTableVersion`), version],
+      [series, iri(`${CASCADE}defaultTableVersion`), version],
       [version, iri(`${RDF}type`), iri(`${PROV}Entity`)],
       ...only(catalog, version, VERSION_KEPT),
       ...catalog
@@ -285,7 +285,7 @@ export async function checkFeed(
         ...(modified === undefined ? {} : { modified }),
         series: Object.fromEntries(
           catalog
-            .subjects(`${RDF}type`, iri(`${REC}ReferenceSeries`))
+            .subjects(`${RDF}type`, iri(`${CASCADE}ReferenceSeries`))
             .map((series) => [
               series.value,
               catalog.objects(series, `${DCT}source`)[0]?.value ?? null,

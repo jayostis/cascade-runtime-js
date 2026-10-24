@@ -9,10 +9,9 @@ import {
 } from "../src/matcher.js";
 import { documentName } from "../src/names.js";
 import { blank, iri, literal, type Term, type Triple } from "../src/rdf.js";
-import { REC, Refusal } from "../src/step.js";
+import { CASCADE, Refusal } from "../src/step.js";
 import { vocabulary } from "./vocabulary.js";
 
-const JDG = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
 async function row(
@@ -26,12 +25,16 @@ async function row(
   assert.ok(bytes, hashOf);
   const rule = blank(name);
   return [
-    [rule, iri(TYPE), iri(`${REC}RuleListRow`)],
-    [rule, iri(`${REC}matcherRule`), iri(`${JDG}${justification}Rule`)],
-    [rule, iri(`${REC}justifiedAs`), iri(JDG + justification)],
-    [rule, iri(`${REC}appliesToClass`), iri(`${JDG}ProblemOrDiagnosis`)],
-    [rule, iri(`${REC}queryPath`), literal(query)],
-    [rule, iri(`${REC}queryHash`), iri(await documentName(bytes))],
+    [rule, iri(TYPE), iri(`${CASCADE}RuleListRow`)],
+    [rule, iri(`${CASCADE}matcherRule`), iri(`${CASCADE}${justification}Rule`)],
+    [rule, iri(`${CASCADE}justifiedAs`), iri(CASCADE + justification)],
+    [
+      rule,
+      iri(`${CASCADE}appliesToClass`),
+      iri(`${CASCADE}ProblemOrDiagnosis`),
+    ],
+    [rule, iri(`${CASCADE}queryPath`), literal(query)],
+    [rule, iri(`${CASCADE}queryHash`), iri(await documentName(bytes))],
   ];
 }
 
@@ -40,13 +43,13 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
   const sameCode = await row("a", "SameCode", "matcher/same-code.rq");
   assert.equal((await matcherRules(new Graph(sameCode), files)).length, 1);
   const kindless: MatcherRule = {
-    term: JDG + "SameMappedCodeRule",
-    justification: JDG + "SameMappedCode",
-    appliesTo: new Set([JDG + "ProblemOrDiagnosis"]),
+    term: CASCADE + "SameMappedCodeRule",
+    justification: CASCADE + "SameMappedCode",
+    appliesTo: new Set([CASCADE + "ProblemOrDiagnosis"]),
     query: "matcher/same-mapped-code.rq",
     hash: "ni:///sha-256;x",
   };
-  const rule: MatcherRule = { ...kindless, kind: `${REC}CodeMappings` };
+  const rule: MatcherRule = { ...kindless, kind: `${CASCADE}CodeMappings` };
   const version = "urn:example:mappings-2";
   const loaded = new Set([version]);
   const joins = (origin?: string): Map<string, Term> =>
@@ -81,13 +84,15 @@ test("a rule list naming a query outside matcher/, by any path, giving one justi
       ...sameCode,
       ...(await row("b", "SameCode", "matcher/same-code-and-date.rq")),
     ],
-    sameCode.filter(([, predicate]) => predicate.value !== `${REC}queryHash`),
+    sameCode.filter(
+      ([, predicate]) => predicate.value !== `${CASCADE}queryHash`,
+    ),
     [
       ...sameCode,
       ...["VaccineGroups", "CodeNames"].map((kind): Triple => [
         blank("a"),
-        iri(`${REC}tableKind`),
-        iri(REC + kind),
+        iri(`${CASCADE}tableKind`),
+        iri(CASCADE + kind),
       ]),
     ],
   ]) {

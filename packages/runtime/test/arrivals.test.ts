@@ -139,14 +139,23 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
         : bytes,
     );
   }
-  const entry = (allergen: string): Uint8Array =>
+  const entry = (session: string, allergen: string): Uint8Array =>
     new TextEncoder()
-      .encode(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .
+      .encode(`<${session}> a <http://www.w3.org/ns/prov#Activity> .
 <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
   <https://ns.cascadeprotocol.org/cascade#allergen> ${allergen} .`);
-  await source.write("s/blank.ttl", entry("[ <urn:example:value> 2 ]"));
-  await source.write("s/plain.ttl", entry('"Peanut"'));
+  await source.write(
+    "s/blank.ttl",
+    entry(
+      "urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93",
+      "[ <urn:example:value> 2 ]",
+    ),
+  );
+  await source.write(
+    "s/plain.ttl",
+    entry("urn:uuid:8c1f4e7a-2d93-4b56-b0a8-e3d6f9c2a147", '"Peanut"'),
+  );
   const story: Story = {
     address: "https://pod.example/",
     subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
@@ -298,12 +307,18 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     await source.write(
       `s/${file}`,
       new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:cascade:this-entry> a prov:Activity .
+<urn:uuid:7d4a1c9e-3b6f-4e28-8a15-c0f2e9b7d364> a prov:Activity .
 <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
   <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
   <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
     );
+  await source.write(
+    "s/this-entry.ttl",
+    new TextEncoder().encode(
+      "<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .",
+    ),
+  );
   const refusals: readonly [Step["happened"], RegExp][] = [
     [
       { kind: "import", export: "apple_health_export", converted: "bridge" },
@@ -322,6 +337,10 @@ test("a step given bad input by its story is refused, and the replay goes on", a
       /^s\/not-a-ccda\.xml: no adapter of application\/cda\+xml accepts it$/,
     ],
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
+    [
+      { kind: "entry", file: "this-entry.ttl" },
+      /^this-entry\.ttl names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it$/,
+    ],
     [
       { kind: "entry", file: "blank-allergen.ttl" },
       /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,

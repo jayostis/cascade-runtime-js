@@ -18,7 +18,7 @@ import {
   SPECIALIZATION_OF,
 } from "./rows.js";
 import { about } from "./tables/about.js";
-import { HELD, INDEX, SHIPS_WITH } from "./tables/constants.js";
+import { HELD, INDEX, DEFAULT_TABLE_VERSION } from "./tables/constants.js";
 import { classedElsewhere, reached } from "./tables/drug-classes.js";
 import { facts } from "./tables/facts.js";
 import { checkFeed, kindsRead, withBuilt } from "./tables/feed-check.js";
@@ -421,7 +421,7 @@ export class Tables {
     const stems = new Set<string>();
     for (const [, , version] of (await this.#index()).match(
       undefined,
-      SHIPS_WITH,
+      DEFAULT_TABLE_VERSION,
     )) {
       try {
         stems.add(fileStem(version.value));

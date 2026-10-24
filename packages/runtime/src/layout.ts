@@ -5,11 +5,10 @@ import { type StoreFactory, Union } from "./store.js";
 export const LAYOUT_FILE = "runtime/pod-layout.ttl";
 export const LAYOUT_GRAPH = "urn:cascade:pod-layout";
 const BASE = "https://pod.invalid/";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
-const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
 
@@ -53,7 +52,7 @@ export class Layout {
   private constructor(turtle: string, placements: readonly Placement[]) {
     this.turtle = turtle;
     this.placements = placements;
-    const views = placements.filter(({ kind }) => kind === `${REC}View`);
+    const views = placements.filter(({ kind }) => kind === `${CASCADE}View`);
     const [placement] = views;
     if (views.length !== 1 || placement?.folder === undefined)
       throw new Error(`${LAYOUT_FILE} gives no one folder for the views`);
@@ -91,7 +90,7 @@ export class Layout {
     const layout = new Union(newStore());
     await layout.loadTurtle(turtle, BASE);
     const { rows } = await layout.select(`
-      PREFIX cascade: <${REC}>
+      PREFIX cascade: <${CASCADE}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
       SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
@@ -189,7 +188,7 @@ export class Layout {
 
   /** The path of a revision of a record that `of` files. */
   revision(of: Placement, name: string): string {
-    return this.#filedWith(`${REC}revisionOf`).path(name, of.folder);
+    return this.#filedWith(`${CASCADE}revisionOf`).path(name, of.folder);
   }
 
   /** Each view a query writes, listing the things of its class. */

@@ -14,58 +14,54 @@ import { MATCHER } from "./matcher.js";
 import { codeIri, iri, RDF, written } from "./rdf.js";
 import { referenceIndex, tableTerms, versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
-import { REC } from "./step.js";
+import { CASCADE } from "./step.js";
 import { selected, type Dataset, type StoreFactory } from "./store.js";
 
 export const PROV = "http://www.w3.org/ns/prov#";
-export const JDG = "https://ns.cascadeprotocol.org/cascade#";
-export const HEALTH = "https://ns.cascadeprotocol.org/cascade#";
-export const CLINICAL = "https://ns.cascadeprotocol.org/cascade#";
 export const PAV = "http://purl.org/pav/";
-export const GENOMICS = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 
 export const KINDS: Readonly<Record<string, string>> = {
-  allergy: `${HEALTH}AllergyOrIntolerance`,
-  condition: `${HEALTH}ProblemOrDiagnosis`,
-  immunization: `${HEALTH}Vaccination`,
-  procedure: `${CLINICAL}MedicalProcedure`,
-  medication: `${CLINICAL}PrescribedOrReportedMedication`,
-  "lab result": `${HEALTH}LaboratoryTestResult`,
-  variant: `${GENOMICS}GeneticVariantFinding`,
-  "variant interpretation": `${GENOMICS}VariantInterpretation`,
+  allergy: `${CASCADE}AllergyOrIntolerance`,
+  condition: `${CASCADE}ProblemOrDiagnosis`,
+  immunization: `${CASCADE}Vaccination`,
+  procedure: `${CASCADE}MedicalProcedure`,
+  medication: `${CASCADE}PrescribedOrReportedMedication`,
+  "lab result": `${CASCADE}LaboratoryTestResult`,
+  variant: `${CASCADE}GeneticVariantFinding`,
+  "variant interpretation": `${CASCADE}VariantInterpretation`,
 };
 
 export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
-  "same code": `${JDG}SameCode`,
-  "same code and date": `${JDG}SameCodeAndDate`,
-  "same mapped code": `${JDG}SameMappedCode`,
-  "same mapped code and date": `${JDG}SameMappedCodeAndDate`,
-  "same medication code": `${JDG}SameMedicationCode`,
-  "same result": `${JDG}SameResult`,
-  "same converted code": `${JDG}SameConvertedCode`,
-  "same code and period": `${JDG}SameCodeAndPeriod`,
-  "same brand generic": `${JDG}SameBrandGeneric`,
-  "same product code": `${JDG}SameProductCode`,
-  "same variation": `${JDG}SameVariation`,
-  "same variation through the table": `${JDG}SameVariationThroughTable`,
+  "same code": `${CASCADE}SameCode`,
+  "same code and date": `${CASCADE}SameCodeAndDate`,
+  "same mapped code": `${CASCADE}SameMappedCode`,
+  "same mapped code and date": `${CASCADE}SameMappedCodeAndDate`,
+  "same medication code": `${CASCADE}SameMedicationCode`,
+  "same result": `${CASCADE}SameResult`,
+  "same converted code": `${CASCADE}SameConvertedCode`,
+  "same code and period": `${CASCADE}SameCodeAndPeriod`,
+  "same brand generic": `${CASCADE}SameBrandGeneric`,
+  "same product code": `${CASCADE}SameProductCode`,
+  "same variation": `${CASCADE}SameVariation`,
+  "same variation through the table": `${CASCADE}SameVariationThroughTable`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
 const CODES: Readonly<
   Record<string, { readonly system?: string; readonly literal?: string }>
 > = {
-  SNOMED: { system: `${REC}SNOMEDCT` },
-  RxNorm: { system: `${REC}RxNorm` },
-  "ICD-10-CM": { system: `${REC}ICD10CM` },
-  LOINC: { system: `${REC}LOINC` },
-  NDC: { system: `${REC}NDC` },
-  CVX: { system: `${REC}CVX` },
-  HGVS: { literal: `${GENOMICS}hgvsCodingDnaExpression` },
-  ClinVar: { literal: `${GENOMICS}clinvarVariationId` },
+  SNOMED: { system: `${CASCADE}SNOMEDCT` },
+  RxNorm: { system: `${CASCADE}RxNorm` },
+  "ICD-10-CM": { system: `${CASCADE}ICD10CM` },
+  LOINC: { system: `${CASCADE}LOINC` },
+  NDC: { system: `${CASCADE}NDC` },
+  CVX: { system: `${CASCADE}CVX` },
+  HGVS: { literal: `${CASCADE}hgvsCodingDnaExpression` },
+  ClinVar: { literal: `${CASCADE}clinvarVariationId` },
 };
 
 const either = (words: readonly string[]): string =>
@@ -81,13 +77,13 @@ const SAID = new RegExp(
 );
 
 const NAMES = [
-  `${HEALTH}allergen`,
-  `${HEALTH}conditionName`,
-  `${HEALTH}vaccineName`,
-  `${CLINICAL}procedureName`,
-  `${CLINICAL}drugName`,
-  `${HEALTH}testName`,
-  `${GENOMICS}hgvsCodingDnaExpression`,
+  `${CASCADE}allergen`,
+  `${CASCADE}conditionName`,
+  `${CASCADE}vaccineName`,
+  `${CASCADE}procedureName`,
+  `${CASCADE}drugName`,
+  `${CASCADE}testName`,
+  `${CASCADE}hgvsCodingDnaExpression`,
 ];
 
 /** A person `people.ttl` names: the pod's subject, its address, and the folder of their scripted input. */
@@ -243,7 +239,7 @@ export class Words {
     return (await this.#references_())
       .match(iri(name))
       .filter(
-        ([, predicate]) => predicate.value !== `${REC}defaultTableVersion`,
+        ([, predicate]) => predicate.value !== `${CASCADE}defaultTableVersion`,
       )
       .map((triple) => triple.map(written).join(" "));
   }
@@ -254,7 +250,7 @@ export class Words {
     const [series] = index.objects(iri(name), `${PROV}specializationOf`);
     return (
       series !== undefined &&
-      index.objects(series, `${REC}tableKind`).length === 0
+      index.objects(series, `${CASCADE}tableKind`).length === 0
     );
   }
 
@@ -316,7 +312,7 @@ export class Words {
       const document = await this.#document(`${this.#kit}/${download}`);
       return this.#one(
         handle,
-        `SELECT DISTINCT ?record WHERE { ?revision <${REC}revisionOf> ?record ; <${PROV}wasDerivedFrom> <${document}> }`,
+        `SELECT DISTINCT ?record WHERE { ?revision <${CASCADE}revisionOf> ?record ; <${PROV}wasDerivedFrom> <${document}> }`,
         "record",
       );
     }
@@ -336,7 +332,7 @@ export class Words {
       throw new Error(`${handle} names ${path}, which is no C-CDA document`);
     if (scopes === null)
       throw new Error(
-        `${handle} names ${path}, which states no custodian id and one patient with an id: handles.json gives its selector`,
+        `${handle} names ${path}, which states no custodian id, or not exactly one patient with an id: handles.json gives its selector`,
       );
     const { identifier, class: entryClass, key, members } = inputs;
     const strings = (value: unknown): value is string[] =>
@@ -357,7 +353,7 @@ export class Words {
     if (typeof entryClass === "string" && (strings(key) || strings(members)))
       return recordFromCcdaWithoutIdName({
         ...scopes,
-        entryClass: `${REC}${entryClass}`,
+        entryClass: `${CASCADE}${entryClass}`,
         ...(strings(key)
           ? { keyFingerprint: await fingerprint(key) }
           : { membersFingerprint: await fingerprint(members as string[]) }),
@@ -409,7 +405,7 @@ export class Words {
     const from =
       source === undefined
         ? ""
-        : `?record <${HEALTH}sourceRecordId> ${JSON.stringify(source)} .`;
+        : `?record <${CASCADE}sourceRecordId> ${JSON.stringify(source)} .`;
     return this.#one(
       words,
       `SELECT DISTINCT ?record WHERE { ?record a <${type}> . ?version <${PROV}specializationOf> ?record . ${coded} ${named} ${from} }`,
@@ -430,7 +426,10 @@ export class Words {
           this.#vocabulary.iri + path,
         ),
       );
-      const [judgment] = graph.subjects(`${RDF}type`, iri(`${JDG}Judgment`));
+      const [judgment] = graph.subjects(
+        `${RDF}type`,
+        iri(`${CASCADE}Judgment`),
+      );
       if (judgment === undefined) throw new Error(`${path} holds no judgment`);
       return this.#remember(words, judgment.value);
     }
@@ -444,7 +443,7 @@ export class Words {
     const found = (
       await this
         .#select(`SELECT ?judgment (GROUP_CONCAT(DISTINCT STR(?member); separator=" ") AS ?members) WHERE {
-        ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}justification> <${justification}> ; <${PROV}hadMember> ?member
+        ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}justification> <${justification}> ; <${PROV}hadMember> ?member
       } GROUP BY ?judgment`)
     ).filter(
       ([, held]) =>
@@ -462,7 +461,7 @@ export class Words {
   async versions(record: string): Promise<string[]> {
     return (
       await this.#select(`SELECT ?version (MIN(?at) AS ?first) WHERE {
-        ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at
+        ?revision <${CASCADE}revisionOf> <${record}> ; <${CASCADE}version> ?version ; <${PROV}generatedAtTime> ?at
       } GROUP BY ?version ORDER BY ?first`)
     ).map(([version]) => version ?? "");
   }
@@ -489,7 +488,7 @@ export class Words {
       return this.#one(
         words,
         `SELECT DISTINCT ?document WHERE {
-          ?revision <${REC}revisionOf> <${record}> ; <${PROV}wasDerivedFrom> ?document .
+          ?revision <${CASCADE}revisionOf> <${record}> ; <${PROV}wasDerivedFrom> ?document .
           FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier }
         }`,
         "document",

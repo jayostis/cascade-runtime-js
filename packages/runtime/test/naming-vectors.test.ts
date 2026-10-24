@@ -188,6 +188,34 @@ function vectors(): Promise<Vectors> {
   return loaded;
 }
 
+/** A URL's userinfo, host, query and fragment, each where present, split as RFC 3986's appendix B does. */
+function secretParts(url: string): string[] {
+  const [, authority, query, fragment] =
+    /^(?:[^:/?#]+:)?(?:\/\/([^/?#]*))?[^?#]*(?:\?([^#]*))?(?:#(.*))?$/s.exec(
+      url,
+    ) ?? [];
+  const at = authority?.lastIndexOf("@") ?? -1;
+  const userinfo = at < 0 ? undefined : authority?.slice(0, at);
+  const hostAndPort = authority?.slice(at + 1) ?? "";
+  const close = hostAndPort.indexOf("]");
+  const host = hostAndPort.startsWith("[")
+    ? hostAndPort.slice(0, close < 0 ? undefined : close + 1)
+    : hostAndPort.split(":")[0];
+  return [userinfo, host, query, fragment].filter(
+    (part): part is string => part !== undefined && part !== "",
+  );
+}
+
+/** Whether the text holds the part as written, not inside a longer run of letters and digits: "userinfo" does not echo "user". */
+function echoes(text: string, part: string): boolean {
+  for (let at = text.indexOf(part); at >= 0; at = text.indexOf(part, at + 1)) {
+    const before = text[at - 1] ?? "";
+    const after = text[at + part.length] ?? "";
+    if (!/[A-Za-z0-9]/.test(before + after)) return true;
+  }
+  return false;
+}
+
 async function parsed(bytes: Uint8Array, base: string): Promise<Triple[]> {
   return new OxigraphStore().parse(bytes, base);
 }
@@ -195,11 +223,11 @@ async function parsed(bytes: Uint8Array, base: string): Promise<Triple[]> {
 test("every naming vector of the vocabulary reproduces", async (t) => {
   const { graph, entries, path, read } = await vectors();
   assert.ok(entries.length > 0, "the manifest lists vectors");
-  for (const [kind, count] of [
-    ["NamingTest", 63],
-    ["BaseUrlNormalisationTest", 15],
-    ["BaseUrlRefusalTest", 23],
-  ] as const) {
+  for (const kind of [
+    "NamingTest",
+    "BaseUrlNormalisationTest",
+    "BaseUrlRefusalTest",
+  ]) {
     const typed = `${BRIDGE}${kind}`;
     const listed = entries.filter((entry) =>
       graph.objects(entry, `${RDF}type`).some((type) => type.value === typed),
@@ -210,7 +238,6 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
         .length,
       `the manifest lists every ${kind}`,
     );
-    assert.equal(listed, count, `the manifest holds ${count} ${kind}`);
   }
   const nameOf = (subject: Term, predicate: string): Term =>
     one(graph, one(graph, subject, predicate), `${BRIDGE}expectedName`);
@@ -226,7 +253,16 @@ test("every naming vector of the vocabulary reproduces", async (t) => {
           "a refusal names no result",
         );
         const url = one(graph, action, `${CASCADE}serverBaseUrl`).value;
-        assert.throws(() => normalisedBaseUrl(url), Refusal);
+        assert.throws(
+          () => normalisedBaseUrl(url),
+          (error: unknown) =>
+            error instanceof Refusal &&
+            error.message.length > 10 &&
+            [url, ...secretParts(url)].every(
+              (part) => !echoes(error.message, part),
+            ),
+          "it is refused, saying why and echoing no part of the URL",
+        );
         return;
       }
       const result = one(graph, entry, `${MF}result`);

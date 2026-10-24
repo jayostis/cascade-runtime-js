@@ -14,7 +14,6 @@ import {
   documentName,
   enteredRecordName,
   inUtc,
-  THIS_ENTRY,
   THIS_REVISION,
   THIS_VERSION,
 } from "./names.js";
@@ -33,7 +32,7 @@ import {
 import {
   type OnProgress,
   parseStepFile,
-  REC,
+  CASCADE,
   Refusal,
   type StepContext,
   type StepFile,
@@ -225,7 +224,7 @@ class Revisions {
       }
     }
     const { rows } = await union.select(`
-      PREFIX cascade: <${REC}>
+      PREFIX cascade: <${CASCADE}>
       PREFIX prov: <${PROV}>
       PREFIX pav: <${PAV}>
       SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion WHERE {
@@ -281,9 +280,9 @@ class Revisions {
     const previous = this.#last.get(record)?.revision;
     const triples: Triple[] = [
       ...arrival.statements,
-      [placeholder, iri(TYPE), iri(`${REC}Revision`)],
-      [placeholder, iri(`${REC}revisionOf`), arrival.record],
-      [placeholder, iri(`${REC}version`), arrival.version],
+      [placeholder, iri(TYPE), iri(`${CASCADE}Revision`)],
+      [placeholder, iri(`${CASCADE}revisionOf`), arrival.record],
+      [placeholder, iri(`${CASCADE}version`), arrival.version],
       [
         placeholder,
         iri(`${PROV}generatedAtTime`),
@@ -548,20 +547,11 @@ export async function fileEntry(
     throw new Refusal(
       `${entry.name} holds ${activities.length} activities, not one`,
     );
-  let [session] = activities as [Triple[0]];
-  if (session.value === THIS_ENTRY) {
-    const id = iri(context.time.newId());
-    graph = new Graph(
-      renamed(
-        graph.triples.filter(
-          ([s, p]) => !(s.value === THIS_ENTRY && p.value === STARTED),
-        ),
-        session,
-        id,
-      ),
+  const [session] = activities as [Triple[0]];
+  if (session.value === "urn:cascade:this-entry")
+    throw new Refusal(
+      `${entry.name} names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it`,
     );
-    session = id;
-  }
   if (session.termType !== "NamedNode")
     throw new Refusal(`${entry.name}'s session has no name`);
   let [at] = graph.objects(session, STARTED);

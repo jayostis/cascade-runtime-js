@@ -4,7 +4,6 @@ const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const RECORDS = "clinical-records";
@@ -126,7 +125,7 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
       `${document} <${PROV}qualifiedAttribution> _:attribution${n} .`,
       `_:attribution${n} <${PROV}agent> _:agent${n} .`,
       `_:agent${n} <${RDFS}label> ${quoted(label)} .`,
-      `_:attribution${n} <${PROV}hadRole> <${REC}${role}> .`,
+      `_:attribution${n} <${PROV}hadRole> <${CASCADE}${role}> .`,
     );
   };
   attribution("Apple Health", "TransmitterRole", 0);

@@ -45,8 +45,7 @@ const ALEX = `${KIT}/scripted-input/alex`;
 const PICKED = ["x-e2", "x-e4", "x-e10", "x-e12"];
 /** Patient A at Cascade North, as whom `openBrowser()` signs in. */
 const A_NORTH = "pt-1001";
-const JDG = "https://ns.cascadeprotocol.org/cascade#";
-const REC = "https://ns.cascadeprotocol.org/cascade#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
 
 interface Block {
@@ -448,7 +447,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   }
   const persons = [...judged].filter(([, { byOwner }]) => byOwner);
   const ofVerdict = (verdict: string) =>
-    persons.filter(([, one]) => one.verdict === JDG + verdict);
+    persons.filter(([, one]) => one.verdict === CASCADE + verdict);
 
   for (const verdict of ["Same", "Different", "Erroneous"])
     assert.ok(ofVerdict(verdict).length > 0, `no ${verdict} by the person`);
@@ -501,7 +500,7 @@ test("each template does what the guide says, read through the vocabulary's ques
 
   const hidden = await ask("record/Why it is in no view");
   const hiddenFor = (record: string, why: string) =>
-    hidden.some((row) => row.record === record && row.why === REC + why);
+    hidden.some((row) => row.record === record && row.why === CASCADE + why);
   for (const [, { members }] of ofVerdict("Erroneous"))
     for (const member of members)
       assert.ok(
@@ -520,7 +519,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   const abouts = (profile: string) =>
     [...judged].filter(
       ([name, one]) =>
-        one.verdict === `${JDG}About` &&
+        one.verdict === `${CASCADE}About` &&
         one.members.includes(profile) &&
         counting.has(name),
     );
