@@ -2,12 +2,64 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseGraph } from "../src/graph.js";
 import {
-  ccdaRecordName,
+  canonical,
+  containedRecordName,
   contentName,
   earlierInUtc,
   fingerprint,
+  normalisedBaseUrl,
+  recordFromCcdaWithoutIdName,
 } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { iri, literal, type Triple } from "../src/rdf.js";
+import { Refusal } from "../src/refusal.js";
+
+test("canonical N-Quads are in code point order, one line to a triple, where rdf-canonize orders by UTF-16 code unit", async () => {
+  const triple = (value: string): Triple => [
+    iri("urn:cascade:this-version"),
+    iri("http://example.org/p"),
+    literal(value),
+  ];
+  assert.equal(
+    await canonical([triple("😀"), triple("～"), triple("～")]),
+    `<urn:cascade:this-version> <http://example.org/p> "～" .\n<urn:cascade:this-version> <http://example.org/p> "😀" .\n`,
+  );
+});
+
+test("a base URL holding a control character, a space, a query or a fragment is refused", () => {
+  for (const url of [
+    "https://h/\u0000",
+    "https://h/a b",
+    "https://h/\u001f",
+    "https://h/\u007f",
+    "https://h/?",
+    "https://h/?a=b",
+    "https://h/#",
+    "https://h/#a",
+  ])
+    assert.throws(() => normalisedBaseUrl(url), Refusal, JSON.stringify(url));
+});
+
+test("an empty version id or key fingerprint counts as absent", async () => {
+  assert.equal(
+    await containedRecordName(
+      "urn:uuid:a",
+      { versionId: "", lastUpdated: "t" },
+      "x",
+    ),
+    await containedRecordName("urn:uuid:a", { lastUpdated: "t" }, "x"),
+  );
+  const entry = {
+    custodian: { root: "r" },
+    patient: { root: "p" },
+    entryClass: "c",
+    membersFingerprint: "7",
+  };
+  assert.equal(
+    await recordFromCcdaWithoutIdName({ ...entry, keyFingerprint: "" }),
+    await recordFromCcdaWithoutIdName(entry),
+  );
+});
 
 test("a version is named from its literals as written, before any store reads them, as the Bridge spec's typed-literals vector names it", async () => {
   const xsd = "http://www.w3.org/2001/XMLSchema#";
@@ -36,7 +88,7 @@ test("one time is earlier than another by its instant, whether or not either has
   );
 });
 
-test("a C-CDA record is named from its class, its identifier and its key's fingerprint, as the Bridge spec's vectors name it", async () => {
+test("a C-CDA entry's fingerprint is a sum no order or repeat of its strings changes, as the adapter's vectors give it", async () => {
   const active = [
     "code=91936005",
     "effectiveTime=20250327120000+0000",
@@ -48,34 +100,4 @@ test("a C-CDA record is named from its class, its identifier and its key's finge
     "506034893686827",
   );
   assert.equal(await fingerprint([]), "0");
-  assert.equal(
-    await ccdaRecordName({
-      class: "AllergyIntolerance",
-      identifier: "2.16.840.1.113883.19.5:8237461",
-    }),
-    "urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31",
-  );
-  assert.equal(
-    await ccdaRecordName({
-      class: "AllergyIntolerance",
-      identifier: "2.16.840.1.113883.19.5:2210",
-      key: active,
-    }),
-    "urn:uuid:146187ec-84af-85ab-b1b4-8f06a954fa2c",
-  );
-  assert.equal(
-    await ccdaRecordName({
-      class: "Condition",
-      identifier: "",
-      members: [
-        "urn:hl7-org:v3code@http://sparql.xyz/facade-x/data/nullFlavor=UNK",
-        "urn:hl7-org:v3originalText=left knee pain",
-      ],
-    }),
-    "urn:uuid:6e689e64-69b0-81a5-878f-e5debf9e21f4",
-  );
-  assert.equal(
-    await ccdaRecordName({ class: "Observation", identifier: "" }),
-    "urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982",
-  );
 });

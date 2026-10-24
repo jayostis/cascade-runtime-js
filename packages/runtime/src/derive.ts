@@ -3,7 +3,7 @@ import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
 
 export const DERIVED = "urn:cascade:derived:";
-export const QUERIES = "queries/v1-draft/";
+export const QUERIES = "queries/";
 const CRATE = "ro-crate-metadata.json";
 const DERIVATIONS = `${QUERIES}derivations`;
 export const LENSES = `${QUERIES}lenses/`;
@@ -81,27 +81,18 @@ export class Derivations {
    * union, what it constructs that the union did not already hold; returns what each added.
    */
   async derive(union: Union, lens: string): Promise<DerivedStep[]> {
-    const { rows } = await union.select("SELECT ?s ?p ?o WHERE { ?s ?p ?o }");
-    const held = new Set(
-      rows.map((row) =>
-        ["s", "p", "o"]
-          .map((name) => {
-            const term = row.get(name);
-            if (term === undefined)
-              throw new Error("a triple of the union lacks a term");
-            return written(term);
-          })
-          .join(" "),
-      ),
-    );
     const added: DerivedStep[] = [];
     for (const { path, query } of this.for(lens)) {
-      const fresh: Triple[] = [];
-      for (const triple of await union.construct(query)) {
-        if (held.has(key(triple))) continue;
-        held.add(key(triple));
-        fresh.push(triple);
-      }
+      const constructed = await union.construct(query);
+      const held = await union.holds(constructed);
+      const seen = new Set<string>();
+      const fresh = constructed.filter((triple, at) => {
+        if (held[at]) return false;
+        const written = key(triple);
+        if (seen.has(written)) return false;
+        seen.add(written);
+        return true;
+      });
       await union.add(fresh, DERIVED + lens);
       added.push({ path, added: fresh });
     }

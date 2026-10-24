@@ -7,13 +7,18 @@ import {
   type Term,
   type Triple,
 } from "@cascade-runtime/runtime";
-import { INDEX, REC, SHIPS_WITH, TABLE_KIND } from "./constants.js";
+import {
+  INDEX,
+  CASCADE,
+  DEFAULT_TABLE_VERSION,
+  TABLE_KIND,
+} from "./constants.js";
 import type { Described, Fact, TablesOptions } from "./types.js";
 
 /** The version each series of the tables ships with, the rule list's among them, sorted. */
 export function shipped(references: References): string[] {
   return references.index
-    .match(undefined, `${REC}shipsWith`)
+    .match(undefined, `${CASCADE}defaultTableVersion`)
     .map(([, , version]) => version.value)
     .sort();
 }
@@ -26,7 +31,7 @@ export function currentOf(references: References): string[] {
 /** The version each series of a kind ships with in the index, sorted: the rule list's series has no kind. */
 export function currentIn(index: Graph): string[] {
   return index
-    .match(undefined, SHIPS_WITH)
+    .match(undefined, DEFAULT_TABLE_VERSION)
     .filter(([series]) => ofAKind(index, series))
     .map(([, , version]) => version.value)
     .sort();
@@ -38,7 +43,9 @@ export function ofAKind(index: Graph, series: Term): boolean {
 
 /** The series the index says ship with a version, the rule list's left out. */
 export function seriesOfAKind(index: Graph): Term[] {
-  return index.subjects(SHIPS_WITH).filter((series) => ofAKind(index, series));
+  return index
+    .subjects(DEFAULT_TABLE_VERSION)
+    .filter((series) => ofAKind(index, series));
 }
 
 export function described(

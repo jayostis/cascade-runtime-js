@@ -21,9 +21,16 @@ export interface Store {
   /** The Turtle's triples as it writes them, each literal's lexical form kept, its relative IRIs resolved against `base`. */
   parse(turtle: Uint8Array | string, base: string): Promise<Triple[]>;
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
+  /** Removes a graph and its triples. */
+  drop(graph: string): Promise<void>;
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
   ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
   construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;
+  /** For each triple, whether a graph of the union holds it. */
+  holds(
+    triples: readonly Triple[],
+    union: ReadonlySet<string>,
+  ): Promise<boolean[]>;
 }
 
 export type StoreFactory = () => Store;
@@ -73,6 +80,10 @@ export class Union implements Dataset {
 
   construct(query: string): Promise<Triple[]> {
     return this.store.construct(query, this.#graphs);
+  }
+
+  holds(triples: readonly Triple[]): Promise<boolean[]> {
+    return this.store.holds(triples, this.#graphs);
   }
 }
 

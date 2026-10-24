@@ -167,7 +167,7 @@ async function runBroken(): ReturnType<typeof runConformance> {
   );
   await write(
     "runtime/scripted-input/ada/judgments/same.ttl",
-    `<urn:uuid:0f4a8c26-5b3e-4d79-a1e8-6c2f9b4d7a15> a <https://ns.cascadeprotocol.org/judgments/v1-draft#Judgment> .`,
+    `<urn:uuid:0f4a8c26-5b3e-4d79-a1e8-6c2f9b4d7a15> a <https://ns.cascadeprotocol.org/cascade#Judgment> .`,
   );
   await write(
     "runtime/broken.feature",
@@ -310,10 +310,10 @@ async function runPlanted(): ReturnType<typeof runConformance> {
   );
   await write(
     `${ada}/tables/names/references.ttl`,
-    `@prefix rec: <https://ns.cascadeprotocol.org/records/v1-draft#> .
-     <urn:uuid:5e2a8c41-7d93-4b6f-a018-9c3e7f2d4b56> a rec:ReferenceSeries ;
+    `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+     <urn:uuid:5e2a8c41-7d93-4b6f-a018-9c3e7f2d4b56> a cascade:ReferenceSeries ;
        <http://www.w3.org/2000/01/rdf-schema#label> "Names" ;
-       rec:tableKind rec:CodeNames ; rec:shipsWith <${PLANTED_VERSION}> .
+       cascade:tableKind cascade:CodeNames ; cascade:defaultTableVersion <${PLANTED_VERSION}> .
      <${PLANTED_VERSION}> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:5e2a8c41-7d93-4b6f-a018-9c3e7f2d4b56> ;
        <http://purl.org/pav/version> "1" .`,
   );
@@ -322,7 +322,7 @@ async function runPlanted(): ReturnType<typeof runConformance> {
     `<http://loinc.org/rdf/2823-3> <http://www.w3.org/2004/02/skos/core#prefLabel> "Potassium" .`,
   );
   await write(
-    "queries/v1-draft/tables/names.rq",
+    "queries/tables/names.rq",
     `# Every name a held version gives.
      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
      SELECT ?name ?version WHERE { GRAPH ?version { ?code skos:prefLabel ?name } }`,
@@ -351,7 +351,7 @@ async function runPlanted(): ReturnType<typeof runConformance> {
         """
         SELECT ?thing WHERE {
           { ?thing <http://www.w3.org/2004/02/skos/core#prefLabel> ?name }
-          UNION { ?thing prov:specializationOf/rec:tableKind rec:CodeNames }
+          UNION { ?thing prov:specializationOf/cascade:tableKind cascade:CodeNames }
         }
         """
       Then it answers:
@@ -395,6 +395,6 @@ test("a query the vocabulary does not hold fails its example", () => {
   assert.equal(outcome, "failed");
   assert.match(
     why ?? "",
-    /the vocabulary has no query queries\/v1-draft\/tables\/none\.rq/,
+    /the vocabulary has no query queries\/tables\/none\.rq/,
   );
 });

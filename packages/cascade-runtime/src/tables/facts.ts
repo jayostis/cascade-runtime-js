@@ -1,6 +1,6 @@
 import { notation, OWL, rowsAbout } from "../rows.js";
 import { about, nameOf, statusOf } from "./about.js";
-import { CLASSIFICATIONS, PAGE_SIZE, REC } from "./constants.js";
+import { CLASSIFICATIONS, PAGE_SIZE, CASCADE } from "./constants.js";
 import { classes } from "./drug-classes.js";
 import { panels } from "./panels.js";
 import { currentOfKind, seriesOfAKind } from "./references-index.js";
@@ -8,7 +8,7 @@ import type { Coded, Fact, Facts, TablesContext } from "./types.js";
 import { classificationRow } from "./variants.js";
 
 /** The kinds a code's page gives a section of their own, so its generic mappings do not list them. */
-const OWN_SECTIONS = [`${REC}PanelMembers`, `${REC}DrugClasses`];
+const OWN_SECTIONS = [`${CASCADE}PanelMembers`, `${CASCADE}DrugClasses`];
 
 export async function facts(
   context: TablesContext,
@@ -57,8 +57,8 @@ export async function facts(
         ];
   };
   const [named, statuses, mappings] = await Promise.all([
-    rowsOf(`${REC}CodeNames`),
-    rowsOf(`${REC}CodeStatus`),
+    rowsOf(`${CASCADE}CodeNames`),
+    rowsOf(`${CASCADE}RetiredCodes`),
     Promise.all(
       seriesOfAKind(references.index)
         .map(({ value }) => value)
@@ -76,7 +76,7 @@ export async function facts(
     ).then((each) => each.flat()),
   ]);
   // Only a variation is a row's subject; a version's rows are not read for any other code.
-  const clinvar = codeSystems.find(({ iri }) => iri === `${REC}ClinVar`);
+  const clinvar = codeSystems.find(({ iri }) => iri === `${CASCADE}ClinVar`);
   const classifications = (
     await Promise.all(
       (clinvar !== undefined && code.startsWith(clinvar.uriSpace)
@@ -102,12 +102,12 @@ export async function facts(
   const anywhere = (kind: string): Fact[] =>
     currentOfKind(references, context.options.preference, kind);
   const [inPanels, inClasses] = await Promise.all([
-    panels(context, code, anywhere(`${REC}PanelMembers`)),
+    panels(context, code, anywhere(`${CASCADE}PanelMembers`)),
     classes(
       context,
       code,
-      anywhere(`${REC}DrugClasses`),
-      anywhere(`${REC}ProductIngredients`),
+      anywhere(`${CASCADE}DrugClasses`),
+      anywhere(`${CASCADE}ProductIngredients`),
     ),
   ]);
   const found = await about(context, [

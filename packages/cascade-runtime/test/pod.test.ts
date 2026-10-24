@@ -24,7 +24,7 @@ import {
   OxigraphStore,
   type Placed,
   questions,
-  recordName,
+  recordFromServerName,
 } from "@cascade-runtime/runtime";
 import {
   checkouts,
@@ -59,12 +59,9 @@ import { keptPod, openPodWith, type Parts } from "../src/pod.js";
 const KIT = "conformance/alex-rivera";
 const ALEX = `${KIT}/scripted-input/alex`;
 const QUESTION = "pod/My active allergies";
-const PREFIXES = `PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
 PREFIX pav: <http://purl.org/pav/>
-PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
-PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
 `;
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
 const STORAGE = "http://www.w3.org/ns/pim/space#storage";
@@ -152,7 +149,7 @@ async function handled(): Promise<(handle: string) => Promise<string>> {
   ) as { records: Record<string, Record<string, string>> };
   return (handle) => {
     const { server = "", type = "", id = "" } = handles.records[handle] ?? {};
-    return recordName([server, type, id]);
+    return recordFromServerName(server, type, id);
   };
 }
 
@@ -186,16 +183,16 @@ async function filesIn(at: string): Promise<string[]> {
 
 function about(profile: string, named = "urn:cascade:this-judgment"): string {
   return `${PREFIXES}
-<${named}> a jdg:Judgment ;
-    jdg:verdict jdg:About ; jdg:subject <${pod.subject}> ; jdg:basis jdg:OwnerStatement ;
+<${named}> a cascade:Judgment ;
+    cascade:verdict cascade:About ; cascade:subject <${pod.subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${pod.owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole jdg:patient ] .
+    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
 <${pod.owner}> a prov:Person .`;
 }
 
 function judgment(verdict: string, members: readonly string[]): string {
   return `${PREFIXES}
-<urn:cascade:this-judgment> a jdg:Judgment ; jdg:verdict jdg:${verdict} ;
+<urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:${verdict} ;
     ${members.map((member) => `prov:hadMember <${member}> ;`).join(" ")}
     prov:wasAttributedTo <${pod.owner}> .
 <${pod.owner}> a prov:Person .`;
@@ -279,7 +276,7 @@ test("an import with the claim records an About for each unclaimed profile and i
   const judgments = await pod.ask({
     query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?member)) AS ?members) WHERE {
       VALUES ?file { ${wrote.map((path) => `<${pod.address}${path}>`).join(" ")} }
-      GRAPH ?file { ?judgment a jdg:Judgment ; jdg:justification ?justification ; prov:hadMember ?member } }
+      GRAPH ?file { ?judgment a cascade:Judgment ; cascade:justification ?justification ; prov:hadMember ?member } }
       GROUP BY ?judgment ?justification`,
   });
   const expected = await tableUnder(
@@ -306,7 +303,7 @@ test("an import with the claim records an About for each unclaimed profile and i
             const kinds = await pod.ask({
               query: `SELECT DISTINCT ?kind WHERE {
                 VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-                ?record <https://ns.cascadeprotocol.org/records/v1-draft#kind> ?kind }`,
+                ?record <https://ns.cascadeprotocol.org/cascade#recordKind> ?kind }`,
             });
             const conditions =
               kinds.length === 1 && kinds[0]?.kind === "Condition";
@@ -325,6 +322,53 @@ test("an import with the claim records an About for each unclaimed profile and i
 
   const again = await pod.import(exported("x-e6"), { aboutSubject: true });
   assert.deepEqual(again.claimed, []);
+});
+
+test("a profile that is the subject itself is not unclaimed, so the claim records no About for it", async () => {
+  const own = await mkdtemp(join(tmpdir(), "cascade-runtime-"));
+  try {
+    const profile = await profileOf("J1");
+    const bridge = await kept.loadBridge();
+    const itself = await openPodWith(
+      {
+        ...kept,
+        loadBridge: () =>
+          Promise.resolve({
+            ...bridge,
+            adapters: (mediaType) =>
+              bridge.adapters(mediaType).map((adapter) => ({
+                accepts: (document) => adapter.accepts(document),
+                free: () => adapter.free(),
+                convert: async (document, options) => {
+                  const converted = await adapter.convert(document, options);
+                  return {
+                    ...converted,
+                    graph: new TextEncoder().encode(
+                      new TextDecoder()
+                        .decode(converted.graph)
+                        .replaceAll(`<${profile}>`, `<${itself.subject}>`),
+                    ),
+                  };
+                },
+              })),
+          }),
+      },
+      join(own, "pod"),
+    );
+    try {
+      const imported = await itself.import(exported("x-e2"), {
+        aboutSubject: true,
+        match: false,
+      });
+      assert.equal(imported.refused, undefined);
+      assert.deepEqual(imported.unclaimed, []);
+      assert.deepEqual(imported.claimed, []);
+    } finally {
+      await itself.close();
+    }
+  } finally {
+    await rm(own, { recursive: true, force: true });
+  }
 });
 
 test("the look reads an export's or a download's index and writes nothing: a FHIR source by its server, a C-CDA by its custodian with its sections, claimed once the subject's records from it are filed", async () => {
@@ -430,7 +474,7 @@ test("an entry is filed and matched by default; a person's judgment records the 
   assert.ok(entered.matched);
   const peanuts = await pod.ask({
     query: `${PREFIXES}SELECT ?entry ?record WHERE {
-      ?entry health:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
+      ?entry cascade:allergen "Peanuts" ; cascade:mergedFrom ?record }`,
   });
   assert.equal(peanuts.length, 1);
   const { entry = "", record = "" } = peanuts[0] ?? {};
@@ -675,8 +719,10 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
       assert.equal(replayed.opened, undefined);
       const used = await replayed.ask({
         query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
-          ?judgment prov:wasAttributedTo <${MATCHER}> ; prov:used ?version .
-          ?version prov:specializationOf/a rec:ReferenceSeries }`,
+          ?judgment prov:wasAttributedTo <${MATCHER}> .
+          { ?judgment prov:used ?version }
+          UNION { ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion ?version }
+          ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       });
       const cited = used.map(({ version }) => version ?? "");
       const held = shipped(

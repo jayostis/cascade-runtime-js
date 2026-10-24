@@ -112,6 +112,11 @@ export class OxigraphStore implements Store {
     if (any) this.#graphs.add(options.graph);
   }
 
+  async drop(graph: string): Promise<void> {
+    this.#store.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
+    this.#graphs.delete(graph);
+  }
+
   async select(query: string, union: ReadonlySet<string>): Promise<Rows> {
     const answer = parseResults(
       this.#store.query(query, {
@@ -129,6 +134,25 @@ export class OxigraphStore implements Store {
     if (typeof answer !== "boolean")
       throw new Error("a query that is no ASK was run as one");
     return answer;
+  }
+
+  async holds(
+    triples: readonly Triple[],
+    union: ReadonlySet<string>,
+  ): Promise<boolean[]> {
+    return triples.map(([subject, predicate, object]) =>
+      this.#store
+        .match(
+          toOxigraph(subject) as oxigraph.NamedNode | oxigraph.BlankNode,
+          oxigraph.namedNode(predicate.value),
+          toOxigraph(object),
+          null,
+        )
+        .some(
+          ({ graph }) =>
+            graph.termType === "NamedNode" && union.has(graph.value),
+        ),
+    );
   }
 
   async construct(

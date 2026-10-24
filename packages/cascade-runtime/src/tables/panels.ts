@@ -1,6 +1,6 @@
 import type { Triple } from "@cascade-runtime/runtime";
 import { notation, OWL, rowsAbout, values } from "../rows.js";
-import { PAGE_SIZE, REC } from "./constants.js";
+import { PAGE_SIZE, CASCADE } from "./constants.js";
 import { about } from "./about.js";
 import { described, currentOfKind } from "./references-index.js";
 import type { Described, Fact, Placed, TablesContext } from "./types.js";
@@ -42,8 +42,11 @@ export async function panels(
           const rows = rowsAbout(text, subject);
           const [panel] = values(rows, `${OWL}annotatedSource`);
           const [member] = values(rows, `${OWL}annotatedTarget`);
-          const [sequence] = values(rows, `${REC}panelSequence`);
-          const [required] = values(rows, `${REC}observationRequiredInPanel`);
+          const [sequence] = values(rows, `${CASCADE}panelSequence`);
+          const [required] = values(
+            rows,
+            `${CASCADE}observationRequiredInPanel`,
+          );
           const place = {
             ...(sequence !== undefined && { sequence: Number(sequence) }),
             ...(required !== undefined && { required }),
@@ -89,7 +92,7 @@ export async function inPanels(
   const held = currentOfKind(
     references,
     context.options.preference,
-    `${REC}PanelMembers`,
+    `${CASCADE}PanelMembers`,
   );
   const found = (await panels(context, code, held)).filter(
     ({ heldBy }) => heldBy.total > 0,
@@ -120,7 +123,7 @@ export async function panelRows(
   const versions = currentOfKind(
     references,
     context.options.preference,
-    `${REC}PanelMembers`,
+    `${CASCADE}PanelMembers`,
   ).map(({ version }) => version);
   return Promise.all(
     versions.map(async (version) => {

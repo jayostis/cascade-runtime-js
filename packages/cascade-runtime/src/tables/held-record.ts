@@ -1,6 +1,13 @@
 import type { Files, Graph, Term } from "@cascade-runtime/runtime";
 import { SPECIALIZATION_OF } from "../rows.js";
-import { DCT, HELD, PAV, RDFS, REC, SHIPS_WITH } from "./constants.js";
+import {
+  DCT,
+  HELD,
+  PAV,
+  RDFS,
+  CASCADE,
+  DEFAULT_TABLE_VERSION,
+} from "./constants.js";
 import { seriesOfAKind } from "./references-index.js";
 import type { HeldSeries, HeldVersion, Watched } from "./types.js";
 
@@ -93,7 +100,7 @@ export function heldSeries(
       label: one(of, `${PAV}version`),
       issued: one(of, `${DCT}issued`),
     });
-    const [current] = index.objects(series, SHIPS_WITH);
+    const [current] = index.objects(series, DEFAULT_TABLE_VERSION);
     const versions = index
       .subjects(SPECIALIZATION_OF, series)
       .filter((each) => each.value !== current?.value)
@@ -106,7 +113,7 @@ export function heldSeries(
     return {
       iri: series.value,
       label: one(series, `${RDFS}label`) ?? series.value,
-      kind: one(series, `${REC}tableKind`),
+      kind: one(series, `${CASCADE}tableKind`),
       licence: one(series, `${DCT}license`),
       publisher,
       publisherName:

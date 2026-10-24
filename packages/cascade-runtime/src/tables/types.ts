@@ -103,15 +103,15 @@ export interface Fact {
 
 /** Where a code stands in a panel, as the row that puts it there gives it. */
 export interface Placed extends Coded {
-  /** The `rec:panelSequence` of the row. */
+  /** The `cascade:panelSequence` of the row. */
   readonly sequence?: number;
-  /** The `rec:observationRequiredInPanel` of the row: `R` for a member the panel requires. */
+  /** The `cascade:observationRequiredInPanel` of the row: `R` for a member the panel requires. */
   readonly required?: string;
 }
 
 /** A class a drug is in, by the relation its row gives. */
 export interface InClass {
-  /** The row's predicate: `rec:establishedPharmacologicClass`, `rec:mechanismOfAction`, `rec:physiologicEffect` or `rec:chemicalStructure`. */
+  /** The row's predicate: `cascade:establishedPharmacologicClass`, `cascade:mechanismOfActionClass`, `cascade:physiologicEffectClass` or `cascade:chemicalStructureClass`. */
   readonly relation: string;
   readonly class: Coded;
   /** The code the class is on when it is not the code asked of: FDA classes the ingredient or a precise ingredient, not a product. */
@@ -176,11 +176,11 @@ export interface Facts extends Coded {
 
 /** A variant as a page asks about it: an entry's codes, as `pod/My genetic variants` gives them. */
 export interface VariantAsked {
-  /** `genomics:geneSymbol`. */
+  /** `cascade:geneSymbol`. */
   readonly gene?: string;
-  /** The `genomics:hgvsCDot` literals. */
+  /** The `cascade:hgvsCodingDnaExpression` literals. */
   readonly hgvs: readonly string[];
-  /** The `genomics:clinvarVariationId` literals. */
+  /** The `cascade:clinvarVariationId` literals. */
   readonly variations: readonly string[];
 }
 

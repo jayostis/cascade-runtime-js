@@ -12,7 +12,7 @@ export interface PulledEntry {
 
 /** A patient's records as one pull from one hospital found them: what an import is made from. */
 export interface Pull {
-  /** The connection's FHIR base, with no trailing slash: the `bridge:serverBaseUrl` the adapter names records from. */
+  /** The connection's FHIR base, with no trailing slash: the `cascade:serverBaseUrl` the adapter names records from. */
   readonly fhirBase: string;
   /** The patient, by the hospital's id. */
   readonly patient: string;

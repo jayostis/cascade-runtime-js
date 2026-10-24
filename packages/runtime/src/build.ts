@@ -1,15 +1,24 @@
 import { Derivations, QUERIES } from "./derive.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
-import { blank, iri, literal, RDF, type Triple, XSD } from "./rdf.js";
+import {
+  blank,
+  iri,
+  literal,
+  ntriples,
+  RDF,
+  relativeTurtle,
+  type Term,
+  type Triple,
+  XSD,
+} from "./rdf.js";
 import type { Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const DCT = "http://purl.org/dc/terms/";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const TYPE = `${RDF}type`;
 const CURRENT_REFERENCE_VERSIONS = `${QUERIES}questions/pod/Which reference versions are current.rq`;
 
@@ -31,6 +40,65 @@ export type Derive = (
 /** The software a pod's manifest says built it. */
 export const RUNTIME = "cascade-runtime-js";
 
+/** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
+const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
+const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+
+/** Each entry placeholder a view gives members (`cascade:mergedFrom`), by the view's address. */
+function entryViews(
+  views: readonly { view: string; triples: readonly Triple[] }[],
+): Map<string, string> {
+  const owner = new Map<string, string>();
+  for (const { view, triples } of views)
+    for (const [subject, predicate] of triples)
+      if (
+        predicate.value === MERGED_FROM &&
+        subject.value.startsWith(ENTRY_PLACEHOLDER)
+      )
+        owner.set(subject.value, view);
+  return owner;
+}
+
+/**
+ * A view's triples with each entry named in the view that holds it (N13): that view's address, `#`, and the hash its
+ * placeholder carries, so an entry another view points to keeps its own view's name.
+ */
+function entriesInView(
+  view: string,
+  triples: readonly Triple[],
+  owner: ReadonlyMap<string, string>,
+): Triple[] {
+  const named = (term: Term): Term =>
+    term.termType === "NamedNode" && term.value.startsWith(ENTRY_PLACEHOLDER)
+      ? iri(
+          `${owner.get(term.value) ?? view}#${term.value.slice(ENTRY_PLACEHOLDER.length)}`,
+        )
+      : term;
+  return triples.map(
+    ([subject, predicate, object]) =>
+      [named(subject), predicate, named(object)] as Triple,
+  );
+}
+
+/**
+ * A built file's bytes: a view as Turtle relative to itself, so that it holds no address of the pod; any other file as
+ * N-Triples.
+ */
+export function builtFileBytes(
+  layout: Layout,
+  address: string,
+  path: string,
+  triples: Iterable<Triple>,
+): Uint8Array {
+  return layout.views.some(({ file }) => file === path)
+    ? relativeTurtle(
+        triples,
+        address + path,
+        layout.views.map(({ file }) => address + (file ?? "")),
+      )
+    : ntriples(triples);
+}
+
 /** A query's triples, with its file marked as a view built with these reference versions. */
 function marked(
   file: string,
@@ -39,7 +107,7 @@ function marked(
 ): Triple[] {
   return [
     ...triples,
-    [iri(file), iri(TYPE), iri(`${REC}View`)],
+    [iri(file), iri(TYPE), iri(`${CASCADE}View`)],
     ...used.map((version): Triple => [
       iri(file),
       iri(`${PROV}used`),
@@ -101,10 +169,9 @@ function manifest(file: string, title: string, at: string): Triple[] {
   const agent = blank("agent");
   const created = literal(at, `${XSD}dateTime`);
   return [
-    [manifest, iri(TYPE), iri(`${CASCADE}ExportManifest`)],
+    [manifest, iri(TYPE), iri(`${CASCADE}PodManifest`)],
     [manifest, iri(`${DCT}title`), literal(title)],
     [manifest, iri(`${DCT}created`), created],
-    [manifest, iri(`${CASCADE}schemaVersion`), literal("1.8")],
     [manifest, iri(`${PROV}wasGeneratedBy`), activity],
     [activity, iri(TYPE), iri(`${PROV}Activity`)],
     [activity, iri(`${PROV}startedAtTime`), created],
@@ -184,14 +251,22 @@ export async function vocabularyBuild(
           .filter(({ file }) => !views.includes(file) || held.has(file))
           .map(async ({ file, query: path }) => ({
             file,
-            triples: marked(
-              pod.address + file,
-              await union.construct(query(path)),
-              used,
-            ),
+            view: pod.address + file,
+            triples: await union.construct(query(path)),
           })),
       );
-      for (const { file, triples } of made) await add(file, triples);
+      const owner = entryViews(made.filter(({ file }) => views.includes(file)));
+      for (const { file, view, triples } of made)
+        await add(
+          file,
+          marked(
+            view,
+            views.includes(file)
+              ? entriesInView(view, triples, owner)
+              : triples,
+            used,
+          ),
+        );
     }
     await add(layout.typeIndex, typeIndex(pod.address, layout, held));
     await add(
