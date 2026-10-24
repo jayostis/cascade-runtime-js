@@ -27,6 +27,7 @@ const USES_SHAPE = new Set(
 const USES_SHAPES = new Set(["and", "or", "xone"].map((name) => SH + name));
 const PRE_BOUND = new Set(["this", "currentShape", "shapesGraph"]);
 const NOT_PRE_BINDABLE = new Set(["VALUES", "MINUS", "SERVICE"]);
+const EXPRESSION = "expression";
 const ENDS_MODIFIER = new Set(["HAVING", "LIMIT", "OFFSET", "VALUES"]);
 const ANY_FOCUS = iri("urn:cascade:shacl-sparql:focus-node");
 const SKOLEM = "urn:cascade:shacl-sparql:blank-node:";
@@ -258,7 +259,9 @@ interface Projection {
 /**
  * The query as text and variables, read by SPARQL's lexical grammar so that a `?` or `$` inside a string, an IRI or a
  * comment is no variable and a keyword inside a prefixed name is no keyword, each pre-bound variable given its role;
- * with each keyword, upper-cased. A `<` after an operand inside brackets is an operator, as SPARQL's parsers read it.
+ * with each keyword, upper-cased. A `<` after an operand inside an expression's brackets (opened after a keyword or a
+ * function's name, in a projection or a solution modifier, or inside another) is an operator, as SPARQL's parsers read
+ * it; elsewhere, as in a collection, it opens an IRI.
  * A sub-select that does not return `$this` is refused, as is assigning a pre-bound variable.
  */
 function tokenize(
@@ -280,6 +283,9 @@ function tokenize(
   const iriRef = /<[^<>"{}|^`\\ \p{Cc}]*>/uy;
   const string =
     /"""(?:(?:"|"")?(?:[^"\\]|\\[\s\S]))*"""|'''(?:(?:'|'')?(?:[^'\\]|\\[\s\S]))*'''|"(?:[^"\\\n\r]|\\[\s\S])*"|'(?:[^'\\\n\r]|\\[\s\S])*'/y;
+  const language = /@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*/y;
+  const number =
+    /[0-9]*\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+\.[0-9]*[eE][+-]?[0-9]+|[0-9]+(?:[eE][+-]?[0-9]+)?/y;
   const comment = /#[^\n\r]*/y;
   const prefixedName =
     /(?:[\p{L}_][\p{L}\p{N}_.\-·]*)?:(?:(?:[\p{L}\p{N}_:%\-·.]|\\.)*(?:[\p{L}\p{N}_:%\-·]|\\.))?/uy;
@@ -348,14 +354,27 @@ function tokenize(
     }
     const character = query[at]!;
     const operator =
-      character === "<" && brackets.at(-1) === "(" && afterOperand;
-    const literal =
-      (operator ? undefined : match(iriRef)) ??
-      (character === '"' || character === "'"
+      character === "<" && brackets.at(-1) === EXPRESSION && afterOperand;
+    const quoted =
+      character === '"' || character === "'"
         ? (match(string) ??
           refuse(`a constraint of ${name} has an unterminated string`))
-        : undefined) ??
-      match(prefixedName);
+        : undefined;
+    let literal: string | undefined;
+    if (quoted !== undefined) {
+      at += quoted.length;
+      literal = quoted + (match(language) ?? "");
+      at -= quoted.length;
+    } else
+      literal =
+        (operator ? undefined : match(iriRef)) ??
+        (/[0-9]/u.test(character) ||
+        (character === "." &&
+          !afterOperand &&
+          /[0-9]/u.test(query[at + 1] ?? ""))
+          ? match(number)
+          : undefined) ??
+        match(prefixedName);
     if (literal !== undefined) {
       text += literal;
       at += literal.length;
@@ -397,8 +416,15 @@ function tokenize(
     if (character === "{") {
       if (open !== undefined) close(open);
       brackets.push(character);
-    } else if (character === "(" || character === "[") {
-      if (character === "(" && open !== undefined) open.returnsMore = true;
+    } else if (character === "(") {
+      if (open !== undefined) open.returnsMore = true;
+      const expression =
+        brackets.at(-1) === EXPRESSION ||
+        open !== undefined ||
+        (modifier !== undefined && brackets.length === modifier) ||
+        (previousWord !== "" && previousWord !== "A");
+      brackets.push(expression ? EXPRESSION : character);
+    } else if (character === "[") {
       brackets.push(character);
     } else if (character === ")" || character === "]" || character === "}") {
       brackets.pop();
