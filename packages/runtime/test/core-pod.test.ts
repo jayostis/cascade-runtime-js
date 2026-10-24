@@ -132,3 +132,30 @@ test("a step whose files are written one by one and fail part way reads the pod 
     await new CorePod(options(files, laidOut, state)).revision(),
   );
 });
+
+test("a person's retraction that also states prov:used is filed with the retractions, not the imports (cascade:Placement)", async () => {
+  const laidOut = await layout();
+  const pod = new CorePod(
+    options(new MemoryFiles(ADDRESS), laidOut, { now: "2026-02-01T08:00:00Z" }),
+  );
+  const name = "urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63";
+  const { wrote } = await pod.judge({
+    name: "retraction.ttl",
+    base: ADDRESS,
+    bytes: new TextEncoder()
+      .encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+<${name}> a prov:Activity ;
+  prov:invalidated <urn:uuid:0f6c2a9e-4d71-4b38-9e05-c8a3f2d61b7e> ;
+  prov:used <urn:uuid:c41d7e90-2b6a-4f3c-8d15-a9e0b7f26c48> ;
+  prov:wasAssociatedWith <https://pod.example/profile/card.ttl#me> .
+`),
+  });
+  assert.deepEqual(wrote, [
+    laidOut
+      .place("http://www.w3.org/ns/prov#Activity", [
+        "http://www.w3.org/ns/prov#invalidated",
+      ])
+      .path(name),
+  ]);
+  assert.ok(wrote[0]?.startsWith("judgments/retractions/"));
+});
