@@ -353,7 +353,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     ],
     [
       { kind: "judgment", file: "no-judgment.ttl" },
-      /^no-judgment\.ttl holds 0 judgments, not one$/,
+      /^no-judgment\.ttl holds 0 judgments and 0 retractions, not one of either$/,
     ],
     [
       { kind: "judgment", file: "no-turtle.ttl" },

@@ -11,6 +11,8 @@ const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+/** Of two cascade:forSubjectsOf placements a thing states the properties of, the one that files it (cascade:Placement). */
+const PRECEDENCE = [`${PROV}invalidated`, `${PROV}used`];
 export const SYNC = `${CASCADE}SyncFromAnotherWriter`;
 /** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
 const FILE_STEM =
@@ -56,7 +58,7 @@ export class Layout {
   readonly viewsPlacement: Placement;
   /** The folder of syncs' act files (cascade:SyncFromAnotherWriter), outside the set; undefined when the layout gives none. */
   readonly syncsFolder: string | undefined;
-  /** The folders of act files, the syncs' among them. */
+  /** The folders of act files, the syncs' among them; a retraction (prov:invalidated) is an activity and no act. */
   readonly actFolders: readonly string[];
 
   private constructor(turtle: string, placements: readonly Placement[]) {
@@ -71,8 +73,10 @@ export class Layout {
     this.syncsFolder = placements.find(
       ({ kind, folder }) => kind === SYNC && folder !== undefined,
     )?.folder;
-    this.actFolders = placements.flatMap(({ kind, folder }) =>
-      (kind === `${PROV}Activity` || kind === SYNC) && folder !== undefined
+    this.actFolders = placements.flatMap(({ kind, folder, forSubjectsOf }) =>
+      ((kind === `${PROV}Activity` && forSubjectsOf !== `${PROV}invalidated`) ||
+        kind === SYNC) &&
+      folder !== undefined
         ? [folder]
         : [],
     );
@@ -212,17 +216,24 @@ export class Layout {
   }
 
   /**
-   * Where a thing of the class is filed outside the views: by the placement for a property it states, else by the one
-   * for its class alone; undefined when the layout files it nowhere.
+   * Where a thing of the class is filed outside the views: by the placement for a property it states, prov:invalidated
+   * over prov:used, else by the one for its class alone; undefined when the layout files it nowhere.
    */
   find(kind: string, stating: readonly string[] = []): Placement | undefined {
     const matching = this.placements.filter(
       (placement) => placement.kind === kind && !this.#inViews(placement),
     );
-    const narrowed = matching.filter(
+    const stated = matching.filter(
       ({ forSubjectsOf }) =>
         forSubjectsOf !== undefined && stating.includes(forSubjectsOf),
     );
+    const first = PRECEDENCE.find((property) =>
+      stated.some(({ forSubjectsOf }) => forSubjectsOf === property),
+    );
+    const narrowed =
+      first === undefined
+        ? stated
+        : stated.filter(({ forSubjectsOf }) => forSubjectsOf === first);
     const found =
       narrowed.length > 0
         ? narrowed
