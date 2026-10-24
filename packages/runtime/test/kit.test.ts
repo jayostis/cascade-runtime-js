@@ -65,22 +65,27 @@ test("check 6 finds each IRI a view's bytes write that begins with the pod's add
   );
 });
 
-test("a view written relative to itself writes an entry of another view in its folder as a relative reference, and holds no pod address", () => {
-  const view = "https://pod.example/clinical/variant-interpretations.ttl";
+test("a view written relative to itself writes another view's entry as a relative reference, and nothing else under its folder", () => {
+  const folder = "https://pod.example/clinical/";
+  const view = `${folder}variant-interpretations.ttl`;
+  const variants = `${folder}variants.ttl`;
+  const p = iri("urn:example:p");
   const bytes = relativeTurtle(
     [
-      [
-        iri(`${view}#ab`),
-        iri("https://ns.cascadeprotocol.org/cascade#variantInterpreted"),
-        iri("https://pod.example/clinical/variants.ttl#cd"),
-      ],
-      [iri(view), iri("urn:example:p"), iri("https://other.example/x")],
+      [iri(`${view}#ab`), p, iri(`${variants}#cd`)],
+      [iri(view), p, iri("https://other.example/x")],
+      [iri(view), p, iri(folder)],
+      [iri(view), p, iri(`${folder}a:b`)],
+      [iri(view), p, iri(`${folder}notes.ttl`)],
     ],
     view,
+    [view, variants],
   );
-  assert.deepEqual(podAddressesIn(bytes, "https://pod.example/"), []);
-  assert.match(
-    new TextDecoder().decode(bytes),
-    /^<#ab> \S+ <variants\.ttl#cd> \.$/m,
-  );
+  const text = new TextDecoder().decode(bytes);
+  assert.match(text, /^<#ab> S+ <variants.ttl#cd> .$/m);
+  assert.deepEqual(podAddressesIn(bytes, "https://pod.example/"), [
+    folder,
+    `${folder}a:b`,
+    `${folder}notes.ttl`,
+  ]);
 });
