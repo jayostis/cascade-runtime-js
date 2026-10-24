@@ -1106,8 +1106,8 @@ function coreOver(
       references: () => Promise.resolve(references),
       build: {
         lens: parts.lens,
-        derive: async (store, lens, pod) => {
-          await build.derivations.derive(store, lens);
+        derive: async (store, lens, pod, keep) => {
+          await build.derivations.derive(store, lens, keep);
           return build.files(store, pod);
         },
       },
