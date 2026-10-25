@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { vocabularyDerive } from "../src/build.js";
+import { deriveWith, vocabularyBuild, vocabularyDerive } from "../src/build.js";
 import { dataset, podDataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
@@ -44,7 +44,7 @@ let layout: Layout;
 /** The pod the story was replayed into, with a build after every step. */
 let pod: CountedFiles;
 /** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
-let reopened: () => CorePod;
+let reopened: (newStore?: () => OxigraphStore) => CorePod;
 let replayed: Replayed;
 /** The folder the story's steps name their files under. */
 let storyFolder: string;
@@ -73,6 +73,7 @@ before(async () => {
   const files = await vocabulary();
   layout = await readLayout();
   const derive = await vocabularyDerive(files, layout);
+  const incremental = await vocabularyBuild(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
   storyFolder = folder;
@@ -92,7 +93,7 @@ before(async () => {
     build: { lens: LENS, derive },
   });
   store = await dataset(replayed, THROUGH, LENS, new OxigraphStore(), derive);
-  reopened = () =>
+  reopened = (newStore = () => new OxigraphStore()) =>
     new CorePod({
       runtime: RUNTIME,
       pod,
@@ -101,11 +102,11 @@ before(async () => {
       title: "matching",
       vocabulary: files,
       layout,
-      newStore: () => new OxigraphStore(),
+      newStore,
       time: clock,
       importers: [],
       references: () => Promise.reject(new Error("no step here matches")),
-      build: { lens: LENS, derive },
+      build: { lens: LENS, derive: deriveWith(incremental), incremental },
     });
 });
 
@@ -173,7 +174,7 @@ test("the build writes the labels, each view the layout marks written always, a 
   );
 });
 
-test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
+test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it; the first entry after an opening loads the records the pod held into one store, not one for the entry and one for its build", async () => {
   assert.deepEqual([...pod.found.keys()], []);
   const begun = replayed.steps.map(({ wrote }) =>
     wrote.length === 0 ? -1 : pod.log.indexOf(wrote[0] ?? ""),
@@ -216,6 +217,54 @@ test("a build after each step reads no file back, or one the pod held at its ope
   assert.deepEqual(
     [...pod.found].filter(([, reads]) => reads > 1),
     [],
+  );
+
+  const records = (
+    await pod.list(
+      layout.records(
+        "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+      )?.folder ?? "",
+    )
+  )
+    .filter((path) => layout.isRdf(path))
+    .map((path) => address + path);
+  const stores: Set<string>[] = [];
+  class CountedStore extends OxigraphStore {
+    readonly #loaded = new Set<string>();
+
+    constructor() {
+      super();
+      stores.push(this.#loaded);
+    }
+
+    override loadTurtle(
+      turtle: Uint8Array | string,
+      options: { readonly graph: string },
+    ): Promise<void> {
+      this.#loaded.add(options.graph);
+      return super.loadTurtle(turtle, options);
+    }
+  }
+  const entering = reopened(() => new CountedStore());
+  const owner = `${address}${layout.card}#me`;
+  const { refused } = await entering.enter({
+    bytes: new TextEncoder().encode(`
+      <urn:uuid:${crypto.randomUUID()}> a <http://www.w3.org/ns/prov#Activity> ;
+        <http://www.w3.org/2000/01/rdf-schema#label> "an entry" ;
+        <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${owner}> ;
+          <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] .
+      <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
+      <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+        <https://ns.cascadeprotocol.org/cascade#allergen> "Penicillin" .`),
+    base: "urn:entry",
+    name: "an entry",
+  });
+  assert.equal(refused, undefined);
+  assert.ok(records.length > 0);
+  assert.equal(
+    stores.filter((loaded) => records.every((graph) => loaded.has(graph)))
+      .length,
+    1,
   );
 });
 
