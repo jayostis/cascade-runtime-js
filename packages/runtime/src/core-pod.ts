@@ -930,6 +930,8 @@ export class CorePod {
     if (kept === undefined) {
       const dataset = await this.#keptDataset();
       if (dataset !== undefined) {
+        // KeptClaims adds a version's rows to the union it reads and drops them after: safe on the kept dataset only
+        // because a pod's reads and steps run one at a time.
         kept = this.#held(KEPT, () =>
           this.#keptClaims.of(dataset, () => this.#tables()),
         );

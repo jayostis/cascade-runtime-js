@@ -150,7 +150,9 @@ record's version.
 `pod.unheldTableVersions()` names the pod's current table versions this
 device's tables lack, of series a machine Same used another version of: such a
 Same does not count here (M7), so an app says so. `pod.opened.unheld` names them
-only at the open that changed the tables; this answers on every read.
+only at the open that changed the tables; this answers on every read, and is
+undefined, not known yet, while a page draws a copied pod before the engine
+loads.
 
 An app sets its own tables in a `cascade-runtime.json` of its own, in the
 folder it runs in, naming `tables` and nothing else, or in code with

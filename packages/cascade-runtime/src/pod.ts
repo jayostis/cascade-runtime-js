@@ -159,9 +159,10 @@ export interface Pod {
   /**
    * The current table versions the pod names that the app's tables do not hold, of each series a matcher Same used
    * another version of: such a Same counts where a device holds the version and its rows join the members, and not on
-   * this one (M7). It reads the pod and writes nothing.
+   * this one (M7). It reads the pod and writes nothing. Undefined while they are not known: a browser's pod drawn from
+   * its kept answers knows them once the engine has opened it.
    */
-  unheldTableVersions(): Promise<readonly string[]>;
+  unheldTableVersions(): Promise<readonly string[] | undefined>;
   close(): Promise<void>;
 }
 
