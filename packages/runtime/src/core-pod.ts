@@ -790,6 +790,16 @@ export class CorePod {
     }
   }
 
+  /** The dataset kept under the build's lens, which holds the pod's files and their derived state, if any. */
+  async #keptDataset(): Promise<Union | undefined> {
+    const lens = this.#options.build?.lens;
+    const kept =
+      lens === undefined
+        ? undefined
+        : (this.#kept.get(DATASET + lens) as Promise<Union> | undefined);
+    return kept?.catch(() => undefined);
+  }
+
   /**
    * The matcher's view: copied from the dataset kept under the matcher's lens, which holds the same files and derived
    * state, without the files the build writes and the layout; else read and derived.
@@ -797,12 +807,8 @@ export class CorePod {
   #matcherView(): Promise<Union> {
     return this.#held(MATCHER_VIEW, async () => {
       const { build, address, layout } = this.#options;
-      const kept =
-        build?.lens === MATCHER_LENS
-          ? (this.#kept.get(DATASET + MATCHER_LENS) as
-              Promise<Union> | undefined)
-          : undefined;
-      const dataset = await kept?.catch(() => undefined);
+      const dataset =
+        build?.lens === MATCHER_LENS ? await this.#keptDataset() : undefined;
       if (dataset === undefined)
         return matcherView(this.#options, this.#keep());
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
@@ -928,6 +934,7 @@ export class CorePod {
         vocabulary: options.vocabulary,
         matcherView: () => this.#matcherView(),
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
+        keptDataset: () => this.#keptDataset(),
       });
       let head: Head | undefined;
       let hashed: { readonly set: HashedSet; readonly act: string } | undefined;

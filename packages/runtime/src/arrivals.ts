@@ -42,7 +42,7 @@ import {
 import type { Shapes } from "./shapes.js";
 import { podFiles } from "./dataset.js";
 import { DERIVED, derivationsOf, QUERIES } from "./derive.js";
-import { type StoreFactory, Union } from "./store.js";
+import { type Dataset, type StoreFactory, Union } from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
@@ -257,44 +257,70 @@ class Revisions {
     >,
   ) {}
 
+  /**
+   * Read from the records' files in the dataset the pod keeps, which names each file by the pod's address plus its
+   * path; else from the records' files loaded into a store of their own.
+   */
   static async of(
     context: Pick<
       StepContext,
-      "pod" | "newStore" | "layout" | "vocabulary" | "address"
+      "pod" | "newStore" | "layout" | "vocabulary" | "address" | "keptDataset"
     >,
   ): Promise<Revisions> {
     const { pod, layout } = context;
-    const union = new Union(context.newStore());
-    for (const { folder } of layout.recordPlacements) {
-      for (const path of await pod.list(folder ?? "")) {
-        const bytes = await pod.read(path);
-        if (bytes !== undefined) await union.loadTurtle(bytes, pod.iri + path);
-      }
+    const folders = layout.recordPlacements.map(({ folder }) => folder ?? "");
+    const kept = await context.keptDataset();
+    let dataset: Dataset;
+    let base: string;
+    let inRecords = "";
+    if (kept === undefined) {
+      const union = new Union(context.newStore());
+      for (const folder of folders)
+        for (const path of await pod.list(folder)) {
+          const bytes = await pod.read(path);
+          if (bytes !== undefined)
+            await union.loadTurtle(bytes, pod.iri + path);
+        }
+      dataset = union;
+      base = pod.iri;
+    } else {
+      dataset = kept;
+      base = context.address;
+      if (!folders.includes(""))
+        inRecords = `FILTER (${folders
+          .map((folder) => `STRSTARTS(STR(?file), "${base}${folder}")`)
+          .join(" || ")})`;
     }
-    const { rows } = await union.select(`
-      PREFIX cascade: <${CASCADE}>
-      PREFIX prov: <${PROV}>
-      PREFIX pav: <${PAV}>
-      SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed WHERE {
-        ?revision a cascade:Revision ; cascade:revisionOf ?record ; cascade:version ?version .
-        OPTIONAL { ?revision prov:wasRevisionOf ?previous }
-        OPTIONAL { ?revision pav:version ?sourceVersion }
-        OPTIONAL { ?revision pav:lastUpdateOn ?changed }
-      }`);
-    const { rows: files } = await union.select(`
-      PREFIX cascade: <${CASCADE}>
-      SELECT DISTINCT ?record ?file WHERE {
-        ?revision cascade:revisionOf ?record .
-        { GRAPH ?file { ?revision cascade:revisionOf ?record } } UNION { GRAPH ?file { ?record a ?kind } }
-      }`);
-    freed(union);
+    const [{ rows }, { rows: files }] = await Promise.all([
+      dataset.select(`
+        PREFIX cascade: <${CASCADE}>
+        PREFIX prov: <${PROV}>
+        PREFIX pav: <${PAV}>
+        SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed WHERE {
+          GRAPH ?file {
+            ?revision a cascade:Revision ; cascade:revisionOf ?record ; cascade:version ?version .
+            OPTIONAL { ?revision prov:wasRevisionOf ?previous }
+            OPTIONAL { ?revision pav:version ?sourceVersion }
+            OPTIONAL { ?revision pav:lastUpdateOn ?changed }
+          }
+          ${inRecords}
+        }`),
+      dataset.select(`
+        PREFIX cascade: <${CASCADE}>
+        SELECT DISTINCT ?record ?file WHERE {
+          ?revision cascade:revisionOf ?record .
+          { GRAPH ?file { ?revision cascade:revisionOf ?record } } UNION { GRAPH ?file { ?record a ?kind } }
+          ${inRecords}
+        }`),
+    ]);
+    if (kept === undefined) freed(dataset as Union);
     const revisions = new Revisions(layout, context);
     for (const row of files) {
       const [record, file] = ["record", "file"].map(
         (name) => row.get(name)?.value ?? "",
       ) as [string, string];
       const held = revisions.#recordFiles.get(record) ?? new Set();
-      held.add(file.slice(pod.iri.length));
+      held.add(file.slice(base.length));
       revisions.#recordFiles.set(record, held);
     }
     const revised = new Set(rows.map((row) => row.get("previous")?.value));
