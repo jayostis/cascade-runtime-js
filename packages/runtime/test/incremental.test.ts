@@ -20,7 +20,7 @@ async function kits(): Promise<string[]> {
     .sort();
 }
 
-test("after every step of every kit, the build kept across steps holds what a build of the whole pod holds (C7)", async () => {
+test("after every step of every kit, the build kept across steps holds what a build of the whole pod holds (C8)", async () => {
   const local = await localVocabulary(ROOT);
   const stories = await kits();
   assert.ok(stories.length > 0);
@@ -32,7 +32,7 @@ test("after every step of every kit, the build kept across steps holds what a bu
   }
 });
 
-test("the manifest's build used the writer's last snapshot, so a view is stale when the writer's is another (C7)", async () => {
+test("the manifest's build used the writer's last snapshot, so a view is stale when the writer's is another (C8)", async () => {
   const local = await localVocabulary(ROOT);
   const [story = ""] = await kits();
   const replayed = await featurePod(local, story, new MemoryFiles(ADDRESS));
