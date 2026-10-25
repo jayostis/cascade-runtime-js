@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { deriveWith, vocabularyBuild, vocabularyDerive } from "../src/build.js";
-import { dataset, podDataset } from "../src/dataset.js";
+import {
+  deriveWith,
+  type VocabularyBuild,
+  vocabularyBuild,
+  vocabularyDerive,
+} from "../src/build.js";
+import { dataset, podDataset, podStated } from "../src/dataset.js";
+import { KeptBuild } from "../src/incremental.js";
 import { CorePod } from "../src/core-pod.js";
 import { DERIVED } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
@@ -10,6 +16,7 @@ import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import type { Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import { type Dataset, Union } from "../src/store.js";
@@ -46,6 +53,8 @@ let pod: CountedFiles;
 /** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
 let reopened: (newStore?: () => OxigraphStore) => CorePod;
 let replayed: Replayed;
+/** The build kept across steps, which `reopened` builds with. */
+let incremental: VocabularyBuild;
 /** The folder the story's steps name their files under. */
 let storyFolder: string;
 
@@ -73,7 +82,7 @@ before(async () => {
   const files = await vocabulary();
   layout = await readLayout();
   const derive = await vocabularyDerive(files, layout);
-  const incremental = await vocabularyBuild(files, layout);
+  incremental = await vocabularyBuild(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
   storyFolder = folder;
@@ -174,7 +183,7 @@ test("the build writes the labels, each view the layout marks written always, a 
   );
 });
 
-test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it; the first entry after an opening loads the records the pod held into one store, not one for the entry and one for its build", async () => {
+test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it; the first entry after an opening loads the records the pod held into one store, not one for the entry and one for its build, and writes the files as a build of the whole pod does", async () => {
   assert.deepEqual([...pod.found.keys()], []);
   const begun = replayed.steps.map(({ wrote }) =>
     wrote.length === 0 ? -1 : pod.log.indexOf(wrote[0] ?? ""),
@@ -192,23 +201,11 @@ test("a build after each step reads no file back, or one the pod held at its ope
     new Set([builtAt(layout.typeIndex), ...appeared]).size,
   );
   assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
-  const parser = new OxigraphStore();
-  for (const path of layout.rebuilt) {
-    const bytes = await pod.read(path);
-    const full = await store.construct(
+  await writtenAsBuiltWhole((path) =>
+    store.construct(
       `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address}${path}> { ?s ?p ?o } }`,
-    );
-    if (full.length === 0) {
-      assert.equal(bytes, undefined, path);
-      continue;
-    }
-    assert.ok(bytes, path);
-    assert.equal(
-      notIsomorphic(full, await parser.parse(bytes, address + path)),
-      undefined,
-      path,
-    );
-  }
+    ),
+  );
   pod.found.clear();
   const opened = reopened();
   await opened.refuse("a first step");
@@ -266,7 +263,50 @@ test("a build after each step reads no file back, or one the pod held at its ope
       .length,
     1,
   );
+  const stated = await podStated(pod, layout, new OxigraphStore());
+  const { kept, files } = await KeptBuild.whole(
+    {
+      pod,
+      layout,
+      address,
+      newStore: () => new OxigraphStore(),
+      build: incremental,
+      lens: LENS,
+      keep: () => Promise.resolve([]),
+    },
+    {
+      address,
+      at: stated.at ?? "",
+      title: "matching",
+      snapshot: entering.head?.snapshot ?? "",
+    },
+  );
+  kept.free();
+  await writtenAsBuiltWhole((path) =>
+    Promise.resolve([...(files.get(path) ?? [])]),
+  );
 });
+
+/** Asserts each file the build writes is in the pod as `whole`, a build of the whole pod, gives it, or absent as there. */
+async function writtenAsBuiltWhole(
+  whole: (path: string) => Promise<readonly Triple[]>,
+): Promise<void> {
+  const parser = new OxigraphStore();
+  for (const path of layout.rebuilt) {
+    const bytes = await pod.read(path);
+    const full = await whole(path);
+    if (full.length === 0) {
+      assert.equal(bytes, undefined, path);
+      continue;
+    }
+    assert.ok(bytes, path);
+    assert.equal(
+      notIsomorphic(full, await parser.parse(bytes, address + path)),
+      undefined,
+      path,
+    );
+  }
+}
 
 test("the labels label every record, current revision and current version of the derived state, each document a current revision came from, the subject, and every entry of a view", async () => {
   const labels = await placed(
