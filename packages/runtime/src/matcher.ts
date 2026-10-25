@@ -31,7 +31,8 @@ const NO_LONGER_REACHED = `${CASCADE}ClaimsNoLongerReached`;
 const THIS_FINDING = "urn:cascade:this-finding";
 
 export const MATCHER = `${CASCADE}CascadeMatcher`;
-const LENS = "everyday";
+export const MATCHER_LENS = "everyday";
+const LENS = MATCHER_LENS;
 const COMPARISONS = `${QUERIES}matcher/`;
 
 export interface MatcherRule {
@@ -695,9 +696,15 @@ class Matcher {
     for (const graph of union.graphs)
       if (folder !== undefined && graph.startsWith(address + folder))
         await union.store.drop(graph);
-    const known =
-      foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
-    const matched = await over(versions, found);
+    let known: Joins;
+    let matched: Joins;
+    try {
+      known =
+        foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
+      matched = await over(versions, found);
+    } finally {
+      union.store.free?.();
+    }
     if (adopted === undefined)
       return new Matcher(
         context,
@@ -744,8 +751,7 @@ class Matcher {
     record: TakenRecord,
     other: TakenRecord,
   ): ReadonlySet<string> {
-    if (![...record.classes].some((found) => rule.appliesTo.has(found)))
-      return new Set();
+    if (!applies(rule, record)) return new Set();
     return (
       joined.get(rule.justification)?.get(pair(record.name, other.name)) ??
       new Set()
@@ -914,21 +920,34 @@ class Matcher {
     taken: readonly TakenRecord[],
     joined: Joins,
   ): Promise<void> {
-    const compared = [...this.pod.records.values()].filter(
-      (record) => !taken.includes(record),
-    );
+    const takenNames = new Set(taken.map(({ name }) => name));
+    const position = new Map<string, number>();
+    for (const record of this.pod.records.values())
+      if (!takenNames.has(record.name))
+        position.set(record.name, position.size);
+    const partners = partnersOf(joined);
     for (const record of [...taken].sort(byArrival)) {
       for (const rule of this.rules) {
+        if (!applies(rule, record)) continue;
+        const pairs = joined.get(rule.justification);
+        const others = (
+          partners.get(rule.justification)?.get(record.name) ?? []
+        )
+          .filter((other) => position.has(other))
+          .sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0));
         const byOrigin = new Map<string, TakenRecord[]>();
-        for (const other of compared)
-          for (const origin of this.origins(joined, rule, record, other))
+        for (const name of others) {
+          const other = this.pod.records.get(name);
+          if (other === undefined) continue;
+          for (const origin of pairs?.get(pair(record.name, name)) ?? [])
             byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), other]);
+        }
         for (const [origin, matched] of [...byOrigin].sort(([a], [b]) =>
           a < b ? -1 : 1,
         ))
           await this.same(rule, origin, this.star(record, matched));
       }
-      compared.push(record);
+      position.set(record.name, position.size);
     }
   }
 
@@ -942,17 +961,17 @@ class Matcher {
 
   /** Files a Same for each pair the tables newly join, taking the records of those pairs (M1, O1). */
   async rejoin(): Promise<void> {
-    const records = [...this.pod.records.values()];
+    const { records } = this.pod;
+    const joining = new Set<string>();
+    for (const rule of this.rules)
+      for (const [key, origins] of this.fresh.get(rule.justification) ?? []) {
+        if (origins.size === 0) continue;
+        const [record, other] = names(key).map((name) => records.get(name));
+        if (record === undefined || other === undefined) continue;
+        if (applies(rule, record)) joining.add(record.name).add(other.name);
+      }
     await this.file(
-      records.filter((record) =>
-        this.rules.some((rule) =>
-          records.some(
-            (other) =>
-              this.origins(this.fresh, rule, record, other).size > 0 ||
-              this.origins(this.fresh, rule, other, record).size > 0,
-          ),
-        ),
-      ),
+      [...records.values()].filter(({ name }) => joining.has(name)),
       this.fresh,
     );
   }
@@ -1149,6 +1168,35 @@ interface Judged {
 
 function pair(record: string | undefined, other: string | undefined): string {
   return `${record ?? ""} ${other ?? ""}`;
+}
+
+/** The record and the other a pair names; an IRI holds no space. */
+function names(key: string): [string, string] {
+  const at = key.indexOf(" ");
+  return [key.slice(0, at), key.slice(at + 1)];
+}
+
+function applies(rule: MatcherRule, record: TakenRecord): boolean {
+  for (const found of record.classes)
+    if (rule.appliesTo.has(found)) return true;
+  return false;
+}
+
+/** For each justification, the others each record is joined to. */
+function partnersOf(joined: Joins): Map<string, Map<string, string[]>> {
+  const found = new Map<string, Map<string, string[]>>();
+  for (const [justification, pairs] of joined) {
+    const partners = new Map<string, string[]>();
+    for (const [key, origins] of pairs) {
+      if (origins.size === 0) continue;
+      const [record, other] = names(key);
+      const others = partners.get(record);
+      if (others === undefined) partners.set(record, [other]);
+      else others.push(other);
+    }
+    found.set(justification, partners);
+  }
+  return found;
 }
 
 /** The matcher's Sames that nothing retracts and no unretracted judgment replaces, in order of name. */
