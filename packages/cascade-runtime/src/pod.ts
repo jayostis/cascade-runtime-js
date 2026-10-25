@@ -1160,10 +1160,15 @@ async function subjectsFiled(
   for (const path of paths.filter((path) => layout.isRdf(path))) {
     const bytes = await files.read(path);
     if (bytes === undefined) continue;
-    for (const [subject, predicate, object] of await store.parse(
-      bytes,
-      address + path,
-    ))
+    let triples: readonly Triple[];
+    try {
+      triples = await store.parse(bytes, address + path);
+    } catch (error) {
+      throw new Error(`${files.iri}${path} is no Turtle: ${String(error)}`, {
+        cause: error,
+      });
+    }
+    for (const [subject, predicate, object] of triples)
       if (predicate.value === TYPE && object.value === `${CASCADE}Subject`)
         found.add(subject.value);
   }
