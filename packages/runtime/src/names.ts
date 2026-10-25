@@ -764,6 +764,11 @@ export async function fileDigest(bytes: Uint8Array): Promise<Uint8Array> {
   return hasher.digest("binary");
 }
 
+/** The lower-case hex SHA-256 of the IRI's UTF-8, as SPARQL's SHA256 gives it: the hash an entry's placeholder carries. */
+export async function entryHash(least: string): Promise<string> {
+  return hex(await fileDigest(new TextEncoder().encode(least)));
+}
+
 /**
  * An act's description, every triple of its file but its snapshot's, named as a version is named but with its blank
  * nodes labelled by RDFC-1.0 (cascade:SnapshotNamingRule).

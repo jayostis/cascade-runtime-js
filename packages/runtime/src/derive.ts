@@ -1,3 +1,4 @@
+import { answersQuery, entries } from "./entries.js";
 import { type Files, readText, under } from "./files.js";
 import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
@@ -118,7 +119,9 @@ export class Derivations {
           ? await keep(union)
           : [];
       if (kept.length > 0) await union.add(kept, DERIVED + lens);
-      const constructed = await union.construct(query);
+      const constructed = (await answersQuery(query))
+        ? await entries(union)
+        : await union.construct(query);
       const held = await union.holds(constructed);
       const seen = new Set<string>();
       const fresh = constructed.filter((triple, at) => {

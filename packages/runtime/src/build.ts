@@ -1,4 +1,5 @@
 import { Derivations, type Keep, QUERIES } from "./derive.js";
+import { ENTRY_PLACEHOLDER } from "./entries.js";
 import { type Files, readText } from "./files.js";
 import type { Layout } from "./layout.js";
 import {
@@ -13,6 +14,7 @@ import {
   XSD,
 } from "./rdf.js";
 import type { Union } from "./store.js";
+export { ENTRY_PLACEHOLDER };
 
 const PROV = "http://www.w3.org/ns/prov#";
 const DCT = "http://purl.org/dc/terms/";
@@ -43,8 +45,6 @@ export type Derive = (
 /** The software a pod's manifest says built it. */
 export const RUNTIME = "cascade-runtime-js";
 
-/** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
-export const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 
 /** Each entry placeholder a view gives members (`cascade:mergedFrom`), by the view's address. */
