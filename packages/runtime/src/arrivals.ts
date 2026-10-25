@@ -836,7 +836,6 @@ export async function fileEntry(
       `${entry.name}: its session states what the layout files in ${stated.folder}, not ${sessions.folder}`,
     );
   const revisions = await Revisions.of(context);
-  const placeholder = iri(THIS_VERSION);
   const drafts = graph
     .subjects(SPECIALIZATION_OF)
     .sort((a, b) => (a.value < b.value ? -1 : 1));
@@ -848,13 +847,24 @@ export async function fileEntry(
         `${entry.name}: ${draftVersion.value} is the version of no draft`,
       );
     const { place, kind } = recordPlace(layout, graph, draft, entry.name);
-    const content = graph
-      .match(draftVersion)
-      .map(([, p, o]): Triple => [
-        placeholder,
-        p,
-        o.termType === "NamedNode" ? (records.get(o.value) ?? o) : o,
-      ]);
+    const within = (term: Term): boolean =>
+      term.termType === "NamedNode" &&
+      (term.value === draftVersion.value ||
+        term.value.startsWith(`${draftVersion.value}#`));
+    const content = renamedWithin(
+      graph.triples
+        .filter(([s]) => within(s))
+        .map(
+          ([s, p, o]): Triple =>
+            [
+              s,
+              p,
+              o.termType === "NamedNode" ? (records.get(o.value) ?? o) : o,
+            ] as unknown as Triple,
+        ),
+      draftVersion.value,
+      THIS_VERSION,
+    );
     const version = await named(
       content,
       `${entry.name}: ${draftVersion.value}`,
@@ -865,7 +875,7 @@ export async function fileEntry(
         place,
         recordTriples: [[record, iri(TYPE), kind]],
         version,
-        versionTriples: renamed(content, placeholder, version),
+        versionTriples: renamedWithin(content, THIS_VERSION, version.value),
         statements: [],
         at: at.value,
         observedAsOf: at,

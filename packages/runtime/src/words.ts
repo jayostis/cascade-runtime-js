@@ -42,6 +42,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same mapped code and date": `${CASCADE}SameMappedCodeAndDate`,
   "same medication code": `${CASCADE}SameMedicationCode`,
   "same result": `${CASCADE}SameResult`,
+  "same result on one day": `${CASCADE}SameResultOnOneDay`,
   "same converted code": `${CASCADE}SameConvertedCode`,
   "same code and period": `${CASCADE}SameCodeAndPeriod`,
   "same brand generic": `${CASCADE}SameBrandGeneric`,
