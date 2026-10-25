@@ -1018,7 +1018,9 @@ class OpenPod implements Pod {
       await union.add(rows, version);
       await union.add(description, "urn:cascade:references");
     }
-    const { rows } = await union.select(text);
+    const { rows } = await union
+      .select(text)
+      .finally(() => union.store.free?.());
     return rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
     );
@@ -1045,7 +1047,9 @@ class OpenPod implements Pod {
       await union.add(rows, version);
       await union.add(description, "urn:cascade:references");
     }
-    const { rows } = await union.select(text);
+    const { rows } = await union
+      .select(text)
+      .finally(() => union.store.free?.());
     return rows
       .map((row) =>
         Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
