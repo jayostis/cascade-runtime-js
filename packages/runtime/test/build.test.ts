@@ -10,13 +10,13 @@ import {
 import { dataset, podDataset, podStated } from "../src/dataset.js";
 import { KeptBuild } from "../src/incremental.js";
 import { CorePod } from "../src/core-pod.js";
-import { DERIVED } from "../src/derive.js";
+import { DERIVED, type Keep } from "../src/derive.js";
 import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import type { Triple } from "../src/rdf.js";
+import { iri, type Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import { type Dataset, Union } from "../src/store.js";
@@ -454,6 +454,63 @@ test("each entry of a view is named in the view, its address, # and the hash of 
   assert.match(text, /^<#[0-9a-f]{64}> /m);
   assert.ok(!text.includes(address), text);
   assert.ok(!text.includes("urn:cascade:entry:"), text);
+});
+
+test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose members the revised table still joins counts on (M7)", async () => {
+  const kit = await localVocabulary(ROOT);
+  const replayed = await featurePod(
+    kit,
+    FEATURE,
+    new MemoryFiles("https://pod.example/"),
+    {
+      example:
+        "a Same whose members the revised table still joins is not filed again, and counts on",
+    },
+  );
+  const last = replayed.steps.at(-1);
+  assert.ok(last);
+  const read = (keep?: Keep) =>
+    podDataset(
+      replayed.pod,
+      kit.layout,
+      kit.build,
+      kit.config.lens,
+      new OxigraphStore(),
+      { title: replayed.title, at: last.step.when },
+      keep,
+    );
+  /** The Same the example says counts on, by the name it gives it. */
+  const same = "urn:uuid:229f494f-26fa-8d9c-a2c9-badd04fd0356";
+  let kept: Triple[] = [];
+  const joinedByCurrentVersion: Keep = async (held) => {
+    const { rows } = await held.select(`${PREFIXES}
+      SELECT DISTINCT ?claim ?now WHERE {
+        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:used ?input .
+        ?input prov:specializationOf ?series .
+        ?series pav:hasCurrentVersion ?now .
+        FILTER (?now != ?input)
+      }`);
+    kept = rows
+      .filter((row) => row.get("claim")?.value === same)
+      .map((row) => [
+        iri(row.get("claim")?.value ?? ""),
+        iri(
+          "https://ns.cascadeprotocol.org/cascade#membersJoinedByCurrentTableVersion",
+        ),
+        iri(row.get("now")?.value ?? ""),
+      ]);
+    return kept;
+  };
+  const counted = `${PREFIXES}
+    ASK {
+      <${same}> prov:hadMember ?one , ?other .
+      ?one cascade:inEntry ?entry . ?other cascade:inEntry ?entry .
+      FILTER (?one != ?other)
+    }`;
+  assert.equal(await (await read()).store.ask(counted), false);
+  const counting = await read(joinedByCurrentVersion);
+  assert.equal(kept.length, 1);
+  assert.equal(await counting.store.ask(counted), true);
 });
 
 test("an entry another view points to is named in the view that gives it members: each variant interpretation's variant is an entry of the variants view", async () => {

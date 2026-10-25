@@ -923,12 +923,22 @@ export class CorePod {
   /**
    * The current table versions the pod names that its tables do not hold, of each series a matcher Same used another
    * version of: the Same counts on where a device holds the version and its rows join the members, and not here (M7).
+   * Read over the dataset kept under the build's lens when there is one, rather than a copy of it as the matcher's view.
    */
   async unheldTableVersions(): Promise<readonly string[]> {
     let kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
     if (kept === undefined) {
-      await this.#matcherView();
-      kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+      const dataset = await this.#keptDataset();
+      if (dataset !== undefined) {
+        // KeptClaims adds a version's rows to the union it reads and drops them after: safe on the kept dataset only
+        // because a pod's reads and steps run one at a time.
+        kept = this.#held(KEPT, () =>
+          this.#keptClaims.of(dataset, () => this.#tables()),
+        );
+      } else {
+        await this.#matcherView();
+        kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
+      }
     }
     return (await kept)?.unheld ?? [];
   }

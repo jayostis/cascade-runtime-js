@@ -670,6 +670,14 @@ class BrowserPod implements Pod {
     return (await this.#pod()).joinedBy();
   }
 
+  /** Undefined, not known, while a pod drawn from its kept answers waits for the engine, as `opened` is: asking never loads it. */
+  async unheldTableVersions(): Promise<readonly string[] | undefined> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    if (this.#opened === undefined && this.#kept !== undefined)
+      return undefined;
+    return (await this.#pod()).unheldTableVersions();
+  }
+
   async close(): Promise<void> {
     this.#closed = true;
     try {

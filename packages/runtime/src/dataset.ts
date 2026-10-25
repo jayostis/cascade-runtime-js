@@ -216,7 +216,8 @@ export async function podFiles(
 /**
  * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
  * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
- * time and title the pod's manifest gives, or else those given; and the layout.
+ * time and title the pod's manifest gives, or else those given; and the layout. Given `keep`, the Sames M7 leaves as
+ * they were across a table version are derived with it, as a step's dataset derives them.
  */
 export async function podDataset(
   pod: Files,
@@ -225,6 +226,7 @@ export async function podDataset(
   lens: string,
   store: Store,
   otherwise: { readonly title: string; readonly at: string },
+  keep?: Keep,
 ): Promise<PodBuild> {
   const stated = await podStated(pod, layout, store);
   const { address } = stated;
@@ -232,7 +234,7 @@ export async function podDataset(
   const at = stated.at ?? otherwise.at;
   const union = new Union(store);
   const held = await podFiles(pod, layout, address, union);
-  const derived = await build.derivations.derive(union, lens);
+  const derived = await build.derivations.derive(union, lens, keep);
   const built = await build.files(union, { address, at, title });
   await addLayout(union, layout, address);
   return {

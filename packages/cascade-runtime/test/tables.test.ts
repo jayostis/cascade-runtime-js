@@ -652,7 +652,23 @@ ${records.join("\n")}`);
   }
   const again = await openPodWith({ ...parts, tables: after }, folder);
   assert.equal(again.opened, undefined);
+  assert.deepEqual(await again.unheldTableVersions(), []);
   await again.close();
+
+  const elsewhere = new MemoryFiles("urn:test:tables-elsewhere/");
+  const older = tablesOver(ingredientsFirst.served, elsewhere);
+  await older.check();
+  await (await openPodWith({ ...parts, tables: older }, folder)).close();
+  const reopened = await openPodWith({ ...parts, tables: older }, folder);
+  try {
+    assert.equal(reopened.opened, undefined);
+    assert.deepEqual(
+      await reopened.unheldTableVersions(),
+      [groups.second, ingredientsLater.versions[1]].sort(),
+    );
+  } finally {
+    await reopened.close();
+  }
 
   const empty = join(scratch, "pods", "empty");
   await (await openPodWith({ ...parts, tables: after }, empty)).close();
