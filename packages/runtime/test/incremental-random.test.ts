@@ -50,7 +50,7 @@ const PREFIXES = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 `;
 /** How many stories, and steps in each: a few in CI; set CASCADE_RANDOM_SEEDS to run more. */
-const SEEDS = Number(process.env["CASCADE_RANDOM_SEEDS"] ?? 3);
+const SEEDS = Number(process.env["CASCADE_RANDOM_SEEDS"] ?? 8);
 const FIRST_SEED = Number(process.env["CASCADE_RANDOM_FIRST_SEED"] ?? 1);
 const STEPS = Number(process.env["CASCADE_RANDOM_STEPS"] ?? 20);
 
@@ -119,8 +119,8 @@ function judgment(
 }
 
 /**
- * A story drawn from the seed: Cleo's two imports, entries of allergies sharing codes (some versions with no name), the
- * matcher, a person's Same, Different, Before, Erroneous, About and ClockDiscounted, retractions of her judgments and of
+ * A story drawn from the seed: Cleo's export and Tamsin's pulls, entries of allergies sharing codes (some versions with
+ * no name), the matcher, a person's Same, Different (some typing a member, as an app may), Before, Erroneous, About and ClockDiscounted, retractions of her judgments and of
  * the matcher's assertions, version 2 of the ingredient map, and a second writer whose files, claims made under the
  * older map among them, each writer receives. Each judgment is written when its step is performed, from what the pod
  * then holds.
@@ -335,7 +335,11 @@ async function story(seed: number) {
         if (all.length < 2) return "";
         const one = draw.pick(all);
         const two = draw.pick(all.filter((record) => record !== one));
-        return judgment(iri, verdict, [one, two], at);
+        const typed = draw.chance(0.3)
+          ? `<${one}> a cascade:Record .
+`
+          : "";
+        return judgment(iri, verdict, [one, two], at) + typed;
       });
     judgmentMove("Before", 2, async (pod, iri) => {
       const twice = await column(

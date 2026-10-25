@@ -7,12 +7,11 @@ import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
-import { RDF, type Term, type Triple, written } from "./rdf.js";
+import { type Term, type Triple, written } from "./rdf.js";
 import { type StoreFactory, Union } from "./store.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
-const TYPE = `${RDF}type`;
 const IN_ENTRY = `${CASCADE}inEntry`;
 const LEFT_OUT_FOR = `${CASCADE}leftOutFor`;
 const MEMBERS_JOINED = `${CASCADE}membersJoinedByCurrentTableVersion`;
@@ -289,7 +288,7 @@ export class KeptBuild {
     await addLayout(union, layout, address);
     const kept = new KeptBuild(rebuilding, union, new Set(paths), held);
     kept.#index(files);
-    const owned = await kept.#versionsAndRevisions();
+    const owned = await kept.#recordsAndTheirs();
     kept.#globalDerived = KeptBuild.#global(derived, owned);
     return { kept, files: all };
   }
@@ -308,10 +307,13 @@ export class KeptBuild {
       if (!views.has(path)) this.#others.set(path, bySubject(triples));
   }
 
-  /** Every version and revision of a record of a clinical kind the union holds. */
-  async #versionsAndRevisions(): Promise<Set<string>> {
+  /**
+   * Every record the union holds, with its versions and revisions: read from the union, since a derivation adds no
+   * triple a file states already, such as a judgment's file typing a record.
+   */
+  async #recordsAndTheirs(): Promise<Set<string>> {
     const { rows } = await this.union.select(
-      `${PREFIXES}SELECT ?owned WHERE { ?record a cascade:Record . ?owned prov:specializationOf|cascade:revisionOf ?record }`,
+      `${PREFIXES}SELECT ?owned WHERE { { ?owned a cascade:Record } UNION { ?owned prov:specializationOf|cascade:revisionOf ?record . ?record a cascade:Record } }`,
     );
     return new Set(rows.flatMap((row) => row.get("owned")?.value ?? []));
   }
@@ -321,20 +323,15 @@ export class KeptBuild {
     derived: readonly DerivedStep[],
     owned: ReadonlySet<string>,
   ): Set<string> {
-    const records = new Set<string>();
     const recordish = new Set<string>();
     for (const { added } of derived)
-      for (const [subject, predicate, object] of added) {
-        if (predicate.value === TYPE && object.value === `${CASCADE}Record`)
-          records.add(subject.value);
+      for (const [, predicate, object] of added)
         if (predicate.value === LEFT_OUT_FOR) recordish.add(object.value);
-      }
     const found = new Set<string>();
     for (const { added } of derived)
       for (const [subject] of added) {
         const value = subject.value;
         if (
-          !records.has(value) &&
           !recordish.has(value) &&
           !owned.has(value) &&
           !value.startsWith(ENTRY_PLACEHOLDER)
@@ -830,13 +827,15 @@ export class KeptBuild {
     const added = derived.flatMap(({ added: triples }) => triples);
     const newEntries = new Set<string>();
     const newLeftOut = new Set<string>();
-    const readLeftOut = new Set<string>();
+    // The scope holds what any file but a record's own says of a record, such as a judgment's file typing it, so it can
+    // leave out a record it holds no version of: only the left-outs of the records rebuilt are kept.
+    const otherLeftOut = new Set<string>();
     for (const [subject, predicate, object] of added) {
       if (predicate.value === IN_ENTRY && records.has(subject.value))
         newEntries.add(object.value);
       if (predicate.value === LEFT_OUT_FOR) {
         if (records.has(subject.value)) newLeftOut.add(object.value);
-        else if (read.has(subject.value)) readLeftOut.add(object.value);
+        else otherLeftOut.add(object.value);
       }
     }
     const inScope = new Set([
@@ -845,7 +844,7 @@ export class KeptBuild {
       ...newEntries,
       ...newLeftOut,
     ]);
-    const elsewhere = new Set([...read, ...ownedRead, ...readLeftOut]);
+    const elsewhere = new Set([...read, ...ownedRead, ...otherLeftOut]);
     const candidates = new Set<string>();
     for (const [subject] of added) {
       const value = subject.value;
