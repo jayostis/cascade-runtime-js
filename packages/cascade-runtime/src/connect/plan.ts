@@ -40,7 +40,7 @@ export const DEMO_PLAN: QueryPlan = {
     { type: "Observation", category: "vital-signs" },
     { type: "DiagnosticReport" },
   ],
-  backfill: ["Encounter"],
+  backfill: ["Encounter", "Organization"],
 };
 
 export interface Limits {
