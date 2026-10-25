@@ -7,7 +7,7 @@ import {
 } from "./bridge.js";
 import { Graph, parseGraph } from "./graph.js";
 import type { ExportDocument } from "./importer.js";
-import type { Layout, Placement } from "./layout.js";
+import { LAYOUT_GRAPH, type Layout, type Placement } from "./layout.js";
 import {
   canonical,
   contentName,
@@ -230,7 +230,7 @@ function held(version: string, source?: string, changed?: string): string {
 }
 
 /** Each record's revisions as the pod holds them, and the revisions a step adds after them. */
-class Revisions {
+export class Revisions {
   /** Each record's heads: its revisions that none revises, one unless two writers revised it apart. */
   readonly #heads = new Map<
     string,
@@ -286,10 +286,17 @@ class Revisions {
     } else {
       dataset = kept;
       base = context.address;
-      if (!folders.includes(""))
-        inRecords = `FILTER (${folders
-          .map((folder) => `STRSTARTS(STR(?file), "${base}${folder}")`)
-          .join(" || ")})`;
+      const under = folders.map(
+        (folder) =>
+          `STRSTARTS(STR(?file), "${base}${folder === "" || folder.endsWith("/") ? folder : `${folder}/`}")`,
+      );
+      const outside = [
+        ...layout.rebuilt.map((path) => base + path),
+        LAYOUT_GRAPH,
+      ]
+        .map((graph) => `<${graph}>`)
+        .join(", ");
+      inRecords = `FILTER ((${under.join(" || ")}) && ?file NOT IN (${outside}))`;
     }
     const [{ rows }, { rows: files }] = await Promise.all([
       dataset.select(`
@@ -340,6 +347,19 @@ class Revisions {
         revisions.#heads.set(record, [...heads, { revision, version }]);
     }
     return revisions;
+  }
+
+  /** The record's heads and the files that hold its revisions and its type, as read before the step. */
+  held(record: string): {
+    readonly heads: readonly string[];
+    readonly files: readonly string[];
+  } {
+    return {
+      heads: (this.#heads.get(record) ?? [])
+        .map(({ revision }) => revision)
+        .sort(),
+      files: [...(this.#recordFiles.get(record) ?? [])].sort(),
+    };
   }
 
   #add(record: string, version: string, source?: string, changed?: string) {
