@@ -33,6 +33,12 @@ export class StepWrites {
   readonly #files = new Map<string, Uint8Array>();
   readonly #arrived = new Set<string>();
   #act: Act | undefined;
+  #committed: readonly string[] = [];
+
+  /** Every file `commit` wrote, those that arrived from another writer and the act's among them. */
+  get committed(): readonly string[] {
+    return this.#committed;
+  }
 
   add(path: string, bytes: Uint8Array): void {
     if (path === this.#act?.path)
@@ -85,6 +91,7 @@ export class StepWrites {
       fresh.push([act.path, ntriples([...act.triples, ...finished])]);
     }
     await writeAll(pod, fresh);
+    this.#committed = fresh.map(([path]) => path);
     return fresh.flatMap(([path]) => (this.#arrived.has(path) ? [] : [path]));
   }
 }

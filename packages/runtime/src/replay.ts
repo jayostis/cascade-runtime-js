@@ -1,5 +1,9 @@
-import { BuildFailure, CorePod, type Performed } from "./core-pod.js";
-import type { Derive } from "./build.js";
+import {
+  BuildFailure,
+  CorePod,
+  type PodBuildOption,
+  type Performed,
+} from "./core-pod.js";
 import { StoryTime } from "./ids.js";
 import type { Files } from "./files.js";
 import type { Importer } from "./importer.js";
@@ -231,7 +235,7 @@ export interface ReplayOptions {
   /** The tables the pod is given, instead of the story's own `references/`. */
   readonly references?: () => Promise<References>;
   /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
-  readonly build?: { readonly lens: string; readonly derive: Derive };
+  readonly build?: PodBuildOption;
 }
 
 /** The name the source's crate gives the folder, or else the folder's own. */

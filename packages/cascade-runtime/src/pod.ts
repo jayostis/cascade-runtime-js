@@ -1141,6 +1141,7 @@ function coreOver(
           await build.derivations.derive(store, lens, keep);
           return build.files(store, pod);
         },
+        incremental: build,
       },
     },
     opened,

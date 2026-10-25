@@ -1,7 +1,12 @@
 import { ConnectRefused, readConnect } from "@cascade-runtime/fhir-pull";
 import { fileConnect, fileEntry, fileExport } from "./arrivals.js";
 import type { AdaptersOf } from "./bridge.js";
-import { builtFileBytes, type Derive } from "./build.js";
+import {
+  builtFileBytes,
+  type Derive,
+  type PodState,
+  type VocabularyBuild,
+} from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
 import type { Keep } from "./derive.js";
 import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
@@ -25,6 +30,7 @@ import {
   fileDigest,
   snapshotName,
 } from "./names.js";
+import { type Change, KeptBuild } from "./incremental.js";
 import { type Act, same, StepWrites } from "./pod.js";
 import { iri, literal, RDF, type Triple, XSD } from "./rdf.js";
 import { type References, tableTerms } from "./references.js";
@@ -71,8 +77,21 @@ export interface CorePodOptions {
   readonly head?: Head;
   /** Told each new last snapshot once its act is written, to keep it outside the pod; a failure loses only the head. */
   readonly keepHead?: (head: Head) => Promise<void>;
-  /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
-  readonly build?: { readonly lens: string; readonly derive: Derive };
+  /**
+   * When given, the files the build writes are rebuilt under the lens after every step and written to the pod: with
+   * `incremental`, the build `derive` makes, kept across steps and rebuilt only where a step reached (currency.md,
+   * row "view").
+   */
+  readonly build?: PodBuildOption;
+}
+
+/** The lens a pod's files are built under after every step, how, and the build to keep across steps. */
+export interface PodBuildOption {
+  readonly lens: string;
+  readonly derive: Derive;
+  readonly incremental?: VocabularyBuild;
+  /** For tests: after each step rebuilt in part, builds the pod whole too, and throws where the two differ. */
+  readonly verify?: boolean;
 }
 
 /** A writer's last snapshot: its name and its set hash, and what it keeps of the set it hashed. */
@@ -370,6 +389,8 @@ export class CorePod {
   #hashed: HashedSet | undefined;
   /** The answers M7 gives across table versions, kept across steps: what decides each never changes. */
   #keptClaims: KeptClaims;
+  /** The build kept across steps, when the build is incremental and the last rebuild held. */
+  #built: KeptBuild | undefined;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
@@ -439,6 +460,7 @@ export class CorePod {
   /** Drops what is kept; the pod builds again when next read. */
   close(): void {
     this.#kept = new Map();
+    this.#built = undefined;
   }
 
   /** The pod's creation (A13). */
@@ -537,7 +559,7 @@ export class CorePod {
       unheld = opened.unheld;
       this.#references = Promise.resolve(tables);
       return opened.activity;
-    });
+    }, true);
     return {
       ...performed,
       wrote: [...(migrated?.wrote ?? []), ...performed.wrote],
@@ -716,8 +738,9 @@ export class CorePod {
       opening,
     );
     if (retractions.length === 0) return undefined;
-    return this.#step(async (context) =>
-      migrateRuleListVersions(context, retractions),
+    return this.#step(
+      async (context) => migrateRuleListVersions(context, retractions),
+      true,
     );
   }
 
@@ -853,11 +876,13 @@ export class CorePod {
 
   async #step(
     perform: (context: StepContext) => Promise<string | void>,
+    everything = false,
   ): Promise<Performed> {
     const options = this.#options;
     const at = options.build === undefined ? undefined : options.time.now();
     const writes = new StepWrites();
     let performed: Performed;
+    let change: Change | undefined = { written: [], everything };
     try {
       const activity = await perform({
         address: options.address,
@@ -893,16 +918,22 @@ export class CorePod {
       performed =
         typeof activity === "string" ? { wrote, activity } : { wrote };
     } catch (error) {
-      if (!(error instanceof Refusal)) throw error;
+      if (!(error instanceof Refusal)) {
+        change = undefined;
+        throw error;
+      }
       performed = { wrote: [], refused: error.message };
     } finally {
       this.#kept = new Map();
       this.#writing = new Map();
+      if (change === undefined) this.#built = undefined;
+      else change = { ...change, written: writes.committed };
     }
     if (options.build !== undefined) {
       try {
-        await this.#rebuild(options.build, at);
+        await this.#rebuild(options.build, at, change);
       } catch (error) {
+        this.#built = undefined;
         throw new BuildFailure(performed, error);
       }
     }
@@ -1068,10 +1099,47 @@ export class CorePod {
   }
 
   async #rebuild(
-    build: NonNullable<CorePodOptions["build"]>,
+    build: PodBuildOption,
     at: string | undefined,
+    change: Change,
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
+    if (build.incremental !== undefined && at !== undefined) {
+      const state: PodState = {
+        address,
+        at,
+        title,
+        ...(this.#head === undefined ? {} : { snapshot: this.#head.snapshot }),
+      };
+      const rebuilding = {
+        pod,
+        layout,
+        address,
+        newStore,
+        build: build.incremental,
+        lens: build.lens,
+        keep: async (union: Union) =>
+          (await this.#keptClaims.of(union, () => this.#tables())).triples,
+      };
+      let built = this.#built;
+      let files = await built?.step(change, state);
+      if (built !== undefined && files !== undefined && build.verify === true)
+        await built.verify(await KeptBuild.whole(rebuilding, state));
+      if (built === undefined || files === undefined) {
+        const whole = await KeptBuild.whole(rebuilding, state);
+        built = this.#built = whole.kept;
+        files = whole.files;
+      }
+      await writeAll(
+        pod,
+        [...files].map(
+          ([path, triples]) =>
+            [path, builtFileBytes(layout, address, path, triples)] as const,
+        ),
+      );
+      this.#kept.set(DATASET + build.lens, Promise.resolve(built.union));
+      return;
+    }
     const rebuilt = new Set(layout.rebuilt);
     const files = (await pod.list("")).filter((path) => !rebuilt.has(path));
     const union = new Union(newStore());
