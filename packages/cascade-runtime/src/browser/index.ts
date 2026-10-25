@@ -670,6 +670,11 @@ class BrowserPod implements Pod {
     return (await this.#pod()).joinedBy();
   }
 
+  async unheldTableVersions(): Promise<readonly string[]> {
+    if (this.#closed) throw new Error(`the pod at ${this.address} is closed`);
+    return (await this.#pod()).unheldTableVersions();
+  }
+
   async close(): Promise<void> {
     this.#closed = true;
     try {
