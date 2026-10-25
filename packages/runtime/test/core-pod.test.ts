@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
-import type { Layout } from "../src/layout.js";
+import { LAYOUT_GRAPH, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, written, XSD } from "../src/rdf.js";
 import { References } from "../src/references.js";
@@ -13,7 +13,7 @@ import { matcherView, runMatcher } from "../src/matcher.js";
 import { StepWrites } from "../src/pod.js";
 import { type Perform, PERFORMERS, replay } from "../src/replay.js";
 import { Refusal, type StepContext } from "../src/step.js";
-import { RestorableUnion, type Store } from "../src/store.js";
+import { RestorableUnion, type Row, type Store } from "../src/store.js";
 import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
@@ -429,4 +429,25 @@ test("a match refused or failing after it changed the matcher's view puts back t
     return (PERFORMERS.matcher as Perform)(pod, step, side);
   });
   assert.equal(tried, 2);
+});
+
+test("on the build kept across steps, a select lends the dataset to the matcher's view and the next ask's dataset is every quad again, the layout and the files the build writes among them", async () => {
+  const laidOut = await layout();
+  const query = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
+  const graphs = (rows: readonly Row[]): Set<string> =>
+    new Set(rows.flatMap((row) => row.get("g")?.value ?? []));
+  let checked = 0;
+  await replaySyncRun(async (pod, step, side) => {
+    const performed = await (PERFORMERS.matcher as Perform)(pod, step, side);
+    const before = await storeQuads((await pod.dataset("everyday")).store);
+    const lent = graphs((await pod.select(query)).rows);
+    const kept = await pod.dataset("everyday");
+    const all = graphs((await kept.select(query)).rows);
+    assert.deepEqual(await storeQuads(kept.store), before);
+    for (const graph of [LAYOUT_GRAPH, pod.files.iri + laidOut.manifest])
+      assert.ok(all.has(graph) && !lent.has(graph), graph);
+    checked += 1;
+    return performed;
+  });
+  assert.ok(checked > 0);
 });

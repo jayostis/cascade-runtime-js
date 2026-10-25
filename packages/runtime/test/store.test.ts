@@ -103,7 +103,7 @@ test("terms, quads and graphs the store frees once read leave the same answers w
   await assert.rejects(store.ask("ASK { ?s ?p ?o }", union), /freed/);
 });
 
-test("a union restored puts back every graph it dropped, added to or took subjects from, each blank node the node it was, and drops every graph it added", async () => {
+test("a union restored puts back every graph it dropped, added to or took subjects from, each blank node the node it was, names again a graph that held nothing, drops every graph it added, and is never used again; a copy of the store holds every quad, each blank node under its label", async () => {
   const store = new OxigraphStore();
   await store.loadTurtle("<urn:s> <urn:p> [ <urn:q> 1 ] .", {
     graph: "urn:one",
@@ -132,23 +132,54 @@ test("a union restored puts back every graph it dropped, added to or took subjec
           .join(" "),
       )
       .sort();
+  await store.loadTurtle("", { graph: "urn:empty" });
   const before = await quads();
-  const graphs = ["urn:one", "urn:two", "urn:three"];
+  const graphs = ["urn:one", "urn:two", "urn:three", "urn:empty"];
   const union = new RestorableUnion(store, graphs);
   await union.drop("urn:one");
+  await union.drop("urn:empty");
   await union.add([[iri("urn:w"), iri("urn:p"), blank("fresh")]], "urn:two");
   await union.removeSubjects("urn:three", ["urn:u"]);
   await union.add([[iri("urn:x"), iri("urn:p"), literal("4")]], "urn:four");
   await union.drop("urn:four");
   await union.add([[iri("urn:y"), iri("urn:p"), literal("5")]], "urn:five");
   assert.equal(await union.ask("ASK { ?s <urn:q> 1 }"), false);
+  const loaded: string[] = [];
+  const loadTurtle = store.loadTurtle.bind(store);
+  store.loadTurtle = (turtle, options) => {
+    loaded.push(options.graph);
+    return loadTurtle(turtle, options);
+  };
   await union.restore();
+  assert.deepEqual(loaded, ["urn:empty"]);
+  assert.equal(union.moved, 2 + 1 + 1 + 1 + 2 + 1);
   assert.deepEqual(await quads(), before);
-  assert.equal(
-    await new Union(store, graphs).ask(
-      "ASK { <urn:s> <urn:p> ?node . ?node <urn:q> 1 ; <urn:r> <urn:t> }",
-    ),
-    true,
+  const joined =
+    "ASK { <urn:s> <urn:p> ?node . ?node <urn:q> 1 ; <urn:r> <urn:t> }";
+  assert.equal(await new Union(store, graphs).ask(joined), true);
+  await assert.rejects(union.ask("ASK { ?s ?p ?o }"), /restored/);
+  await assert.rejects(union.drop("urn:two"), /restored/);
+  await assert.rejects(union.restore(), /restored/);
+
+  const copy = await store.copy();
+  const held = await quads();
+  store.free();
+  const copied = new Union(copy, graphs);
+  assert.equal(await copied.ask(joined), true);
+  assert.deepEqual(
+    (
+      await copy.select(
+        "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
+        new Set(),
+      )
+    ).rows
+      .map((row) =>
+        ["s", "p", "o", "g"]
+          .map((name) => written(row.get(name) ?? iri("urn:unbound")))
+          .join(" "),
+      )
+      .sort(),
+    held,
   );
 });
 

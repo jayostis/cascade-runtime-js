@@ -297,6 +297,39 @@ export class OxigraphStore implements Store {
     if (any) this.#graphs.add(options.graph);
   }
 
+  /**
+   * Copied a graph at a time from Oxigraph's N-Triples: the lines without a blank node loaded as Oxigraph wrote them,
+   * without checks, and the others added a triple at a time, since a load names its blank nodes afresh.
+   */
+  async copy(): Promise<Store> {
+    const copy = new OxigraphStore();
+    const store = this.#oxigraph;
+    for (const graph of this.#graphs) {
+      copy.#graphs.add(graph);
+      if (store === undefined) continue;
+      const name = oxigraph.namedNode(graph);
+      const ground: string[] = [];
+      const blank: string[] = [];
+      try {
+        for (const line of store
+          .dump({ format: N_TRIPLES, from_graph_name: name })
+          .split("\n"))
+          if (line !== "") (line.includes("_:") ? blank : ground).push(line);
+        if (ground.length > 0)
+          copy.#store.load(`${ground.join("\n")}\n`, {
+            format: N_TRIPLES,
+            to_graph_name: name,
+            lenient: true,
+          });
+      } finally {
+        free(name);
+      }
+      if (blank.length > 0)
+        await copy.add(nTriples(`${blank.join("\n")}\n`), { graph });
+    }
+    return copy;
+  }
+
   async drop(graph: string): Promise<void> {
     if (this.#oxigraph === undefined) return;
     this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);

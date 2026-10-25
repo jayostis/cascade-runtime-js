@@ -45,6 +45,7 @@ import {
 import {
   RestorableUnion,
   type Rows,
+  type Store,
   type StoreFactory,
   Union,
 } from "./store.js";
@@ -54,6 +55,11 @@ const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = `${RDF}type`;
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
+/**
+ * The quads the matcher's views may remove from the kept build's store and add again before the build moves to a store
+ * of its own: about 12 lends at 10,000 records, each moving some 175,000 quads.
+ */
+const COMPACT_AFTER_MOVED = 2_000_000;
 const REVISION = "revision";
 const KEPT = "kept";
 
@@ -422,6 +428,8 @@ export class CorePod {
   #writing = new Map<string, ActFile>();
   /** Whether a step is being performed, after which the pod builds its dataset again. */
   #performing = false;
+  /** The quads the matcher's views lent from the kept build's store have had it remove and add again. */
+  #movedInBuilt = 0;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -443,8 +451,9 @@ export class CorePod {
 
   /**
    * The pod as an ask reads it under the lens: its files but those the build writes, the files the build writes, the
-   * lens's derived state and the layout, each a graph of a store of its own. The union is read only until the next step
-   * or `close`, which free it, or the next `select`, which lends it to the matcher's view.
+   * lens's derived state and the layout, each a graph of a store of its own. The union is valid only until the next
+   * step, `select` or `close`: a step or `close` frees it or moves it to a store of its own, and a `select` lends it to
+   * the matcher's view.
    */
   async dataset(lens: string): Promise<Union> {
     await this.#putBackMatcherView();
@@ -491,6 +500,7 @@ export class CorePod {
   #dropBuilt(): void {
     this.#built?.free();
     this.#built = undefined;
+    this.#movedInBuilt = 0;
   }
 
   /**
@@ -890,8 +900,59 @@ export class CorePod {
     if (held === undefined) return;
     this.#kept.delete(MATCHER_VIEW);
     const view = await held.catch(() => undefined);
-    if (view instanceof RestorableUnion) await view.restore();
-    else view?.store.free?.();
+    if (!(view instanceof RestorableUnion)) {
+      view?.store.free?.();
+      return;
+    }
+    try {
+      await view.restore();
+    } catch (error) {
+      this.#dropDatasets(view.store);
+      throw error;
+    }
+    if (view.store !== this.#built?.union.store) return;
+    this.#movedInBuilt += view.moved;
+    if (this.#movedInBuilt >= COMPACT_AFTER_MOVED) await this.#compactBuilt();
+  }
+
+  /**
+   * Forgets every dataset the pod keeps, freeing each, and the build kept across steps: a store a view was not put back
+   * in whole is read again by nothing.
+   */
+  #dropDatasets(store: Store): void {
+    const built = this.#built?.union.store;
+    for (const [key, held] of [...this.#kept])
+      if (key.startsWith(DATASET)) {
+        this.#kept.delete(key);
+        held.then(
+          (union) => {
+            if (
+              union instanceof Union &&
+              union.store !== built &&
+              union.store !== store
+            )
+              union.store.free?.();
+          },
+          () => undefined,
+        );
+      }
+    if (store === built) this.#dropBuilt();
+    else store.free?.();
+  }
+
+  /** Moves the kept build to a store of its own, which every dataset kept as its union then reads. */
+  async #compactBuilt(): Promise<void> {
+    const built = this.#built;
+    if (built === undefined) return;
+    const was = built.union;
+    await built.compact();
+    this.#movedInBuilt = 0;
+    for (const [key, held] of [...this.#kept])
+      if (
+        key.startsWith(DATASET) &&
+        (await held.catch(() => undefined)) === was
+      )
+        this.#kept.set(key, Promise.resolve(built.union));
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
