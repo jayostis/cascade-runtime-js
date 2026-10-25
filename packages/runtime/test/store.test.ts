@@ -74,7 +74,7 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
   );
 });
 
-test("terms, quads and graphs the store frees once read leave the same answers when read again", async () => {
+test("terms, quads and graphs the store frees once read leave the same answers when read again; a copy holds the graphs given; a store freed is never read again", async () => {
   const store = new OxigraphStore();
   const turtle = '<urn:s> <urn:p> 1, 2, "x"@en .\n<urn:t> <urn:p> 1 .';
   const parsed = await store.parse(turtle, "urn:base");
@@ -99,4 +99,16 @@ test("terms, quads and graphs the store frees once read leave the same answers w
     ),
     [`"3"^^<${integer}>`],
   );
+
+  const copy = await store.copy(new Set(["urn:two"]));
+  const [[copied, ...rest] = []] = await copy.construct(
+    construct,
+    new Set(["urn:two"]),
+  );
+  assert.equal(copied?.termType, "BlankNode");
+  assert.deepEqual(rest, added.slice(1));
+  assert.equal(await copy.ask("ASK { <urn:s> ?p ?o }", both), false);
+  store.free();
+  await assert.rejects(store.ask("ASK { ?s ?p ?o }", union), /freed/);
+  assert.equal(await copy.ask("ASK { ?s <urn:p> 3 }", both), true);
 });

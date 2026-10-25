@@ -4,14 +4,15 @@ import type { AdaptersOf } from "./bridge.js";
 import { builtFileBytes, type Derive } from "./build.js";
 import { addLayout, built, podFiles, podStated } from "./dataset.js";
 import type { Keep } from "./derive.js";
-import { type Files, MemoryFiles, relative, under, writeAll } from "./files.js";
+import { type Files, MemoryFiles, relative, writeAll } from "./files.js";
 import { fileCreation, fileJudgment, fileReference } from "./filings.js";
 import type { IdsAndTime } from "./ids.js";
 import type { ExportDocument, Importer } from "./importer.js";
 import { type Kept, KeptClaims } from "./kept.js";
 import { HashedSet, type KeptSet } from "./kept-set.js";
-import { type Layout, SYNC } from "./layout.js";
+import { LAYOUT_GRAPH, type Layout, SYNC } from "./layout.js";
 import {
+  MATCHER_LENS,
   matcherView,
   migrateRuleListVersions,
   openPod,
@@ -121,6 +122,8 @@ class HeldFiles implements Files {
   readonly #pod: Files;
   readonly #bytes = new Map<string, Uint8Array>();
   #paths: Promise<Set<string>> | undefined;
+  /** The paths of the listing it was sorted from, in code unit order, until one is added. */
+  #sorted: { readonly of: Set<string>; readonly paths: string[] } | undefined;
 
   constructor(pod: Files) {
     this.#pod = pod;
@@ -184,15 +187,31 @@ class HeldFiles implements Files {
     }
     for (const [path, bytes] of changed) {
       this.#bytes.set(path, bytes);
+      if (!listed.has(path)) this.#sorted = undefined;
       listed.add(path);
     }
   }
 
+  /** The paths under the folder, found in the sorted listing: those under a folder are contiguous in it. */
   async list(folder: string): Promise<string[]> {
     const prefix = relative(this, folder);
-    return [...(await this.#listed())]
-      .filter((path) => under(prefix, path))
-      .sort();
+    const listed = await this.#listed();
+    if (this.#sorted?.of !== listed)
+      this.#sorted = { of: listed, paths: [...listed].sort() };
+    const sorted = this.#sorted.paths;
+    if (prefix === "") return [...sorted];
+    const start = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    let low = 0;
+    let high = sorted.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((sorted[middle] as string) < start) low = middle + 1;
+      else high = middle;
+    }
+    let end = low;
+    while (end < sorted.length && (sorted[end] as string).startsWith(start))
+      end++;
+    return sorted.slice(low, end);
   }
 }
 
@@ -374,6 +393,8 @@ export class CorePod {
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
   #writing = new Map<string, ActFile>();
+  /** Whether a step is being performed, after which the pod builds its dataset again. */
+  #performing = false;
 
   /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
   constructor(options: CorePodOptions, opened?: Union) {
@@ -397,7 +418,8 @@ export class CorePod {
 
   /**
    * The pod as an ask reads it under the lens: its files but those the build writes, the files the build writes, the
-   * lens's derived state and the layout, each a graph of a store of its own.
+   * lens's derived state and the layout, each a graph of a store of its own. The union is read only until the next step
+   * or `close`, which free it.
    */
   dataset(lens: string): Promise<Union> {
     return this.#held(`${DATASET}${lens}`, async () => {
@@ -436,9 +458,25 @@ export class CorePod {
     });
   }
 
-  /** Drops what is kept; the pod builds again when next read. */
+  /** Drops what is kept, and frees it; the pod builds again when next read. */
   close(): void {
+    this.#release();
+  }
+
+  /**
+   * Drops what is kept, freeing each union once it is made: the pod owns every union it keeps, and a union `dataset`
+   * gave is read only until the next step or `close`.
+   */
+  #release(): void {
+    const kept = this.#kept;
     this.#kept = new Map();
+    for (const held of kept.values())
+      held.then(
+        (union) => {
+          if (union instanceof Union) union.store.free?.();
+        },
+        () => undefined,
+      );
   }
 
   /** The pod's creation (A13). */
@@ -748,13 +786,49 @@ export class CorePod {
         "urn:cascade:references",
       );
     }
-    return union.select(query);
+    try {
+      return await union.select(query);
+    } finally {
+      union.store.free?.();
+    }
   }
 
+  /** The dataset kept under the build's lens, which holds the pod's files and their derived state, if any. */
+  async #keptDataset(): Promise<Union | undefined> {
+    const lens = this.#options.build?.lens;
+    const kept =
+      lens === undefined
+        ? undefined
+        : (this.#kept.get(DATASET + lens) as Promise<Union> | undefined);
+    return kept?.catch(() => undefined);
+  }
+
+  /**
+   * The matcher's view: the dataset kept under the matcher's lens, which holds the same files and derived state, without
+   * the files the build writes and the layout; taken from what the pod keeps during a step, which builds it again after,
+   * and copied between steps, when an ask may still read it. Else read and derived.
+   */
   #matcherView(): Promise<Union> {
-    return this.#held(MATCHER_VIEW, () =>
-      matcherView(this.#options, this.#keep()),
-    );
+    return this.#held(MATCHER_VIEW, async () => {
+      const { build, address, layout } = this.#options;
+      const dataset =
+        build?.lens === MATCHER_LENS ? await this.#keptDataset() : undefined;
+      if (dataset === undefined)
+        return matcherView(this.#options, this.#keep());
+      const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
+      const left = [...dataset.graphs].filter(
+        (graph) => graph === LAYOUT_GRAPH || rebuilt.has(graph),
+      );
+      if (this.#performing) {
+        this.#kept.delete(DATASET + MATCHER_LENS);
+        for (const graph of left) await dataset.drop(graph);
+        return dataset;
+      }
+      const graphs = new Set(
+        [...dataset.graphs].filter((graph) => !left.includes(graph)),
+      );
+      return new Union(await dataset.store.copy(graphs), graphs);
+    });
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -859,6 +933,7 @@ export class CorePod {
     const writes = new StepWrites();
     let performed: Performed;
     try {
+      this.#performing = true;
       const activity = await perform({
         address: options.address,
         subject: options.subject,
@@ -873,6 +948,9 @@ export class CorePod {
           : { lastSnapshot: this.#head.snapshot }),
         matcherView: () => this.#matcherView(),
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
+        keptDataset: () => this.#keptDataset(),
+      }).finally(() => {
+        this.#performing = false;
       });
       let head: Head | undefined;
       let hashed: { readonly set: HashedSet; readonly act: string } | undefined;
@@ -899,7 +977,7 @@ export class CorePod {
       if (!(error instanceof Refusal)) throw error;
       performed = { wrote: [], refused: error.message };
     } finally {
-      this.#kept = new Map();
+      this.#release();
       this.#writing = new Map();
     }
     if (options.build !== undefined) {

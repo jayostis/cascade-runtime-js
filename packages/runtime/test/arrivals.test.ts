@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
+import { Revisions } from "../src/arrivals.js";
 import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
+import { vocabularyDerive } from "../src/build.js";
+import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { StoryTime } from "../src/ids.js";
@@ -66,6 +69,41 @@ test("an import writes its content-addressed files first, then its revisions, an
   );
   assert.deepEqual(new Set(ranks), new Set([0, 1, 2]));
   assert.equal(ranks.filter((rank) => rank === 2).length, 1);
+});
+
+test("an act's revisions read from the dataset the pod keeps are those read from the records' files", async () => {
+  const files = await vocabulary();
+  const replay = await replayed(
+    "runtime/arrivals.feature",
+    "the peanut allergy changes and changes back, and its third revision sets its first version again",
+  );
+  const { pod, layout: laidOut, story, steps } = replay;
+  const kept = await dataset(
+    replay,
+    steps.at(-1)?.step.name ?? "",
+    "everyday",
+    newStore(),
+    await vocabularyDerive(files, laidOut),
+  );
+  const context = {
+    pod,
+    newStore,
+    layout: laidOut,
+    vocabulary: files,
+    address: story.address,
+  };
+  const [fromFiles, fromKept] = await Promise.all([
+    Revisions.of({ ...context, keptDataset: async () => undefined }),
+    Revisions.of({ ...context, keptDataset: async () => kept }),
+  ]);
+  const records = (
+    await kept.select(
+      "SELECT DISTINCT ?record WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#revisionOf> ?record }",
+    )
+  ).rows.flatMap((row) => row.get("record")?.value ?? []);
+  assert.ok(records.some((record) => fromFiles.held(record).files.length > 3));
+  for (const record of records)
+    assert.deepEqual(fromKept.held(record), fromFiles.held(record), record);
 });
 
 test("a refused step says which rule refused it", async () => {
