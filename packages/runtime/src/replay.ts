@@ -53,6 +53,40 @@ async function withStoryFile(
     : perform({ bytes, base: story.source.iri + at, name: path });
 }
 
+const SETTING = /<urn:cascade:revision-setting:([^>]+)>/g;
+
+/**
+ * A judgment's Turtle with each <urn:cascade:revision-setting:{version}> made the one revision that sets the version: a
+ * revision's name depends on its run, so a story cannot write it. A version no revision sets, or several do, is the
+ * story's mistake, and throws.
+ */
+async function revisionsNamed(
+  pod: CorePod,
+  bytes: Uint8Array,
+): Promise<Uint8Array> {
+  const text = new TextDecoder().decode(bytes);
+  const named = new Map<string, string>();
+  for (const [placeholder, version = ""] of text.matchAll(SETTING)) {
+    if (named.has(placeholder)) continue;
+    const { rows } = await pod.select(
+      `SELECT DISTINCT ?revision WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#version> <${version}> }`,
+    );
+    const [only] = rows;
+    const revision = only?.get("revision")?.value;
+    if (rows.length !== 1 || revision === undefined)
+      throw new Error(
+        `the judgment names the revision setting ${version}, which ${rows.length} revisions set, not one`,
+      );
+    named.set(placeholder, `<${revision}>`);
+  }
+  return new TextEncoder().encode(
+    text.replace(
+      SETTING,
+      (placeholder) => named.get(placeholder) ?? placeholder,
+    ),
+  );
+}
+
 /** The step happened when the story says. */
 function begun(story: StorySide, step: Step): void {
   story.time.begin(step.when);
@@ -105,8 +139,11 @@ export const PERFORMERS: Performers = {
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
     begun(story, step);
-    return withStoryFile(pod, story, happened.file, (judgment) =>
-      pod.judge(judgment),
+    return withStoryFile(pod, story, happened.file, async (judgment) =>
+      pod.judge({
+        ...judgment,
+        bytes: await revisionsNamed(pod, judgment.bytes),
+      }),
     );
   },
   reference: (pod, step, story) => {

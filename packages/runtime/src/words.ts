@@ -49,6 +49,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same product code": `${CASCADE}SameProductCode`,
   "same variation": `${CASCADE}SameVariation`,
   "same variation through the table": `${CASCADE}SameVariationThroughTable`,
+  "same self-asserted base URL and authorization endpoint on one host": `${CASCADE}SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
@@ -392,6 +393,13 @@ export class Words {
   async record(words: string): Promise<string> {
     const handled = await this.#handle(words);
     if (handled !== undefined) return this.#remember(words, handled);
+    const server = /^server (\S+)$/.exec(words);
+    if (server !== null)
+      return this.#one(
+        words,
+        `SELECT DISTINCT ?record WHERE { ?record a <${CASCADE}Server> ; <${CASCADE}serverBaseUrl> ${JSON.stringify(server[1])} }`,
+        "record",
+      );
     const said = SAID.exec(words);
     if (said === null || (said[2] === undefined && said[4] === undefined))
       throw new Error(`"${words}" names no record`);

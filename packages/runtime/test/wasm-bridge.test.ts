@@ -362,7 +362,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
   const files = await vocabulary();
   const { story, folder } = await storyFrom(
     "runtime/arrivals.feature",
-    "the latex allergy arrives again under a source version it already has, with other content",
+    "the latex allergy arrives under a source version it already has, with other content, and is a revision",
   );
   const step = story.steps.find(({ name }) => name === "known-source-version");
   if (step?.happened.kind !== "import") throw new Error("no such import");

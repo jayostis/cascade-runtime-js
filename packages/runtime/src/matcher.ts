@@ -1,5 +1,5 @@
 import { boundToRecords } from "./bound-records.js";
-import { Derivations, type Keep, QUERIES } from "./derive.js";
+import { derivationsOf, type Keep, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
@@ -48,26 +48,33 @@ export interface MatcherRule {
   readonly finding?: boolean;
 }
 
-interface SubjectRecord {
+interface TakenRecord {
   readonly name: string;
   readonly classes: ReadonlySet<string>;
   readonly version: string;
   readonly arrived: readonly [string, string];
   /** The act that generated each of its first revisions. */
   readonly activities: readonly string[];
+  /** For a server, the act that generated each of its revisions, first or later: a reconnect takes it (M1). */
+  readonly revisedBy: readonly string[];
 }
 
-/** The acts whose records a run takes: those with a first revision from any of them, or, for a sync's run, every one (M1). */
+/**
+ * The acts whose records a run takes: those with a first revision from any of them, and servers with any revision from
+ * one, or, for a sync's run, every one (M1).
+ */
 interface Takes {
   readonly acts: ReadonlySet<string>;
   readonly all: boolean;
 }
 
-function taken(record: SubjectRecord, takes: Takes): boolean {
+function taken(record: TakenRecord, takes: Takes): boolean {
   return takes.all
     ? record.activities.length > 0 &&
         record.activities.every((act) => takes.acts.has(act))
-    : record.activities.some((act) => takes.acts.has(act));
+    : [...record.activities, ...record.revisedBy].some((act) =>
+        takes.acts.has(act),
+      );
 }
 
 /** The path a rule's query names under `queries/`, when it resolves inside `matcher/` and holds no backslash. */
@@ -205,7 +212,7 @@ export function arrival(moment: string): [string, string] {
   return [whole, fraction];
 }
 
-function byArrival(a: SubjectRecord, b: SubjectRecord): number {
+function byArrival(a: TakenRecord, b: TakenRecord): number {
   const [x, y] = [
     [...a.arrived, a.name],
     [...b.arrived, b.name],
@@ -217,19 +224,49 @@ function byArrival(a: SubjectRecord, b: SubjectRecord): number {
   return 0;
 }
 
-/** The pod's one subject's records, by name, each with its kind, current version and first revision's arrival. */
+interface FirstRevision {
+  readonly at: string | undefined;
+  readonly activities: readonly string[];
+}
+
+function takenRecord(
+  name: string,
+  classes: Iterable<string>,
+  version: string | undefined,
+  firsts: readonly FirstRevision[],
+  revisedBy: readonly string[],
+): TakenRecord {
+  if (
+    firsts.length === 0 ||
+    version === undefined ||
+    firsts.some(({ at }) => at === undefined)
+  )
+    throw new Refusal(`${name} has no first revision and current version`);
+  const [earliest = arrival(""), ...later] = firsts.map(({ at }) =>
+    arrival(at as string),
+  );
+  return {
+    name,
+    classes: new Set(classes),
+    version,
+    arrived: later.reduce(
+      (soonest, at) =>
+        at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
+          ? at
+          : soonest,
+      earliest,
+    ),
+    activities: [...new Set(firsts.flatMap(({ activities }) => activities))],
+    revisedBy,
+  };
+}
+
+/** The subject's records, each with its kind, current version and first revisions. */
 async function subjectRecords(
   dataset: Dataset,
-): Promise<Map<string, SubjectRecord>> {
-  const subjects = await column(
-    dataset,
-    "SELECT DISTINCT ?subject WHERE { ?subject a cascade:Subject }",
-    "subject",
-  );
-  const [subject] = subjects;
-  if (subjects.length !== 1 || subject?.[0] === undefined)
-    throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
-  const theirs = `?record a cascade:Record ; cascade:subject <${subject[0]}> .`;
+  subject: string,
+): Promise<TakenRecord[]> {
+  const theirs = `?record a cascade:Record ; cascade:subject <${subject}> .`;
   const records = await column(
     dataset,
     `SELECT DISTINCT ?record WHERE { ${theirs} }`,
@@ -275,37 +312,109 @@ async function subjectRecords(
       "activity",
     ),
   );
-  const found = new Map<string, SubjectRecord>();
-  for (const [name] of records) {
-    if (name === undefined) continue;
-    const first = firsts.get(name) ?? [];
-    const version = versions.get(name)?.[0];
-    const ats = first.map((revision) => times.get(revision)?.[0]);
-    if (first.length === 0 || version === undefined || ats.includes(undefined))
-      throw new Refusal(`${name} has no first revision and current version`);
-    const [earliest = arrival(""), ...later] = ats.map((at) =>
-      arrival(at as string),
-    );
-    found.set(name, {
-      name,
-      classes: new Set(classes.get(name) ?? []),
-      version,
-      arrived: later.reduce(
-        (soonest, at) =>
-          at[0] < soonest[0] || (at[0] === soonest[0] && at[1] < soonest[1])
-            ? at
-            : soonest,
-        earliest,
-      ),
-      activities: [
-        ...new Set(first.flatMap((revision) => activities.get(revision) ?? [])),
-      ],
-    });
-  }
-  return found;
+  return records.flatMap(([name]) =>
+    name === undefined
+      ? []
+      : [
+          takenRecord(
+            name,
+            classes.get(name) ?? [],
+            versions.get(name)?.[0],
+            (firsts.get(name) ?? []).map((revision) => ({
+              at: times.get(revision)?.[0],
+              activities: activities.get(revision) ?? [],
+            })),
+            [],
+          ),
+        ],
+  );
 }
 
-const derivations = new WeakMap<Files, Promise<Derivations>>();
+/** Each server's record with a version, from one query, since a pod holds few; every revision's act is kept (M1). */
+async function serverRecords(dataset: Dataset): Promise<TakenRecord[]> {
+  const rows = await column(
+    dataset,
+    `SELECT DISTINCT ?record ?class ?version ?revision ?earlier ?at ?activity WHERE {
+      ?record a cascade:Server ; pav:hasCurrentVersion ?version ; a ?class .
+      OPTIONAL { ?revision cascade:revisionOf ?record
+        OPTIONAL { ?revision prov:wasRevisionOf ?earlier }
+        OPTIONAL { ?revision prov:generatedAtTime ?at }
+        OPTIONAL { ?revision prov:wasGeneratedBy ?activity } } }`,
+    "record",
+    "class",
+    "version",
+    "revision",
+    "earlier",
+    "at",
+    "activity",
+  );
+  interface Revision {
+    first: boolean;
+    at: string | undefined;
+    readonly activities: Set<string>;
+  }
+  const servers = new Map<
+    string,
+    {
+      readonly classes: Set<string>;
+      version: string | undefined;
+      readonly revisions: Map<string, Revision>;
+    }
+  >();
+  for (const [record, kind, version, revision, earlier, at, activity] of rows) {
+    if (record === undefined) continue;
+    const server = servers.get(record) ?? {
+      classes: new Set<string>(),
+      version,
+      revisions: new Map<string, Revision>(),
+    };
+    servers.set(record, server);
+    if (kind !== undefined) server.classes.add(kind);
+    if (revision === undefined) continue;
+    const found = server.revisions.get(revision) ?? {
+      first: true,
+      at,
+      activities: new Set<string>(),
+    };
+    server.revisions.set(revision, found);
+    if (earlier !== undefined) found.first = false;
+    if (activity !== undefined) found.activities.add(activity);
+  }
+  return [...servers].map(([name, { classes, version, revisions }]) => {
+    const all = [...revisions.values()];
+    return takenRecord(
+      name,
+      classes,
+      version,
+      all
+        .filter(({ first }) => first)
+        .map(({ at, activities }) => ({ at, activities: [...activities] })),
+      [...new Set(all.flatMap(({ activities }) => [...activities]))],
+    );
+  });
+}
+
+/**
+ * The records the matcher takes (M2), by name: the pod's subject's, if it has one, and each server's with a version,
+ * each with its kind, current version and first revisions' arrival.
+ */
+async function takenRecords(
+  dataset: Dataset,
+): Promise<Map<string, TakenRecord>> {
+  const subjects = await column(
+    dataset,
+    "SELECT DISTINCT ?subject WHERE { ?subject a cascade:Subject }",
+    "subject",
+  );
+  if (subjects.length > 1)
+    throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
+  const subject = subjects[0]?.[0];
+  const records = [
+    ...(subject === undefined ? [] : await subjectRecords(dataset, subject)),
+    ...(await serverRecords(dataset)),
+  ];
+  return new Map(records.map((record) => [record.name, record]));
+}
 
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
@@ -318,14 +427,9 @@ export async function matcherView(
   >,
   keep?: Keep,
 ): Promise<Union> {
-  let read = derivations.get(context.vocabulary);
-  if (read === undefined) {
-    read = Derivations.of(context.vocabulary);
-    derivations.set(context.vocabulary, read);
-  }
   const union = new Union(context.newStore());
   await podFiles(context.pod, context.layout, context.address, union);
-  await (await read).derive(union, LENS, keep);
+  await (await derivationsOf(context.vocabulary)).derive(union, LENS, keep);
   return union;
 }
 
@@ -345,7 +449,7 @@ interface Pod {
    * assertion no retraction invalidates (N15).
    */
   readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
-  readonly theirs: ReadonlyMap<string, SubjectRecord>;
+  readonly records: ReadonlyMap<string, TakenRecord>;
   readonly judgments: readonly Judged[];
   readonly revised: ReadonlySet<string>;
   /** Each ordered pair of members of a retracted matcher Same. */
@@ -460,7 +564,7 @@ class Matcher {
   /**
    * The matcher over the pod and the tables. Given what an open adopts, by series, those versions are current, and
    * `fresh` holds the joins the pod's own rule list and versions do not make (O1). Given the acts whose records a run
-   * takes, each comparison is evaluated with ?record bound to the subject's records they began (M1, M4). The rule list the
+   * takes, each comparison is evaluated with ?record bound to the records they began (M1, M4). The rule list the
    * pod names is evaluated over the versions it names, and the current one over the current versions, each with those
    * versions' descriptions alone and none of the pod's, so neither reads the other's rows and no version the pod
    * describes but the tables do not load revises one they do (M13, O1). It consumes the matcher's view it is given: it
@@ -481,7 +585,7 @@ class Matcher {
     const bound =
       takes === undefined
         ? undefined
-        : [...pod.theirs.values()].flatMap((record) =>
+        : [...pod.records.values()].flatMap((record) =>
             taken(record, takes) ? [record.name] : [],
           );
     const rulesVersion = current(await references.ruleList());
@@ -649,8 +753,8 @@ class Matcher {
   private origins(
     joined: Joins,
     rule: MatcherRule,
-    record: SubjectRecord,
-    other: SubjectRecord,
+    record: TakenRecord,
+    other: TakenRecord,
   ): ReadonlySet<string> {
     if (![...record.classes].some((found) => rule.appliesTo.has(found)))
       return new Set();
@@ -688,7 +792,7 @@ class Matcher {
   private async same(
     rule: MatcherRule,
     origin: string,
-    members: readonly SubjectRecord[],
+    members: readonly TakenRecord[],
   ): Promise<void> {
     const { layout, writes } = this.context;
     const used = [
@@ -770,9 +874,9 @@ class Matcher {
    * without any Same that holds the record, so a run again over the same records reaches the same claims (M9).
    */
   private star(
-    record: SubjectRecord,
-    matched: readonly SubjectRecord[],
-  ): SubjectRecord[] {
+    record: TakenRecord,
+    matched: readonly TakenRecord[],
+  ): TakenRecord[] {
     const parent = new Map<string, string>();
     const root = (name: string): string => {
       let at = name;
@@ -787,7 +891,7 @@ class Matcher {
     };
     const { different } = this.pod;
     const later = (name: string): boolean => {
-      const other = this.pod.theirs.get(name);
+      const other = this.pod.records.get(name);
       return other !== undefined && byArrival(other, record) >= 0;
     };
     for (const members of this.sames) {
@@ -801,8 +905,8 @@ class Matcher {
           if (one !== other && !different.has(pair(one, other)))
             parent.set(root(one), root(other));
     }
-    const kept = new Map<string, SubjectRecord>();
-    const apart = (other: SubjectRecord): boolean =>
+    const kept = new Map<string, TakenRecord>();
+    const apart = (other: TakenRecord): boolean =>
       different.has(pair(record.name, other.name));
     for (const other of matched) {
       const entry = root(other.name);
@@ -819,15 +923,15 @@ class Matcher {
 
   /** Files a Same for each record taken, in arrival order, of it and what it joins among the records before it (M3-M5). */
   private async file(
-    taken: readonly SubjectRecord[],
+    taken: readonly TakenRecord[],
     joined: Joins,
   ): Promise<void> {
-    const compared = [...this.pod.theirs.values()].filter(
+    const compared = [...this.pod.records.values()].filter(
       (record) => !taken.includes(record),
     );
     for (const record of [...taken].sort(byArrival)) {
       for (const rule of this.rules) {
-        const byOrigin = new Map<string, SubjectRecord[]>();
+        const byOrigin = new Map<string, TakenRecord[]>();
         for (const other of compared)
           for (const origin of this.origins(joined, rule, record, other))
             byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), other]);
@@ -840,17 +944,17 @@ class Matcher {
     }
   }
 
-  /** Files a Same for each of the subject's records whose first revisions the acts began (M1-M5). */
+  /** Files a Same for each record taken whose first revisions the acts began (M1-M5). */
   async take(takes: Takes): Promise<void> {
     await this.file(
-      [...this.pod.theirs.values()].filter((record) => taken(record, takes)),
+      [...this.pod.records.values()].filter((record) => taken(record, takes)),
       this.matched,
     );
   }
 
   /** Files a Same for each pair the tables newly join, taking the records of those pairs (M1, O1). */
   async rejoin(): Promise<void> {
-    const records = [...this.pod.theirs.values()];
+    const records = [...this.pod.records.values()];
     await this.file(
       records.filter((record) =>
         this.rules.some((rule) =>
@@ -901,7 +1005,7 @@ class Matcher {
       )
         continue;
       const members = judged.members.flatMap(
-        (member) => this.pod.theirs.get(member) ?? [],
+        (member) => this.pod.records.get(member) ?? [],
       );
       const still = members.filter((member) =>
         members.some(
@@ -1001,7 +1105,7 @@ class Matcher {
       for (const key of this.matched.get(rule.justification)?.keys() ?? []) {
         const [one, other] = key
           .split(" ")
-          .map((name) => this.pod.theirs.get(name));
+          .map((name) => this.pod.records.get(name));
         if (
           one === undefined ||
           other === undefined ||
@@ -1037,7 +1141,7 @@ class Matcher {
   private async resplit(
     byTerm: ReadonlyMap<string, MatcherRule>,
   ): Promise<void> {
-    const { different, theirs, entryOf } = this.pod;
+    const { different, records, entryOf } = this.pod;
     const neighbours = new Map<string, Map<string, string[]>>();
     for (const [justification, pairs] of this.matched) {
       const of = new Map<string, string[]>();
@@ -1051,7 +1155,7 @@ class Matcher {
       const rule = byTerm.get(judged.rule);
       if (rule === undefined) continue;
       const members = judged.members.flatMap(
-        (member) => theirs.get(member) ?? [],
+        (member) => records.get(member) ?? [],
       );
       const [record] = [...members].sort(byArrival).slice(-1);
       if (record === undefined) continue;
@@ -1067,7 +1171,7 @@ class Matcher {
       const matched = (
         neighbours.get(rule.justification)?.get(record.name) ?? []
       )
-        .flatMap((name) => theirs.get(name) ?? [])
+        .flatMap((name) => records.get(name) ?? [])
         .filter(
           (other) =>
             byArrival(other, record) < 0 &&
@@ -1241,7 +1345,7 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     asserted: new Map(
       [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
     ),
-    theirs: await subjectRecords(dataset),
+    records: await takenRecords(dataset),
     judgments,
     withdrawn: new Set(
       claims.flatMap(([claim]) =>
@@ -1300,7 +1404,7 @@ function actOfRun(
 }
 
 /**
- * The acts whose records a run given the activity takes (M1): an import or entry session, for the records with any
+ * The acts whose records a run given the activity takes (M1): an import, entry session or connect, for the records with any
  * first revision from it, or each act a sync names, for those with every first revision from them; a sync naming none
  * takes none.
  */
@@ -1319,7 +1423,7 @@ async function actsTaken(
 }
 
 /**
- * A matcher run: the records the import or entry session it takes made, or those a sync brought, or, taking none, a
+ * A matcher run: the records the import, entry session or connect it takes made, or those a sync brought, or, taking none, a
  * recheck. Gives the run's act, if it wrote one.
  */
 export async function runMatcher(
