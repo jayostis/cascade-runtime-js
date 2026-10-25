@@ -52,7 +52,7 @@ test("the vocabulary's server record name shape gives pyshacl's result on its va
         "https://ns.cascadeprotocol.org/cascade#ServerRecordNameShape",
         `${SH}Violation`,
         [
-          "A record's name is the one cascade:RecordFromServerNamingRule gives its source address: expected urn:uuid:6d03d846-ac92-8492-ac9f-e810307f7bda.",
+          "A record's name, unless it is an organization's, is the one cascade:RecordFromServerNamingRule gives its source address: expected urn:uuid:6d03d846-ac92-8492-ac9f-e810307f7bda.",
         ],
       ],
     ],
