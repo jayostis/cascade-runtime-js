@@ -165,6 +165,43 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
+test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
+  const lab = {
+    resourceType: "Organization",
+    id: "org-lab-1",
+    name: "North Laboratory",
+  };
+  const isLab = (request: Request) =>
+    new URL(request.url).pathname.endsWith("/Organization/org-lab-1");
+  const { pull: result, seen } = await pulled({
+    alter: async (request, hospital) => {
+      if (isLab(request)) return Response.json(lab);
+      const response = await hospital(request);
+      if (!isSearch(request, "Observation")) return response;
+      const body = (await response.json()) as {
+        entry?: { resource: Record<string, unknown> }[];
+      };
+      for (const { resource } of body.entry ?? [])
+        resource.performer = [{ reference: "Organization/org-lab-1" }];
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: response.headers,
+      });
+    },
+  });
+  assert.equal(seen.requests.filter(isLab).length, 1);
+  assert.deepEqual(
+    result.bundle.entry
+      .filter(
+        ({ resource }) =>
+          (resource as { resourceType?: string }).resourceType ===
+          "Organization",
+      )
+      .map(({ fullUrl, resource }) => [fullUrl, resource]),
+    [[`${result.fhirBase}/Organization/org-lab-1`, lab]],
+  );
+});
+
 test("the server's report is its CapabilityStatement, asked with no token, with the base, the client id and the SMART configuration the sign-in read, which connectFiles saves", async () => {
   const { report, seen } = await pulled({ report: true });
   assert.equal(report?.fhirBase, north.hospital.fhirBase);
