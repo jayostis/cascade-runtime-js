@@ -2,10 +2,11 @@ import { Refusal } from "./step.js";
 
 /**
  * What a query's text may hold: long and short strings, comments, IRIs and a prefixed name's escaped character, whose
- * braces and number signs open no group and no comment.
+ * braces and number signs open no group and no comment. An IRI holds no character SPARQL's IRIREF excludes and starts
+ * with none that starts an operand or an operator after a less-than sign, so `?x <3&&?y>1` holds no IRI.
  */
-const TOKEN =
-  /"""(?:[^"\\]|\\.|"(?!""))*"""|'''(?:[^'\\]|\\.|'(?!''))*'''|#[^\n]*|<[^<>"{}|^`\\\s]*>|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\\.|\{/g;
+export const TOKEN =
+  /"""(?:[^"\\]|\\.|"(?!""))*"""|'''(?:[^'\\]|\\.|'(?!''))*'''|#[^\n]*|<(?:[^<>"{}|^`\\\s0-9?$=!&|()+-][^<>"{}|^`\\\s]*)?>|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\\.|\{/g;
 
 /** The comment line that marks a group, and what may stand between it and the group's brace (M4). */
 const MARK = /^#\s*bound:\s*\?record\s*$/;

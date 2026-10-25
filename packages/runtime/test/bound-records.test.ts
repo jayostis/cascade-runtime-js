@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boundToPairs, boundToRecords } from "../src/bound-records.js";
+import { boundToPairs, boundToRecords, TOKEN } from "../src/bound-records.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 
 test("a comparison bound to a run's records gives their rows alone, whatever braces its comments, IRIs and long or short strings hold before its group", async () => {
@@ -135,4 +135,16 @@ test("a comparison bound to pairs that marks its record's side binds the pairs i
       .sort(),
     ["urn:a urn:b", "urn:a urn:c", "urn:c urn:a"],
   );
+});
+
+test("a less-than comparison is no IRI, though an IRI's own characters stand between it and a greater-than sign", () => {
+  const iris = (text: string) =>
+    [...text.matchAll(TOKEN)]
+      .map(([token]) => token)
+      .filter((token) => token.startsWith("<"));
+  assert.deepEqual(iris("FILTER (?x <3&&?y>1) ?s <urn:a#b> <> ?o"), [
+    "<urn:a#b>",
+    "<>",
+  ]);
+  assert.deepEqual(iris("FILTER (?x<?y&&?y>?z || ?a<=?b&&?b>=?c)"), []);
 });
