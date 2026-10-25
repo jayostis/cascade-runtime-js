@@ -190,19 +190,31 @@ export class OxigraphStore implements Store {
   }
 
   /**
-   * Copied through one N-Quads dump of every graph, which keeps a blank node shared across graphs one node, then each
-   * graph not given dropped. Oxigraph wrote the dump, so it is loaded without checks.
+   * Copied as one N-Quads load fed each graph given in turn, dumped as N-Triples with its name added to each line: one
+   * load keeps a blank node shared across graphs one node, where Oxigraph names a load's blank nodes afresh. Oxigraph
+   * wrote the lines, so they are loaded without checks.
    */
   async copy(graphs: ReadonlySet<string>): Promise<Store> {
     const copy = new OxigraphStore();
     if (this.#oxigraph === undefined && !this.#freed) return copy;
-    copy.#store.load(this.#store.dump({ format: N_QUADS }), {
-      format: N_QUADS,
-      lenient: true,
-    });
-    for (const graph of this.#graphs)
-      if (graphs.has(graph)) copy.#graphs.add(graph);
-      else await copy.drop(graph);
+    const store = this.#store;
+    const held = [...graphs].filter((graph) => this.#graphs.has(graph));
+    copy.#store.load(
+      (function* (): Generator<string> {
+        for (const graph of held) {
+          const name = oxigraph.namedNode(graph);
+          try {
+            yield store
+              .dump({ format: N_TRIPLES, from_graph_name: name })
+              .replaceAll(" .\n", ` ${written(iri(graph))} .\n`);
+          } finally {
+            free(name);
+          }
+        }
+      })(),
+      { format: N_QUADS, lenient: true },
+    );
+    for (const graph of held) copy.#graphs.add(graph);
     return copy;
   }
 

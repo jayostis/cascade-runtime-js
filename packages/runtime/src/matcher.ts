@@ -686,12 +686,12 @@ class Matcher {
     const { address, layout } = context;
     const folder = layout.place(`${CASCADE}ReferenceSeries`).folder;
     context.releaseMatcherView();
-    for (const graph of union.graphs)
-      if (folder !== undefined && graph.startsWith(address + folder))
-        await union.store.drop(graph);
     let known: Joins;
     let matched: Joins;
     try {
+      for (const graph of union.graphs)
+        if (folder !== undefined && graph.startsWith(address + folder))
+          await union.store.drop(graph);
       known =
         foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
       matched = await over(versions, found);

@@ -5,9 +5,12 @@ import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
 import type { Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { iri, literal, type Triple, XSD } from "../src/rdf.js";
+import { iri, literal, type Triple, written, XSD } from "../src/rdf.js";
 import type { References } from "../src/references.js";
-import { layout, RUNTIME, vocabulary } from "./vocabulary.js";
+import { appleHealthExport } from "@cascade-runtime/apple-health";
+import { vocabularyDerive } from "../src/build.js";
+import { PERFORMERS, replay } from "../src/replay.js";
+import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
 const ADDRESS = "https://pod.example/";
@@ -189,4 +192,75 @@ test("a person's retraction that also states prov:used is filed with the retract
       .path(name),
   ]);
   assert.ok(wrote[0]?.startsWith("judgments/retractions/"));
+});
+
+/** Every quad of the matcher's view, each blank node one placeholder, sorted. */
+async function matcherViewQuads(pod: CorePod): Promise<string[]> {
+  const { rows } = await pod.select(
+    "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
+  );
+  return rows
+    .map((row) =>
+      ["g", "s", "p", "o"]
+        .map((name) => {
+          const term = row.get(name);
+          return term?.termType === "BlankNode"
+            ? "_:b"
+            : written(term ?? iri("urn:unbound"));
+        })
+        .join(" "),
+    )
+    .sort();
+}
+
+test("after every step, a match, a sync and a table adoption among them, the matcher's view copied from the kept dataset is the one a pod keeping nothing reads and derives", async () => {
+  const files = await vocabulary();
+  const laidOut = await layout();
+  const derive = await vocabularyDerive(files, laidOut);
+  for (const [feature, example] of [
+    [
+      "runtime/sync.feature",
+      "after both writers imported one export, the sync's run takes only the entry the other writer made",
+    ],
+    [
+      "runtime/opening.feature",
+      "after the rule list's version 2 is adopted, R3 joins a brand allergy and its ingredient's, and not a two-ingredient product and one of its ingredients",
+    ],
+  ] as const) {
+    const { story, folder } = await storyFrom(feature, example);
+    const compared: string[] = [];
+    const replayed = await replay({
+      runtime: RUNTIME,
+      story,
+      source: files,
+      vocabulary: files,
+      folder,
+      title: "",
+      pod: new MemoryFiles(story.address),
+      newStore: () => new OxigraphStore(),
+      layout: laidOut,
+      importers: [appleHealthExport],
+      build: { lens: "everyday", derive },
+      performers: Object.fromEntries(
+        Object.entries(PERFORMERS).map(([kind, perform]) => [
+          kind,
+          async (pod: CorePod, step, context) => {
+            const performed = await perform(pod, step, context);
+            const copied = await matcherViewQuads(pod);
+            const read = await matcherViewQuads(await pod.fork(context.time));
+            assert.ok(copied.length > 0, step.name);
+            assert.deepEqual(copied, read, `${example}: ${step.name}`);
+            compared.push(step.happened.kind);
+            return performed;
+          },
+        ]),
+      ) as typeof PERFORMERS,
+    });
+    assert.equal(replayed.stopped, undefined, example);
+    assert.ok(compared.includes("matcher"), example);
+    assert.ok(
+      compared.includes(feature.includes("sync") ? "sync" : "open"),
+      example,
+    );
+  }
 });
