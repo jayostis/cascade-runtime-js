@@ -7,6 +7,7 @@ import {
   type TestedWith,
 } from "@cascade-runtime/runtime";
 import {
+  filesNamed,
   readSpecReport,
   type SpecPages,
   specPages,
@@ -332,4 +333,64 @@ test("the index links every feature's page and every kit's", () => {
   const { hrefs } = readPage(pageText("index.html"));
   for (const page of ["naming.html", "the-kit.html", "kim.html"])
     assert.ok(hrefs.includes(page), page);
+});
+
+test("a Choice row names a rule only inside parentheses or beside a .feature pointer, never by a bare code another list uses", async () => {
+  const files = new MemoryFiles(TREE);
+  const text = (value: string) => new TextEncoder().encode(value);
+  await files.write("decisions/README.md", text("# Notes\n"));
+  await files.write(
+    "decisions/review.md",
+    text(`# Review
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| steps | | C1 and A1/A2 are steps of the conformance review, not rules | ours |
+| rule in parentheses | | a hash of its content (N1) | ours |
+| rule by pointer | | \`runtime/naming.feature\` N3 says so | ours |
+`),
+  );
+  await files.write("runtime/naming.feature", text(FEATURE));
+  await files.write(
+    "runtime/currency.feature",
+    text(`Feature: Currency
+  Rule: C1. A revision is current when nothing outranks it
+
+    Example: the only revision
+      Given a new pod for Kim on 2026-09-01 at 09:55
+`),
+  );
+  const pages = await specPages({
+    vocabulary: files,
+    report: await readSpecReport(earl([], "cascade-runtime-js", RAN_WITH)),
+    builtFrom: [],
+    at: "2026-10-24T00:00:00Z",
+  });
+  assert.deepEqual(
+    pages.warnings
+      .filter(({ kind }) => kind === "row names no rule")
+      .map(({ what }) => what),
+    ['row "steps" names no rule'],
+  );
+});
+
+test("a path a row names under a nested folder of the vocabulary is found, one the folder lacks is missing, and one in a folder the vocabulary lacks is neither", async () => {
+  const files = new MemoryFiles(TREE);
+  await files.write(
+    "conformance/kim/scripted-input/people.ttl",
+    new TextEncoder().encode(""),
+  );
+  assert.deepEqual(
+    await filesNamed(files, [
+      "conformance/kim/scripted-input/people.ttl",
+      "conformance/kim/scripted-input/gone.ttl",
+      "pod/clinical/allergies.ttl",
+    ]),
+    {
+      found: new Set(["conformance/kim/scripted-input/people.ttl"]),
+      missing: new Set(["conformance/kim/scripted-input/gone.ttl"]),
+    },
+  );
 });

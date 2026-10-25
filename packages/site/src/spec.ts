@@ -198,6 +198,36 @@ function sectionsOf(text: string): Map<string, string[]> {
   return sections;
 }
 
+/**
+ * The rule numbers a "what we do" cell names: those inside parentheses, as `(M7)` or `(`runtime/currency.feature`, C2)`,
+ * and those in a clause beside a `.feature` pointer. A bare `C1` elsewhere is a step of a review, a lean or an item of
+ * another list, and names no rule.
+ */
+function rulesNamedIn(cell: string): string[] {
+  const pointed = [
+    ...[...cell.matchAll(/\(([^()]*)\)/g)].map((match) => match[1] ?? ""),
+    ...cell
+      .replace(/\([^()]*\)/g, ";")
+      .split(";")
+      .filter((clause) => clause.includes(".feature")),
+  ];
+  return pointed
+    .flatMap((text) => [
+      ...text
+        .replace(
+          /\b(?:conformance-review|item|lean)\s+(?:item\s+)?(?:Check |[A-Z]{1,2})\d+/g,
+          "",
+        )
+        .matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g),
+    ])
+    .flatMap(([, letters = "", from = "", to = from]) =>
+      Array.from(
+        { length: Math.max(0, Number(to) - Number(from)) + 1 },
+        (_, at) => `${letters}${Number(from) + at}`,
+      ),
+    );
+}
+
 function readNote(
   path: string,
   text: string,
@@ -222,18 +252,9 @@ function readNote(
     const done = cells[ruling] ?? "";
     rows.push({
       thing: cells[0] ?? "",
-      rules: [
-        ...new Set(
-          [...done.matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g)]
-            .flatMap(([, letters = "", from = "", to = from]) =>
-              Array.from(
-                { length: Math.max(0, Number(to) - Number(from)) + 1 },
-                (_, at) => `${letters}${Number(from) + at}`,
-              ),
-            )
-            .filter((number) => rules.has(number)),
-        ),
-      ],
+      rules: [...new Set(rulesNamedIn(done))].filter((number) =>
+        rules.has(number),
+      ),
       paths: [
         ...new Set(
           [...done.matchAll(/`([^`]+)`/g)]
@@ -987,7 +1008,7 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
  * Of the paths the Choice rows name, those the vocabulary holds, and those in a folder of it that holds no such file;
  * a path whose first folder the vocabulary has not is a pod's or another repository's, and neither.
  */
-async function filesNamed(
+export async function filesNamed(
   vocabulary: Files,
   paths: readonly string[],
 ): Promise<{ found: Set<string>; missing: Set<string> }> {
