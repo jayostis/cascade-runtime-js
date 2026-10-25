@@ -324,11 +324,8 @@ class Revisions {
   readonly #holding = new Map<string, Map<string, string>>();
   /** What each document the pod holds says of how it was reached, read once a step needs it. */
   readonly #reached = new Map<string, Reached>();
-  /** Each record's revisions' observation times and documents, read once a step needs them. */
-  readonly #revisionFacts = new Map<
-    string,
-    Map<string, { observed?: string; document?: string }>
-  >();
+  /** The document each revision the pod held before the step was derived from. */
+  readonly #documents = new Map<string, string>();
   /** Each revision the step wrote whose observation times show the writer's clock behind, and by how many whole days. */
   readonly clockBehind: { readonly revision: string; readonly days: number }[] =
     [];
@@ -371,11 +368,13 @@ class Revisions {
       PREFIX cascade: <${CASCADE}>
       PREFIX prov: <${PROV}>
       PREFIX pav: <${PAV}>
-      SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed WHERE {
+      SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed ?observed ?document WHERE {
         ?revision a cascade:Revision ; cascade:revisionOf ?record ; cascade:version ?version .
         OPTIONAL { ?revision prov:wasRevisionOf ?previous }
         OPTIONAL { ?revision pav:version ?sourceVersion }
         OPTIONAL { ?revision pav:lastUpdateOn ?changed }
+        OPTIONAL { ?revision cascade:observedAsOf ?observed }
+        OPTIONAL { ?revision prov:wasDerivedFrom ?document }
       }`);
     const { rows: files } = await union.select(`
       PREFIX cascade: <${CASCADE}>
@@ -399,6 +398,9 @@ class Revisions {
         (name) => row.get(name)?.value ?? "",
       ) as [string, string, string];
       const changed = row.get("changed")?.value;
+      const observed = row.get("observed")?.value;
+      const document = row.get("document")?.value;
+      if (document !== undefined) revisions.#documents.set(revision, document);
       revisions.#add(
         record,
         version,
@@ -415,7 +417,14 @@ class Revisions {
       if (revised.has(revision)) continue;
       const heads = revisions.#heads.get(record) ?? [];
       if (!heads.some((head) => head.revision === revision))
-        revisions.#heads.set(record, [...heads, { revision, version }]);
+        revisions.#heads.set(record, [
+          ...heads,
+          {
+            revision,
+            version,
+            ...(observed === undefined ? {} : { observed }),
+          },
+        ]);
     }
     return revisions;
   }
@@ -471,39 +480,6 @@ class Revisions {
   }
 
   /**
-   * Each revision of the record the pod held before the step, with when its source was observed and the document it was
-   * derived from, read from the record's files once a step needs them: only for a record an arrival revises or may
-   * contradict, so a step that needs neither reads nothing more.
-   */
-  async #heldRevisions(
-    record: string,
-  ): Promise<Map<string, { observed?: string; document?: string }>> {
-    const known = this.#revisionFacts.get(record);
-    if (known !== undefined) return known;
-    const { context } = this;
-    const facts = new Map<string, { observed?: string; document?: string }>();
-    for (const path of this.#recordFiles.get(record) ?? []) {
-      const bytes = await context.pod.read(path);
-      if (bytes === undefined) continue;
-      const graph = await parseGraph(
-        bytes,
-        context.address + path,
-        context.newStore,
-      );
-      for (const revision of graph.subjects(TYPE, iri(`${CASCADE}Revision`))) {
-        const [observed] = graph.objects(revision, OBSERVED_AS_OF);
-        const [document] = graph.objects(revision, DERIVED_FROM);
-        facts.set(revision.value, {
-          ...(observed === undefined ? {} : { observed: observed.value }),
-          ...(document === undefined ? {} : { document: document.value }),
-        });
-      }
-    }
-    this.#revisionFacts.set(record, facts);
-    return facts;
-  }
-
-  /**
    * The revisions of the arrival's record that the pod held before the step and the arrival contradicts: each from a
    * live pull of the arrival's source whose source change time is later than the arrival's. None for an arrival with no
    * source change time, or that came by another path than a live pull.
@@ -518,10 +494,9 @@ class Revisions {
         Date.parse(one.changed) > Date.parse(changed),
     );
     if (later.length === 0) return [];
-    const facts = await this.#heldRevisions(record);
     const contradicted: string[] = [];
     for (const { revision } of later) {
-      const document = facts.get(revision)?.document;
+      const document = this.#documents.get(revision);
       if (
         document !== undefined &&
         pullSourceOf(await this.#reachedBy(document)) === arrival.pullSource
@@ -695,17 +670,12 @@ class Revisions {
     const observed = arrival.observedAsOf.value;
     const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
     const heads = this.#heads.get(record) ?? [];
-    const facts =
-      arrival.writersClock && heads.some((head) => head.observed === undefined)
-        ? await this.#heldRevisions(record)
-        : undefined;
     const days = Math.max(
       0,
       ...(arrival.writersClock
-        ? heads.map(({ revision, observed: written }) => {
-            const head = written ?? facts?.get(revision)?.observed;
-            return head === undefined ? 0 : daysBefore(observed, head);
-          })
+        ? heads.map(({ observed: head }) =>
+            head === undefined ? 0 : daysBefore(observed, head),
+          )
         : []),
       ...(arrival.retrievedByWriter !== undefined && changed !== undefined
         ? [daysBefore(arrival.retrievedByWriter, changed)]
