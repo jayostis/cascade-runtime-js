@@ -565,12 +565,16 @@ class Matcher {
   readonly #descriptions = new Map<string, Uint8Array>();
   /** The Sames the run has written, which its recheck and its new joins may both give. */
   readonly #filed = new Set<string>();
-  #sames?: (readonly string[])[];
+  #entries?: ArrivedEntries;
 
-  /** The members of each Same that counts: the pod's, then each the run files. */
-  private get sames(): (readonly string[])[] {
-    this.#sames ??= [...this.pod.sames];
-    return this.#sames;
+  /** The entries of each Same that counts: the pod's, then each the run files. */
+  private get entries(): ArrivedEntries {
+    this.#entries ??= new ArrivedEntries(
+      this.pod.records,
+      this.pod.different,
+      this.pod.sames,
+    );
+    return this.#entries;
   }
 
   private constructor(
@@ -857,7 +861,7 @@ class Matcher {
     )
       return;
     this.#filed.add(name);
-    this.sames.push(names);
+    this.entries.add(names);
     const claim = iri(name);
     const matcher = iri(MATCHER);
     if (!this.pod.held.has(name))
@@ -908,34 +912,8 @@ class Matcher {
     record: TakenRecord,
     matched: readonly TakenRecord[],
   ): TakenRecord[] {
-    const parent = new Map<string, string>();
-    const root = (name: string): string => {
-      let at = name;
-      for (
-        let up = parent.get(at);
-        up !== undefined && up !== at;
-        up = parent.get(at)
-      )
-        at = up;
-      parent.set(name, at);
-      return at;
-    };
     const { different } = this.pod;
-    const later = (name: string): boolean => {
-      const other = this.pod.records.get(name);
-      return other !== undefined && byArrival(other, record) >= 0;
-    };
-    for (const members of this.sames) {
-      if (members.some(later)) continue;
-      const split = members.some((one) =>
-        members.some((other) => different.has(pair(one, other))),
-      );
-      const [least = ""] = [...members].sort(byCodePoint);
-      for (const one of members)
-        for (const other of split ? members : [least])
-          if (one !== other && !different.has(pair(one, other)))
-            parent.set(root(one), root(other));
-    }
+    const root = this.entries.before(record);
     const kept = new Map<string, TakenRecord>();
     const apart = (other: TakenRecord): boolean =>
       different.has(pair(record.name, other.name));
@@ -1233,6 +1211,151 @@ class Matcher {
       )
         await this.same(rule, origin, this.star(record, matched));
     }
+  }
+}
+
+/** A Same's members, and the latest to arrive of those the run read, if any. */
+interface Waiting {
+  readonly members: readonly string[];
+  readonly latest: TakenRecord | undefined;
+}
+
+/** Whether the Same joins before the other, by its latest member's arrival; one with none the run read joins first. */
+function joinsFirst(a: Waiting, b: Waiting): boolean {
+  if (a.latest === undefined) return b.latest !== undefined;
+  return b.latest !== undefined && byArrival(a.latest, b.latest) < 0;
+}
+
+/**
+ * The entries the counting Sames make as same-pairs.rq derives them, read as of a record's arrival: only the Sames none
+ * of whose members the run read arrived with it or after (M5, M9). The Sames wait in order of their latest member's
+ * arrival and join, by union-find, as the records asked about come in arrival order, so a run joins each Same once
+ * rather than every Same for each record it stars; a record asked about before the last starts them again.
+ */
+class ArrivedEntries {
+  readonly #parent = new Map<string, string>();
+  readonly #all: Waiting[] = [];
+  #waiting: Waiting[] = [];
+  #asked: TakenRecord | undefined;
+
+  constructor(
+    readonly records: ReadonlyMap<string, TakenRecord>,
+    readonly different: ReadonlySet<string>,
+    sames: readonly (readonly string[])[],
+  ) {
+    for (const members of sames) this.#all.push(this.#waitingOf(members));
+    this.#restart();
+  }
+
+  /** Counts a Same the run files. */
+  add(members: readonly string[]): void {
+    const same = this.#waitingOf(members);
+    this.#all.push(same);
+    if (this.#asked !== undefined && this.#joinedBy(same, this.#asked))
+      this.#join(same.members);
+    else this.#push(same);
+  }
+
+  /** The entry of each name, as the Sames make them whose members the run read all arrived before the record. */
+  before(record: TakenRecord): (name: string) => string {
+    if (this.#asked !== undefined && byArrival(record, this.#asked) < 0)
+      this.#restart();
+    this.#asked = record;
+    for (
+      let next = this.#waiting[0];
+      next !== undefined && this.#joinedBy(next, record);
+      next = this.#waiting[0]
+    )
+      this.#join(this.#pop().members);
+    return (name) => this.#root(name);
+  }
+
+  #waitingOf(members: readonly string[]): Waiting {
+    let latest: TakenRecord | undefined;
+    for (const name of members) {
+      const record = this.records.get(name);
+      if (
+        record !== undefined &&
+        (latest === undefined || byArrival(record, latest) > 0)
+      )
+        latest = record;
+    }
+    return { members, latest };
+  }
+
+  #joinedBy(same: Waiting, record: TakenRecord): boolean {
+    return same.latest === undefined || byArrival(same.latest, record) < 0;
+  }
+
+  #restart(): void {
+    this.#parent.clear();
+    this.#asked = undefined;
+    this.#waiting = [];
+    for (const same of this.#all) this.#push(same);
+  }
+
+  #root(name: string): string {
+    let at = name;
+    for (
+      let up = this.#parent.get(at);
+      up !== undefined;
+      up = this.#parent.get(at)
+    )
+      at = up;
+    for (let on = name; on !== at;) {
+      const up = this.#parent.get(on) as string;
+      this.#parent.set(on, at);
+      on = up;
+    }
+    return at;
+  }
+
+  /** Joins the members as same-pairs.rq does: each with the least, or, when two of them are different, every pair not. */
+  #join(members: readonly string[]): void {
+    const { different } = this;
+    const split = members.some((one) =>
+      members.some((other) => different.has(pair(one, other))),
+    );
+    const [least = ""] = [...members].sort(byCodePoint);
+    for (const one of members)
+      for (const other of split ? members : [least])
+        if (one !== other && !different.has(pair(one, other))) {
+          const [a, b] = [this.#root(one), this.#root(other)];
+          if (a !== b) this.#parent.set(a, b);
+        }
+  }
+
+  #push(same: Waiting): void {
+    const heap = this.#waiting;
+    heap.push(same);
+    for (let at = heap.length - 1; at > 0;) {
+      const up = (at - 1) >> 1;
+      const [child, parent] = [heap[at] as Waiting, heap[up] as Waiting];
+      if (!joinsFirst(child, parent)) break;
+      [heap[at], heap[up]] = [parent, child];
+      at = up;
+    }
+  }
+
+  #pop(): Waiting {
+    const heap = this.#waiting;
+    const top = heap[0] as Waiting;
+    const last = heap.pop() as Waiting;
+    if (heap.length === 0) return top;
+    heap[0] = last;
+    for (let at = 0; ;) {
+      let first = at;
+      for (const child of [2 * at + 1, 2 * at + 2])
+        if (
+          child < heap.length &&
+          joinsFirst(heap[child] as Waiting, heap[first] as Waiting)
+        )
+          first = child;
+      if (first === at) break;
+      [heap[at], heap[first]] = [heap[first] as Waiting, heap[at] as Waiting];
+      at = first;
+    }
+    return top;
   }
 }
 
