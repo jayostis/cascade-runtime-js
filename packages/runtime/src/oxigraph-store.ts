@@ -6,6 +6,7 @@ import type { LoadOptions, Rows, Store } from "./store.js";
 const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
+const N_QUADS = "application/n-quads";
 
 /** Frees what Oxigraph holds in its WebAssembly memory for each object now, rather than when the object is collected. */
 function free(...objects: readonly unknown[]): void {
@@ -77,17 +78,20 @@ function toOxigraph(
 export class OxigraphStore implements Store {
   #oxigraph: oxigraph.Store | undefined;
   readonly #graphs = new Set<string>();
+  #freed = false;
 
   /** Made on first use, so a store only parsed with holds nothing in Oxigraph's memory. */
   get #store(): oxigraph.Store {
+    if (this.#freed) throw new Error("the store was freed and is read again");
     return (this.#oxigraph ??= new oxigraph.Store());
   }
 
-  /** Frees what the store holds in Oxigraph's memory now, rather than when it is collected. */
+  /** Frees what the store holds in Oxigraph's memory now, rather than when it is collected; it is never read again. */
   free(): void {
     free(this.#oxigraph);
     this.#oxigraph = undefined;
     this.#graphs.clear();
+    this.#freed = true;
   }
 
   [Symbol.dispose](): void {
@@ -183,6 +187,24 @@ export class OxigraphStore implements Store {
       free(graph);
     }
     if (any) this.#graphs.add(options.graph);
+  }
+
+  /**
+   * Copied through one N-Quads dump of every graph, which keeps a blank node shared across graphs one node, then each
+   * graph not given dropped. Oxigraph wrote the dump, so it is loaded without checks or a transaction.
+   */
+  async copy(graphs: ReadonlySet<string>): Promise<Store> {
+    const copy = new OxigraphStore();
+    if (this.#oxigraph === undefined && !this.#freed) return copy;
+    copy.#store.load(this.#store.dump({ format: N_QUADS }), {
+      format: N_QUADS,
+      no_transaction: true,
+      lenient: true,
+    });
+    for (const graph of this.#graphs)
+      if (graphs.has(graph)) copy.#graphs.add(graph);
+      else await copy.drop(graph);
+    return copy;
   }
 
   async drop(graph: string): Promise<void> {

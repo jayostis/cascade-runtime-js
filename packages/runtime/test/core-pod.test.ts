@@ -45,7 +45,7 @@ function options(
   };
 }
 
-test("what an ask reads and the revision change with every step, a refused one too; a pod over the same files has the same revision", async () => {
+test("what an ask reads and the revision change with every step, a refused one too, which frees the dataset read before it; a pod over the same files has the same revision", async () => {
   const laidOut = await layout();
   const state = { now: "2026-02-01T08:00:00Z", failing: false };
   const over = options(new MemoryFiles(ADDRESS), laidOut, state);
@@ -60,9 +60,11 @@ test("what an ask reads and the revision change with every step, a refused one t
   await pod.create();
   const first = await pod.revision();
   assert.deepEqual(await created(pod), ["2026-02-01T08:00:00Z"]);
+  const before = await pod.dataset("everyday");
 
   state.now = "2026-02-02T08:00:00Z";
   assert.ok((await pod.refuse("no reason")).refused);
+  await assert.rejects(before.ask("ASK { ?s ?p ?o }"), /freed/);
   assert.notEqual(await pod.revision(), first);
   assert.deepEqual(await created(pod), ["2026-02-02T08:00:00Z"]);
 
