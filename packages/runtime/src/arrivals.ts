@@ -13,6 +13,7 @@ import {
   contentName,
   documentName,
   enteredRecordName,
+  findingName,
   inUtc,
   normalisedBaseUrl,
   serverName,
@@ -62,6 +63,14 @@ const CURRENT_REVISIONS = `${QUERIES}derivations/current-revisions.rq`;
 const LADDER_LENS = "everyday";
 const SERVER = `${CASCADE}Server`;
 const SERVER_BASE_URL = `${CASCADE}serverBaseUrl`;
+const OA = "http://www.w3.org/ns/oa#";
+const FINDING = `${CASCADE}FindingForReview`;
+const OLDER_STATES = `${CASCADE}SourceReportedOlderStates`;
+const CONTRADICTED = `${CASCADE}contradictedEarlierRevision`;
+const CLOCK_BEHIND = `${CASCADE}ClockBehind`;
+const DAYS_BEHIND = `${CASCADE}writerClockBehindByAtLeastDays`;
+const THIS_FINDING = "urn:cascade:this-finding";
+const DAY = 86_400_000;
 
 /** One arrival of a record, as a revision would carry it (runtime/rules.md, N4). */
 interface Arrival {
@@ -81,6 +90,75 @@ interface Arrival {
   readonly observedAsOf: Term;
   /** The import or the session. */
   readonly by: string;
+  /**
+   * Whether its observation time is the writer's own clock: an entry's or a connect's, an act's start, or the retrieval
+   * time of a live pull that names no transmitter.
+   */
+  readonly writersClock: boolean;
+  /**
+   * Of an arrival from a live pull (a document retrieved on a date that answers as of no other instant), the source it
+   * is one with another pull of: its transmitter's IRI, or "" when it names none. Undefined for any other arrival, and
+   * for a transmitter no IRI names, which is one with no other pull.
+   */
+  readonly pullSource?: string;
+  /** Of a live pull that names no transmitter, the writer's own, when it was retrieved. */
+  readonly retrievedByWriter?: string;
+}
+
+/** What a document says of how it was reached. */
+interface Reached {
+  readonly retrieved?: string;
+  readonly answered: boolean;
+  /** Its transmitter's IRI, "" when it names none, undefined when no one IRI names its transmitter. */
+  readonly transmitter: string | undefined;
+}
+
+function reachedIn(graph: Graph, document: Term): Reached {
+  const transmitters = graph
+    .objects(document, `${PROV}qualifiedAttribution`)
+    .filter(
+      (via) =>
+        graph.match(via, `${PROV}hadRole`, iri(`${CASCADE}TransmitterRole`))
+          .length > 0,
+    )
+    .flatMap((via) => graph.objects(via, `${PROV}agent`));
+  const [transmitter] = transmitters;
+  return {
+    ...(graph.objects(document, `${PAV}retrievedOn`).map(({ value }) => ({
+      retrieved: value,
+    }))[0] ?? {}),
+    answered: graph.objects(document, `${CASCADE}answeredAsOf`).length > 0,
+    transmitter:
+      transmitter === undefined
+        ? ""
+        : transmitter.termType === "NamedNode" && transmitters.length === 1
+          ? transmitter.value
+          : undefined,
+  };
+}
+
+/** The source a live pull is one with another of, as `Arrival.pullSource` gives it. */
+function pullSourceOf(reached: Reached): string | undefined {
+  return reached.retrieved !== undefined && !reached.answered
+    ? reached.transmitter
+    : undefined;
+}
+
+/** The whole days by which `earlier` precedes `later`, two xsd:dateTime values. */
+function daysBefore(earlier: string, later: string): number {
+  return Math.floor((Date.parse(later) - Date.parse(earlier)) / DAY);
+}
+
+/** One revision as the pod held it before the step. */
+interface Held {
+  readonly revision: string;
+  readonly changed?: string;
+}
+
+/** A record an import found its source reporting at an older state: the revision holding it, and those it contradicts. */
+interface WentBack {
+  readonly older: string;
+  readonly contradicted: readonly string[];
 }
 
 /** What the arrival states of itself by the property, as its revision will. */
@@ -234,8 +312,23 @@ export class Revisions {
   /** Each record's heads: its revisions that none revises, one unless two writers revised it apart. */
   readonly #heads = new Map<
     string,
-    readonly { readonly revision: string; readonly version: string }[]
+    readonly {
+      readonly revision: string;
+      readonly version: string;
+      readonly observed?: string;
+    }[]
   >();
+  /** Each record's revisions as the pod held them before the step. */
+  readonly #before = new Map<string, Held[]>();
+  /** The revision holding what each record's arrivals are told apart by, as `held` keys it. */
+  readonly #holding = new Map<string, Map<string, string>>();
+  /** What each document the pod holds says of how it was reached, read once a step needs it. */
+  readonly #reached = new Map<string, Reached>();
+  /** The document each revision the pod held before the step was derived from. */
+  readonly #documents = new Map<string, string>();
+  /** Each revision the step wrote whose observation times show the writer's clock behind, and by how many whole days. */
+  readonly clockBehind: { readonly revision: string; readonly days: number }[] =
+    [];
   /** Each record's versions, and what its revisions are told apart by. */
   readonly #versions = new Map<string, Set<string>>();
   readonly #held = new Map<string, Set<string>>();
@@ -253,7 +346,7 @@ export class Revisions {
     readonly layout: Layout,
     readonly context: Pick<
       StepContext,
-      "pod" | "newStore" | "layout" | "vocabulary" | "address"
+      "pod" | "newStore" | "layout" | "vocabulary" | "address" | "lastSnapshot"
     >,
   ) {}
 
@@ -264,7 +357,13 @@ export class Revisions {
   static async of(
     context: Pick<
       StepContext,
-      "pod" | "newStore" | "layout" | "vocabulary" | "address" | "keptDataset"
+      | "pod"
+      | "newStore"
+      | "layout"
+      | "vocabulary"
+      | "address"
+      | "lastSnapshot"
+      | "keptDataset"
     >,
   ): Promise<Revisions> {
     const { pod, layout } = context;
@@ -303,12 +402,14 @@ export class Revisions {
         PREFIX cascade: <${CASCADE}>
         PREFIX prov: <${PROV}>
         PREFIX pav: <${PAV}>
-        SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed WHERE {
+        SELECT DISTINCT ?revision ?record ?version ?previous ?sourceVersion ?changed ?observed ?document WHERE {
           GRAPH ?file {
             ?revision a cascade:Revision ; cascade:revisionOf ?record ; cascade:version ?version .
             OPTIONAL { ?revision prov:wasRevisionOf ?previous }
             OPTIONAL { ?revision pav:version ?sourceVersion }
             OPTIONAL { ?revision pav:lastUpdateOn ?changed }
+            OPTIONAL { ?revision cascade:observedAsOf ?observed }
+            OPTIONAL { ?revision prov:wasDerivedFrom ?document }
           }
           ${inRecords}
         }`),
@@ -335,16 +436,34 @@ export class Revisions {
       const [record, revision, version] = ["record", "revision", "version"].map(
         (name) => row.get(name)?.value ?? "",
       ) as [string, string, string];
+      const changed = row.get("changed")?.value;
+      const observed = row.get("observed")?.value;
+      const document = row.get("document")?.value;
+      if (document !== undefined) revisions.#documents.set(revision, document);
       revisions.#add(
         record,
         version,
         row.get("sourceVersion")?.value,
-        row.get("changed")?.value,
+        changed,
+        revision,
       );
+      const before = revisions.#before.get(record) ?? [];
+      if (!before.some((one) => one.revision === revision))
+        revisions.#before.set(record, [
+          ...before,
+          { revision, ...(changed === undefined ? {} : { changed }) },
+        ]);
       if (revised.has(revision)) continue;
       const heads = revisions.#heads.get(record) ?? [];
       if (!heads.some((head) => head.revision === revision))
-        revisions.#heads.set(record, [...heads, { revision, version }]);
+        revisions.#heads.set(record, [
+          ...heads,
+          {
+            revision,
+            version,
+            ...(observed === undefined ? {} : { observed }),
+          },
+        ]);
     }
     return revisions;
   }
@@ -362,13 +481,81 @@ export class Revisions {
     };
   }
 
-  #add(record: string, version: string, source?: string, changed?: string) {
+  #add(
+    record: string,
+    version: string,
+    source: string | undefined,
+    changed: string | undefined,
+    revision: string,
+  ) {
     const versions = this.#versions.get(record) ?? new Set();
     versions.add(version);
     this.#versions.set(record, versions);
     const told = this.#held.get(record) ?? new Set();
     told.add(held(version, source, changed));
     this.#held.set(record, told);
+    const holding = this.#holding.get(record) ?? new Map<string, string>();
+    holding.set(held(version, source, changed), revision);
+    this.#holding.set(record, holding);
+  }
+
+  /** The revision of the record holding the arrival's version, source version and source change time, if one does. */
+  holding(arrival: Arrival): string | undefined {
+    return this.#holding
+      .get(arrival.record.value)
+      ?.get(
+        held(
+          arrival.version.value,
+          statedOnRevision(arrival, `${PAV}version`),
+          statedOnRevision(arrival, `${PAV}lastUpdateOn`),
+        ),
+      );
+  }
+
+  /** What the document the pod holds says of how it was reached. */
+  async #reachedBy(document: string): Promise<Reached> {
+    const known = this.#reached.get(document);
+    if (known !== undefined) return known;
+    const { context } = this;
+    const bytes = await context.pod.read(
+      this.layout.place(`${PROV}Entity`).path(document),
+    );
+    const reached: Reached =
+      bytes === undefined
+        ? { answered: false, transmitter: undefined }
+        : reachedIn(
+            await parseGraph(bytes, document, context.newStore),
+            iri(document),
+          );
+    this.#reached.set(document, reached);
+    return reached;
+  }
+
+  /**
+   * The revisions of the arrival's record that the pod held before the step and the arrival contradicts: each from a
+   * live pull of the arrival's source whose source change time is later than the arrival's. None for an arrival with no
+   * source change time, or that came by another path than a live pull.
+   */
+  async contradictedBy(arrival: Arrival): Promise<string[]> {
+    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    if (arrival.pullSource === undefined || changed === undefined) return [];
+    const record = arrival.record.value;
+    const later = (this.#before.get(record) ?? []).filter(
+      (one) =>
+        one.changed !== undefined &&
+        Date.parse(one.changed) > Date.parse(changed),
+    );
+    if (later.length === 0) return [];
+    const contradicted: string[] = [];
+    for (const { revision } of later) {
+      const document = this.#documents.get(revision);
+      if (
+        document !== undefined &&
+        pullSourceOf(await this.#reachedBy(document)) === arrival.pullSource
+      )
+        contradicted.push(revision);
+    }
+    return contradicted.sort();
   }
 
   /**
@@ -492,7 +679,7 @@ export class Revisions {
   }
 
   /** Adds the record and its version, and holds the revision after each of the record's heads (A2, A5) until `write`. */
-  async revise(arrival: Arrival, writes: StepWrites): Promise<void> {
+  async revise(arrival: Arrival, writes: StepWrites): Promise<string> {
     const record = arrival.record.value;
     writes.add(arrival.place.path(record), ntriples(arrival.recordTriples));
     writes.add(
@@ -532,20 +719,194 @@ export class Revisions {
     ];
     this.#pending.set(record, [...pending, revision]);
     this.#current.delete(record);
+    const observed = arrival.observedAsOf.value;
+    const changed = statedOnRevision(arrival, `${PAV}lastUpdateOn`);
+    const heads = this.#heads.get(record) ?? [];
+    const days = Math.max(
+      0,
+      ...(arrival.writersClock
+        ? heads.map(({ observed: head }) =>
+            head === undefined ? 0 : daysBefore(observed, head),
+          )
+        : []),
+      ...(arrival.retrievedByWriter !== undefined && changed !== undefined
+        ? [daysBefore(arrival.retrievedByWriter, changed)]
+        : []),
+    );
+    if (days >= 1) this.clockBehind.push({ revision: name, days });
     this.#heads.set(record, [
-      { revision: name, version: arrival.version.value },
+      { revision: name, version: arrival.version.value, observed },
     ]);
     this.#add(
       record,
       arrival.version.value,
       statedOnRevision(arrival, `${PAV}version`),
-      statedOnRevision(arrival, `${PAV}lastUpdateOn`),
+      changed,
+      name,
+    );
+    return name;
+  }
+
+  /** The findings the pod holds of each kind: each one's targets, and its contradicted revisions. */
+  async #findingsHeld(): Promise<
+    Map<
+      string,
+      { name: string; targets: Set<string>; contradicted: Set<string> }[]
+    >
+  > {
+    const { context, layout } = this;
+    const folder = layout.place(FINDING).folder ?? "";
+    const held = new Map<
+      string,
+      { name: string; targets: Set<string>; contradicted: Set<string> }[]
+    >();
+    for (const path of await context.pod.list(folder)) {
+      const bytes = await context.pod.read(path);
+      if (bytes === undefined) continue;
+      const graph = await parseGraph(
+        bytes,
+        context.address + path,
+        context.newStore,
+      );
+      for (const finding of graph.subjects(TYPE, iri(FINDING)))
+        for (const { value: kind } of graph.objects(finding, `${OA}hasBody`))
+          held.set(kind, [
+            ...(held.get(kind) ?? []),
+            {
+              name: finding.value,
+              targets: new Set(
+                graph
+                  .objects(finding, `${OA}hasTarget`)
+                  .map(({ value }) => value),
+              ),
+              contradicted: new Set(
+                graph.objects(finding, CONTRADICTED).map(({ value }) => value),
+              ),
+            },
+          ]);
+    }
+    return held;
+  }
+
+  /**
+   * Whether an act in the first-parent ancestry of the writer's last snapshot filed one of the findings, by its path, that
+   * no person's judgment answers: neither an Acknowledged of it nor a ClockDiscounted of that act stands.
+   */
+  async #firstParentsFiledUnanswered(
+    findings: ReadonlyMap<string, string>,
+  ): Promise<boolean> {
+    const head = this.context.lastSnapshot;
+    if (head === undefined || findings.size === 0) return false;
+    const stands = (answer: string): string => `
+          ?${answer} prov:wasAttributedTo/a prov:Person .
+          FILTER NOT EXISTS { ?retraction prov:invalidated ?${answer} }
+          FILTER NOT EXISTS {
+            ?replacing dct:replaces ?${answer}
+            FILTER NOT EXISTS { ?undoing prov:invalidated ?replacing }
+          }`;
+    return (await this.#sharedFiles()).ask(`
+      PREFIX cascade: <${CASCADE}>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX prov: <${PROV}>
+      ASK {
+        VALUES (?path ?finding) { ${[...findings].map(([path, finding]) => `("${path}" <${finding}>)`).join(" ")} }
+        <${head}> cascade:firstParentSnapshot* ?snapshot .
+        ?snapshot cascade:fileAddedToSet ?path ; prov:wasGeneratedBy ?act .
+        FILTER NOT EXISTS {
+          ?acknowledgement cascade:verdict cascade:Acknowledged ; prov:hadMember ?finding .${stands("acknowledgement")}
+        }
+        FILTER NOT EXISTS {
+          ?discount cascade:verdict cascade:ClockDiscounted ; prov:hadMember ?act .${stands("discount")}
+        }
+      }`);
+  }
+
+  /** Adds a finding of the kind, its subject named by its triples (cascade:FindingNamingRule). */
+  async #file(
+    writes: StepWrites,
+    content: (subject: NamedNode) => Triple[],
+  ): Promise<void> {
+    const name = await findingName(content(iri(THIS_FINDING)));
+    writes.add(
+      this.layout.place(FINDING).path(name),
+      ntriples(content(iri(name))),
     );
   }
 
-  /** Adds the revisions held, after every file before them (W1), and frees what the ladder was read over. */
-  async write(writes: StepWrites): Promise<void> {
+  /**
+   * Adds the step's findings, after the revisions they name (W1): one that its source reported older states, naming every
+   * record that went back but those a finding the pod holds already names with each revision it contradicts; and one
+   * that the writer's clock was behind, naming every revision the step wrote that shows it, unless an act in the
+   * first-parent ancestry of the writer's last snapshot filed one that no person's judgment answers.
+   */
+  async #fileFindings(
+    writes: StepWrites,
+    wentBack: readonly WentBack[],
+  ): Promise<void> {
+    if (wentBack.length === 0 && this.clockBehind.length === 0) return;
+    const held = await this.#findingsHeld();
+    const fresh = wentBack.filter(
+      ({ older, contradicted }) =>
+        !(held.get(OLDER_STATES) ?? []).some(
+          ({ targets, contradicted: named }) =>
+            targets.has(older) && contradicted.every((one) => named.has(one)),
+        ),
+    );
+    const classified = (subject: NamedNode, kind: string): Triple[] => [
+      [subject, iri(TYPE), iri(FINDING)],
+      [subject, iri(`${OA}hasBody`), iri(kind)],
+      [subject, iri(`${OA}motivatedBy`), iri(`${OA}classifying`)],
+    ];
+    if (fresh.length > 0)
+      await this.#file(writes, (subject) => [
+        ...classified(subject, OLDER_STATES),
+        ...fresh.flatMap(({ older, contradicted }): Triple[] => [
+          [subject, iri(`${OA}hasTarget`), iri(older)],
+          ...contradicted.map((one): Triple => [
+            subject,
+            iri(CONTRADICTED),
+            iri(one),
+          ]),
+        ]),
+      ]);
+    const clocks = new Map(
+      (held.get(CLOCK_BEHIND) ?? []).map(({ name }) => [
+        this.layout.place(FINDING).path(name),
+        name,
+      ]),
+    );
+    if (
+      this.clockBehind.length > 0 &&
+      !(await this.#firstParentsFiledUnanswered(clocks))
+    )
+      await this.#file(writes, (subject) => [
+        ...classified(subject, CLOCK_BEHIND),
+        [
+          subject,
+          iri(DAYS_BEHIND),
+          literal(
+            String(Math.max(...this.clockBehind.map(({ days }) => days))),
+            `${XSD}integer`,
+          ),
+        ],
+        ...this.clockBehind.map(({ revision }): Triple => [
+          subject,
+          iri(`${OA}hasTarget`),
+          iri(revision),
+        ]),
+      ]);
+  }
+
+  /**
+   * Adds the revisions held, after every file before them (W1), then the step's findings, and frees what the ladder was
+   * read over.
+   */
+  async write(
+    writes: StepWrites,
+    wentBack: readonly WentBack[] = [],
+  ): Promise<void> {
     for (const [path, bytes] of this.#files) writes.add(path, bytes);
+    await this.#fileFindings(writes, wentBack);
     const shared = this.#shared;
     this.#shared = undefined;
     if (shared !== undefined) freed(await shared);
@@ -616,15 +977,24 @@ function arrivals(
           `${where}: an arrival of ${record.value} came from no import that started`,
         );
       const documents = graph.objects(arrival, DERIVED_FROM);
+      const answered = documents.flatMap((document) =>
+        graph.objects(document, `${CASCADE}answeredAsOf`),
+      );
+      const retrieved = documents.flatMap((document) =>
+        graph.objects(document, `${PAV}retrievedOn`),
+      );
       const [observedAsOf = at] = [
-        ...documents.flatMap((document) =>
-          graph.objects(document, `${CASCADE}answeredAsOf`),
-        ),
-        ...documents.flatMap((document) =>
-          graph.objects(document, `${PAV}retrievedOn`),
-        ),
+        ...answered,
+        ...retrieved,
         ...graph.objects(arrival, `${PAV}lastUpdateOn`),
       ];
+      const [reached] = documents.map((document) => reachedIn(graph, document));
+      const pullSource =
+        documents.length === 1 && reached !== undefined
+          ? pullSourceOf(reached)
+          : undefined;
+      const retrievedByWriter =
+        pullSource === "" ? reached?.retrieved : undefined;
       return {
         record,
         place: recordPlace(layout, graph, record, where).place,
@@ -635,6 +1005,11 @@ function arrivals(
         at: at.value,
         observedAsOf,
         by,
+        writersClock:
+          retrievedByWriter !== undefined ||
+          (answered.length === 0 && observedAsOf === at),
+        ...(pullSource === undefined ? {} : { pullSource }),
+        ...(retrievedByWriter === undefined ? {} : { retrievedByWriter }),
       };
     });
 }
@@ -751,6 +1126,7 @@ export async function fileExport(
   const { layout } = context;
   const revisions = await Revisions.of(context);
   const kept = new Map<string, Triple[]>();
+  const wentBack: WentBack[] = [];
   for (const [done, found] of documents.entries()) {
     const documentIri = await documentName(found.bytes);
     if (
@@ -773,15 +1149,24 @@ export async function fileExport(
     const subject = iri(documentIri);
     refuseUnaccounted(graph, subject, found.path);
     let revised = false;
+    let reportedOlder = false;
     const arriving = arrivals(layout, graph, name, found.path);
     await revisions.prepare(arriving);
     for (const arrival of arriving) {
-      if (await revisions.repeats(arrival)) continue;
-      await revisions.revise(arrival, writes);
-      revised = true;
+      const repeated = await revisions.repeats(arrival);
+      const older = repeated
+        ? revisions.holding(arrival)
+        : await revisions.revise(arrival, writes);
+      revised ||= !repeated;
+      if (older === undefined) continue;
+      const contradicted = await revisions.contradictedBy(arrival);
+      if (contradicted.length === 0) continue;
+      wentBack.push({ older, contradicted });
+      reportedOlder = true;
     }
     if (
       revised ||
+      reportedOlder ||
       (await hasFindings(conversion.findings, documentIri, newStore))
     ) {
       writes.add(layout.storedBytes.path(documentIri), found.bytes);
@@ -803,7 +1188,7 @@ export async function fileExport(
       }
     }
   }
-  await revisions.write(writes);
+  await revisions.write(writes, wentBack);
   if (kept.size === 0) return name;
   const descriptions = [...kept.values()];
   const forms = new Set(await Promise.all(descriptions.map(canonical)));
@@ -926,6 +1311,7 @@ export async function fileEntry(
         at: at.value,
         observedAsOf: at,
         by: session.value,
+        writersClock: true,
       },
       context.writes,
     );
@@ -985,6 +1371,7 @@ export async function fileConnect(
     at: started,
     observedAsOf: literal(started, DATE_TIME),
     by: name,
+    writersClock: true,
   };
   if (await revisions.repeats(arrival)) return undefined;
   await revisions.revise(arrival, writes);
