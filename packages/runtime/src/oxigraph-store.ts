@@ -191,14 +191,13 @@ export class OxigraphStore implements Store {
 
   /**
    * Copied through one N-Quads dump of every graph, which keeps a blank node shared across graphs one node, then each
-   * graph not given dropped. Oxigraph wrote the dump, so it is loaded without checks or a transaction.
+   * graph not given dropped. Oxigraph wrote the dump, so it is loaded without checks.
    */
   async copy(graphs: ReadonlySet<string>): Promise<Store> {
     const copy = new OxigraphStore();
     if (this.#oxigraph === undefined && !this.#freed) return copy;
     copy.#store.load(this.#store.dump({ format: N_QUADS }), {
       format: N_QUADS,
-      no_transaction: true,
       lenient: true,
     });
     for (const graph of this.#graphs)
