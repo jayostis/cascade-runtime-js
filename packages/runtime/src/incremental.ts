@@ -1,7 +1,7 @@
 import type { PodState, VocabularyBuild } from "./build.js";
 import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
-import { ENTRY_PLACEHOLDER } from "./entries.js";
+import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
 import { type Term, type Triple, written } from "./rdf.js";
@@ -716,29 +716,12 @@ export class KeptBuild {
     const { rows } = await this.union.select(
       `${PREFIXES}SELECT ?one ?other WHERE { ?one cascade:currentlySame ?other }`,
     );
-    const parent = new Map<string, string>();
-    const root = (name: string): string => {
-      let at = name;
-      for (let up = parent.get(at); up !== undefined; up = parent.get(at))
-        at = up;
-      for (let on = name; on !== at;) {
-        const up = parent.get(on) as string;
-        parent.set(on, at);
-        on = up;
-      }
-      return at;
-    };
-    for (const row of rows) {
-      const [one, other] = [row.get("one"), row.get("other")];
-      if (one === undefined || other === undefined) continue;
-      const [a, b] = [root(written(one)), root(written(other))];
-      if (a !== b) parent.set(a, b);
-    }
+    const { root, joined } = unionFind(rows);
     const members = new Map<string, string[]>();
-    for (const name of parent.keys()) {
+    for (const name of joined) {
       const top = root(name);
       const held = members.get(top);
-      if (held === undefined) members.set(top, [top, name]);
+      if (held === undefined) members.set(top, [name]);
       else held.push(name);
     }
     return (thing) => {

@@ -1,6 +1,6 @@
 import { byCodePoint, entryHash } from "./names.js";
 import { iri, type Triple, written } from "./rdf.js";
-import type { Dataset } from "./store.js";
+import type { Dataset, Row } from "./store.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 
@@ -27,6 +27,37 @@ export function answersQuery(text: string): Promise<boolean> {
 }
 
 /**
+ * The union-find over the terms of the rows' `?one` and `?other`, each written as N-Triples writes it: `root` gives
+ * a term's component, the same for two terms a chain of rows joins, and `joined` every term no row leaves alone.
+ */
+export function unionFind(pairs: readonly Row[]): {
+  root: (term: string) => string;
+  joined: Iterable<string>;
+} {
+  const parent = new Map<string, string>();
+  const root = (term: string): string => {
+    let at = term;
+    for (let up = parent.get(at); up !== undefined; up = parent.get(at))
+      at = up;
+    for (let on = term; on !== at;) {
+      const up = parent.get(on) as string;
+      parent.set(on, at);
+      on = up;
+    }
+    return at;
+  };
+  const joined = new Set<string>();
+  for (const row of pairs) {
+    const [one, other] = [row.get("one"), row.get("other")];
+    if (one === undefined || other === undefined) continue;
+    const [a, b] = [root(written(one)), root(written(other))];
+    joined.add(written(one)).add(written(other));
+    if (a !== b) parent.set(a, b);
+  }
+  return { root, joined };
+}
+
+/**
  * The triples `queries/derivations/entries.rq` constructs, found by union-find over the currently-same pairs: linear in
  * the pairs, where the query's `cascade:currentlySame*` walks every entry once from each of its members (#246). The
  * derivations write `cascade:currentlySame` both ways, so what a record reaches through it is what it is joined to.
@@ -38,24 +69,7 @@ export async function entries(dataset: Dataset): Promise<Triple[]> {
   const { rows: kinds } = await dataset.select(
     `SELECT ?record ?kind WHERE { ?record <${CASCADE}recordKind> ?kind FILTER NOT EXISTS { ?record <${CASCADE}leftOutFor> [] } }`,
   );
-  const parent = new Map<string, string>();
-  const root = (name: string): string => {
-    let at = name;
-    for (let up = parent.get(at); up !== undefined; up = parent.get(at))
-      at = up;
-    for (let on = name; on !== at;) {
-      const up = parent.get(on) as string;
-      parent.set(on, at);
-      on = up;
-    }
-    return at;
-  };
-  for (const row of pairs) {
-    const [one, other] = [row.get("one"), row.get("other")];
-    if (one === undefined || other === undefined) continue;
-    const [a, b] = [root(written(one)), root(written(other))];
-    if (a !== b) parent.set(a, b);
-  }
+  const { root } = unionFind(pairs);
   const ofKind: [record: string, group: string][] = [];
   const least = new Map<string, string>();
   for (const row of kinds) {
