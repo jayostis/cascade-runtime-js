@@ -165,8 +165,7 @@ export class KeptBuild {
    */
   async compact(): Promise<void> {
     const was = this.#union;
-    this.#union = new Union(await was.store.copy(), was.graphs);
-    was.store.free?.();
+    this.#union = new Union(await was.store.renewed(), was.graphs);
   }
 
   get #derived(): string {

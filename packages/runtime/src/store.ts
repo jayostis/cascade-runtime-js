@@ -33,8 +33,11 @@ export interface Store {
     triples: readonly Triple[],
     union: ReadonlySet<string>,
   ): Promise<boolean[]>;
-  /** A store of its own holding every graph this one lists, each blank node under the label it has here. */
-  copy(): Promise<Store>;
+  /**
+   * A store of its own holding every graph this one lists, each blank node under the label it has here; this one is
+   * freed, before the new one is filled where it can be.
+   */
+  renewed(): Promise<Store>;
   /** Releases what the store holds; a store freed is never read again. */
   free?(): void;
 }

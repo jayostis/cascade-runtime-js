@@ -103,7 +103,7 @@ test("terms, quads and graphs the store frees once read leave the same answers w
   await assert.rejects(store.ask("ASK { ?s ?p ?o }", union), /freed/);
 });
 
-test("a union restored puts back every graph it dropped, added to or took subjects from, each blank node the node it was, names again a graph that held nothing, drops every graph it added, and is never used again; a copy of the store holds every quad, each blank node under its label", async () => {
+test("a union restored puts back every graph it dropped, added to or took subjects from, each blank node the node it was, names again a graph that held nothing, drops every graph it added, and is never used again; a store renewed is freed, and the new one holds every quad, each blank node under its label", async () => {
   const store = new OxigraphStore();
   await store.loadTurtle("<urn:s> <urn:p> [ <urn:q> 1 ] .", {
     graph: "urn:one",
@@ -161,9 +161,9 @@ test("a union restored puts back every graph it dropped, added to or took subjec
   await assert.rejects(union.drop("urn:two"), /restored/);
   await assert.rejects(union.restore(), /restored/);
 
-  const copy = await store.copy();
   const held = await quads();
-  store.free();
+  const copy = await store.renewed();
+  await assert.rejects(store.ask("ASK { ?s ?p ?o }", new Set()), /freed/);
   const copied = new Union(copy, graphs);
   assert.equal(await copied.ask(joined), true);
   assert.deepEqual(

@@ -298,36 +298,55 @@ export class OxigraphStore implements Store {
   }
 
   /**
-   * Copied a graph at a time from Oxigraph's N-Triples: the lines without a blank node loaded as Oxigraph wrote them,
-   * without checks, and the others added a triple at a time, since a load names its blank nodes afresh.
+   * Each graph read out as Oxigraph's N-Triples before this store is freed, so the new one fills the memory it held:
+   * the lines without a blank node loaded as Oxigraph wrote them, without checks, and the others added a triple at a
+   * time, since a load names its blank nodes afresh.
    */
-  async copy(): Promise<Store> {
-    const copy = new OxigraphStore();
+  async renewed(): Promise<Store> {
+    const renewed = new OxigraphStore();
     const store = this.#oxigraph;
+    const graphs: { graph: string; ground: string; blank: string }[] = [];
     for (const graph of this.#graphs) {
-      copy.#graphs.add(graph);
+      renewed.#graphs.add(graph);
       if (store === undefined) continue;
       const name = oxigraph.namedNode(graph);
+      let dumped: string;
+      try {
+        dumped = store.dump({ format: N_TRIPLES, from_graph_name: name });
+      } finally {
+        free(name);
+      }
+      if (!dumped.includes("_:")) {
+        graphs.push({ graph, ground: dumped, blank: "" });
+        continue;
+      }
       const ground: string[] = [];
       const blank: string[] = [];
-      try {
-        for (const line of store
-          .dump({ format: N_TRIPLES, from_graph_name: name })
-          .split("\n"))
-          if (line !== "") (line.includes("_:") ? blank : ground).push(line);
-        if (ground.length > 0)
-          copy.#store.load(`${ground.join("\n")}\n`, {
+      for (const line of dumped.split("\n"))
+        if (line !== "") (line.includes("_:") ? blank : ground).push(line);
+      graphs.push({
+        graph,
+        ground: ground.length === 0 ? "" : `${ground.join("\n")}\n`,
+        blank: blank.length === 0 ? "" : `${blank.join("\n")}\n`,
+      });
+    }
+    this.free();
+    for (const { graph, ground, blank } of graphs) {
+      if (ground !== "") {
+        const name = oxigraph.namedNode(graph);
+        try {
+          renewed.#store.load(ground, {
             format: N_TRIPLES,
             to_graph_name: name,
             lenient: true,
           });
-      } finally {
-        free(name);
+        } finally {
+          free(name);
+        }
       }
-      if (blank.length > 0)
-        await copy.add(nTriples(`${blank.join("\n")}\n`), { graph });
+      if (blank !== "") await renewed.add(nTriples(blank), { graph });
     }
-    return copy;
+    return renewed;
   }
 
   async drop(graph: string): Promise<void> {
