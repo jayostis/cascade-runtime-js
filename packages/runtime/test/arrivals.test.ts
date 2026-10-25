@@ -150,7 +150,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
     "s/blank.ttl",
     entry(
       "urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93",
-      "[ <urn:example:value> 2 ]",
+      `"Peanut" ; <urn:example:note> [ <urn:example:value> 2 ]`,
     ),
   );
   await source.write(
@@ -191,7 +191,7 @@ async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
     runtime: RUNTIME,
     story,
     source,
-    vocabulary: source,
+    vocabulary: files,
     folder: "s",
     title: "",
     pod: new MemoryFiles(story.address),
@@ -455,4 +455,125 @@ test("a document the Bridge fails on is refused with the Bridge's reason, and an
       on,
     );
   }
+});
+
+test("an export holding the current version restamped, a new version, then the current version restamped again writes the last two", async () => {
+  const files = await vocabulary();
+  const ada = "runtime/scripted-input/ada/";
+  const bytes = async (path: string): Promise<Uint8Array> =>
+    (await files.read(`${ada}${path}`)) ?? new Uint8Array();
+  const text = async (path: string): Promise<string> =>
+    new TextDecoder().decode(await bytes(path));
+  const source = new MemoryFiles("https://story.example/");
+  const record = (file: string, received: string): string =>
+    `<ClinicalRecord type="HKClinicalTypeIdentifierAllergyRecord" identifier="peanut" sourceName="Example Hospital" sourceURL="https://fhir.example.org/r4/AllergyIntolerance/peanut" fhirVersion="4.0.1" receivedDate="${received}" resourceFilePath="/clinical-records/${file}"/>`;
+  const exported = (date: string, records: string[]): Uint8Array =>
+    new TextEncoder().encode(
+      `<?xml version="1.0" encoding="UTF-8"?><HealthData locale="en_US"><ExportDate value="${date}"/>${records.join("")}</HealthData>`,
+    );
+  await source.write(
+    "s/first/apple_health_export/export.xml",
+    exported("2026-01-02 10:00:00 +0000", [
+      record("AllergyIntolerance-peanut.json", "2026-01-02 10:00:00 +0000"),
+    ]),
+  );
+  await source.write(
+    "s/first/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    await bytes(
+      "downloads/first-export/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    ),
+  );
+  await source.write(
+    "s/bridge/first/AllergyIntolerance-peanut/graph.ttl",
+    await bytes("bridge/first-export/AllergyIntolerance-peanut/graph.ttl"),
+  );
+  await source.write(
+    "s/second/apple_health_export/export.xml",
+    exported("2026-01-08 10:00:00 +0000", [
+      record("AllergyIntolerance-peanut-1.json", "2026-01-08 10:00:00 +0000"),
+      record("AllergyIntolerance-peanut-2.json", "2026-01-08 10:00:00 +0000"),
+      record("AllergyIntolerance-peanut-3.json", "2026-01-08 10:00:00 +0000"),
+    ]),
+  );
+  for (const [file, from] of [
+    ["AllergyIntolerance-peanut-1", "current-version-again"],
+    ["AllergyIntolerance-peanut-2", "new-content"],
+    ["AllergyIntolerance-peanut-3", "change-undone"],
+  ] as const) {
+    await source.write(
+      `s/second/apple_health_export/clinical-records/${file}.json`,
+      await bytes(
+        `downloads/${from}/apple_health_export/clinical-records/AllergyIntolerance-peanut.json`,
+      ),
+    );
+    await source.write(
+      `s/bridge/second/${file}/graph.ttl`,
+      new TextEncoder().encode(
+        (
+          await text(`bridge/${from}/AllergyIntolerance-peanut/graph.ttl`)
+        ).replaceAll(/2026-01-0[56]T10:00:00Z/g, "2026-01-08T10:00:00Z"),
+      ),
+    );
+  }
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+    steps: [
+      {
+        name: "create",
+        when: "2026-01-01T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+      ...(["first", "second"] as const).map((name, index) => ({
+        name,
+        when: ["2026-01-02T10:00:00Z", "2026-01-08T10:00:00Z"][index] ?? "",
+        happened: {
+          kind: "import" as const,
+          export: `${name}/apple_health_export`,
+          converted: `bridge/${name}`,
+        },
+      })),
+    ],
+  };
+  const { pod, steps, stopped } = await replay({
+    runtime: RUNTIME,
+    story,
+    source,
+    vocabulary: files,
+    folder: "s",
+    title: "",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    layout: await layout(),
+    importers: [appleHealthExport],
+  });
+  assert.equal(stopped, undefined);
+  assert.deepEqual(
+    steps.map(({ refused }) => refused),
+    [undefined, undefined, undefined],
+  );
+  const revisions: string[] = [];
+  for (const path of steps[2]?.wrote ?? []) {
+    if (!(await layout()).isRdf(path)) continue;
+    const { triples } = await parseGraph(
+      (await pod.read(path)) ?? new Uint8Array(),
+      pod.iri + path,
+      newStore,
+    );
+    for (const [s, p, o] of triples)
+      if (
+        p.value === "https://ns.cascadeprotocol.org/cascade#version" &&
+        triples.some(
+          ([t, q, k]) =>
+            t.value === s.value &&
+            q.value === "http://purl.org/pav/lastUpdateOn" &&
+            k.value !== "",
+        )
+      )
+        revisions.push(o.value);
+  }
+  assert.deepEqual(revisions.sort(), [
+    "ni:///sha-256;E64aGZVmGmEPgF7RM5roCn_8WdUdfQAgE1LC9RS2V4E",
+    "ni:///sha-256;EQDq-zpj8rTyF7HguJmKgu7Uqsz_dofpTOgIORGnaRM",
+  ]);
 });

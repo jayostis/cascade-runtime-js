@@ -5,7 +5,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, RDF } from "../src/rdf.js";
 import { PERFORMERS, replay } from "../src/replay.js";
 import type { Story } from "../src/story.js";
-import { layout, RUNTIME } from "./vocabulary.js";
+import { layout, RUNTIME, vocabulary } from "./vocabulary.js";
 
 test("a refused step writes nothing and the replay goes on; a step it cannot perform stops it, naming the kind", async () => {
   const story: Story = {
@@ -34,7 +34,7 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
     runtime: RUNTIME,
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
-    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
     folder: "",
     title: "",
     pod,
@@ -106,7 +106,7 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
     runtime: RUNTIME,
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
-    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
     folder: "",
     title: "",
     pod,
@@ -168,7 +168,7 @@ test("a view is written relative to itself: it names itself and its entries by n
     runtime: RUNTIME,
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
-    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
     folder: "",
     title: "",
     pod,
