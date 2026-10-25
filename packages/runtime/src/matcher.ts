@@ -262,12 +262,18 @@ function takenRecord(
   };
 }
 
-/** The subject's records, each with its kind, current version and first revisions. */
+/** The subject's records, or those of them named, each with its kind, current version and first revisions. */
 async function subjectRecords(
   dataset: Dataset,
   subject: string,
+  only?: readonly string[],
 ): Promise<TakenRecord[]> {
-  const theirs = `?record a cascade:Record ; cascade:subject <${subject}> .`;
+  if (only?.length === 0) return [];
+  const named =
+    only === undefined
+      ? ""
+      : `VALUES ?record { ${only.map((name) => `<${name}>`).join(" ")} } `;
+  const theirs = `${named}?record a cascade:Record ; cascade:subject <${subject}> .`;
   const records = await column(
     dataset,
     `SELECT DISTINCT ?record WHERE { ${theirs} }`,
@@ -396,11 +402,12 @@ async function serverRecords(dataset: Dataset): Promise<TakenRecord[]> {
 }
 
 /**
- * The records the matcher takes (M2), by name: the pod's subject's, if it has one, and each server's with a version,
- * each with its kind, current version and first revisions' arrival.
+ * The records the matcher takes (M2), by name: the pod's subject's, if it has one, or those of them named, and each
+ * server's with a version, each with its kind, current version and first revisions' arrival.
  */
 async function takenRecords(
   dataset: Dataset,
+  only?: readonly string[],
 ): Promise<Map<string, TakenRecord>> {
   const subjects = await column(
     dataset,
@@ -411,7 +418,9 @@ async function takenRecords(
     throw new Refusal(`the pod holds ${subjects.length} subjects, not one`);
   const subject = subjects[0]?.[0];
   const records = [
-    ...(subject === undefined ? [] : await subjectRecords(dataset, subject)),
+    ...(subject === undefined
+      ? []
+      : await subjectRecords(dataset, subject, only)),
     ...(await serverRecords(dataset)),
   ];
   return new Map(records.map((record) => [record.name, record]));
@@ -582,7 +591,7 @@ class Matcher {
     const current = (series: string): string | undefined =>
       adopted?.get(series) ??
       references.current(series, named.get(series) ?? []);
-    const pod = await read(union, references);
+    let pod = await read(union, references, takes);
     const bound =
       takes === undefined
         ? undefined
@@ -712,6 +721,7 @@ class Matcher {
       known =
         foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
       matched = await over(versions, found);
+      if (takes !== undefined) pod = await withPartners(union, pod, matched);
     } finally {
       union.store.free?.();
     }
@@ -1289,12 +1299,89 @@ async function recheckable(dataset: Dataset): Promise<Judged[]> {
     }));
 }
 
-async function read(dataset: Dataset, references: References): Promise<Pod> {
-  const held = await column(
-    dataset,
-    "SELECT DISTINCT ?thing WHERE { ?thing ?p ?o FILTER isIRI(?thing) }",
-    "thing",
+/**
+ * The pod with the records a run's joins pair its records with and the members of the Sames that count, which it files
+ * and stars by, beside those it read; the union may hold tables' rows by then, which state no record of the subject.
+ */
+async function withPartners(
+  union: Dataset,
+  pod: Pod,
+  matched: Joins,
+): Promise<Pod> {
+  const named = new Set<string>();
+  for (const pairs of matched.values())
+    for (const key of pairs.keys())
+      for (const name of names(key)) named.add(name);
+  for (const members of pod.sames) for (const name of members) named.add(name);
+  const missing = [...named].filter((name) => !pod.records.has(name));
+  if (missing.length === 0) return pod;
+  const found = await takenRecords(union, missing);
+  return { ...pod, records: new Map([...pod.records, ...found]) };
+}
+
+/**
+ * The things `describe` and a claim's filing ask whether the pod holds, among those it does: each series and version
+ * the tables describe that the pod states anything of, and each judgment.
+ */
+async function heldOf(
+  dataset: Dataset,
+  references: References,
+): Promise<string[][]> {
+  const described = new Set(
+    references.index
+      .match()
+      .flatMap(([subject]) =>
+        subject.termType === "NamedNode" ? [subject.value] : [],
+      ),
   );
+  const values = [...described].map((thing) => `<${thing}>`).join(" ");
+  return (await column(
+    dataset,
+    `SELECT DISTINCT ?thing WHERE { { ?thing cascade:verdict ?verdict } UNION { VALUES ?thing { ${values} } ?thing ?p ?o } }`,
+    "thing",
+  )) as string[][];
+}
+
+/**
+ * The records a run given the takes may take: those with a revision any of its acts generated, and, since those with
+ * none are never read, a refusal when any of the subject's records has no first revision, current version or first
+ * revision's time, as reading every record would give (M1).
+ */
+async function mayTake(dataset: Dataset, takes: Takes): Promise<string[]> {
+  const [lacking] = await column(
+    dataset,
+    `SELECT ?record WHERE {
+      ?subject a cascade:Subject .
+      ?record a cascade:Record ; cascade:subject ?subject .
+      OPTIONAL { ?record pav:hasCurrentVersion ?version }
+      OPTIONAL { ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf ?earlier }
+        OPTIONAL { ?first prov:generatedAtTime ?at } }
+      FILTER (!BOUND(?version) || !BOUND(?first) || !BOUND(?at))
+    } LIMIT 1`,
+    "record",
+  );
+  if (lacking?.[0] !== undefined)
+    throw new Refusal(
+      `${lacking[0]} has no first revision and current version`,
+    );
+  if (takes.acts.size === 0) return [];
+  const acts = [...takes.acts].map((act) => `<${act}>`).join(" ");
+  return (
+    await column(
+      dataset,
+      `SELECT DISTINCT ?record WHERE { VALUES ?act { ${acts} } ?revision prov:wasGeneratedBy ?act ; cascade:revisionOf ?record }`,
+      "record",
+    )
+  ).flatMap(([record]) => record ?? []);
+}
+
+/** What the matcher reads of the pod; given the takes, of the records only those the run may take. */
+async function read(
+  dataset: Dataset,
+  references: References,
+  takes?: Takes,
+): Promise<Pod> {
+  const held = await heldOf(dataset, references);
   const retracted = grouped(
     await column(
       dataset,
@@ -1393,7 +1480,10 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     asserted: new Map(
       [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
     ),
-    records: await takenRecords(dataset),
+    records: await takenRecords(
+      dataset,
+      takes === undefined ? undefined : await mayTake(dataset, takes),
+    ),
     judgments,
     withdrawn: new Set(
       claims.flatMap(([claim]) =>
