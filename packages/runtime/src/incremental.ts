@@ -7,7 +7,7 @@ import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
-import { RDF, type Triple, written } from "./rdf.js";
+import { RDF, type Term, type Triple, written } from "./rdf.js";
 import { type StoreFactory, Union } from "./store.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
@@ -379,23 +379,35 @@ export class KeptBuild {
     kept: KeptBuild;
     files: ReadonlyMap<string, readonly Triple[]>;
   }): Promise<void> {
-    const { address } = this.#rebuilding;
-    const line = (triple: Triple) =>
-      triple
-        .map((term) => (term.termType === "BlankNode" ? "[]" : written(term)))
-        .join(" ");
+    const { address, layout } = this.#rebuilding;
     const graphOf = async (union: Union, graph: string) =>
+      described(
+        await union.construct(
+          `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${graph}> { ?s ?p ?o } }`,
+        ),
+      );
+    const graphsOf = async (union: Union) =>
       new Set(
         (
-          await union.construct(
-            `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${graph}> { ?s ?p ?o } }`,
+          await union.select(
+            "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }",
           )
-        ).map(line),
+        ).rows.flatMap((row) => row.get("g")?.value ?? []),
       );
     const differences: string[] = [];
-    const compare = (what: string, kept: Set<string>, built: Set<string>) => {
-      const extra = [...kept].filter((line) => !built.has(line)).sort();
-      const missing = [...built].filter((line) => !kept.has(line)).sort();
+    const compare = (
+      what: string,
+      kept: ReadonlyMap<string, number>,
+      built: ReadonlyMap<string, number>,
+    ) => {
+      const beyond = (a: ReadonlyMap<string, number>, b: typeof a) =>
+        [...a]
+          .flatMap(([line, count]) =>
+            Array<string>(Math.max(0, count - (b.get(line) ?? 0))).fill(line),
+          )
+          .sort();
+      const extra = beyond(kept, built);
+      const missing = beyond(built, kept);
       if (extra.length > 0 || missing.length > 0)
         differences.push(
           `${what}: ${extra.length} more, ${missing.length} fewer than built whole\n` +
@@ -405,24 +417,29 @@ export class KeptBuild {
             ].join("\n"),
         );
     };
-    compare(
-      "the derived state",
-      await graphOf(this.union, this.#derived),
-      await graphOf(whole.kept.union, this.#derived),
-    );
+    const keptGraphs = await graphsOf(this.union);
+    const builtGraphs = await graphsOf(whole.kept.union);
+    const listed = (graphs: ReadonlySet<string>) =>
+      new Map([...graphs].map((graph) => [graph, 1]));
+    compare("the graphs", listed(keptGraphs), listed(builtGraphs));
+    const manifest = address + layout.manifest;
+    const loaded = new Set([...this.#loaded].map((path) => address + path));
+    for (const graph of new Set([...keptGraphs, ...builtGraphs]))
+      if (graph !== manifest && !loaded.has(graph))
+        compare(
+          graph === this.#derived
+            ? "the derived state"
+            : `${graph} in the union`,
+          await graphOf(this.union, graph),
+          await graphOf(whole.kept.union, graph),
+        );
     for (const [path, triples] of whole.files) {
-      if (path === this.#rebuilding.layout.manifest) continue;
-      const lines = (all: Iterable<Triple>) => new Set([...all].map(line));
-      compare(
-        `${path} in the union`,
-        await graphOf(this.union, address + path),
-        lines(triples),
-      );
+      if (path === layout.manifest) continue;
       const kept = this.#views.get(path) ?? this.#others.get(path) ?? undefined;
       const writing =
         kept !== undefined ? flat(kept) : (this.#always.get(path) ?? undefined);
       if (writing !== undefined)
-        compare(`${path} as written`, lines(writing), lines(triples));
+        compare(`${path} as written`, described(writing), described(triples));
     }
     whole.kept.free();
     if (differences.length > 0)
@@ -454,9 +471,9 @@ export class KeptBuild {
     const clinicalFolders = this.#clinicalFolders;
     const partFolders = this.#partFolders;
     const fresh = [...new Set(change.written)].filter(
-      (path) =>
-        layout.isRdf(path) && !rebuilt.has(path) && !this.#loaded.has(path),
+      (path) => layout.isRdf(path) && !rebuilt.has(path),
     );
+    if (fresh.some((path) => this.#loaded.has(path))) return undefined;
     const clinicalPaths: string[] = [];
     const sharedPaths: string[] = [];
     const wholeRecords = this.#wholeRecordFolders(await this.#serversJoined());
@@ -480,6 +497,7 @@ export class KeptBuild {
     await podFiles(this.#rebuilding.pod, layout, address, scope, newShared);
     for (const path of newShared) this.#scopeLoaded.add(path);
     await this.#learnJudging(scope, newShared);
+    if (await this.#namedBefore(sharedPaths, fresh)) return undefined;
 
     const references = this.#referencesFolder;
     const described = sharedPaths.filter(
@@ -498,14 +516,58 @@ export class KeptBuild {
       ...(layout.syncsFolder === undefined ? [] : [layout.syncsFolder]),
     ];
     if (
-      reached.size === 0 &&
+      reached.records.size === 0 &&
       sharedPaths.every((path) =>
         acts.some((folder) => path.startsWith(folder)),
       )
     )
       return this.#closing(pod);
-    const records = await this.#closed(reached);
-    return this.#rebuilt(records, sharedPaths, scope, pod);
+    const records = await this.#closed(reached.records);
+    return this.#rebuilt(records, reached.claims, sharedPaths, scope, pod);
+  }
+
+  /**
+   * Whether a file the step wrote, of no record of a clinical kind, describes a thing a file held before named but no
+   * file held before described: what named it was built as if it were absent, so its arrival can change what any
+   * record's state reads.
+   */
+  async #namedBefore(
+    paths: readonly string[],
+    stepWrote: readonly string[],
+  ): Promise<boolean> {
+    const { address } = this.#rebuilding;
+    const written = new Set(paths.map((path) => address + path));
+    const now = new Set(stepWrote);
+    const held = (graph: string) => {
+      const path = graph.startsWith(address) ? graph.slice(address.length) : "";
+      return this.#loaded.has(path) && !now.has(path);
+    };
+    const heldIn = async (things: Iterable<string>, pattern: string) => {
+      const found = new Set<string>();
+      for (const batch of batches([...new Set(things)])) {
+        const { rows } = await this.union.select(
+          `SELECT DISTINCT ?thing ?graph WHERE { VALUES ?thing { ${values(batch)} } GRAPH ?graph { ${pattern} } }`,
+        );
+        for (const row of rows) {
+          const thing = row.get("thing")?.value;
+          const graph = row.get("graph")?.value;
+          if (thing !== undefined && graph !== undefined && held(graph))
+            found.add(thing);
+        }
+      }
+      return found;
+    };
+    const things = await boundValues(
+      this.union,
+      written,
+      `GRAPH ?bound { ?found ?p ?o }`,
+    );
+    const describedBefore = await heldIn(things, "?thing ?p ?o");
+    const named = await heldIn(
+      [...things].filter((thing) => !describedBefore.has(thing)),
+      "?s ?p ?thing",
+    );
+    return named.size > 0;
   }
 
   /** Only the type index and the manifest, after a step that wrote no file another reads but an act's. */
@@ -524,13 +586,16 @@ export class KeptBuild {
   /**
    * The records of the clinical kinds the step wrote files of, and those its judgments, retractions, assertions and
    * findings reach: their members, through what each retracts, replaces, asserts or targets; a revision's record; and
-   * each record an act a judgment names wrote a revision of. Undefined when they reach a record of another kind.
+   * each record an act a judgment names wrote a revision of; with the claims that used a reference version the step
+   * described, which reach their records the same way. Undefined when they reach a record of another kind.
    */
   async #reached(
     clinicalPaths: readonly string[],
     sharedPaths: readonly string[],
     described: readonly string[],
-  ): Promise<Set<string> | undefined> {
+  ): Promise<
+    { readonly records: Set<string>; readonly claims: Set<string> } | undefined
+  > {
     const { address } = this.#rebuilding;
     const union = this.union;
     const found = await boundValues(
@@ -547,19 +612,24 @@ export class KeptBuild {
     const judging = sharedPaths.filter((path) =>
       judgingFolders.some((folder) => path.startsWith(folder)),
     );
+    const walk = `(prov:hadMember|prov:invalidated|dct:replaces|cascade:assertedClaim|oa:hasTarget)*`;
     const named = await boundValues(
       union,
       judging.map((path) => address + path),
-      `GRAPH ?bound { ?start a ?type }
-       ?start (prov:hadMember|prov:invalidated|dct:replaces|cascade:assertedClaim|oa:hasTarget)* ?found`,
+      `GRAPH ?bound { ?start a ?type } ?start ${walk} ?found`,
     );
-    for (const claim of await boundValues(
+    const claims = await boundValues(
       union,
       described.map((path) => address + path),
       `GRAPH ?bound { ?version prov:specializationOf ?series } ?found prov:used ?version`,
+    );
+    for (const reached of await boundValues(
+      union,
+      claims,
+      `?bound ${walk} ?found`,
     ))
-      named.add(claim);
-    if (named.size === 0) return found;
+      named.add(reached);
+    if (named.size === 0) return { records: found, claims };
     const other = values(this.#unviewedKinds);
     const elsewhere = await boundValues(
       union,
@@ -577,7 +647,7 @@ export class KeptBuild {
        UNION { ?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record }`,
     ))
       found.add(record);
-    return found;
+    return { records: found, claims };
   }
 
   /**
@@ -642,9 +712,13 @@ export class KeptBuild {
     return records;
   }
 
-  /** The files of the pod holding the records, with their versions and revisions. */
+  /**
+   * The files of the pod's records of the clinical kinds holding the records, with their versions and revisions: the
+   * scope holds every other file already, and keeps it.
+   */
   async #filesOf(records: Iterable<string>): Promise<string[]> {
     const { address } = this.#rebuilding;
+    const clinical = this.#clinicalFolders;
     const graphs = await boundValues(
       this.union,
       records,
@@ -653,12 +727,16 @@ export class KeptBuild {
     );
     return [...graphs].flatMap((graph) => {
       const path = graph.startsWith(address) ? graph.slice(address.length) : "";
-      return this.#loaded.has(path) ? [path] : [];
+      return this.#loaded.has(path) &&
+        clinical.some((folder) => path.startsWith(folder))
+        ? [path]
+        : [];
     });
   }
 
   async #rebuilt(
     records: ReadonlySet<string>,
+    describedClaims: ReadonlySet<string>,
     sharedPaths: readonly string[],
     scope: Union,
     pod: PodState,
@@ -729,6 +807,7 @@ export class KeptBuild {
        ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
        FILTER (?now != ?input)`,
     );
+    for (const claim of describedClaims) touchesStale.add(claim);
     const keptBefore = (
       await union.construct(
         `CONSTRUCT { ?claim <${MEMBERS_JOINED}> ?now } WHERE { GRAPH <${derivedGraph}> { ?claim <${MEMBERS_JOINED}> ?now } }`,
@@ -864,17 +943,25 @@ export class KeptBuild {
     }
     this.#held = held;
 
-    // The other files the queries write: the labels. Each gives a thing the least label of what describes it, and what
-    // describes anything but a record's current state and an entry only grows, so the least of the old label and the
-    // scope's is the whole pod's; but the scope's label of a judgment or a retraction whose members it lacks is none, nor
-    // that of an entry the act did not reach, which the scope may name from some of its members.
+    // The other files the queries write: the labels. Each gives a thing the least label of what describes it. The scope
+    // holds every member of the judgments and retractions that reach a record and every version of each, so their labels
+    // are taken from it as they are, as the records' and the entries' are: a judgment's label reads its members'
+    // versions, whose first name can replace "no name". Of anything else what describes it only grows, so the least of
+    // the old label and the scope's is the whole pod's; but the scope's label of a judgment or a retraction whose members
+    // it lacks is none, nor that of an entry the act did not reach, which the scope may name from some of its members.
     const clinicalViews = layout.views.flatMap(({ file, writtenAlways }) =>
       writtenAlways || file === undefined ? [] : [address + file],
     );
     for (const [path, made] of files) {
       if (layout.views.some(({ file }) => file === path)) continue;
       const graph = address + path;
-      const replaced = new Set([...records, ...entryNames, graph]);
+      const replaced = new Set([
+        ...records,
+        ...entryNames,
+        ...judgments,
+        ...retractions,
+        graph,
+      ]);
       const subjects = this.#others.get(path) ?? new Map<string, Triple[]>();
       this.#others.set(path, subjects);
       const madeBySubject = bySubject(made);
@@ -921,6 +1008,44 @@ export class KeptBuild {
     for (const path of files.keys()) await scope.drop(address + path);
     return changed;
   }
+}
+
+/**
+ * The triples as lines counted, each blank node written as what it says, so two graphs that differ only in their blank
+ * nodes' labels give the same lines, and two blank nodes saying the same thing count twice.
+ */
+function described(triples: readonly Triple[]): Map<string, number> {
+  const blank = new Map<string, Triple[]>();
+  const objects = new Set<string>();
+  for (const triple of triples) {
+    const [subject, , object] = triple;
+    if (subject.termType === "BlankNode") {
+      const held = blank.get(subject.value);
+      if (held === undefined) blank.set(subject.value, [triple]);
+      else held.push(triple);
+    }
+    if (object.termType === "BlankNode") objects.add(object.value);
+  }
+  const term = (value: Term, seen: ReadonlySet<string>): string => {
+    if (value.termType !== "BlankNode") return written(value);
+    if (seen.has(value.value)) return "[…]";
+    const inside = new Set([...seen, value.value]);
+    return `[ ${(blank.get(value.value) ?? [])
+      .map(
+        ([, predicate, object]) =>
+          `${written(predicate)} ${term(object, inside)}`,
+      )
+      .sort()
+      .join(" ; ")} ]`;
+  };
+  const counts = new Map<string, number>();
+  for (const [subject, predicate, object] of triples) {
+    if (subject.termType === "BlankNode" && objects.has(subject.value))
+      continue;
+    const line = `${term(subject, new Set())} ${written(predicate)} ${term(object, new Set())}`;
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** Of the two descriptions of one thing, for each predicate the triple whose object is least. */
