@@ -26,6 +26,9 @@ const NOTE = `# How things are named
 |---|---|---|---|
 | version | git blob | a hash of its content (N1) | borrowed |
 | scheme | as N2 does | declared per pod (#193) | ours |
+| order | | revisions in order (N1 to N3, Check 2) | ours |
+| layout (R1) | | where files go, \`runtime/pod-layout.ttl\` | ours |
+| shape | | closed, \`runtime/shapes.ttl\` | ours |
 
 ## Why
 
@@ -33,6 +36,8 @@ const NOTE = `# How things are named
 it holds, as [the rubric](#rubric) says, never [a script](javascript:void).
 
 **Why a scheme.** Pods differ.
+
+**Why a layout.** (row "layout (R1)") One place for each file.
 `;
 
 const FEATURE = `Feature: Naming
@@ -52,6 +57,9 @@ const FEATURE = `Feature: Naming
 
   Rule: N3. A pod declares its scheme once
     decisions/naming.md, row “scheme”. Declared at creation.
+
+  Rule: N4. Files go where the layout says
+    decisions/naming.md, row "layout (R1)". In folders.
 `;
 
 const KIT = `Feature: Kim's pod
@@ -68,6 +76,7 @@ const KIT = `Feature: Kim's pod
 
 const THE_KIT = `Feature: The conformance kit
   Rule: Check 1. Every example passes
+    No note rules this. Its tests are the examples.
 
   Rule: Check 2. Each final view equals expected/
 `;
@@ -139,6 +148,7 @@ before(async () => {
   await vocabulary.write("decisions/naming.md", text(NOTE));
   await vocabulary.write("runtime/naming.feature", text(FEATURE));
   await vocabulary.write("runtime/the-kit.feature", text(THE_KIT));
+  await vocabulary.write("runtime/pod-layout.ttl", text(""));
   await vocabulary.write("conformance/kim/kim.feature", text(KIT));
   await vocabulary.write("conformance/kim/scripted-input/people.ttl", text(""));
   for (const step of ["E1", "E2"])
@@ -150,7 +160,7 @@ before(async () => {
   built = await pagesOf(ASSERTIONS, RAN_WITH);
 });
 
-test("a rule with no note, a pointed row no Why paragraph names, and a Choice row whose what-we-do names no rule are each a warning", () => {
+test("a rule with no note, a pointed row no Why paragraph names, a Choice row whose what-we-do names no rule, rule run, file or issue, and a file a row names that is none are each a warning", () => {
   assert.deepEqual(
     built.warnings.map(({ kind, where, what }) => [kind, where, what]),
     [
@@ -163,19 +173,41 @@ test("a rule with no note, a pointed row no Why paragraph names, and a Choice ro
       [
         "rule names no note",
         "runtime/the-kit.feature",
-        "Check 1 names no note",
-      ],
-      [
-        "rule names no note",
-        "runtime/the-kit.feature",
         "Check 2 names no note",
       ],
       [
-        "row names no rule",
+        "pointer names nothing",
         "decisions/naming.md",
-        'row "scheme" names no rule (it names #193), though N3 names it',
+        'row "shape" names runtime/shapes.ttl, which is no file',
       ],
+      ["row names no rule", "decisions/naming.md", 'row "shape" names no rule'],
     ],
+  );
+});
+
+test("a rule that says no note rules it, and a row that names the issue that will write its rule, are listed apart from the warnings", () => {
+  assert.deepEqual(built.unnoted, ["runtime/the-kit.feature Check 1"]);
+  assert.deepEqual(built.waiting, [
+    { note: "decisions/naming.md", what: 'row "scheme" waits on #193' },
+  ]);
+  const html = pageText("the-kit.html");
+  assert.match(
+    readPage(
+      html.slice(html.indexOf('id="check-1"'), html.indexOf('id="check-2"')),
+    ).said,
+    /No decision note rules this[^]*Its tests are the examples\./,
+  );
+  assert.match(
+    readPage(pageText("index.html")).said,
+    /1 rule says no note rules it, and 1 Choice row waits on the issue that will write its rule/,
+  );
+});
+
+test("a Why paragraph names a row whose name holds parentheses", () => {
+  const html = pageText("naming.html");
+  assert.match(
+    readPage(html.slice(html.indexOf('id="n4"'))).said,
+    /Why a layout\. One place for each file\./,
   );
 });
 
@@ -196,7 +228,7 @@ test("a rule names the note and row that ruled it, with the Why paragraph that n
 
 test("a rule whose row no Why paragraph names shows the note's Why as a link alone", () => {
   const html = pageText("naming.html");
-  const n3 = html.slice(html.indexOf('id="n3"'));
+  const n3 = html.slice(html.indexOf('id="n3"'), html.indexOf('id="n4"'));
   assert.match(readPage(n3).said, /Ruled by How things are named , row scheme/);
   assert.ok(readPage(n3).hrefs.includes(`${BLOB}decisions/naming.md#why`));
   assert.doesNotMatch(n3, /blockquote/);
