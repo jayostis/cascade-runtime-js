@@ -123,7 +123,8 @@ function judgment(
  * no name), the matcher, a person's Same, Different (some typing a member, as an app may), Before, Erroneous, About and ClockDiscounted, retractions of her judgments and of
  * the matcher's assertions, version 2 of the ingredient map, and a second writer whose files, claims made under the
  * older map among them, each writer receives. Each judgment is written when its step is performed, from what the pod
- * then holds.
+ * then holds. The draws favour the unnamed pull before the named ones, then judgments over its records alone before
+ * the lower-case pull names them: the order in which taking a judgment's label by least keeps a stale one.
  */
 async function story(seed: number) {
   const local = await localVocabulary(ROOT);
@@ -234,7 +235,7 @@ async function story(seed: number) {
   };
 
   await perform("pod", { kind: "creation" }, 0);
-  const counts = { refused: 0 };
+  const counts = { refused: 0, overUnnamed: 0 };
   for (let index = 0; index < STEPS; index++) {
     const writer = writers > 1 && draw.chance(0.35) ? 1 : 0;
     const name = `s${index}`;
@@ -243,9 +244,16 @@ async function story(seed: number) {
     const add = (weight: number, move: () => Promise<void> | undefined) => {
       for (let i = 0; i < weight; i++) moves.push(move);
     };
+    const pulled = imported[writer] ?? new Set<string>();
+    const unnamedFirst =
+      pulled.has("pull-2024-unnamed") && !pulled.has("pull-2025");
+    const weights: Readonly<Record<string, number>> = {
+      "pull-2024-unnamed": pulled.has("pull-2024") ? 3 : 6,
+      "pull-2024": unnamedFirst ? 1 : 3,
+    };
     for (const [which, exported, converted] of IMPORTS)
-      if (!imported[writer]?.has(which))
-        add(3, async () => {
+      if (!pulled.has(which))
+        add(weights[which] ?? 3, async () => {
           imported[writer]?.add(which);
           own[writer]?.push(`${name}-${which}`);
           await perform(
@@ -329,12 +337,31 @@ async function story(seed: number) {
         pod,
         `SELECT ?found WHERE { ?revision cascade:revisionOf ?found FILTER NOT EXISTS { ?found a cascade:PatientProfile } FILTER NOT EXISTS { ?found a cascade:Server } }`,
       );
+    /**
+     * Distinct records, most often all of the unnamed pull's while no version of them has a name: a judgment over those
+     * alone is labelled "a patient profile" until the next pull names them in lower case, a label that sorts after it.
+     */
+    const members = async (pod: CorePod, count: number) => {
+      const unnamed = unnamedFirst
+        ? await column(
+            pod,
+            `SELECT ?found WHERE { ?found a ?kind VALUES ?kind { cascade:LaboratoryTestResult cascade:PrescribedOrReportedMedication }
+              FILTER NOT EXISTS { ?version prov:specializationOf ?found ; cascade:drugName|cascade:testName ?name } }`,
+          )
+        : [];
+      const overUnnamed = unnamed.length >= count && draw.chance(0.6);
+      const left = [...(overUnnamed ? unnamed : await records(pod))];
+      const found: string[] = [];
+      while (found.length < count && left.length > 0)
+        found.push(...left.splice(draw.below(left.length), 1));
+      if (found.length < count) return [];
+      if (overUnnamed) counts.overUnnamed++;
+      return found;
+    };
     for (const verdict of ["Same", "Different"])
-      judgmentMove(verdict, 2, async (pod, iri) => {
-        const all = await records(pod);
-        if (all.length < 2) return "";
-        const one = draw.pick(all);
-        const two = draw.pick(all.filter((record) => record !== one));
+      judgmentMove(verdict, unnamedFirst ? 4 : 2, async (pod, iri) => {
+        const [one, two] = await members(pod, 2);
+        if (one === undefined || two === undefined) return "";
         const typed = draw.chance(0.3)
           ? `<${one}> a cascade:Record .
 `
@@ -362,10 +389,9 @@ async function story(seed: number) {
         `\n  cascade:earlierMember <${earlier}> ;`,
       );
     });
-    judgmentMove("Erroneous", 1, async (pod, iri) => {
-      const all = await records(pod);
-      if (all.length === 0) return "";
-      const record = draw.pick(all);
+    judgmentMove("Erroneous", unnamedFirst ? 3 : 1, async (pod, iri) => {
+      const [record] = await members(pod, 1);
+      if (record === undefined) return "";
       const versions = await column(
         pod,
         `SELECT ?found WHERE { ?found prov:specializationOf <${record}> }`,
@@ -439,12 +465,19 @@ async function story(seed: number) {
 }
 
 test("after every step of stories drawn at random, the build kept across steps holds what a build of the whole pod holds (C8)", async () => {
+  let overUnnamed = 0;
   for (let seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
     const started = performance.now();
     const { steps, counts } = await story(seed);
+    overUnnamed += counts.overUnnamed;
     if (process.env["CASCADE_RANDOM_SEEDS"] !== undefined)
       console.log(
-        `seed ${seed}: ${steps.length} steps, ${counts.refused} with nothing to judge, ${Math.round(performance.now() - started)} ms`,
+        `seed ${seed}: ${steps.length} steps, ${counts.refused} with nothing to judge, ${counts.overUnnamed} over the unnamed pull's records alone, ${Math.round(performance.now() - started)} ms`,
       );
   }
+  if (SEEDS >= 8)
+    assert.ok(
+      overUnnamed > 0,
+      "no story judged the unnamed pull's records alone before the lower-case pull",
+    );
 });
