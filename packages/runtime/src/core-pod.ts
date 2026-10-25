@@ -103,6 +103,8 @@ export interface PodBuildOption {
   readonly incremental?: VocabularyBuild;
   /** For tests: after each step rebuilt in part, builds the pod whole too, and throws where the two differ. */
   readonly verify?: boolean;
+  /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
+  readonly renewAfterMoved?: number;
 }
 
 /** A writer's last snapshot: its name and its set hash, and what it keeps of the set it hashed. */
@@ -912,7 +914,11 @@ export class CorePod {
     }
     if (view.store !== this.#built?.union.store) return;
     this.#movedInBuilt += view.moved;
-    if (this.#movedInBuilt >= COMPACT_AFTER_MOVED) await this.#compactBuilt();
+    if (
+      this.#movedInBuilt >=
+      (this.#options.build?.renewAfterMoved ?? COMPACT_AFTER_MOVED)
+    )
+      await this.#compactBuilt();
   }
 
   /**
@@ -940,12 +946,20 @@ export class CorePod {
     else store.free?.();
   }
 
-  /** Moves the kept build to a store of its own, which every dataset kept as its union then reads. */
+  /**
+   * Moves the kept build to a store of its own, which every dataset kept as its union then reads; when that fails, the
+   * old store may be freed already, and the build is dropped, so the next read or step builds the pod whole.
+   */
   async #compactBuilt(): Promise<void> {
     const built = this.#built;
     if (built === undefined) return;
     const was = built.union;
-    await built.compact();
+    try {
+      await built.compact();
+    } catch (error) {
+      this.#dropDatasets(was.store);
+      throw error;
+    }
     this.#movedInBuilt = 0;
     for (const [key, held] of [...this.#kept])
       if (

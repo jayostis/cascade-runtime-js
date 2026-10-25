@@ -269,8 +269,11 @@ test("after every step, a match, a sync and a table adoption among them, the mat
   }
 });
 
-/** Every quad the store holds, each blank node by its label, sorted. */
-async function storeQuads(store: Store): Promise<string[]> {
+/** Every quad the store holds, each blank node by its label or, `placeholders`, as one placeholder, sorted. */
+async function storeQuads(
+  store: Store,
+  placeholders = false,
+): Promise<string[]> {
   const { rows } = await store.select(
     "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
     new Set(),
@@ -278,7 +281,12 @@ async function storeQuads(store: Store): Promise<string[]> {
   return rows
     .map((row) =>
       ["g", "s", "p", "o"]
-        .map((name) => written(row.get(name) ?? iri("urn:unbound")))
+        .map((name) => {
+          const term = row.get(name) ?? iri("urn:unbound");
+          return placeholders && term.termType === "BlankNode"
+            ? "_:b"
+            : written(term);
+        })
         .join(" "),
     )
     .sort();
@@ -288,7 +296,10 @@ const SYNC_RUN =
   "after both writers imported one export, the sync's run takes only the entry the other writer made";
 
 /** The sync story replayed with the build kept across steps, its run that takes records performed as `run` performs it. */
-async function replaySyncRun(run: Perform): Promise<void> {
+async function replaySyncRun(
+  run: Perform,
+  options: { readonly renewAfterMoved?: number } = {},
+): Promise<void> {
   const files = await vocabulary();
   const laidOut = await layout();
   const { story, folder } = await storyFrom("runtime/sync.feature", SYNC_RUN);
@@ -304,7 +315,14 @@ async function replaySyncRun(run: Perform): Promise<void> {
     newStore: () => new OxigraphStore(),
     layout: laidOut,
     importers: [appleHealthExport],
-    build: { lens: "everyday", derive: deriveWith(build), incremental: build },
+    build: {
+      lens: "everyday",
+      derive: deriveWith(build),
+      incremental: build,
+      ...(options.renewAfterMoved === undefined
+        ? {}
+        : { renewAfterMoved: options.renewAfterMoved }),
+    },
     performers: {
       ...PERFORMERS,
       matcher: (pod, step, side) =>
@@ -449,5 +467,45 @@ test("on the build kept across steps, a select lends the dataset to the matcher'
     checked += 1;
     return performed;
   });
+  assert.ok(checked > 0);
+});
+
+test("a kept build whose store fails to renew, after freeing itself, is dropped, and the next ask's dataset is the pod built whole", async () => {
+  const laidOut = await layout();
+  const query = "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1";
+  let checked = 0;
+  await replaySyncRun(
+    async (pod, step, side) => {
+      const performed = await (PERFORMERS.matcher as Perform)(pod, step, side);
+      const before = await storeQuads(
+        (await pod.dataset("everyday")).store,
+        true,
+      );
+      const { renewed } = OxigraphStore.prototype;
+      OxigraphStore.prototype.renewed = function (): Promise<Store> {
+        this.free();
+        return Promise.reject(new Error("the renewal fails"));
+      };
+      try {
+        await pod.select(query);
+        await assert.rejects(pod.dataset("everyday"), /the renewal fails/);
+      } finally {
+        OxigraphStore.prototype.renewed = renewed;
+      }
+      const whole = await pod.dataset("everyday");
+      // A pod read whole between steps does not know the snapshot the kept build used, which the manifest names.
+      const unbuilt = (quads: string[]) =>
+        quads.filter(
+          (quad) => !quad.startsWith(`<${pod.files.iri}${laidOut.manifest}>`),
+        );
+      assert.deepEqual(
+        unbuilt(await storeQuads(whole.store, true)),
+        unbuilt(before),
+      );
+      checked += 1;
+      return performed;
+    },
+    { renewAfterMoved: 1 },
+  );
   assert.ok(checked > 0);
 });

@@ -11,7 +11,8 @@ const SUBJECTS_AT_ONCE = 256;
 
 /** Frees what Oxigraph holds in its WebAssembly memory for each object now, rather than when the object is collected. */
 function free(...objects: readonly unknown[]): void {
-  for (const object of objects) (object as { free?: () => void }).free?.();
+  for (const object of objects)
+    (object as { free?: () => void } | undefined)?.free?.();
 }
 
 function fromOxigraph(term: oxigraph.Term): Term {
@@ -331,11 +332,23 @@ export class OxigraphStore implements Store {
       });
     }
     this.free();
+    try {
+      await renewed.#fill(graphs);
+    } catch (error) {
+      renewed.free();
+      throw error;
+    }
+    return renewed;
+  }
+
+  async #fill(
+    graphs: readonly { graph: string; ground: string; blank: string }[],
+  ): Promise<void> {
     for (const { graph, ground, blank } of graphs) {
       if (ground !== "") {
         const name = oxigraph.namedNode(graph);
         try {
-          renewed.#store.load(ground, {
+          this.#store.load(ground, {
             format: N_TRIPLES,
             to_graph_name: name,
             lenient: true,
@@ -344,9 +357,8 @@ export class OxigraphStore implements Store {
           free(name);
         }
       }
-      if (blank !== "") await renewed.add(nTriples(blank), { graph });
+      if (blank !== "") await this.add(nTriples(blank), { graph });
     }
-    return renewed;
   }
 
   async drop(graph: string): Promise<void> {
