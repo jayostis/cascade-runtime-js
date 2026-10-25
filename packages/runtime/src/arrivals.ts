@@ -736,19 +736,37 @@ class Revisions {
     return held;
   }
 
-  /** Whether an act in the first-parent ancestry of the writer's last snapshot wrote any of the files. */
-  async #firstParentsWrote(paths: ReadonlySet<string>): Promise<boolean> {
+  /**
+   * Whether an act in the first-parent ancestry of the writer's last snapshot filed one of the findings, by its path, that
+   * no person's judgment answers: neither an Acknowledged of it nor a ClockDiscounted of that act stands.
+   */
+  async #firstParentsFiledUnanswered(
+    findings: ReadonlyMap<string, string>,
+  ): Promise<boolean> {
     const head = this.context.lastSnapshot;
-    if (head === undefined || paths.size === 0) return false;
-    const { rows } = await (
-      await this.#sharedFiles()
-    ).select(`
+    if (head === undefined || findings.size === 0) return false;
+    const stands = (answer: string): string => `
+          ?${answer} prov:wasAttributedTo/a prov:Person .
+          FILTER NOT EXISTS { ?retraction prov:invalidated ?${answer} }
+          FILTER NOT EXISTS {
+            ?replacing dct:replaces ?${answer}
+            FILTER NOT EXISTS { ?undoing prov:invalidated ?replacing }
+          }`;
+    return (await this.#sharedFiles()).ask(`
       PREFIX cascade: <${CASCADE}>
-      SELECT DISTINCT ?path WHERE {
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX prov: <${PROV}>
+      ASK {
+        VALUES (?path ?finding) { ${[...findings].map(([path, finding]) => `("${path}" <${finding}>)`).join(" ")} }
         <${head}> cascade:firstParentSnapshot* ?snapshot .
-        ?snapshot cascade:fileAddedToSet ?path
+        ?snapshot cascade:fileAddedToSet ?path ; prov:wasGeneratedBy ?act .
+        FILTER NOT EXISTS {
+          ?acknowledgement cascade:verdict cascade:Acknowledged ; prov:hadMember ?finding .${stands("acknowledgement")}
+        }
+        FILTER NOT EXISTS {
+          ?discount cascade:verdict cascade:ClockDiscounted ; prov:hadMember ?act .${stands("discount")}
+        }
       }`);
-    return rows.some((row) => paths.has(row.get("path")?.value ?? ""));
   }
 
   /** Adds a finding of the kind, its subject named by its triples (cascade:FindingNamingRule). */
@@ -767,7 +785,7 @@ class Revisions {
    * Adds the step's findings, after the revisions they name (W1): one that its source reported older states, naming every
    * record that went back but those a finding the pod holds already names with each revision it contradicts; and one
    * that the writer's clock was behind, naming every revision the step wrote that shows it, unless an act in the
-   * first-parent ancestry of the writer's last snapshot filed one.
+   * first-parent ancestry of the writer's last snapshot filed one that no person's judgment answers.
    */
   async #fileFindings(
     writes: StepWrites,
@@ -799,12 +817,16 @@ class Revisions {
           ]),
         ]),
       ]);
-    const clocks = new Set(
-      (held.get(CLOCK_BEHIND) ?? []).map(({ name }) =>
+    const clocks = new Map(
+      (held.get(CLOCK_BEHIND) ?? []).map(({ name }) => [
         this.layout.place(FINDING).path(name),
-      ),
+        name,
+      ]),
     );
-    if (this.clockBehind.length > 0 && !(await this.#firstParentsWrote(clocks)))
+    if (
+      this.clockBehind.length > 0 &&
+      !(await this.#firstParentsFiledUnanswered(clocks))
+    )
       await this.#file(writes, (subject) => [
         ...classified(subject, CLOCK_BEHIND),
         [
