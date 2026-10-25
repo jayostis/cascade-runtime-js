@@ -34,6 +34,8 @@ const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const PAV = "http://purl.org/pav/";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
+const MEMBER_CURRENT_VALUES =
+  "https://ns.cascadeprotocol.org/cascade#memberCurrentValues";
 const TYPE = `${RDF}type`;
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const UUID_V4 =
@@ -92,7 +94,10 @@ async function podFiles(
   return files;
 }
 
-/** Check 2: a view's entries with what they state, each entry, named in its view, a blank node, whichever view names it. */
+/**
+ * Check 2: a view's entries with what they state but their members' current values, each entry, named in its view, a
+ * blank node, whichever view names it.
+ */
 function entriesOf(
   views: readonly string[],
   triples: readonly Triple[],
@@ -106,7 +111,9 @@ function entriesOf(
       ? blank(term.value.slice(term.value.indexOf("#") + 1))
       : term;
   return triples
-    .filter(([s]) => kept.has(written(s)))
+    .filter(
+      ([s, p]) => kept.has(written(s)) && p.value !== MEMBER_CURRENT_VALUES,
+    )
     .map(([s, p, o]) => [node(s), p, node(o)] as unknown as Triple);
 }
 
