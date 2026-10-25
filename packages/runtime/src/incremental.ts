@@ -1,7 +1,7 @@
 import type { PodState, VocabularyBuild } from "./build.js";
 import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
-import { ENTRY_PLACEHOLDER } from "./entries.js";
+import { ENTRY_PLACEHOLDER, unionFind } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
 import { type Term, type Triple, written } from "./rdf.js";
@@ -51,17 +51,23 @@ function batches<T>(all: readonly T[]): T[][] {
   return found;
 }
 
-/** The query's first variable's values, the query run once for each batch of the IRIs bound as `?bound`. */
+/**
+ * The query's first variable's values, the query run once for each batch of the IRIs bound as `?bound`. Several
+ * patterns are alternatives, each given the IRIs itself: Oxigraph's JavaScript build evaluates a UNION whole before
+ * joining it to the VALUES outside it.
+ */
 async function boundValues(
   union: Union,
   iris: Iterable<string>,
-  where: string,
+  where: string | readonly string[],
   variable = "found",
 ): Promise<Set<string>> {
   const found = new Set<string>();
+  const patterns = typeof where === "string" ? [where] : where;
   for (const batch of batches([...new Set(iris)])) {
+    const bound = `VALUES ?bound { ${values(batch)} }`;
     const { rows } = await union.select(
-      `${PREFIXES}SELECT DISTINCT ?${variable} WHERE { VALUES ?bound { ${values(batch)} } ${where} }`,
+      `${PREFIXES}SELECT DISTINCT ?${variable} WHERE { ${patterns.map((pattern) => `{ ${bound} ${pattern} }`).join(" UNION ")} }`,
     );
     for (const row of rows) {
       const value = row.get(variable);
@@ -360,7 +366,10 @@ export class KeptBuild {
     for (const found of await boundValues(
       scope,
       paths.map((path) => address + path),
-      `GRAPH ?bound { { ?found a cascade:Judgment } UNION { ?found prov:invalidated ?retracted } }`,
+      [
+        `GRAPH ?bound { ?found a cascade:Judgment }`,
+        `GRAPH ?bound { ?found prov:invalidated ?retracted }`,
+      ],
     ))
       this.#judging.add(found);
   }
@@ -595,8 +604,11 @@ export class KeptBuild {
     const found = await boundValues(
       union,
       clinicalPaths.map((path) => address + path),
-      `GRAPH ?bound { { ?x cascade:revisionOf ?found } UNION { ?x prov:specializationOf ?found }
-        UNION { ?found a ?kind VALUES ?kind { ${values(this.#clinicalKinds)} } } }`,
+      [
+        `GRAPH ?bound { ?x cascade:revisionOf ?found }`,
+        `GRAPH ?bound { ?x prov:specializationOf ?found }`,
+        `GRAPH ?bound { ?found a ?kind VALUES ?kind { ${values(this.#clinicalKinds)} } }`,
+      ],
     );
     const { layout } = this.#rebuilding;
     const judgingFolders = [
@@ -625,21 +637,17 @@ export class KeptBuild {
       named.add(reached);
     if (named.size === 0) return { records: found, claims };
     const other = values(this.#unviewedKinds);
-    const elsewhere = await boundValues(
-      union,
-      named,
-      `{ ?bound a ?kind VALUES ?kind { ${other} } } UNION { ?bound cascade:revisionOf/a ?kind VALUES ?kind { ${other} } }
-       BIND (?bound AS ?found)`,
-    );
+    const elsewhere = await boundValues(union, named, [
+      `?bound a ?kind VALUES ?kind { ${other} } BIND (?bound AS ?found)`,
+      `?bound cascade:revisionOf/a ?kind VALUES ?kind { ${other} } BIND (?bound AS ?found)`,
+    ]);
     if (elsewhere.size > 0) return undefined;
-    for (const record of await boundValues(
-      union,
-      named,
-      `{ ?bound a cascade:Record BIND (?bound AS ?found) }
-       UNION { ?bound cascade:revisionOf ?found . ?found a cascade:Record }
-       UNION { ?revision prov:wasGeneratedBy ?bound ; cascade:revisionOf ?found . ?found a cascade:Record }
-       UNION { ?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record }`,
-    ))
+    for (const record of await boundValues(union, named, [
+      `?bound a cascade:Record BIND (?bound AS ?found)`,
+      `?bound cascade:revisionOf ?found . ?found a cascade:Record`,
+      `?revision prov:wasGeneratedBy ?bound ; cascade:revisionOf ?found . ?found a cascade:Record`,
+      `?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record`,
+    ]))
       found.add(record);
     return { records: found, claims };
   }
@@ -654,6 +662,7 @@ export class KeptBuild {
   async #closed(start: ReadonlySet<string>): Promise<Set<string>> {
     const union = this.union;
     const serversJoined = await this.#serversJoined();
+    const same = await this.#currentlySame();
     const records = new Set(start);
     let frontier = [...start];
     while (frontier.length > 0) {
@@ -665,21 +674,14 @@ export class KeptBuild {
             next.add(record);
           }
       };
+      for (const record of frontier) add(same(record));
       add(
-        await boundValues(
-          union,
-          frontier,
-          `?bound (cascade:currentlySame|^cascade:currentlySame)* ?found`,
-        ),
-      );
-      add(
-        await boundValues(
-          union,
-          frontier,
-          `{ ?version prov:specializationOf ?bound ; ?names ?found . ?found a cascade:Record }
-           UNION { ?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record }
+        await boundValues(union, frontier, [
+          `?version prov:specializationOf ?bound ; ?names ?found . ?found a cascade:Record
            FILTER (?names != prov:specializationOf)`,
-        ),
+          `?version ?names ?bound ; prov:specializationOf ?found . ?found a cascade:Record
+           FILTER (?names != prov:specializationOf)`,
+        ]),
       );
       if (serversJoined)
         add(
@@ -707,18 +709,43 @@ export class KeptBuild {
   }
 
   /**
+   * What each thing reaches through `cascade:currentlySame` either way, itself among it: its component of the pairs, by
+   * union-find, where the path `(cascade:currentlySame|^cascade:currentlySame)*` walks the union from each thing.
+   */
+  async #currentlySame(): Promise<(thing: string) => readonly string[]> {
+    const { rows } = await this.union.select(
+      `${PREFIXES}SELECT ?one ?other WHERE { ?one cascade:currentlySame ?other }`,
+    );
+    const { root, joined } = unionFind(rows);
+    const members = new Map<string, string[]>();
+    for (const name of joined) {
+      const top = root(name);
+      const held = members.get(top);
+      if (held === undefined) members.set(top, [name]);
+      else held.push(name);
+    }
+    return (thing) => {
+      const found = members.get(root(`<${thing}>`));
+      return found === undefined
+        ? [thing]
+        : found.flatMap((name) =>
+            name.startsWith("<") ? [name.slice(1, -1)] : [],
+          );
+    };
+  }
+
+  /**
    * The files of the pod's records of the clinical kinds holding the records, with their versions and revisions: the
    * scope holds every other file already, and keeps it.
    */
   async #filesOf(records: Iterable<string>): Promise<string[]> {
     const { address } = this.#rebuilding;
     const clinical = this.#clinicalFolders;
-    const graphs = await boundValues(
-      this.union,
-      records,
-      `{ GRAPH ?found { ?bound a ?kind } } UNION { GRAPH ?found { ?owned prov:specializationOf ?bound } }
-       UNION { GRAPH ?found { ?owned cascade:revisionOf ?bound } }`,
-    );
+    const graphs = await boundValues(this.union, records, [
+      `GRAPH ?found { ?bound a ?kind }`,
+      `GRAPH ?found { ?owned prov:specializationOf ?bound }`,
+      `GRAPH ?found { ?owned cascade:revisionOf ?bound }`,
+    ]);
     return [...graphs].flatMap((graph) => {
       const path = graph.startsWith(address) ? graph.slice(address.length) : "";
       return this.#loaded.has(path) &&
@@ -751,11 +778,10 @@ export class KeptBuild {
       `GRAPH ?bound { ?found a cascade:Judgment }`,
     ))
       judgments.add(judgment);
-    const retractions = await boundValues(
-      union,
-      judgments,
-      `{ ?found prov:invalidated ?bound } UNION { ?found prov:invalidated ?assertion . ?assertion cascade:assertedClaim ?bound }`,
-    );
+    const retractions = await boundValues(union, judgments, [
+      `?found prov:invalidated ?bound`,
+      `?found prov:invalidated ?assertion . ?assertion cascade:assertedClaim ?bound`,
+    ]);
     for (const retraction of await boundValues(
       union,
       writtenGraphs,
@@ -769,16 +795,12 @@ export class KeptBuild {
     );
     const read = new Set([...records, ...members]);
 
-    const owned = await boundValues(
-      union,
-      records,
-      `?found prov:specializationOf|cascade:revisionOf ?bound`,
-    );
-    const ownedRead = await boundValues(
-      union,
-      read,
-      `?found prov:specializationOf|cascade:revisionOf ?bound`,
-    );
+    const ownedBy = [
+      `?found prov:specializationOf ?bound`,
+      `?found cascade:revisionOf ?bound`,
+    ];
+    const owned = await boundValues(union, records, ownedBy);
+    const ownedRead = await boundValues(union, read, ownedBy);
     const oldLeftOut = await boundValues(
       union,
       records,
@@ -852,12 +874,11 @@ export class KeptBuild {
       )
         candidates.add(value);
     }
-    for (const recordish of await boundValues(
-      union,
-      candidates,
-      `{ ?bound a cascade:Record } UNION { ?bound prov:specializationOf|cascade:revisionOf ?record . ?record a cascade:Record }
-       BIND (?bound AS ?found)`,
-    ))
+    for (const recordish of await boundValues(union, candidates, [
+      `?bound a cascade:Record BIND (?bound AS ?found)`,
+      `?bound prov:specializationOf ?record . ?record a cascade:Record BIND (?bound AS ?found)`,
+      `?bound cascade:revisionOf ?record . ?record a cascade:Record BIND (?bound AS ?found)`,
+    ]))
       candidates.delete(recordish);
     await union.removeSubjects(derivedGraph, [
       ...records,
