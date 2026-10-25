@@ -243,9 +243,16 @@ async function story(seed: number) {
     const add = (weight: number, move: () => Promise<void> | undefined) => {
       for (let i = 0; i < weight; i++) moves.push(move);
     };
+    const pulled = imported[writer] ?? new Set<string>();
+    const unnamedFirst =
+      pulled.has("pull-2024-unnamed") && !pulled.has("pull-2025");
+    const weights: Readonly<Record<string, number>> = {
+      "pull-2024-unnamed": pulled.has("pull-2024") ? 3 : 6,
+      "pull-2024": unnamedFirst ? 1 : 3,
+    };
     for (const [which, exported, converted] of IMPORTS)
-      if (!imported[writer]?.has(which))
-        add(3, async () => {
+      if (!pulled.has(which))
+        add(weights[which] ?? 3, async () => {
           imported[writer]?.add(which);
           own[writer]?.push(`${name}-${which}`);
           await perform(
@@ -329,12 +336,30 @@ async function story(seed: number) {
         pod,
         `SELECT ?found WHERE { ?revision cascade:revisionOf ?found FILTER NOT EXISTS { ?found a cascade:PatientProfile } FILTER NOT EXISTS { ?found a cascade:Server } }`,
       );
+    /**
+     * Distinct records, most often all of the unnamed pull's while no version of them has a name: a judgment over those
+     * alone is labelled "a patient profile" until the next pull names them in lower case, a label that sorts after it.
+     */
+    const members = async (pod: CorePod, count: number) => {
+      const unnamed = await column(
+        pod,
+        `SELECT ?found WHERE { ?found a ?kind VALUES ?kind { cascade:LaboratoryTestResult cascade:PrescribedOrReportedMedication }
+          FILTER NOT EXISTS { ?version prov:specializationOf ?found ; cascade:drugName|cascade:testName ?name } }`,
+      );
+      const left = [
+        ...(unnamed.length >= count && draw.chance(0.6)
+          ? unnamed
+          : await records(pod)),
+      ];
+      const found: string[] = [];
+      while (found.length < count && left.length > 0)
+        found.push(...left.splice(draw.below(left.length), 1));
+      return found.length === count ? found : [];
+    };
     for (const verdict of ["Same", "Different"])
-      judgmentMove(verdict, 2, async (pod, iri) => {
-        const all = await records(pod);
-        if (all.length < 2) return "";
-        const one = draw.pick(all);
-        const two = draw.pick(all.filter((record) => record !== one));
+      judgmentMove(verdict, unnamedFirst ? 4 : 2, async (pod, iri) => {
+        const [one, two] = await members(pod, 2);
+        if (one === undefined || two === undefined) return "";
         const typed = draw.chance(0.3)
           ? `<${one}> a cascade:Record .
 `
@@ -362,10 +387,9 @@ async function story(seed: number) {
         `\n  cascade:earlierMember <${earlier}> ;`,
       );
     });
-    judgmentMove("Erroneous", 1, async (pod, iri) => {
-      const all = await records(pod);
-      if (all.length === 0) return "";
-      const record = draw.pick(all);
+    judgmentMove("Erroneous", unnamedFirst ? 3 : 1, async (pod, iri) => {
+      const [record] = await members(pod, 1);
+      if (record === undefined) return "";
       const versions = await column(
         pod,
         `SELECT ?found WHERE { ?found prov:specializationOf <${record}> }`,
