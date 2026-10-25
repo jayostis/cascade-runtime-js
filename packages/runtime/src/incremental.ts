@@ -123,7 +123,7 @@ function flat(groups: ReadonlyMap<string, readonly Triple[]>): Triple[] {
  * anything else, or changes what every record reads, is rebuilt whole.
  */
 export class KeptBuild {
-  readonly union: Union;
+  #union: Union;
   readonly #rebuilding: Rebuilding;
   /** The paths of the pod's files the union holds. */
   readonly #loaded: Set<string>;
@@ -149,10 +149,23 @@ export class KeptBuild {
     held: ReadonlySet<string>,
   ) {
     this.#rebuilding = rebuilding;
-    this.union = union;
+    this.#union = union;
     this.#loaded = loaded;
     this.#held = held;
     this.#globalDerived = new Set();
+  }
+
+  get union(): Union {
+    return this.#union;
+  }
+
+  /**
+   * Moves the union to a store of its own holding the same graphs, and frees the one it was in: Oxigraph keeps something
+   * of every quad it removes, so a store whose quads are removed and added again many times grows without end.
+   */
+  async compact(): Promise<void> {
+    const was = this.#union;
+    this.#union = new Union(await was.store.renewed(), was.graphs);
   }
 
   get #derived(): string {

@@ -687,10 +687,10 @@ class Matcher {
     ): Promise<Joins> => {
       for (const version of shown)
         if (!held.includes(version)) {
-          await union.store.drop(version);
+          await union.drop(version);
           shown.delete(version);
         }
-      await union.store.drop(DESCRIBED);
+      await union.drop(DESCRIBED);
       for (const version of held) {
         if (!shown.has(version))
           await union.add(await references.rows(version, find), version);
@@ -730,19 +730,18 @@ class Matcher {
             });
     const { address, layout } = context;
     const folder = layout.place(`${CASCADE}ReferenceSeries`).folder;
-    context.releaseMatcherView();
     let known: Joins;
     let matched: Joins;
     try {
-      for (const graph of union.graphs)
-        if (folder !== undefined && graph.startsWith(address + folder))
-          await union.store.drop(graph);
+      if (folder !== undefined)
+        for (const graph of [...union.graphs])
+          if (graph.startsWith(address + folder)) await union.drop(graph);
       known =
         foundBefore.length > 0 ? await over(versionsBefore, foundBefore) : none;
       matched = await over(versions, found);
       if (scoped !== undefined) pod = await withPartners(union, pod, matched);
     } finally {
-      union.store.free?.();
+      await context.releaseMatcherView();
     }
     if (adopted === undefined)
       return new Matcher(

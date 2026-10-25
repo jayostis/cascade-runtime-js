@@ -3,13 +3,17 @@ import { test } from "node:test";
 import { CorePod, type CorePodOptions } from "../src/core-pod.js";
 import { type Files, MemoryFiles } from "../src/files.js";
 import { randomId } from "../src/ids.js";
-import type { Layout } from "../src/layout.js";
+import { LAYOUT_GRAPH, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, written, XSD } from "../src/rdf.js";
-import type { References } from "../src/references.js";
+import { References } from "../src/references.js";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { vocabularyDerive } from "../src/build.js";
-import { PERFORMERS, replay } from "../src/replay.js";
+import { deriveWith, vocabularyBuild, vocabularyDerive } from "../src/build.js";
+import { matcherView, runMatcher } from "../src/matcher.js";
+import { StepWrites } from "../src/pod.js";
+import { type Perform, PERFORMERS, replay } from "../src/replay.js";
+import { Refusal, type StepContext } from "../src/step.js";
+import { RestorableUnion, type Row, type Store } from "../src/store.js";
 import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const CREATED = "http://purl.org/dc/terms/created";
@@ -213,7 +217,7 @@ async function matcherViewQuads(pod: CorePod): Promise<string[]> {
     .sort();
 }
 
-test("after every step, a match, a sync and a table adoption among them, the matcher's view copied from the kept dataset is the one a pod keeping nothing reads and derives", async () => {
+test("after every step, a match, a sync and a table adoption among them, the matcher's view lent from the kept dataset is the one a pod keeping nothing reads and derives", async () => {
   const files = await vocabulary();
   const laidOut = await layout();
   const derive = await vocabularyDerive(files, laidOut);
@@ -263,4 +267,245 @@ test("after every step, a match, a sync and a table adoption among them, the mat
       example,
     );
   }
+});
+
+/** Every quad the store holds, each blank node by its label or, `placeholders`, as one placeholder, sorted. */
+async function storeQuads(
+  store: Store,
+  placeholders = false,
+): Promise<string[]> {
+  const { rows } = await store.select(
+    "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
+    new Set(),
+  );
+  return rows
+    .map((row) =>
+      ["g", "s", "p", "o"]
+        .map((name) => {
+          const term = row.get(name) ?? iri("urn:unbound");
+          return placeholders && term.termType === "BlankNode"
+            ? "_:b"
+            : written(term);
+        })
+        .join(" "),
+    )
+    .sort();
+}
+
+const SYNC_RUN =
+  "after both writers imported one export, the sync's run takes only the entry the other writer made";
+
+/** The sync story replayed with the build kept across steps, its run that takes records performed as `run` performs it. */
+async function replaySyncRun(
+  run: Perform,
+  options: { readonly renewAfterMoved?: number } = {},
+): Promise<void> {
+  const files = await vocabulary();
+  const laidOut = await layout();
+  const { story, folder } = await storyFrom("runtime/sync.feature", SYNC_RUN);
+  const build = await vocabularyBuild(files, laidOut);
+  const replayed = await replay({
+    runtime: RUNTIME,
+    story,
+    source: files,
+    vocabulary: files,
+    folder,
+    title: "",
+    pod: new MemoryFiles(story.address),
+    newStore: () => new OxigraphStore(),
+    layout: laidOut,
+    importers: [appleHealthExport],
+    build: {
+      lens: "everyday",
+      derive: deriveWith(build),
+      incremental: build,
+      ...(options.renewAfterMoved === undefined
+        ? {}
+        : { renewAfterMoved: options.renewAfterMoved }),
+    },
+    performers: {
+      ...PERFORMERS,
+      matcher: (pod, step, side) =>
+        step.happened.kind === "matcher" && step.happened.takes !== undefined
+          ? run(pod, step, side)
+          : (PERFORMERS.matcher as Perform)(pod, step, side),
+    },
+  });
+  assert.equal(replayed.stopped, undefined);
+}
+
+test("a match changes the dataset of the build kept across steps as the matcher's view and puts back every quad, each blank node the node it was, before the step writes", async () => {
+  let compared = 0;
+  await replaySyncRun(async (pod, step, side) => {
+    const kept = await pod.dataset("everyday");
+    const before = await storeQuads(kept.store);
+    const drop = kept.store.drop.bind(kept.store);
+    let dropped = 0;
+    kept.store.drop = (graph) => {
+      dropped += 1;
+      return drop(graph);
+    };
+    let after: string[] | undefined;
+    const { write, writeNew } = MemoryFiles.prototype;
+    const watched = async (): Promise<void> => {
+      after ??= await storeQuads(kept.store);
+    };
+    MemoryFiles.prototype.write = async function (path, bytes) {
+      await watched();
+      return write.call(this, path, bytes);
+    };
+    MemoryFiles.prototype.writeNew = async function (path, bytes) {
+      await watched();
+      return writeNew.call(this, path, bytes);
+    };
+    let performed;
+    try {
+      performed = await (PERFORMERS.matcher as Perform)(pod, step, side);
+    } finally {
+      Object.assign(MemoryFiles.prototype, { write, writeNew });
+      kept.store.drop = drop;
+    }
+    assert.ok(performed.wrote.length > 0 && dropped > 0, step.name);
+    assert.deepEqual(after, before, step.name);
+    compared += 1;
+    return performed;
+  });
+  assert.ok(compared > 0);
+});
+
+test("a match refused or failing after it changed the matcher's view puts back the dataset the view was lent from, every quad, each blank node the node it was", async () => {
+  const files = await vocabulary();
+  const laidOut = await layout();
+  let tried = 0;
+  await replaySyncRun(async (pod, step, side) => {
+    const takes = step.happened.kind === "matcher" ? step.happened.takes : "";
+    const activity = side.activities.get(takes ?? "");
+    assert.ok(activity !== undefined, step.name);
+    const lentFrom = await matcherView({
+      layout: laidOut,
+      pod: pod.files,
+      address: pod.files.iri,
+      vocabulary: files,
+      newStore: side.newStore,
+    });
+    let lent: RestorableUnion | undefined;
+    const context: StepContext = {
+      address: pod.files.iri,
+      subject: "",
+      pod: pod.files,
+      time: side.time,
+      writes: new StepWrites(),
+      newStore: side.newStore,
+      layout: laidOut,
+      vocabulary: files,
+      matcherView: async () =>
+        (lent ??= new RestorableUnion(lentFrom.store, lentFrom.graphs)),
+      releaseMatcherView: async () => {
+        await lent?.restore();
+        lent = undefined;
+      },
+      keptDataset: async () => undefined,
+    };
+    const references = await References.of(
+      side.source,
+      `${side.folder}/references/`,
+      side.newStore,
+    );
+    const before = await storeQuads(lentFrom.store);
+    for (const failure of [new Refusal("refused"), new Error("failed")]) {
+      let rowsAdded = false;
+      let changed = false;
+      const failing = new Proxy(references, {
+        get(target, key) {
+          if (key === "rows")
+            return (...args: Parameters<References["rows"]>) => {
+              rowsAdded ||= args[1] !== undefined;
+              return target.rows(...args);
+            };
+          if (key === "description" && rowsAdded)
+            return (thing: string) => {
+              changed = lent?.graphs.has(thing) ?? false;
+              throw failure;
+            };
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      await assert.rejects(
+        runMatcher(context, failing, activity),
+        (error) => error === failure,
+      );
+      assert.ok(changed && lent === undefined, failure.message);
+      assert.deepEqual(
+        await storeQuads(lentFrom.store),
+        before,
+        failure.message,
+      );
+      tried += 1;
+    }
+    lentFrom.store.free?.();
+    return (PERFORMERS.matcher as Perform)(pod, step, side);
+  });
+  assert.equal(tried, 2);
+});
+
+test("on the build kept across steps, a select lends the dataset to the matcher's view and the next ask's dataset is every quad again, the layout and the files the build writes among them", async () => {
+  const laidOut = await layout();
+  const query = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
+  const graphs = (rows: readonly Row[]): Set<string> =>
+    new Set(rows.flatMap((row) => row.get("g")?.value ?? []));
+  let checked = 0;
+  await replaySyncRun(async (pod, step, side) => {
+    const performed = await (PERFORMERS.matcher as Perform)(pod, step, side);
+    const before = await storeQuads((await pod.dataset("everyday")).store);
+    const lent = graphs((await pod.select(query)).rows);
+    const kept = await pod.dataset("everyday");
+    const all = graphs((await kept.select(query)).rows);
+    assert.deepEqual(await storeQuads(kept.store), before);
+    for (const graph of [LAYOUT_GRAPH, pod.files.iri + laidOut.manifest])
+      assert.ok(all.has(graph) && !lent.has(graph), graph);
+    checked += 1;
+    return performed;
+  });
+  assert.ok(checked > 0);
+});
+
+test("a kept build whose store fails to renew, after freeing itself, is dropped, and the next ask's dataset is the pod built whole", async () => {
+  const laidOut = await layout();
+  const query = "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1";
+  let checked = 0;
+  await replaySyncRun(
+    async (pod, step, side) => {
+      const performed = await (PERFORMERS.matcher as Perform)(pod, step, side);
+      const before = await storeQuads(
+        (await pod.dataset("everyday")).store,
+        true,
+      );
+      const { renewed } = OxigraphStore.prototype;
+      OxigraphStore.prototype.renewed = function (): Promise<Store> {
+        this.free();
+        return Promise.reject(new Error("the renewal fails"));
+      };
+      try {
+        await pod.select(query);
+        await assert.rejects(pod.dataset("everyday"), /the renewal fails/);
+      } finally {
+        OxigraphStore.prototype.renewed = renewed;
+      }
+      const whole = await pod.dataset("everyday");
+      // A pod read whole between steps does not know the snapshot the kept build used, which the manifest names.
+      const unbuilt = (quads: string[]) =>
+        quads.filter(
+          (quad) => !quad.startsWith(`<${pod.files.iri}${laidOut.manifest}>`),
+        );
+      assert.deepEqual(
+        unbuilt(await storeQuads(whole.store, true)),
+        unbuilt(before),
+      );
+      checked += 1;
+      return performed;
+    },
+    { renewAfterMoved: 1 },
+  );
+  assert.ok(checked > 0);
 });

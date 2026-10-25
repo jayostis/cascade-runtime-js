@@ -6,13 +6,13 @@ import type { LoadOptions, Rows, Store } from "./store.js";
 const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
-const N_QUADS = "application/n-quads";
 /** The subjects one removal binds: Oxigraph's JavaScript build joins a long VALUES block in more than linear time. */
 const SUBJECTS_AT_ONCE = 256;
 
 /** Frees what Oxigraph holds in its WebAssembly memory for each object now, rather than when the object is collected. */
 function free(...objects: readonly unknown[]): void {
-  for (const object of objects) (object as { free?: () => void }).free?.();
+  for (const object of objects)
+    (object as { free?: () => void } | undefined)?.free?.();
 }
 
 function fromOxigraph(term: oxigraph.Term): Term {
@@ -299,32 +299,66 @@ export class OxigraphStore implements Store {
   }
 
   /**
-   * Copied as one N-Quads load fed each graph given in turn, dumped as N-Triples with its name added to each line: one
-   * load keeps a blank node shared across graphs one node, where Oxigraph names a load's blank nodes afresh. Oxigraph
-   * wrote the lines, so they are loaded without checks.
+   * Each graph read out as Oxigraph's N-Triples before this store is freed, so the new one fills the memory it held:
+   * the lines without a blank node loaded as Oxigraph wrote them, without checks, and the others added a triple at a
+   * time, since a load names its blank nodes afresh.
    */
-  async copy(graphs: ReadonlySet<string>): Promise<Store> {
-    const copy = new OxigraphStore();
-    if (this.#oxigraph === undefined && !this.#freed) return copy;
-    const store = this.#store;
-    const held = [...graphs].filter((graph) => this.#graphs.has(graph));
-    copy.#store.load(
-      (function* (): Generator<string> {
-        for (const graph of held) {
-          const name = oxigraph.namedNode(graph);
-          try {
-            yield store
-              .dump({ format: N_TRIPLES, from_graph_name: name })
-              .replaceAll(" .\n", ` ${written(iri(graph))} .\n`);
-          } finally {
-            free(name);
-          }
+  async renewed(): Promise<Store> {
+    const renewed = new OxigraphStore();
+    const store = this.#oxigraph;
+    const graphs: { graph: string; ground: string; blank: string }[] = [];
+    for (const graph of this.#graphs) {
+      renewed.#graphs.add(graph);
+      if (store === undefined) continue;
+      const name = oxigraph.namedNode(graph);
+      let dumped: string;
+      try {
+        dumped = store.dump({ format: N_TRIPLES, from_graph_name: name });
+      } finally {
+        free(name);
+      }
+      if (!dumped.includes("_:")) {
+        graphs.push({ graph, ground: dumped, blank: "" });
+        continue;
+      }
+      const ground: string[] = [];
+      const blank: string[] = [];
+      for (const line of dumped.split("\n"))
+        if (line !== "") (line.includes("_:") ? blank : ground).push(line);
+      graphs.push({
+        graph,
+        ground: ground.length === 0 ? "" : `${ground.join("\n")}\n`,
+        blank: blank.length === 0 ? "" : `${blank.join("\n")}\n`,
+      });
+    }
+    this.free();
+    try {
+      await renewed.#fill(graphs);
+    } catch (error) {
+      renewed.free();
+      throw error;
+    }
+    return renewed;
+  }
+
+  async #fill(
+    graphs: readonly { graph: string; ground: string; blank: string }[],
+  ): Promise<void> {
+    for (const { graph, ground, blank } of graphs) {
+      if (ground !== "") {
+        const name = oxigraph.namedNode(graph);
+        try {
+          this.#store.load(ground, {
+            format: N_TRIPLES,
+            to_graph_name: name,
+            lenient: true,
+          });
+        } finally {
+          free(name);
         }
-      })(),
-      { format: N_QUADS, lenient: true },
-    );
-    for (const graph of held) copy.#graphs.add(graph);
-    return copy;
+      }
+      if (blank !== "") await this.add(nTriples(blank), { graph });
+    }
   }
 
   async drop(graph: string): Promise<void> {

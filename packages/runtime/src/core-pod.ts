@@ -42,13 +42,24 @@ import {
   type StepContext,
   type StepFile,
 } from "./step.js";
-import { type Rows, type StoreFactory, Union } from "./store.js";
+import {
+  RestorableUnion,
+  type Rows,
+  type Store,
+  type StoreFactory,
+  Union,
+} from "./store.js";
 
 const PROV = "http://www.w3.org/ns/prov#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = `${RDF}type`;
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
+/**
+ * The quads the matcher's views may remove from the kept build's store and add again before the build moves to a store
+ * of its own: about 12 lends at 10,000 records, each moving some 175,000 quads.
+ */
+const COMPACT_AFTER_MOVED = 2_000_000;
 const REVISION = "revision";
 const KEPT = "kept";
 
@@ -92,6 +103,8 @@ export interface PodBuildOption {
   readonly incremental?: VocabularyBuild;
   /** For tests: after each step rebuilt in part, builds the pod whole too, and throws where the two differ. */
   readonly verify?: boolean;
+  /** The quads the matcher's views may remove from the kept build's store and add again before it is renewed. */
+  readonly renewAfterMoved?: number;
 }
 
 /** A writer's last snapshot: its name and its set hash, and what it keeps of the set it hashed. */
@@ -417,6 +430,8 @@ export class CorePod {
   #writing = new Map<string, ActFile>();
   /** Whether a step is being performed, after which the pod builds its dataset again. */
   #performing = false;
+  /** The quads the matcher's views lent from the kept build's store have had it remove and add again. */
+  #movedInBuilt = 0;
 
   constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
@@ -438,10 +453,12 @@ export class CorePod {
 
   /**
    * The pod as an ask reads it under the lens: its files but those the build writes, the files the build writes, the
-   * lens's derived state and the layout, each a graph of a store of its own. The union is read only until the next step
-   * or `close`, which free it.
+   * lens's derived state and the layout, each a graph of a store of its own. The union is valid only until the next
+   * step, `select` or `close`: a step or `close` frees it or moves it to a store of its own, and a `select` lends it to
+   * the matcher's view.
    */
-  dataset(lens: string): Promise<Union> {
+  async dataset(lens: string): Promise<Union> {
+    await this.#putBackMatcherView();
     return this.#held(`${DATASET}${lens}`, () =>
       this.#filled(new Union(this.#options.newStore()), lens),
     );
@@ -485,6 +502,7 @@ export class CorePod {
   #dropBuilt(): void {
     this.#built?.free();
     this.#built = undefined;
+    this.#movedInBuilt = 0;
   }
 
   /**
@@ -494,11 +512,12 @@ export class CorePod {
   #release(): void {
     const kept = this.#kept;
     this.#kept = new Map();
-    const owned = this.#built?.union;
+    const owned = this.#built?.union.store;
     for (const held of kept.values())
       held.then(
         (union) => {
-          if (union instanceof Union && union !== owned) union.store.free?.();
+          if (union instanceof Union && union.store !== owned)
+            union.store.free?.();
         },
         () => undefined,
       );
@@ -819,8 +838,16 @@ export class CorePod {
     }
   }
 
-  /** The dataset kept under the build's lens, which holds the pod's files and their derived state, if any. */
+  /**
+   * The dataset kept under the build's lens, which holds the pod's files and their derived state, if any; put back
+   * first, when the matcher's view is lent from it.
+   */
   async #keptDataset(): Promise<Union | undefined> {
+    await this.#putBackMatcherView();
+    return this.#keptUnderLens();
+  }
+
+  #keptUnderLens(): Promise<Union | undefined> | undefined {
     const lens = this.#options.build?.lens;
     const kept =
       lens === undefined
@@ -831,14 +858,15 @@ export class CorePod {
 
   /**
    * The matcher's view: the dataset kept under the matcher's lens, which holds the same files and derived state, without
-   * the files the build writes and the layout; taken from what the pod keeps during a step, which builds it again after,
-   * and copied between steps, when an ask may still read it. Else read and derived.
+   * the files the build writes and the layout. That dataset is changed in place and lent until the view is released or
+   * the dataset is read, when it is put back as it was; but during a step a dataset the build does not keep across
+   * steps is taken from what the pod keeps, which builds it again after. Else read and derived.
    */
   #matcherView(): Promise<Union> {
     return this.#held(MATCHER_VIEW, async () => {
       const { build, address, layout } = this.#options;
       const dataset =
-        build?.lens === MATCHER_LENS ? await this.#keptDataset() : undefined;
+        build?.lens === MATCHER_LENS ? await this.#keptUnderLens() : undefined;
       if (dataset === undefined)
         return matcherView(this.#options, this.#keep());
       const rebuilt = new Set(layout.rebuilt.map((path) => address + path));
@@ -850,11 +878,95 @@ export class CorePod {
         for (const graph of left) await dataset.drop(graph);
         return dataset;
       }
-      const graphs = new Set(
-        [...dataset.graphs].filter((graph) => !left.includes(graph)),
-      );
-      return new Union(await dataset.store.copy(graphs), graphs);
+      const view = new RestorableUnion(dataset.store, dataset.graphs);
+      for (const graph of left) await view.drop(graph);
+      return view;
     });
+  }
+
+  /** Puts back the dataset the matcher's view is lent from, if it is, so that whatever reads it next reads all of it. */
+  async #putBackMatcherView(): Promise<void> {
+    const held = this.#kept.get(MATCHER_VIEW) as Promise<Union> | undefined;
+    if (held === undefined) return;
+    const view = await held.catch(() => undefined);
+    if (
+      view instanceof RestorableUnion &&
+      this.#kept.get(MATCHER_VIEW) === held
+    )
+      await this.#releaseMatcherView();
+  }
+
+  /** Takes the matcher's view out of what the pod keeps: puts back the dataset it was made in, or frees its store. */
+  async #releaseMatcherView(): Promise<void> {
+    const held = this.#kept.get(MATCHER_VIEW) as Promise<Union> | undefined;
+    if (held === undefined) return;
+    this.#kept.delete(MATCHER_VIEW);
+    const view = await held.catch(() => undefined);
+    if (!(view instanceof RestorableUnion)) {
+      view?.store.free?.();
+      return;
+    }
+    try {
+      await view.restore();
+    } catch (error) {
+      this.#dropDatasets(view.store);
+      throw error;
+    }
+    if (view.store !== this.#built?.union.store) return;
+    this.#movedInBuilt += view.moved;
+    if (
+      this.#movedInBuilt >=
+      (this.#options.build?.renewAfterMoved ?? COMPACT_AFTER_MOVED)
+    )
+      await this.#compactBuilt();
+  }
+
+  /**
+   * Forgets every dataset the pod keeps, freeing each, and the build kept across steps: a store a view was not put back
+   * in whole is read again by nothing.
+   */
+  #dropDatasets(store: Store): void {
+    const built = this.#built?.union.store;
+    for (const [key, held] of [...this.#kept])
+      if (key.startsWith(DATASET)) {
+        this.#kept.delete(key);
+        held.then(
+          (union) => {
+            if (
+              union instanceof Union &&
+              union.store !== built &&
+              union.store !== store
+            )
+              union.store.free?.();
+          },
+          () => undefined,
+        );
+      }
+    if (store === built) this.#dropBuilt();
+    else store.free?.();
+  }
+
+  /**
+   * Moves the kept build to a store of its own, which every dataset kept as its union then reads; when that fails, the
+   * old store may be freed already, and the build is dropped, so the next read or step builds the pod whole.
+   */
+  async #compactBuilt(): Promise<void> {
+    const built = this.#built;
+    if (built === undefined) return;
+    const was = built.union;
+    try {
+      await built.compact();
+    } catch (error) {
+      this.#dropDatasets(was.store);
+      throw error;
+    }
+    this.#movedInBuilt = 0;
+    for (const [key, held] of [...this.#kept])
+      if (
+        key.startsWith(DATASET) &&
+        (await held.catch(() => undefined)) === was
+      )
+        this.#kept.set(key, Promise.resolve(built.union));
   }
 
   /** What is kept under the key, or what `make` builds, kept until a step unless it fails. */
@@ -923,7 +1035,7 @@ export class CorePod {
   /**
    * The current table versions the pod names that its tables do not hold, of each series a matcher Same used another
    * version of: the Same counts on where a device holds the version and its rows join the members, and not here (M7).
-   * Read over the dataset kept under the build's lens when there is one, rather than a copy of it as the matcher's view.
+   * Read over the dataset kept under the build's lens when there is one, rather than the matcher's view of it.
    */
   async unheldTableVersions(): Promise<readonly string[]> {
     let kept = this.#kept.get(KEPT) as Promise<Kept> | undefined;
@@ -985,10 +1097,11 @@ export class CorePod {
           ? {}
           : { lastSnapshot: this.#head.snapshot }),
         matcherView: () => this.#matcherView(),
-        releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
+        releaseMatcherView: () => this.#releaseMatcherView(),
         keptDataset: () => this.#keptOrBuiltWhole(at),
-      }).finally(() => {
+      }).finally(async () => {
         this.#performing = false;
+        await this.#releaseMatcherView();
       });
       let head: Head | undefined;
       let hashed: { readonly set: HashedSet; readonly act: string } | undefined;
