@@ -2,7 +2,7 @@ import { featureStory } from "../conformance.js";
 import type { Files } from "../files.js";
 import { OxigraphStore } from "../oxigraph-store.js";
 import { type Replayed, replay, titleOf } from "../replay.js";
-import { vocabularyDerive } from "../build.js";
+import { deriveWith, vocabularyBuild } from "../build.js";
 import { importersNamed } from "../importers.js";
 import type { References } from "../references.js";
 import { type LocalVocabulary, thisRuntime } from "./runtime.js";
@@ -21,16 +21,19 @@ export async function featurePod(
     readonly example?: string;
     readonly through?: string;
     readonly tables?: () => Promise<References>;
+    /** Builds the pod whole after each step too, and stops where the build in part differs. */
+    readonly verify?: boolean;
   } = {},
 ): Promise<Replayed> {
   const newStore = () => new OxigraphStore();
-  const { tables, ...which } = options;
+  const { tables, verify, ...which } = options;
   const { feature, person, steps } = await featureStory(
     vocabulary.files,
     path,
     newStore,
     which,
   );
+  const build = await vocabularyBuild(vocabulary.files, vocabulary.layout);
   const replayed = await replay({
     story: {
       address: person.address,
@@ -55,7 +58,9 @@ export async function featurePod(
     ...(tables === undefined ? {} : { references: tables }),
     build: {
       lens: vocabulary.config.lens,
-      derive: await vocabularyDerive(vocabulary.files, vocabulary.layout),
+      derive: deriveWith(build),
+      incremental: build,
+      ...(verify === true ? { verify } : {}),
     },
   });
   if (replayed.stopped !== undefined)

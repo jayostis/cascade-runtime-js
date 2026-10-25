@@ -387,7 +387,7 @@ test("an entry another view points to is named in the view that gives it members
   const variants = `${martinAt}clinical/variants.ttl`;
   const { rows } = await martin.select(
     `SELECT ?interpretation ?variant ?member WHERE {
-      GRAPH ?view { ?view a cascade:View . ?interpretation cascade:variantInterpreted ?variant }
+      GRAPH ?view { ?view a cascade:View . ?interpretation cascade:mergedFrom [] ; cascade:variantInterpreted ?variant }
       OPTIONAL { GRAPH <${variants}> { ?variant cascade:mergedFrom ?member } }
     }`.replace(
       /^/,
