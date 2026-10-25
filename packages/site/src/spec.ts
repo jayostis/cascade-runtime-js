@@ -200,25 +200,31 @@ function sectionsOf(text: string): Map<string, string[]> {
 
 /**
  * The rule numbers a "what we do" cell names: those inside parentheses, as `(M7)` or `(`runtime/currency.feature`, C2)`,
- * and those in a clause beside a `.feature` pointer. A bare `C1` elsewhere is a step of a review, a lean or an item of
- * another list, and names no rule.
+ * those in a clause beside a `.feature` pointer, those after the word rule (`rule M7`) and those a prose clause
+ * possesses (`M14's`). A bare `C1` elsewhere, and any code after `conformance-review` or `item` or `lean`, is a step of a
+ * review, a lean or an item of another list, and names no rule.
  */
-function rulesNamedIn(cell: string): string[] {
+export function rulesNamedIn(cell: string): string[] {
+  const named = cell.replace(
+    /\b(?:conformance-review|item|lean)\s+(?:item\s+)?(?:Check |[A-Z]{1,2})\d+/g,
+    "",
+  );
   const pointed = [
-    ...[...cell.matchAll(/\(([^()]*)\)/g)].map((match) => match[1] ?? ""),
-    ...cell
+    ...[...named.matchAll(/\(([^()]*)\)/g)].map((match) => match[1] ?? ""),
+    ...named
       .replace(/\([^()]*\)/g, ";")
       .split(";")
       .filter((clause) => clause.includes(".feature")),
+    ...[...named.matchAll(/\brules?\s+(?:Check |[A-Z]{1,2})\d+/g)].map(
+      ([match]) => match,
+    ),
+    ...[...named.matchAll(/\b(?:Check |[A-Z]{1,2})\d+(?='s\b)/g)].map(
+      ([match]) => match,
+    ),
   ];
   return pointed
     .flatMap((text) => [
-      ...text
-        .replace(
-          /\b(?:conformance-review|item|lean)\s+(?:item\s+)?(?:Check |[A-Z]{1,2})\d+/g,
-          "",
-        )
-        .matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g),
+      ...text.matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g),
     ])
     .flatMap(([, letters = "", from = "", to = from]) =>
       Array.from(

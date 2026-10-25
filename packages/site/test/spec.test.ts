@@ -9,6 +9,7 @@ import {
 import {
   filesNamed,
   readSpecReport,
+  rulesNamedIn,
   type SpecPages,
   specPages,
   type SpecWarning,
@@ -392,5 +393,34 @@ test("a path a row names under a nested folder of the vocabulary is found, one t
       found: new Set(["conformance/kim/scripted-input/people.ttl"]),
       missing: new Set(["conformance/kim/scripted-input/gone.ttl"]),
     },
+  );
+});
+
+test("a rule is named in parentheses, beside a .feature pointer, after the word rule, or by a possessive, and a code after item or conformance-review names none", () => {
+  const named = (cell: string) => [...new Set(rulesNamedIn(cell))].sort();
+  assert.deepEqual(named("a hash (M7)"), ["M7"]);
+  assert.deepEqual(named("a range (M1 to M3, Check 2)"), [
+    "Check 2",
+    "M1",
+    "M2",
+    "M3",
+  ]);
+  assert.deepEqual(named("as rule M7 says; rules R12 and R13 too"), [
+    "M7",
+    "R12",
+  ]);
+  assert.deepEqual(named("kept as M14's table says"), ["M14"]);
+  assert.deepEqual(
+    named("`runtime/currency.feature`, C2 says so; C1 writes it"),
+    ["C2"],
+  );
+  assert.deepEqual(named("C1 writes it, A1/A2 follow, M4 and L1 say so"), []);
+  assert.deepEqual(
+    named("(conformance-review C3; the lean of item C1; rule N1)"),
+    ["N1"],
+  );
+  assert.deepEqual(
+    named("`runtime/naming.feature` N3 and conformance-review C2 and item A5"),
+    ["N3"],
   );
 });
