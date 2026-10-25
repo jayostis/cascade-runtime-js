@@ -374,12 +374,10 @@ export class Revisions {
     let inRecords = "";
     if (kept === undefined) {
       const union = new Union(context.newStore());
-      for (const folder of folders)
-        for (const path of await pod.list(folder)) {
-          const bytes = await pod.read(path);
-          if (bytes !== undefined)
-            await union.loadTurtle(bytes, pod.iri + path);
-        }
+      const listed = await Promise.all(
+        folders.map((folder) => pod.list(folder)),
+      );
+      await podFiles(pod, layout, pod.iri, union, listed.flat());
       dataset = union;
       base = pod.iri;
     } else {

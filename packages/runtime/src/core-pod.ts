@@ -409,6 +409,8 @@ export class CorePod {
   #keptClaims: KeptClaims;
   /** The build kept across steps, when the build is incremental and the last rebuild held. */
   #built: KeptBuild | undefined;
+  /** The files of the build made whole for the step in progress before it wrote, written with the step's rebuild. */
+  #builtBefore: ReadonlyMap<string, readonly Triple[]> | undefined;
   /** What each act file of the pod read or written so far holds of the chain, by path. */
   readonly #chain = new Map<string, ActFile>();
   /** What the act files the step in progress writes hold of the chain, by path, learnt once they are written. */
@@ -974,7 +976,7 @@ export class CorePod {
           : { lastSnapshot: this.#head.snapshot }),
         matcherView: () => this.#matcherView(),
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
-        keptDataset: () => this.#keptDataset(),
+        keptDataset: () => this.#keptOrBuiltWhole(at),
       }).finally(() => {
         this.#performing = false;
       });
@@ -1008,8 +1010,10 @@ export class CorePod {
     } finally {
       this.#release();
       this.#writing = new Map();
-      if (change === undefined) this.#dropBuilt();
-      else change = { ...change, written: writes.committed };
+      if (change === undefined) {
+        this.#dropBuilt();
+        this.#builtBefore = undefined;
+      } else change = { ...change, written: writes.committed };
     }
     if (options.build !== undefined) {
       try {
@@ -1017,9 +1021,65 @@ export class CorePod {
       } catch (error) {
         this.#dropBuilt();
         throw new BuildFailure(performed, error);
+      } finally {
+        this.#builtBefore = undefined;
       }
     }
     return performed;
+  }
+
+  /**
+   * The dataset kept under the build's lens; when none is, as after a reopen, and the build is kept across steps, the
+   * pod built whole as it stands before the step, kept as the build the step's rebuild continues from. So the pod's
+   * files are read and parsed once for the step and its rebuild, rather than once for each.
+   */
+  async #keptOrBuiltWhole(at: string | undefined): Promise<Union | undefined> {
+    const kept = await this.#keptDataset();
+    const build = this.#options.build;
+    const incremental = build?.incremental;
+    if (
+      kept !== undefined ||
+      build === undefined ||
+      incremental === undefined ||
+      at === undefined ||
+      this.#built !== undefined
+    )
+      return kept;
+    return this.#held(DATASET + build.lens, async () => {
+      const whole = await KeptBuild.whole(
+        this.#rebuilding(build, incremental),
+        this.#state(at),
+      );
+      this.#built = whole.kept;
+      this.#builtBefore = whole.files;
+      return whole.kept.union;
+    });
+  }
+
+  /** What a kept build reads the pod with. */
+  #rebuilding(build: PodBuildOption, incremental: VocabularyBuild) {
+    const { pod, layout, address, newStore } = this.#options;
+    return {
+      pod,
+      layout,
+      address,
+      newStore,
+      build: incremental,
+      lens: build.lens,
+      keep: async (union: Union) =>
+        (await this.#keptClaims.of(union, () => this.#tables())).triples,
+    };
+  }
+
+  /** The pod's state for a build at the time. */
+  #state(at: string): PodState {
+    const { address, title } = this.#options;
+    return {
+      address,
+      at,
+      title,
+      ...(this.#head === undefined ? {} : { snapshot: this.#head.snapshot }),
+    };
   }
 
   /**
@@ -1187,24 +1247,12 @@ export class CorePod {
   ): Promise<void> {
     const { pod, layout, address, title, newStore } = this.#options;
     if (build.incremental !== undefined && at !== undefined) {
-      const state: PodState = {
-        address,
-        at,
-        title,
-        ...(this.#head === undefined ? {} : { snapshot: this.#head.snapshot }),
-      };
-      const rebuilding = {
-        pod,
-        layout,
-        address,
-        newStore,
-        build: build.incremental,
-        lens: build.lens,
-        keep: async (union: Union) =>
-          (await this.#keptClaims.of(union, () => this.#tables())).triples,
-      };
+      const state = this.#state(at);
+      const rebuilding = this.#rebuilding(build, build.incremental);
       let built = this.#built;
       let files = await built?.step(change, state);
+      if (files !== undefined && this.#builtBefore !== undefined)
+        files = new Map([...this.#builtBefore, ...files]);
       if (built !== undefined && files !== undefined && build.verify === true)
         await built.verify(await KeptBuild.whole(rebuilding, state));
       if (built === undefined || files === undefined) {
