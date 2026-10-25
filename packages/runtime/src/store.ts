@@ -31,6 +31,10 @@ export interface Store {
     triples: readonly Triple[],
     union: ReadonlySet<string>,
   ): Promise<boolean[]>;
+  /** A store of its own holding the graphs given, as this one holds them. */
+  copy(graphs: ReadonlySet<string>): Promise<Store>;
+  /** Releases what the store holds; a store freed is never read again. */
+  free?(): void;
 }
 
 export type StoreFactory = () => Store;
