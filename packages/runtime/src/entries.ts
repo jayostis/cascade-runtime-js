@@ -7,8 +7,24 @@ const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 /** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
 export const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
 
-/** The derivation `entries` gives the triples of, instead of the query's closure. */
+/** The derivation whose triples `entries` gives, instead of the query's closure, when its text is the one pinned here. */
 export const ENTRIES = "queries/derivations/entries.rq";
+
+/** The lower-case hex SHA-256 of the text of `entries.rq` that `entries` gives the triples of. */
+const ENTRIES_TEXT =
+  "18724f88b81f6aa75639fb28f3eec8fee5ebd43925630782d298f2dc0ca3e635";
+
+const answered = new Map<string, Promise<boolean>>();
+
+/** Whether `entries` gives the triples of the query's text: any other text, as a vocabulary changes it, is run itself. */
+export function answersQuery(text: string): Promise<boolean> {
+  let found = answered.get(text);
+  if (found === undefined) {
+    found = entryHash(text).then((hash) => hash === ENTRIES_TEXT);
+    answered.set(text, found);
+  }
+  return found;
+}
 
 /**
  * The triples `queries/derivations/entries.rq` constructs, found by union-find over the currently-same pairs: linear in

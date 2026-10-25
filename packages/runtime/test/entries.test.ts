@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ENTRIES, entries } from "../src/entries.js";
-import { readText } from "../src/files.js";
+import { Derivations } from "../src/derive.js";
+import { answersQuery, ENTRIES, entries } from "../src/entries.js";
+import { MemoryFiles, readText } from "../src/files.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, type Triple, written } from "../src/rdf.js";
 import { Union } from "../src/store.js";
@@ -101,4 +102,66 @@ test("the union-find gives entries.rq's one entry of a chain of 300 members", as
   const [found, constructed] = await both(chain);
   assert.equal(new Set(found.map((line) => line.split(" ")[2])).size, 1);
   assert.deepEqual(found, constructed);
+});
+
+/** A store that counts the CONSTRUCTs it answers. */
+class Counting extends OxigraphStore {
+  constructs = 0;
+  override construct(
+    query: string,
+    union: ReadonlySet<string>,
+  ): Promise<Triple[]> {
+    this.constructs += 1;
+    return super.construct(query, union);
+  }
+}
+
+/** What the derivations give over the chain with `text` as entries.rq, and how many CONSTRUCTs they ran. */
+async function derivedWith(
+  text: string,
+): Promise<{ lines: string[]; constructs: number }> {
+  const files = new MemoryFiles("urn:test:vocabulary/");
+  const encoded = new TextEncoder();
+  await files.write(
+    "ro-crate-metadata.json",
+    encoded.encode(
+      JSON.stringify({
+        "@graph": [
+          { "@id": ENTRIES, position: 1 },
+          { "@id": "queries/lenses/l.rq", position: 2 },
+        ],
+      }),
+    ),
+  );
+  await files.write(ENTRIES, encoded.encode(text));
+  await files.write(
+    "queries/lenses/l.rq",
+    encoded.encode(
+      "CONSTRUCT { ?s <urn:test:never> ?o } WHERE { ?s <urn:test:none> ?o }",
+    ),
+  );
+  const store = new Counting();
+  const union = new Union(store);
+  await union.add(drawn(FIRST_SEED, 50), "urn:test:pod");
+  const [step] = await (await Derivations.of(files)).derive(union, "l");
+  return {
+    lines: (step?.added ?? [])
+      .map((triple) => triple.map(written).join(" "))
+      .sort(),
+    constructs: store.constructs,
+  };
+}
+
+test("the vocabulary's entries.rq is the text the union-find answers, and any other text is run as it is", async () => {
+  const text = await readText(await vocabulary(), ENTRIES);
+  assert.ok(await answersQuery(text));
+  const pinned = await derivedWith(text);
+  assert.equal(pinned.constructs, 1);
+  assert.ok(pinned.lines.length > 0);
+  const changed = text.replace("MIN(STR(?m))", "MAX(STR(?m))");
+  assert.notEqual(changed, text);
+  assert.equal(await answersQuery(changed), false);
+  const run = await derivedWith(changed);
+  assert.equal(run.constructs, 2);
+  assert.notDeepEqual(run.lines, pinned.lines);
 });
