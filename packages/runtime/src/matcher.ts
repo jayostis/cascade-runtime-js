@@ -1,5 +1,5 @@
 import { boundToRecords } from "./bound-records.js";
-import { Derivations, type Keep, QUERIES } from "./derive.js";
+import { derivationsOf, type Keep, QUERIES } from "./derive.js";
 import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
@@ -405,8 +405,6 @@ async function takenRecords(
   return new Map(records.map((record) => [record.name, record]));
 }
 
-const derivations = new WeakMap<Files, Promise<Derivations>>();
-
 /**
  * The matcher's view: each RDF file of the pod but those the build writes, and the everyday lens's derived state, the
  * union of a new store; with `keep`, the Sames M7 leaves as they were count on.
@@ -418,14 +416,9 @@ export async function matcherView(
   >,
   keep?: Keep,
 ): Promise<Union> {
-  let read = derivations.get(context.vocabulary);
-  if (read === undefined) {
-    read = Derivations.of(context.vocabulary);
-    derivations.set(context.vocabulary, read);
-  }
   const union = new Union(context.newStore());
   await podFiles(context.pod, context.layout, context.address, union);
-  await (await read).derive(union, LENS, keep);
+  await (await derivationsOf(context.vocabulary)).derive(union, LENS, keep);
   return union;
 }
 

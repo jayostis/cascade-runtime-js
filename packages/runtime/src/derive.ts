@@ -29,6 +29,18 @@ export interface DerivedStep {
   readonly added: readonly Triple[];
 }
 
+const read = new WeakMap<Files, Promise<Derivations>>();
+
+/** The vocabulary's derivations, read once for each vocabulary. */
+export function derivationsOf(vocabulary: Files): Promise<Derivations> {
+  let found = read.get(vocabulary);
+  if (found === undefined) {
+    found = Derivations.of(vocabulary);
+    read.set(vocabulary, found);
+  }
+  return found;
+}
+
 /** The vocabulary's derivations and lenses, read once, each with the position its crate gives it. */
 export class Derivations {
   readonly #steps: readonly {
@@ -85,15 +97,22 @@ export class Derivations {
   /**
    * Runs the lens's derivations in turn over the union, each adding to `urn:cascade:derived:<lens>`, and so to the
    * union, what it constructs that the union did not already hold; returns what each added. What `keep` gives is
-   * added just before a lens that reads it, as the lens's.
+   * added just before a lens that reads it, as the lens's. Given `last`, the path of one of them, stops after it.
    */
   async derive(
     union: Union,
     lens: string,
     keep?: Keep,
+    last?: string,
   ): Promise<DerivedStep[]> {
+    const steps = this.for(lens);
+    const through =
+      last === undefined
+        ? steps.length
+        : steps.findIndex(({ path }) => path === last) + 1;
+    if (through === 0) throw new Error(`the vocabulary has no ${last}`);
     const added: DerivedStep[] = [];
-    for (const { path, query } of this.for(lens)) {
+    for (const { path, query } of steps.slice(0, through)) {
       const kept =
         keep !== undefined && under(LENSES, path) && query.includes(KEPT_TERM)
           ? await keep(union)

@@ -342,8 +342,8 @@ const RXNORM_CODE = "https://ns.cascadeprotocol.org/cascade#rxNormCode";
 const PANEL_RESULTS_QUERY = `${QUERIES}tables/panel-results.rq`;
 /** The lab result entries `tables/panel-results.rq` reads of the pod: their test codes. */
 const LAB_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
-CONSTRUCT { ?entry cascade:testCode ?code ; cascade:latestMember ?latest }
-WHERE { ?entry cascade:testCode ?code ; cascade:latestMember ?latest }`;
+CONSTRUCT { ?entry cascade:testCode ?code ; cascade:leadMember ?lead }
+WHERE { ?entry cascade:testCode ?code ; cascade:leadMember ?lead }`;
 
 /** Which tables joined an entry is asked of the pod alone: its judgments name the versions, and it holds their descriptions. */
 const JOINED_BY_QUERY = `${QUERIES}tables/joined-by.rq`;
@@ -905,7 +905,7 @@ class OpenPod implements Pod {
         const version = current.get(member);
         if (version === undefined)
           throw new Error(
-            `${member} has no current version in the pod: it names no record`,
+            `${member} has no current version in the pod: it names no record or revision`,
           );
         used.push([judgment, iri(USED), iri(version)]);
       }
@@ -933,7 +933,7 @@ class OpenPod implements Pod {
     return rows.length > 0;
   }
 
-  /** Each record's current version, under the everyday lens, by the record. */
+  /** Each record's current version, under the everyday lens, and each revision's version, by the member. */
   async #currentVersions(
     records: readonly string[],
   ): Promise<Map<string, string>> {
@@ -941,7 +941,7 @@ class OpenPod implements Pod {
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT ?record ?version WHERE {
         VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-        ?record pav:hasCurrentVersion ?version .
+        { ?record pav:hasCurrentVersion ?version } UNION { ?record cascade:version ?version }
       }`);
     return new Map(
       rows.flatMap((row) => {

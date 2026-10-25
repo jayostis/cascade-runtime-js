@@ -369,8 +369,8 @@ const FIELDS: Readonly<Record<string, Field>> = {
     entry: true,
     thing: true,
   },
-  "latest member": {
-    predicates: [`${CASCADE}latestMember`],
+  "lead member": {
+    predicates: [`${CASCADE}leadMember`],
     entry: true,
     thing: true,
   },
