@@ -335,7 +335,7 @@ export class Words {
       throw new Error(`${handle} names ${path}, which is no C-CDA document`);
     if (scopes === null)
       throw new Error(
-        `${handle} names ${path}, which states no custodian id, or not exactly one patient with an id: handles.json gives its selector`,
+        `${handle} names ${path}, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles.json gives its selector`,
       );
     const { identifier, class: entryClass, key, members } = inputs;
     const strings = (value: unknown): value is string[] =>
