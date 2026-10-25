@@ -24,7 +24,6 @@ import {
   ExportedFiles,
   MemoryFiles,
   ntriples,
-  podFiles,
   podRevision,
   type PodKey,
   podStated,
@@ -34,6 +33,7 @@ import {
   readText,
   type References,
   Refusal,
+  type Store,
   type StoreFactory,
   tableTerms,
   type Triple,
@@ -1118,37 +1118,56 @@ function coreOver(
   address: string,
   subject: string,
   title: string,
-  opened?: Union,
   writer?: { readonly head: Head | undefined },
 ): CorePod {
   const { build } = parts;
-  return new CorePod(
-    {
-      pod,
-      address,
-      subject,
-      title,
-      vocabulary: parts.vocabulary,
-      layout: parts.layout,
-      newStore: parts.newStore,
-      time: clock,
-      importers: parts.importers,
-      runtime: parts.performer,
-      ...(writer?.head === undefined ? {} : { head: writer.head }),
-      ...(writer === undefined
-        ? {}
-        : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
-      references: () => Promise.resolve(references),
-      build: {
-        lens: parts.lens,
-        derive: async (store, lens, pod, keep) => {
-          await build.derivations.derive(store, lens, keep);
-          return build.files(store, pod);
-        },
+  return new CorePod({
+    pod,
+    address,
+    subject,
+    title,
+    vocabulary: parts.vocabulary,
+    layout: parts.layout,
+    newStore: parts.newStore,
+    time: clock,
+    importers: parts.importers,
+    runtime: parts.performer,
+    ...(writer?.head === undefined ? {} : { head: writer.head }),
+    ...(writer === undefined
+      ? {}
+      : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
+    references: () => Promise.resolve(references),
+    build: {
+      lens: parts.lens,
+      derive: async (store, lens, pod, keep) => {
+        await build.derivations.derive(store, lens, keep);
+        return build.files(store, pod);
       },
     },
-    opened,
-  );
+  });
+}
+
+/** The subjects the files where the layout files the subject state, read without loading the pod's other files. */
+async function subjectsFiled(
+  files: Files,
+  layout: Layout,
+  address: string,
+  store: Store,
+): Promise<string[]> {
+  const { file, folder } = layout.place(`${CASCADE}Subject`);
+  const paths = file === undefined ? await files.list(folder ?? "") : [file];
+  const found = new Set<string>();
+  for (const path of paths.filter((path) => layout.isRdf(path))) {
+    const bytes = await files.read(path);
+    if (bytes === undefined) continue;
+    for (const [subject, predicate, object] of await store.parse(
+      bytes,
+      address + path,
+    ))
+      if (predicate.value === TYPE && object.value === `${CASCADE}Subject`)
+        found.add(subject.value);
+  }
+  return [...found];
 }
 
 /** The parts with every file of a pod's folder and of its kept answers sealed under the key. */
@@ -1213,7 +1232,6 @@ export async function openPodWith(
       address,
       subject,
       title,
-      undefined,
       folder === undefined ? undefined : { head: undefined },
     );
     const created = await core.create();
@@ -1238,34 +1256,19 @@ export async function openPodWith(
     answers?.described(),
   ]);
   const { address } = stated;
+  const subjects =
+    described?.address === address
+      ? [described.subject]
+      : await subjectsFiled(disk.files, parts.layout, address, store);
+  const [subject] = subjects;
+  if (subject === undefined || subjects.length > 1)
+    throw new Error(`${folder} holds ${subjects.length} subjects, not one`);
   const title = stated.title ?? disk.name;
-  let subject = described?.address === address ? described.subject : undefined;
-  let opened: Union | undefined;
-  if (subject === undefined) {
-    opened = new Union(store);
-    await podFiles(disk.files, parts.layout, address, opened);
-    const { rows } = await opened.select(
-      `SELECT DISTINCT ?subject WHERE { ?subject a <${CASCADE}Subject> }`,
-    );
-    const [found, ...others] = rows.flatMap(
-      (row) => row.get("subject")?.value ?? [],
-    );
-    if (found === undefined || others.length > 0)
-      throw new Error(`${folder} holds ${rows.length} subjects, not one`);
-    subject = found;
-  }
   await answers?.describe({ address, subject, title });
   const files = parts.folder(folder, address).files;
-  const core = coreOver(
-    parts,
-    references,
-    files,
-    address,
-    subject,
-    title,
-    opened,
-    { head: await parts.tables.headOf(address) },
-  );
+  const core = coreOver(parts, references, files, address, subject, title, {
+    head: await parts.tables.headOf(address),
+  });
   return new OpenPod(
     parts,
     core,
