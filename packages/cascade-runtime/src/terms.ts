@@ -91,6 +91,8 @@ export const codeStems = Object.freeze({
   ICD9CM: "https://ns.cascadeprotocol.org/codes/icd9cm/",
   HGVS: "https://ns.cascadeprotocol.org/codes/hgvs/",
   ClinVar: "https://identifiers.org/clinvar:",
+  DataAbsentReason: "https://ns.cascadeprotocol.org/codes/data-absent-reason/",
+  NullFlavor: "https://ns.cascadeprotocol.org/codes/nullflavor/",
 });
 
 export type CodeStems = typeof codeStems;
