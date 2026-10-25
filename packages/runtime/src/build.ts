@@ -28,6 +28,8 @@ export interface PodState {
   /** The time of the step, an `xsd:dateTime`. */
   readonly at: string;
   readonly title: string;
+  /** The writer's last snapshot, which the manifest's build used: a view is stale when the writer's is another. */
+  readonly snapshot?: string;
 }
 
 /** Adds the lens's derived state, and the files built from it, to a union holding a pod; returns those files. */
@@ -42,7 +44,7 @@ export type Derive = (
 export const RUNTIME = "cascade-runtime-js";
 
 /** The IRI `queries/derivations/entries.rq` gives an entry, which no file holds: SPARQL cannot mint a relative IRI. */
-const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
+export const ENTRY_PLACEHOLDER = "urn:cascade:entry:";
 const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 
 /** Each entry placeholder a view gives members (`cascade:mergedFrom`), by the view's address. */
@@ -164,7 +166,12 @@ export function typeIndex(
   ];
 }
 
-function manifest(file: string, title: string, at: string): Triple[] {
+function manifest(
+  file: string,
+  title: string,
+  at: string,
+  snapshot?: string,
+): Triple[] {
   const manifest = iri(`${file}#manifest`);
   const activity = blank("activity");
   const agent = blank("agent");
@@ -177,9 +184,18 @@ function manifest(file: string, title: string, at: string): Triple[] {
     [activity, iri(TYPE), iri(`${PROV}Activity`)],
     [activity, iri(`${PROV}startedAtTime`), created],
     [activity, iri(`${PROV}wasAssociatedWith`), agent],
+    ...(snapshot === undefined
+      ? []
+      : [[activity, iri(`${PROV}used`), iri(snapshot)] as Triple]),
     [agent, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
     [agent, iri(`${RDFS}label`), literal(RUNTIME)],
   ];
+}
+
+/** The files the build's queries write, and the views among them that are written. */
+export interface QueriedFiles {
+  readonly files: ReadonlyMap<string, readonly Triple[]>;
+  readonly held: ReadonlySet<string>;
 }
 
 /** The vocabulary's derivations, and the queries that write the layout's files, read once, run as they are. */
@@ -192,6 +208,26 @@ export interface VocabularyBuild {
     union: Union,
     pod: PodState,
   ): Promise<ReadonlyMap<string, readonly Triple[]>>;
+  /**
+   * The files the layout's queries write over a union holding a pod and its derived state, each added to the union
+   * under its address as it is made, so the labels read the views: each view held, those `held` names when given, else
+   * those the layout marks written always and those of a kind the union holds a record of.
+   */
+  queried(
+    union: Union,
+    address: string,
+    held?: ReadonlySet<string>,
+  ): Promise<QueriedFiles>;
+  /** The views written: those `previous` names, those the layout marks written always, and those of a kind the union holds a record of. */
+  held(
+    union: Union,
+    previous?: ReadonlySet<string>,
+  ): Promise<ReadonlySet<string>>;
+  /** The type index registering the views written, and the manifest. */
+  closing(
+    pod: PodState,
+    held: ReadonlySet<string>,
+  ): ReadonlyMap<string, readonly Triple[]>;
 }
 
 export async function vocabularyBuild(
@@ -219,19 +255,16 @@ export async function vocabularyBuild(
       .sort((a, b) => (a.file < b.file ? -1 : 1)),
   );
 
-  const written = async (
+  const viewsHeld = async (
     union: Union,
-    pod: PodState,
-  ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
-    const { rows } = await union.select(query(CURRENT_REFERENCE_VERSIONS));
-    const used = [
-      ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
-    ];
-    const held = new Set(
-      layout.views
+    previous: ReadonlySet<string> = new Set(),
+  ): Promise<Set<string>> => {
+    const held = new Set([
+      ...previous,
+      ...layout.views
         .filter(({ writtenAlways }) => writtenAlways)
         .flatMap(({ file }) => file ?? []),
-    );
+    ]);
     const unheld = layout.views.filter(({ file }) => !held.has(file ?? ""));
     if (unheld.length > 0) {
       const { rows: kinds } = await union.select(
@@ -241,42 +274,81 @@ export async function vocabularyBuild(
       for (const { file, kind } of unheld)
         if (found.has(kind)) held.add(file ?? "");
     }
+    return held;
+  };
+
+  const queried = async (
+    union: Union,
+    address: string,
+    given?: ReadonlySet<string>,
+  ): Promise<QueriedFiles> => {
+    const { rows } = await union.select(query(CURRENT_REFERENCE_VERSIONS));
+    const used = [
+      ...new Set(rows.flatMap((row) => row.get("version")?.value ?? [])),
+    ];
+    const held = given ?? (await viewsHeld(union));
     const files = new Map<string, readonly Triple[]>();
-    const add = async (path: string, triples: readonly Triple[]) => {
-      files.set(path, triples);
-      await union.add(triples, pod.address + path);
-    };
     for (const group of groups) {
       const made = await Promise.all(
         group
           .filter(({ file }) => !views.includes(file) || held.has(file))
           .map(async ({ file, query: path }) => ({
             file,
-            view: pod.address + file,
+            view: address + file,
             triples: await union.construct(query(path)),
           })),
       );
       const owner = entryViews(made.filter(({ file }) => views.includes(file)));
-      for (const { file, view, triples } of made)
-        await add(
-          file,
-          marked(
-            view,
-            views.includes(file)
-              ? entriesInView(view, triples, owner)
-              : triples,
-            used,
-          ),
+      for (const { file, view, triples } of made) {
+        const written = marked(
+          view,
+          views.includes(file) ? entriesInView(view, triples, owner) : triples,
+          used,
         );
+        files.set(file, written);
+        await union.add(written, address + file);
+      }
     }
-    await add(layout.typeIndex, typeIndex(pod.address, layout, held));
-    await add(
-      layout.manifest,
-      manifest(pod.address + layout.manifest, pod.title, pod.at),
-    );
-    return files;
+    return { files, held };
   };
-  return { derivations, queries: [...queries.values()], files: written };
+
+  const closing = (
+    pod: PodState,
+    held: ReadonlySet<string>,
+  ): ReadonlyMap<string, readonly Triple[]> =>
+    new Map([
+      [layout.typeIndex, typeIndex(pod.address, layout, held)],
+      [
+        layout.manifest,
+        manifest(
+          pod.address + layout.manifest,
+          pod.title,
+          pod.at,
+          pod.snapshot,
+        ),
+      ],
+    ]);
+
+  const written = async (
+    union: Union,
+    pod: PodState,
+  ): Promise<ReadonlyMap<string, readonly Triple[]>> => {
+    const { files, held } = await queried(union, pod.address);
+    const all = new Map(files);
+    for (const [path, triples] of closing(pod, held)) {
+      all.set(path, triples);
+      await union.add(triples, pod.address + path);
+    }
+    return all;
+  };
+  return {
+    derivations,
+    queries: [...queries.values()],
+    files: written,
+    queried,
+    held: viewsHeld,
+    closing,
+  };
 }
 
 /** The vocabulary's derivations and the queries that write the layout's files, read once, run as they are. */
@@ -284,9 +356,13 @@ export async function vocabularyDerive(
   vocabulary: Files,
   layout: Layout,
 ): Promise<Derive> {
-  const { derivations, files } = await vocabularyBuild(vocabulary, layout);
+  return deriveWith(await vocabularyBuild(vocabulary, layout));
+}
+
+/** The build's derivations and then its files, over a union. */
+export function deriveWith(build: VocabularyBuild): Derive {
   return async (union, lens, pod, keep) => {
-    await derivations.derive(union, lens, keep);
-    return files(union, pod);
+    await build.derivations.derive(union, lens, keep);
+    return build.files(union, pod);
   };
 }

@@ -6,6 +6,8 @@ import type { LoadOptions, Rows, Store } from "./store.js";
 const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
+/** The subjects one removal binds: Oxigraph's JavaScript build joins a long VALUES block in more than linear time. */
+const SUBJECTS_AT_ONCE = 256;
 
 /** Frees what Oxigraph holds in its WebAssembly memory for each object now, rather than when the object is collected. */
 function free(...objects: readonly unknown[]): void {
@@ -189,6 +191,24 @@ export class OxigraphStore implements Store {
     if (this.#oxigraph === undefined) return;
     this.#oxigraph.update(`DROP SILENT GRAPH ${written(iri(graph))}`);
     this.#graphs.delete(graph);
+  }
+
+  async removeSubjects(
+    graph: string,
+    subjects: Iterable<string>,
+  ): Promise<void> {
+    if (this.#oxigraph === undefined) return;
+    const all = [...new Set(subjects)];
+    const named = written(iri(graph));
+    for (let start = 0; start < all.length; start += SUBJECTS_AT_ONCE) {
+      const values = all
+        .slice(start, start + SUBJECTS_AT_ONCE)
+        .map((subject) => written(iri(subject)))
+        .join(" ");
+      this.#oxigraph.update(
+        `DELETE { GRAPH ${named} { ?s ?p ?o } } WHERE { GRAPH ${named} { VALUES ?s { ${values} } ?s ?p ?o } }`,
+      );
+    }
   }
 
   async select(query: string, union: ReadonlySet<string>): Promise<Rows> {

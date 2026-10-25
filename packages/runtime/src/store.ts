@@ -23,6 +23,8 @@ export interface Store {
   add(triples: Iterable<Triple>, options: LoadOptions): Promise<void>;
   /** Removes a graph and its triples. */
   drop(graph: string): Promise<void>;
+  /** Removes from the graph every triple whose subject is one of the IRIs. */
+  removeSubjects(graph: string, subjects: Iterable<string>): Promise<void>;
   select(query: string, union: ReadonlySet<string>): Promise<Rows>;
   ask(query: string, union: ReadonlySet<string>): Promise<boolean>;
   construct(query: string, union: ReadonlySet<string>): Promise<Triple[]>;
@@ -74,6 +76,11 @@ export class Union implements Dataset {
   async drop(graph: string): Promise<void> {
     await this.store.drop(graph);
     this.#graphs.delete(graph);
+  }
+
+  /** Removes from the graph every triple whose subject is one of the IRIs. */
+  removeSubjects(graph: string, subjects: Iterable<string>): Promise<void> {
+    return this.store.removeSubjects(graph, subjects);
   }
 
   select(query: string): Promise<Rows> {
