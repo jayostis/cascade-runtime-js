@@ -54,10 +54,12 @@ const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
 const FINDING_KINDS: Readonly<Record<string, string>> = {
   "claims no longer reached": `${CASCADE}ClaimsNoLongerReached`,
   "different result values at one instant": `${CASCADE}DifferentResultValuesAtOneInstant`,
+  "different result units at one instant": `${CASCADE}DifferentResultUnitsAtOneInstant`,
 };
 /** The kinds of finding whose body applies to their targets together, records, read as one row of members. */
 const FINDINGS_OF_RECORDS: ReadonlySet<string> = new Set([
   `${CASCADE}DifferentResultValuesAtOneInstant`,
+  `${CASCADE}DifferentResultUnitsAtOneInstant`,
 ]);
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

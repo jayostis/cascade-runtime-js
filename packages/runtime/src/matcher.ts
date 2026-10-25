@@ -44,7 +44,7 @@ export interface MatcherRule {
   /** The name of the query's bytes, which the rule's claims are asserted with. */
   readonly hash: string;
   readonly kind?: string;
-  /** Whether the rule files findings for review of the kind `justification` names rather than judgments (R15). */
+  /** Whether the rule files findings for review of the kind `justification` names rather than judgments (R16, R17). */
   readonly finding?: boolean;
 }
 
@@ -1096,7 +1096,7 @@ class Matcher {
   /**
    * Files a finding for review for each pair a finding rule's query gives, of records of a class it applies to, that
    * the pod holds no finding of: its kind, oa:motivatedBy oa:classifying, the two records as its targets and their
-   * current versions as prov:used, named by its triples (M20, R15).
+   * current versions as prov:used, named by its triples (M21: R16, R17).
    */
   async fileFindings(): Promise<void> {
     const { layout, writes } = this.context;
