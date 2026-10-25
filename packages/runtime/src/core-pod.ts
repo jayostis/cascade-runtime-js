@@ -47,7 +47,6 @@ import { type Rows, type StoreFactory, Union } from "./store.js";
 const PROV = "http://www.w3.org/ns/prov#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const TYPE = `${RDF}type`;
-const OPENED = "opened";
 const DATASET = "dataset:";
 const MATCHER_VIEW = "matcher view";
 const REVISION = "revision";
@@ -417,12 +416,10 @@ export class CorePod {
   /** Whether a step is being performed, after which the pod builds its dataset again. */
   #performing = false;
 
-  /** `opened`, when given, holds the pod's files as `podFiles` loads them, and becomes the dataset of the lens first asked. */
-  constructor(options: CorePodOptions, opened?: Union) {
+  constructor(options: CorePodOptions) {
     this.#options = { ...options, pod: new HeldFiles(options.pod) };
     this.#keptClaims = new KeptClaims(options);
     this.#head = options.head;
-    if (opened !== undefined) this.#kept.set(OPENED, Promise.resolve(opened));
   }
 
   get files(): Files {
@@ -443,18 +440,15 @@ export class CorePod {
    * or `close`, which free it.
    */
   dataset(lens: string): Promise<Union> {
-    return this.#held(`${DATASET}${lens}`, async () => {
-      const opened = this.#kept.get(OPENED) as Promise<Union> | undefined;
-      this.#kept.delete(OPENED);
-      const union = (await opened) ?? new Union(this.#options.newStore());
-      return this.#filled(union, lens, opened === undefined);
-    });
+    return this.#held(`${DATASET}${lens}`, () =>
+      this.#filled(new Union(this.#options.newStore()), lens),
+    );
   }
 
-  /** The union with the pod's files (unless `loaded`), the lens's derived state, the files the build writes and the layout. */
-  async #filled(union: Union, lens: string, load: boolean): Promise<Union> {
+  /** The union with the pod's files, the lens's derived state, the files the build writes and the layout. */
+  async #filled(union: Union, lens: string): Promise<Union> {
     const { pod, layout, address, title, time, build } = this.#options;
-    if (load) await podFiles(pod, layout, address, union);
+    await podFiles(pod, layout, address, union);
     if (build === undefined) {
       for (const path of layout.rebuilt.filter((path) => layout.isRdf(path))) {
         const bytes = await pod.read(path);
@@ -803,7 +797,7 @@ export class CorePod {
   async selectWithRows(query: string, kind: string): Promise<Rows> {
     const { vocabulary, newStore, build } = this.#options;
     const [union, references, terms] = await Promise.all([
-      this.#filled(new Union(newStore()), build?.lens ?? "", true),
+      this.#filled(new Union(newStore()), build?.lens ?? ""),
       this.#tables(),
       tableTerms(vocabulary, newStore),
     ]);
