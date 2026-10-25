@@ -2701,7 +2701,8 @@ test("a person's results in the panel they pick are asked of the tables: in LOIN
     const result = (day: string, index: number): string =>
       `<urn:cascade:output-${index}> a cascade:LaboratoryTestResult .
 <urn:cascade:output-${index}-version> prov:specializationOf <urn:cascade:output-${index}> ;
-  cascade:testCode <${LOINC}2823-3> ; cascade:testName "Potassium" ; cascade:resultValue "4.${index}" ;
+  cascade:testCode <${LOINC}2823-3> ; cascade:testName "Potassium" ;
+  cascade:resultValueKind cascade:TextResultValue ; cascade:resultValue "4.${index}" ;
   cascade:resultClinicallyRelevantTime "${day}T12:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ; cascade:patient <${pod.subject}> .`;
     const entered = await pod.enter(`${PREFIXES}
 <urn:uuid:${crypto.randomUUID()}> a prov:Activity ;
