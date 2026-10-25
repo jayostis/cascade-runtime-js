@@ -63,6 +63,10 @@ export interface SpecWarning {
 export interface SpecPages {
   readonly files: ReadonlyMap<string, Uint8Array>;
   readonly warnings: readonly SpecWarning[];
+  /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
+  readonly unnoted: readonly string[];
+  /** Each Choice row that names no rule but the issue that will write it. */
+  readonly waiting: readonly { readonly note: string; readonly what: string }[];
 }
 
 /** The EARL report a conformance run wrote, read. */
@@ -133,6 +137,8 @@ interface ChoiceRow {
   readonly thing: string;
   readonly rules: readonly string[];
   readonly issues: readonly string[];
+  /** The paths of the "what we do" cell's code spans, each a file that applies a ruling no runtime rule can. */
+  readonly paths: readonly string[];
 }
 
 interface WhyParagraph {
@@ -154,6 +160,8 @@ interface Pointer {
 }
 
 const RULE_NUMBER = /^([A-Z]+\d+|Check \d+)\.\s*/;
+/** The sentence a rule opens with when no note rules it (decisions/README.md). */
+const NO_NOTE = /^No note rules this\.\s*/;
 const numberOf = (rule: WrittenRule): string | undefined =>
   RULE_NUMBER.exec(rule.name)?.[1];
 const anchorOf = (number: string): string =>
@@ -216,9 +224,21 @@ function readNote(
       thing: cells[0] ?? "",
       rules: [
         ...new Set(
-          [...done.matchAll(/\b([A-Z]{1,2}\d+)\b/g)]
-            .map((match) => match[1] ?? "")
+          [...done.matchAll(/\b(Check |[A-Z]{1,2})(\d+)(?: to \1(\d+))?\b/g)]
+            .flatMap(([, letters = "", from = "", to = from]) =>
+              Array.from(
+                { length: Math.max(0, Number(to) - Number(from)) + 1 },
+                (_, at) => `${letters}${Number(from) + at}`,
+              ),
+            )
             .filter((number) => rules.has(number)),
+        ),
+      ],
+      paths: [
+        ...new Set(
+          [...done.matchAll(/`([^`]+)`/g)]
+            .map((match) => match[1] ?? "")
+            .filter((path) => /^[\w. -]+(\/[\w. -]+)+$/.test(path)),
         ),
       ],
       issues: [
@@ -241,7 +261,10 @@ function readNote(
         .trim(),
     )
     .flatMap((paragraph): WhyParagraph[] => {
-      const led = /^(\*\*.+?\*\*)\s*\((rows? [^)]*)\)\s*/.exec(paragraph);
+      const led =
+        /^(\*\*.+?\*\*)\s*\((rows? (?:"[^"]*"|“[^”]*”|[^)"“])*)\)\s*/.exec(
+          paragraph,
+        );
       if (led === null) return [];
       return [
         {
@@ -376,13 +399,27 @@ class Spec {
   readonly kits: readonly { folder: string; feature: WrittenFeature }[];
   /** Each rule a Choice row's pointer reached, by note and row. */
   readonly #reached = new Map<string, Set<string>>();
+  /** Each path a Choice row names that is a file of the vocabulary. */
+  readonly #files: ReadonlySet<string>;
+  /** Each path a Choice row names in a folder of the vocabulary that holds no such file. */
+  readonly #missing: ReadonlySet<string>;
+  /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
+  readonly unnoted: string[] = [];
+  /** Each Choice row that names no rule but the issue that will write it. */
+  readonly waiting: { readonly note: string; readonly what: string }[] = [];
 
   constructor(
     options: SpecOptions,
     notes: ReadonlyMap<string, Note>,
     features: readonly WrittenFeature[],
     kits: readonly { folder: string; feature: WrittenFeature }[],
+    files: {
+      readonly found: ReadonlySet<string>;
+      readonly missing: ReadonlySet<string>;
+    },
   ) {
+    this.#files = files.found;
+    this.#missing = files.missing;
     this.#options = options;
     this.#notes = notes;
     this.features = features;
@@ -489,8 +526,14 @@ class Spec {
   /** The rule's pointers, checked against the notes: what to show of each. */
   ruled(feature: WrittenFeature, rule: WrittenRule) {
     const number = numberOf(rule) ?? rule.name;
-    const { pointers, rest } = pointersOf(rule.description);
-    if (pointers.length === 0)
+    const flat = rule.description.replace(/\s+/g, " ").trim();
+    const unnoted = NO_NOTE.exec(flat);
+    const { pointers, rest } =
+      unnoted === null
+        ? pointersOf(rule.description)
+        : { pointers: [], rest: flat.slice(unnoted[0].length) };
+    if (unnoted !== null) this.unnoted.push(`${feature.path} ${number}`);
+    else if (pointers.length === 0)
       this.#warn("rule names no note", feature.path, `${number} names no note`);
     let why: { note: Note; paragraph: WhyParagraph } | undefined;
     const shown: { note: Note | undefined; path: string; rows: string[] }[] =
@@ -541,21 +584,37 @@ class Spec {
         }
       }
     }
-    return { number, shown, why, rest };
+    return { number, shown, why, rest, unnoted: unnoted !== null };
   }
 
-  /** Each Choice row that names no rule. */
+  /**
+   * Each Choice row that names no rule, no file that applies it and no issue that will write its rule, and each file a
+   * row names that the vocabulary does not hold.
+   */
   unruledRows(): void {
     for (const note of this.#notes.values())
       for (const row of note.rows) {
+        for (const path of row.paths)
+          if (this.#missing.has(path))
+            this.#warn(
+              "pointer names nothing",
+              note.path,
+              `row "${row.thing}" names ${path}, which is no file`,
+            );
         if (row.rules.length > 0) continue;
-        const issues =
-          row.issues.length === 0 ? "" : ` (it names ${row.issues.join(", ")})`;
+        if (row.paths.some((path) => this.#files.has(path))) continue;
+        if (row.issues.length > 0) {
+          this.waiting.push({
+            note: note.path,
+            what: `row "${row.thing}" waits on ${row.issues.join(", ")}`,
+          });
+          continue;
+        }
         const by = this.#reached.get(`${note.path}\n${thingKey(row.thing)}`);
         this.#warn(
           "row names no rule",
           note.path,
-          `row "${row.thing}" names no rule${issues}${by === undefined ? "" : `, though ${[...by].join(", ")} name${by.size === 1 ? "s" : ""} it`}`,
+          `row "${row.thing}" names no rule${by === undefined ? "" : `, though ${[...by].join(", ")} name${by.size === 1 ? "s" : ""} it`}`,
         );
       }
   }
@@ -640,12 +699,14 @@ function rulesPart(
 ${
   ruled === undefined
     ? ""
-    : ruled.shown.length === 0
-      ? markup`<p class="ruled none">No decision note is named by this rule yet.</p>\n`
-      : markup`<p class="ruled">Ruled by ${ruled.shown.map(
-          ({ note, path, rows }, index) =>
-            markup`${index === 0 ? "" : "; "}<a href="${spec.blob}${path}">${note?.title ?? path}</a>${rows.length === 0 ? ", its Why" : markup`, ${rows.length === 1 ? "row" : "rows"} ${rows.map((row, i) => markup`${i === 0 ? "" : ", "}<q>${row}</q>`)}`}`,
-        )}</p>\n`
+    : ruled.unnoted
+      ? markup`<p class="ruled none">No decision note rules this: it is mechanics every runtime follows alike.</p>\n`
+      : ruled.shown.length === 0
+        ? markup`<p class="ruled none">No decision note is named by this rule yet.</p>\n`
+        : markup`<p class="ruled">Ruled by ${ruled.shown.map(
+            ({ note, path, rows }, index) =>
+              markup`${index === 0 ? "" : "; "}<a href="${spec.blob}${path}">${note?.title ?? path}</a>${rows.length === 0 ? ", its Why" : markup`, ${rows.length === 1 ? "row" : "rows"} ${rows.map((row, i) => markup`${i === 0 ? "" : ", "}<q>${row}</q>`)}`}`,
+          )}</p>\n`
 }${prose(ruled === undefined ? rule.description : ruled.rest)}${
       ruled === undefined
         ? ""
@@ -776,6 +837,9 @@ ${spec.kits.map(({ feature }) => row(feature, feature.path))}</tbody>
 ${plural(spec.warnings.length, "place")} where they do not yet:</p>
 <ul class="warnings">
 ${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.blob}${where}">${where}</a>: `}${what}</li>\n`)}</ul>
+<p class="prose">${plural(spec.unnoted.length, "rule says", "rules say")} no note rules it, and ${plural(spec.waiting.length, "Choice row waits", "Choice rows wait")} on the issue that will write its rule:</p>
+<ul class="warnings">
+${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.blob}${note}">${note}</a>: ${what}</li>\n`)}</ul>
 <footer>
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">
@@ -829,9 +893,7 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
     features.flatMap(({ rules }) =>
       rules.flatMap((rule) => {
         const number = numberOf(rule);
-        return number === undefined || number.startsWith("Check ")
-          ? []
-          : [number];
+        return number === undefined ? [] : [number];
       }),
     ),
   );
@@ -852,7 +914,18 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
       ),
     ),
   );
-  const spec = new Spec(options, notes, features, kits);
+  const spec = new Spec(
+    options,
+    notes,
+    features,
+    kits,
+    await filesNamed(
+      vocabulary,
+      [...notes.values()].flatMap(({ rows }) =>
+        rows.flatMap(({ paths }) => paths),
+      ),
+    ),
+  );
   const taken = new Set([
     SPEC_INDEX,
     ...features.map(({ path }) => pageNameOf(path)),
@@ -902,5 +975,34 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
     SPEC_STYLESHEET_FILE,
     new TextEncoder().encode(STYLESHEET + SPEC_STYLES),
   );
-  return { files, warnings: spec.warnings };
+  return {
+    files,
+    warnings: spec.warnings,
+    unnoted: spec.unnoted,
+    waiting: spec.waiting,
+  };
+}
+
+/**
+ * Of the paths the Choice rows name, those the vocabulary holds, and those in a folder of it that holds no such file;
+ * a path whose first folder the vocabulary has not is a pod's or another repository's, and neither.
+ */
+async function filesNamed(
+  vocabulary: Files,
+  paths: readonly string[],
+): Promise<{ found: Set<string>; missing: Set<string> }> {
+  const folders = new Map<string, Set<string>>();
+  const found = new Set<string>();
+  const missing = new Set<string>();
+  for (const path of new Set(paths)) {
+    const folder = path.slice(0, path.indexOf("/"));
+    let held = folders.get(folder);
+    if (held === undefined) {
+      held = new Set(await vocabulary.list(folder));
+      folders.set(folder, held);
+    }
+    if (held.has(path)) found.add(path);
+    else if (held.size > 0) missing.add(path);
+  }
+  return { found, missing };
 }
