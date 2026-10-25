@@ -49,7 +49,7 @@ export interface MatcherRule {
   readonly finding?: boolean;
 }
 
-interface TakenRecord {
+export interface TakenRecord {
   readonly name: string;
   readonly classes: ReadonlySet<string>;
   readonly version: string;
@@ -1158,7 +1158,8 @@ class Matcher {
   /**
    * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
    * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
-   * (M7). A star filed again joins it, so a claim triggers this once.
+   * (M7). A star filed again joins it, so a claim triggers this once. The claims go in order of that member's arrival,
+   * as a run stars the records it takes.
    */
   private async resplit(
     byTerm: ReadonlyMap<string, MatcherRule>,
@@ -1173,14 +1174,19 @@ class Matcher {
       }
       neighbours.set(justification, of);
     }
-    for (const judged of this.pod.judgments) {
-      const rule = byTerm.get(judged.rule);
-      if (rule === undefined) continue;
-      const members = judged.members.flatMap(
-        (member) => records.get(member) ?? [],
-      );
-      const [record] = [...members].sort(byArrival).slice(-1);
-      if (record === undefined) continue;
+    const latest = this.pod.judgments
+      .flatMap((judged) => {
+        const rule = byTerm.get(judged.rule);
+        const [record] = judged.members
+          .flatMap((member) => records.get(member) ?? [])
+          .sort(byArrival)
+          .slice(-1);
+        return rule === undefined || record === undefined
+          ? []
+          : [{ judged, rule, record }];
+      })
+      .sort((a, b) => byArrival(a.record, b.record));
+    for (const { judged, rule, record } of latest) {
       const origin =
         rule.kind === undefined
           ? ""
@@ -1232,7 +1238,7 @@ function joinsFirst(a: Waiting, b: Waiting): boolean {
  * arrival and join, by union-find, as the records asked about come in arrival order, so a run joins each Same once
  * rather than every Same for each record it stars; a record asked about before the last starts them again.
  */
-class ArrivedEntries {
+export class ArrivedEntries {
   readonly #parent = new Map<string, string>();
   readonly #all: Waiting[] = [];
   #waiting: Waiting[] = [];
@@ -1247,13 +1253,11 @@ class ArrivedEntries {
     this.#restart();
   }
 
-  /** Counts a Same the run files. */
+  /** Counts a Same the run files: it joins when a record asked about arrived after each of its members the run read. */
   add(members: readonly string[]): void {
     const same = this.#waitingOf(members);
     this.#all.push(same);
-    if (this.#asked !== undefined && this.#joinedBy(same, this.#asked))
-      this.#join(same.members);
-    else this.#push(same);
+    this.#push(same);
   }
 
   /** The entry of each name, as the Sames make them whose members the run read all arrived before the record. */
