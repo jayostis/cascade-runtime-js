@@ -1,10 +1,7 @@
-import {
-  ENTRY_PLACEHOLDER,
-  type PodState,
-  type VocabularyBuild,
-} from "./build.js";
+import type { PodState, VocabularyBuild } from "./build.js";
 import { addLayout, podFiles } from "./dataset.js";
 import { DERIVED, type DerivedStep, type Keep } from "./derive.js";
+import { ENTRY_PLACEHOLDER } from "./entries.js";
 import type { Files } from "./files.js";
 import type { Layout } from "./layout.js";
 import { type Term, type Triple, written } from "./rdf.js";
