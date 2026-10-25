@@ -6,7 +6,6 @@ import type { LoadOptions, Rows, Store } from "./store.js";
 const TURTLE = "text/turtle";
 const N_TRIPLES = "application/n-triples";
 const RESULTS_JSON = "application/sparql-results+json";
-const N_QUADS = "application/n-quads";
 /** The subjects one removal binds: Oxigraph's JavaScript build joins a long VALUES block in more than linear time. */
 const SUBJECTS_AT_ONCE = 256;
 
@@ -296,35 +295,6 @@ export class OxigraphStore implements Store {
       free(graph);
     }
     if (any) this.#graphs.add(options.graph);
-  }
-
-  /**
-   * Copied as one N-Quads load fed each graph given in turn, dumped as N-Triples with its name added to each line: one
-   * load keeps a blank node shared across graphs one node, where Oxigraph names a load's blank nodes afresh. Oxigraph
-   * wrote the lines, so they are loaded without checks.
-   */
-  async copy(graphs: ReadonlySet<string>): Promise<Store> {
-    const copy = new OxigraphStore();
-    if (this.#oxigraph === undefined && !this.#freed) return copy;
-    const store = this.#store;
-    const held = [...graphs].filter((graph) => this.#graphs.has(graph));
-    copy.#store.load(
-      (function* (): Generator<string> {
-        for (const graph of held) {
-          const name = oxigraph.namedNode(graph);
-          try {
-            yield store
-              .dump({ format: N_TRIPLES, from_graph_name: name })
-              .replaceAll(" .\n", ` ${written(iri(graph))} .\n`);
-          } finally {
-            free(name);
-          }
-        }
-      })(),
-      { format: N_QUADS, lenient: true },
-    );
-    for (const graph of held) copy.#graphs.add(graph);
-    return copy;
   }
 
   async drop(graph: string): Promise<void> {

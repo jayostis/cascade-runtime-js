@@ -1,4 +1,4 @@
-import type { Term, Triple } from "./rdf.js";
+import { iri, type Term, type Triple, written } from "./rdf.js";
 
 export type Row = ReadonlyMap<string, Term>;
 
@@ -33,8 +33,6 @@ export interface Store {
     triples: readonly Triple[],
     union: ReadonlySet<string>,
   ): Promise<boolean[]>;
-  /** A store of its own holding the graphs given, as this one holds them. */
-  copy(graphs: ReadonlySet<string>): Promise<Store>;
   /** Releases what the store holds; a store freed is never read again. */
   free?(): void;
 }
@@ -101,6 +99,62 @@ export class Union implements Dataset {
 
   holds(triples: readonly Triple[]): Promise<boolean[]> {
     return this.store.holds(triples, this.#graphs);
+  }
+}
+
+/**
+ * A union over another's store, changed for a while and then put back: each graph it first drops or changes is read as
+ * the store holds it, and `restore` drops every graph changed and adds back what each held. A triple added names its
+ * blank node by its label, so each blank node put back is the node it was, where a load would name it afresh.
+ */
+export class RestorableUnion extends Union {
+  readonly #before = new Map<string, readonly Triple[]>();
+
+  async #keep(graph: string): Promise<void> {
+    if (this.#before.has(graph)) return;
+    this.#before.set(
+      graph,
+      await this.store.construct(
+        `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ${written(iri(graph))} { ?s ?p ?o } }`,
+        new Set(),
+      ),
+    );
+  }
+
+  override async loadTurtle(
+    turtle: Uint8Array | string,
+    graph: string,
+  ): Promise<void> {
+    await this.#keep(graph);
+    await super.loadTurtle(turtle, graph);
+  }
+
+  override async add(triples: Iterable<Triple>, graph: string): Promise<void> {
+    await this.#keep(graph);
+    await super.add(triples, graph);
+  }
+
+  override async drop(graph: string): Promise<void> {
+    await this.#keep(graph);
+    await super.drop(graph);
+  }
+
+  override async removeSubjects(
+    graph: string,
+    subjects: Iterable<string>,
+  ): Promise<void> {
+    await this.#keep(graph);
+    await super.removeSubjects(graph, subjects);
+  }
+
+  /** Puts the store back as it held each graph changed; the union is not read again. */
+  async restore(): Promise<void> {
+    const before = [...this.#before];
+    this.#before.clear();
+    for (const [graph, triples] of before) {
+      await this.store.drop(graph);
+      if (triples.length > 0) await this.store.add(triples, { graph });
+    }
   }
 }
 

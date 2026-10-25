@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { nTriples, OxigraphStore } from "../src/oxigraph-store.js";
 import { blank, iri, literal, type Triple, written } from "../src/rdf.js";
-import { Union } from "../src/store.js";
+import { RestorableUnion, Union } from "../src/store.js";
 
 test("a query's default graph is the union of the graphs it names, GRAPH reads every graph, and blank nodes are shared across graphs", async () => {
   const store = new OxigraphStore();
@@ -74,7 +74,7 @@ test("a query's default graph is the union of the graphs it names, GRAPH reads e
   );
 });
 
-test("terms, quads and graphs the store frees once read leave the same answers when read again; a copy holds the graphs given; a store freed is never read again", async () => {
+test("terms, quads and graphs the store frees once read leave the same answers when read again; a store freed is never read again", async () => {
   const store = new OxigraphStore();
   const turtle = '<urn:s> <urn:p> 1, 2, "x"@en .\n<urn:t> <urn:p> 1 .';
   const parsed = await store.parse(turtle, "urn:base");
@@ -99,18 +99,57 @@ test("terms, quads and graphs the store frees once read leave the same answers w
     ),
     [`"3"^^<${integer}>`],
   );
-
-  const copy = await store.copy(new Set(["urn:two"]));
-  const [[copied, ...rest] = []] = await copy.construct(
-    construct,
-    new Set(["urn:two"]),
-  );
-  assert.equal(copied?.termType, "BlankNode");
-  assert.deepEqual(rest, added.slice(1));
-  assert.equal(await copy.ask("ASK { <urn:s> ?p ?o }", both), false);
   store.free();
   await assert.rejects(store.ask("ASK { ?s ?p ?o }", union), /freed/);
-  assert.equal(await copy.ask("ASK { ?s <urn:p> 3 }", both), true);
+});
+
+test("a union restored puts back every graph it dropped, added to or took subjects from, each blank node the node it was, and drops every graph it added", async () => {
+  const store = new OxigraphStore();
+  await store.loadTurtle("<urn:s> <urn:p> [ <urn:q> 1 ] .", {
+    graph: "urn:one",
+  });
+  const [[, , shared] = []] = await store.construct(
+    "CONSTRUCT { ?s <urn:p> ?o } WHERE { GRAPH <urn:one> { ?s <urn:p> ?o } }",
+    new Set(),
+  );
+  assert.equal(shared?.termType, "BlankNode");
+  await store.add([[shared, iri("urn:r"), iri("urn:t")] as Triple], {
+    graph: "urn:two",
+  });
+  await store.loadTurtle("<urn:u> <urn:p> 2 . <urn:v> <urn:p> 3 .", {
+    graph: "urn:three",
+  });
+  const quads = async (): Promise<string[]> =>
+    (
+      await store.select(
+        "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }",
+        new Set(),
+      )
+    ).rows
+      .map((row) =>
+        ["s", "p", "o", "g"]
+          .map((name) => written(row.get(name) ?? iri("urn:unbound")))
+          .join(" "),
+      )
+      .sort();
+  const before = await quads();
+  const graphs = ["urn:one", "urn:two", "urn:three"];
+  const union = new RestorableUnion(store, graphs);
+  await union.drop("urn:one");
+  await union.add([[iri("urn:w"), iri("urn:p"), blank("fresh")]], "urn:two");
+  await union.removeSubjects("urn:three", ["urn:u"]);
+  await union.add([[iri("urn:x"), iri("urn:p"), literal("4")]], "urn:four");
+  await union.drop("urn:four");
+  await union.add([[iri("urn:y"), iri("urn:p"), literal("5")]], "urn:five");
+  assert.equal(await union.ask("ASK { ?s <urn:q> 1 }"), false);
+  await union.restore();
+  assert.deepEqual(await quads(), before);
+  assert.equal(
+    await new Union(store, graphs).ask(
+      "ASK { <urn:s> <urn:p> ?node . ?node <urn:q> 1 ; <urn:r> <urn:t> }",
+    ),
+    true,
+  );
 });
 
 test("a CONSTRUCT gives every term as a parse of the same Turtle does: escapes, languages with or without a direction, datatypes, IRIs beyond ASCII and shared blank nodes; a literal of many escapes is read in linear time", async () => {

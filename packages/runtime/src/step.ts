@@ -39,12 +39,15 @@ export interface StepContext {
   /** The writer's last snapshot, which its next act's snapshot names as its first parent; none for a new writer. */
   readonly lastSnapshot?: string;
   /**
-   * The pod as the matcher reads it before the step, built once for the pod as it stands. The step owns it and may add
-   * to it: the pod drops it when the step ends.
+   * The pod as the matcher reads it before the step, built once for the pod as it stands. The step may add to it and
+   * drop from it, through the union, until it releases it; the pod releases it when the step ends.
    */
   matcherView(): Promise<Union>;
-  /** Takes the matcher's view out of what the pod keeps, so whatever reads the pod next builds a view of its own. */
-  releaseMatcherView(): void;
+  /**
+   * Takes the matcher's view out of what the pod keeps, so whatever reads the pod next builds a view of its own, and
+   * undoes what the step changed in it where the view is the dataset the pod keeps.
+   */
+  releaseMatcherView(): Promise<void>;
   /**
    * The dataset the pod keeps as it stands before the step, when it keeps one: every file of it a graph named by the
    * pod's address plus its path, beside the derived state, the files the build writes and the layout. Read only.
