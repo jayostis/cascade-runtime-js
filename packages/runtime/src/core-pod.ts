@@ -943,6 +943,9 @@ export class CorePod {
         newStore: options.newStore,
         layout: options.layout,
         vocabulary: options.vocabulary,
+        ...(this.#head === undefined
+          ? {}
+          : { lastSnapshot: this.#head.snapshot }),
         matcherView: () => this.#matcherView(),
         releaseMatcherView: () => this.#kept.delete(MATCHER_VIEW),
         keptDataset: () => this.#keptDataset(),

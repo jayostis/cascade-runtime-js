@@ -234,7 +234,16 @@ function grow(root: Node, steps: readonly Step[]): Node[] {
                   .findLastIndex(({ name }) => name === happened.takes),
               ),
             }
-          : happened,
+          : happened.kind === "judgment"
+            ? {
+                ...happened,
+                steps: Object.fromEntries(
+                  steps
+                    .slice(0, index)
+                    .map(({ name }, at) => [name, String(at)]),
+                ),
+              }
+            : happened,
       ...(step.writer === undefined ? {} : { writer: step.writer }),
     };
     const key = JSON.stringify(
