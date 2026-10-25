@@ -55,6 +55,110 @@ function tripleOf(quad: oxigraph.Quad): Triple {
   }
 }
 
+/** What each escape of an N-Triples string stands for, but `\u` and `\U`. */
+const ESCAPED: Readonly<Record<string, string>> = {
+  b: "\b",
+  t: "\t",
+  n: "\n",
+  f: "\f",
+  r: "\r",
+  '"': '"',
+  "'": "'",
+  "\\": "\\",
+};
+
+/** Where a blank node's label or a language tag ends. */
+const ENDS = new Set([" ", "\t", "\r", "\n"]);
+
+/** The triples of N-Triples as Oxigraph writes them: a triple a line, every IRI absolute. */
+export function nTriples(text: string): Triple[] {
+  const triples: Triple[] = [];
+  let at = 0;
+  /** The next backslash at or after `at`, looked for again only once passed: a text with none is scanned once. */
+  let slash = text.indexOf("\\");
+  const fail = (): never => {
+    throw new Error(
+      `Oxigraph wrote N-Triples this cannot read, at ${at}: ${text.slice(at, at + 80)}`,
+    );
+  };
+  const skip = (characters: ReadonlySet<string>): void => {
+    while (at < text.length && characters.has(text[at] as string)) at += 1;
+  };
+  const word = (): string => {
+    const start = at;
+    while (at < text.length && !ENDS.has(text[at] as string)) at += 1;
+    return text.slice(start, at);
+  };
+  const until = (end: string): string => {
+    const found = text.indexOf(end, at);
+    if (found < 0) fail();
+    const value = text.slice(at, found);
+    at = found + end.length;
+    return value;
+  };
+  const term = (): Term => {
+    skip(ENDS);
+    if (text[at] === "<") {
+      at += 1;
+      return iri(until(">"));
+    }
+    if (text.startsWith("_:", at)) {
+      at += 2;
+      return blank(word());
+    }
+    if (text[at] !== '"') fail();
+    at += 1;
+    let value = "";
+    for (;;) {
+      const quote = text.indexOf('"', at);
+      if (slash >= 0 && slash < at) slash = text.indexOf("\\", at);
+      if (quote < 0) fail();
+      if (slash < 0 || quote < slash) {
+        value += text.slice(at, quote);
+        at = quote + 1;
+        break;
+      }
+      value += text.slice(at, slash);
+      const kind = text[slash + 1] as string;
+      if (kind === "u" || kind === "U") {
+        const digits = kind === "u" ? 4 : 8;
+        value += String.fromCodePoint(
+          Number.parseInt(text.slice(slash + 2, slash + 2 + digits), 16),
+        );
+        at = slash + 2 + digits;
+      } else {
+        value += ESCAPED[kind] ?? fail();
+        at = slash + 2;
+      }
+    }
+    if (text[at] === "@") {
+      at += 1;
+      return literal(value, { language: word() });
+    }
+    if (text.startsWith("^^<", at)) {
+      at += 3;
+      return literal(value, until(">"));
+    }
+    return literal(value);
+  };
+  for (;;) {
+    skip(ENDS);
+    if (at >= text.length) return triples;
+    const subject = term();
+    const predicate = term();
+    const object = term();
+    skip(ENDS);
+    if (
+      text[at] !== "." ||
+      subject.termType === "Literal" ||
+      predicate.termType !== "NamedNode"
+    )
+      fail();
+    at += 1;
+    triples.push([subject, predicate, object] as Triple);
+  }
+}
+
 function toOxigraph(
   term: Term,
 ): oxigraph.NamedNode | oxigraph.BlankNode | oxigraph.Literal {
@@ -289,14 +393,18 @@ export class OxigraphStore implements Store {
     });
   }
 
+  /**
+   * Read as Oxigraph writes the triples in N-Triples, one string: as an array of quads each would be an object in its
+   * WebAssembly memory until freed, and a large answer would grow that memory a step at a time, V8 collecting the whole
+   * heap at each step.
+   */
   async construct(
     query: string,
     union: ReadonlySet<string>,
   ): Promise<Triple[]> {
-    const answer = this.#query(query, union);
-    if (!Array.isArray(answer) || answer.some((item) => item instanceof Map)) {
+    const answer = this.#query(query, union, { results_format: N_TRIPLES });
+    if (typeof answer !== "string")
       throw new Error("a query that is no CONSTRUCT was run as one");
-    }
-    return (answer as oxigraph.Quad[]).map(tripleOf);
+    return nTriples(answer);
   }
 }
