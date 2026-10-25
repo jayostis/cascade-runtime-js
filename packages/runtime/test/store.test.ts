@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { OxigraphStore } from "../src/oxigraph-store.js";
+import { nTriples, OxigraphStore } from "../src/oxigraph-store.js";
 import { blank, iri, literal, type Triple, written } from "../src/rdf.js";
 import { Union } from "../src/store.js";
 
@@ -113,10 +113,10 @@ test("terms, quads and graphs the store frees once read leave the same answers w
   assert.equal(await copy.ask("ASK { ?s <urn:p> 3 }", both), true);
 });
 
-test("a CONSTRUCT gives every term as a parse of the same Turtle does: escapes, languages, datatypes and shared blank nodes", async () => {
+test("a CONSTRUCT gives every term as a parse of the same Turtle does: escapes, languages with or without a direction, datatypes, IRIs beyond ASCII and shared blank nodes; a literal of many escapes is read in linear time", async () => {
   const store = new OxigraphStore();
   const turtle = String.raw`<urn:s> <urn:p> "say \"hi\"\\ \n\r\t\b\f \u0001 é 😀"@en-GB, "x"^^<urn:type>, "", "1"^^<http://www.w3.org/2001/XMLSchema#integer>, _:a, [ <urn:q> _:a ] .
-_:a <urn:p> <urn:s#fragment?query> .`;
+_:a <urn:p> <urn:s#fragment?query>, <https://exämple.org/ü/日本>, "مرحبا"@ar--rtl .`;
   await store.loadTurtle(turtle, { graph: "urn:one" });
   const constructed = await store.construct(
     "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }",
@@ -141,4 +141,11 @@ _:a <urn:p> <urn:s#fragment?query> .`;
     ).size;
   assert.deepEqual(lines(constructed), lines(parsed));
   assert.equal(blanks(constructed), blanks(parsed));
+
+  const escapes = 200_000;
+  const long = `<urn:s> <urn:p> "${"\\n".repeat(escapes)}" .\n`;
+  const started = performance.now();
+  const [[, , object] = []] = nTriples(long);
+  assert.equal(object?.value.length, escapes);
+  assert.ok(performance.now() - started < 400);
 });

@@ -76,6 +76,8 @@ export function nTriples(text: string): Triple[] {
   let at = 0;
   /** The next backslash at or after `at`, looked for again only once passed: a text with none is scanned once. */
   let slash = text.indexOf("\\");
+  /** The next double quote at or after `at`, looked for again only once passed, as `slash` is. */
+  let quote = text.indexOf('"');
   const fail = (): never => {
     throw new Error(
       `Oxigraph wrote N-Triples this cannot read, at ${at}: ${text.slice(at, at + 80)}`,
@@ -110,7 +112,7 @@ export function nTriples(text: string): Triple[] {
     at += 1;
     let value = "";
     for (;;) {
-      const quote = text.indexOf('"', at);
+      if (quote >= 0 && quote < at) quote = text.indexOf('"', at);
       if (slash >= 0 && slash < at) slash = text.indexOf("\\", at);
       if (quote < 0) fail();
       if (slash < 0 || quote < slash) {
@@ -133,7 +135,8 @@ export function nTriples(text: string): Triple[] {
     }
     if (text[at] === "@") {
       at += 1;
-      return literal(value, { language: word() });
+      const [language = ""] = word().split("--");
+      return literal(value, { language });
     }
     if (text.startsWith("^^<", at)) {
       at += 3;
