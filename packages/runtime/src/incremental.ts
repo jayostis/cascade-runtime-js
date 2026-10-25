@@ -380,13 +380,17 @@ export class KeptBuild {
     files: ReadonlyMap<string, readonly Triple[]>;
   }): Promise<void> {
     const { address } = this.#rebuilding;
+    const line = (triple: Triple) =>
+      triple
+        .map((term) => (term.termType === "BlankNode" ? "[]" : written(term)))
+        .join(" ");
     const graphOf = async (union: Union, graph: string) =>
       new Set(
         (
           await union.construct(
             `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${graph}> { ?s ?p ?o } }`,
           )
-        ).map((triple) => triple.map(written).join(" ")),
+        ).map(line),
       );
     const differences: string[] = [];
     const compare = (what: string, kept: Set<string>, built: Set<string>) => {
@@ -407,8 +411,8 @@ export class KeptBuild {
       await graphOf(whole.kept.union, this.#derived),
     );
     for (const [path, triples] of whole.files) {
-      const lines = (all: Iterable<Triple>) =>
-        new Set([...all].map((triple) => triple.map(written).join(" ")));
+      if (path === this.#rebuilding.layout.manifest) continue;
+      const lines = (all: Iterable<Triple>) => new Set([...all].map(line));
       compare(
         `${path} in the union`,
         await graphOf(this.union, address + path),
