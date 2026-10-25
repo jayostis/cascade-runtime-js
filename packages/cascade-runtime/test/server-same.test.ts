@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { findRoot, localVocabulary } from "@cascade-runtime/runtime/node";
+import { KeptBuild, type Rebuilding } from "@cascade-runtime/runtime";
+import {
+  FolderFiles,
+  findRoot,
+  localVocabulary,
+} from "@cascade-runtime/runtime/node";
 import { type Exported, type Pod } from "cascade-runtime";
 import { resolved } from "../src/node/resolved.js";
 import { openPodWith, type Parts } from "../src/pod.js";
@@ -113,15 +118,20 @@ function retraction(pod: Pod, claim: string): string {
 `;
 }
 
-/** Every triple of every graph but those naming a blank node, each as a line, sorted. */
+/**
+ * Every triple of every graph but the manifest, whose build names the writer's last snapshot, which a copy opened
+ * afresh has none of, as a line, each blank node written `_:`, sorted, a line as often as it is held. */
 async function everything(pod: Pod): Promise<string[]> {
   const rows = await pod.ask({
-    query:
-      "SELECT ?g ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } FILTER (!isBlank(?s) && !isBlank(?o)) }",
+    query: `SELECT ?line WHERE {
+      GRAPH ?g { ?s ?p ?o }
+      FILTER (?g != <${pod.address}${parts.layout.manifest}>)
+      BIND (CONCAT(STR(?g), " ", IF(isBlank(?s), "_:", STR(?s)), " ", STR(?p), " ",
+        IF(isBlank(?o), "_:", IF(isLiteral(?o), CONCAT(STR(?o), "^^", STR(DATATYPE(?o)), "@", LANG(?o)), STR(?o))))
+        AS ?line)
+    }`,
   });
-  return rows
-    .map(({ g, s, p, o }) => [g, s, p, o].map(String).join(" "))
-    .sort();
+  return rows.map(({ line = "" }) => line).sort();
 }
 
 /** What a build of the whole pod holds, read from a copy of its folder opened afresh. */
@@ -160,6 +170,42 @@ test("the server Same's joins, kept across steps, are what a build of the whole 
   const folder = join(scratch, "pod");
   const pod = await openPodWith(parts, folder);
   try {
+    const rebuilding: Rebuilding = {
+      pod: new FolderFiles(folder),
+      layout: parts.layout,
+      address: pod.address,
+      newStore: parts.newStore,
+      build: parts.build,
+      lens: parts.lens,
+      keep: () => Promise.resolve([]),
+    };
+    const state = (at: string) => ({ address: pod.address, at, title: "pod" });
+    /**
+     * The act, with a build kept from before it rebuilt in part after it, which must not fall back to a build of the
+     * whole pod, and equals one.
+     */
+    const inPart = async (
+      name: string,
+      act: () => Promise<{ refused?: string; wrote: readonly string[] }>,
+    ) => {
+      const { kept } = await KeptBuild.whole(
+        rebuilding,
+        state("2026-07-01T00:00:00Z"),
+      );
+      try {
+        const done = await act();
+        assert.equal(done.refused, undefined, name);
+        const after = state("2026-07-02T00:00:00Z");
+        assert.ok(
+          (await kept.step({ written: done.wrote }, after)) !== undefined,
+          `${name} is rebuilt whole`,
+        );
+        await kept.verify(await KeptBuild.whole(rebuilding, after));
+      } finally {
+        kept.free();
+      }
+      return { refused: undefined };
+    };
     const performed = async (
       name: string,
       act: () => Promise<{ refused?: string }>,
@@ -210,18 +256,21 @@ test("the server Same's joins, kept across steps, are what a build of the whole 
     assert.deepEqual(await joinedIds(pod), ["a", "b"]);
 
     await performed("a pull under one of the servers", () =>
-      pod.import(pullFiles("again", SECOND, ["c"], "2026-06-10T09:00:00Z"), {
-        match: false,
-      }),
+      inPart("a pull under one of the servers", () =>
+        pod.import(pullFiles("again", SECOND, ["c"], "2026-06-10T09:00:00Z"), {
+          match: false,
+        }),
+      ),
     );
     assert.deepEqual(await joinedIds(pod), ["a", "b", "c"]);
 
-    await performed("a Different over two records it joins", async () =>
-      pod.judge(
-        judgment(pod, "Different", [
-          await recordUnder(pod, FIRST, "a"),
-          await recordUnder(pod, SECOND, "a"),
-        ]),
+    const different = judgment(pod, "Different", [
+      await recordUnder(pod, FIRST, "a"),
+      await recordUnder(pod, SECOND, "a"),
+    ]);
+    await performed("a Different over two records it joins", () =>
+      inPart("a Different over two records it joins", () =>
+        pod.judge(different),
       ),
     );
     assert.deepEqual(await joinedIds(pod), ["b", "c"]);
