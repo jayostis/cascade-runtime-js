@@ -110,7 +110,7 @@ function organizationIdOf(
   };
 }
 
-/** Code point order, the order SPARQL's MIN puts strings in, where `<` compares UTF-16 code units. */
+/** Compares two strings code point by code point, as SPARQL orders them; JavaScript's `<` compares UTF-16 code units. */
 function byCodePoint(a: string, b: string): number {
   const left = Array.from(a, (c) => c.codePointAt(0) as number);
   const right = Array.from(b, (c) => c.codePointAt(0) as number);
