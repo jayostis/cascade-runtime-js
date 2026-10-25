@@ -36,6 +36,8 @@ export interface StepContext {
   readonly layout: Layout;
   /** The vocabulary, whose queries the matcher runs. */
   readonly vocabulary: Files;
+  /** The writer's last snapshot, which its next act's snapshot names as its first parent; none for a new writer. */
+  readonly lastSnapshot?: string;
   /**
    * The pod as the matcher reads it before the step, built once for the pod as it stands. The step owns it and may add
    * to it: the pod drops it when the step ends.

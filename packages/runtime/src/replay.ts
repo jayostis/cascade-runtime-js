@@ -91,6 +91,32 @@ async function revisionsNamed(
   );
 }
 
+const ACT_OF_STEP = /<urn:cascade:act-of-step:([^>]+)>/g;
+
+/**
+ * A judgment's Turtle with each <urn:cascade:act-of-step:{step}> made the act the step so named performed: an act's name
+ * is random, so a story cannot write it. A step that performed no act, or none before this one, is the story's mistake,
+ * and throws.
+ */
+function actsNamed(
+  story: StorySide,
+  bytes: Uint8Array,
+  steps: Readonly<Record<string, string>> = {},
+): Uint8Array {
+  return new TextEncoder().encode(
+    new TextDecoder()
+      .decode(bytes)
+      .replace(ACT_OF_STEP, (_placeholder, step: string) => {
+        const act = story.activities.get(steps[step] ?? step);
+        if (act === undefined)
+          throw new Error(
+            `the judgment names the act of the step ${step}, which performed none before it`,
+          );
+        return `<${act}>`;
+      }),
+  );
+}
+
 /** The step happened when the story says. */
 function begun(story: StorySide, step: Step): void {
   story.time.begin(step.when);
@@ -146,7 +172,10 @@ export const PERFORMERS: Performers = {
     return withStoryFile(pod, story, happened.file, async (judgment) =>
       pod.judge({
         ...judgment,
-        bytes: await revisionsNamed(pod, judgment.bytes),
+        bytes: await revisionsNamed(
+          pod,
+          actsNamed(story, judgment.bytes, happened.steps),
+        ),
       }),
     );
   },

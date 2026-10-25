@@ -7,7 +7,12 @@ export type Happened =
     }
   | { readonly kind: "connect"; readonly folder: string }
   | { readonly kind: "entry"; readonly file: string }
-  | { readonly kind: "judgment"; readonly file: string }
+  | {
+      readonly kind: "judgment";
+      readonly file: string;
+      /** The name each earlier step is performed under, by the name the story gives it, where the two differ. */
+      readonly steps?: Readonly<Record<string, string>>;
+    }
   | { readonly kind: "reference"; readonly name: string }
   | { readonly kind: "matcher"; readonly takes?: string }
   | { readonly kind: "open"; readonly tables: string }
