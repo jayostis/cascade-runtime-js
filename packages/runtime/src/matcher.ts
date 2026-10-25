@@ -44,6 +44,8 @@ export interface MatcherRule {
   /** The name of the query's bytes, which the rule's claims are asserted with. */
   readonly hash: string;
   readonly kind?: string;
+  /** Whether the rule files findings for review of the kind `justification` names rather than judgments (R16, R17). */
+  readonly finding?: boolean;
 }
 
 interface TakenRecord {
@@ -105,7 +107,16 @@ export async function matcherRules(
       return values[0]?.value ?? "";
     };
     const term = one("matcherRule");
-    const justification = one("justifiedAs");
+    const said = [
+      ...rows.objects(row, `${CASCADE}justifiedAs`),
+      ...rows.objects(row, `${CASCADE}findingKind`),
+    ];
+    if (said.length !== 1)
+      throw new Refusal(
+        `a rule of the rule list gives ${said.length} cascade:justifiedAs and cascade:findingKind, not one`,
+      );
+    const justification = said[0]?.value ?? "";
+    const finding = rows.objects(row, `${CASCADE}findingKind`).length > 0;
     const query = one("queryPath");
     const expected = one("queryHash");
     const path = comparison(query);
@@ -135,6 +146,7 @@ export async function matcherRules(
         query: path,
         hash: expected,
         ...(kinds[0] === undefined ? {} : { kind: kinds[0].value }),
+        ...(finding ? { finding } : {}),
       },
       text: new TextDecoder().decode(bytes),
     });
@@ -446,6 +458,8 @@ interface Pod {
   readonly noLongerReachedUnder: ReadonlySet<string>;
   /** Each claim a finding of claims no longer reached names. */
   readonly namedByFinding: ReadonlySet<string>;
+  /** Each finding for review the pod holds, by its name. */
+  readonly findings: ReadonlySet<string>;
   /** The query hash of each matcher rule's row, by the rule list version whose rows the pod describes. */
   readonly ruleHashes: ReadonlyMap<string, ReadonlyMap<string, string>>;
 }
@@ -544,6 +558,7 @@ class Matcher {
     readonly current: (series: string) => string | undefined,
     readonly matched: Joins,
     readonly fresh: Joins,
+    readonly findings: readonly MatcherRule[] = [],
   ) {}
 
   /**
@@ -581,7 +596,8 @@ class Matcher {
       new Graph(await references.rows(rulesVersion)),
       context.vocabulary,
     );
-    const rules = found.map(({ rule }) => rule);
+    const rules = found.flatMap(({ rule }) => (rule.finding ? [] : [rule]));
+    const findings = found.flatMap(({ rule }) => (rule.finding ? [rule] : []));
     const kinds = new Set(found.flatMap(({ rule: { kind } }) => kind ?? []));
     const versions = [
       ...new Set(
@@ -616,6 +632,7 @@ class Matcher {
         current,
         none,
         none,
+        findings,
       );
     const versionsBefore =
       adopted === undefined
@@ -701,6 +718,7 @@ class Matcher {
         current,
         matched,
         none,
+        findings,
       );
     const fresh = new Map<string, Map<string, Set<string>>>();
     for (const [justification, pairs] of matched) {
@@ -727,6 +745,7 @@ class Matcher {
       current,
       matched,
       fresh,
+      findings,
     );
   }
 
@@ -1075,6 +1094,46 @@ class Matcher {
   }
 
   /**
+   * Files a finding for review for each pair a finding rule's query gives, of records of a class it applies to, that
+   * the pod holds no finding of: its kind, oa:motivatedBy oa:classifying, the two records as its targets and their
+   * current versions as prov:used, named by its triples (M21: R16, R17).
+   */
+  async fileFindings(): Promise<void> {
+    const { layout, writes } = this.context;
+    const filed = new Set<string>();
+    for (const rule of this.findings)
+      for (const key of this.matched.get(rule.justification)?.keys() ?? []) {
+        const [one, other] = key
+          .split(" ")
+          .map((name) => this.pod.records.get(name));
+        if (
+          one === undefined ||
+          other === undefined ||
+          ![one, other].every((record) =>
+            [...record.classes].some((found) => rule.appliesTo.has(found)),
+          )
+        )
+          continue;
+        const content = (subject: string): Triple[] => [
+          [iri(subject), iri(TYPE), iri(`${CASCADE}FindingForReview`)],
+          [iri(subject), iri(`${OA}hasBody`), iri(rule.justification)],
+          [iri(subject), iri(`${OA}motivatedBy`), iri(`${OA}classifying`)],
+          ...[one, other].flatMap((record): Triple[] => [
+            [iri(subject), iri(`${OA}hasTarget`), iri(record.name)],
+            [iri(subject), iri(`${PROV}used`), iri(record.version)],
+          ]),
+        ];
+        const name = await findingName(content(THIS_FINDING));
+        if (this.pod.findings.has(name) || filed.has(name)) continue;
+        filed.add(name);
+        writes.add(
+          layout.place(`${CASCADE}FindingForReview`).path(name),
+          ntriples(content(name)),
+        );
+      }
+  }
+
+  /**
    * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
    * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
    * (M7). A star filed again joins it, so a claim triggers this once.
@@ -1231,6 +1290,11 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
     `SELECT DISTINCT ?version WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; cascade:noLongerReachedUnderRuleListVersion ?version }`,
     "version",
   );
+  const findings = await column(
+    dataset,
+    "SELECT DISTINCT ?finding WHERE { ?finding a cascade:FindingForReview }",
+    "finding",
+  );
   const namedByFinding = await column(
     dataset,
     `SELECT DISTINCT ?claim WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?claim }`,
@@ -1298,6 +1362,7 @@ async function read(dataset: Dataset, references: References): Promise<Pod> {
       noLongerReachedUnder.flatMap(([version]) => version ?? []),
     ),
     namedByFinding: new Set(namedByFinding.flatMap(([claim]) => claim ?? [])),
+    findings: new Set(findings.flatMap(([finding]) => finding ?? [])),
     ruleHashes,
     retracted: new Set(
       [...retracted.values()].flatMap((members) =>
@@ -1373,6 +1438,7 @@ export async function runMatcher(
     await matcher.recheck();
     await matcher.fileNoLongerReached();
   } else await matcher.take(takes);
+  await matcher.fileFindings();
   matcher.finish();
   return actOfRun(context, activity);
 }
@@ -1576,6 +1642,7 @@ export async function openPod(
   await matcher.recheck();
   await matcher.rejoin();
   await matcher.fileNoLongerReached();
+  await matcher.fileFindings();
   matcher.finish();
   const activity = actOfRun(context);
   return activity === undefined
