@@ -7,7 +7,9 @@ import {
   type TestedWith,
 } from "@cascade-runtime/runtime";
 import {
+  filesNamed,
   readSpecReport,
+  rulesNamedIn,
   type SpecPages,
   specPages,
   type SpecWarning,
@@ -332,4 +334,93 @@ test("the index links every feature's page and every kit's", () => {
   const { hrefs } = readPage(pageText("index.html"));
   for (const page of ["naming.html", "the-kit.html", "kim.html"])
     assert.ok(hrefs.includes(page), page);
+});
+
+test("a Choice row names a rule only inside parentheses or beside a .feature pointer, never by a bare code another list uses", async () => {
+  const files = new MemoryFiles(TREE);
+  const text = (value: string) => new TextEncoder().encode(value);
+  await files.write("decisions/README.md", text("# Notes\n"));
+  await files.write(
+    "decisions/review.md",
+    text(`# Review
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| steps | | C1 and A1/A2 are steps of the conformance review, not rules | ours |
+| rule in parentheses | | a hash of its content (N1) | ours |
+| rule by pointer | | \`runtime/naming.feature\` N3 says so | ours |
+`),
+  );
+  await files.write("runtime/naming.feature", text(FEATURE));
+  await files.write(
+    "runtime/currency.feature",
+    text(`Feature: Currency
+  Rule: C1. A revision is current when nothing outranks it
+
+    Example: the only revision
+      Given a new pod for Kim on 2026-09-01 at 09:55
+`),
+  );
+  const pages = await specPages({
+    vocabulary: files,
+    report: await readSpecReport(earl([], "cascade-runtime-js", RAN_WITH)),
+    builtFrom: [],
+    at: "2026-10-24T00:00:00Z",
+  });
+  assert.deepEqual(
+    pages.warnings
+      .filter(({ kind }) => kind === "row names no rule")
+      .map(({ what }) => what),
+    ['row "steps" names no rule'],
+  );
+});
+
+test("a path a row names under a nested folder of the vocabulary is found, one the folder lacks is missing, and one in a folder the vocabulary lacks is neither", async () => {
+  const files = new MemoryFiles(TREE);
+  await files.write(
+    "conformance/kim/scripted-input/people.ttl",
+    new TextEncoder().encode(""),
+  );
+  assert.deepEqual(
+    await filesNamed(files, [
+      "conformance/kim/scripted-input/people.ttl",
+      "conformance/kim/scripted-input/gone.ttl",
+      "pod/clinical/allergies.ttl",
+    ]),
+    {
+      found: new Set(["conformance/kim/scripted-input/people.ttl"]),
+      missing: new Set(["conformance/kim/scripted-input/gone.ttl"]),
+    },
+  );
+});
+
+test("a rule is named in parentheses, beside a .feature pointer, after the word rule, or by a possessive, and a code after item or conformance-review names none", () => {
+  const named = (cell: string) => [...new Set(rulesNamedIn(cell))].sort();
+  assert.deepEqual(named("a hash (M7)"), ["M7"]);
+  assert.deepEqual(named("a range (M1 to M3, Check 2)"), [
+    "Check 2",
+    "M1",
+    "M2",
+    "M3",
+  ]);
+  assert.deepEqual(named("as rule M7 says; rules R12 and R13 too"), [
+    "M7",
+    "R12",
+  ]);
+  assert.deepEqual(named("kept as M14's table says"), ["M14"]);
+  assert.deepEqual(
+    named("`runtime/currency.feature`, C2 says so; C1 writes it"),
+    ["C2"],
+  );
+  assert.deepEqual(named("C1 writes it, A1/A2 follow, M4 and L1 say so"), []);
+  assert.deepEqual(
+    named("(conformance-review C3; the lean of item C1; rule N1)"),
+    ["N1"],
+  );
+  assert.deepEqual(
+    named("`runtime/naming.feature` N3 and conformance-review C2 and item A5"),
+    ["N3"],
+  );
 });

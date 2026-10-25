@@ -134,7 +134,7 @@ test("a CDA time is a UTC time where it gives an hour and its offset, else its d
     assert.equal(received(time ?? ""), when, time);
 });
 
-test("a document's records are scoped by its custodian's first id with no nullFlavor and its one patient's first id; with no custodian id, or not one patient with an id, it states no scope, and a file that is no C-CDA has none", () => {
+test("a document's records are scoped by the custodian id its organization is named by, the NPI, else the least type and value, and its one patient's first id; with no custodian id naming an organization, or not one patient with an id, it states no scope, and a file that is no C-CDA has none", () => {
   const bytes = (xml: string): Uint8Array => new TextEncoder().encode(xml);
   const document = (patients: string, custodianIds: string): Uint8Array =>
     bytes(`<ClinicalDocument xmlns="urn:hl7-org:v3">
@@ -158,9 +158,35 @@ test("a document's records are scoped by its custodian's first id with no nullFl
       patient: { root: "2.16.1", extension: "P-7" },
     },
   );
+  for (const [ids, custodian] of [
+    [
+      '<id root="Riverside" extension="77"/><id root="2.16.5" extension="RCH-1"/><id root="2.16.4"/>',
+      { root: "2.16.4" },
+    ],
+    [
+      '<id root="2.16.4"/><id root="2.16.5" extension="RCH-1"/><id root="Riverside" extension="77"/>',
+      { root: "2.16.4" },
+    ],
+    [
+      '<id root="2.16.4"/><id root="2.16.840.1.113883.4.6" extension="1234567893"/>',
+      { root: "2.16.840.1.113883.4.6", extension: "1234567893" },
+    ],
+    [
+      '<id root="2.16.840.1.113883.4.6"/><id root="0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D" extension="X"/>',
+      { root: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", extension: "X" },
+    ],
+  ] as const)
+    assert.deepEqual(scopesOf(document(one, ids))?.custodian, custodian, ids);
   for (const [stated, file] of [
     ["no custodian id", document(one, "")],
     ["a nullFlavor custodian id", document(one, '<id nullFlavor="NI"/>')],
+    [
+      "custodian ids naming no organization",
+      document(
+        one,
+        '<id root="Riverside" extension="77"/><id root="2.16.840.1.113883.4.6"/>',
+      ),
+    ],
     [
       "two recordTargets",
       document(

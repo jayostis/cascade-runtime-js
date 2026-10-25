@@ -166,7 +166,7 @@ test("a handle names a record from a server by its base URL, normalised, its typ
   );
   await assert.rejects(
     words.record("UNSCOPED"),
-    /UNSCOPED names .*unscoped\.xml, which states no custodian id, or not exactly one patient with an id: handles\.json gives its selector/,
+    /UNSCOPED names .*unscoped\.xml, whose custodian has no id that names an organization, or which states not exactly one patient with an id: handles\.json gives its selector/,
   );
   assert.equal(
     await words.record("SERVER"),
