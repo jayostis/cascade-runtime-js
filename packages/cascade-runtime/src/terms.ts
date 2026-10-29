@@ -94,7 +94,7 @@ export const codeStems = Object.freeze({
   DataAbsentReason: "https://ns.cascadeprotocol.org/codes/data-absent-reason/",
   NullFlavor: "https://ns.cascadeprotocol.org/codes/nullflavor/",
   ObservationInterpretation:
-    "https://ns.cascadeprotocol.org/codes/observation-interpretation/",
+    "https://ns.cascadeprotocol.org/codes/observationinterpretation/",
 });
 
 export type CodeStems = typeof codeStems;
