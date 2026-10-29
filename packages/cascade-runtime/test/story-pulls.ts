@@ -24,7 +24,10 @@ export async function storyPulls(
   for (const { name, asOf } of story.pulls) {
     const now = () => new Date(asOf);
     const { pull } = await pulled({ ...at, asOf }, patient, { row, now });
-    for (const [path, bytes] of pullFiles({ ...pull, asOf }, name))
+    for (const [path, bytes] of pullFiles(
+      { ...pull, searches: undefined, asOf },
+      name,
+    ))
       files.set(path, bytes);
   }
   return files;

@@ -28,6 +28,8 @@ export interface Pull {
   };
   /** References of a backfill type the hospital would not serve, as the records wrote them. */
   readonly missing: readonly string[];
+  /** The plan's searches, each made. */
+  readonly searches: readonly Search[];
   /** Searches the hospital answered with 403. */
   readonly denied: readonly Search[];
 }
@@ -213,6 +215,7 @@ export async function pull(
       entry: [...entries.values()],
     },
     missing,
+    searches: plan.searches,
     denied,
   };
 }
