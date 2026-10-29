@@ -1,3 +1,4 @@
+import { RESOURCE_TYPE } from "@cascade-runtime/fhir-pull";
 import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
@@ -28,6 +29,8 @@ export interface Pull {
   };
   /** References of a backfill type the hospital would not serve, as the records wrote them. */
   readonly missing: readonly string[];
+  /** The plan's searches, each made. */
+  readonly searches: readonly Search[];
   /** Searches the hospital answered with 403. */
   readonly denied: readonly Search[];
 }
@@ -38,7 +41,6 @@ export interface PullOptions {
   readonly signal?: AbortSignal;
 }
 
-const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 const REFERENCE = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/;
 const NOT_SERVED = new Set([403, 404, 410]);
 
@@ -213,6 +215,7 @@ export async function pull(
       entry: [...entries.values()],
     },
     missing,
+    searches: plan.searches,
     denied,
   };
 }

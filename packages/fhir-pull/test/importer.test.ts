@@ -159,6 +159,57 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
   );
 });
 
+test("a pull states the class of each search it answered and each it was refused", async () => {
+  const scope = async (changed: Record<string, unknown>) => {
+    const [document] = (await fhirPull.documents(
+      filesOf(pullFiles({ ...PULL, ...changed }, "north")),
+      "north",
+    ))!;
+    const facts = new oxigraph.Store();
+    facts.load(document!.facts("2026-10-07T08:00:00Z"), {
+      format: "text/turtle",
+    });
+    return (
+      facts.query(
+        `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+        SELECT ?p ?class WHERE {
+          <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?class
+          FILTER (?p IN (cascade:answersForRecordClass, cascade:refusedForRecordClass))
+        }`,
+      ) as Map<string, oxigraph.Term>[]
+    )
+      .map((row) =>
+        [row.get("p")!, row.get("class")!]
+          .map(({ value }) => value.split("#").pop())
+          .join(" "),
+      )
+      .sort();
+  };
+  assert.deepEqual(await scope({}), [], "a pull that lists no searches");
+  assert.deepEqual(
+    await scope({
+      searches: [
+        { type: "Condition" },
+        { type: "MedicationRequest" },
+        { type: "MedicationStatement" },
+        { type: "Encounter" },
+        { type: "Observation", category: "laboratory" },
+        { type: "Observation", category: "vital-signs" },
+      ],
+      denied: [
+        { type: "MedicationStatement" },
+        { type: "Observation", category: "vital-signs" },
+      ],
+    }),
+    [
+      "answersForRecordClass LaboratoryTestResult",
+      "answersForRecordClass PrescribedOrReportedMedication",
+      "answersForRecordClass ProblemOrDiagnosis",
+      "refusedForRecordClass PrescribedOrReportedMedication",
+    ],
+  );
+});
+
 test("a folder with no pull.json is no pull, and a pull the import cannot state is refused with why, and never saved", async () => {
   assert.equal(
     await fhirPull.documents(filesOf(new Map()), "north"),
@@ -201,6 +252,27 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           "retrievedAt",
         ],
         ["an as-of date with no time", { asOf: "2024-02-01" }, "asOf"],
+        ["searches that are no list", { searches: {} }, "searches"],
+        [
+          "a denied search with no resource type",
+          { denied: [{ category: "laboratory" }] },
+          "denied",
+        ],
+        [
+          "a search with an empty category",
+          { searches: [{ type: "Observation", category: "" }] },
+          "searches",
+        ],
+        [
+          "a denied search whose category is no string",
+          { denied: [{ type: "Observation", category: 3 }] },
+          "denied",
+        ],
+        [
+          "a search whose resource type is lowercase",
+          { searches: [{ type: "observation" }] },
+          "searches",
+        ],
       ] as const
     ).map(([name, changed, field]): [string, PullFiles, string] => {
       const why = {
@@ -210,6 +282,10 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
         source: "pull.json's source is not a name",
         retrievedAt: "pull.json's retrievedAt is not a time in UTC",
         asOf: "pull.json's asOf is not a time in UTC",
+        searches:
+          "pull.json's searches is not a list of searches, each a resource type and an optional category",
+        denied:
+          "pull.json's denied is not a list of searches, each a resource type and an optional category",
       }[field];
       assert.throws(
         () => pullFiles({ ...PULL, ...changed } as typeof PULL, "north"),

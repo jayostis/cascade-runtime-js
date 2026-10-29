@@ -10,10 +10,17 @@ const PULL = "pull.json";
 const BUNDLE = "bundle.json";
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
+export const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 
 /** What `pullFiles` throws for a pull whose content the import would refuse: bad input, never a broken runtime. */
 export class PullRefused extends Error {
   override readonly name = "PullRefused";
+}
+
+/** One search of a pull: a resource type, with the category it was narrowed to, if any. */
+export interface SavedSearch {
+  readonly type: string;
+  readonly category?: string;
 }
 
 /** A pull as `cascade-runtime`'s `pull()` returns it, as far as saving it needs. */
@@ -25,6 +32,10 @@ export interface SavedPull {
   readonly retrievedAt: string;
   /** The world's date the hospital answered as of, when the host that made the hospital set one. */
   readonly asOf?: string;
+  /** Each search the pull made. */
+  readonly searches?: readonly SavedSearch[];
+  /** The searches the hospital refused. */
+  readonly denied?: readonly SavedSearch[];
   readonly bundle: object;
 }
 
@@ -55,17 +66,46 @@ interface Described {
   readonly source: string;
   readonly retrievedAt: string;
   readonly asOf?: string;
+  readonly searches: readonly SavedSearch[];
+  readonly denied: readonly SavedSearch[];
 }
 
-/** The word `cascade:recordKind` gives each type of resource that is a record. */
-const KINDS: ReadonlyMap<string, string> = new Map([
-  ["AllergyIntolerance", "Allergy"],
-  ["Condition", "Condition"],
-  ["Immunization", "Immunization"],
-  ["Procedure", "Procedure"],
-  ["MedicationRequest", "Medication"],
-  ["MedicationStatement", "Medication"],
+interface RecordOfType {
+  /** The word `cascade:recordKind` gives it. */
+  readonly kind: string;
+  /** Its class's local name in the Cascade namespace. */
+  readonly class: string;
+}
+
+/** Each type of resource that is a record, but an Observation. */
+const KINDS: ReadonlyMap<string, RecordOfType> = new Map([
+  ["AllergyIntolerance", { kind: "Allergy", class: "AllergyOrIntolerance" }],
+  ["Condition", { kind: "Condition", class: "ProblemOrDiagnosis" }],
+  ["Immunization", { kind: "Immunization", class: "Vaccination" }],
+  ["Procedure", { kind: "Procedure", class: "MedicalProcedure" }],
+  [
+    "MedicationRequest",
+    { kind: "Medication", class: "PrescribedOrReportedMedication" },
+  ],
+  [
+    "MedicationStatement",
+    { kind: "Medication", class: "PrescribedOrReportedMedication" },
+  ],
 ]);
+const LAB_RESULT: RecordOfType = {
+  kind: "Lab result",
+  class: "LaboratoryTestResult",
+};
+
+/** What a resource of the type, in the categories, is a record of, or undefined where the adapter makes none of it. */
+function recordOf(
+  type: unknown,
+  categories: readonly unknown[],
+): RecordOfType | undefined {
+  if (type === "Observation")
+    return categories.includes("laboratory") ? LAB_RESULT : undefined;
+  return typeof type === "string" ? KINDS.get(type) : undefined;
+}
 
 /**
  * The pull as the folder `name` of two files: `bundle.json`, its Bundle, the import's one document; and `pull.json`,
@@ -109,10 +149,8 @@ function described(bytes: Uint8Array): Described {
 function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new PullRefused(`${PULL} is not a JSON object`);
-  const { fhirBase, patient, source, retrievedAt, asOf } = value as Record<
-    string,
-    unknown
-  >;
+  const { fhirBase, patient, source, retrievedAt, asOf, searches, denied } =
+    value as Record<string, unknown>;
   if (!isFhirBase(fhirBase))
     throw new PullRefused(
       `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
@@ -131,7 +169,43 @@ function checked(value: unknown): Described {
     source,
     retrievedAt,
     ...(asOf !== undefined && { asOf }),
+    searches: searchesIn(searches, "searches"),
+    denied: searchesIn(denied, "denied"),
   };
+}
+
+function searchesIn(value: unknown, field: string): readonly SavedSearch[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    !value.every((search: unknown) => {
+      const { type, category } = (
+        typeof search === "object" && search !== null ? search : {}
+      ) as Record<string, unknown>;
+      return (
+        typeof type === "string" &&
+        RESOURCE_TYPE.test(type) &&
+        (category === undefined ||
+          (typeof category === "string" && category !== ""))
+      );
+    })
+  )
+    throw new PullRefused(
+      `${PULL}'s ${field} is not a list of searches, each a resource type and an optional category`,
+    );
+  return value as SavedSearch[];
+}
+
+/** The IRI of the class of record each search returns, once each; a search whose resources become no record has none. */
+function classesOf(searches: readonly SavedSearch[]): string[] {
+  return [
+    ...new Set(
+      searches.flatMap(({ type, category }) => {
+        const record = recordOf(type, category === undefined ? [] : [category]);
+        return record === undefined ? [] : [`${CASCADE}${record.class}`];
+      }),
+    ),
+  ];
 }
 
 /** Whether the value is an https: URL with no query, fragment, trailing slash or surrounding space. */
@@ -167,6 +241,15 @@ function facts(pull: Described, importStarted: string): Uint8Array {
   const thisImport = `<${BRIDGE}thisImport>`;
   const dateTime = (value: string): string =>
     `${quoted(value)}^^<${XSD}dateTime>`;
+  const refused = (search: SavedSearch): boolean =>
+    pull.denied.some(
+      ({ type, category }) =>
+        type === search.type && category === search.category,
+    );
+  const scope = (property: string, searches: readonly SavedSearch[]) =>
+    classesOf(searches).map(
+      (recordClass) => `${document} <${CASCADE}${property}> <${recordClass}> .`,
+    );
   const lines = [
     `${thisImport} <${RDFS}label> ${quoted("FHIR pull")} .`,
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
@@ -175,6 +258,11 @@ function facts(pull: Described, importStarted: string): Uint8Array {
     ...(pull.asOf === undefined
       ? []
       : [`${document} <${CASCADE}answeredAsOf> ${dateTime(pull.asOf)} .`]),
+    ...scope(
+      "answersForRecordClass",
+      pull.searches.filter((search) => !refused(search)),
+    ),
+    ...scope("refusedForRecordClass", pull.denied),
     `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,
@@ -213,12 +301,7 @@ function codes(concepts: unknown): unknown[] {
 
 /** The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it. */
 function kindOf(resource: Record<string, unknown>): string | undefined {
-  const type = resource.resourceType;
-  if (type === "Observation")
-    return codes(resource.category).includes("laboratory")
-      ? "Lab result"
-      : undefined;
-  return typeof type === "string" ? KINDS.get(type) : undefined;
+  return recordOf(resource.resourceType, codes(resource.category))?.kind;
 }
 
 /** The importer of a pull saved by `pullFiles`: its Bundle, with what `pull.json` says of it. */
