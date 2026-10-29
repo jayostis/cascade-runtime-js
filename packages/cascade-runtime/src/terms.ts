@@ -93,6 +93,8 @@ export const codeStems = Object.freeze({
   ClinVar: "https://identifiers.org/clinvar:",
   DataAbsentReason: "https://ns.cascadeprotocol.org/codes/data-absent-reason/",
   NullFlavor: "https://ns.cascadeprotocol.org/codes/nullflavor/",
+  ObservationInterpretation:
+    "https://ns.cascadeprotocol.org/codes/observation-interpretation/",
 });
 
 export type CodeStems = typeof codeStems;
