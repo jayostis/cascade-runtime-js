@@ -1,3 +1,4 @@
+import { RESOURCE_TYPE } from "@cascade-runtime/fhir-pull";
 import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
@@ -40,7 +41,6 @@ export interface PullOptions {
   readonly signal?: AbortSignal;
 }
 
-const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 const REFERENCE = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/;
 const NOT_SERVED = new Set([403, 404, 410]);
 

@@ -10,7 +10,7 @@ const PULL = "pull.json";
 const BUNDLE = "bundle.json";
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
-const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
+export const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 
 /** What `pullFiles` throws for a pull whose content the import would refuse: bad input, never a broken runtime. */
 export class PullRefused extends Error {

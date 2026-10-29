@@ -258,6 +258,21 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           { denied: [{ category: "laboratory" }] },
           "denied",
         ],
+        [
+          "a search with an empty category",
+          { searches: [{ type: "Observation", category: "" }] },
+          "searches",
+        ],
+        [
+          "a denied search whose category is no string",
+          { denied: [{ type: "Observation", category: 3 }] },
+          "denied",
+        ],
+        [
+          "a search whose resource type is lowercase",
+          { searches: [{ type: "observation" }] },
+          "searches",
+        ],
       ] as const
     ).map(([name, changed, field]): [string, PullFiles, string] => {
       const why = {

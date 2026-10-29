@@ -167,6 +167,33 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
+test("a search the hospital refuses on its second page keeps the first page's records, and is in both searches and denied", async () => {
+  const search = { type: "Condition" } as const;
+  const second = (request: Request) =>
+    isSearch(request, "Condition") &&
+    new URL(request.url).searchParams.has("page");
+  const { pull: result } = await pulled({
+    plan: { searches: [search], backfill: [] },
+    alter: async (request, hospital) => {
+      if (second(request)) return new Response(null, { status: 403 });
+      const response = await hospital(request);
+      if (!isSearch(request, "Condition")) return response;
+      const body = (await response.json()) as Record<string, unknown>;
+      const next = new URL(request.url);
+      next.searchParams.set("page", "2");
+      body.link = [{ relation: "next", url: next.href }];
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: response.headers,
+      });
+    },
+  });
+  assert.deepEqual(result.searches, [search]);
+  assert.deepEqual(result.denied, [search]);
+  const kept = keysOf(result).filter((key) => key.startsWith("Condition/"));
+  assert.ok(kept.length > 0, "page 1's conditions are kept");
+});
+
 test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
   const lab = {
     resourceType: "Organization",
