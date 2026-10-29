@@ -9,6 +9,7 @@ import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   ConnectionFailure,
   connectFiles,
+  DEMO_PLAN,
   type DirectoryRow,
   type FailureKind,
   type Pull,
@@ -119,7 +120,7 @@ before(async () => {
   happy = await pulled();
 });
 
-test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it", async () => {
+test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it, with the plan's searches", async () => {
   const { pull: result, seen } = happy;
   assert.equal(result.patient, A_NORTH);
   assert.equal(result.fhirBase, north.hospital.fhirBase);
@@ -138,6 +139,7 @@ test("a pull from North signed in as patient A holds A's North record, each reso
     assert.ok(!elsewhere.some((other) => isDeepStrictEqual(other, resource)));
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.denied, []);
+  assert.deepEqual(result.searches, DEMO_PLAN.searches);
 
   const urls = seen.requests.map((r) => new URL(r.url));
   const [hidden] = north.hospital.hiddenFromSearch;
