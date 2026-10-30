@@ -4,6 +4,7 @@ import * as oxigraph from "oxigraph";
 import {
   connectFiles,
   fhirPull,
+  isCdaDocument,
   type PullFiles,
   pullFiles,
   readConnect,
@@ -459,6 +460,19 @@ test("one C-CDA document a pull read twice, inline in one DocumentReference and 
   assert.deepEqual(
     [...saved.keys()].filter((path) => path.includes("document-")),
     ["north/document-1.xml"],
+  );
+});
+
+test("a C-CDA document is one only where it is well-formed XML in UTF-8: a stray byte that is no UTF-8 makes none", () => {
+  const encoder = new TextEncoder();
+  const head = encoder.encode(
+    '<ClinicalDocument xmlns="urn:hl7-org:v3"><title>',
+  );
+  const tail = encoder.encode("</title></ClinicalDocument>");
+  assert.equal(isCdaDocument(new Uint8Array([...head, ...tail])), true);
+  assert.equal(
+    isCdaDocument(new Uint8Array([...head, 0xff, 0xfe, ...tail])),
+    false,
   );
 });
 
