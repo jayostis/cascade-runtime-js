@@ -114,6 +114,10 @@ const subjectsOf = (results: Results, caseId?: string) =>
 const groupOf = (job: Job) =>
   `${job.arm} · ${job.model.replace(/^claude-/, "")}`;
 
+/** A judge as a reader knows it: its model, without the run's job id. */
+const judgeName = (r: Results, id: string) =>
+  `judge ${(r.jobs.find((it) => it.id === id)?.model ?? id).replace(/^claude-/, "")}`;
+
 function chip(verdict: string, text = verdict) {
   return `<span class="chip ${esc(verdict)}">${esc(text)}</span>`;
 }
@@ -589,11 +593,11 @@ function casePage(l: Loaded, caseId: string, home: string): string {
           const grade =
             grades.length === 0
               ? `${chip("ungraded", "not graded")}${questions.size > 0 ? ` <span class="small muted">questions its citations tie to this item: ${[...questions].map((n) => `Q${n}`).join(", ")}</span>` : ""}`
-              : verdicts
-                  .map(
-                    (v) =>
-                      `${chip(v!.verdict)} <span class="small">${esc(v!.reason)}</span>`,
-                  )
+              : grades
+                  .map((g) => {
+                    const v = g.items.find((it) => it.id === item.id);
+                    return `<span class="small muted">${esc(judgeName(r, g.judge))}:</span> ${v === undefined ? chip("missed", "not graded on it") : `${chip(v.verdict)} <span class="small">${esc(v.reason)}</span>`}`;
+                  })
                   .join("<br>");
           const wording = (r.checks[job.id]?.trapWording ?? [])
             .filter((w) => w.item === item.id)

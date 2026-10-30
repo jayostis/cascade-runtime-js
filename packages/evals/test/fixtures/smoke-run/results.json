@@ -1,33 +1,33 @@
 {
   "schema": "cascade-evals/results/1",
   "run": {
-    "id": "smoke-tamsin",
-    "tier": "smoke",
+    "id": "smoke-graded",
+    "tier": "custom",
     "runner": "claude-code",
-    "created": "2026-10-30T19:39:36.387Z",
-    "finished": "2026-10-30T19:52:42.880Z",
-    "wallSeconds": 786,
+    "created": "2026-10-30T21:33:55.172Z",
+    "finished": "2026-10-30T21:37:20.742Z",
+    "wallSeconds": 206,
     "stoppedAtCap": false,
     "config": {
       "$schema": "../schemas/config.schema.json",
-      "tier": "smoke",
+      "tier": "custom",
       "cases": ["tamsin-vale"],
       "arms": ["pod", "records"],
       "subjects": ["claude-opus-5-5"],
       "repeats": 1,
-      "judges": [],
+      "judges": ["claude-haiku-5-5", "claude-sonnet-5-5"],
       "cap": {
-        "tokens": 6000000,
-        "usd": 6
+        "tokens": 3000000,
+        "usd": 3
       },
       "concurrency": 2
     },
-    "configSha256": "6e39e97366c9095b778fe5e6ef73927a4593a1bd72765a0717ffc2b288c72652"
+    "configSha256": "7fb3de822f7d596dd349c9319ffff1467d40d36955d8339f031579b17838ac26"
   },
   "versions": {
     "harness": {
-      "commit": "953aaba8f4ffbffc729b5d3dd1aa3a999d479e96",
-      "uncommitted": 21
+      "commit": "da9cb558dfa12e62888e1f472c12a61bfe3485eb",
+      "uncommitted": 0
     },
     "podPackages": {
       "packages/runtime": "16f16091c26927076510ab810bc9ae942eb34a8a",
@@ -75,22 +75,22 @@
   },
   "budget": {
     "cap": {
-      "tokens": 6000000,
-      "usd": 6
+      "tokens": 3000000,
+      "usd": 3
     },
     "estimate": {
-      "tokens": 1730000,
-      "usd": 1.3828
+      "tokens": 264480,
+      "usd": 0.26648249999999996
     },
     "spent": {
-      "tokens": 623144,
-      "usd": 0.8773662,
+      "tokens": 349192,
+      "usd": 0.2247291,
       "basis": "exact"
     },
     "byRole": {
-      "subject": {
-        "tokens": 623144,
-        "usd": 0.8773662
+      "judge": {
+        "tokens": 349192,
+        "usd": 0.2247291
       }
     }
   },
@@ -150,16 +150,17 @@
       "model": "claude-opus-5-5",
       "alias": "opus",
       "repeat": 1,
-      "tag": "smoke-tamsin/tamsin-vale.pod.opus-5-5.r1",
+      "tag": "smoke-graded/tamsin-vale.pod.opus-5-5.r1",
       "inputsHash": "7a34f68898c17e6c88540794d0765ca2d20a4742ed8588c9eeae3a5ab3758b33",
-      "status": "done",
+      "status": "reused",
       "estimate": {
-        "tokens": 1300000,
-        "usd": 0.8216,
-        "basis": "the comparison of 2026-10-30, as a prior"
+        "tokens": 339066,
+        "usd": 0.44857919999999996,
+        "basis": "the mean of 1 past run(s)"
       },
       "answer": "answers/tamsin-vale.pod.opus-5-5.r1.json",
       "prompt": "prompts/tamsin-vale.pod.opus-5-5.r1.txt",
+      "reusedFrom": "smoke-tamsin/tamsin-vale.pod.opus-5-5.r1",
       "stats": {
         "calls": 6,
         "models": ["claude-opus-5-5"],
@@ -258,16 +259,17 @@
       "model": "claude-opus-5-5",
       "alias": "opus",
       "repeat": 1,
-      "tag": "smoke-tamsin/tamsin-vale.records.opus-5-5.r1",
+      "tag": "smoke-graded/tamsin-vale.records.opus-5-5.r1",
       "inputsHash": "de567f5ac31b59c10b24e315e31b8b353f0482af34fb6872357afb9f2f78d059",
-      "status": "done",
+      "status": "reused",
       "estimate": {
-        "tokens": 430000,
-        "usd": 0.5612,
-        "basis": "the comparison of 2026-10-30, as a prior"
+        "tokens": 284078,
+        "usd": 0.42878700000000003,
+        "basis": "the mean of 1 past run(s)"
       },
       "answer": "answers/tamsin-vale.records.opus-5-5.r1.json",
       "prompt": "prompts/tamsin-vale.records.opus-5-5.r1.txt",
+      "reusedFrom": "smoke-tamsin/tamsin-vale.records.opus-5-5.r1",
       "stats": {
         "calls": 5,
         "models": ["claude-opus-5-5"],
@@ -347,294 +349,169 @@
           "usd": 0.044821599999999996
         }
       ]
+    },
+    {
+      "id": "tamsin-vale.judge.haiku-5-5.j1",
+      "role": "judge",
+      "case": "tamsin-vale",
+      "model": "claude-haiku-5-5",
+      "alias": "haiku",
+      "tag": "smoke-graded/tamsin-vale.judge.haiku-5-5.j1",
+      "inputsHash": "4e6bc0657f86ad43e042ccae82ef01964b62ba8e7889d45cb3888154b9fe7a90",
+      "status": "done",
+      "estimate": {
+        "tokens": 132240,
+        "usd": 0.0532965,
+        "basis": "the packet's size"
+      },
+      "verdict": "judges/tamsin-vale.judge.haiku-5-5.j1.json",
+      "prompt": "prompts/tamsin-vale.judge.haiku-5-5.j1.txt",
+      "labels": {
+        "A": "tamsin-vale.records.opus-5-5.r1",
+        "B": "tamsin-vale.pod.opus-5-5.r1"
+      },
+      "stats": {
+        "calls": 3,
+        "models": ["claude-haiku-5-5"],
+        "tokens": {
+          "input": 6,
+          "cacheCreation": 72304,
+          "cacheRead": 98890,
+          "output": 13635,
+          "total": 184835
+        },
+        "contextPeak": 72306,
+        "toolCalls": {
+          "total": 4,
+          "byName": {
+            "Read": 2,
+            "Write": 1,
+            "SubagentHandback": 1
+          }
+        },
+        "wallSeconds": 65,
+        "cost": {
+          "usd": 0.016845,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "calls": [
+        {
+          "at": "2026-10-30T21:34:24.623Z",
+          "model": "claude-haiku-5-5",
+          "input": 2,
+          "cacheCreation": 39705,
+          "cacheRead": 0,
+          "output": 259,
+          "toolCalls": ["Read", "Read"],
+          "usd": 0.005092825
+        },
+        {
+          "at": "2026-10-30T21:35:12.287Z",
+          "model": "claude-haiku-5-5",
+          "input": 2,
+          "cacheCreation": 19480,
+          "cacheRead": 39705,
+          "output": 12989,
+          "toolCalls": ["Write"],
+          "usd": 0.00932675
+        },
+        {
+          "at": "2026-10-30T21:35:25.178Z",
+          "model": "claude-haiku-5-5",
+          "input": 2,
+          "cacheCreation": 13119,
+          "cacheRead": 59185,
+          "output": 387,
+          "toolCalls": ["SubagentHandback"],
+          "usd": 0.002425425
+        }
+      ]
+    },
+    {
+      "id": "tamsin-vale.judge.sonnet-5-5.j2",
+      "role": "judge",
+      "case": "tamsin-vale",
+      "model": "claude-sonnet-5-5",
+      "alias": "sonnet",
+      "tag": "smoke-graded/tamsin-vale.judge.sonnet-5-5.j2",
+      "inputsHash": "f1da60d501a3fa809b0bad9986d161efb4ff8c6dfa23121d473bef52331eba82",
+      "status": "done",
+      "estimate": {
+        "tokens": 132240,
+        "usd": 0.213186,
+        "basis": "the packet's size"
+      },
+      "verdict": "judges/tamsin-vale.judge.sonnet-5-5.j2.json",
+      "prompt": "prompts/tamsin-vale.judge.sonnet-5-5.j2.txt",
+      "labels": {
+        "A": "tamsin-vale.records.opus-5-5.r1",
+        "B": "tamsin-vale.pod.opus-5-5.r1"
+      },
+      "stats": {
+        "calls": 3,
+        "models": ["claude-sonnet-5-5"],
+        "tokens": {
+          "input": 6,
+          "cacheCreation": 62257,
+          "cacheRead": 98848,
+          "output": 3246,
+          "total": 164357
+        },
+        "contextPeak": 62259,
+        "toolCalls": {
+          "total": 4,
+          "byName": {
+            "Read": 2,
+            "Write": 1,
+            "SubagentHandback": 1
+          }
+        },
+        "wallSeconds": 29,
+        "cost": {
+          "usd": 0.2078841,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "calls": [
+        {
+          "at": "2026-10-30T21:34:26.275Z",
+          "model": "claude-sonnet-5-5",
+          "input": 2,
+          "cacheCreation": 39710,
+          "cacheRead": 0,
+          "output": 207,
+          "toolCalls": ["Read", "Read"],
+          "usd": 0.101349
+        },
+        {
+          "at": "2026-10-30T21:34:37.850Z",
+          "model": "claude-sonnet-5-5",
+          "input": 2,
+          "cacheCreation": 19428,
+          "cacheRead": 39710,
+          "output": 2988,
+          "toolCalls": ["Write"],
+          "usd": 0.086396
+        },
+        {
+          "at": "2026-10-30T21:34:49.441Z",
+          "model": "claude-sonnet-5-5",
+          "input": 2,
+          "cacheCreation": 3119,
+          "cacheRead": 59138,
+          "output": 51,
+          "toolCalls": ["SubagentHandback"],
+          "usd": 0.0201391
+        }
+      ]
     }
   ],
-  "toolCalls": [
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:46:25.362Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/The person this pod is about",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 1,
-      "entries": [],
-      "milliseconds": 1255
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:46:31.961Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My active conditions",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 1,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
-      ],
-      "milliseconds": 2230
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:46:47.602Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My active medications",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 2,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
-      ],
-      "milliseconds": 1726
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:04.738Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My medication history",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 3,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b"
-      ],
-      "milliseconds": 2198
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:15.862Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My immunizations",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 0,
-      "entries": [],
-      "milliseconds": 1779
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:27.074Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My procedures",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 1,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
-      ],
-      "milliseconds": 1614
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:36.566Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My active allergies",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 0,
-      "entries": [],
-      "milliseconds": 1791
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:45.110Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My genetic variants",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 0,
-      "entries": [],
-      "milliseconds": 1761
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:47:52.699Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "entry/What needs review",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 0,
-      "entries": [],
-      "milliseconds": 1993
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:48:13.114Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "pod/My lab results",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 21,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f"
-      ],
-      "milliseconds": 1338
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:48:21.305Z",
-      "tool": "timeline",
-      "input": {
-        "pod": "tamsin-vale"
-      },
-      "ok": true,
-      "rows": 3,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
-      ],
-      "milliseconds": 1800
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:48:30.653Z",
-      "tool": "ask",
-      "input": {
-        "pod": "tamsin-vale",
-        "question": "entry/Where it came from",
-        "limit": 500
-      },
-      "ok": true,
-      "rows": 28,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#c4ea67d70fc767b638e835dc0ae8a22a37d86063c09286bd9356871bb081dd57",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/patient-profile.ttl#9a63ed077bee7745e404765302b168e0d5b40828c7e2c03930dd61e86647e3fe",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
-      ],
-      "milliseconds": 1843
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:48:51.868Z",
-      "tool": "lab_series",
-      "input": {
-        "pod": "tamsin-vale",
-        "test": "9318-7"
-      },
-      "ok": false,
-      "error": "no test 9318-7 in the pod",
-      "rows": 0,
-      "entries": [],
-      "milliseconds": 2362
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:49:04.064Z",
-      "tool": "lab_series",
-      "input": {
-        "pod": "tamsin-vale",
-        "test": "13457-7"
-      },
-      "ok": true,
-      "rows": 1,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124"
-      ],
-      "milliseconds": 1997
-    },
-    {
-      "job": "tamsin-vale.pod.opus-5-5.r1",
-      "at": "2026-10-30T19:49:15.801Z",
-      "tool": "lab_series",
-      "input": {
-        "pod": "tamsin-vale",
-        "test": "4548-4"
-      },
-      "ok": true,
-      "rows": 1,
-      "entries": [
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6",
-        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d"
-      ],
-      "milliseconds": 2914
-    }
-  ],
+  "toolCalls": [],
   "checks": {
     "tamsin-vale.pod.opus-5-5.r1": {
       "answerValid": true,
@@ -1763,9 +1640,495 @@
       ]
     }
   },
-  "grades": [],
-  "scores": [],
-  "agreement": [],
+  "grades": [
+    {
+      "subject": "tamsin-vale.records.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "questions": [2],
+          "reason": "Q2 names the missing urine albumin-to-creatinine test as the kidney check diabetes calls for, with diabetes as the reason, and states none is on record."
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "questions": [1],
+          "reason": "Q1 names the 2025-11-04 positive FIT and that no colonoscopy or GI follow-up is recorded after it; it asks to book one."
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "questions": [3, 6],
+          "reason": "Q3 states the 2026-02-16 A1c and asks whether it is due, which is the legitimate PT6 find. Q6 asks why metformin stopped and whether to be back on it alongside Jardiance; it says nothing replaced metformin for ten months, which the records support for that past period, and it does not call her untreated, give 8.3 as current, or treat the gap as current. Borderline wording, not raised as the trap."
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "questions": [],
+          "reason": "No question mentions a pulmonary embolism, blood thinners, or a D-dimer left unfollowed."
+        }
+      ],
+      "falseQuestions": [],
+      "extraFinds": [
+        {
+          "question": 3,
+          "item": "PT6",
+          "why": "A1c not repeated since 2026-02-16, about 8.5 months ago; a legitimate find under the key."
+        },
+        {
+          "question": 4,
+          "item": "PT7",
+          "why": "No lipid panel since atorvastatin started on 2025-02-20; the only panel is from 2025-02-18 (LDL 131). A legitimate find under the key."
+        }
+      ],
+      "chains": [
+        {
+          "question": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "The yearly eGFR half of the TG1 link is implied, not stated."
+          ]
+        },
+        {
+          "question": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 4,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 5,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 6,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "Knowledge says her kidney function would allow metformin but cites no eGFR fact for it. The metformin 'marked completed' wording cannot be checked against the key."
+          ]
+        },
+        {
+          "question": 7,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 8,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 9,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 10,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.pod.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "questions": [3],
+          "reason": "Q3 asks about the urine albumin-to-creatinine ratio for her diabetes, states none is recorded, and cites the eGFR fall from 73 to 69."
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "questions": [1],
+          "reason": "Q1 names the positive FIT of 2025-11-04 and that no colonoscopy follows it, and asks to book one."
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "questions": [4, 7],
+          "reason": "Q4 gives the 2026-02-16 A1c of 6.9 as most recent and asks whether to recheck. Q7 states the past rise to 8.3 after metformin stopped and asks about restarting alongside Jardiance; it does not call her untreated or give 8.3 as current."
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "questions": [8],
+          "reason": "Q8 asks what the July 2025 CT angiogram showed because its result is not in the records, which the key allows. It does not treat a pulmonary embolism as real."
+        }
+      ],
+      "falseQuestions": [],
+      "extraFinds": [
+        {
+          "question": 2,
+          "item": "PT7",
+          "why": "No LDL or lipid panel after atorvastatin started on 2025-02-20; the only value is LDL 131 from 2025-02-18. A legitimate find under the key."
+        },
+        {
+          "question": 4,
+          "item": "PT6",
+          "why": "Last A1c 6.9 on 2026-02-16, over eight months ago, with no repeat. A legitimate find under the key."
+        }
+      ],
+      "chains": [
+        {
+          "question": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "The total cholesterol 212 figure cannot be checked against the key."
+          ]
+        },
+        {
+          "question": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "The claim that Jardiance's kidney benefit depends on this result has no record or key source; it is a clinical assertion."
+          ]
+        },
+        {
+          "question": 4,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 5,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 6,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 7,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "Knowledge relies on her eGFR of 69 without a separate absence or contraindication fact; the reason-not-recorded point is stated but not cited as an absence."
+          ]
+        },
+        {
+          "question": 8,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "It does not say the CT was ordered for a suspected embolism, so it does not connect the test to the refuted condition; the claim that no result is recorded is allowed by the key."
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.records.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.sonnet-5-5.j2",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "questions": [2],
+          "reason": "Names the missing urine albumin-to-creatinine test for type 2 diabetes, with eGFR 69 on 2026-02-16 and no uACR on record."
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "questions": [1],
+          "reason": "Positive FIT 2025-11-04, no colonoscopy after it, asks for one to be booked; the repeat stool test appears only in the absence statement, not as the follow-up."
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "questions": [6],
+          "reason": "Q6 describes the 2024-25 gap as past, states Jardiance started 2025-02-20, and does not call her untreated now or give 8.3 as current."
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "questions": [],
+          "reason": "The refuted pulmonary embolism and D-dimer are not raised."
+        }
+      ],
+      "falseQuestions": [],
+      "extraFinds": [
+        {
+          "question": 3,
+          "item": "PT6",
+          "why": "A1c not repeated since 2026-02-16, over eight months."
+        },
+        {
+          "question": 4,
+          "item": "PT7",
+          "why": "No lipid panel since atorvastatin started 2025-02-20; LDL 131 on 2025-02-18."
+        }
+      ],
+      "chains": [
+        {
+          "question": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 4,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 5,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 6,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 7,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 8,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 9,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 10,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "the only fact cited is the diabetes diagnosis; the absence of vitals is not tied to a stated record"
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.pod.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.sonnet-5-5.j2",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "questions": [3],
+          "reason": "Names the missing uACR for type 2 diabetes, with eGFR 69 (down from 73) and no urine albumin in any lab result."
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "questions": [1],
+          "reason": "Positive FIT 2025-11-04, no colonoscopy (only procedure is the 2025-07-08 CT angiogram), asks to book one."
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "questions": [7],
+          "reason": "Q7 states the A1c rise to 8.3 as a past period and that Jardiance was prescribed 2025-02-20; Q4 gives the latest A1c as 6.9. Not called untreated."
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "questions": [8],
+          "reason": "Q8 does not treat a clot as real; it says a CT angiogram followed the raised D-dimer and its result is not in the records, which the key allows. The refuted PE is not raised."
+        }
+      ],
+      "falseQuestions": [],
+      "extraFinds": [
+        {
+          "question": 2,
+          "item": "PT7",
+          "why": "Only lipid panel is 2025-02-18, before atorvastatin started 2025-02-20; no recheck."
+        },
+        {
+          "question": 4,
+          "item": "PT6",
+          "why": "A1c not repeated since 2026-02-16."
+        }
+      ],
+      "chains": [
+        {
+          "question": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "the claim that Jardiance's kidney benefit depends on the uACR result is not supported by the records or the stated knowledge",
+            "second Absent line has unfilled placeholders"
+          ]
+        },
+        {
+          "question": 4,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 5,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 6,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "question": 7,
+          "complete": false,
+          "faithful": true,
+          "skipped": [
+            "no Absent line for the missing reason for stopping metformin"
+          ]
+        },
+        {
+          "question": 8,
+          "complete": true,
+          "faithful": true,
+          "skipped": [
+            "lung-nodule follow-up is speculation not grounded in any record"
+          ]
+        }
+      ]
+    }
+  ],
+  "scores": [
+    {
+      "subject": "tamsin-vale.records.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.haiku-5-5.j1",
+      "found": 2,
+      "partly": 0,
+      "missed": 0,
+      "gaps": 2,
+      "trapsRaised": 0,
+      "falseQuestions": 0,
+      "extraFinds": 2,
+      "chainsComplete": 10,
+      "chainsFaithful": 10,
+      "questions": 10
+    },
+    {
+      "subject": "tamsin-vale.pod.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.haiku-5-5.j1",
+      "found": 2,
+      "partly": 0,
+      "missed": 0,
+      "gaps": 2,
+      "trapsRaised": 0,
+      "falseQuestions": 0,
+      "extraFinds": 2,
+      "chainsComplete": 8,
+      "chainsFaithful": 8,
+      "questions": 8
+    },
+    {
+      "subject": "tamsin-vale.records.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.sonnet-5-5.j2",
+      "found": 2,
+      "partly": 0,
+      "missed": 0,
+      "gaps": 2,
+      "trapsRaised": 0,
+      "falseQuestions": 0,
+      "extraFinds": 2,
+      "chainsComplete": 10,
+      "chainsFaithful": 10,
+      "questions": 10
+    },
+    {
+      "subject": "tamsin-vale.pod.opus-5-5.r1",
+      "judge": "tamsin-vale.judge.sonnet-5-5.j2",
+      "found": 2,
+      "partly": 0,
+      "missed": 0,
+      "gaps": 2,
+      "trapsRaised": 0,
+      "falseQuestions": 0,
+      "extraFinds": 2,
+      "chainsComplete": 7,
+      "chainsFaithful": 8,
+      "questions": 8
+    }
+  ],
+  "agreement": [
+    {
+      "case": "tamsin-vale",
+      "judges": [
+        "tamsin-vale.judge.haiku-5-5.j1",
+        "tamsin-vale.judge.sonnet-5-5.j2"
+      ],
+      "items": 8,
+      "agreed": 8,
+      "kappa": 1
+    }
+  ],
   "slices": [
     {
       "case": "tamsin-vale",
