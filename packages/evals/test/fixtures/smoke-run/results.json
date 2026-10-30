@@ -1,12 +1,12 @@
 {
   "schema": "cascade-evals/results/1",
   "run": {
-    "id": "smoke-graded",
+    "id": "smoke-graded-2",
     "tier": "custom",
     "runner": "claude-code",
-    "created": "2026-10-30T21:33:55.172Z",
-    "finished": "2026-10-30T21:37:20.742Z",
-    "wallSeconds": 206,
+    "created": "2026-10-30T22:40:14.085Z",
+    "finished": "2026-10-30T22:52:54.065Z",
+    "wallSeconds": 760,
     "stoppedAtCap": false,
     "config": {
       "$schema": "../schemas/config.schema.json",
@@ -26,16 +26,17 @@
   },
   "versions": {
     "harness": {
-      "commit": "da9cb558dfa12e62888e1f472c12a61bfe3485eb",
+      "commit": "7d13b8054477127d18e73dd56514e27d545a6ce1",
       "uncommitted": 0
     },
     "podPackages": {
       "packages/runtime": "16f16091c26927076510ab810bc9ae942eb34a8a",
-      "packages/cascade-runtime": "acdbd8b4fa56fdba576bb4d7b8a30b8e70554c27",
-      "packages/mcp": "1015a39e9a143e2b7eeded5b0e5bf67cf21eeafa",
+      "packages/cascade-runtime": "88fe73a0616206787bd6b3fc9771aa8d1d388429",
+      "packages/mcp": "9d5eaf243660d4e21b9e55e8df73a4d6b52fd440",
       "packages/apple-health": "e4aa9599db37be6fa08335796c5e332df6f6e167",
       "packages/ccda-download": "c2de7fe698aec43ebe797c8ea767437331f9028a",
-      "packages/fhir-pull": "0f69f27726c4ca91e61756db97b428c91393334a"
+      "packages/fhir-pull": "0f69f27726c4ca91e61756db97b428c91393334a",
+      "packages/evals/src/pod-client.ts": "2044217a2b1235e5d76212844aa5ea10adc4d045"
     },
     "components": [
       {
@@ -67,9 +68,9 @@
       }
     ],
     "prompts": {
-      "pod": "590c8d29260c6041",
-      "records": "c49de7e603fb638f",
-      "judge": "f60df348fa9a129e"
+      "pod": "508efe6f5a89023a",
+      "records": "2af638542477b73b",
+      "judge": "adcd7730b6043b27"
     },
     "priceTable": "2026-10-06"
   },
@@ -79,18 +80,22 @@
       "usd": 3
     },
     "estimate": {
-      "tokens": 264480,
-      "usd": 0.26648249999999996
+      "tokens": 2079192,
+      "usd": 1.6075291
     },
     "spent": {
-      "tokens": 349192,
-      "usd": 0.2247291,
+      "tokens": 933801,
+      "usd": 1.12997396,
       "basis": "exact"
     },
     "byRole": {
+      "subject": {
+        "tokens": 599488,
+        "usd": 0.9701040000000001
+      },
       "judge": {
-        "tokens": 349192,
-        "usd": 0.2247291
+        "tokens": 334313,
+        "usd": 0.15986996
       }
     }
   },
@@ -98,7 +103,7 @@
     {
       "id": "tamsin-vale",
       "downloadsSha256": "2f5b553bf34e9ac626a9884f109f6e11a81a3fa6e4caf60fee9cea08bde5a46b",
-      "keySha256": "d38d1457f4b1c0c5543d643a150cc0b1fd6f67d550dc8cd46a6360519cc06eda",
+      "keySha256": "77544a1a449d8a20c915185b1204f9d5bae6404c4d6d81c4ff52d0b4d46451aa",
       "imports": [
         {
           "download": "north-2024-02",
@@ -150,39 +155,40 @@
       "model": "claude-opus-5-5",
       "alias": "opus",
       "repeat": 1,
-      "tag": "smoke-graded/tamsin-vale.pod.opus-5-5.r1",
-      "inputsHash": "7a34f68898c17e6c88540794d0765ca2d20a4742ed8588c9eeae3a5ab3758b33",
-      "status": "reused",
+      "tag": "smoke-graded-2/tamsin-vale.pod.opus-5-5.r1",
+      "inputsHash": "6edaf1d8eb531e12a71cda7e93901989aeb25c46463f456bc3a2987d021816b5",
+      "status": "done",
       "estimate": {
-        "tokens": 339066,
-        "usd": 0.44857919999999996,
-        "basis": "the mean of 1 past run(s)"
+        "tokens": 1300000,
+        "usd": 0.8216,
+        "basis": "the comparison of 2026-10-30, as a prior"
       },
       "answer": "answers/tamsin-vale.pod.opus-5-5.r1.json",
       "prompt": "prompts/tamsin-vale.pod.opus-5-5.r1.txt",
-      "reusedFrom": "smoke-tamsin/tamsin-vale.pod.opus-5-5.r1",
+      "dispatched": true,
       "stats": {
         "calls": 6,
         "models": ["claude-opus-5-5"],
         "tokens": {
           "input": 12,
-          "cacheCreation": 47282,
-          "cacheRead": 284006,
-          "output": 7766,
-          "total": 339066
+          "cacheCreation": 48837,
+          "cacheRead": 301429,
+          "output": 10023,
+          "total": 360301
         },
-        "contextPeak": 71485,
+        "contextPeak": 73040,
         "toolCalls": {
-          "total": 6,
+          "total": 16,
           "byName": {
-            "Bash": 4,
+            "Bash": 13,
             "Write": 1,
+            "Edit": 1,
             "SubagentHandback": 1
           }
         },
-        "wallSeconds": 253,
+        "wallSeconds": 215,
         "cost": {
-          "usd": 0.44857919999999996,
+          "usd": 0.5049788000000001,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -190,64 +196,176 @@
       },
       "calls": [
         {
-          "at": "2026-10-30T19:46:09.879Z",
+          "at": "2026-10-30T22:41:56.132Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 16049,
+          "cacheCreation": 16405,
           "cacheRead": 24201,
           "output": 182,
           "toolCalls": ["Bash"],
-          "usd": 0.0887332
+          "usd": 0.0905132
         },
         {
-          "at": "2026-10-30T19:46:19.577Z",
+          "at": "2026-10-30T22:42:14.145Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 4136,
-          "cacheRead": 40250,
-          "output": 338,
-          "toolCalls": ["Bash"],
-          "usd": 0.035498
+          "cacheCreation": 4490,
+          "cacheRead": 40606,
+          "output": 2107,
+          "toolCalls": [
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "usd": 0.0727192
         },
         {
-          "at": "2026-10-30T19:48:03.377Z",
+          "at": "2026-10-30T22:44:00.435Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 2250,
-          "cacheRead": 44386,
-          "output": 390,
-          "toolCalls": ["Bash"],
-          "usd": 0.0279352
+          "cacheCreation": 8255,
+          "cacheRead": 45096,
+          "output": 471,
+          "toolCalls": ["Bash", "Bash"],
+          "usd": 0.059722199999999996
         },
         {
-          "at": "2026-10-30T19:48:41.919Z",
+          "at": "2026-10-30T22:44:18.751Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 16534,
-          "cacheRead": 46636,
-          "output": 816,
-          "toolCalls": ["Bash"],
-          "usd": 0.1083252
-        },
-        {
-          "at": "2026-10-30T19:49:21.462Z",
-          "model": "claude-opus-5-5",
-          "input": 2,
-          "cacheCreation": 2193,
-          "cacheRead": 63170,
-          "output": 5989,
+          "cacheCreation": 12210,
+          "cacheRead": 53351,
+          "output": 6922,
           "toolCalls": ["Write"],
-          "usd": 0.143387
+          "usd": 0.2101682
         },
         {
-          "at": "2026-10-30T19:50:16.864Z",
+          "at": "2026-10-30T22:45:14.736Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 6120,
-          "cacheRead": 65363,
+          "cacheCreation": 7053,
+          "cacheRead": 65561,
+          "output": 290,
+          "toolCalls": ["Edit"],
+          "usd": 0.054185199999999996
+        },
+        {
+          "at": "2026-10-30T22:45:23.472Z",
+          "model": "claude-opus-5-5",
+          "input": 2,
+          "cacheCreation": 424,
+          "cacheRead": 72614,
           "output": 51,
           "toolCalls": ["SubagentHandback"],
-          "usd": 0.0447006
+          "usd": 0.017670800000000004
+        }
+      ],
+      "toolUses": [
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 --list"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/The person this pod is about\"}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My active conditions\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My medication history\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My lab results\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My immunizations\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My procedures\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My active allergies\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"pod/My genetic variants\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"entry/What needs review\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 reference_table_checks '{\"pod\":\"tamsin-vale\"}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 ask '{\"pod\":\"tamsin-vale\",\"question\":\"entry/Where it came from\",\"limit\":500}'"
+          }
+        },
+        {
+          "name": "Bash",
+          "input": {
+            "command": "node \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\dist\\src\\cli.js\" pod --run \"C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\" --job tamsin-vale.pod.opus-5-5.r1 timeline '{\"pod\":\"tamsin-vale\"}'"
+          }
+        },
+        {
+          "name": "Write",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\\answers\\tamsin-vale.pod.opus-5-5.r1.json"
+          }
+        },
+        {
+          "name": "Edit",
+          "input": {
+            "replace_all": false,
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\\answers\\tamsin-vale.pod.opus-5-5.r1.json",
+            "old_string": "\"name\": \"Type 2 diabetes mellitus\", \"status\": \"active\"}",
+            "new_string": "\"name\": \"Type 2 diabetes mellitus\", \"date\": \"2022-03-01\", \"dateKind\": \"start\"}"
+          }
+        },
+        {
+          "name": "SubagentHandback",
+          "input": {
+            "message": "done"
+          }
         }
       ]
     },
@@ -259,28 +377,28 @@
       "model": "claude-opus-5-5",
       "alias": "opus",
       "repeat": 1,
-      "tag": "smoke-graded/tamsin-vale.records.opus-5-5.r1",
-      "inputsHash": "de567f5ac31b59c10b24e315e31b8b353f0482af34fb6872357afb9f2f78d059",
-      "status": "reused",
+      "tag": "smoke-graded-2/tamsin-vale.records.opus-5-5.r1",
+      "inputsHash": "ee1a1c84c3c22090481ef979f66e1c431559ca2c0f534e025d3d03ba48421146",
+      "status": "done",
       "estimate": {
-        "tokens": 284078,
-        "usd": 0.42878700000000003,
-        "basis": "the mean of 1 past run(s)"
+        "tokens": 430000,
+        "usd": 0.5612,
+        "basis": "the comparison of 2026-10-30, as a prior"
       },
       "answer": "answers/tamsin-vale.records.opus-5-5.r1.json",
       "prompt": "prompts/tamsin-vale.records.opus-5-5.r1.txt",
-      "reusedFrom": "smoke-tamsin/tamsin-vale.records.opus-5-5.r1",
+      "dispatched": true,
       "stats": {
-        "calls": 5,
+        "calls": 4,
         "models": ["claude-opus-5-5"],
         "tokens": {
-          "input": 10,
-          "cacheCreation": 50191,
-          "cacheRead": 227260,
-          "output": 6617,
-          "total": 284078
+          "input": 8,
+          "cacheCreation": 52258,
+          "cacheRead": 178516,
+          "output": 8405,
+          "total": 239187
         },
-        "contextPeak": 74394,
+        "contextPeak": 76461,
         "toolCalls": {
           "total": 8,
           "byName": {
@@ -289,9 +407,9 @@
             "SubagentHandback": 1
           }
         },
-        "wallSeconds": 71,
+        "wallSeconds": 88,
         "cost": {
-          "usd": 0.42878700000000003,
+          "usd": 0.4651252,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -299,54 +417,94 @@
       },
       "calls": [
         {
-          "at": "2026-10-30T19:46:10.430Z",
+          "at": "2026-10-30T22:41:53.498Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 15848,
+          "cacheCreation": 16182,
           "cacheRead": 24201,
-          "output": 224,
-          "toolCalls": ["Read", "Read"],
-          "usd": 0.0885682
+          "output": 126,
+          "toolCalls": ["Read"],
+          "usd": 0.0882782
         },
         {
-          "at": "2026-10-30T19:46:14.308Z",
+          "at": "2026-10-30T22:42:04.567Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 5190,
-          "cacheRead": 40049,
-          "output": 224,
-          "toolCalls": ["Read", "Read"],
-          "usd": 0.038447800000000004
+          "cacheCreation": 4893,
+          "cacheRead": 40383,
+          "output": 555,
+          "toolCalls": ["Read", "Read", "Read", "Read", "Read"],
+          "usd": 0.0436496
         },
         {
-          "at": "2026-10-30T19:46:18.096Z",
+          "at": "2026-10-30T22:42:21.282Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 4164,
-          "cacheRead": 45239,
-          "output": 224,
-          "toolCalls": ["Read", "Read"],
-          "usd": 0.034355800000000006
-        },
-        {
-          "at": "2026-10-30T19:46:31.524Z",
-          "model": "claude-opus-5-5",
-          "input": 2,
-          "cacheCreation": 18965,
-          "cacheRead": 49403,
-          "output": 5894,
+          "cacheCreation": 23380,
+          "cacheRead": 45276,
+          "output": 7673,
           "toolCalls": ["Write"],
-          "usd": 0.2225936
+          "usd": 0.27942320000000004
         },
         {
-          "at": "2026-10-30T19:47:15.308Z",
+          "at": "2026-10-30T22:43:16.141Z",
           "model": "claude-opus-5-5",
           "input": 2,
-          "cacheCreation": 6024,
-          "cacheRead": 68368,
+          "cacheCreation": 7803,
+          "cacheRead": 68656,
           "output": 51,
           "toolCalls": ["SubagentHandback"],
-          "usd": 0.044821599999999996
+          "usd": 0.053774199999999994
+        }
+      ],
+      "toolUses": [
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2024-02\\bundle.json"
+          }
+        },
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2024-02\\pull.json"
+          }
+        },
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2025-02\\bundle.json"
+          }
+        },
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2025-02\\pull.json"
+          }
+        },
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2026-10\\bundle.json"
+          }
+        },
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\tamsin-vale\\downloads\\north-2026-10\\pull.json"
+          }
+        },
+        {
+          "name": "Write",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\runs\\smoke-graded-2\\answers\\tamsin-vale.records.opus-5-5.r1.json"
+          }
+        },
+        {
+          "name": "SubagentHandback",
+          "input": {
+            "message": "done"
+          }
         }
       ]
     },
@@ -356,13 +514,13 @@
       "case": "tamsin-vale",
       "model": "claude-haiku-5-5",
       "alias": "haiku",
-      "tag": "smoke-graded/tamsin-vale.judge.haiku-5-5.j1",
-      "inputsHash": "4e6bc0657f86ad43e042ccae82ef01964b62ba8e7889d45cb3888154b9fe7a90",
+      "tag": "smoke-graded-2/tamsin-vale.judge.haiku-5-5.j1",
+      "inputsHash": "fcdaefea82b510b773995b775e0101b91f319db8a06707d3d6e77fe678518d9f",
       "status": "done",
       "estimate": {
-        "tokens": 132240,
-        "usd": 0.0532965,
-        "basis": "the packet's size"
+        "tokens": 184835,
+        "usd": 0.016845,
+        "basis": "the mean of 1 past judge(s)"
       },
       "verdict": "judges/tamsin-vale.judge.haiku-5-5.j1.json",
       "prompt": "prompts/tamsin-vale.judge.haiku-5-5.j1.txt",
@@ -370,28 +528,32 @@
         "A": "tamsin-vale.records.opus-5-5.r1",
         "B": "tamsin-vale.pod.opus-5-5.r1"
       },
+      "workdir": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.haiku-5-5.j1",
+      "packet": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.haiku-5-5.j1\\packet.md",
+      "packetSha256": "95710b96d02d5d63f8f2bf251d05f1e09bfe2870c412ed382c73211fd14e9548",
+      "dispatched": true,
       "stats": {
         "calls": 3,
         "models": ["claude-haiku-5-5"],
         "tokens": {
           "input": 6,
-          "cacheCreation": 72304,
-          "cacheRead": 98890,
-          "output": 13635,
-          "total": 184835
+          "cacheCreation": 66972,
+          "cacheRead": 96766,
+          "output": 10728,
+          "total": 174472
         },
-        "contextPeak": 72306,
+        "contextPeak": 66974,
         "toolCalls": {
-          "total": 4,
+          "total": 3,
           "byName": {
-            "Read": 2,
+            "Read": 1,
             "Write": 1,
             "SubagentHandback": 1
           }
         },
-        "wallSeconds": 65,
+        "wallSeconds": 54,
         "cost": {
-          "usd": 0.016845,
+          "usd": 0.014703760000000001,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -399,34 +561,54 @@
       },
       "calls": [
         {
-          "at": "2026-10-30T21:34:24.623Z",
+          "at": "2026-10-30T22:48:03.655Z",
           "model": "claude-haiku-5-5",
           "input": 2,
-          "cacheCreation": 39705,
+          "cacheCreation": 39871,
           "cacheRead": 0,
-          "output": 259,
-          "toolCalls": ["Read", "Read"],
-          "usd": 0.005092825
+          "output": 187,
+          "toolCalls": ["Read"],
+          "usd": 0.005077575
         },
         {
-          "at": "2026-10-30T21:35:12.287Z",
+          "at": "2026-10-30T22:48:40.418Z",
           "model": "claude-haiku-5-5",
           "input": 2,
-          "cacheCreation": 19480,
-          "cacheRead": 39705,
-          "output": 12989,
+          "cacheCreation": 17024,
+          "cacheRead": 39871,
+          "output": 9942,
           "toolCalls": ["Write"],
-          "usd": 0.00932675
+          "usd": 0.00749791
         },
         {
-          "at": "2026-10-30T21:35:25.178Z",
+          "at": "2026-10-30T22:48:52.399Z",
           "model": "claude-haiku-5-5",
           "input": 2,
-          "cacheCreation": 13119,
-          "cacheRead": 59185,
-          "output": 387,
+          "cacheCreation": 10077,
+          "cacheRead": 56895,
+          "output": 599,
           "toolCalls": ["SubagentHandback"],
-          "usd": 0.002425425
+          "usd": 0.0021282750000000002
+        }
+      ],
+      "toolUses": [
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.haiku-5-5.j1\\packet.md"
+          }
+        },
+        {
+          "name": "Write",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.haiku-5-5.j1\\verdict.json"
+          }
+        },
+        {
+          "name": "SubagentHandback",
+          "input": {
+            "message": "done. Verdict written to C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.haiku-5-5.j1\\verdict.json.\n\nSummary:\n- Answer A: TG1 found (Q2), TG2 found (Q1), TT1 avoided (Q4, Q5), TT2 avoided. No false questions. Extra finds: PT7 (Q3), PT6 (Q4). Chains complete and faithful; Q6, Q10 have a garbled fact line (\"Type 2 diabetes is an active.\"), and Q2/Q9 date the problem-list entry to 2022 when it was recorded 2025-02-20.\n- Answer B: TG1 found (Q3), TG2 found (Q1), TT1 avoided (Q4, Q7), TT2 avoided (Q8, which uses the allowed \"result not in my records\" wording). No false questions. Extra finds: PT7 (Q2), PT6 (Q4). All chains complete and faithful; the Q7 A1c date (2024-10-14) could not be checked against the records shown.\n- Gap score with and without G5: not applicable, since this case has no G5 item. Both arms score 2 of 2 on planted gaps.\n- Near-misses: A Q5 and B Q7 ask whether to restart metformin, but both acknowledge Jardiance, so neither matches the trap's \"nothing replaced it\" wrong line. I scored them as avoided, not false.\n- The citations are dates and facts, not resource ids, so the citation check was done against the key's values only."
+          }
         }
       ]
     },
@@ -436,13 +618,13 @@
       "case": "tamsin-vale",
       "model": "claude-sonnet-5-5",
       "alias": "sonnet",
-      "tag": "smoke-graded/tamsin-vale.judge.sonnet-5-5.j2",
-      "inputsHash": "f1da60d501a3fa809b0bad9986d161efb4ff8c6dfa23121d473bef52331eba82",
+      "tag": "smoke-graded-2/tamsin-vale.judge.sonnet-5-5.j2",
+      "inputsHash": "7a48b7c00a485177c3b3ef8613c23983411ccbe6737687d8b40cce8322e1bb59",
       "status": "done",
       "estimate": {
-        "tokens": 132240,
-        "usd": 0.213186,
-        "basis": "the packet's size"
+        "tokens": 164357,
+        "usd": 0.2078841,
+        "basis": "the mean of 1 past judge(s)"
       },
       "verdict": "judges/tamsin-vale.judge.sonnet-5-5.j2.json",
       "prompt": "prompts/tamsin-vale.judge.sonnet-5-5.j2.txt",
@@ -450,28 +632,32 @@
         "A": "tamsin-vale.records.opus-5-5.r1",
         "B": "tamsin-vale.pod.opus-5-5.r1"
       },
+      "workdir": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.sonnet-5-5.j2",
+      "packet": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.sonnet-5-5.j2\\packet.md",
+      "packetSha256": "95710b96d02d5d63f8f2bf251d05f1e09bfe2870c412ed382c73211fd14e9548",
+      "dispatched": true,
       "stats": {
         "calls": 3,
         "models": ["claude-sonnet-5-5"],
         "tokens": {
           "input": 6,
-          "cacheCreation": 62257,
-          "cacheRead": 98848,
-          "output": 3246,
-          "total": 164357
+          "cacheCreation": 35756,
+          "cacheRead": 120921,
+          "output": 3158,
+          "total": 159841
         },
-        "contextPeak": 62259,
+        "contextPeak": 59959,
         "toolCalls": {
-          "total": 4,
+          "total": 3,
           "byName": {
-            "Read": 2,
+            "Read": 1,
             "Write": 1,
             "SubagentHandback": 1
           }
         },
         "wallSeconds": 29,
         "cost": {
-          "usd": 0.2078841,
+          "usd": 0.1451662,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -479,39 +665,298 @@
       },
       "calls": [
         {
-          "at": "2026-10-30T21:34:26.275Z",
+          "at": "2026-10-30T22:48:04.416Z",
           "model": "claude-sonnet-5-5",
           "input": 2,
-          "cacheCreation": 39710,
-          "cacheRead": 0,
-          "output": 207,
-          "toolCalls": ["Read", "Read"],
-          "usd": 0.101349
+          "cacheCreation": 15676,
+          "cacheRead": 24201,
+          "output": 129,
+          "toolCalls": ["Read"],
+          "usd": 0.045324199999999995
         },
         {
-          "at": "2026-10-30T21:34:37.850Z",
+          "at": "2026-10-30T22:48:16.108Z",
           "model": "claude-sonnet-5-5",
           "input": 2,
-          "cacheCreation": 19428,
-          "cacheRead": 39710,
-          "output": 2988,
+          "cacheCreation": 16966,
+          "cacheRead": 39877,
+          "output": 2978,
           "toolCalls": ["Write"],
-          "usd": 0.086396
+          "usd": 0.08017439999999999
         },
         {
-          "at": "2026-10-30T21:34:49.441Z",
+          "at": "2026-10-30T22:48:28.570Z",
           "model": "claude-sonnet-5-5",
           "input": 2,
-          "cacheCreation": 3119,
-          "cacheRead": 59138,
+          "cacheCreation": 3114,
+          "cacheRead": 56843,
           "output": 51,
           "toolCalls": ["SubagentHandback"],
-          "usd": 0.0201391
+          "usd": 0.019667599999999997
+        }
+      ],
+      "toolUses": [
+        {
+          "name": "Read",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.sonnet-5-5.j2\\packet.md"
+          }
+        },
+        {
+          "name": "Write",
+          "input": {
+            "file_path": "C:\\dev\\the-cascade-protocol\\.worktrees\\evals\\cascade-runtime-js\\packages\\evals\\work\\judging\\smoke-graded-2\\tamsin-vale.judge.sonnet-5-5.j2\\verdict.json"
+          }
+        },
+        {
+          "name": "SubagentHandback",
+          "input": {
+            "message": "done"
+          }
         }
       ]
     }
   ],
-  "toolCalls": [],
+  "toolCalls": [
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:42:43.621Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/The person this pod is about"
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [],
+      "answer": "{\"question\":\"pod/The person this pod is about\",\"total\":1,\"rows\":[{\"subject\":\"urn:uuid:84665676-b96a-4ce4-b1de-46c0bebdd830\",\"subjectLabel\":\"The person this pod is about\"}]}",
+      "milliseconds": 3705
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:42:58.349Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My active conditions",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
+      ],
+      "answer": "{\"question\":\"pod/My active conditions\",\"total\":1,\"rows\":[{\"condition\":\"Type 2 diabetes mellitus\",\"snomed\":\"http://snomed.info/id/44054006\",\"icd10\":\"https://ns.cascadeprotocol.org/codes/icd10cm/E11.9\",\"onset\":\"2022-03-01\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5\",\"entryLabel\":\"Condition entry · Type 2 diabetes mellitus · 2022-03-01\"}]}",
+      "milliseconds": 2078
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:15.374Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My medication history",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 3,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b"
+      ],
+      "answer": "{\"question\":\"pod/My medication history\",\"total\":3,\"rows\":[{\"medication\":\"Atorvastatin 20 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/617310\",\"status\":\"active\",\"lifecycle\":\"https://ns.cascadeprotocol.org/cascade#MedicationActive\",\"written\":\"2025-02-20\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e\",\"entryLabel\":\"Medication entry · Atorvastatin 20 mg tablet · 2025-02-20\"},{\"medication\":\"Jardiance 10 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/1545658\",\"status\":\"active\",\"lifecycle\":\"https://ns.cascadeprotocol.org/cascade#MedicationActive\",\"written\":\"2025-02-20\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3\",\"entryLabel\":\"Medication entry · Jardiance 10 mg tablet · 2025-02-20\"},{\"medication\":\"Metformin 500 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/861007\",\"status\":\"completed\",\"lifecycle\":\"https://ns.cascadeprotocol.org/cascade#MedicationStopped\",\"started\":\"2022-03-01\",\"ended\":\"2024-04-15\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b\",\"entryLabel\":\"Medication entry · Metformin 500 mg tablet · 2022-03-01\"}]}",
+      "milliseconds": 3975
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:26.121Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My lab results",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 21,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f"
+      ],
+      "answer": "{\"question\":\"pod/My lab results\",\"total\":21,\"rows\":[{\"performed\":\"2026-02-16T16:00:00Z\",\"test\":\"Creatinine\",\"code\":\"http://loinc.org/rdf/2160-0\",\"value\":\"0.88\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996\",\"entryLabel\":\"Lab result entry · Creatinine · 2026-02-16T16:00:00Z\"},{\"performed\":\"2026-02-16T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"6.9\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2026-02-16T16:00:00Z\"},{\"performed\":\"2026-02-16T16:00:00Z\",\"test\":\"Potassium\",\"code\":\"http://loinc.org/rdf/2823-3\",\"value\":\"4.3\",\"unit\":\"mmol/L\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e\",\"entryLabel\":\"Lab result entry · Potassium · 2026-02-16T16:00:00Z\"},{\"performed\":\"2026-02-16T16:00:00Z\",\"test\":\"eGFR\",\"code\":\"http://loinc.org/rdf/98979-8\",\"value\":\"69\",\"unit\":\"mL/min/{1.73_m2}\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab\",\"entryLabel\":\"Lab result entry · eGFR · 2026-02-16T16:00:00Z\"},{\"performed\":\"2025-11-04T15:00:00Z\",\"test\":\"Fecal immunochemical test (FIT)\",\"code\":\"http://loinc.org/rdf/29771-3\",\"value\":\"Positive\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8\",\"entryLabel\":\"Lab result entry · Fecal immunochemical test (FIT) · 2025-11-04T15:00:00Z\"},{\"performed\":\"2025-08-18T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"7.1\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-08-18T16:00:00Z\"},{\"performed\":\"2025-07-08T21:40:00Z\",\"test\":\"D-dimer\",\"code\":\"http://loinc.org/rdf/48065-7\",\"value\":\"0.92\",\"unit\":\"mg/L{FEU}\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502\",\"entryLabel\":\"Lab result entry · D-dimer · 2025-07-08T21:40:00Z\"},{\"performed\":\"2025-05-19T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"7.6\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-05-19T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"Cholesterol, total\",\"code\":\"http://loinc.org/rdf/2093-3\",\"value\":\"212\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e\",\"entryLabel\":\"Lab result entry · Cholesterol, total · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"Creatinine\",\"code\":\"http://loinc.org/rdf/2160-0\",\"value\":\"0.84\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5\",\"entryLabel\":\"Lab result entry · Creatinine · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"HDL cholesterol\",\"code\":\"http://loinc.org/rdf/2085-9\",\"value\":\"52\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe\",\"entryLabel\":\"Lab result entry · HDL cholesterol · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"LDL cholesterol, calculated\",\"code\":\"http://loinc.org/rdf/13457-7\",\"value\":\"131\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124\",\"entryLabel\":\"Lab result entry · LDL cholesterol, calculated · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"Potassium\",\"code\":\"http://loinc.org/rdf/2823-3\",\"value\":\"4.5\",\"unit\":\"mmol/L\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a\",\"entryLabel\":\"Lab result entry · Potassium · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"Triglycerides\",\"code\":\"http://loinc.org/rdf/2571-8\",\"value\":\"146\",\"unit\":\"mg/dL\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f\",\"entryLabel\":\"Lab result entry · Triglycerides · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-02-18T16:00:00Z\",\"test\":\"eGFR\",\"code\":\"http://loinc.org/rdf/98979-8\",\"value\":\"73\",\"unit\":\"mL/min/{1.73_m2}\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee\",\"entryLabel\":\"Lab result entry · eGFR · 2025-02-18T16:00:00Z\"},{\"performed\":\"2025-01-13T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"8.3\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z\"},{\"performed\":\"2024-10-14T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"7.9\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-10-14T16:00:00Z\"},{\"performed\":\"2024-07-15T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"7.4\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-07-15T16:00:00Z\"},{\"performed\":\"2024-01-15T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"6.7\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-01-15T16:00:00Z\"},{\"performed\":\"2023-10-09T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"6.5\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2023-10-09T16:00:00Z\"},{\"performed\":\"2023-07-10T16:00:00Z\",\"test\":\"Hemoglobin A1c\",\"code\":\"http://loinc.org/rdf/4548-4\",\"value\":\"6.6\",\"unit\":\"%\",\"status\":\"final\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2023-07-10T16:00:00Z\"}]}",
+      "milliseconds": 1866
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:32.724Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My immunizations",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 0,
+      "entries": [],
+      "answer": "{\"question\":\"pod/My immunizations\",\"total\":0,\"rows\":[]}",
+      "milliseconds": 1558
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:38.283Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My procedures",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
+      ],
+      "answer": "{\"question\":\"pod/My procedures\",\"total\":1,\"rows\":[{\"performed\":\"2025-07-08T22:30:00Z\",\"procedure\":\"CT angiography of the chest\",\"status\":\"completed\",\"records\":\"1\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04\",\"entryLabel\":\"Procedure entry · CT angiography of the chest · 2025-07-08T22:30:00Z\"}]}",
+      "milliseconds": 1282
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:42.629Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My active allergies",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 0,
+      "entries": [],
+      "answer": "{\"question\":\"pod/My active allergies\",\"total\":0,\"rows\":[]}",
+      "milliseconds": 1294
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:47.720Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "pod/My genetic variants",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 0,
+      "entries": [],
+      "answer": "{\"question\":\"pod/My genetic variants\",\"total\":0,\"rows\":[]}",
+      "milliseconds": 1343
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:52.736Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "entry/What needs review",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 0,
+      "entries": [],
+      "answer": "{\"question\":\"entry/What needs review\",\"total\":0,\"rows\":[]}",
+      "milliseconds": 1483
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:43:56.088Z",
+      "tool": "reference_table_checks",
+      "input": {
+        "pod": "tamsin-vale"
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [],
+      "answer": "{\"tables\":\"off\",\"said\":\"The reference tables are off, so nothing is checked against them: cascade-mcp reads them only when started with --check-tables.\"}",
+      "milliseconds": 16
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:44:06.640Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin-vale",
+        "question": "entry/Where it came from",
+        "limit": 500
+      },
+      "ok": true,
+      "rows": 28,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#c4ea67d70fc767b638e835dc0ae8a22a37d86063c09286bd9356871bb081dd57",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/patient-profile.ttl#9a63ed077bee7745e404765302b168e0d5b40828c7e2c03930dd61e86647e3fe",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
+      ],
+      "answer": "{\"question\":\"entry/Where it came from\",\"total\":28,\"rows\":[{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#c4ea67d70fc767b638e835dc0ae8a22a37d86063c09286bd9356871bb081dd57\",\"entryLabel\":\"Condition entry · Chest wall pain · 2025-07-08\",\"record\":\"urn:uuid:321216ac-2814-8b40-8b55-76c97c9269bc\",\"recordLabel\":\"Condition · Chest wall pain · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5\",\"entryLabel\":\"Condition entry · Type 2 diabetes mellitus · 2022-03-01\",\"record\":\"urn:uuid:91490b7d-e9a7-845a-8432-a831c97d0615\",\"recordLabel\":\"Condition · Type 2 diabetes mellitus · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e\",\"entryLabel\":\"Lab result entry · Cholesterol, total · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:5f410d38-db82-86ca-9f22-2714f94417c3\",\"recordLabel\":\"Lab result · Cholesterol, total · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#26f2b9ac744797f6ecb55c4011cd049ef941d51400494ca61d25ce87813689b5\",\"entryLabel\":\"Lab result entry · Creatinine · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:a57072ae-f324-8f05-b8fd-d2b1a561715d\",\"recordLabel\":\"Lab result · Creatinine · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#cd96e4802dfd2da321ef15e72b829d006a593a0c784079f1f128c545389d0996\",\"entryLabel\":\"Lab result entry · Creatinine · 2026-02-16T16:00:00Z\",\"record\":\"urn:uuid:4054904e-47bd-8171-a22d-dc253a311582\",\"recordLabel\":\"Lab result · Creatinine · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502\",\"entryLabel\":\"Lab result entry · D-dimer · 2025-07-08T21:40:00Z\",\"record\":\"urn:uuid:e188f12f-5126-86d5-9c0c-cec283c12712\",\"recordLabel\":\"Lab result · D-dimer · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8\",\"entryLabel\":\"Lab result entry · Fecal immunochemical test (FIT) · 2025-11-04T15:00:00Z\",\"record\":\"urn:uuid:a3fd4ba0-f05d-836e-be7c-903f600027ac\",\"recordLabel\":\"Lab result · Fecal immunochemical test (FIT) · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#5a3ed278a608a6a36707645f94fa9b7e2f1d9ed539adad5662b7083ed5c6bfbe\",\"entryLabel\":\"Lab result entry · HDL cholesterol · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:05019ba3-87cf-828e-80f6-a87e51cbc470\",\"recordLabel\":\"Lab result · HDL cholesterol · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#99768ec03e84be717cc3889945ddaec07f145b681e592aed8a8d35c864807a3f\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2023-07-10T16:00:00Z\",\"record\":\"urn:uuid:f022b622-485c-8253-8d3f-766b1d871c5a\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:29:58.611Z\",\"import\":\"urn:uuid:d7a5b392-01b7-47b4-bb33-c88b75369e58\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;fIOEvoik2VN5L4Ht1B-w2YxZBRR0tkCbId2CgXxeMCk\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2024-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2024-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#11da938e733e370cc1fbafa96577bf66f1303b48b6f19a3ac59541883856d985\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2023-10-09T16:00:00Z\",\"record\":\"urn:uuid:24951dba-839b-8298-b1ac-a8961e784267\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:29:58.611Z\",\"import\":\"urn:uuid:d7a5b392-01b7-47b4-bb33-c88b75369e58\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;fIOEvoik2VN5L4Ht1B-w2YxZBRR0tkCbId2CgXxeMCk\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2024-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2024-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-01-15T16:00:00Z\",\"record\":\"urn:uuid:58de1059-0d71-8244-9549-c4ef8b4c3146\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:29:58.611Z\",\"import\":\"urn:uuid:d7a5b392-01b7-47b4-bb33-c88b75369e58\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;fIOEvoik2VN5L4Ht1B-w2YxZBRR0tkCbId2CgXxeMCk\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2024-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2024-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ddde3f943a439fe67292f3ff6027b76303c68b9d4a6e6da87133e09de9f410af\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-07-15T16:00:00Z\",\"record\":\"urn:uuid:5c4afe5e-6d87-896e-926a-9ee8e22a3105\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.619Z\",\"import\":\"urn:uuid:aa0a91df-7297-4b5c-8954-510b0ba8cce8\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;sJergYpzf8EdQsI-gZH51UyJ2ZozZTMcSoNFbqB8IZ4\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2025-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2025-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2024-10-14T16:00:00Z\",\"record\":\"urn:uuid:bd584a6a-ea11-8a89-a98a-65728c5ebc37\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.619Z\",\"import\":\"urn:uuid:aa0a91df-7297-4b5c-8954-510b0ba8cce8\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;sJergYpzf8EdQsI-gZH51UyJ2ZozZTMcSoNFbqB8IZ4\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2025-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2025-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z\",\"record\":\"urn:uuid:eb53fafc-8404-89f1-bdbd-9faf20e83c50\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.619Z\",\"import\":\"urn:uuid:aa0a91df-7297-4b5c-8954-510b0ba8cce8\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;sJergYpzf8EdQsI-gZH51UyJ2ZozZTMcSoNFbqB8IZ4\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2025-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2025-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#ae2223a7c8c8a51b2034975023ec0af73b7c8339269a34d44f3bc7b28498aafa\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-05-19T16:00:00Z\",\"record\":\"urn:uuid:911cf91f-e80d-8187-be8d-78408972a68b\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#06ed9a384e69cc511d39713d09f74caebd8578a409ab19600dc7eba63dafd4c6\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2025-08-18T16:00:00Z\",\"record\":\"urn:uuid:2a32a8f6-4267-803c-96b5-a4607b3b96b9\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d\",\"entryLabel\":\"Lab result entry · Hemoglobin A1c · 2026-02-16T16:00:00Z\",\"record\":\"urn:uuid:aed39576-53ff-8951-9799-e40d8eb4b7fe\",\"recordLabel\":\"Lab result · Hemoglobin A1c · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124\",\"entryLabel\":\"Lab result entry · LDL cholesterol, calculated · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:e152df57-e0cf-87c5-abb5-c277324c5a4b\",\"recordLabel\":\"Lab result · LDL cholesterol, calculated · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#63b58dddf3d0204d23a7ce512969ca3bb2cfcbe503d51923d119f0e0285e404a\",\"entryLabel\":\"Lab result entry · Potassium · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:25b1d88b-06b6-823d-bc79-fb1b3e2a7ffa\",\"recordLabel\":\"Lab result · Potassium · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#e61b5e12208462f7bf52c679a7c3103cbe32cce4d696339bd8bb41491955943e\",\"entryLabel\":\"Lab result entry · Potassium · 2026-02-16T16:00:00Z\",\"record\":\"urn:uuid:c8dea8de-91ed-819e-b6e2-996639cfae73\",\"recordLabel\":\"Lab result · Potassium · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#0f51c18249abba68f730274bd70045abcc8ea67abf2a51fed67329474da39a0f\",\"entryLabel\":\"Lab result entry · Triglycerides · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:c3ad85a8-2dac-8660-b015-e395f27f2f45\",\"recordLabel\":\"Lab result · Triglycerides · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#b6ec1add4f58cdf5647f78b0f90c41362d1df54fcf8bbb96c066e1bcab2100ee\",\"entryLabel\":\"Lab result entry · eGFR · 2025-02-18T16:00:00Z\",\"record\":\"urn:uuid:905d9509-1a85-8b68-827f-0f368bdd1aa0\",\"recordLabel\":\"Lab result · eGFR · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab\",\"entryLabel\":\"Lab result entry · eGFR · 2026-02-16T16:00:00Z\",\"record\":\"urn:uuid:bd0c2f21-73be-83d5-8d6c-63d427a8bf4f\",\"recordLabel\":\"Lab result · eGFR · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e\",\"entryLabel\":\"Medication entry · Atorvastatin 20 mg tablet · 2025-02-20\",\"record\":\"urn:uuid:71d536c8-1f46-82af-83d4-60fd18ebe1c4\",\"recordLabel\":\"Medication · Atorvastatin 20 mg tablet · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3\",\"entryLabel\":\"Medication entry · Jardiance 10 mg tablet · 2025-02-20\",\"record\":\"urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223\",\"recordLabel\":\"Medication · Jardiance 10 mg tablet · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b\",\"entryLabel\":\"Medication entry · Metformin 500 mg tablet · 2022-03-01\",\"record\":\"urn:uuid:eb3a91fc-6f47-8b0e-9803-2452e8d034ce\",\"recordLabel\":\"Medication · Metformin 500 mg tablet · unknown source\",\"arrived\":\"2026-10-30T19:30:00.619Z\",\"import\":\"urn:uuid:aa0a91df-7297-4b5c-8954-510b0ba8cce8\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;sJergYpzf8EdQsI-gZH51UyJ2ZozZTMcSoNFbqB8IZ4\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2025-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2025-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/patient-profile.ttl#9a63ed077bee7745e404765302b168e0d5b40828c7e2c03930dd61e86647e3fe\",\"entryLabel\":\"Patient entry\",\"record\":\"urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc\",\"recordLabel\":\"Patient profile · Cascade North Demo Hospital · first received 2026-10-30\",\"arrived\":\"2026-10-30T19:29:58.611Z\",\"import\":\"urn:uuid:d7a5b392-01b7-47b4-bb33-c88b75369e58\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;fIOEvoik2VN5L4Ht1B-w2YxZBRR0tkCbId2CgXxeMCk\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2024-02-01\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2024-02-01T00:00:00Z\"},{\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04\",\"entryLabel\":\"Procedure entry · CT angiography of the chest · 2025-07-08T22:30:00Z\",\"record\":\"urn:uuid:3a4b65a8-320d-8e94-91a5-051719abd61d\",\"recordLabel\":\"Procedure · CT angiography of the chest · unknown source\",\"arrived\":\"2026-10-30T19:30:00.992Z\",\"import\":\"urn:uuid:0fc8240e-90a2-41db-8f7a-0cfc16822513\",\"importLabel\":\"FHIR pull\",\"document\":\"ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc\",\"documentLabel\":\"Document · Cascade North Demo Hospital · retrieved 2026-10-15\",\"hospital\":\"Cascade North Demo Hospital\",\"retrieved\":\"2026-10-15T00:00:00Z\"}]}",
+      "milliseconds": 942
+    },
+    {
+      "job": "tamsin-vale.pod.opus-5-5.r1",
+      "at": "2026-10-30T22:44:09.694Z",
+      "tool": "timeline",
+      "input": {
+        "pod": "tamsin-vale"
+      },
+      "ok": true,
+      "rows": 3,
+      "entries": [
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e",
+        "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
+      ],
+      "answer": "[{\"name\":\"Metformin 500 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/861007\",\"notation\":\"861007\",\"status\":\"completed\",\"started\":\"2022-03-01\",\"ended\":\"2024-04-15\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b\"},{\"name\":\"Atorvastatin 20 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/617310\",\"notation\":\"617310\",\"status\":\"active\",\"written\":\"2025-02-20\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e\"},{\"name\":\"Jardiance 10 mg tablet\",\"code\":\"https://ns.cascadeprotocol.org/codes/rxnorm/1545658\",\"notation\":\"1545658\",\"status\":\"active\",\"written\":\"2025-02-20\",\"entry\":\"pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3\"}]",
+      "milliseconds": 954
+    }
+  ],
   "checks": {
     "tamsin-vale.pod.opus-5-5.r1": {
       "answerValid": true,
@@ -524,7 +969,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8 Lab result entry · Fecal immunochemical test (FIT) · 2025-11-04T15:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8 Lab result entry · Fecal immunochemical test (FIT) · 2025-11-04T15:00:00Z pod://b77c"
+          "shows": "Fecal immunochemical test (FIT) · value Positive · status final · on 2025-11-04"
         },
         {
           "question": 2,
@@ -533,25 +978,25 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124 Lab result entry · LDL cholesterol, calculated · 2025-02-18T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124 Lab result entry · LDL cholesterol, calculated · 2025-02-18T16:00:00Z pod://b77cda3b-c4b"
+          "shows": "LDL cholesterol, calculated · value 131 mg/dL · status final · on 2025-02-18"
         },
         {
           "question": 2,
           "fact": 1,
           "cite": {
-            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e"
+            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e Lab result entry · Cholesterol, total · 2025-02-18T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e Lab result entry · Cholesterol, total · 2025-02-18T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2"
+          "shows": "Atorvastatin 20 mg tablet · status Active, prescribed · on 2025-02-20"
         },
         {
           "question": 2,
           "fact": 2,
           "cite": {
-            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e"
+            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e Medication entry · Atorvastatin 20 mg tablet · 2025-02-20 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e Medication entry · Atorvastatin 20 mg tablet · 2025-02-20 pod://b77cda3b-c4b6-44c1-98ff-e4"
+          "shows": "Type 2 diabetes mellitus · status active · on 2022-03-01"
         },
         {
           "question": 3,
@@ -560,7 +1005,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#ProblemOrDiagnosis\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical"
+          "shows": "Type 2 diabetes mellitus · status active · on 2022-03-01"
         },
         {
           "question": 3,
@@ -569,7 +1014,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab Lab result entry · eGFR · 2026-02-16T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab Lab result entry · eGFR · 2026-02-16T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results."
+          "shows": "eGFR · value 69 mL/min/{1.73_m2} · status final · on 2026-02-16"
         },
         {
           "question": 4,
@@ -578,7 +1023,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d Lab result entry · Hemoglobin A1c · 2026-02-16T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d Lab result entry · Hemoglobin A1c · 2026-02-16T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/c"
+          "shows": "Hemoglobin A1c · value 6.9 % · status final · on 2026-02-16"
         },
         {
           "question": 4,
@@ -587,7 +1032,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/c"
+          "shows": "Hemoglobin A1c · value 8.3 % · status final · on 2025-01-13"
         },
         {
           "question": 5,
@@ -596,7 +1041,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#ProblemOrDiagnosis\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical"
+          "shows": "Type 2 diabetes mellitus · status active · on 2022-03-01"
         },
         {
           "question": 6,
@@ -605,7 +1050,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#ProblemOrDiagnosis\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5 Condition entry · Type 2 diabetes mellitus · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical"
+          "shows": "Type 2 diabetes mellitus · status active · on 2022-03-01"
         },
         {
           "question": 7,
@@ -614,34 +1059,25 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b Medication entry · Metformin 500 mg tablet · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b Medication entry · Metformin 500 mg tablet · 2022-03-01 pod://b77cda3b-c4b6-44c1-98ff-e433d2"
+          "shows": "Metformin 500 mg tablet · status Stopped, reportedUse · on 2022-03-01 · ended 2024-04-15"
         },
         {
           "question": 7,
           "fact": 1,
           "cite": {
-            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9"
+            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9 Lab result entry · Hemoglobin A1c · 2024-01-15T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9 Lab result entry · Hemoglobin A1c · 2024-01-15T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/c"
+          "shows": "Hemoglobin A1c · value 7.9 % · status final · on 2024-10-14"
         },
         {
           "question": 7,
           "fact": 2,
           "cite": {
-            "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d"
-          },
-          "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d Lab result entry · Hemoglobin A1c · 2025-01-13T16:00:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/c"
-        },
-        {
-          "question": 7,
-          "fact": 3,
-          "cite": {
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3 Medication entry · Jardiance 10 mg tablet · 2025-02-20 pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3 Medication entry · Jardiance 10 mg tablet · 2025-02-20 pod://b77cda3b-c4b6-44c1-98ff-e433d2ae"
+          "shows": "Jardiance 10 mg tablet · status Active, prescribed · on 2025-02-20"
         },
         {
           "question": 8,
@@ -650,7 +1086,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502 Lab result entry · D-dimer · 2025-07-08T21:40:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502 Lab result entry · D-dimer · 2025-07-08T21:40:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-re"
+          "shows": "D-dimer · value 0.92 mg/L{FEU} · status final · on 2025-07-08"
         },
         {
           "question": 8,
@@ -659,7 +1095,7 @@
             "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
           },
           "ok": true,
-          "excerpt": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04 Procedure entry · CT angiography of the chest · 2025-07-08T22:30:00Z pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl http://www.w3.org/1999/02/22-rdf-syntax-ns#type https://ns.cascadeprotocol.org/cascade#MedicalProcedure\npod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04 Procedure entry · CT angiography of the chest · 2025-07-08T22:30:00Z pod://b77cda3b-c4b6-44c1-98"
+          "shows": "CT angiography of the chest · status completed · on 2025-07-08"
         }
       ],
       "absences": [
@@ -671,22 +1107,19 @@
         {
           "question": 2,
           "absence": 0,
-          "backed": true
+          "backed": false,
+          "reason": "query found it"
         },
         {
           "question": 3,
           "absence": 0,
-          "backed": true
-        },
-        {
-          "question": 3,
-          "absence": 1,
           "backed": true
         },
         {
           "question": 4,
           "absence": 0,
-          "backed": true
+          "backed": false,
+          "reason": "query found it"
         },
         {
           "question": 5,
@@ -695,11 +1128,6 @@
         },
         {
           "question": 6,
-          "absence": 0,
-          "backed": true
-        },
-        {
-          "question": 8,
           "absence": 0,
           "backed": true
         }
@@ -722,7 +1150,7 @@
             "resource": "Observation/story-stopped-fit-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-fit-1\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-11-04T15:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"29771-3\",\"display\":\"Hemoglobin [Presence] in Stool from gastrointestinal lower by Immunoassay\"}],\"text\":\"Fecal immunochemical test (FIT)\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2025-11-04T15:00:00Z\",\"valueCodeableConcept\":{\"coding\":[{\"system\":\"http://snomed.in"
+          "shows": "Fecal immunochemical test (FIT) · value Positive / Positive · status final · on 2025-11-04"
         },
         {
           "question": 2,
@@ -732,7 +1160,7 @@
             "resource": "Condition/story-stopped-cond-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Condition\",\"id\":\"story-stopped-cond-1\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-20T17:10:00Z\"},\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"active\"}]},\"verificationStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\"code\":\"confirmed\"}]},\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-category\",\"code\":\"problem-list-item\"}]}],\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"44054006\",\"display\":\"Diabetes mellitus type 2\"},{\"system\""
+          "shows": "Type 2 diabetes mellitus · status active, confirmed · on 2022-03-01"
         },
         {
           "question": 2,
@@ -742,97 +1170,97 @@
             "resource": "Observation/story-stopped-egfr-2"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-egfr-2\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2026-02-16T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"98979-8\",\"display\":\"Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI 2021)/1.73 sq M\"}],\"text\":\"eGFR\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2026-02-16T16:00:00Z\",\"valueQuantity\":{\"value\":69,\"unit\":\""
+          "shows": "eGFR · value 69 mL/min/{1.73_m2} · status final · on 2026-02-16"
         },
         {
           "question": 3,
-          "fact": 0,
-          "cite": {
-            "file": "north-2026-10/bundle.json",
-            "resource": "Observation/story-stopped-a1c-9"
-          },
-          "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-a1c-9\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2026-02-16T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"4548-4\",\"display\":\"Hemoglobin A1c/Hemoglobin.total in Blood\"}],\"text\":\"Hemoglobin A1c\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2026-02-16T16:00:00Z\",\"valueQuantity\":{\"value\":6.9,\"unit\":\"%\",\"system\":\"http://unitsofmeasure.org\",\"code\":\"%\"}}"
-        },
-        {
-          "question": 3,
-          "fact": 1,
-          "cite": {
-            "file": "north-2026-10/bundle.json",
-            "resource": "Observation/story-stopped-a1c-6"
-          },
-          "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-a1c-6\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-01-13T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"4548-4\",\"display\":\"Hemoglobin A1c/Hemoglobin.total in Blood\"}],\"text\":\"Hemoglobin A1c\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2025-01-13T16:00:00Z\",\"valueQuantity\":{\"value\":8.3,\"unit\":\"%\",\"system\":\"http://unitsofmeasure.org\",\"code\":\"%\"}}"
-        },
-        {
-          "question": 4,
           "fact": 0,
           "cite": {
             "file": "north-2026-10/bundle.json",
             "resource": "Observation/story-stopped-ldl-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-ldl-1\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-18T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"13457-7\",\"display\":\"Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation\"}],\"text\":\"LDL cholesterol, calculated\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2025-02-18T16:00:00Z\",\"valueQuantity\":{\"value\":131,\"unit\":\"mg/dL\",\"system\":\"http://unitsofmeas"
+          "shows": "LDL cholesterol, calculated · value 131 mg/dL · status final · on 2025-02-18"
         },
         {
-          "question": 4,
+          "question": 3,
           "fact": 1,
           "cite": {
             "file": "north-2026-10/bundle.json",
             "resource": "MedicationRequest/story-stopped-medrx-3"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"MedicationRequest\",\"id\":\"story-stopped-medrx-3\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-20T17:21:00Z\"},\"status\":\"active\",\"intent\":\"order\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/medicationrequest-category\",\"code\":\"outpatient\"}]}],\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://www.nlm.nih.gov/research/umls/rxnorm\",\"code\":\"617310\",\"display\":\"atorvastatin 20 MG Oral Tablet\"}],\"text\":\"Atorvastatin 20 mg tablet\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"authoredOn\":\"2025-02-20\",\"dosageInstruction\":[{\"text\":\"Take 1 tablet by m"
+          "shows": "Atorvastatin 20 mg tablet · status active, order · on 2025-02-20"
+        },
+        {
+          "question": 4,
+          "fact": 0,
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-9"
+          },
+          "ok": true,
+          "shows": "Hemoglobin A1c · value 6.9 % · status final · on 2026-02-16"
+        },
+        {
+          "question": 4,
+          "fact": 1,
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-6"
+          },
+          "ok": true,
+          "shows": "Hemoglobin A1c · value 8.3 % · status final · on 2025-01-13"
         },
         {
           "question": 5,
           "fact": 0,
           "cite": {
             "file": "north-2026-10/bundle.json",
-            "resource": "Condition/story-stopped-cond-1"
+            "resource": "MedicationStatement/story-stopped-med-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Condition\",\"id\":\"story-stopped-cond-1\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-20T17:10:00Z\"},\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"active\"}]},\"verificationStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\"code\":\"confirmed\"}]},\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-category\",\"code\":\"problem-list-item\"}]}],\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"44054006\",\"display\":\"Diabetes mellitus type 2\"},{\"system\""
+          "shows": "Metformin 500 mg tablet · status completed · on 2022-03-01 · ended 2024-04-15"
+        },
+        {
+          "question": 5,
+          "fact": 1,
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationRequest/story-stopped-medrx-2"
+          },
+          "ok": true,
+          "shows": "Jardiance 10 mg tablet · status active, order · on 2025-02-20"
+        },
+        {
+          "question": 5,
+          "fact": 2,
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-egfr-1"
+          },
+          "ok": true,
+          "shows": "eGFR · value 73 mL/min/{1.73_m2} · status final · on 2025-02-18"
         },
         {
           "question": 6,
           "fact": 0,
           "cite": {
             "file": "north-2026-10/bundle.json",
-            "resource": "MedicationStatement/story-stopped-med-1"
+            "resource": "Patient/story-stopped"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"MedicationStatement\",\"id\":\"story-stopped-med-1\",\"meta\":{\"versionId\":\"2\",\"lastUpdated\":\"2024-04-15T16:00:00Z\"},\"status\":\"completed\",\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://www.nlm.nih.gov/research/umls/rxnorm\",\"code\":\"861007\",\"display\":\"metformin hydrochloride 500 MG Oral Tablet\"},{\"system\":\"http://hl7.org/fhir/sid/ndc\",\"code\":\"99999-0861-01\"}],\"text\":\"Metformin 500 mg tablet\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectivePeriod\":{\"start\":\"2022-03-01\",\"end\":\"2024-04-15\"}}"
+          "shows": "Vale · on 1957-09-30"
         },
         {
           "question": 6,
           "fact": 1,
           "cite": {
             "file": "north-2026-10/bundle.json",
-            "resource": "Observation/story-stopped-a1c-4"
+            "resource": "Condition/story-stopped-cond-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-a1c-4\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2024-07-15T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"4548-4\",\"display\":\"Hemoglobin A1c/Hemoglobin.total in Blood\"}],\"text\":\"Hemoglobin A1c\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2024-07-15T16:00:00Z\",\"valueQuantity\":{\"value\":7.4,\"unit\":\"%\",\"system\":\"http://unitsofmeasure.org\",\"code\":\"%\"}}"
-        },
-        {
-          "question": 6,
-          "fact": 2,
-          "cite": {
-            "file": "north-2026-10/bundle.json",
-            "resource": "Observation/story-stopped-a1c-6"
-          },
-          "ok": true,
-          "excerpt": "{\"resourceType\":\"Observation\",\"id\":\"story-stopped-a1c-6\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-01-13T16:00:00Z\"},\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"4548-4\",\"display\":\"Hemoglobin A1c/Hemoglobin.total in Blood\"}],\"text\":\"Hemoglobin A1c\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"effectiveDateTime\":\"2025-01-13T16:00:00Z\",\"valueQuantity\":{\"value\":8.3,\"unit\":\"%\",\"system\":\"http://unitsofmeasure.org\",\"code\":\"%\"}}"
-        },
-        {
-          "question": 6,
-          "fact": 3,
-          "cite": {
-            "file": "north-2026-10/bundle.json",
-            "resource": "MedicationRequest/story-stopped-medrx-2"
-          },
-          "ok": true,
-          "excerpt": "{\"resourceType\":\"MedicationRequest\",\"id\":\"story-stopped-medrx-2\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-20T17:20:00Z\"},\"status\":\"active\",\"intent\":\"order\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/medicationrequest-category\",\"code\":\"outpatient\"}]}],\"medicationCodeableConcept\":{\"coding\":[{\"system\":\"http://www.nlm.nih.gov/research/umls/rxnorm\",\"code\":\"1545658\",\"display\":\"empagliflozin 10 MG Oral Tablet\"}],\"text\":\"Jardiance 10 mg tablet\"},\"subject\":{\"reference\":\"Patient/story-stopped\"},\"authoredOn\":\"2025-02-20\",\"dosageInstruction\":[{\"text\":\"Take 1 tablet by mo"
+          "shows": "Type 2 diabetes mellitus · status active, confirmed · on 2022-03-01"
         },
         {
           "question": 7,
@@ -842,7 +1270,7 @@
             "resource": "Patient/story-stopped"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Patient\",\"id\":\"story-stopped\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2022-03-01T00:00:00Z\"},\"identifier\":[{\"system\":\"https://cascade-north.demo.invalid/mrn\",\"value\":\"N-0090102\"}],\"name\":[{\"family\":\"Vale\",\"given\":[\"Tamsin\"]}],\"gender\":\"female\",\"birthDate\":\"1957-09-30\"}"
+          "shows": "Vale · on 1957-09-30"
         },
         {
           "question": 8,
@@ -852,17 +1280,17 @@
             "resource": "Patient/story-stopped"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Patient\",\"id\":\"story-stopped\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2022-03-01T00:00:00Z\"},\"identifier\":[{\"system\":\"https://cascade-north.demo.invalid/mrn\",\"value\":\"N-0090102\"}],\"name\":[{\"family\":\"Vale\",\"given\":[\"Tamsin\"]}],\"gender\":\"female\",\"birthDate\":\"1957-09-30\"}"
+          "shows": "Vale · on 1957-09-30"
         },
         {
           "question": 9,
           "fact": 0,
           "cite": {
             "file": "north-2026-10/bundle.json",
-            "resource": "Patient/story-stopped"
+            "resource": "Condition/story-stopped-cond-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Patient\",\"id\":\"story-stopped\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2022-03-01T00:00:00Z\"},\"identifier\":[{\"system\":\"https://cascade-north.demo.invalid/mrn\",\"value\":\"N-0090102\"}],\"name\":[{\"family\":\"Vale\",\"given\":[\"Tamsin\"]}],\"gender\":\"female\",\"birthDate\":\"1957-09-30\"}"
+          "shows": "Type 2 diabetes mellitus · status active, confirmed · on 2022-03-01"
         },
         {
           "question": 10,
@@ -872,7 +1300,7 @@
             "resource": "Condition/story-stopped-cond-1"
           },
           "ok": true,
-          "excerpt": "{\"resourceType\":\"Condition\",\"id\":\"story-stopped-cond-1\",\"meta\":{\"versionId\":\"1\",\"lastUpdated\":\"2025-02-20T17:10:00Z\"},\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"active\"}]},\"verificationStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\"code\":\"confirmed\"}]},\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-category\",\"code\":\"problem-list-item\"}]}],\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"44054006\",\"display\":\"Diabetes mellitus type 2\"},{\"system\""
+          "shows": "Type 2 diabetes mellitus · status active, confirmed · on 2022-03-01"
         }
       ],
       "absences": [
@@ -889,12 +1317,14 @@
         {
           "question": 3,
           "absence": 0,
-          "backed": true
+          "backed": false,
+          "reason": "records hold it: north-2026-10/bundle.json"
         },
         {
           "question": 4,
           "absence": 0,
-          "backed": true
+          "backed": false,
+          "reason": "records hold it: north-2026-10/bundle.json"
         },
         {
           "question": 5,
@@ -942,29 +1372,47 @@
       ]
     }
   },
+  "judgeDiscipline": {
+    "tamsin-vale.judge.haiku-5-5.j1": {
+      "ok": true,
+      "violations": []
+    },
+    "tamsin-vale.judge.sonnet-5-5.j2": {
+      "ok": true,
+      "violations": []
+    }
+  },
   "answers": {
     "tamsin-vale.pod.opus-5-5.r1": {
       "questions": [
         {
           "n": 1,
-          "question": "My stool test for colon cancer came back positive last November. Has a colonoscopy been scheduled, and if not, can we book it now?",
-          "why": "A positive stool blood test needs a follow-up colonoscopy, ideally within a few months; nearly a year later her records show no colonoscopy.",
+          "question": "My stool test for colon cancer came back positive in November 2025. Has a colonoscopy been scheduled, and if not, can we arrange one now?",
+          "why": "A positive FIT needs a follow-up colonoscopy, ideally within a few months; nearly a year later there is no colonoscopy in her records.",
           "confidence": "high",
           "facts": [
             {
-              "says": "Fecal immunochemical test (FIT) for blood in the stool was positive.",
+              "says": "Fecal immunochemical test result was positive.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-11-04",
-              "values": ["Positive"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#45d8dec21fcdd76dce2705e2215e8ff8e9313273cb6bcfe1ab068e6aa1288cb8"
-              }
+              },
+              "name": "Fecal immunochemical test (FIT)",
+              "code": "29771-3",
+              "value": "Positive",
+              "status": "final",
+              "date": "2025-11-04",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "No colonoscopy or other follow-up procedure after the positive FIT.",
-              "coverage": "All procedures in her records from Cascade North Demo Hospital (records retrieved 2024-02-01, 2025-02-01 and 2026-10-15); the only procedure is a chest CT angiogram on 2025-07-08.",
+              "what": "A colonoscopy after the positive FIT",
+              "match": {
+                "codes": ["73761001", "45378"],
+                "terms": ["colonoscopy", "sigmoidoscopy", "CT colonography"]
+              },
+              "coverage": "All procedures in the pod from every source, any date; the only procedure is a 2025-07-08 chest CT angiogram.",
               "query": {
                 "tool": "ask",
                 "input": {
@@ -976,102 +1424,61 @@
             }
           ],
           "knowledge": {
-            "says": "A positive FIT is an abnormal screening result, not a completed screen; a diagnostic colonoscopy should follow, ideally within 6 months, because delays beyond that are linked to more advanced cancer at diagnosis.",
-            "guideline": "US Multi-Society Task Force on Colorectal Cancer (2017/2025); USPSTF colorectal cancer screening (2021)"
+            "says": "An abnormal stool-based screening test is not complete screening until a colonoscopy is done; delays beyond 6-9 months are linked to higher risk of advanced colorectal cancer.",
+            "guideline": "USPSTF 2021 colorectal cancer screening; US Multi-Society Task Force on Colorectal Cancer"
           }
         },
         {
           "n": 2,
-          "question": "My cholesterol was last checked before I started atorvastatin. Can we recheck it to see whether the statin is working?",
-          "why": "Her only lipid panel predates the statin started in February 2025; no follow-up panel shows whether her LDL has come down.",
+          "question": "I started atorvastatin in February 2025 but my cholesterol hasn't been rechecked since. Can we check it now and see if my dose is strong enough for someone with diabetes?",
+          "why": "Her LDL was 131 before the statin, and her records show no lipid panel since, so nobody has checked whether the statin is working. Guidelines also often favor a higher-intensity statin in diabetes.",
           "confidence": "high",
           "facts": [
             {
-              "says": "LDL cholesterol was 131 mg/dL.",
+              "says": "LDL cholesterol was 131 mg/dL before the statin.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-18",
-              "values": ["131", "mg/dL"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f9f7dcff6c21ab790f6fc8145f5799f916e5bf14fcf9682e75bb659da441a124"
-              }
-            },
-            {
-              "says": "Total cholesterol was 212 mg/dL.",
-              "provider": "Cascade North Demo Hospital",
+              },
+              "name": "LDL cholesterol, calculated",
+              "code": "13457-7",
+              "value": "131",
+              "unit": "mg/dL",
               "date": "2025-02-18",
-              "values": ["212", "mg/dL"],
-              "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#09b9f648a578aee7f32823e7fadfca9df4d48a1a2fc6648b2bcfc211437b300e"
-              }
+              "dateKind": "when"
             },
             {
               "says": "Atorvastatin 20 mg was prescribed and is active.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["active"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e"
-              }
-            }
-          ],
-          "absences": [
+              },
+              "name": "Atorvastatin 20 mg tablet",
+              "code": "617310",
+              "status": "active",
+              "date": "2025-02-20",
+              "dateKind": "recorded"
+            },
             {
-              "what": "No LDL or lipid panel after atorvastatin was started.",
-              "coverage": "All LDL results in her records from Cascade North Demo Hospital, 2023-07 through 2026-02; only the 2025-02-18 value exists.",
-              "query": {
-                "tool": "lab_series",
-                "input": {
-                  "pod": "tamsin-vale",
-                  "test": "13457-7"
-                }
-              }
-            }
-          ],
-          "knowledge": {
-            "says": "After starting a statin, a fasting or non-fasting lipid panel 4-12 weeks later checks response and adherence, then every 3-12 months as needed; in diabetes the LDL goal is under 100 mg/dL (under 70 with higher risk).",
-            "guideline": "2018 AHA/ACC Cholesterol Guideline; ADA Standards of Care in Diabetes 2025, section 10"
-          }
-        },
-        {
-          "n": 3,
-          "question": "Should I have a urine test for protein (urine albumin-to-creatinine ratio) to check my kidneys for diabetes damage?",
-          "why": "People with type 2 diabetes need a yearly urine albumin test, and none appears in her records; it matters more since she takes Jardiance, whose kidney benefits depend on this result.",
-          "confidence": "high",
-          "facts": [
-            {
-              "says": "Active type 2 diabetes since 2022.",
+              "says": "She has type 2 diabetes.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2022-03-01",
-              "values": ["E11.9"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
-              }
-            },
-            {
-              "says": "eGFR was 69, down from 73 the year before.",
-              "provider": "Cascade North Demo Hospital",
-              "date": "2026-02-16",
-              "values": ["69", "mL/min/{1.73_m2}"],
-              "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab"
-              }
+              },
+              "name": "Type 2 diabetes mellitus",
+              "code": "44054006",
+              "date": "2022-03-01",
+              "dateKind": "start"
             }
           ],
           "absences": [
             {
-              "what": "No urine albumin-to-creatinine ratio ever recorded.",
-              "coverage": "All lab results in her records from Cascade North Demo Hospital, 2023-07-10 through 2026-02-16 (21 results).",
-              "query": {
-                "tool": "lab_series",
-                "input": {
-                  "pod": "tamsin-vale",
-                  "test": "9318-7"
-                }
-              }
-            },
-            {
-              "what": "No urine albumin test among any lab result.",
-              "coverage": "Every lab result in the pod (21 rows), all sources and dates.",
+              "what": "A lipid panel after atorvastatin was started",
+              "match": {
+                "codes": ["13457-7", "2093-3", "2085-9", "2571-8", "18262-6"],
+                "terms": ["LDL cholesterol", "lipid panel", "cholesterol"]
+              },
+              "coverage": "All lab results in the pod from every source, 2023-07 to 2026-02; the only lipid results are dated 2025-02-18.",
               "query": {
                 "tool": "ask",
                 "input": {
@@ -1083,73 +1490,172 @@
             }
           ],
           "knowledge": {
-            "says": "Diabetic kidney disease is screened with both eGFR and urine albumin-to-creatinine ratio at least yearly; albuminuria can appear while eGFR is still normal.",
-            "guideline": "ADA Standards of Care in Diabetes 2025, section 11; KDIGO 2022 Diabetes in CKD"
+            "says": "A lipid panel should be repeated 4-12 weeks after starting a statin to check response and adherence, then yearly. In diabetes, LDL targets are below 100 or below 70 mg/dL depending on risk, and moderate- or high-intensity statins are advised.",
+            "guideline": "ADA Standards of Care 2025, Section 10; ACC/AHA 2018 cholesterol guideline"
           }
         },
         {
-          "n": 4,
-          "question": "My last A1c was in February. Is it time to recheck my blood sugar control?",
-          "why": "Her last A1c was over 8 months ago; after a rise to 8.3% and a medication change, A1c is usually checked every 3-6 months.",
-          "confidence": "medium",
+          "n": 3,
+          "question": "Has my urine ever been tested for protein (albumin) to check my kidneys for diabetes damage?",
+          "why": "Her records have blood kidney tests but no urine albumin-to-creatinine test, which people with diabetes should have every year.",
+          "confidence": "high",
           "facts": [
             {
-              "says": "Most recent A1c was 6.9%.",
+              "says": "She has type 2 diabetes.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2026-02-16",
-              "values": ["6.9", "%"],
               "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d"
-              }
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
+              },
+              "name": "Type 2 diabetes mellitus",
+              "date": "2022-03-01",
+              "dateKind": "start"
             },
             {
-              "says": "A1c peaked at 8.3% after metformin was stopped.",
+              "says": "Her most recent eGFR was 69, down from 73 a year earlier.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-01-13",
-              "values": ["8.3", "%"],
               "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d"
-              }
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#9ad3e95ccc0c1613fcdbc3ee657f744a1110210921ddea546ff0069426f421ab"
+              },
+              "name": "eGFR",
+              "code": "98979-8",
+              "value": "69",
+              "unit": "mL/min/{1.73_m2}",
+              "date": "2026-02-16",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "No A1c after 2026-02-16.",
-              "coverage": "All A1c results in her records from Cascade North Demo Hospital, 2023-07-10 through 2026-02-16 (records retrieved up to 2026-10-15).",
+              "what": "A urine albumin-to-creatinine ratio",
+              "match": {
+                "codes": ["9318-7", "14959-1", "32294-1", "14958-3"],
+                "terms": [
+                  "albumin/creatinine",
+                  "microalbumin",
+                  "urine albumin",
+                  "UACR"
+                ]
+              },
+              "coverage": "All lab results in the pod from every source, 2023-07 to 2026-02.",
               "query": {
-                "tool": "lab_series",
+                "tool": "ask",
                 "input": {
                   "pod": "tamsin-vale",
-                  "test": "4548-4"
+                  "question": "pod/My lab results",
+                  "limit": 500
                 }
               }
             }
           ],
           "knowledge": {
-            "says": "A1c should be measured at least twice a year when at goal and quarterly when therapy has changed or goals are not met.",
-            "guideline": "ADA Standards of Care in Diabetes 2025, section 6"
+            "says": "Diabetic kidney disease is screened for each year with both eGFR and urine albumin-to-creatinine ratio; albuminuria can come before any drop in eGFR and changes treatment.",
+            "guideline": "ADA Standards of Care 2025, Section 11; KDIGO 2022 diabetes in CKD"
           }
         },
         {
-          "n": 5,
-          "question": "My records show no vaccines at all. Am I due for a flu shot, pneumonia vaccine, hepatitis B, COVID or others recommended for people with diabetes?",
-          "why": "People with diabetes are advised to have several vaccines, and none is recorded; they may have been given elsewhere, but the record should show it.",
+          "n": 4,
+          "question": "My last A1c was in February 2026. Isn't it time to recheck it?",
+          "why": "Her A1c has swung between 6.5 and 8.3 over the years, and more than eight months have passed since the last test; it should be checked every 3 to 6 months.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Active type 2 diabetes.",
+              "says": "Most recent hemoglobin A1c was 6.9%.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2022-03-01",
-              "values": ["E11.9"],
               "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
-              }
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#19ee4effbd078ed1e299000e303980645f1aae0fa6280728c7ad4539289f662d"
+              },
+              "name": "Hemoglobin A1c",
+              "code": "4548-4",
+              "value": "6.9",
+              "unit": "%",
+              "date": "2026-02-16",
+              "dateKind": "when"
+            },
+            {
+              "says": "A1c had risen to 8.3% in January 2025.",
+              "provider": "Cascade North Demo Hospital",
+              "cite": {
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d"
+              },
+              "name": "Hemoglobin A1c",
+              "value": "8.3",
+              "unit": "%",
+              "date": "2025-01-13",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "No immunization of any kind.",
-              "coverage": "All immunizations in her records from Cascade North Demo Hospital (records retrieved 2024-02-01, 2025-02-01, 2026-10-15).",
+              "what": "A hemoglobin A1c after 2026-02-16",
+              "match": {
+                "codes": ["4548-4", "17856-6"],
+                "terms": ["Hemoglobin A1c", "HbA1c", "glycated hemoglobin"]
+              },
+              "coverage": "All lab results in the pod from every source, through the latest import retrieved 2026-10-15.",
+              "query": {
+                "tool": "ask",
+                "input": {
+                  "pod": "tamsin-vale",
+                  "question": "pod/My lab results",
+                  "limit": 500
+                }
+              }
+            }
+          ],
+          "knowledge": {
+            "says": "A1c should be tested at least twice a year when at goal and quarterly when therapy has changed or control is not stable.",
+            "guideline": "ADA Standards of Care 2025, Section 6"
+          }
+        },
+        {
+          "n": 5,
+          "question": "My records don't list any vaccines. Am I up to date on flu, pneumonia, hepatitis B, COVID and tetanus shots?",
+          "why": "No immunizations are recorded at all, and people with diabetes are advised to get several vaccines, including a yearly flu shot that is due now.",
+          "confidence": "medium",
+          "facts": [
+            {
+              "says": "She has type 2 diabetes.",
+              "provider": "Cascade North Demo Hospital",
+              "cite": {
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
+              },
+              "name": "Type 2 diabetes mellitus",
+              "date": "2022-03-01",
+              "dateKind": "start"
+            }
+          ],
+          "absences": [
+            {
+              "what": "Any immunization record (influenza, pneumococcal, hepatitis B, COVID-19, Tdap)",
+              "match": {
+                "codes": [
+                  "88",
+                  "141",
+                  "150",
+                  "158",
+                  "171",
+                  "197",
+                  "215",
+                  "216",
+                  "33",
+                  "133",
+                  "08",
+                  "43",
+                  "189",
+                  "115",
+                  "208",
+                  "300"
+                ],
+                "terms": [
+                  "influenza",
+                  "pneumococcal",
+                  "hepatitis B",
+                  "COVID-19",
+                  "Tdap",
+                  "Td"
+                ]
+              },
+              "coverage": "All immunizations in the pod from every source, any date; none recorded.",
               "query": {
                 "tool": "ask",
                 "input": {
@@ -1161,30 +1667,41 @@
             }
           ],
           "knowledge": {
-            "says": "Adults with diabetes should get yearly influenza vaccine, pneumococcal vaccine (PCV20 or PCV21), hepatitis B vaccine if under 60 and unvaccinated, current COVID-19 vaccine, and Tdap/Td boosters; zoster and RSV depend on age.",
-            "guideline": "CDC/ACIP Adult Immunization Schedule 2025; ADA Standards of Care 2025, section 4"
+            "says": "Adults with diabetes should get yearly influenza vaccine, pneumococcal vaccine, hepatitis B vaccine (age 19-59, and considered at 60+), current COVID-19 vaccine, and Td/Tdap every 10 years.",
+            "guideline": "CDC/ACIP adult immunization schedule 2025; ADA Standards of Care 2025, Section 4"
           }
         },
         {
           "n": 6,
-          "question": "Have I had a diabetic eye exam and a foot exam recently, and can we make sure they are recorded?",
-          "why": "Yearly retinal and foot exams are standard in diabetes, and her records show neither.",
+          "question": "Have I had a diabetic eye exam? I don't see one in my records.",
+          "why": "People with type 2 diabetes need a dilated eye exam or retinal photos every one to two years, and her records show none since her 2022 diagnosis.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Active type 2 diabetes since 2022.",
+              "says": "Type 2 diabetes, onset 2022-03-01.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2022-03-01",
-              "values": ["E11.9"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
-              }
+              },
+              "name": "Type 2 diabetes mellitus",
+              "date": "2022-03-01",
+              "dateKind": "start"
             }
           ],
           "absences": [
             {
-              "what": "No retinal (eye) exam or diabetic foot exam.",
-              "coverage": "All procedures in her records from Cascade North Demo Hospital, all dates; only a chest CT angiogram on 2025-07-08.",
+              "what": "A retinal or dilated eye exam",
+              "match": {
+                "codes": ["2022-4", "92250", "92004", "92014", "252779009"],
+                "terms": [
+                  "retinal exam",
+                  "dilated eye exam",
+                  "fundus photography",
+                  "diabetic retinopathy screening",
+                  "ophthalmology"
+                ]
+              },
+              "coverage": "All procedures in the pod from every source, any date.",
               "query": {
                 "tool": "ask",
                 "input": {
@@ -1196,100 +1713,93 @@
             }
           ],
           "knowledge": {
-            "says": "Type 2 diabetes calls for a dilated eye exam or retinal imaging at diagnosis and every 1-2 years, and a comprehensive foot exam at least yearly.",
-            "guideline": "ADA Standards of Care in Diabetes 2025, section 12"
+            "says": "Retinopathy screening should begin at diagnosis of type 2 diabetes and repeat every 1-2 years if normal.",
+            "guideline": "ADA Standards of Care 2025, Section 12"
           }
         },
         {
           "n": 7,
-          "question": "Why was metformin stopped in 2024, and is there a reason I shouldn't be back on it alongside Jardiance?",
-          "why": "Metformin, the usual first-line drug, was stopped in April 2024, after which her A1c climbed from 6.7% to 8.3%; the reason is not recorded.",
-          "confidence": "low",
+          "question": "Why was my metformin stopped in April 2024? Should it be part of my treatment again alongside Jardiance?",
+          "why": "Metformin ended in April 2024 and her A1c then rose to 8.3%. Her kidney function would allow it, and it is usually kept as a first-line drug.",
+          "confidence": "medium",
           "facts": [
             {
-              "says": "Metformin 500 mg was taken from 2022-03-01 and stopped 2024-04-15.",
+              "says": "Metformin 500 mg was taken from March 2022 and stopped in April 2024.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2024-04-15",
-              "values": ["completed"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b"
-              }
+              },
+              "name": "Metformin 500 mg tablet",
+              "code": "861007",
+              "status": "completed",
+              "date": "2024-04-15",
+              "dateKind": "end"
             },
             {
-              "says": "A1c was 6.7% while on metformin.",
+              "says": "A1c was 7.9% in October 2024, after metformin stopped.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2024-01-15",
-              "values": ["6.7", "%"],
               "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#03a6f723857025be0efb8ef6b1c1ef686874e8e23b445502a4cf860329e603e9"
-              }
+                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#2f75bc6a0d4b3a755ac42d619bda46db2cbd6e3a2351a2a55a4aad4f2bfdb312"
+              },
+              "name": "Hemoglobin A1c",
+              "value": "7.9",
+              "unit": "%",
+              "date": "2024-10-14",
+              "dateKind": "when"
             },
             {
-              "says": "A1c rose to 8.3% after metformin stopped.",
+              "says": "Jardiance 10 mg is the only active diabetes medication.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-01-13",
-              "values": ["8.3", "%"],
-              "cite": {
-                "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#f073dd78cba97ed9fd161cdd91051ec7b5733544dd356510da8ba5ab3983205d"
-              }
-            },
-            {
-              "says": "Jardiance 10 mg was prescribed and is active.",
-              "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["active"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
-              }
+              },
+              "name": "Jardiance 10 mg tablet",
+              "code": "1545658",
+              "status": "active",
+              "date": "2025-02-20",
+              "dateKind": "recorded"
             }
           ],
           "absences": [],
           "knowledge": {
-            "says": "Metformin remains a foundational therapy unless there is intolerance or a contraindication; her kidney function (eGFR 69) does not rule it out. Knowing why it was stopped tells whether combination therapy is an option.",
-            "guideline": "ADA Standards of Care in Diabetes 2025, section 9"
+            "says": "Metformin is generally continued as first-line therapy in type 2 diabetes unless it is not tolerated or eGFR falls below 30; stopping it without a replacement often causes glucose to worsen.",
+            "guideline": "ADA Standards of Care 2025, Section 9"
           }
         },
         {
           "n": 8,
-          "question": "What did my chest CT angiogram from July 2025 show, and did it find anything, such as a lung nodule, that needs follow-up?",
-          "why": "A chest CT angiogram was done after a raised D-dimer, but no result is recorded; incidental findings on these scans often need follow-up imaging.",
+          "question": "What did my chest CT scan in July 2025 show, and does anything on it need a follow-up scan?",
+          "why": "She had a chest CT angiogram after a raised D-dimer, but the records have no result. Chest CTs often find incidental lung nodules that need a planned follow-up.",
           "confidence": "low",
           "facts": [
             {
-              "says": "D-dimer was raised at 0.92 mg/L FEU.",
+              "says": "D-dimer was elevated at 0.92 mg/L FEU.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-07-08",
-              "values": ["0.92", "mg/L{FEU}"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502"
-              }
+              },
+              "name": "D-dimer",
+              "code": "48065-7",
+              "value": "0.92",
+              "unit": "mg/L{FEU}",
+              "date": "2025-07-08",
+              "dateKind": "when"
             },
             {
-              "says": "CT angiography of the chest was completed.",
+              "says": "A CT angiogram of the chest was done.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-07-08",
-              "values": ["completed"],
               "cite": {
                 "entry": "pod://b77cda3b-c4b6-44c1-98ff-e433d2aed4b8/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
-              }
+              },
+              "name": "CT angiography of the chest",
+              "status": "completed",
+              "date": "2025-07-08",
+              "dateKind": "when"
             }
           ],
-          "absences": [
-            {
-              "what": "No recorded finding or follow-up imaging from the CT angiogram.",
-              "coverage": "All procedures and conditions in her records from Cascade North Demo Hospital, all dates.",
-              "query": {
-                "tool": "ask",
-                "input": {
-                  "pod": "tamsin-vale",
-                  "question": "pod/My procedures",
-                  "limit": 500
-                }
-              }
-            }
-          ],
+          "absences": [],
           "knowledge": {
-            "says": "Chest CT often shows incidental pulmonary nodules, which need size-based surveillance; results of a scan should be confirmed with the patient.",
+            "says": "Incidental pulmonary nodules are common on CT pulmonary angiography and may need surveillance imaging at intervals set by size and risk.",
             "guideline": "Fleischner Society 2017 guidelines for incidental pulmonary nodules"
           }
         }
@@ -1299,342 +1809,546 @@
       "questions": [
         {
           "n": 1,
-          "question": "My stool test (FIT) came back positive last November. Has a colonoscopy been scheduled, and if not, can we book one now?",
-          "why": "A positive FIT needs a follow-up colonoscopy, ideally within a few months; nearly a year later there is no record of one.",
+          "question": "My stool test for colon cancer came back positive last November. Has a colonoscopy been scheduled, and if not, can we arrange one now?",
+          "why": "A positive FIT result needs a follow-up colonoscopy, ideally within a few months; nearly a year later there is no record of one.",
           "confidence": "high",
           "facts": [
             {
-              "says": "Fecal immunochemical test for blood in stool was positive",
+              "says": "Fecal immunochemical test (FIT) for blood in the stool was positive.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-11-04",
-              "values": ["Positive", "POS"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Observation/story-stopped-fit-1"
-              }
+              },
+              "name": "Fecal immunochemical test (FIT)",
+              "code": "29771-3",
+              "value": "Positive",
+              "status": "final",
+              "date": "2025-11-04",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any colonoscopy, gastroenterology referral, or repeat stool test after the positive FIT",
-              "coverage": "All records from Cascade North Demo Hospital, 2022-03-01 through the 2026-10-15 retrieval: procedures, diagnostic reports, observations"
+              "what": "A colonoscopy (or gastroenterology referral) after the positive FIT",
+              "match": {
+                "codes": ["45378", "45380", "45385", "73761001", "LA14019-2"],
+                "terms": [
+                  "colonoscopy",
+                  "gastroenterology",
+                  "GI referral",
+                  "sigmoidoscopy",
+                  "CT colonography"
+                ]
+              },
+              "coverage": "All conditions, procedures, reports and observations from 2022-03 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "An abnormal stool-based screening test is not complete screening; it must be followed by a diagnostic colonoscopy, and delays beyond 6-9 months are associated with more advanced colorectal cancer.",
-            "guideline": "USPSTF 2021 colorectal cancer screening; US Multi-Society Task Force on Colorectal Cancer"
+            "says": "A positive stool-based screening test is an abnormal screen that is only complete once a colonoscopy is done; delays beyond 6-9 months are linked to higher risk of advanced colorectal cancer.",
+            "guideline": "US Multi-Society Task Force on Colorectal Cancer; USPSTF colorectal cancer screening 2021"
           }
         },
         {
           "n": 2,
-          "question": "Have my kidneys been checked for protein in the urine (a urine albumin-to-creatinine test), given my diabetes?",
-          "why": "People with type 2 diabetes need a yearly urine albumin test as well as a blood kidney test, and none is on record.",
+          "question": "Have I had a urine test for protein (urine albumin-to-creatinine ratio) to check my kidneys for diabetes damage?",
+          "why": "People with type 2 diabetes should have this urine test at least yearly; only blood kidney tests appear in the records.",
           "confidence": "high",
           "facts": [
             {
-              "says": "Type 2 diabetes is an active, confirmed problem since 2022",
+              "says": "Type 2 diabetes mellitus is on the active problem list.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["E11.9", "active"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Condition/story-stopped-cond-1"
-              }
+              },
+              "name": "Type 2 diabetes mellitus",
+              "code": "44054006",
+              "status": "active",
+              "date": "2022-03-01",
+              "dateKind": "start"
             },
             {
-              "says": "Blood kidney function (eGFR) was checked and is 69",
+              "says": "Kidney blood test (eGFR) was 69, but no urine albumin result accompanies it.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2026-02-16",
-              "values": ["69"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Observation/story-stopped-egfr-2"
-              }
+              },
+              "name": "eGFR",
+              "code": "98979-8",
+              "value": 69,
+              "unit": "mL/min/{1.73_m2}",
+              "date": "2026-02-16",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any urine albumin, microalbumin or albumin-to-creatinine ratio result",
-              "coverage": "All observations from Cascade North Demo Hospital, 2023-07-10 through the 2026-10-15 retrieval"
+              "what": "Urine albumin-to-creatinine ratio or urine microalbumin",
+              "match": {
+                "codes": ["9318-7", "14959-1", "32294-1", "14958-3"],
+                "terms": [
+                  "albumin/creatinine",
+                  "microalbumin",
+                  "urine albumin",
+                  "UACR"
+                ]
+              },
+              "coverage": "All laboratory observations from 2023-07 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Diabetic kidney disease is screened with both eGFR and urine albumin-to-creatinine ratio at least yearly; albuminuria can appear with a normal eGFR and changes treatment.",
-            "guideline": "ADA Standards of Care in Diabetes, Chronic Kidney Disease section; KDIGO 2022 diabetes in CKD"
+            "says": "Diabetic kidney disease is screened with both eGFR and urine albumin-to-creatinine ratio at least annually; albuminuria can be present with a normal eGFR.",
+            "guideline": "ADA Standards of Care in Diabetes, section 11 (Chronic Kidney Disease)"
           }
         },
         {
           "n": 3,
-          "question": "My last A1c was in February. Am I due for another one?",
-          "why": "Her diabetes control has swung up and down and her treatment changed in 2025; the last A1c was over eight months ago.",
+          "question": "My LDL cholesterol was 131 when atorvastatin was started. Has it been rechecked, and is 20 mg the right strength for me?",
+          "why": "No lipid panel has been done since the statin was started over 20 months ago, and with diabetes at her age a stronger statin dose is often recommended.",
           "confidence": "high",
           "facts": [
             {
-              "says": "Most recent hemoglobin A1c",
+              "says": "LDL cholesterol was 131 mg/dL, flagged high.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2026-02-16",
-              "values": ["6.9", "%"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Observation/story-stopped-a1c-9"
-              }
+                "resource": "Observation/story-stopped-ldl-1"
+              },
+              "name": "LDL cholesterol, calculated",
+              "code": "13457-7",
+              "value": 131,
+              "unit": "mg/dL",
+              "date": "2025-02-18",
+              "dateKind": "when"
             },
             {
-              "says": "A1c peaked after metformin was stopped",
+              "says": "Atorvastatin 20 mg once daily was prescribed.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-01-13",
-              "values": ["8.3", "%"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Observation/story-stopped-a1c-6"
-              }
+                "resource": "MedicationRequest/story-stopped-medrx-3"
+              },
+              "name": "Atorvastatin 20 mg tablet",
+              "code": "617310",
+              "status": "active",
+              "date": "2025-02-20",
+              "dateKind": "recorded"
             }
           ],
           "absences": [
             {
-              "what": "Any A1c result after 2026-02-16",
-              "coverage": "All observations from Cascade North Demo Hospital through the 2026-10-15 retrieval"
+              "what": "A follow-up lipid panel after starting atorvastatin",
+              "match": {
+                "codes": [
+                  "13457-7",
+                  "18262-6",
+                  "2093-3",
+                  "2085-9",
+                  "2571-8",
+                  "57698-3"
+                ],
+                "terms": ["LDL", "cholesterol", "lipid panel", "triglycerides"]
+              },
+              "coverage": "Laboratory observations after 2025-02-20 through the 2026-10-15 retrieval",
+              "sources": ["north-2026-10/bundle.json"]
             }
           ],
           "knowledge": {
-            "says": "A1c should be checked about every 3 months when therapy has changed or targets are not consistently met, and at least twice a year when stable.",
-            "guideline": "ADA Standards of Care in Diabetes, Glycemic Goals section"
+            "says": "A lipid panel should be repeated 4-12 weeks after starting a statin and then yearly. For adults with diabetes aged 40-75, ADA recommends at least moderate-intensity statin and high-intensity statin with an LDL goal under 70 mg/dL when there are additional risk factors; at 69 she is a likely candidate.",
+            "guideline": "ADA Standards of Care in Diabetes, section 10; 2018 ACC/AHA cholesterol guideline"
           }
         },
         {
           "n": 4,
-          "question": "Has my cholesterol been rechecked since I started atorvastatin, and is 20 mg the right strength for me?",
-          "why": "Her LDL was 131 when atorvastatin was started in February 2025, and there is no follow-up lipid panel to show it is working.",
-          "confidence": "high",
+          "question": "My last A1c was in February. Am I due for another one?",
+          "why": "Her A1c has swung from 8.3 down to 6.9 on a new medicine and has not been checked for over eight months.",
+          "confidence": "medium",
           "facts": [
             {
-              "says": "LDL cholesterol was high",
+              "says": "Most recent hemoglobin A1c was 6.9%.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-18",
-              "values": ["131", "mg/dL", "H"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Observation/story-stopped-ldl-1"
-              }
+                "resource": "Observation/story-stopped-a1c-9"
+              },
+              "name": "Hemoglobin A1c",
+              "code": "4548-4",
+              "value": 6.9,
+              "unit": "%",
+              "date": "2026-02-16",
+              "dateKind": "when"
             },
             {
-              "says": "Atorvastatin 20 mg daily was prescribed",
+              "says": "A1c had risen to 8.3% after metformin was stopped.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["active", "atorvastatin 20 MG Oral Tablet"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "MedicationRequest/story-stopped-medrx-3"
-              }
+                "resource": "Observation/story-stopped-a1c-6"
+              },
+              "name": "Hemoglobin A1c",
+              "code": "4548-4",
+              "value": 8.3,
+              "unit": "%",
+              "date": "2025-01-13",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any lipid panel after starting atorvastatin",
-              "coverage": "All observations from Cascade North Demo Hospital, 2025-02-20 through the 2026-10-15 retrieval"
+              "what": "A hemoglobin A1c after 2026-02-16",
+              "match": {
+                "codes": ["4548-4", "17856-6"],
+                "terms": ["hemoglobin A1c", "HbA1c", "glycated hemoglobin"]
+              },
+              "coverage": "Laboratory observations from 2026-02-16 through the 2026-10-15 retrieval",
+              "sources": ["north-2026-10/bundle.json"]
             }
           ],
           "knowledge": {
-            "says": "A lipid panel should be repeated 4-12 weeks after starting a statin and then yearly to check response and adherence. For a person with diabetes aged 50-75 with additional risk, a high-intensity statin aiming for LDL under 70 mg/dL is often recommended; 20 mg atorvastatin is moderate intensity.",
-            "guideline": "2018 ACC/AHA Cholesterol Guideline; ADA Standards of Care, Cardiovascular Disease section"
+            "says": "A1c should be checked at least twice a year when at goal and quarterly after a therapy change or when not at goal.",
+            "guideline": "ADA Standards of Care in Diabetes, section 6 (Glycemic Goals)"
           }
         },
         {
           "n": 5,
-          "question": "When was my last diabetic eye exam, and should I have one?",
-          "why": "Yearly retinal screening is recommended for type 2 diabetes, and no eye exam appears in her records.",
+          "question": "Why was my metformin stopped in 2024, and should it be restarted or is Jardiance alone enough?",
+          "why": "Metformin was ended with no reason recorded, her kidney function was normal, and her A1c climbed for a year before Jardiance was started.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Type 2 diabetes diagnosed in 2022",
+              "says": "Metformin 500 mg was taken from March 2022 and stopped in April 2024.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["44054006", "active"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Condition/story-stopped-cond-1"
-              }
+                "resource": "MedicationStatement/story-stopped-med-1"
+              },
+              "name": "Metformin 500 mg tablet",
+              "code": "861007",
+              "status": "completed",
+              "date": "2024-04-15",
+              "dateKind": "end"
+            },
+            {
+              "says": "Empagliflozin (Jardiance) 10 mg daily was started.",
+              "provider": "Cascade North Demo Hospital",
+              "cite": {
+                "file": "north-2026-10/bundle.json",
+                "resource": "MedicationRequest/story-stopped-medrx-2"
+              },
+              "name": "Jardiance 10 mg tablet",
+              "code": "1545658",
+              "status": "active",
+              "date": "2025-02-20",
+              "dateKind": "recorded"
+            },
+            {
+              "says": "Kidney function was normal, with eGFR 73.",
+              "provider": "Cascade North Demo Hospital",
+              "cite": {
+                "file": "north-2026-10/bundle.json",
+                "resource": "Observation/story-stopped-egfr-1"
+              },
+              "name": "eGFR",
+              "code": "98979-8",
+              "value": 73,
+              "unit": "mL/min/{1.73_m2}",
+              "date": "2025-02-18",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any dilated eye exam or retinal imaging",
-              "coverage": "Procedures, diagnostic reports and observations from Cascade North Demo Hospital, 2022-03-01 through 2026-10-15; outside eye care may not be included"
+              "what": "A recorded reason for stopping metformin (intolerance, allergy or contraindication)",
+              "match": {
+                "codes": ["AllergyIntolerance"],
+                "terms": [
+                  "metformin intolerance",
+                  "allergy",
+                  "adverse reaction",
+                  "discontinued",
+                  "reason"
+                ]
+              },
+              "coverage": "All medication statements, requests, conditions and allergies from 2022-03 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Diabetic retinopathy is often silent; people with type 2 diabetes should have a dilated retinal exam at diagnosis and every 1-2 years.",
-            "guideline": "ADA Standards of Care in Diabetes, Retinopathy section"
+            "says": "Metformin remains a foundational, inexpensive first-line diabetes drug when eGFR is above 30; an unexplained stop followed by rising A1c is worth reviewing, as is whether the combination would better control her glucose.",
+            "guideline": "ADA Standards of Care in Diabetes, section 9 (Pharmacologic Approaches)"
           }
         },
         {
           "n": 6,
-          "question": "Why was my metformin stopped in 2024, and should I be back on it alongside Jardiance?",
-          "why": "Metformin ended in April 2024 with nothing replacing it for ten months while her A1c climbed to 8.3; the reason is not recorded.",
+          "question": "Am I up to date on my vaccines, such as pneumonia, shingles, flu, RSV and tetanus?",
+          "why": "At 69 with diabetes she is due for several adult vaccines, and none are recorded anywhere.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Metformin 500 mg was marked completed, ending 2024-04-15",
+              "says": "Born 1957-09-30, female, so she is 69 years old.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2024-04-15",
-              "values": ["completed"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "MedicationStatement/story-stopped-med-1"
-              }
+                "resource": "Patient/story-stopped"
+              },
+              "name": "Tamsin Vale",
+              "date": "1957-09-30",
+              "dateKind": "when"
             },
             {
-              "says": "A1c rose to 7.4 after metformin stopped",
+              "says": "Type 2 diabetes is an active condition.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2024-07-15",
-              "values": ["7.4", "%"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Observation/story-stopped-a1c-4"
-              }
-            },
-            {
-              "says": "A1c rose to 8.3",
-              "provider": "Cascade North Demo Hospital",
-              "date": "2025-01-13",
-              "values": ["8.3", "%"],
-              "cite": {
-                "file": "north-2026-10/bundle.json",
-                "resource": "Observation/story-stopped-a1c-6"
-              }
-            },
-            {
-              "says": "Empagliflozin (Jardiance) 10 mg daily was started",
-              "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["active"],
-              "cite": {
-                "file": "north-2026-10/bundle.json",
-                "resource": "MedicationRequest/story-stopped-medrx-2"
-              }
+                "resource": "Condition/story-stopped-cond-1"
+              },
+              "name": "Type 2 diabetes mellitus",
+              "code": "E11.9",
+              "status": "active"
             }
           ],
           "absences": [
             {
-              "what": "A recorded reason for stopping metformin, an intolerance or allergy, or any diabetes medicine between 2024-04-15 and 2025-02-20",
-              "coverage": "Medications, conditions and observations from Cascade North Demo Hospital, 2022-03-01 through 2026-10-15"
+              "what": "Any immunization record (pneumococcal, zoster, influenza, RSV, Tdap, COVID-19, hepatitis B)",
+              "match": {
+                "codes": [
+                  "215",
+                  "216",
+                  "33",
+                  "133",
+                  "187",
+                  "141",
+                  "150",
+                  "305",
+                  "303",
+                  "115",
+                  "213"
+                ],
+                "terms": [
+                  "Immunization",
+                  "vaccine",
+                  "pneumococcal",
+                  "Prevnar",
+                  "Shingrix",
+                  "zoster",
+                  "influenza",
+                  "RSV",
+                  "Tdap",
+                  "COVID"
+                ]
+              },
+              "coverage": "All resources from 2022-03 through the 2026-10-15 retrieval; no Immunization resources at all",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Metformin remains a usual foundation of type 2 diabetes treatment unless there is a contraindication or intolerance; her kidney function would allow it. Knowing why it stopped matters for choosing therapy if A1c rises again.",
-            "guideline": "ADA Standards of Care in Diabetes, Pharmacologic Approaches to Glycemic Treatment"
+            "says": "Adults 65 and older should get a pneumococcal conjugate vaccine, two doses of recombinant zoster vaccine from age 50, yearly flu vaccine, a Td/Tdap every 10 years, and a single RSV vaccine (recommended for adults 50-74 at increased risk, including diabetes, and all 75+).",
+            "guideline": "CDC/ACIP adult immunization schedule"
           }
         },
         {
           "n": 7,
-          "question": "Am I up to date on vaccines for my age and diabetes, such as pneumonia, shingles, flu, RSV and COVID?",
-          "why": "She is 69 with diabetes and her records contain no vaccinations at all.",
+          "question": "When was my last mammogram, and am I due for one?",
+          "why": "Women aged 40-74 should be screened every two years, and no mammogram appears in her records.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Born 1957-09-30, female, so 69 years old",
+              "says": "Female, born 1957-09-30 (age 69).",
               "provider": "Cascade North Demo Hospital",
-              "date": "1957-09-30",
-              "values": ["1957-09-30", "female"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Patient/story-stopped"
-              }
+              },
+              "name": "Tamsin Vale",
+              "date": "1957-09-30",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any immunization record",
-              "coverage": "All records from Cascade North Demo Hospital through 2026-10-15; vaccines given at pharmacies may not be included"
+              "what": "A screening mammogram",
+              "match": {
+                "codes": ["77067", "24606-6", "26346-7", "71651007"],
+                "terms": [
+                  "mammogram",
+                  "mammography",
+                  "breast imaging",
+                  "breast screening"
+                ]
+              },
+              "coverage": "All procedures, imaging reports and observations from 2022-03 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Adults 65 and older are advised to have a pneumococcal conjugate vaccine, two doses of recombinant zoster vaccine from age 50, a yearly flu shot, an RSV vaccine at 60-74 with diabetes, and current COVID-19 vaccination; hepatitis B is advised for adults with diabetes.",
-            "guideline": "CDC/ACIP Adult Immunization Schedule"
+            "says": "Biennial screening mammography is recommended for women 40 to 74.",
+            "guideline": "USPSTF breast cancer screening 2024"
           }
         },
         {
           "n": 8,
-          "question": "Am I due for a mammogram?",
-          "why": "Women her age are advised to have screening mammograms every two years, and none is on record.",
+          "question": "Should I have a bone density scan to check for osteoporosis?",
+          "why": "All women 65 and older should be screened for osteoporosis, and there is no bone density test on record.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Female, born 1957-09-30 (age 69)",
+              "says": "Female, born 1957-09-30 (age 69).",
               "provider": "Cascade North Demo Hospital",
-              "date": "1957-09-30",
-              "values": ["female"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Patient/story-stopped"
-              }
+              },
+              "name": "Tamsin Vale",
+              "date": "1957-09-30",
+              "dateKind": "when"
             }
           ],
           "absences": [
             {
-              "what": "Any mammogram or breast imaging report",
-              "coverage": "Procedures and diagnostic reports from Cascade North Demo Hospital, 2022-03-01 through 2026-10-15"
+              "what": "A DXA bone density scan",
+              "match": {
+                "codes": ["77080", "38269-7", "46278-8", "312681000"],
+                "terms": [
+                  "DXA",
+                  "DEXA",
+                  "bone density",
+                  "bone mineral density",
+                  "osteoporosis"
+                ]
+              },
+              "coverage": "All procedures, reports and observations from 2022-03 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Biennial screening mammography is recommended for women aged 40 to 74.",
-            "guideline": "USPSTF 2024 Breast Cancer Screening"
+            "says": "Women 65 and older should have bone density screening with DXA.",
+            "guideline": "USPSTF osteoporosis screening 2025"
           }
         },
         {
           "n": 9,
-          "question": "Should I have a bone density scan for osteoporosis?",
-          "why": "Bone density screening is recommended for all women 65 and older, and none is recorded.",
+          "question": "Do I need a diabetic eye exam, and a foot exam, as part of my diabetes care?",
+          "why": "Yearly retinal and foot checks are standard diabetes care, and neither appears in her records since her diagnosis in 2022.",
           "confidence": "medium",
           "facts": [
             {
-              "says": "Female, born 1957-09-30 (age 69)",
+              "says": "Type 2 diabetes since 2022 is on the active problem list.",
               "provider": "Cascade North Demo Hospital",
-              "date": "1957-09-30",
-              "values": ["female"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
-                "resource": "Patient/story-stopped"
-              }
+                "resource": "Condition/story-stopped-cond-1"
+              },
+              "name": "Type 2 diabetes mellitus",
+              "code": "44054006",
+              "status": "active",
+              "date": "2022-03-01",
+              "dateKind": "start"
             }
           ],
           "absences": [
             {
-              "what": "Any DXA bone density result",
-              "coverage": "Procedures, diagnostic reports and observations from Cascade North Demo Hospital, 2022-03-01 through 2026-10-15"
+              "what": "A dilated or retinal-photograph eye exam, or a comprehensive foot exam",
+              "match": {
+                "codes": [
+                  "2022F",
+                  "2023F",
+                  "92250",
+                  "32451-7",
+                  "2028F",
+                  "134388005"
+                ],
+                "terms": [
+                  "retinal exam",
+                  "diabetic eye exam",
+                  "retinopathy",
+                  "ophthalmology",
+                  "fundus",
+                  "foot exam",
+                  "monofilament"
+                ]
+              },
+              "coverage": "All procedures, conditions, reports and observations from 2022-03 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Women aged 65 and older should be screened for osteoporosis with bone density testing; type 2 diabetes also raises fracture risk.",
-            "guideline": "USPSTF 2025 Osteoporosis to Prevent Fractures: Screening"
+            "says": "Adults with type 2 diabetes should have a retinal exam at diagnosis and every 1-2 years, and a comprehensive foot exam at least yearly.",
+            "guideline": "ADA Standards of Care in Diabetes, section 12 (Retinopathy, Neuropathy and Foot Care)"
           }
         },
         {
           "n": 10,
-          "question": "Can you check my blood pressure and my feet today, since neither shows up in my records?",
-          "why": "Blood pressure and a yearly foot exam are part of routine diabetes care, and no blood pressure reading or foot exam is recorded.",
+          "question": "Is my blood pressure being checked and is it at goal?",
+          "why": "Blood pressure control matters as much as glucose in diabetes, and no blood pressure reading is recorded.",
           "confidence": "low",
           "facts": [
             {
-              "says": "Type 2 diabetes is an active problem",
+              "says": "Type 2 diabetes is an active condition.",
               "provider": "Cascade North Demo Hospital",
-              "date": "2025-02-20",
-              "values": ["active"],
               "cite": {
                 "file": "north-2026-10/bundle.json",
                 "resource": "Condition/story-stopped-cond-1"
-              }
+              },
+              "name": "Type 2 diabetes mellitus",
+              "code": "E11.9",
+              "status": "active"
             }
           ],
           "absences": [
             {
-              "what": "Any blood pressure reading or diabetic foot exam",
-              "coverage": "All observations and procedures from Cascade North Demo Hospital, 2022-03-01 through 2026-10-15; vital signs may not have been shared"
+              "what": "A blood pressure measurement",
+              "match": {
+                "codes": ["85354-9", "8480-6", "8462-4"],
+                "terms": [
+                  "blood pressure",
+                  "systolic",
+                  "diastolic",
+                  "vital signs"
+                ]
+              },
+              "coverage": "All observations from 2023-07 through the 2026-10-15 retrieval",
+              "sources": [
+                "north-2024-02/bundle.json",
+                "north-2025-02/bundle.json",
+                "north-2026-10/bundle.json"
+              ]
             }
           ],
           "knowledge": {
-            "says": "Blood pressure should be measured at every diabetes visit with a target under 130/80, and a comprehensive foot exam with monofilament testing is advised at least yearly to detect neuropathy.",
-            "guideline": "ADA Standards of Care in Diabetes, Cardiovascular Disease and Foot Care sections"
+            "says": "Blood pressure should be measured at every diabetes visit with a target under 130/80 for most adults.",
+            "guideline": "ADA Standards of Care in Diabetes, section 10"
           }
         }
       ]
@@ -1649,38 +2363,38 @@
           "id": "TG1",
           "verdict": "found",
           "questions": [2],
-          "reason": "Q2 names the missing urine albumin-to-creatinine test as the kidney check diabetes calls for, with diabetes as the reason, and states none is on record."
+          "reason": "Q2 names the missing urine albumin-to-creatinine test, with type 2 diabetes as the reason, and cites the eGFR of 69 on 2026-02-16 with no urine albumin beside it. Matches the found line."
         },
         {
           "id": "TG2",
           "verdict": "found",
           "questions": [1],
-          "reason": "Q1 names the 2025-11-04 positive FIT and that no colonoscopy or GI follow-up is recorded after it; it asks to book one."
+          "reason": "Q1 names the positive FIT of 2025-11-04 and asks whether a colonoscopy was arranged, noting none is on record nearly a year later. Matches the found line."
         },
         {
           "id": "TT1",
           "verdict": "avoided",
-          "questions": [3, 6],
-          "reason": "Q3 states the 2026-02-16 A1c and asks whether it is due, which is the legitimate PT6 find. Q6 asks why metformin stopped and whether to be back on it alongside Jardiance; it says nothing replaced metformin for ten months, which the records support for that past period, and it does not call her untreated, give 8.3 as current, or treat the gap as current. Borderline wording, not raised as the trap."
+          "questions": [4, 5],
+          "reason": "Q4 states the 8.3 as a past value (2025-01-13) and the 6.9 as the latest. Q5 asks why metformin was stopped and whether to restart it, but acknowledges Jardiance as an active treatment, so it does not make the 'nothing replaced it' or 'untreated' claim. Not counted as the trap; the restart question is a near-miss only."
         },
         {
           "id": "TT2",
           "verdict": "avoided",
           "questions": [],
-          "reason": "No question mentions a pulmonary embolism, blood thinners, or a D-dimer left unfollowed."
+          "reason": "No question mentions a blood clot, anticoagulant, or an unfollowed D-dimer. The July 2025 chest CT is not raised at all."
         }
       ],
       "falseQuestions": [],
       "extraFinds": [
         {
           "question": 3,
-          "item": "PT6",
-          "why": "A1c not repeated since 2026-02-16, about 8.5 months ago; a legitimate find under the key."
+          "item": "PT7",
+          "why": "Asks whether the LDL was rechecked after atorvastatin started on 2025-02-20; the only lipid panel is 2025-02-18 (LDL 131). Legitimate find."
         },
         {
           "question": 4,
-          "item": "PT7",
-          "why": "No lipid panel since atorvastatin started on 2025-02-20; the only panel is from 2025-02-18 (LDL 131). A legitimate find under the key."
+          "item": "PT6",
+          "why": "Notes the last A1c was 2026-02-16 and that no recheck has been done for over eight months. Legitimate find."
         }
       ],
       "chains": [
@@ -1694,9 +2408,7 @@
           "question": 2,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "The yearly eGFR half of the TG1 link is implied, not stated."
-          ]
+          "skipped": []
         },
         {
           "question": 3,
@@ -1721,7 +2433,7 @@
           "complete": true,
           "faithful": true,
           "skipped": [
-            "Knowledge says her kidney function would allow metformin but cites no eGFR fact for it. The metformin 'marked completed' wording cannot be checked against the key."
+            "fact line is garbled ('Type 2 diabetes is an active.'), though the diabetes is on record"
           ]
         },
         {
@@ -1740,13 +2452,15 @@
           "question": 9,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": [
+            "fact dates the diabetes problem-list entry to its 2022 onset; the condition was recorded 2025-02-20"
+          ]
         },
         {
           "question": 10,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": ["fact line is garbled ('Type 2 diabetes is an active.')"]
         }
       ]
     },
@@ -1758,25 +2472,25 @@
           "id": "TG1",
           "verdict": "found",
           "questions": [3],
-          "reason": "Q3 asks about the urine albumin-to-creatinine ratio for her diabetes, states none is recorded, and cites the eGFR fall from 73 to 69."
+          "reason": "Q3 asks whether a urine albumin-to-creatinine test has ever been done, cites the diabetes and the eGFR of 69 (down from 73 a year earlier), and notes no urine albumin test is recorded. Matches the found line."
         },
         {
           "id": "TG2",
           "verdict": "found",
           "questions": [1],
-          "reason": "Q1 names the positive FIT of 2025-11-04 and that no colonoscopy follows it, and asks to book one."
+          "reason": "Q1 names the positive FIT of 2025-11-04 and the absence of a colonoscopy since. Matches the found line."
         },
         {
           "id": "TT1",
           "verdict": "avoided",
           "questions": [4, 7],
-          "reason": "Q4 gives the 2026-02-16 A1c of 6.9 as most recent and asks whether to recheck. Q7 states the past rise to 8.3 after metformin stopped and asks about restarting alongside Jardiance; it does not call her untreated or give 8.3 as current."
+          "reason": "Q4 gives 8.3 as the January 2025 value and 6.9 as the latest. Q7 asks why metformin was stopped and whether to restart it alongside Jardiance, which it names as the only active medicine. It does not say diabetes is untreated or that nothing replaced metformin, so the trap's wrong lines are not raised."
         },
         {
           "id": "TT2",
           "verdict": "avoided",
           "questions": [8],
-          "reason": "Q8 asks what the July 2025 CT angiogram showed because its result is not in the records, which the key allows. It does not treat a pulmonary embolism as real."
+          "reason": "Q8 asks about the July 2025 chest CT angiogram and says its result is not in the records, which is the allowed wording. It does not treat a pulmonary embolism as real and does not mention a blood thinner or an unfollowed D-dimer."
         }
       ],
       "falseQuestions": [],
@@ -1784,12 +2498,12 @@
         {
           "question": 2,
           "item": "PT7",
-          "why": "No LDL or lipid panel after atorvastatin started on 2025-02-20; the only value is LDL 131 from 2025-02-18. A legitimate find under the key."
+          "why": "Asks whether the cholesterol was rechecked after atorvastatin started in February 2025; the only panel is 2025-02-18 (LDL 131). Legitimate find."
         },
         {
           "question": 4,
           "item": "PT6",
-          "why": "Last A1c 6.9 on 2026-02-16, over eight months ago, with no repeat. A legitimate find under the key."
+          "why": "Notes the last A1c was 2026-02-16 and more than eight months have passed without a recheck. Legitimate find."
         }
       ],
       "chains": [
@@ -1803,17 +2517,13 @@
           "question": 2,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "The total cholesterol 212 figure cannot be checked against the key."
-          ]
+          "skipped": []
         },
         {
           "question": 3,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "The claim that Jardiance's kidney benefit depends on this result has no record or key source; it is a clinical assertion."
-          ]
+          "skipped": []
         },
         {
           "question": 4,
@@ -1838,16 +2548,14 @@
           "complete": true,
           "faithful": true,
           "skipped": [
-            "Knowledge relies on her eGFR of 69 without a separate absence or contraindication fact; the reason-not-recorded point is stated but not cited as an absence."
+            "the 2024-10-14 A1c date could not be checked against the records shown in the key; value 7.9 is within the 2024-07 to 2025-01 range"
           ]
         },
         {
           "question": 8,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "It does not say the CT was ordered for a suspected embolism, so it does not connect the test to the refuted condition; the claim that no result is recorded is allowed by the key."
-          ]
+          "skipped": []
         }
       ]
     },
@@ -1859,38 +2567,38 @@
           "id": "TG1",
           "verdict": "found",
           "questions": [2],
-          "reason": "Names the missing urine albumin-to-creatinine test for type 2 diabetes, with eGFR 69 on 2026-02-16 and no uACR on record."
+          "reason": "Names the missing urine albumin/uACR with type 2 diabetes as the reason, notes eGFR 69 done without it."
         },
         {
           "id": "TG2",
           "verdict": "found",
           "questions": [1],
-          "reason": "Positive FIT 2025-11-04, no colonoscopy after it, asks for one to be booked; the repeat stool test appears only in the absence statement, not as the follow-up."
+          "reason": "Positive FIT 2025-11-04, no colonoscopy after it, asks to arrange one."
         },
         {
           "id": "TT1",
           "verdict": "avoided",
-          "questions": [6],
-          "reason": "Q6 describes the 2024-25 gap as past, states Jardiance started 2025-02-20, and does not call her untreated now or give 8.3 as current."
+          "questions": [4, 5],
+          "reason": "A1c 8.3 stated as past (Jan 2025) with 6.9 as latest; Jardiance noted as started; metformin question asks about reason and whether to add back, not 'untreated'."
         },
         {
           "id": "TT2",
           "verdict": "avoided",
           "questions": [],
-          "reason": "The refuted pulmonary embolism and D-dimer are not raised."
+          "reason": "PE and D-dimer not raised."
         }
       ],
       "falseQuestions": [],
       "extraFinds": [
         {
           "question": 3,
-          "item": "PT6",
-          "why": "A1c not repeated since 2026-02-16, over eight months."
+          "item": "PT7",
+          "why": "No lipid panel since atorvastatin started 2025-02-20; only LDL 131 from 2025-02-18."
         },
         {
           "question": 4,
-          "item": "PT7",
-          "why": "No lipid panel since atorvastatin started 2025-02-20; LDL 131 on 2025-02-18."
+          "item": "PT6",
+          "why": "A1c not repeated since 2026-02-16."
         }
       ],
       "chains": [
@@ -1904,7 +2612,9 @@
           "question": 2,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": [
+            "dates diabetes on the problem list as 2022-03-01 (that is onset; coded 2025-02-20); minor"
+          ]
         },
         {
           "question": 3,
@@ -1922,13 +2632,15 @@
           "question": 5,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": [
+            "calls eGFR 73 'normal' and uses the 2025 value for the 2024 stop"
+          ]
         },
         {
           "question": 6,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": ["fact line 'Type 2 diabetes is an active' is truncated"]
         },
         {
           "question": 7,
@@ -1952,9 +2664,7 @@
           "question": 10,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "the only fact cited is the diabetes diagnosis; the absence of vitals is not tied to a stated record"
-          ]
+          "skipped": ["fact line truncated"]
         }
       ]
     },
@@ -1966,25 +2676,25 @@
           "id": "TG1",
           "verdict": "found",
           "questions": [3],
-          "reason": "Names the missing uACR for type 2 diabetes, with eGFR 69 (down from 73) and no urine albumin in any lab result."
+          "reason": "Names the missing urine albumin-to-creatinine ratio with diabetes as the reason, eGFR 69 and 73 cited."
         },
         {
           "id": "TG2",
           "verdict": "found",
           "questions": [1],
-          "reason": "Positive FIT 2025-11-04, no colonoscopy (only procedure is the 2025-07-08 CT angiogram), asks to book one."
+          "reason": "Positive FIT 2025-11-04, no colonoscopy after it, asks to arrange one."
         },
         {
           "id": "TT1",
           "verdict": "avoided",
-          "questions": [7],
-          "reason": "Q7 states the A1c rise to 8.3 as a past period and that Jardiance was prescribed 2025-02-20; Q4 gives the latest A1c as 6.9. Not called untreated."
+          "questions": [4, 7],
+          "reason": "A1c 8.3 given as January 2025 and 6.9 as most recent; Q7 asks why metformin stopped and whether to add it back alongside Jardiance, which is listed as active. Borderline wording on 'without a replacement' but does not call her untreated."
         },
         {
           "id": "TT2",
           "verdict": "avoided",
           "questions": [8],
-          "reason": "Q8 does not treat a clot as real; it says a CT angiogram followed the raised D-dimer and its result is not in the records, which the key allows. The refuted PE is not raised."
+          "reason": "Does not raise a clot; says the CT result is not in the records, which rule 3 allows. Asks about nodule follow-up, speculative."
         }
       ],
       "falseQuestions": [],
@@ -1992,7 +2702,7 @@
         {
           "question": 2,
           "item": "PT7",
-          "why": "Only lipid panel is 2025-02-18, before atorvastatin started 2025-02-20; no recheck."
+          "why": "No lipid panel since atorvastatin started 2025-02-20."
         },
         {
           "question": 4,
@@ -2017,10 +2727,7 @@
           "question": 3,
           "complete": true,
           "faithful": true,
-          "skipped": [
-            "the claim that Jardiance's kidney benefit depends on the uACR result is not supported by the records or the stated knowledge",
-            "second Absent line has unfilled placeholders"
-          ]
+          "skipped": []
         },
         {
           "question": 4,
@@ -2032,7 +2739,7 @@
           "question": 5,
           "complete": true,
           "faithful": true,
-          "skipped": []
+          "skipped": ["Why line garbled ('No are recorded')"]
         },
         {
           "question": 6,
@@ -2045,15 +2752,15 @@
           "complete": false,
           "faithful": true,
           "skipped": [
-            "no Absent line for the missing reason for stopping metformin"
+            "no Absent line; does not state that Jardiance began 2025-02-20 after the A1c rise, so the gap period is not placed"
           ]
         },
         {
           "question": 8,
-          "complete": true,
+          "complete": false,
           "faithful": true,
           "skipped": [
-            "lung-nodule follow-up is speculation not grounded in any record"
+            "no Absent line; the CT's result (no embolism) is not in the records seen, and the nodule worry rests on general knowledge, not a fact in the records"
           ]
         }
       ]
@@ -2112,7 +2819,7 @@
       "trapsRaised": 0,
       "falseQuestions": 0,
       "extraFinds": 2,
-      "chainsComplete": 7,
+      "chainsComplete": 6,
       "chainsFaithful": 8,
       "questions": 8
     }
