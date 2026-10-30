@@ -31,7 +31,10 @@ export interface Pull {
   readonly missing: readonly string[];
   /** The plan's searches, each made. */
   readonly searches: readonly Search[];
-  /** Searches the hospital answered with 403. */
+  /**
+   * Searches the hospital refused: one of their pages answered 400, 403 or 404, a page after the first 410, or a page
+   * held a record that is not the patient's, of which nothing is kept.
+   */
   readonly denied: readonly Search[];
 }
 
@@ -43,6 +46,26 @@ export interface PullOptions {
 
 const REFERENCE = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/;
 const NOT_SERVED = new Set([403, 404, 410]);
+const SEARCH_REFUSED = new Set([400, 403, 404]);
+const LATER_PAGE_REFUSED = new Set([...SEARCH_REFUSED, 410]);
+
+/** Whether the resource is the patient, or names them as its `subject` or `patient`, relative or under the base. */
+function isPatients(resource: unknown, base: string, patient: string): boolean {
+  if (typeof resource !== "object" || resource === null) return false;
+  const {
+    resourceType,
+    id,
+    subject,
+    patient: named,
+  } = resource as Record<string, unknown>;
+  if (resourceType === "Patient") return id === patient;
+  const { reference } = (subject ?? named ?? {}) as { reference?: unknown };
+  if (typeof reference !== "string") return false;
+  const relative = reference.startsWith(`${base}/`)
+    ? reference.slice(base.length + 1)
+    : reference;
+  return relative.replace(/\/_history\/[^/]+$/, "") === `Patient/${patient}`;
+}
 
 /** Every `reference` string anywhere in the value. */
 function references(value: unknown, found: string[]): string[] {
@@ -165,19 +188,36 @@ export async function pull(
         );
       pages.add(next.href);
       const { answer, url } = await get(next, search.type);
-      if (answer.status === 403) {
+      if (
+        (pages.size > 1 ? LATER_PAGE_REFUSED : SEARCH_REFUSED).has(
+          answer.status,
+        )
+      ) {
         denied.push(search);
         break;
       }
       if (answer.status !== 200) throw failed(answer, search.type);
       const page = parsed(answer, url, search.type);
-      for (const entry of Array.isArray(page.entry) ? page.entry : []) {
-        if (typeof entry !== "object" || entry === null) continue;
-        const { resource, search: mode } = entry as Record<string, unknown>;
-        if ((mode as { mode?: unknown } | undefined)?.mode === "outcome")
-          continue;
-        keep(resource, search.type);
+      const found = (Array.isArray(page.entry) ? page.entry : []).flatMap(
+        (entry: unknown) => {
+          if (typeof entry !== "object" || entry === null) return [];
+          const { resource, search: mode } = entry as Record<string, unknown>;
+          return (mode as { mode?: unknown } | undefined)?.mode === "outcome" ||
+            (resource as { resourceType?: unknown } | undefined)
+              ?.resourceType === "OperationOutcome"
+            ? []
+            : [resource];
+        },
+      );
+      if (
+        !found.every((resource) =>
+          isPatients(resource, base, connection.patient),
+        )
+      ) {
+        denied.push(search);
+        break;
       }
+      for (const resource of found) keep(resource, search.type);
       next = nextOf(page, url, search.type, origin);
     }
   }
