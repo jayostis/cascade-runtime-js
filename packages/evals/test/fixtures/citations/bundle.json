@@ -147,6 +147,42 @@
         ],
         "birthDate": "1957-09-30"
       }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/Condition/c-1",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "c-1",
+        "clinicalStatus": {
+          "coding": [
+            {
+              "code": "inactive"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "code": "refuted"
+            }
+          ]
+        },
+        "code": {
+          "text": "Hypertension"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/MedicationRequest/m-1",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "m-1",
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": {
+          "text": "Jardiance 10 mg tablet"
+        }
+      }
     }
   ]
 }

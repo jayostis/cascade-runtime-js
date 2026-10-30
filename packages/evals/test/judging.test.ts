@@ -107,7 +107,13 @@ test("a judge reads its packet alone, in its own folder, with neither arm's cita
   assert.match(blinded(answer("Q")), /- Absent: No colonoscopy$/m);
 });
 
-test("a reused verdict keeps the letters it was written to", async () => {
+test("a judge sees the answers in an order of its run, and a reused verdict keeps the letters it was written to", async () => {
+  const orders = new Set<string>();
+  for (const run of ["r1", "r2", "r3", "r4", "r5", "r6"]) {
+    const { judges } = await runOf(run, ["claude-haiku-5-5"]);
+    orders.add(JSON.stringify(judges[0]!.labels));
+  }
+  assert.equal(orders.size, 2, "the order varies with the run");
   const { judges } = await runOf("two", ["claude-haiku-5-5"]);
   const [planned] = judges;
   // Letters no run of this harness hands out, so only the earlier verdict's own can be what the reuse keeps.
@@ -148,4 +154,35 @@ test("a reused verdict keeps the letters it was written to", async () => {
   const { judges: again } = await runOf("three", ["claude-haiku-5-5"]);
   assert.equal(again[0]!.status, "reused");
   assert.deepEqual(again[0]!.labels, swapped);
+});
+
+test("the scrubber takes out resource names used as type names and keeps the words of either arm's prose", async () => {
+  const { scrubbed } = await import("../src/judging.js");
+  for (const [said, kept] of [
+    [
+      "Type 2 diabetes is an active condition.",
+      "Type 2 diabetes is an active condition.",
+    ],
+    [
+      "Any immunization record for pneumococcal vaccine.",
+      "Any immunization record for pneumococcal vaccine.",
+    ],
+    [
+      "The patient has no procedure on record.",
+      "The patient has no procedure on record.",
+    ],
+    [
+      "The Observation resource shows an A1c of 6.9.",
+      "The shows an A1c of 6.9.",
+    ],
+    [
+      "Observation/story-stopped-a1c-9 has an A1c of 6.9.",
+      "has an A1c of 6.9.",
+    ],
+    [
+      "Every lab result (21 rows) through the records retrieved 2026-10-15.",
+      "Every lab result through the records.",
+    ],
+  ] as const)
+    assert.equal(scrubbed(said), kept, said);
 });

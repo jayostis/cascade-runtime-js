@@ -39,6 +39,8 @@ const metformin = {
   resource: "MedicationStatement/med-1",
 };
 const report = { file: "bundle.json", resource: "DiagnosticReport/dr-1" };
+const condition = { file: "bundle.json", resource: "Condition/c-1" };
+const order = { file: "bundle.json", resource: "MedicationRequest/m-1" };
 
 /** A verdict as the test compares it: what was held, why not, what was missing and where it is. */
 interface Expected {
@@ -200,6 +202,26 @@ test("a citation holds only when the cited record's own fields say what is claim
       ok,
     ],
     ["a value written as a number", { cite: ldl, value: 131 }, ok],
+    [
+      "a status as the record writes it",
+      { cite: condition, status: "refuted" },
+      ok,
+    ],
+    [
+      "a status the record does not hold",
+      { cite: condition, status: "active" },
+      otherwise("status active"),
+    ],
+    [
+      "part of a status",
+      { cite: metformin, status: "ted" },
+      otherwise("status ted"),
+    ],
+    [
+      "an intent is no status",
+      { cite: order, status: "order" },
+      otherwise("status order"),
+    ],
     [
       "a person by full name",
       {
@@ -401,4 +423,85 @@ test("a records absence is backed only by the sources it names, each read whole,
       backing,
       what,
     );
+});
+
+test("an absence is held to what it is of: a pod question of its kind, every file for records, and the key item it ties to", async () => {
+  const immunizations = {
+    tool: "ask",
+    input: { pod: "p", question: "pod/My immunizations" },
+    ok: true,
+    answer: JSON.stringify({ total: 0, rows: [] }),
+  };
+  const colonoscopy = {
+    what: "no colonoscopy",
+    coverage: "every procedure",
+    match: { terms: ["colonoscopy"] },
+    query: {
+      tool: "ask",
+      input: { pod: "p", question: "pod/My immunizations" },
+    },
+  };
+  assert.deepEqual(
+    checkAbsence(colonoscopy, [immunizations], {
+      kind: "procedure",
+      terms: ["colonoscopy"],
+    }),
+    { backed: false, reason: "a question of another kind" },
+  );
+  assert.deepEqual(
+    checkAbsence(
+      {
+        ...colonoscopy,
+        what: "no urine albumin",
+        match: { codes: ["14959-1"] },
+      },
+      [immunizations],
+    ),
+    { backed: false, reason: "a question of another kind" },
+  );
+  const labs = {
+    tool: "ask",
+    input: { pod: "p", question: "pod/My lab results" },
+    ok: true,
+    answer: JSON.stringify({
+      total: 1,
+      rows: [{ test: "FIT", code: "http://loinc.org/rdf/29771-3" }],
+    }),
+  };
+  assert.deepEqual(
+    checkAbsence(
+      {
+        what: "no stool test",
+        coverage: "every result",
+        match: { terms: ["guaiac"] },
+        query: { tool: "ask", input: labs.input },
+      },
+      [labs],
+      { kind: "lab", codes: ["29771-3"] },
+    ),
+    { backed: false, reason: "query found it" },
+  );
+  const text = (file: string) => readFile(`${FOLDER}${file}`, "utf8");
+  const all = ["bundle.json", "summary.xml"];
+  const fit = {
+    what: "no stool test",
+    coverage: "every document",
+    match: { terms: ["guaiac"] },
+  };
+  assert.deepEqual(
+    await checkRecordsAbsence(
+      { ...fit, sources: ["summary.xml"] },
+      all,
+      text,
+      all,
+    ),
+    { backed: false, reason: "sources leave out: bundle.json" },
+  );
+  assert.deepEqual(await checkRecordsAbsence(fit, all, text, all), {
+    backed: true,
+  });
+  assert.deepEqual(
+    await checkRecordsAbsence(fit, all, text, all, { codes: ["29771-3"] }),
+    { backed: false, reason: "records hold it: bundle.json" },
+  );
 });
