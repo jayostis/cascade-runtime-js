@@ -16,7 +16,11 @@ runtime out of an app's browser bundle and serves its browser build beside it,
 under the base, with the import map that loads it. `terms`, from each entry and from
 `cascade-runtime/terms` with nothing of the runtime behind it, holds the IRIs the starter
 names, keyed by the term's local name in the vocabulary's one namespace, and `codeStems`
-each code system's IRI stem, keyed by the system's local name.
+each code system's IRI stem, keyed by the system's local name. `cascade-runtime/tools`
+is the tools a model reads pods by (`TOOLS`), each with its input schema, in Node and in a
+page; `cascade-runtime/tools/node` is the reads they run over a folder of pods
+(`podReads(podsIn(folder))`); every row they give names its entry, and none writes or opens an
+encrypted pod. `cascade-mcp` serves them over MCP.
 
 The package needs only Node 22 or later. It carries everything a pod reads, at
 the commits its build resolved: the code under its interface, the Bridge's

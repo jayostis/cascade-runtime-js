@@ -1,4 +1,4 @@
-import { Refusal } from "@cascade-runtime/runtime";
+import { Refusal } from "@cascade-runtime/runtime/refusal";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
 
@@ -421,7 +421,8 @@ export function compact(finding: Finding): CompactFinding {
 
 export interface LabSeries {
   test: { code: string; notation?: string; name?: string };
-  results: { date: string; value: number; unit: string }[];
+  /** Each result, with the entry it is the pod's result in. */
+  results: { date: string; value: number; unit: string; entry?: string }[];
   left: { unparsed: number; undated: number };
 }
 
@@ -447,7 +448,12 @@ export function labSeriesIn(labs: readonly Row[], test: string): LabSeries {
     },
     results: all
       .filter(({ value }) => value !== undefined)
-      .map(({ day, value, unit }) => ({ date: day, value: value!, unit })),
+      .map(({ day, value, unit, row }) => ({
+        date: day,
+        value: value!,
+        unit,
+        ...(row.entry ? { entry: row.entry } : {}),
+      })),
     left: {
       unparsed: all.filter(({ value }) => value === undefined).length,
       undated: (undated.get(code) ?? []).length,
@@ -472,6 +478,8 @@ export interface TimelineEntry {
   /** The day its prescription was written. */
   written?: string;
   ended?: string;
+  /** The entry the pod shows it in. */
+  entry?: string;
 }
 
 /** Each medication with its start, the day its prescription was written and its end, by start, else by that day. */
@@ -486,6 +494,7 @@ export function timelineIn(medications: readonly Row[]): TimelineEntry[] {
       ...(dayOf(row.started) ? { started: dayOf(row.started) } : {}),
       ...(dayOf(row.written) ? { written: dayOf(row.written) } : {}),
       ...(dayOf(row.ended) ? { ended: dayOf(row.ended) } : {}),
+      ...(row.entry ? { entry: row.entry } : {}),
     };
   });
   const place = (entry: TimelineEntry): string =>
