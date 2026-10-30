@@ -1,6 +1,8 @@
 // The citation checker: whether a cited record or line exists and says what is claimed, and whether a claim that
 // something is absent is backed by a query that ran and says what it covered. The harness checks answers with it; an
 // app can check a model's answer before showing it.
+import { readFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 
 /** Where a citation points: a line of a download, a FHIR resource in one, or a pod entry as a pod's rows name it. */
 export type Cite =
@@ -58,10 +60,185 @@ export type Backing =
       readonly reason: "no query" | "query not run" | "no coverage";
     };
 
-/** The downloads in `folder`, cited by file and line or by FHIR resource. */
+/** How many lines either side of a cited line still count as the line: a C-CDA entry spans a dozen or so. */
+export const WINDOW = 12;
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** The ways a record writes a date: ISO, HL7's digits, and the month in words, long or short. */
+function datesFor(date: string): string[] {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (match === null) return [date];
+  const [, year, month, day] = match as unknown as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  const name = MONTHS[Number(month) - 1] ?? "";
+  const d = String(Number(day));
+  return [
+    date,
+    `${year}${month}${day}`,
+    `${name} ${d}, ${year}`,
+    `${name.slice(0, 3)} ${d}, ${year}`,
+    `${d} ${name} ${year}`,
+  ];
+}
+
+const NUMBER = /-?\d+(?:\.\d+)?/g;
+
+/** Whether `text` holds `wanted`: a number as a number (7.9 is 7.90), a date in any of its forms, words as words. */
+export function holds(text: string, wanted: string): boolean {
+  const lower = text.toLowerCase();
+  if (/^-?\d+(?:\.\d+)?$/.test(wanted.trim())) {
+    const value = Number(wanted);
+    return (text.match(NUMBER) ?? []).some((found) => Number(found) === value);
+  }
+  return datesFor(wanted.trim()).some((form) =>
+    lower.includes(form.toLowerCase()),
+  );
+}
+
+function wantedOf(claim: Claim): string[] {
+  return [
+    ...(claim.date === undefined ? [] : [claim.date]),
+    ...(claim.values ?? []),
+  ];
+}
+
+/** Whether a citation points at what there is and holds what is claimed of it. */
+export async function checkCitation(
+  claim: Claim,
+  source: Source,
+): Promise<Verdict> {
+  const pointed = await source.at(claim.cite);
+  if (pointed === undefined)
+    return { ok: false, reason: "no such record", missing: [] };
+  const missing = wantedOf(claim).filter(
+    (wanted) => !holds(pointed.text, wanted),
+  );
+  if (missing.length === 0) return { ok: true };
+  if (pointed.lines !== undefined) {
+    const foundAt = pointed.lines.flatMap((line, at) =>
+      missing.some((wanted) => holds(line, wanted)) ? [at + 1] : [],
+    );
+    const everywhere = pointed.lines.join("\n");
+    if (missing.every((wanted) => holds(everywhere, wanted)))
+      return { ok: false, reason: "not at that line", missing, foundAt };
+  }
+  return { ok: false, reason: "says otherwise", missing };
+}
+
+function sameInput(a: unknown, b: unknown): boolean {
+  if (
+    typeof a !== "object" ||
+    a === null ||
+    typeof b !== "object" ||
+    b === null
+  )
+    return a === b;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) =>
+      sameInput(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      ),
+    )
+  );
+}
+
+/** Whether a claim of absence names a query, the query ran (`ran`), and the claim says what the query covered. */
+export function checkAbsence(absence: Absence, ran: readonly Call[]): Backing {
+  const { query } = absence;
+  if (query === undefined) return { backed: false, reason: "no query" };
+  if (
+    !ran.some(
+      (call) => call.tool === query.tool && sameInput(call.input, query.input),
+    )
+  )
+    return { backed: false, reason: "query not run" };
+  if (absence.coverage.trim() === "")
+    return { backed: false, reason: "no coverage" };
+  return { backed: true };
+}
+
+/** The resource `Type/id` in a FHIR bundle, or the file when it is that one resource. */
+function resourceIn(json: unknown, wanted: string): unknown {
+  const named = (resource: unknown) => {
+    const { resourceType, id } = (resource ?? {}) as Record<string, unknown>;
+    return `${String(resourceType)}/${String(id)}` === wanted;
+  };
+  if (named(json)) return json;
+  const { entry } = (json ?? {}) as { entry?: { resource?: unknown }[] };
+  return (entry ?? []).map(({ resource }) => resource).find(named);
+}
+
+/** The downloads in `folder`, cited by file and line or by FHIR resource; a path out of the folder names nothing. */
 export function downloadsSource(folder: string): Source {
-  void folder;
-  return { at: async () => undefined };
+  const root = resolve(folder);
+  const read = new Map<string, Promise<string | undefined>>();
+  const fileText = (file: string) => {
+    const path = resolve(root, file);
+    if (
+      relative(root, path).startsWith("..") ||
+      isAbsolute(relative(root, path))
+    )
+      return Promise.resolve(undefined);
+    let found = read.get(path);
+    if (found === undefined) {
+      found = readFile(path, "utf8").catch(() => undefined);
+      read.set(path, found);
+    }
+    return found;
+  };
+  return {
+    async at(cite) {
+      if (!("file" in cite)) return undefined;
+      const text = await fileText(cite.file);
+      if (text === undefined) return undefined;
+      if ("line" in cite) {
+        const lines = text.split(/\r?\n/);
+        if (
+          !Number.isInteger(cite.line) ||
+          cite.line < 1 ||
+          cite.line > lines.length
+        )
+          return undefined;
+        const from = Math.max(0, cite.line - 1 - WINDOW);
+        return {
+          text: lines.slice(from, cite.line + WINDOW).join("\n"),
+          lines,
+        };
+      }
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return undefined;
+      }
+      const resource = resourceIn(json, cite.resource);
+      return resource === undefined
+        ? undefined
+        : { text: JSON.stringify(resource) };
+    },
+  };
 }
 
 /** A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. */
@@ -70,21 +247,13 @@ export function podRowsSource(
     entry: string,
   ) => Promise<readonly Readonly<Record<string, string>>[] | undefined>,
 ): Source {
-  void rowsOf;
-  return { at: async () => undefined };
-}
-
-export async function checkCitation(
-  claim: Claim,
-  source: Source,
-): Promise<Verdict> {
-  void claim;
-  void source;
-  return { ok: false, reason: "no such record", missing: [] };
-}
-
-export function checkAbsence(absence: Absence, ran: readonly Call[]): Backing {
-  void absence;
-  void ran;
-  return { backed: true };
+  return {
+    async at(cite) {
+      if (!("entry" in cite)) return undefined;
+      const rows = await rowsOf(cite.entry);
+      return rows === undefined || rows.length === 0
+        ? undefined
+        : { text: rows.map((row) => Object.values(row).join(" ")).join("\n") };
+    },
+  };
 }
