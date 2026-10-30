@@ -4,19 +4,22 @@ import { join } from "node:path";
 import { Refusal, Unopened } from "@cascade-runtime/runtime";
 import { changeTools, findChanges } from "../changes.js";
 import { checkInput } from "../check.js";
-import { openPod } from "../index.js";
+import { openPod, tablesBeside } from "../index.js";
 import type { Pod } from "../pod.js";
+import type { Tables } from "../tables.js";
 import {
   CHANGE_TOOLS,
   citedFinding,
   type PodReads,
+  type TableLookups,
   unknownChangeTool,
 } from "../pod-tools.js";
 
-/** Where the pods are: their names, and each opened by name. */
+/** Where the pods are: their names, each opened by name, and the reference tables they are opened with. */
 export interface PodsHost {
   names(): Promise<string[]>;
   open(name: string): Promise<Pod>;
+  tables?(): Promise<Pick<Tables, "about" | "variantClassification">>;
 }
 
 /** The pods of a folder: each folder in it that holds something and is not hidden, as `.answers/` and `.tables/` are. */
@@ -41,15 +44,17 @@ export function podsIn(folder: string): PodsHost {
       return names.sort();
     },
     open: (name) => openPod(join(folder, name)),
+    tables: () => tablesBeside(folder),
   };
 }
 
 /**
  * The reads over the pods `host` gives, each pod opened once however many calls arrive together; `close()` closes
- * them. An encrypted pod is refused.
+ * them. An encrypted pod is refused. The reference tables are read only with `options.tables`.
  */
 export function podReads(
   host: PodsHost,
+  options: { tables?: boolean } = {},
 ): PodReads & { close(): Promise<void> } {
   const opened = new Map<string, Promise<Pod>>();
 
@@ -109,6 +114,21 @@ export function podReads(
       const found = await findChanges(pod, input);
       return { value: found.map(citedFinding), found };
     },
+    ...(options.tables === true &&
+      host.tables !== undefined && {
+        async tables({ pod: name }): Promise<TableLookups> {
+          const [pod, tables] = await Promise.all([
+            podNamed(name),
+            host.tables!(),
+          ]);
+          return {
+            about: (codes) => tables.about(codes),
+            variantClassification: (variant) =>
+              tables.variantClassification(variant),
+            agreement: () => pod.agreement(),
+          };
+        },
+      }),
     async close() {
       const pods = await Promise.allSettled(opened.values());
       opened.clear();

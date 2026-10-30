@@ -14,7 +14,7 @@ const WARNING =
 
 const INSTRUCTIONS = `${WARNING}
 
-Every tool but list_pods takes the pod's name: list_pods gives the names. Every row a tool gives names the entry it is about, so an answer can cite it; entry/Where it came from gives an entry's sources. find_changes states what changed in a person's lab results after a medication started or stopped, with the numbers; never why. Use its numbers as they are, and say when it finds nothing. ask's entry/What needs review lists the entries the pod itself says need review, and why each does.`;
+Every tool but list_pods takes the pod's name: list_pods gives the names. Every row a tool gives names the entry it is about, so an answer can cite it; entry/Where it came from gives an entry's sources. find_changes states what changed in a person's lab results after a medication started or stopped, with the numbers; never why. Use its numbers as they are, and say when it finds nothing. ask's entry/What needs review lists the entries the pod itself says need review, and why each does. reference_table_checks gives what only the reference tables can say: a variant report that differs from ClinVar today, and medications whose codes share an ingredient; a model cannot know ClinVar's current classification, so cite its rows rather than guess, and say so when it answers that the tables are off.`;
 
 const { version } = JSON.parse(
   readFileSync(new URL("../../package.json", import.meta.url), "utf8"),

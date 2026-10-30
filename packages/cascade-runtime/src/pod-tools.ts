@@ -10,6 +10,17 @@ import {
 } from "./changes.js";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
+import {
+  HISTORY_QUESTION,
+  medicationsSharingAnIngredient,
+  REPORTS_QUESTION,
+  reportsDifferingFromClinVar,
+  VARIANTS_QUESTION,
+  variantsAsked,
+} from "./table-checks.js";
+import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
+
+export * from "./table-checks.js";
 
 /** The questions `ask` offers: the person's own records, who they are, where an entry came from and what needs review. Never free SPARQL. */
 export const QUESTIONS = [
@@ -56,6 +67,61 @@ export interface PodReads {
     tool: string;
     input?: object;
   }): Promise<{ value: unknown; found?: readonly Finding[] }>;
+  /** What the reference tables and the pod's verdicts against them answer for the pod; absent, or none, when the tables are off. */
+  tables?(input: { pod: string }): Promise<TableLookups | undefined>;
+}
+
+/** What `reference_table_checks` asks of the reference tables, and of the pod against them. */
+export interface TableLookups {
+  about(codes: readonly string[]): Promise<ReadonlyMap<string, About>>;
+  variantClassification(variant: VariantAsked): Promise<WhatClinVarSays>;
+  /** `Pod.agreement()`'s rows. */
+  agreement(): Promise<readonly Row[]>;
+}
+
+export const TABLES_OFF =
+  "The reference tables are off, so nothing is checked against them: cascade-mcp reads them only when started with --check-tables.";
+
+/** `reference_table_checks`' answer: with the tables, each check's rows; without them, that they are off. */
+async function tableChecks(
+  reads: PodReads,
+  { pod }: ToolInput,
+): Promise<object> {
+  const lookups = await reads.tables?.({ pod: pod as string });
+  if (lookups === undefined) return { tables: "off", said: TABLES_OFF };
+  const rowsOf = async (question: string) =>
+    (await reads.ask({ pod: pod as string, question })).rows;
+  const [variants, reports, history] = await Promise.all(
+    [VARIANTS_QUESTION, REPORTS_QUESTION, HISTORY_QUESTION].map(rowsOf),
+  );
+  const asked = variantsAsked(variants!);
+  const [says, verdicts, about] = await Promise.all([
+    Promise.all(
+      [...asked].map(
+        async ([variant, each]) =>
+          [variant, await lookups.variantClassification(each)] as const,
+      ),
+    ).then((pairs) => new Map(pairs)),
+    asked.size === 0 || reports!.length === 0 ? [] : lookups.agreement(),
+    lookups.about([...new Set(history!.flatMap(({ code }) => code ?? []))]),
+  ]);
+  const ingredients = [
+    ...new Set(
+      [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
+    ),
+  ].filter((code) => !about.has(code));
+  const named = new Map([...about, ...(await lookups.about(ingredients))]);
+  return {
+    tables: "on",
+    reportsDifferingFromClinVar: reportsDifferingFromClinVar(
+      { variants: variants!, reports: reports! },
+      { says, verdicts },
+    ),
+    medicationsSharingAnIngredient: medicationsSharingAnIngredient(
+      history!,
+      named,
+    ),
+  };
 }
 
 /** What a door gives the tools: `address.trend(pod, { test, medication })`, the page that draws a finding's results, where it has one. */
@@ -252,6 +318,19 @@ export const TOOLS: readonly PodTool[] = (
           question: question as string,
           limit: (limit as number | undefined) ?? DEFAULT_ROWS,
         }),
+    },
+    {
+      name: "reference_table_checks",
+      description:
+        "What the pod's records and the reference tables say together, as rows naming their entries and the table row each cites: each variant report that differs from ClinVar's classification today, and each pair of active medications in two entries whose codes share an ingredient. Without the tables (cascade-mcp started without --check-tables) it says they are off and gives no rows.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      tier: "free",
+      ofPod: true,
+      run: tableChecks,
     },
   ] satisfies PodTool[]
 ).map(checked);
