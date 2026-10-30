@@ -14,7 +14,8 @@
     "packages/fhir-pull",
     "packages/site",
     "packages/graphdb",
-    "packages/cascade-runtime"
+    "packages/cascade-runtime",
+    "packages/mcp"
   ],
   "scripts": {
     "build": "tsc -b",

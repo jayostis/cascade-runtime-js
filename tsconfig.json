@@ -21,6 +21,9 @@
     },
     {
       "path": "packages/cascade-runtime"
+    },
+    {
+      "path": "packages/mcp"
     }
   ]
 }
