@@ -304,15 +304,47 @@ function codes(concepts: unknown): unknown[] {
   });
 }
 
+/** The systems of the format codes that say a DocumentReference's content is a C-CDA document, `urn:hl7-org:sdwg:ccda-…`. */
+const FORMAT_CODE_SYSTEMS: ReadonlySet<unknown> = new Set([
+  "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+  "http://ihe.net/fhir/ValueSet/IHE.FormatCode.codesystem",
+  "http://ihe.net/fhir/ihe.formatcode.fhir/CodeSystem/formatcode",
+]);
+
+/** Whether any content of a DocumentReference is a C-CDA document, by its format, as the FHIR adapter reads it. */
+function holdsCcdaDocument(resource: Record<string, unknown>): boolean {
+  return (Array.isArray(resource.content) ? resource.content : []).some(
+    (content: unknown) => {
+      const format =
+        typeof content === "object" && content !== null
+          ? (content as { format?: unknown }).format
+          : undefined;
+      if (typeof format !== "object" || format === null) return false;
+      const { system, code } = format as { system?: unknown; code?: unknown };
+      return (
+        FORMAT_CODE_SYSTEMS.has(system) &&
+        typeof code === "string" &&
+        code.startsWith("urn:hl7-org:sdwg:ccda-")
+      );
+    },
+  );
+}
+
 /**
  * The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it: a laboratory Observation
- * that groups others by `hasMember` is a panel, whose members are the records.
+ * that groups others by `hasMember` is a panel, whose members are the records, and a DocumentReference whose content
+ * is a C-CDA document is a source of its own, whose records are that document's.
  */
 function kindOf(resource: Record<string, unknown>): string | undefined {
   if (
     resource.resourceType === "Observation" &&
     Array.isArray(resource.hasMember) &&
     resource.hasMember.length > 0
+  )
+    return undefined;
+  if (
+    resource.resourceType === "DocumentReference" &&
+    holdsCcdaDocument(resource)
   )
     return undefined;
   return recordOf(resource.resourceType, codes(resource.category))?.kind;
