@@ -1,11 +1,48 @@
 // node pinned.mjs <cascade-runtime's dist/src/index.js> build <pod folder> <title> <download>...
 // node pinned.mjs <cascade-runtime's dist/src/index.js> ask <pod folder> <question>...
+// node pinned.mjs <cascade-runtime's dist/src/index.js> components
+
 // The harness's pod work done by another build of the runtime (a run pinned to earlier commits): build a pod from a
 // case's downloads, or ask it questions. Prints JSON: each download's import, or each question's rows.
-import { argv, stdout } from "node:process";
+import { dirname, join } from "node:path";
+import process, { argv, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
 const [, , index, command, pod, ...rest] = argv;
+
+if (command === "components") {
+  // What this build of the runtime resolves: each component's folder and commit, and the Bridge's.
+  const packageFolder = join(dirname(index), "..", "..");
+  const { componentsOf } = await import(
+    pathToFileURL(
+      join(packageFolder, "..", "runtime", "dist", "src", "node", "index.js"),
+    ).href
+  );
+  const parts = await componentsOf(packageFolder);
+  const resolved = [];
+  for (const component of [parts.config.vocabulary, ...parts.config.adapters]) {
+    const found = await parts.resolve(component);
+    resolved.push({
+      name: component.repository.split("/").pop(),
+      repository: component.repository,
+      commit: found.version,
+      source: found.source,
+      ...(found.uncommitted === undefined
+        ? {}
+        : { uncommitted: found.uncommitted }),
+    });
+  }
+  const bridge = await parts.bridge();
+  resolved.push({
+    name: "cascade-bridge-rs",
+    repository: "https://github.com/jayostis/cascade-bridge-rs",
+    commit: bridge.commit,
+    source: bridge.source,
+  });
+  stdout.write(JSON.stringify(resolved));
+  process.exit(0);
+}
+
 const { configureTables, openPod } = await import(pathToFileURL(index).href);
 configureTables({ checkOnOpen: false });
 

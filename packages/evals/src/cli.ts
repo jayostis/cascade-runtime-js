@@ -13,7 +13,9 @@ const USAGE = `usage: cascade-evals <command>
                                           a run's jobs, what is reused, and its estimate against the cap
   pod --run <dir> --job <id> <tool> [<json input>]
                                           the pod arm's one command: a cascade-mcp tool, logged to the run
-  meter --run <dir> [--brief]             what the run has spent (from its transcripts) and which jobs may start
+  meter --run <dir> [--brief] [--after-wave]
+                                          what the run has spent (from its transcripts) and which jobs may start;
+                                          after a wave, the jobs it handed out that left nothing fail
   judges --run <dir>                      the blind packets for the run's judges
   finish --run <dir>                      checks, grades, scores and results.json
   record-history <run dir>                copy a finished run into history/
@@ -90,7 +92,9 @@ async function main(args: string[]): Promise<void> {
     case "meter": {
       const run = option(args, "run");
       if (run === undefined) break;
-      const meter = await (await import("./record.js")).recordRun(run);
+      const meter = await (
+        await import("./record.js")
+      ).recordRun(run, args.includes("--after-wave"));
       return print(
         args.includes("--brief")
           ? {

@@ -206,10 +206,11 @@ function fits(
 }
 
 /** The meter: what the run has spent, and the jobs that may start now without passing the cap. */
-export async function recordRun(given: string) {
+export async function recordRun(given: string, afterWave = false) {
   const plan = await loadPlan(runFolder(given));
   await refreshed(plan);
-  closeWave(plan);
+  // Only between waves: a meter run while agents still write must not fail them.
+  if (afterWave) closeWave(plan);
   const spent = spentOf(plan.jobs);
   const running = plan.jobs.filter((it) => it.status === "running");
   const pending = plan.jobs.filter((it) => it.status === "pending");

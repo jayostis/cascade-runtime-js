@@ -85,7 +85,7 @@ const promptOf = (job) =>
 async function waves(phase) {
   for (;;) {
     const meter = await shell(
-      `node "${cli}" meter --run "${folder}" --brief`,
+      `node "${cli}" meter --run "${folder}" --brief --after-wave`,
       phase,
       METER,
     );

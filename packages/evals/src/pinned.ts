@@ -83,8 +83,20 @@ export async function environment(
   ).slice(0, 12);
   const folder = join(WORK, "pinned", key);
   const done = join(folder, "environment.json");
-  if (existsSync(done))
-    return JSON.parse(await readFile(done, "utf8")) as Environment;
+  if (existsSync(done)) {
+    const kept = JSON.parse(await readFile(done, "utf8")) as Environment;
+    for (const [name, commit] of Object.entries(kept.commits)) {
+      const at = join(folder, name);
+      if (
+        git(at, "rev-parse", "HEAD") !== commit ||
+        git(at, "status", "--porcelain") !== ""
+      )
+        throw new Error(
+          `the pinned clone ${at} is no longer ${name} at ${commit.slice(0, 12)} with nothing changed: remove ${folder} and plan again`,
+        );
+    }
+    return kept;
+  }
   await mkdir(folder, { recursive: true });
   for (const [name, pin] of Object.entries(resolved)) {
     const at = join(folder, name);
@@ -128,15 +140,35 @@ export async function environment(
       "index.js",
     ),
     mcp: join(runtime, "packages", "mcp", "dist", "src", "cli.js"),
-    components: Object.entries(commits)
-      .filter(([name]) => name !== "cascade-runtime-js")
-      .map(([name, commit]) => ({
-        name,
-        repository: PINNABLE[name]!,
-        commit,
-        source: "pinned",
-      })),
+    components: [],
   };
+  // What the pinned runtime resolves, asked of it, and the pins it does not read (cascade-bridge-spec) beside them.
+  const asked = pinnedComponents(environment.runtime);
+  for (const [name, commit] of Object.entries(commits)) {
+    if (name === "cascade-runtime-js") continue;
+    const found = asked.find((it) => it.name === name);
+    if (found !== undefined && found.commit !== commit)
+      throw new Error(
+        `the pinned runtime resolves ${name} at ${found.commit.slice(0, 12)}, not the pinned ${commit.slice(0, 12)}`,
+      );
+  }
+  Object.assign(environment, {
+    components: [
+      ...asked,
+      ...Object.entries(commits)
+        .filter(
+          ([name]) =>
+            name !== "cascade-runtime-js" &&
+            !asked.some((it) => it.name === name),
+        )
+        .map(([name, commit]) => ({
+          name,
+          repository: PINNABLE[name]!,
+          commit,
+          source: "pinned, not read by the runtime",
+        })),
+    ],
+  });
   await writeFile(done, JSON.stringify(environment, null, 2) + "\n");
   return environment;
 }
@@ -144,6 +176,16 @@ export async function environment(
 const SCRIPT = fileURLToPath(
   new URL("../../scripts/pinned.mjs", import.meta.url),
 );
+
+/** The components a build of the runtime resolves, asked of it in its own process. */
+function pinnedComponents(runtime: string): Component[] {
+  return JSON.parse(
+    execFileSync(process.execPath, [SCRIPT, runtime, "components"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ) as Component[];
+}
 
 /** The pinned runtime's work, run in its own process: a pod built from downloads, or questions asked of it. */
 export function pinnedPod(

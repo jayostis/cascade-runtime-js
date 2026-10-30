@@ -41,7 +41,7 @@ finishes.
 
 **Without it**, the same loop by hand:
 
-1. `CLI meter --run <run>`: its JSON lists `next`, the jobs that may start now without passing the cap.
+1. `CLI meter --run <run> --after-wave`: its JSON lists `next`, the jobs that may start now without passing the cap.
 2. For each `next` job, start one Agent (subagent_type general-purpose, `model` the job's `alias`) whose prompt is the
    job's `prompt` text exactly as the meter gives it (its first line is the job's eval-tag, which is how the harness
    finds its transcript). Start them together, in the background, and wait for every one.
