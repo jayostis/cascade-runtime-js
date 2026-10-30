@@ -180,7 +180,7 @@ function subjectViolations(
   for (const use of uses) {
     if (HARNESS_TOOLS.has(use.name)) continue;
     if (
-      use.name === "Write" &&
+      (use.name === "Write" || use.name === "Edit") &&
       samePath(pathOf(use), join(folder, job.answer ?? ""))
     )
       continue;

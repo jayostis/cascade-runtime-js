@@ -28,7 +28,8 @@ Each question is a chain:
   conclusion). Give at least one; a fact with none cannot be checked. Never put a reference range, a flag or another
   record's value in "value".
 - "absences": each thing you say the records lack: "what"; "match", the codes and words a record of it would carry
-  ({"codes": [...], "terms": [...]}); and "coverage", what you looked through (which sources, which dates){ABSENCE}
+  ({"codes": [...], "terms": [...]}, with "after": "YYYY-MM-DD" when only a record since that day would count, as
+  in "no A1c since February"); and "coverage", what you looked through (which sources, which dates){ABSENCE}
 - "knowledge": the medical knowledge of your own that links the facts to the question, and the guideline you have in
   mind if you can name one. It is yours, not the records'.
 - "question", in plain words, as {PRONOUN_SUBJECT} would ask it; "why", one or two sentences; "confidence": high, medium or

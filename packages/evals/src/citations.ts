@@ -18,16 +18,16 @@ export type DateKind = "when" | "start" | "end" | "recorded";
 export interface Claim {
   readonly cite: Cite;
   /** The record's own result: a number as a number, a coded or text result by its code or words. */
-  readonly value?: string;
+  readonly value?: string | number;
   readonly unit?: string;
   /** Its status: final, active, completed, refuted… */
   readonly status?: string;
   /** A code it carries: a LOINC, SNOMED CT, RxNorm, CVX or ICD-10 code. */
-  readonly code?: string;
+  readonly code?: string | number;
   /** Words of its name: the test, condition, drug, vaccine or procedure. */
   readonly name?: string;
   /** Its identifier in its source. */
-  readonly id?: string;
+  readonly id?: string | number;
   /** A date, YYYY-MM-DD, of the kind `dateKind` says: when it happened (the default), started, ended, was recorded. */
   readonly date?: string;
   readonly dateKind?: DateKind;
@@ -88,6 +88,8 @@ export interface Absence {
   readonly match: {
     readonly codes?: readonly string[];
     readonly terms?: readonly string[];
+    /** Only a record dated on or after this day (YYYY-MM-DD) would count against the absence. */
+    readonly after?: string;
   };
   /** The pod arm: the tool call that looked. */
   readonly query?: Call | undefined;
@@ -203,14 +205,14 @@ function holds(
 function wantedOf(claim: Claim): [keyof Fields, string, string][] {
   const wanted: [keyof Fields, string, string][] = [];
   if (claim.value !== undefined) {
-    wanted.push(["value", claim.value, `value ${claim.value}`]);
+    wanted.push(["value", String(claim.value), `value ${claim.value}`]);
     if (claim.unit !== undefined)
       wanted.push(["unit", claim.unit, `unit ${claim.unit}`]);
   }
   for (const kind of ["status", "code", "name", "id"] as const) {
     const claimed = claim[kind];
     if (claimed !== undefined)
-      wanted.push([kind, claimed, `${kind} ${claimed}`]);
+      wanted.push([kind, String(claimed), `${kind} ${claimed}`]);
   }
   if (claim.date !== undefined && isoDate(claim.date) !== undefined) {
     const kind = claim.dateKind ?? "when";
@@ -308,6 +310,46 @@ export function mentions(text: string, match: Absence["match"]): boolean {
   );
 }
 
+/** The latest date a text writes, as YYYY-MM-DD; undefined when it writes none. */
+function latestDate(text: string): string | undefined {
+  const days = [
+    ...text.matchAll(/\b(\d{4}-\d{2}-\d{2})|\b(\d{8})(?:\d{0,6})(?=[^\d]|$)/g),
+  ]
+    .map(([whole]) => isoDate(whole))
+    .filter((day): day is string => day !== undefined && day >= "1900-01-01");
+  return days.sort().pop();
+}
+
+/** Whether something mentioning the absence counts against it: it is dated on or after its day, or has no date. */
+const countsAgainst = (text: string, match: Absence["match"]) => {
+  if (!mentions(text, match)) return false;
+  if (match.after === undefined) return true;
+  const latest = latestDate(text);
+  return latest === undefined || latest >= match.after;
+};
+
+/** Whether a tool's answer holds what an absence says is not there: any of its rows, or the whole answer. */
+function answerHolds(answer: string, match: Absence["match"]): boolean {
+  try {
+    const { rows } = JSON.parse(answer) as { rows?: unknown };
+    if (Array.isArray(rows))
+      return rows.some((row) => countsAgainst(JSON.stringify(row), match));
+  } catch {
+    // not rows
+  }
+  return countsAgainst(answer, match);
+}
+
+/** Whether a document holds what an absence says is not there: any of its records, or, with no date bound, its text. */
+function documentHolds(text: string, match: Absence["match"]): boolean {
+  if (match.after === undefined) return mentions(text, match);
+  const json = /^\s*[{[]/.test(text);
+  const records = json ? jsonRecords(text) : ccdaRecords(text);
+  return records.length === 0
+    ? countsAgainst(text, match)
+    : records.some((it) => countsAgainst(text.slice(it.from, it.to), match));
+}
+
 const lookedFor = (absence: Absence) =>
   (absence.match.codes ?? []).length +
     (absence.match.terms ?? []).filter((it) => it.trim() !== "").length >
@@ -344,7 +386,7 @@ export function checkAbsence(absence: Absence, ran: readonly Ran[]): Backing {
   if (calls.length === 0) return { backed: false, reason: "query not run" };
   const answered = calls.filter((call) => call.ok);
   if (answered.length === 0) return { backed: false, reason: "query refused" };
-  if (answered.some((call) => mentions(call.answer, absence.match)))
+  if (answered.some((call) => answerHolds(call.answer, absence.match)))
     return { backed: false, reason: "query found it" };
   return answered.some((call) => whole(call.answer))
     ? { backed: true }
@@ -371,7 +413,7 @@ export async function checkRecordsAbsence(
     return { backed: false, reason: `source not read: ${unread.join(", ")}` };
   const holding: string[] = [];
   for (const file of sources)
-    if (mentions(await text(file), absence.match)) holding.push(file);
+    if (documentHolds(await text(file), absence.match)) holding.push(file);
   return holding.length > 0
     ? { backed: false, reason: `records hold it: ${holding.join(", ")}` }
     : { backed: true };
