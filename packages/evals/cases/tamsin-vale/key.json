@@ -1,0 +1,294 @@
+{
+  "$schema": "../../schemas/key.schema.json",
+  "case": "tamsin-vale",
+  "written": "2026-10-30",
+  "items": [
+    {
+      "id": "TG1",
+      "kind": "gap",
+      "title": "Urine albumin-to-creatinine ratio never done, eGFR yearly",
+      "lookingFor": "the missing urine albumin test (uACR) for her diabetes",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Condition/story-stopped-cond-1"
+          },
+          "values": ["Type 2 diabetes mellitus"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-egfr-1"
+          },
+          "date": "2025-02-18",
+          "values": ["73"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-egfr-2"
+          },
+          "date": "2026-02-16",
+          "values": ["69"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationRequest/story-stopped-medrx-2"
+          },
+          "values": ["empagliflozin"]
+        }
+      ],
+      "absent": [
+        "any urine albumin result (LOINC 9318-7, 14959-1, 32294-1) in the three pulls"
+      ],
+      "links": [
+        "type 2 diabetes calls for a uACR at diagnosis and yearly",
+        "her eGFR is checked yearly, so kidney screening is half done"
+      ],
+      "found": "names the missing urine albumin / uACR test, with diabetes as the reason",
+      "wrong": ["saying it was done"],
+      "pod": "visible",
+      "guideline": "ADA Standards of Care: uACR at diagnosis and at least yearly",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["98979-8"]
+        },
+        {
+          "question": "pod/My active conditions",
+          "where": ["44054006"]
+        }
+      ]
+    },
+    {
+      "id": "TG2",
+      "kind": "gap",
+      "title": "Positive stool test (FIT) with no colonoscopy",
+      "lookingFor": "a colonoscopy after the positive stool test of 2025-11-04",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-fit-1"
+          },
+          "date": "2025-11-04",
+          "values": ["29771-3", "Positive"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Procedure/story-stopped-proc-1"
+          },
+          "date": "2025-07-08",
+          "values": ["CT angiography"]
+        }
+      ],
+      "absent": [
+        "any colonoscopy or GI result after 2025-11-04; the only procedure is the 2025-07-08 CT angiogram"
+      ],
+      "links": [
+        "a positive FIT needs a colonoscopy",
+        "none followed in 12 months"
+      ],
+      "found": "positive FIT (stool blood test), no colonoscopy after it",
+      "wrong": [
+        "repeat the stool test as the follow-up",
+        "saying a positive FIT needs nothing further"
+      ],
+      "wording": [
+        {
+          "pattern": "repeat (the )?(stool|FIT)",
+          "means": "a repeat FIT offered as the follow-up"
+        }
+      ],
+      "pod": "visible",
+      "guideline": "USPSTF 2021; US Multi-Society Task Force: colonoscopy after an abnormal stool test",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["29771-3"]
+        },
+        {
+          "question": "pod/My procedures"
+        }
+      ]
+    },
+    {
+      "id": "TT1",
+      "kind": "trap",
+      "title": "Untreated rising A1c: out of date",
+      "lookingFor": "no claim that her diabetes is untreated or her A1c is 8.3 now",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationStatement/story-stopped-med-1"
+          },
+          "values": ["2024-04-15"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-6"
+          },
+          "date": "2025-01-13",
+          "values": ["8.3"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationRequest/story-stopped-medrx-2"
+          },
+          "date": "2025-02-20",
+          "values": ["Jardiance"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-9"
+          },
+          "date": "2026-02-16",
+          "values": ["6.9"]
+        }
+      ],
+      "links": [
+        "metformin stopped 2024-04-15",
+        "empagliflozin started 2025-02-20",
+        "A1c 7.6, 7.1, then 6.9 after it"
+      ],
+      "found": "not raised, or the facts stated correctly (treated; last A1c 6.9)",
+      "wrong": [
+        "your diabetes is untreated since metformin stopped",
+        "your A1c is 8.3 and rising",
+        "restart metformin because nothing replaced it"
+      ],
+      "wording": [
+        {
+          "pattern": "untreated",
+          "means": "diabetes called untreated"
+        },
+        {
+          "pattern": "nothing (has )?replaced",
+          "means": "no treatment after metformin"
+        },
+        {
+          "pattern": "(A1c|hemoglobin A1c)[^.]{0,40}\\b8\\.3\\b[^.]{0,40}(now|current|latest|most recent)",
+          "means": "8.3 given as the current A1c"
+        }
+      ],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My medication history"
+        },
+        {
+          "question": "pod/My lab results",
+          "where": ["4548-4"]
+        }
+      ]
+    },
+    {
+      "id": "TT2",
+      "kind": "trap",
+      "title": "A pulmonary embolism that was ruled out",
+      "lookingFor": "no question treating the refuted pulmonary embolism as real",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Condition/story-stopped-cond-2"
+          },
+          "values": ["Pulmonary embolism", "refuted"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-ddimer-1"
+          },
+          "date": "2025-07-08",
+          "values": ["0.92"]
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "DiagnosticReport/story-stopped-dr-1"
+          },
+          "values": ["No pulmonary embolism"]
+        }
+      ],
+      "links": [
+        "the condition's verification status is refuted",
+        "the CT angiogram found no embolism"
+      ],
+      "found": "not raised as a clot",
+      "wrong": [
+        "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up",
+        "your high D-dimer was not followed up"
+      ],
+      "notWrong": [
+        "a CT angiogram was done the same day and its result isn't in my records"
+      ],
+      "wording": [
+        {
+          "pattern": "blood thinner|anticoagula",
+          "means": "treatment for an embolism she never had"
+        },
+        {
+          "pattern": "D-dimer[^.]{0,60}(not|never) (been )?followed",
+          "means": "the D-dimer called unfollowed"
+        }
+      ],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["48065-7"]
+        },
+        {
+          "question": "pod/My procedures"
+        }
+      ]
+    }
+  ],
+  "preExisting": [
+    {
+      "id": "PT1",
+      "says": "Metformin's stop has no reason recorded; asking why is neutral."
+    },
+    {
+      "id": "PT2",
+      "says": "A1c 7.4 to 8.3 through 2024 with no therapy, before 2025-02-20: true of that past period; false only when presented as current (TT1)."
+    },
+    {
+      "id": "PT3",
+      "says": "The kit's pulls carry no problem list; diabetes is first coded in the 2026 pull."
+    },
+    {
+      "id": "PT4",
+      "says": "The kit's synthetic markers (patient id story-stopped, Cascade North Demo Hospital, demo.invalid); remarks on them are neutral."
+    },
+    {
+      "id": "PT5",
+      "says": "Valid absences not planted: no diabetic eye exam, no immunizations at all, no osteoporosis screening, no mammogram, no blood pressure in the record. Neutral."
+    },
+    {
+      "id": "PT6",
+      "legitimateFind": true,
+      "says": "A1c not repeated since 2026-02-16, 8.5 months ago (ADA: at least twice a year when at goal). Never penalise it; TT1 only if the answer claims she is untreated or that her A1c is 8.3."
+    },
+    {
+      "id": "PT7",
+      "legitimateFind": true,
+      "says": "No lipid panel since atorvastatin started on 2025-02-20; the only panel is from 2025-02-18 (LDL 131). ADA Section 10 and ACC/AHA 2018 call for a recheck 4-12 weeks after starting a statin."
+    }
+  ],
+  "generic": [
+    "ask about your A1c target",
+    "ask whether your diabetes medicines are working",
+    "ask about cholesterol goals on atorvastatin",
+    "ask about diet and exercise",
+    "ask about the chest pain you had in July 2025 (as a check-in, not as a PE)"
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/verdict.schema.json",
+  "title": "A judge's verdict",
+  "description": "One grade per blinded answer, by its label: every key item found, partly or missed (a gap) or raised or avoided (a trap or near-trap), the false questions, the legitimate extra finds, and each question's chain.",
+  "type": "object",
+  "required": ["outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "items",
+          "falseQuestions",
+          "extraFinds",
+          "chains"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "label": { "type": "string", "pattern": "^[A-Z]{1,2}$" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "verdict", "questions", "reason"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "verdict": {
+                  "enum": ["found", "partly", "missed", "raised", "avoided"]
+                },
+                "questions": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "reason": { "type": "string" }
+              }
+            }
+          },
+          "falseQuestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["question", "why"],
+              "additionalProperties": false,
+              "properties": {
+                "question": { "type": "integer", "minimum": 1 },
+                "item": { "type": "string" },
+                "why": { "type": "string" }
+              }
+            }
+          },
+          "extraFinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["question", "why"],
+              "additionalProperties": false,
+              "properties": {
+                "question": { "type": "integer", "minimum": 1 },
+                "item": { "type": "string" },
+                "why": { "type": "string" }
+              }
+            }
+          },
+          "chains": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["question", "complete", "faithful", "skipped"],
+              "additionalProperties": false,
+              "properties": {
+                "question": { "type": "integer", "minimum": 1 },
+                "complete": { "type": "boolean" },
+                "faithful": { "type": "boolean" },
+                "skipped": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

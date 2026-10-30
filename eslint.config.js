@@ -27,6 +27,20 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/evals/workflow/**"],
+    languageOptions: {
+      globals: {
+        args: "readonly",
+        agent: "readonly",
+        parallel: "readonly",
+        pipeline: "readonly",
+        log: "readonly",
+        phase: "readonly",
+        budget: "readonly",
+      },
+    },
+  },
+  {
     files: ["packages/cascade-runtime/test/**"],
     rules: {
       "no-restricted-imports": "off",

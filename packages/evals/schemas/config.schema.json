@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/config.schema.json",
+  "title": "A run's config",
+  "description": "What one run runs: its cases, arms, the model of each role, repeats, judges and the hard cap. The three tiers are configs/smoke.json, standard.json and full.json.",
+  "type": "object",
+  "required": ["tier", "cases", "arms", "subjects", "repeats", "judges", "cap"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "tier": { "enum": ["smoke", "standard", "full", "custom"] },
+    "cases": {
+      "oneOf": [
+        { "const": "all" },
+        { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      ]
+    },
+    "arms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["pod", "records"] }
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The subject models, by API model id; every arm and case runs on each.",
+      "items": { "type": "string" }
+    },
+    "effort": {
+      "enum": ["low", "medium", "high", "xhigh", "max"],
+      "description": "The subjects' reasoning effort; left out, each model's default."
+    },
+    "repeats": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "judges": {
+      "type": "array",
+      "description": "One judge per entry, by API model id; empty for programs only. Two or more give their agreement.",
+      "items": { "type": "string" }
+    },
+    "cap": {
+      "type": "object",
+      "description": "The hard cap: no job starts that its estimate says would pass it.",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "tokens": { "type": "integer", "minimum": 1 },
+        "usd": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "concurrency": { "type": "integer", "minimum": 1, "maximum": 16 }
+  }
+}

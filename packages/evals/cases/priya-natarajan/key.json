@@ -1,0 +1,852 @@
+{
+  "$schema": "../../schemas/key.schema.json",
+  "case": "priya-natarajan",
+  "written": "2026-10-30",
+  "items": [
+    {
+      "id": "G1",
+      "kind": "gap",
+      "title": "Second Shingrix dose never given (dose 1 at a pharmacy)",
+      "lookingFor": "the second Shingrix dose after the first one at Alder Street Pharmacy on 2025-11-08",
+      "evidence": [
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 478
+          },
+          "date": "2025-11-08",
+          "values": ["VX-251108-2"],
+          "says": "Alder Street Pharmacy immunization entry VX-251108-2, 2025-11-08"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 492
+          },
+          "values": ["187", "zoster vaccine recombinant"],
+          "says": "the entry is Shingrix (CVX 187)"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 568
+          },
+          "date": "2024-10-15",
+          "values": ["Influenza vaccine"],
+          "says": "Fernhill's immunization list (the PCP) shows only the 2024-10-15 flu shot"
+        }
+      ],
+      "absent": ["a second CVX 187 dose in any source"],
+      "links": [
+        "recombinant zoster vaccine is two doses, 2 to 6 months apart, for adults 50 and older",
+        "she is 57 and only one dose is recorded, so the series is unfinished"
+      ],
+      "found": "names Shingrix/shingles vaccine, that one dose is recorded (Nov 2025, pharmacy) and that the second is missing or due now",
+      "wrong": [
+        "saying the series must be restarted",
+        "saying she is not eligible (she is 57)",
+        "saying no zoster vaccine was ever given"
+      ],
+      "pod": "visible",
+      "guideline": "ACIP: recombinant zoster vaccine, two doses 2-6 months apart, adults 50 and older",
+      "find": [
+        {
+          "question": "pod/My immunizations",
+          "where": ["codes/cvx/187"]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "gap",
+      "title": "Hydrochlorothiazide stopped at hospital discharge, still active at the clinic and the pharmacy",
+      "lookingFor": "hydrochlorothiazide stopped by the hospital on 2026-03-05, yet active at Fernhill and refilled by the pharmacy after",
+      "evidence": [
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 334
+          },
+          "date": "2026-03-05",
+          "values": ["MED-2611"],
+          "says": "Kestrel Harbor medication MED-2611, status aborted, ended 2026-03-05"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 223
+          },
+          "date": "2026-03-05",
+          "values": ["Discontinued March 5, 2026 (hyponatremia)"],
+          "says": "narrative: discontinued March 5, 2026 (hyponatremia)"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 1256
+          },
+          "values": ["STOP taking hydrochlorothiazide"],
+          "says": "discharge instructions: stop hydrochlorothiazide"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 703
+          },
+          "date": "2026-03-02",
+          "values": ["LAB-61202", "123"],
+          "says": "admission sodium 123 (L)"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 524
+          },
+          "values": ["Hyponatremia"],
+          "says": "problem Hyponatremia, resolved"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 1241
+          },
+          "values": ["likely due to hydrochlorothiazide"],
+          "says": "encounter diagnosis: hyponatremia, likely due to hydrochlorothiazide"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 234
+          },
+          "date": "2025-12-09",
+          "values": ["hydrochlorothiazide", "fm-7"],
+          "says": "Fernhill still lists it active (fm-7)"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 1260
+          },
+          "date": "2026-06-15",
+          "values": ["Continue current medications"],
+          "says": "the 2026-06-15 note continues current medications, HCTZ included"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 619
+          },
+          "date": "2026-06-15",
+          "values": ["134"],
+          "says": "sodium 134 (L) on 2026-06-15"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 218
+          },
+          "date": "2026-04-02",
+          "values": ["90 days", "2 refills remaining"],
+          "says": "pharmacy: active, last filled 2026-04-02 (90 days), after the stop"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 358
+          },
+          "values": ["RX6131090"],
+          "says": "pharmacy prescription RX6131090"
+        },
+        {
+          "cite": {
+            "file": "clearwater-eye-associates-visit-summary.xml",
+            "line": 204
+          },
+          "date": "2026-05-14",
+          "values": ["hydrochlorothiazide"],
+          "says": "Clearwater's patient-reported list, 2026-05-14, has it"
+        }
+      ],
+      "links": [
+        "a medicine one source stopped for a side effect and three others still show active means the lists were never reconciled",
+        "thiazide diuretics cause low sodium, and her sodium was 123 then 134 (low) after the stop",
+        "the pharmacy refilled it after the stop, so she may still be taking it"
+      ],
+      "found": "names HCTZ (or the water pill), that the hospital stopped it in March 2026, and that a later list still shows it active; the reason and the April refill are optional",
+      "wrong": [
+        "advising her to keep taking it without noting the hospital's stop",
+        "saying she stopped it and nothing is outstanding"
+      ],
+      "pod": "deeper",
+      "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere",
+      "find": [
+        {
+          "question": "pod/My active medications",
+          "where": ["199903"]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "kind": "gap",
+      "title": "Urine albumin-to-creatinine ratio never done, eGFR done five times",
+      "lookingFor": "the missing urine albumin test (uACR) for her diabetes and hypertension",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 549
+          },
+          "date": "2025-09-22",
+          "values": ["44054006"],
+          "says": "type 2 diabetes from 2025-09-22; she also has hypertension, on losartan"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 762
+          },
+          "date": "2025-09-22",
+          "values": ["75"],
+          "says": "eGFR 75 at Fernhill (Northbay carries a copy)"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 769
+          },
+          "date": "2025-10-18",
+          "values": ["63"],
+          "says": "eGFR 63 at the Saltmarsh ED"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 795
+          },
+          "date": "2026-03-02",
+          "values": ["62"],
+          "says": "eGFR 62 at Kestrel Harbor, admission"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 1040
+          },
+          "date": "2026-03-05",
+          "values": ["70"],
+          "says": "eGFR 70 at Kestrel Harbor, discharge"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 1068
+          },
+          "date": "2026-06-15",
+          "values": ["71"],
+          "says": "eGFR 71 at Fernhill"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 584
+          },
+          "date": "2025-10-18",
+          "values": ["SRM-L-102", "5804-0"],
+          "says": "the ED's urine dipstick protein, Negative: a test strip, not a uACR"
+        }
+      ],
+      "absent": [
+        "any urine albumin result (LOINC 9318-7, 14959-1, 32294-1) in any download"
+      ],
+      "links": [
+        "type 2 diabetes calls for a uACR at diagnosis and yearly",
+        "her eGFR was checked five times from three places, so kidney screening is half done",
+        "a urine dipstick protein is not a uACR"
+      ],
+      "found": "names the urine albumin / albumin-creatinine / microalbumin test and that it is missing, with diabetes (or diabetes plus hypertension) as the reason",
+      "wrong": [
+        "saying it was done (citing the dipstick)",
+        "saying her kidneys need nothing because eGFR is normal"
+      ],
+      "pod": "visible",
+      "guideline": "ADA Standards of Care: uACR at diagnosis and at least yearly",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["98979-8"]
+        },
+        {
+          "question": "pod/My active conditions",
+          "where": ["44054006"]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "kind": "gap",
+      "title": "No statin, with diabetes at 57 and LDL 142",
+      "lookingFor": "a statin (or cholesterol medicine) she is not on, with diabetes, age 57 and LDL 142",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 549
+          },
+          "date": "2025-09-22",
+          "values": ["44054006"],
+          "says": "type 2 diabetes from 2025-09-22"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 863
+          },
+          "date": "2025-09-22",
+          "values": ["13457-7", "142"],
+          "says": "LDL 142 mg/dL (H) on 2025-09-22; total cholesterol 221, HDL 48 the same day"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 30
+          },
+          "values": ["19681104"],
+          "says": "born 1968-11-04, so 56 then and 57 now"
+        }
+      ],
+      "absent": ["a statin in any medication list of any source"],
+      "links": [
+        "diabetes aged 40-75 calls for at least a moderate-intensity statin",
+        "she is 57 and her LDL was 142 (high) on 2025-09-22",
+        "no medication list in any source holds a statin"
+      ],
+      "found": "a statin (or cholesterol medicine) not prescribed, with diabetes and age or the LDL as the reason",
+      "wrong": [
+        "saying she takes one",
+        "recommending a specific drug and dose as settled (a question is fine)"
+      ],
+      "pod": "visible",
+      "guideline": "ADA Standards of Care: moderate-intensity statin for diabetes aged 40-75",
+      "find": [
+        {
+          "question": "pod/My medication history"
+        },
+        {
+          "question": "pod/My lab results",
+          "where": ["13457-7"]
+        },
+        {
+          "question": "pod/My active conditions",
+          "where": ["44054006"]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "kind": "gap",
+      "title": "Incidental 7 mm lung nodule, follow-up chest CT recommended, never done",
+      "lookingFor": "the 7 mm lung nodule on the 2025-10-18 ED CT and the chest CT recommended in 6-12 months",
+      "evidence": [
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 545
+          },
+          "date": "2025-10-18",
+          "values": ["right lower lobe"],
+          "says": "CT abdomen/pelvis findings: a 7 mm solid nodule in the right lower lobe"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 546
+          },
+          "date": "2025-10-18",
+          "values": ["Incidental 7 mm solid pulmonary nodule", "6-12 months"],
+          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months"
+        }
+      ],
+      "absent": [
+        "any chest CT after 2025-10-18, in any source",
+        "the nodule in the ED discharge instructions (line 985 on) or in any source's problem list"
+      ],
+      "links": [
+        "a 6-8 mm solid nodule in a low-risk person (never smoker) calls for a CT at 6-12 months",
+        "the follow-up window closed on 2026-10-18 with no CT"
+      ],
+      "found": "a lung nodule on the October 2025 CT, a follow-up CT recommended, not done",
+      "wrong": [
+        "inventing a size or a cancer risk the report does not give",
+        "saying the follow-up was done"
+      ],
+      "pod": "narrative-only",
+      "guideline": "Fleischner Society 2017: a 6-8 mm solid nodule in a low-risk person, CT at 6-12 months"
+    },
+    {
+      "id": "G6",
+      "kind": "gap",
+      "title": "TSH 7.9 at the hospital, repeat recommended in 6-8 weeks, never repeated",
+      "lookingFor": "the high TSH of 2026-03-03 and that no repeat followed",
+      "evidence": [
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 889
+          },
+          "date": "2026-03-03",
+          "values": ["LAB-61209", "3016-3", "7.9"],
+          "says": "TSH 7.9 m[IU]/L (H, 0.40-4.00) at Kestrel Harbor"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 1258
+          },
+          "values": ["repeated in 6-8 weeks"],
+          "says": "discharge instructions: have TSH and free T4 repeated in 6-8 weeks"
+        }
+      ],
+      "absent": [
+        "any TSH after 2026-03-03 (Fernhill's 2026-06-15 panel and Northbay's results have none)"
+      ],
+      "links": [
+        "a high TSH found during an acute illness is to be repeated once recovered",
+        "no repeat in the seven months since"
+      ],
+      "found": "the high TSH in March 2026 and that no repeat followed",
+      "wrong": [
+        "diagnosing hypothyroidism or advising levothyroxine as settled"
+      ],
+      "pod": "visible",
+      "guideline": "repeat an abnormal TSH after recovery from acute illness before treating",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["3016-3"]
+        }
+      ]
+    },
+    {
+      "id": "T1",
+      "kind": "trap",
+      "title": "Diabetic eye exam done by an optometrist",
+      "lookingFor": "no claim that she has no diabetic eye exam or is due for one",
+      "evidence": [
+        {
+          "cite": {
+            "file": "clearwater-eye-associates-visit-summary.xml",
+            "line": 486
+          },
+          "date": "2026-05-14",
+          "values": ["92004"],
+          "says": "procedure CPT 92004, comprehensive eye examination with dilation, Clearwater Eye Associates"
+        },
+        {
+          "cite": {
+            "file": "clearwater-eye-associates-visit-summary.xml",
+            "line": 476
+          },
+          "date": "2026-05-14",
+          "values": ["no diabetic retinopathy and no macular edema"],
+          "says": "findings: no diabetic retinopathy and no macular edema in either eye"
+        }
+      ],
+      "links": [
+        "the exam was 5.5 months ago and the plan is to return in 12 months",
+        "the next one is due 2027-05"
+      ],
+      "found": "not raised as missing or due",
+      "wrong": [
+        "you have no diabetic eye exam on record",
+        "you are due for one"
+      ],
+      "notWrong": ["an eye exam was done in May 2026, ask what it showed"],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My procedures"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "trap",
+      "title": "Lisinopril stopped for cough and replaced by losartan",
+      "lookingFor": "no claim that lisinopril is current or that her blood pressure treatment lapsed",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "date": "2025-09-22",
+          "values": ["lisinopril", "dry cough", "losartan"],
+          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 306
+          },
+          "date": "2025-09-22",
+          "values": ["20230615"],
+          "says": "lisinopril record ended 2025-09-22"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 174
+          },
+          "date": "2025-09-22",
+          "values": ["AL-91", "Drug intolerance"],
+          "says": "an intolerance entry, AL-91, from 2025-09-22"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 187
+          },
+          "values": ["lisinopril"],
+          "says": "the intolerance is to lisinopril (cough)"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 367
+          },
+          "date": "2025-09-22",
+          "values": ["MED-2207"],
+          "says": "Kestrel Harbor agrees: MED-2207 ended 2025-09-22"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 238
+          },
+          "values": ["MED-2604", "losartan"],
+          "says": "losartan MED-2604, active"
+        },
+        {
+          "cite": {
+            "file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
+            "resource": "MedicationRequest/medrx-lisinopril-1"
+          },
+          "values": ["active", "314076"],
+          "says": "only Apple Health's 2023 FHIR copy still says active"
+        }
+      ],
+      "links": [
+        "the stop was deliberate, the reason is recorded and the replacement started the same day",
+        "both current lists agree; only an old FHIR copy still says active"
+      ],
+      "found": "not raised as a gap",
+      "wrong": [
+        "your lisinopril was stopped, should it be restarted",
+        "you may be on both lisinopril and losartan",
+        "your blood pressure treatment lapsed"
+      ],
+      "notWrong": ["asking that the old hospital FHIR entry be updated"],
+      "wording": [
+        {
+          "pattern": "(both|lisinopril and losartan)[^.]{0,40}(both|together|at the same time)|restart[^.]{0,20}lisinopril",
+          "means": "a stopped drug treated as current or to be restarted"
+        }
+      ],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My medication history",
+          "where": ["314076"]
+        },
+        {
+          "question": "pod/My active allergies"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "trap",
+      "title": "The same results arriving twice (duplicate merge)",
+      "lookingFor": "no count of two A1c tests on one date, or copies counted as separate tests",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 940
+          },
+          "date": "2026-06-15",
+          "values": ["4548-4", "6.6"],
+          "says": "A1c 6.6% on 2026-06-15 in Fernhill's C-CDA"
+        },
+        {
+          "cite": {
+            "file": "northbay-clinical-laboratories-results.xml",
+            "line": 556
+          },
+          "date": "2026-06-15",
+          "values": ["4548-4", "6.6"],
+          "says": "the same A1c 6.6% in Northbay's document"
+        }
+      ],
+      "links": [
+        "every Fernhill-ordered result is also in Northbay's document, same specimen time and value",
+        "one blood draw, reported by the clinic and the lab"
+      ],
+      "found": "not counted twice",
+      "wrong": [
+        "you had two A1c tests on 15 June 2026 (or on any date here)",
+        "counting the copies as separate tests in a trend or a frequency (A1c checked 6 times)"
+      ],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["4548-4"]
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "trap",
+      "title": "Colorectal screening not due: normal colonoscopy in 2019",
+      "lookingFor": "no claim that colorectal screening is due or that there is no colonoscopy",
+      "evidence": [
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 569
+          },
+          "date": "2019-04-16",
+          "values": ["73761001", "Colonoscopy"],
+          "says": "Kestrel Harbor procedure: colonoscopy, 2019-04-16"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 559
+          },
+          "values": [
+            "Normal colon; no polyps",
+            "Repeat colonoscopy in 10 years"
+          ],
+          "says": "result: normal colon, no polyps; repeat in 10 years"
+        }
+      ],
+      "links": [
+        "a normal colonoscopy is good for 10 years, so the next is due 2029"
+      ],
+      "found": "not raised as due",
+      "wrong": [
+        "you are due or overdue for colorectal cancer screening",
+        "no colonoscopy on record"
+      ],
+      "notWrong": ["due in 2029 if it was normal"],
+      "pod": "visible",
+      "guideline": "USPSTF 2021: colonoscopy every 10 years after a normal one",
+      "find": [
+        {
+          "question": "pod/My procedures",
+          "where": ["73761001"]
+        }
+      ]
+    },
+    {
+      "id": "N1",
+      "kind": "near-trap",
+      "title": "You need a pneumococcal vaccine",
+      "lookingFor": "no claim that she needs a pneumococcal vaccine",
+      "evidence": [
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 533
+          },
+          "date": "2025-11-08",
+          "values": ["216", "PCV20"],
+          "says": "PCV20 given by Alder Street Pharmacy on 2025-11-08"
+        }
+      ],
+      "links": [
+        "PCV20 was given 2025-11-08, so the pneumococcal series is done"
+      ],
+      "found": "not raised",
+      "wrong": ["you need a pneumococcal vaccine"],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My immunizations",
+          "where": ["codes/cvx/216"]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "kind": "near-trap",
+      "title": "No flu shot since 2024",
+      "lookingFor": "no claim that her last flu shot was in 2024",
+      "evidence": [
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 451
+          },
+          "date": "2025-11-08",
+          "values": ["140", "Influenza"],
+          "says": "a flu shot given at the pharmacy on 2025-11-08"
+        }
+      ],
+      "links": [
+        "a flu shot was given 2025-11-08; asking about a 2026-27 flu shot is fine"
+      ],
+      "found": "not raised",
+      "wrong": ["no flu shot since 2024"],
+      "notWrong": ["asking about a 2026-27 flu shot"],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My immunizations",
+          "where": ["codes/cvx/140"]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "kind": "near-trap",
+      "title": "Kidney function declining, or CKD stage 3",
+      "lookingFor": "no claim that her kidney function is declining or that she has CKD",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 762
+          },
+          "date": "2025-09-22",
+          "values": ["75"],
+          "says": "eGFR 75 at Fernhill (Northbay carries a copy)"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 769
+          },
+          "date": "2025-10-18",
+          "values": ["63"],
+          "says": "eGFR 63 at the Saltmarsh ED"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 795
+          },
+          "date": "2026-03-02",
+          "values": ["62"],
+          "says": "eGFR 62 at Kestrel Harbor, admission"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 1040
+          },
+          "date": "2026-03-05",
+          "values": ["70"],
+          "says": "eGFR 70 at Kestrel Harbor, discharge"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 1068
+          },
+          "date": "2026-06-15",
+          "values": ["71"],
+          "says": "eGFR 71 at Fernhill"
+        }
+      ],
+      "links": [
+        "her eGFRs are 75, 63, 62, 70 and 71, none below 60",
+        "the two dips came during acute illnesses and recovered"
+      ],
+      "found": "not raised",
+      "wrong": ["your kidney function is declining", "you have CKD stage 3"],
+      "wording": [
+        {
+          "pattern": "\\bCKD\\b|chronic kidney disease|declining kidney",
+          "means": "chronic kidney disease or decline claimed"
+        }
+      ],
+      "pod": "visible",
+      "find": [
+        {
+          "question": "pod/My lab results",
+          "where": ["98979-8"]
+        }
+      ]
+    }
+  ],
+  "preExisting": [
+    {
+      "id": "P1",
+      "says": "Fernhill's 2025 medication lists (files 5, 7) omit lisinopril and amlodipine, which Kestrel Harbor prescribed: a past reconciliation gap, closed by Fernhill's 2026 lists."
+    },
+    {
+      "id": "P2",
+      "says": "Aspirin reaction severity is Mild in Kestrel Harbor's first two C-CDAs and Moderate from the third on; other sources state none."
+    },
+    {
+      "id": "P3",
+      "says": "Fluticasone is completed at Fernhill (file 7 on) with no stop date."
+    },
+    {
+      "id": "P4",
+      "says": "Claritin (brand loratadine) has no start date; taken as needed."
+    },
+    {
+      "id": "P5",
+      "says": "BP 148/92 on lisinopril (Kestrel Harbor, 2025-03-27) led to amlodipine; later readings are lower. Vital signs are not in the pod."
+    },
+    {
+      "id": "P6",
+      "says": "Two files do not import: export_cda.xml (HealthKit heart-rate CDA) and kestrel-harbor-health-summary-4.xml (cut off). Saying one is unreadable or truncated is true."
+    },
+    {
+      "id": "P7",
+      "says": "Apple Health's FHIR copies are from 2025 and still show lisinopril active (see T2)."
+    },
+    {
+      "id": "P8",
+      "says": "The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say active in the ED's document and in pod/My active medications; the kidney stone is still an active problem. Tamsulosin too: the ED lists it as active (INT, ending 2025-11-01); in the pod it is completed, because the pharmacy's record leads. Asking whether these are current is fine."
+    },
+    {
+      "id": "P9",
+      "says": "Kestrel Harbor asked for primary-care follow-up within 1-2 weeks of the 2026-03-05 discharge; the next Fernhill visit in the records is 2026-06-15. Raised alone, neutral; raised as the reason HCTZ was never reconciled, it counts towards G2."
+    },
+    {
+      "id": "P10",
+      "says": "Fernhill referred her to diabetes education on 2025-09-22 (narrative); no record of it."
+    },
+    {
+      "id": "P11",
+      "says": "Sodium 134 (L) on 2026-06-15: true and part of G2's evidence; raised alone, neutral."
+    },
+    {
+      "id": "P12",
+      "says": "NSAIDs and aspirin allergy: the ED avoided ibuprofen and ketorolac because of it. Advice to avoid NSAIDs is true, neutral."
+    },
+    {
+      "id": "P13",
+      "says": "Valid absences not planted: hepatitis B vaccine (ACIP: adults 19-59; diabetes), Tdap/Td, COVID-19, a 2026-27 flu shot, mammogram, cervical screening, one-time hepatitis C and HIV screening, a repeat lipid panel. Neutral."
+    },
+    {
+      "id": "P14",
+      "says": "More true absences, neutral: a yearly comprehensive diabetic foot exam (ADA Section 12); a repeat urinalysis to confirm that the 3+ blood seen in the ED on 2025-10-18 cleared (AUA/SUFU 2020); B12 on metformin (13 months in, not yet long-term); RSV vaccine (ACIP: ages 50-59 only with a risk condition)."
+    }
+  ],
+  "generic": [
+    "ask about your blood pressure goals",
+    "ask how your diabetes is going / your A1c target",
+    "ask whether your medicines are all still needed",
+    "ask about diet and exercise",
+    "ask whether the kidney stone passed / whether to see urology",
+    "bring all your medicine bottles to your next visit"
+  ]
+}
