@@ -2,14 +2,14 @@
 // start without passing the cap, so a run stops cleanly at it. `finish` checks, grades and scores what ran and writes
 // results.json.
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Pod } from "cascade-runtime";
-import { answerFile, checkAnswer } from "./checks.js";
+import { answerFile, checkAnswer, judgeViolations } from "./checks.js";
 import { type KeyItem, loadCase, loadKey, openPrepared } from "./cases.js";
 import { agreementOf, gradesOf, scoresOf } from "./judging.js";
-import { loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
-import { callCost, PRICE_TABLE } from "./prices.js";
+import { loadPlan, type Plan, savePlan } from "./plan.js";
+import { callCost, PRICE_TABLE, priced } from "./prices.js";
 import {
   type CallRecord,
   type Job,
@@ -76,18 +76,45 @@ export function statsOf(transcript: Transcript): {
   };
 }
 
-/** What the run itself spent: a reused job cost this run nothing. */
+/** Whether a job was handed out: it may be spending, and counts at its estimate until its transcript is found. */
+const handedOut = (job: Job) =>
+  job.status === "dispatched" ||
+  (job.status === "failed" &&
+    job.stats === undefined &&
+    job.dispatched === true);
+
+/** What the run itself spent: a reused job cost this run nothing; a job handed out without a transcript, its estimate. */
 const spentOf = (jobs: readonly Job[]) => ({
   tokens: jobs.reduce(
     (sum, it) =>
-      sum + (it.status === "reused" ? 0 : (it.stats?.tokens.total ?? 0)),
+      sum +
+      (it.status === "reused"
+        ? 0
+        : (it.stats?.tokens.total ?? (handedOut(it) ? it.estimate.tokens : 0))),
     0,
   ),
   usd: jobs.reduce(
-    (sum, it) => sum + (it.status === "reused" ? 0 : (it.stats?.cost.usd ?? 0)),
+    (sum, it) =>
+      sum +
+      (it.status === "reused"
+        ? 0
+        : (it.stats?.cost.usd ?? (handedOut(it) ? it.estimate.usd : 0))),
     0,
   ),
 });
+
+/** A tool use as a job keeps it: a written file's content left out. */
+const keptUse = ({
+  name,
+  input,
+}: {
+  name: string;
+  input: Readonly<Record<string, unknown>>;
+}) => {
+  const rest: Record<string, unknown> = { ...input };
+  delete rest.content;
+  return { name, input: rest };
+};
 
 /** The run's jobs brought up to date from their transcripts and output files, and harness jobs added as found. */
 async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
@@ -112,14 +139,42 @@ async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
     const { stats, calls } = statsOf(transcript);
     job.stats = stats;
     job.calls = calls;
+    job.toolUses = transcript.tools.map(keptUse);
     if (job.role === "harness") continue;
+    if (
+      job.role === "judge" &&
+      job.workdir !== undefined &&
+      job.verdict !== undefined
+    ) {
+      const written = join(job.workdir, "verdict.json");
+      if (existsSync(written))
+        await copyFile(written, join(plan.folder, job.verdict));
+    }
     const output = job.role === "judge" ? job.verdict : job.answer;
-    job.status =
-      output !== undefined && existsSync(join(plan.folder, output))
-        ? "done"
-        : "running";
+    const wrote = output !== undefined && existsSync(join(plan.folder, output));
+    const ran = stats.models.map(priced);
+    if (wrote && !ran.includes(priced(job.model))) {
+      job.status = "failed";
+      job.reason = `ran ${ran.join(", ")}, not the ${job.model} its inputs' hash names`;
+    } else job.status = wrote ? "done" : "running";
   }
   return found;
+}
+
+/**
+ * Jobs handed out at an earlier meter that have not finished: the meter runs between waves, so a job with no
+ * transcript, or one that wrote nothing, failed in its wave. It is never handed out again.
+ */
+function closeWave(plan: Plan): void {
+  for (const job of plan.jobs) {
+    if (job.status === "dispatched") {
+      job.status = "failed";
+      job.reason = "no transcript after its wave";
+    } else if (job.status === "running") {
+      job.status = "failed";
+      job.reason = "it wrote no output in its wave";
+    }
+  }
 }
 
 function fits(
@@ -139,10 +194,11 @@ function fits(
 export async function recordRun(given: string) {
   const plan = await loadPlan(runFolder(given));
   await refreshed(plan);
+  closeWave(plan);
   const spent = spentOf(plan.jobs);
   const running = plan.jobs.filter((it) => it.status === "running");
   const pending = plan.jobs.filter((it) => it.status === "pending");
-  const room = Math.max(0, (plan.config.concurrency ?? 4) - running.length);
+  const room = plan.config.concurrency ?? 4;
   const next: Job[] = [];
   const committed = { ...spent };
   for (const job of pending) {
@@ -151,6 +207,10 @@ export async function recordRun(given: string) {
     next.push(job);
     committed.tokens += job.estimate.tokens;
     committed.usd += job.estimate.usd;
+  }
+  for (const job of next) {
+    job.status = "dispatched";
+    job.dispatched = true;
   }
   await savePlan(plan);
   return {
@@ -168,6 +228,10 @@ export async function recordRun(given: string) {
         alias: job.alias,
         ...(job.effort === undefined ? {} : { effort: job.effort }),
         tag: job.tag,
+        promptPath:
+          job.workdir === undefined
+            ? join(plan.folder, job.prompt!)
+            : join(job.workdir, "prompt.txt"),
         prompt: await readFile(join(plan.folder, job.prompt!), "utf8"),
       })),
     ),
@@ -210,7 +274,7 @@ export async function sliceOf(
         Object.values(row).some((value) => value.includes(text)),
       ),
     );
-    for (const row of rows.slice(0, 3)) {
+    for (const row of rows.slice(0, 6)) {
       const entry = row.entry;
       if (nodes.length >= 12) break;
       if (entry === undefined || nodes.some((it) => it.id === entry)) continue;
@@ -262,7 +326,7 @@ export async function sliceOf(
 export async function finish(given: string, log: (line: string) => void) {
   const folder = runFolder(given);
   const plan = await loadPlan(folder);
-  const transcripts = await refreshed(plan);
+  await refreshed(plan);
   const spentBefore = spentOf(plan.jobs);
   for (const job of plan.jobs)
     if (job.status === "pending" || job.status === "running") {
@@ -276,7 +340,6 @@ export async function finish(given: string, log: (line: string) => void) {
     }
   await savePlan(plan);
   const toolCalls = await toolCallsOf(folder);
-  const past = await pastJobs();
   const checks: Record<string, SubjectChecks> = {};
   const answers: Record<string, unknown> = {};
   const slices: Slice[] = [];
@@ -301,28 +364,13 @@ export async function finish(given: string, log: (line: string) => void) {
           answer = { unparsed: String(error) };
         }
         answers[job.id] = answer;
-        const earlier =
-          job.status === "reused"
-            ? past.find((it) => `${it.run}/${it.job.id}` === job.reusedFrom)
-            : undefined;
-        if (earlier !== undefined) {
-          const kept = JSON.parse(
-            await readFile(join(earlier.folder, "results.json"), "utf8"),
-          ) as Results;
-          const copied = kept.checks[earlier.job.id];
-          if (copied !== undefined) {
-            checks[job.id] = copied;
-            continue;
-          }
-        }
         checks[job.id] = await checkAnswer({
           job,
           answer,
-          answerPath: path,
+          folder,
           prepared,
           reading: found.reading,
           key,
-          transcript: transcripts.get(job.tag),
           toolCalls,
           pod: job.arm === "pod" ? pod : undefined,
         });
@@ -331,6 +379,14 @@ export async function finish(given: string, log: (line: string) => void) {
       await pod.close();
     }
   }
+  const judgeDiscipline: Results["judgeDiscipline"] = Object.fromEntries(
+    plan.jobs
+      .filter((it) => it.role === "judge" && it.toolUses !== undefined)
+      .map((it) => {
+        const violations = judgeViolations(it, it.toolUses ?? []);
+        return [it.id, { ok: violations.length === 0, violations }];
+      }),
+  );
   const grades = await gradesOf(plan);
   const scores = await scoresOf(plan, grades, answers);
   const agreement = await agreementOf(plan, grades);
@@ -390,6 +446,7 @@ export async function finish(given: string, log: (line: string) => void) {
     jobs: plan.jobs,
     toolCalls,
     checks,
+    judgeDiscipline,
     answers,
     grades,
     scores,

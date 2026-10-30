@@ -32,7 +32,8 @@ It meters, starts the jobs the cap allows in waves, plans and runs the blind jud
 2. For each `next` job, start one Agent (subagent_type general-purpose, `model` the job's `alias`) whose prompt is the
    job's `prompt` text exactly as the meter gives it (its first line is the job's eval-tag, which is how the harness
    finds its transcript). Start them together, in the background, and wait for every one.
-3. Repeat from 1 until `next` is empty and nothing is `running`.
+3. When every agent of the wave has finished (the meter runs between waves: a job it handed out that left no
+   transcript then fails), repeat from 1 until `next` is empty.
 4. `CLI judges --run <run>` writes the blind packets and plans the judges (none in a smoke run); repeat 1 to 3 for them.
 5. `CLI finish --run <run>`: the program checks, grades, scores, `results.json` (validated against
    `schemas/results.schema.json`) and the site in `runs/<run>/site/`.

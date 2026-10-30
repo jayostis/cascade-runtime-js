@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
+  appendFile,
   copyFile,
   mkdir,
   readdir,
@@ -28,6 +29,7 @@ import { callCost } from "./prices.js";
 import { type Arm, PROMPT_VERSIONS, subjectPrompt } from "./prompts.js";
 import type { Job, Results } from "./results.js";
 import { valid } from "./schemas.js";
+import { uncommittedIn } from "./history.js";
 
 export interface Config {
   readonly tier: "smoke" | "standard" | "full" | "custom";
@@ -73,6 +75,7 @@ const POD_PACKAGES = [
   "packages/apple-health",
   "packages/ccda-download",
   "packages/fhir-pull",
+  "packages/evals/src/pod-client.ts",
 ];
 
 const REPO = dirname(dirname(PACKAGE));
@@ -130,7 +133,10 @@ interface Priors {
   }[];
 }
 
-/** Every finished job of every run kept here and in history, for reuse and for estimates. */
+/**
+ * Every finished job of every run kept here and in history, for reuse and for estimates; never one of a run planned
+ * from uncommitted work, which no commit reproduces.
+ */
 export async function pastJobs(): Promise<
   { run: string; folder: string; job: Job }[]
 > {
@@ -146,6 +152,7 @@ export async function pastJobs(): Promise<
       const path = join(root, name, "results.json");
       if (!existsSync(path)) continue;
       const results = JSON.parse(await readFile(path, "utf8")) as Results;
+      if (uncommittedIn(results).length > 0) continue;
       for (const job of results.jobs)
         if (job.status === "done" && job.stats !== undefined)
           found.push({ run: results.run.id, folder: join(root, name), job });
@@ -236,6 +243,29 @@ export async function planRun(
     packages: packageTrees(),
     components: (await components()).resolved,
   };
+  const unpriced = [...config.subjects, ...config.judges].filter(
+    (model) =>
+      callCost(model, {
+        input: 0,
+        cacheCreation: 0,
+        cacheRead: 0,
+        output: 0,
+      }) === undefined,
+  );
+  if (unpriced.length > 0)
+    throw new Error(
+      `prices.json prices no ${unpriced.join(", ")}: a model with no price would leave the dollar cap unchecked`,
+    );
+  const dirty =
+    harness.uncommitted > 0 ||
+    Object.values(podCommits.packages).some((tree) =>
+      tree.endsWith("+dirty"),
+    ) ||
+    podCommits.components.some((it) => (it.uncommitted ?? 0) > 0);
+  if (dirty)
+    log(
+      `${id}: planned from uncommitted work, so it reuses nothing and cannot be recorded into history`,
+    );
   const cli = fileURLToPath(new URL("./cli.js", import.meta.url));
   const cases: Plan["cases"][number][] = [];
   const jobs: Job[] = [];
@@ -306,10 +336,13 @@ export async function planRun(
             answer: `answers/${jobId}.json`,
             prompt: `prompts/${jobId}.txt`,
           };
-          const earlier = past.find(
-            (it) =>
-              it.job.inputsHash === inputsHash && it.job.answer !== undefined,
-          );
+          const earlier = dirty
+            ? undefined
+            : past.find(
+                (it) =>
+                  it.job.inputsHash === inputsHash &&
+                  it.job.answer !== undefined,
+              );
           if (
             earlier !== undefined &&
             existsSync(join(earlier.folder, earlier.job.answer!))
@@ -320,7 +353,21 @@ export async function planRun(
               reusedFrom: `${earlier.run}/${earlier.job.id}`,
               stats: earlier.job.stats,
               calls: earlier.job.calls,
+              toolUses: earlier.job.toolUses,
             });
+            const kept = JSON.parse(
+              await readFile(join(earlier.folder, "results.json"), "utf8"),
+            ) as Results;
+            const calls = kept.toolCalls.filter(
+              (it) => it.job === earlier.job.id,
+            );
+            if (calls.length > 0)
+              await appendFile(
+                join(folder, "tool-calls.jsonl"),
+                calls
+                  .map((it) => `${JSON.stringify({ ...it, job: jobId })}\n`)
+                  .join(""),
+              );
           }
           await mkdir(join(folder, "prompts"), { recursive: true });
           await writeFile(join(folder, job.prompt!), prompt);

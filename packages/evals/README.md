@@ -37,8 +37,18 @@ then the skill's loop, or the workflow, runs the jobs the cap allows and `finish
 `runs/<run>/site/`. `node packages/evals/dist/src/cli.js` with no command lists every command.
 
 - **Budgets.** Every job has an estimate before it runs: the mean of recorded runs of the same case, arm and model,
-  else the prior. No job starts that would pass the cap; the run stops cleanly and `results.json` says which were
-  held back.
+  else the prior. The meter runs between waves and hands out only jobs that fit under the cap, counting each job in
+  flight at its estimate until its transcript is found. It cannot stop a job already running, so the cap holds back new
+  jobs; a job handed out that leaves no transcript, or writes nothing, fails and is never handed out again. A model
+  `prices.json` does not price is refused at planning, since it would leave the dollar cap unchecked. The run stops
+  cleanly and `results.json` says which jobs were held back.
+- **Checks.** A fact names the field it relies on (value, unit, status, code, name, id, a date of a kind, or quoted
+  words), and the citation checker compares each with that field of the cited record only: a FHIR resource, a C-CDA
+  entry or narrative row, or a pod entry. An absence names what it looks for; a pod's is backed only by a query that ran,
+  answered whole and returned nothing matching, a records one only by the files it names, each read whole, none holding
+  it. Every check is recomputed at `finish`, a reused job's too.
+- **Judges.** Each judge reads one packet, in an order of its own, in a folder outside the run that holds only its
+  packet and prompt; a reused verdict keeps the letters it was written to.
 - **Reuse.** A job whose inputs are unchanged is not run again: the case, its downloads, the model, the prompt, and for
   the pod arm the runtime's packages and the components it resolves; for a judge, the answers and the key. The records
   arm reruns only when its case, model or prompt changes. Reuse reads `runs/` and `history/`.
