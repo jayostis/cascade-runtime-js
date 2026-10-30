@@ -1,26 +1,48 @@
-// Blind judging: each case's answers stripped of what would say how they reached the records, shuffled under
-// letters, and given with the key to each judge; the verdicts turned back into grades per answer, scores, and the
-// judges' agreement.
+// Blind judging: each case's answers stripped of what would say how they reached the records, in an order of each
+// judge's own, given with the key to each judge in a folder of its own that holds nothing else; the verdicts turned
+// back into grades per answer through the letters that judge saw, scores, and the judges' agreement.
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
 import type { Answer } from "./checks.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
-import { PROMPT_VERSIONS, judgePrompt } from "./prompts.js";
-import { SCHEMAS } from "./paths.js";
+import { WORK } from "./paths.js";
+import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
 import { callCost } from "./prices.js";
 import type { Grade, Job, Score } from "./results.js";
 import { runFolder } from "./results.js";
 import { errorsOf } from "./schemas.js";
 
-/** Words and names that would tell a judge how an answer reached the records. */
-const REVEALING =
-  /\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|bundle\.json|pull\.json|export\.xml|entry IRI|lead (?:record|member)|non-lead|\d+ rows?)\b|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|line \d+/gi;
+/**
+ * Words that would tell a judge how an answer reached the records: tool and file names, the pod's own terms, row and
+ * result counts, retrieval wording. They are taken out without a mark, since a mark would itself say which arm named
+ * its tools.
+ */
+const REVEALING = new RegExp(
+  [
+    String.raw`\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|lab_series|find_changes|finding_rows|list_pods)\b`,
+    String.raw`\b(?:entry|entries|lead (?:record|member)|non-lead|bundles?|resources?|FHIR|C-CDA|XML|JSON|downloads?|exports?|pulls?)\b`,
+    String.raw`\b\d+ (?:rows?|results?|records?|items?)\b`,
+    String.raw`\b(?:records? )?retriev\w*(?: [\d-]+(?:,? (?:and )?[\d-]+)*)?`,
+    String.raw`\b(?:Observation|Condition|MedicationStatement|MedicationRequest|Procedure|Immunization|DiagnosticReport|Patient)s?\b`,
+    String.raw`cascade:\S+|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|\bline \d+`,
+  ].join("|"),
+  "gi",
+);
 
-export const scrubbed = (text: string) => text.replace(REVEALING, "[…]");
+export const scrubbed = (text: string) =>
+  text
+    .replace(REVEALING, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s+([,.;:)])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
-/** An answer as a judge reads it: the questions, their facts as sources and dates, absences, knowledge; no citations. */
+/**
+ * An answer as a judge reads it: the questions, their facts as provider, date and words, what each says is absent
+ * (never what it looked through, which differs by arm), and the knowledge; no citations.
+ */
 export function blinded(answer: Answer): string {
   return answer.questions
     .map((q) =>
@@ -31,10 +53,7 @@ export function blinded(answer: Answer): string {
           (f) =>
             `- Fact: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`,
         ),
-        ...q.absences.map(
-          (a) =>
-            `- Absent: ${scrubbed(a.what)} (looked through: ${scrubbed(a.coverage)})`,
-        ),
+        ...q.absences.map((a) => `- Absent: ${scrubbed(a.what)}`),
         `- Knowledge: ${scrubbed(q.knowledge.says)}${q.knowledge.guideline === undefined ? "" : ` (${scrubbed(q.knowledge.guideline)})`}`,
         `- Confidence: ${q.confidence}`,
       ].join("\n"),
@@ -51,9 +70,16 @@ const labelAt = (at: number) =>
 const answered = (job: Job) =>
   job.role === "subject" && (job.status === "done" || job.status === "reused");
 
+/** The key as a judge reads it: without where the pod holds each item or how to find it there. */
+const judgesKey = (key: Key) => ({
+  ...key,
+  items: key.items.map(({ pod: _pod, find: _find, ...item }) => item),
+});
+
 /**
- * Writes each case's blind packet and plans its judges, one per model the config names: a judge's inputs are the
- * answers, the key, its model and its prompt, and a judge with the same inputs in an earlier run is reused.
+ * Writes a blind packet for each judge, in an order of its own, in a folder of its own outside the run, and plans the
+ * judge. A judge's inputs are its packet (the answers, their order and the key), its model and its prompt; a judge with
+ * the same inputs in an earlier run is reused with that run's verdict and the letters that verdict was written to.
  */
 export async function judgePackets(given: string) {
   const folder = runFolder(given);
@@ -70,67 +96,60 @@ export async function judgePackets(given: string) {
         existsSync(join(folder, it.answer!)),
     );
     if (subjects.length === 0) continue;
-    const texts = new Map<string, string>();
-    for (const job of subjects)
-      texts.set(job.id, await readFile(join(folder, job.answer!), "utf8"));
-    const order = [...subjects].sort((a, b) =>
-      sha256(`${plan.run}/${a.id}`).localeCompare(
-        sha256(`${plan.run}/${b.id}`),
-      ),
-    );
-    const labels: Record<string, string> = {};
-    order.forEach((job, at) => (labels[labelAt(at)] = job.id));
-    const { key, sha256: keySha, prose } = await loadKey(caseId);
+    const bodies = new Map<string, string>();
+    for (const job of subjects) {
+      let body: string;
+      try {
+        body = blinded(
+          JSON.parse(
+            await readFile(join(folder, job.answer!), "utf8"),
+          ) as Answer,
+        );
+      } catch {
+        body = "(the answer is not valid JSON)";
+      }
+      bodies.set(job.id, body);
+    }
+    const { key, prose } = await loadKey(caseId);
     const found = await loadCase(caseId);
-    const packet = [
-      `# Blind packet: ${found.person.name}, as of ${found.today}`,
-      "## The key, prose half",
-      prose,
-      "## The key, machine-readable half",
-      "```json",
-      JSON.stringify(
-        {
-          ...key,
-          items: key.items.map(({ pod: _pod, find: _find, ...item }) => item),
-        },
-        null,
-        2,
-      ),
-      "```",
-      "## The answers",
-      ...Object.entries(labels).map(([label, id]) => {
-        let body: string;
-        try {
-          body = blinded(JSON.parse(texts.get(id)!) as Answer);
-        } catch {
-          body = "(the answer is not valid JSON)";
-        }
-        return `## Answer ${label}\n\n${body}`;
-      }),
-    ].join("\n\n");
-    const packetPath = join(folder, "judges", `${caseId}.md`);
-    await writeFile(packetPath, packet);
-    const answersHash = sha256(
-      [...texts.entries()]
-        .map(([, text]) => sha256(text))
-        .sort()
-        .join(),
-    );
     for (const [at, model] of plan.config.judges.entries()) {
       const id = `${caseId}.judge.${model.replace(/^claude-/, "")}.j${at + 1}`;
       if (plan.jobs.some((it) => it.id === id)) continue;
-      const verdict = `judges/${id}.json`;
+      const seed = `${caseId}/${model}/${at}`;
+      const order = [...subjects].sort((a, b) =>
+        sha256(`${seed}/${a.id}`).localeCompare(sha256(`${seed}/${b.id}`)),
+      );
+      const labels: Record<string, string> = {};
+      order.forEach((job, place) => (labels[labelAt(place)] = job.id));
+      const packet = [
+        `# Blind packet: ${found.person.name}, as of ${found.today}`,
+        "## The key, prose half",
+        prose,
+        "## The key, machine-readable half",
+        "```json",
+        JSON.stringify(judgesKey(key), null, 2),
+        "```",
+        "## The answers",
+        ...Object.entries(labels).map(
+          ([label, job]) => `## Answer ${label}\n\n${bodies.get(job)}`,
+        ),
+      ].join("\n\n");
+      const packetSha256 = sha256(packet);
+      const workdir = join(WORK, "judging", plan.run, id);
+      await rm(workdir, { recursive: true, force: true, maxRetries: 5 });
+      await mkdir(workdir, { recursive: true });
+      const packetPath = join(workdir, "packet.md");
+      await writeFile(packetPath, packet);
       const inputsHash = sha256(
         JSON.stringify({
           role: "judge",
-          answersHash,
-          keySha,
+          packetSha256,
           model,
           prompt: PROMPT_VERSIONS.judge,
-          at,
         }),
       );
       const tag = `${plan.run}/${id}`;
+      const verdict = `judges/${id}.json`;
       const job: Job = {
         id,
         role: "judge",
@@ -144,10 +163,15 @@ export async function judgePackets(given: string) {
         verdict,
         prompt: `prompts/${id}.txt`,
         labels,
+        workdir,
+        packet: packetPath,
+        packetSha256,
       };
       const earlier = past.find(
         (it) =>
-          it.job.inputsHash === inputsHash && it.job.verdict !== undefined,
+          it.job.inputsHash === inputsHash &&
+          it.job.verdict !== undefined &&
+          it.job.labels !== undefined,
       );
       if (
         earlier !== undefined &&
@@ -160,21 +184,21 @@ export async function judgePackets(given: string) {
         Object.assign(job, {
           status: "reused",
           reusedFrom: `${earlier.run}/${earlier.job.id}`,
+          labels: earlier.job.labels,
           stats: earlier.job.stats,
           calls: earlier.job.calls,
+          toolUses: earlier.job.toolUses,
         });
       }
-      await writeFile(
-        join(folder, job.prompt!),
-        judgePrompt({
-          tag,
-          pronoun: found.person.pronoun,
-          today: found.today,
-          packet: packetPath,
-          verdict: join(folder, verdict),
-          schema: join(SCHEMAS, "verdict.schema.json"),
-        }),
-      );
+      const prompt = judgePrompt({
+        tag,
+        pronoun: found.person.pronoun,
+        today: found.today,
+        packet: packetPath,
+        verdict: join(workdir, "verdict.json"),
+      });
+      await writeFile(join(folder, job.prompt!), prompt);
+      await writeFile(join(workdir, "prompt.txt"), prompt);
       plan.jobs.push(job);
       planned.push(job);
     }
@@ -201,7 +225,7 @@ export async function judgePackets(given: string) {
   };
 }
 
-/** A judge's estimate: past judges of the case and model, else the packet read once and a verdict written. */
+/** A judge's estimate: past judges of the case and model, else the packet read a few times and a verdict written. */
 function judgeEstimate(
   model: string,
   packet: string,
