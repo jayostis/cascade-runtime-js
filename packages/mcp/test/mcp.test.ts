@@ -78,7 +78,10 @@ test("cascade-mcp on stdio offers the read tools, and a question's rows each nam
     question: "pod/My active allergies",
   });
   const { rows } = value as { rows: Record<string, string>[] };
-  assert.ok(rows.length > 0, "Alex's first export holds an allergy");
+  assert.ok(
+    rows.length > 0,
+    "Alex's pod holds an allergy once J1 judges the first export about the person",
+  );
   for (const row of rows) assert.notEqual(new URL(row.entry!).hash, "");
 });
 

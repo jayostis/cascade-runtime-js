@@ -1,4 +1,4 @@
-import { Refusal } from "@cascade-runtime/runtime";
+import { Refusal } from "@cascade-runtime/runtime/refusal";
 import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
 

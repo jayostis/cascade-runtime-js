@@ -9,7 +9,7 @@ import {
   type ToolInput,
 } from "cascade-runtime/tools";
 
-export const WARNING =
+const WARNING =
   "A hosted client (Claude Desktop, VS Code with a hosted model, any chat service) sends what these tools return to its provider. The example and story pods are made up; a person's own pod is theirs to decide about before it is asked here.";
 
 const INSTRUCTIONS = `${WARNING}

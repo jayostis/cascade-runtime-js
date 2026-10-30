@@ -7,7 +7,7 @@ import { argv, exit, stderr, stdin } from "node:process";
 import { parseArgs } from "node:util";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { configureTables } from "cascade-runtime";
-import { podReads, podsIn } from "cascade-runtime/tools";
+import { podReads, podsIn } from "cascade-runtime/tools/node";
 import { podServer } from "./server.js";
 
 const USAGE = `usage: cascade-mcp --pods <folder> [--check-tables]

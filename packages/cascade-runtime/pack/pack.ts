@@ -443,7 +443,7 @@ function releaseNotes(
     `npm install ${address}`,
     "```",
     "",
-    "With cascade-mcp, an MCP server over a folder of pods (`npx cascade-mcp --pods <folder>`):",
+    "With cascade-mcp, an MCP server over a folder of pods: install both in one `npm install`, then run `npx --no-install cascade-mcp --pods <folder>` in that folder.",
     "",
     "```sh",
     `npm install ${address} ${mcp}`,

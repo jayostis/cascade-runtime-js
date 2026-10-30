@@ -4,9 +4,16 @@ An [MCP](https://modelcontextprotocol.io) server on stdio over a folder of Casca
 any MCP client to start. It offers the tools of `cascade-runtime/tools`, and every one of them reads: it never writes a
 pod, and never opens an encrypted one.
 
+Install it with the cascade-runtime tarball of the same build, both in one `npm install`
+(cascade-mcp names the runtime by that build's version, which no registry holds), then run
+it in that folder:
+
 ```sh
-npx cascade-mcp --pods <folder>
+npm install <cascade-runtime tarball> <cascade-mcp tarball>
+npx --no-install cascade-mcp --pods <folder>
 ```
+
+`--no-install` keeps npx from fetching whatever npm's registry calls `cascade-mcp`.
 
 `<folder>` holds the pods, one folder each, as an app keeps them (`pods/` in a starter app). The reference tables the
 folder holds (`.tables/`) are used as they are; `--check-tables` checks their feeds for newer tables, a network call,

@@ -214,7 +214,9 @@ folder on Linux, Windows and macOS and runs the developer story there, and every
 merge to `main` attaches it to the pre-release `build-<commit>` under
 [releases](https://github.com/jayostis/cascade-runtime-js/releases), from which
 an app installs it by its URL. `cascade-mcp`, packed beside it, depends on it at
-the same commit: `npm install` the two together, then `npx cascade-mcp --pods <folder>`.
+the same commit: install the two tarballs in one `npm install`, then run
+`npx --no-install cascade-mcp --pods <folder>` in that folder. `--no-install` matters:
+without it, npx run elsewhere fetches whatever npm's registry calls `cascade-mcp`.
 
 ### Which version of each component a run uses
 
