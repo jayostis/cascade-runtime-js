@@ -1,4 +1,8 @@
-import { ccdaContents, RESOURCE_TYPE } from "@cascade-runtime/fhir-pull";
+import {
+  ccdaContents,
+  isCdaDocument,
+  RESOURCE_TYPE,
+} from "@cascade-runtime/fhir-pull";
 import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
@@ -303,9 +307,12 @@ export async function pull(
       if (typeof attachment.data === "string") {
         const bytes = decoded(attachment.data);
         documents.push(
-          bytes !== undefined && isCcda(bytes)
-            ? { ...said, retrievedFrom: fullUrl, bytes }
-            : { ...said, notRead: "its inline data is no C-CDA document" },
+          bytes !== undefined && isCcda(bytes) && isCdaDocument(bytes)
+            ? { ...said, retrievedFrom: iriSafe(new URL(fullUrl).href), bytes }
+            : {
+                ...said,
+                notRead: "its inline data is no well-formed C-CDA document",
+              },
         );
         continue;
       }
@@ -357,9 +364,12 @@ export async function pull(
       const read =
         answer.status !== 200
           ? { notRead: `the hospital answered ${answer.status}` }
-          : bytes !== undefined && isCcda(bytes)
+          : bytes !== undefined && isCcda(bytes) && isCdaDocument(bytes)
             ? { retrievedFrom: at.href, bytes }
-            : { notRead: "the hospital's answer is no C-CDA document" };
+            : {
+                notRead:
+                  "the hospital's answer is no well-formed C-CDA document",
+              };
       readAt.set(at.href, read);
       documents.push({ ...said, ...read });
     }

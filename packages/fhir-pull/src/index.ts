@@ -1,4 +1,6 @@
-import { ccdaDownload } from "@cascade-runtime/ccda-download";
+import { ccdaDownload, isCdaDocument } from "@cascade-runtime/ccda-download";
+
+export { isCdaDocument };
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -163,16 +165,14 @@ export function pullFiles(
     throw new TypeError(`a pull is saved under one folder name, not ${name}`);
   const { bundle, documents = [], ...rest } = pull;
   const files: [string, Uint8Array][] = [];
-  const paths = new Map<Uint8Array, string>();
+  const same = (a: Uint8Array, b: Uint8Array): boolean =>
+    a.length === b.length && a.every((byte, at) => byte === b[at]);
   const saved = documents.map(({ bytes, ...document }) => {
     if (bytes === undefined) return document;
-    let path = paths.get(bytes);
-    if (path === undefined) {
-      path = `document-${files.length + 1}.xml`;
-      paths.set(bytes, path);
-      files.push([`${name}/${path}`, bytes]);
-    }
-    return { ...document, path };
+    const at = files.findIndex(([, held]) => same(held, bytes));
+    if (at >= 0) return { ...document, path: `document-${at + 1}.xml` };
+    files.push([`${name}/document-${files.length + 1}.xml`, bytes]);
+    return { ...document, path: `document-${files.length}.xml` };
   });
   const described = { ...rest, ...(saved.length > 0 && { documents: saved }) };
   checked(described);

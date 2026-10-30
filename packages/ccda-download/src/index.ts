@@ -211,6 +211,15 @@ function headerOf(bytes: Uint8Array): Header | undefined {
   return header;
 }
 
+/** Whether the bytes are a well-formed CDA ClinicalDocument whose header this importer reads, as the Bridge must. */
+export function isCdaDocument(bytes: Uint8Array): boolean {
+  try {
+    return headerOf(bytes) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * A CDA time, `YYYYMMDD[hh[mm[ss[.f]]]][±hhmm]`, as an `xsd:dateTime` in UTC where it states an hour and its offset, or
  * else as the `xsd:date` it falls on; undefined where it is no such time or names no such day.

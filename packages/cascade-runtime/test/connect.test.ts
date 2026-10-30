@@ -406,7 +406,7 @@ test("a pull reads the C-CDA document each DocumentReference of one holds, from 
         "Binary/not-a-ccd",
         undefined,
         undefined,
-        "the hospital's answer is no C-CDA document",
+        "the hospital's answer is no well-formed C-CDA document",
       ],
     ],
   );
@@ -557,8 +557,8 @@ test("a C-CDA document redirected to another host, or at a url with a user name,
   const saved = pullFiles(result, "north");
   assert.deepEqual(
     [...saved.keys()].filter((path) => path.includes("document-")),
-    ["north/document-1.xml", "north/document-2.xml"],
-    "one file for the document two DocumentReferences name",
+    ["north/document-1.xml"],
+    "one file for the one document three DocumentReferences name",
   );
 });
 
