@@ -1,0 +1,31 @@
+{
+  "name": "cascade-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An MCP server on stdio over a folder of Cascade pods: the read-only tools of cascade-runtime/tools.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "cascade-mcp": "dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/server.d.ts",
+      "default": "./dist/src/server.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "cascade-runtime": "0.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1"
+  }
+}
