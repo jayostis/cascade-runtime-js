@@ -3,7 +3,6 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Pod } from "cascade-runtime";
 import {
   type Absence,
   checkAbsence,
@@ -53,7 +52,12 @@ export async function checkKey(id: string, log: (line: string) => void) {
 }
 
 /** The rows `entry/What it shows` gives of one entry: each field, its value and the record it is from. */
-export function entryRows(pod: Pod) {
+/** What reads a pod's questions: the pod itself, or a pinned build of the runtime asked in its own process. */
+export interface Asker {
+  ask(question: string): Promise<readonly Readonly<Record<string, string>>[]>;
+}
+
+export function entryRows(pod: Asker) {
   let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
   return async (entry: string) => {
     all ??= pod.ask("entry/What it shows");
@@ -244,7 +248,7 @@ export async function checkAnswer(options: {
   reading: readonly string[];
   key: Key;
   toolCalls: readonly ToolCallRecord[];
-  pod: Pod | undefined;
+  pod: Asker | undefined;
 }): Promise<SubjectChecks> {
   const { job, prepared, key, folder } = options;
   const uses = job.toolUses ?? [];

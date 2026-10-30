@@ -29,6 +29,7 @@ import { callCost } from "./prices.js";
 import { type Arm, PROMPT_VERSIONS, subjectPrompt } from "./prompts.js";
 import type { Job, Results } from "./results.js";
 import { valid } from "./schemas.js";
+import { environment } from "./pinned.js";
 import { uncommittedIn } from "./history.js";
 
 export interface Config {
@@ -41,6 +42,8 @@ export interface Config {
   readonly judges: readonly string[];
   readonly cap: { readonly tokens?: number; readonly usd?: number };
   readonly concurrency?: number;
+  /** Each repository's commit, or "main" for its head when planned: the pod arm runs on these, not this checkout. */
+  readonly pins?: Readonly<Record<string, string>>;
 }
 
 export interface Plan {
@@ -239,10 +242,17 @@ export async function planRun(
   const priors = JSON.parse(await readFile(PRIORS, "utf8")) as Priors;
   const past = await pastJobs();
   const harness = harnessCommit();
-  const podCommits = {
-    packages: packageTrees(),
-    components: (await components()).resolved,
-  };
+  const env =
+    config.pins === undefined ? undefined : await environment(config.pins, log);
+  const podCommits =
+    env === undefined
+      ? { packages: packageTrees(), components: (await components()).resolved }
+      : {
+          packages: {
+            "cascade-runtime-js": env.commits["cascade-runtime-js"]!,
+          },
+          components: env.components,
+        };
   const unpriced = [...config.subjects, ...config.judges].filter(
     (model) =>
       callCost(model, {
@@ -271,7 +281,7 @@ export async function planRun(
   const jobs: Job[] = [];
   for (const caseId of ids) {
     const found = await loadCase(caseId);
-    const prepared = await prepare(caseId, log);
+    const prepared = await prepare(caseId, log, env);
     const { sha256: keySha256 } = await loadKey(caseId);
     cases.push({
       id: caseId,

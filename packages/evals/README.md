@@ -57,6 +57,15 @@ then the skill's loop, or the workflow, runs the jobs the cap allows and `finish
   API's own (`usageSource: transcript`, cost `exact`). A runner on the Claude API with MCP tool use, when there is a
   key, fills the same fields from its responses (`usageSource: api`).
 
+## Pinned runs
+
+A config's `pins` names a commit (or `main`, its head when planned) for each repository the pod arm depends on:
+cascade-vocabulary, both adapters, cascade-bridge-rs, cascade-bridge-spec (recorded; the runtime does not read it) and
+cascade-runtime-js, which builds the pods and serves cascade-mcp. The run clones them side by side under
+`work/pinned/<key>/`, installs and builds that runtime once (several minutes), makes each case's pod and runs its
+cascade-mcp there, and records the commits in `results.json`; reuse keys on them. `configs/baseline-pre-w3.json` is
+the standard tier at the commits before wave 3, `configs/baseline.json` the same on every repository's main (#551).
+
 ## Recording a run, and the habit
 
 `runs/` is gitignored: a run's transcripts, prompts and site stay on the machine that ran it.

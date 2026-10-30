@@ -7,35 +7,57 @@
   "required": ["tier", "cases", "arms", "subjects", "repeats", "judges", "cap"],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "tier": { "enum": ["smoke", "standard", "full", "custom"] },
+    "$schema": {
+      "type": "string"
+    },
+    "tier": {
+      "enum": ["smoke", "standard", "full", "custom"]
+    },
     "cases": {
       "oneOf": [
-        { "const": "all" },
-        { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        {
+          "const": "all"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
       ]
     },
     "arms": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "enum": ["pod", "records"] }
+      "items": {
+        "enum": ["pod", "records"]
+      }
     },
     "subjects": {
       "type": "array",
       "minItems": 1,
       "description": "The subject models, by API model id; every arm and case runs on each.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "effort": {
       "enum": ["low", "medium", "high", "xhigh", "max"],
       "description": "The subjects' reasoning effort; left out, each model's default."
     },
-    "repeats": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
     "judges": {
       "type": "array",
       "description": "One judge per entry, by API model id; empty for programs only. Two or more give their agreement.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "cap": {
       "type": "object",
@@ -43,10 +65,52 @@
       "minProperties": 1,
       "additionalProperties": false,
       "properties": {
-        "tokens": { "type": "integer", "minimum": 1 },
-        "usd": { "type": "number", "exclusiveMinimum": 0 }
+        "tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
-    "concurrency": { "type": "integer", "minimum": 1, "maximum": 16 }
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "pins": {
+      "type": "object",
+      "description": "Each repository the pod arm depends on, at a commit (or \"main\" for its head when the run is planned): the run clones them side by side, builds that runtime, and makes its pods and runs its cascade-mcp there. cascade-bridge-spec is recorded; the runtime does not read it.",
+      "required": ["cascade-runtime-js", "cascade-vocabulary"],
+      "additionalProperties": false,
+      "properties": {
+        "cascade-vocabulary": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        },
+        "cascade-bridge-adapter-fhir-r4": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        },
+        "cascade-bridge-adapter-ccda": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        },
+        "cascade-bridge-rs": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        },
+        "cascade-bridge-spec": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        },
+        "cascade-runtime-js": {
+          "type": "string",
+          "pattern": "^(main|[0-9a-f]{7,40})$"
+        }
+      }
+    }
   }
 }

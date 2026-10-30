@@ -4,9 +4,21 @@
 import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Pod } from "cascade-runtime";
-import { answerFile, checkAnswer, judgeViolations } from "./checks.js";
-import { type KeyItem, loadCase, loadKey, openPrepared } from "./cases.js";
+import {
+  answerFile,
+  type Asker,
+  checkAnswer,
+  judgeViolations,
+} from "./checks.js";
+import { type Environment, pinnedPod } from "./pinned.js";
+import {
+  type Key,
+  type KeyItem,
+  loadCase,
+  loadKey,
+  openPrepared,
+  type Prepared,
+} from "./cases.js";
 import { agreementOf, gradesOf, scoresOf } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
 import { callCost, PRICE_TABLE, priced } from "./prices.js";
@@ -259,7 +271,7 @@ const local = (iri: string) => iri.split(/[#/]/).pop() ?? iri;
 
 /** The pod around a key item: the entries its `find` selects, each with its records per source and their state. */
 export async function sliceOf(
-  pod: Pod,
+  pod: Asker,
   caseId: string,
   item: KeyItem,
 ): Promise<Slice | undefined> {
@@ -322,6 +334,34 @@ export async function sliceOf(
   return { case: caseId, item: item.id, nodes, edges };
 }
 
+/**
+ * What reads a case's pod for the checks and slices: the pod itself, or for a pinned run its own build of the runtime,
+ * asked every question the checks need in one process, since another build may not read the pod the same way.
+ */
+async function askerOf(
+  prepared: Prepared,
+  key: Key,
+): Promise<Asker & { close(): Promise<void> }> {
+  if (prepared.runtime === undefined) return openPrepared(prepared);
+  const questions = [
+    "entry/What it shows",
+    "entry/Where it came from",
+    ...new Set(
+      key.items.flatMap((it) => (it.find ?? []).map((one) => one.question)),
+    ),
+  ];
+  const rows = pinnedPod(
+    { runtime: prepared.runtime } as Environment,
+    "ask",
+    join(prepared.pods, prepared.pod),
+    questions,
+  ) as Record<string, Readonly<Record<string, string>>[]>;
+  return {
+    ask: async (question) => rows[question] ?? [],
+    close: async () => undefined,
+  };
+}
+
 /** Checks, grades and scores the run, and writes results.json and the run's report site. */
 export async function finish(given: string, log: (line: string) => void) {
   const folder = runFolder(given);
@@ -346,7 +386,7 @@ export async function finish(given: string, log: (line: string) => void) {
   for (const { id: caseId, prepared } of plan.cases) {
     const found = await loadCase(caseId);
     const { key } = await loadKey(caseId);
-    const pod = await openPrepared(prepared);
+    const pod = await askerOf(prepared, key);
     try {
       for (const item of key.items) {
         const slice = await sliceOf(pod, caseId, item);

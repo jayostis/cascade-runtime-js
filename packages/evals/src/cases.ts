@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { componentsOf } from "@cascade-runtime/runtime/node";
 import { openPod, type Pod } from "cascade-runtime";
 import type { Claim } from "./citations.js";
+import { type Environment, pinnedPod } from "./pinned.js";
 import { CASES, WORK } from "./paths.js";
 import { valid } from "./schemas.js";
 
@@ -197,6 +198,10 @@ export interface Prepared {
   readonly pods: string;
   readonly pod: string;
   readonly components: readonly Component[];
+  /** For a pinned run: the runtime build that made the pod and reads it, its cascade-mcp, and the environment's key. */
+  readonly runtime?: string;
+  readonly mcp?: string;
+  readonly environment?: string;
   readonly imports: readonly {
     readonly download: string;
     readonly refused?: string;
@@ -219,11 +224,22 @@ const sameComponents = (a: readonly Component[], b: readonly Component[]) =>
 export async function prepare(
   id: string,
   log: (line: string) => void = () => undefined,
+  env?: Environment,
 ): Promise<Prepared> {
   const found = await loadCase(id);
-  const folder = join(WORK, id);
+  const folder = join(WORK, env === undefined ? id : `${id}@${env.key}`);
   const record = join(folder, "prepared.json");
-  const { vocabulary, resolved } = await components();
+  const { vocabulary, resolved } =
+    env === undefined
+      ? await components()
+      : {
+          vocabulary: join(env.folder, "cascade-vocabulary"),
+          resolved: env.components,
+        };
+  if (env !== undefined && env.commits["cascade-vocabulary"] === undefined)
+    throw new Error(
+      "a pinned run pins cascade-vocabulary, which holds the kits' downloads",
+    );
   if (existsSync(record)) {
     const kept = JSON.parse(await readFile(record, "utf8")) as Prepared;
     if (
@@ -235,7 +251,7 @@ export async function prepare(
   }
   const used: string[] = [];
   for (const { case: other } of found.downloads.uses ?? [])
-    used.push((await prepare(other, log)).downloads);
+    used.push((await prepare(other, log, env)).downloads);
   await rm(folder, { recursive: true, force: true, maxRetries: 5 });
   const downloads = join(folder, "downloads");
   await mkdir(downloads, { recursive: true });
@@ -253,36 +269,49 @@ export async function prepare(
     );
   const pods = join(folder, "pods");
   log(`${id}: importing ${found.imports.length} downloads into a new pod`);
-  const pod = await openPod(join(pods, id), { title: found.person.name });
   const imports: Prepared["imports"][number][] = [];
-  try {
-    for (const name of found.imports) {
-      const path = join(downloads, name);
-      let sources;
-      try {
-        sources = await pod.look(path);
-      } catch (error) {
+  if (env !== undefined)
+    for (const { path, ...it } of pinnedPod(env, "build", join(pods, id), [
+      found.person.name,
+      ...found.imports.map((name) => join(downloads, name)),
+    ]) as { path: string; records: number; refused?: string }[])
+      imports.push({
+        download: relative(downloads, path).replaceAll("\\", "/"),
+        ...it,
+      });
+  const pod =
+    env === undefined
+      ? await openPod(join(pods, id), { title: found.person.name })
+      : undefined;
+  if (pod !== undefined)
+    try {
+      for (const name of found.imports) {
+        const path = join(downloads, name);
+        let sources;
+        try {
+          sources = await pod.look(path);
+        } catch (error) {
+          imports.push({
+            download: name,
+            records: 0,
+            refused: (error as Error).message,
+          });
+          continue;
+        }
+        const done = await pod.import(path, { aboutSubject: true });
         imports.push({
           download: name,
-          records: 0,
-          refused: (error as Error).message,
+          records: sources.reduce(
+            (sum, it) =>
+              sum + Object.values(it.records ?? {}).reduce((a, b) => a + b, 0),
+            0,
+          ),
+          ...(done.refused ? { refused: String(done.refused) } : {}),
         });
-        continue;
       }
-      const done = await pod.import(path, { aboutSubject: true });
-      imports.push({
-        download: name,
-        records: sources.reduce(
-          (sum, it) =>
-            sum + Object.values(it.records ?? {}).reduce((a, b) => a + b, 0),
-          0,
-        ),
-        ...(done.refused ? { refused: String(done.refused) } : {}),
-      });
+    } finally {
+      await pod.close();
     }
-  } finally {
-    await pod.close();
-  }
   const documents: { file: string; bytes: number }[] = [];
   for (const file of found.reading)
     documents.push({
@@ -298,6 +327,9 @@ export async function prepare(
     components: resolved,
     imports,
     documents,
+    ...(env === undefined
+      ? {}
+      : { runtime: env.runtime, mcp: env.mcp, environment: env.key }),
   };
   await writeFile(record, JSON.stringify(prepared, null, 2) + "\n");
   return prepared;

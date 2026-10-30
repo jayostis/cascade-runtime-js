@@ -51,7 +51,7 @@ export async function podCommand(
   await client.connect(
     new StdioClientTransport({
       command: process.execPath,
-      args: [MCP_CLI, "--pods", prepared.pods],
+      args: [prepared.mcp ?? MCP_CLI, "--pods", prepared.pods],
       stderr: "ignore",
     }),
   );
