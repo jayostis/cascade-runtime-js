@@ -94,6 +94,7 @@ export async function podCommand(
       ...(result.isError === true ? { error: text } : {}),
       rows: result.isError === true ? 0 : rowsIn(value),
       entries: result.isError === true ? [] : entriesIn(value),
+      answer: text,
       milliseconds: Math.round(performance.now() - started),
     };
     await appendFile(

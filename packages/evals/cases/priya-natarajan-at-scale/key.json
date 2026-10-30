@@ -14,44 +14,56 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 1819
           },
+          "says": "uACR 18 mg/g on 2023-06-15 at Kestrel Harbor, the only one ever (also in files 2 and 4)",
           "date": "2023-06-15",
-          "values": ["Albumin/creatinine ratio, urine", "18 mg/g"],
-          "says": "uACR 18 mg/g on 2023-06-15 at Kestrel Harbor, the only one ever (also in files 2 and 4)"
+          "value": "Albumin/creatinine ratio, urine",
+          "quote": "18 mg/g"
         },
         {
           "cite": {
             "file": "export-2025-06-15/apple_health_export/clinical-records/Observation-enEtXqxasVEEMoXmTAgaSEgITeY.json",
             "resource": "Observation/enEtXqxasVEEMoXmTAgaSEgITeY"
           },
+          "says": "the same uACR in the 2025 Apple Health export (LOINC 14959-1)",
           "date": "2023-06-15",
-          "values": ["14959-1", "18"],
-          "says": "the same uACR in the 2025 Apple Health export (LOINC 14959-1)"
+          "code": "14959-1",
+          "value": "18"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 483
           },
-          "values": ["Type 2 diabetes mellitus", "September 2025"],
-          "says": "type 2 diabetes since September 2025; also hypertension, on losartan and spironolactone"
+          "says": "type 2 diabetes since September 2025; also hypertension, on losartan and spironolactone",
+          "quote": "Type 2 diabetes mellitus"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-5.xml",
+            "line": 483
+          },
+          "says": "type 2 diabetes since September 2025; also hypertension, on losartan and spironolactone",
+          "quote": "September 2025"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 639
           },
+          "says": "eGFR 61 on 2026-10-13, the last of 20 eGFR results from three labs since 2023",
           "date": "2026-10-13",
-          "values": ["eGFR", "61"],
-          "says": "eGFR 61 on 2026-10-13, the last of 20 eGFR results from three labs since 2023"
+          "name": "eGFR",
+          "value": "61"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 481
           },
+          "says": "the ED's urine dipstick protein, Negative: a test strip, not a uACR",
           "date": "2025-10-18",
-          "values": ["Protein, urine (dipstick)", "Negative"],
-          "says": "the ED's urine dipstick protein, Negative: a test strip, not a uACR"
+          "quote": "Protein, urine (dipstick)",
+          "value": "Negative"
         }
       ],
       "absent": [
@@ -90,103 +102,129 @@
             "file": "kestrel-harbor-health-summary.xml",
             "line": 202
           },
+          "says": "the 2022 download lists atorvastatin 20 mg started 2022-08-09 as Active (stale)",
           "date": "2022-08-09",
-          "values": ["atorvastatin 20 MG Oral Tablet", "Active"],
-          "says": "the 2022 download lists atorvastatin 20 mg started 2022-08-09 as Active (stale)"
+          "value": "atorvastatin 20 MG Oral Tablet"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary.xml",
+            "line": 202
+          },
+          "says": "the 2022 download lists atorvastatin 20 mg started 2022-08-09 as Active (stale)",
+          "value": "Active"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-2.xml",
             "line": 279
           },
+          "says": "from the 2024 download on: discontinued 2023-11-14 (muscle aches)",
           "date": "2023-11-14",
-          "values": ["Discontinued November 14, 2023 (muscle aches)"],
-          "says": "from the 2024 download on: discontinued 2023-11-14 (muscle aches)"
+          "quote": "Discontinued November 14, 2023 (muscle aches)"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 303
           },
+          "says": "the same stop in the latest Kestrel Harbor download",
           "date": "2023-11-14",
-          "values": ["Discontinued November 14, 2023 (muscle aches)"],
-          "says": "the same stop in the latest Kestrel Harbor download"
+          "quote": "Discontinued November 14, 2023 (muscle aches)"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7901
           },
-          "values": ["stop atorvastatin", "CK 148"],
-          "says": "visit note: likely statin-related muscle symptoms, stop atorvastatin"
+          "says": "visit note: likely statin-related muscle symptoms, stop atorvastatin",
+          "quote": "stop atorvastatin"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 7901
+          },
+          "says": "visit note: likely statin-related muscle symptoms, stop atorvastatin",
+          "quote": "CK 148"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-2.xml",
             "line": 116
           },
-          "values": ["Atorvastatin", "Muscle aches"],
-          "says": "coded intolerance: Atorvastatin, muscle aches"
+          "says": "coded intolerance: Atorvastatin, muscle aches",
+          "value": "Atorvastatin"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-2.xml",
+            "line": 116
+          },
+          "says": "coded intolerance: Atorvastatin, muscle aches",
+          "value": "Muscle aches"
         },
         {
           "cite": {
             "file": "export-2025-06-15/apple_health_export/clinical-records/MedicationRequest-eUF12sstVRv3FvUMJSAasufT5r2.json",
             "resource": "MedicationRequest/eUF12sstVRv3FvUMJSAasufT5r2"
           },
-          "values": ["stopped"],
-          "says": "the FHIR MedicationRequest for atorvastatin has status stopped"
+          "says": "the FHIR MedicationRequest for atorvastatin has status stopped",
+          "status": "stopped"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 188
           },
-          "values": ["Active, 2 refills remaining"],
-          "says": "the 2024 pharmacy download: Active, 2 refills remaining (stale; last fill 2023-10-02)"
+          "says": "the 2024 pharmacy download: Active, 2 refills remaining (stale; last fill 2023-10-02)",
+          "value": "Active, 2 refills remaining"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 188
           },
+          "says": "the pharmacy's later download: Inactive, prescription expired 2024-08-07",
           "date": "2024-08-07",
-          "values": ["Inactive (prescription expired August 7, 2024)"],
-          "says": "the pharmacy's later download: Inactive, prescription expired 2024-08-07"
+          "quote": "Inactive (prescription expired August 7, 2024)"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 724
           },
+          "says": "LDL 142 mg/dL (High) on 2025-09-22",
           "date": "2025-09-22",
-          "values": ["LDL cholesterol", "142"],
-          "says": "LDL 142 mg/dL (High) on 2025-09-22"
+          "quote": "LDL cholesterol",
+          "value": "142"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 676
           },
+          "says": "LDL 147 mg/dL (High) on 2026-08-17",
           "date": "2026-08-17",
-          "values": ["LDL cholesterol", "147"],
-          "says": "LDL 147 mg/dL (High) on 2026-08-17"
+          "quote": "LDL cholesterol",
+          "value": "147"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 30
           },
-          "values": ["19681104"],
-          "says": "born 1968-11-04"
+          "says": "born 1968-11-04",
+          "date": "1968-11-04"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 524
           },
+          "says": "hyperlipidemia active on Kestrel Harbor's list",
           "date": "2022-08-09",
-          "values": ["Hyperlipidemia"],
-          "says": "hyperlipidemia active on Kestrel Harbor's list"
+          "value": "Hyperlipidemia"
         }
       ],
       "absent": [
@@ -242,97 +280,100 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 291
           },
+          "says": "Kestrel Harbor: discontinued 2026-03-05 (hyponatremia), entry MED-2611",
           "date": "2026-03-05",
-          "values": ["Discontinued March 5, 2026 (hyponatremia)"],
-          "says": "Kestrel Harbor: discontinued 2026-03-05 (hyponatremia), entry MED-2611"
+          "quote": "Discontinued March 5, 2026 (hyponatremia)"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7965
           },
-          "values": ["STOP taking hydrochlorothiazide"],
-          "says": "discharge instructions: stop hydrochlorothiazide"
+          "says": "discharge instructions: stop hydrochlorothiazide",
+          "quote": "STOP taking hydrochlorothiazide"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7860
           },
-          "values": ["Hyponatremia, likely due to hydrochlorothiazide"],
-          "says": "discharge diagnosis: hyponatremia, likely due to hydrochlorothiazide"
+          "says": "discharge diagnosis: hyponatremia, likely due to hydrochlorothiazide",
+          "value": "Hyponatremia, likely due to hydrochlorothiazide"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 234
           },
+          "says": "Fernhill still lists it after the stop (file 4)",
           "date": "2025-12-09",
-          "values": ["hydrochlorothiazide 12.5 MG Oral Capsule", "fm-7"],
-          "says": "Fernhill still lists it after the stop (file 4)"
+          "quote": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "id": "fm-7"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 234
           },
+          "says": "and in file 5",
           "date": "2025-12-09",
-          "values": ["hydrochlorothiazide 12.5 MG Oral Capsule", "fm-7"],
-          "says": "and in file 5"
+          "quote": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "id": "fm-7"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 3257
           },
+          "says": "on 2026-08-17 Fernhill added spironolactone because she was on losartan, amlodipine and hydrochlorothiazide",
           "date": "2026-08-17",
-          "values": ["hydrochlorothiazide 12.5 mg", "spironolac"],
-          "says": "on 2026-08-17 Fernhill added spironolactone because she was on losartan, amlodipine and hydrochlorothiazide"
+          "quote": "hydrochlorothiazide 12.5 mg",
+          "name": "spironolac"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-3.xml",
             "line": 250
           },
+          "says": "pharmacy: last filled 2026-07-01",
           "date": "2026-07-01",
-          "values": ["90 days"],
-          "says": "pharmacy: last filled 2026-07-01"
+          "quote": "90 days"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 250
           },
+          "says": "pharmacy: last filled 2026-09-30, after the stop",
           "date": "2026-09-30",
-          "values": ["90 days"],
-          "says": "pharmacy: last filled 2026-09-30, after the stop"
+          "quote": "90 days"
         },
         {
           "cite": {
             "file": "clearwater-eye-associates-visit-summary.xml",
             "line": 204
           },
+          "says": "Clearwater's patient-reported list, 2026-05-14, has it",
           "date": "2026-05-14",
-          "values": ["hydrochlorothiazide 12.5 mg capsule"],
-          "says": "Clearwater's patient-reported list, 2026-05-14, has it"
+          "value": "hydrochlorothiazide 12.5 mg capsule"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 682
           },
+          "says": "sodium 134 (L) on 2026-06-15",
           "date": "2026-06-15",
-          "values": ["Sodium 134"],
-          "says": "sodium 134 (L) on 2026-06-15"
+          "quote": "Sodium 134"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 640
           },
+          "says": "sodium 134 (L) on 2026-10-13",
           "date": "2026-10-13",
-          "values": ["Sodium 134"],
-          "says": "sodium 134 (L) on 2026-10-13"
+          "quote": "Sodium 134"
         }
       ],
       "links": [
@@ -366,97 +407,116 @@
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 235
           },
+          "says": "spironolactone 25 mg from 2026-08-17, with losartan since 2025-09-22",
           "date": "2026-08-17",
-          "values": ["spironolactone 25 MG Oral Tablet"],
-          "says": "spironolactone 25 mg from 2026-08-17, with losartan since 2025-09-22"
+          "quote": "spironolactone 25 MG Oral Tablet"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 255
           },
-          "values": ["spironolactone 25 MG Oral Tablet"],
-          "says": "pharmacy lists spironolactone, filled 08-17, 09-15, 10-14"
+          "says": "pharmacy lists spironolactone, filled 08-17, 09-15, 10-14",
+          "value": "spironolactone 25 MG Oral Tablet"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 683
           },
+          "says": "potassium 4.2 on 2026-06-15, before spironolactone",
           "date": "2026-06-15",
-          "values": ["Potassium 4.2"],
-          "says": "potassium 4.2 on 2026-06-15, before spironolactone"
+          "quote": "Potassium 4.2"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 669
           },
+          "says": "potassium 4.6 on 2026-08-17",
           "date": "2026-08-17",
-          "values": ["Potassium 4.6"],
-          "says": "potassium 4.6 on 2026-08-17"
+          "quote": "Potassium 4.6"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 660
           },
+          "says": "potassium 4.9 on 2026-09-01",
           "date": "2026-09-01",
-          "values": ["Potassium 4.9"],
-          "says": "potassium 4.9 on 2026-09-01"
+          "quote": "Potassium 4.9"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 651
           },
+          "says": "potassium 5.2 (H) on 2026-09-29",
           "date": "2026-09-29",
-          "values": ["Potassium 5.2", "High"],
-          "says": "potassium 5.2 (H) on 2026-09-29"
+          "quote": "Potassium 5.2",
+          "name": "High"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 641
           },
+          "says": "potassium 5.6 (H) on 2026-10-13",
           "date": "2026-10-13",
-          "values": ["Potassium 5.6", "High"],
-          "says": "potassium 5.6 (H) on 2026-10-13"
+          "quote": "Potassium 5.6",
+          "name": "High"
         },
         {
           "cite": {
             "file": "northbay-clinical-laboratories-results-2.xml",
             "line": 171
           },
-          "values": ["Potassium", "5.6 mmol/L (High)"],
-          "says": "the same 5.6 in Northbay's results"
+          "says": "the same 5.6 in Northbay's results",
+          "value": "Potassium",
+          "quote": "5.6 mmol/L (High)"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 3258
           },
+          "says": "Fernhill's note of 2026-09-02: potassium 4.9, continue spironolactone, repeat in 4 weeks",
           "date": "2026-09-02",
-          "values": ["Potassium 4.9", "Repeat BMP in 4 weeks"],
-          "says": "Fernhill's note of 2026-09-02: potassium 4.9, continue spironolactone, repeat in 4 weeks"
+          "quote": "Potassium 4.9"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-5.xml",
+            "line": 3258
+          },
+          "says": "Fernhill's note of 2026-09-02: potassium 4.9, continue spironolactone, repeat in 4 weeks",
+          "quote": "Repeat BMP in 4 weeks"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 3259
           },
+          "says": "Fernhill's last note, 2026-09-30: potassium 5.2, repeat in 2 weeks",
           "date": "2026-09-30",
-          "values": ["Potassium 5.2", "Repeat BMP in 2 weeks"],
-          "says": "Fernhill's last note, 2026-09-30: potassium 5.2, repeat in 2 weeks"
+          "quote": "Potassium 5.2"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-5.xml",
+            "line": 3259
+          },
+          "says": "Fernhill's last note, 2026-09-30: potassium 5.2, repeat in 2 weeks",
+          "quote": "Repeat BMP in 2 weeks"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 638
           },
+          "says": "creatinine 1.06 on 2026-10-13",
           "date": "2026-10-13",
-          "values": ["Creatinine 1.06"],
-          "says": "creatinine 1.06 on 2026-10-13"
+          "quote": "Creatinine 1.06"
         }
       ],
       "absent": [
@@ -478,11 +538,11 @@
       ],
       "wording": [
         {
-          "pattern": "potassium[^.]{0,40}(high|elevated)[^.]{0,20}(three|four|five|3|4|5) times",
+          "pattern": "potassium[^.]{0,40}\\b(high|elevated|above (the )?(range|normal))\\s+(on\\s+|in\\s+)?(three|four|five|six|3|4|5|6) (times|occasions|results|readings|tests)",
           "means": "copies counted as separate results"
         },
         {
-          "pattern": "potassium[^.]{0,30}(is|was|are) (normal|fine)",
+          "pattern": "potassium[^.]{0,30}\\b(is|remains|stays|has been) (normal|fine|within (the )?(normal )?range)",
           "means": "potassium called normal"
         }
       ],
@@ -510,36 +570,36 @@
             "file": "alder-street-pharmacy-patient-record-2.xml",
             "line": 760
           },
+          "says": "Shingrix dose given 2025-11-08 at Alder Street Pharmacy (file 2)",
           "date": "2025-11-08",
-          "values": ["Shingrix"],
-          "says": "Shingrix dose given 2025-11-08 at Alder Street Pharmacy (file 2)"
+          "name": "Shingrix"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-3.xml",
             "line": 808
           },
+          "says": "the same dose in file 3",
           "date": "2025-11-08",
-          "values": ["Shingrix"],
-          "says": "the same dose in file 3"
+          "name": "Shingrix"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 909
           },
+          "says": "the same dose in file 4",
           "date": "2025-11-08",
-          "values": ["Shingrix"],
-          "says": "the same dose in file 4"
+          "name": "Shingrix"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 598
           },
+          "says": "Fernhill's immunizations show only the 2024-10-15 flu shot",
           "date": "2024-10-15",
-          "values": ["Influenza vaccine"],
-          "says": "Fernhill's immunizations show only the 2024-10-15 flu shot"
+          "quote": "Influenza vaccine"
         }
       ],
       "absent": [
@@ -577,41 +637,66 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 1220
           },
+          "says": "TSH 7.90 m[IU]/L (High, 0.40-4.00) at Kestrel Harbor on 2026-03-03",
           "date": "2026-03-03",
-          "values": ["TSH", "7.90"],
-          "says": "TSH 7.90 m[IU]/L (High, 0.40-4.00) at Kestrel Harbor on 2026-03-03"
+          "value": "TSH"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 1220
+          },
+          "says": "TSH 7.90 m[IU]/L (High, 0.40-4.00) at Kestrel Harbor on 2026-03-03",
+          "value": "7.90"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 1226
           },
-          "values": ["Free T4", "1.0"],
-          "says": "free T4 1.0 ng/dL, normal"
+          "says": "free T4 1.0 ng/dL, normal",
+          "value": "Free T4"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 1226
+          },
+          "says": "free T4 1.0 ng/dL, normal",
+          "value": "1.0"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7969
           },
-          "values": ["2026-04-14", "2026-04-28"],
-          "says": "planned TSH and free T4, due 2026-04-14 to 2026-04-28"
+          "says": "planned TSH and free T4, due 2026-04-14 to 2026-04-28",
+          "date": "2026-04-14"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 7969
+          },
+          "says": "planned TSH and free T4, due 2026-04-14 to 2026-04-28",
+          "date": "2026-04-28"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7977
           },
-          "values": ["ORD-77104", "3016-3"],
-          "says": "coded planned order ORD-77104 for TSH (LOINC 3016-3)"
+          "says": "coded planned order ORD-77104 for TSH (LOINC 3016-3)",
+          "id": "ORD-77104",
+          "code": "3016-3"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7967
           },
-          "values": ["repeated in 6-8 weeks"],
-          "says": "discharge instruction: have TSH and free T4 repeated in 6-8 weeks"
+          "says": "discharge instruction: have TSH and free T4 repeated in 6-8 weeks",
+          "quote": "repeated in 6-8 weeks"
         }
       ],
       "absent": [
@@ -653,18 +738,24 @@
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 545
           },
-          "date": "2025-10-18",
-          "values": ["right lower lobe"],
-          "says": "CT findings: a 7 mm solid nodule in the right lower lobe"
+          "says": "CT findings: a 7 mm solid nodule in the right lower lobe",
+          "quote": "right lower lobe"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 546
           },
-          "date": "2025-10-18",
-          "values": ["Incidental 7 mm solid pulmonary nodule", "6-12 months"],
-          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months"
+          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months",
+          "quote": "Incidental 7 mm solid pulmonary nodule"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 546
+          },
+          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months",
+          "quote": "6-12 months"
         }
       ],
       "absent": [
@@ -693,61 +784,68 @@
             "file": "kestrel-harbor-health-summary-2.xml",
             "line": 270
           },
-          "values": ["lisinopril 10 MG Oral Tablet"],
-          "says": "Kestrel Harbor 2024 download: lisinopril Active (stale)"
+          "says": "Kestrel Harbor 2024 download: lisinopril Active (stale)",
+          "value": "lisinopril 10 MG Oral Tablet"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-3.xml",
             "line": 276
           },
-          "values": ["lisinopril 10 MG Oral Tablet"],
-          "says": "Kestrel Harbor 2025 download: lisinopril Active (stale)"
+          "says": "Kestrel Harbor 2025 download: lisinopril Active (stale)",
+          "value": "lisinopril 10 MG Oral Tablet"
         },
         {
           "cite": {
             "file": "export-2025-06-15/apple_health_export/clinical-records/MedicationRequest-eQgPPfguqDY5KO38qAH6c9hsjAZ.json",
             "resource": "MedicationRequest/eQgPPfguqDY5KO38qAH6c9hsjAZ"
           },
-          "values": ["active"],
-          "says": "the 2025 Apple Health FHIR copy says active (stale)"
+          "says": "the 2025 Apple Health FHIR copy says active (stale)",
+          "status": "active"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 196
           },
-          "values": ["Active, 3 refills remaining"],
-          "says": "the 2024 pharmacy record: Active, 3 refills remaining (stale)"
+          "says": "the 2024 pharmacy record: Active, 3 refills remaining (stale)",
+          "value": "Active, 3 refills remaining"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 230
           },
+          "says": "Fernhill: stopped 2025-09-22 because of dry cough, changed to losartan",
           "date": "2025-09-22",
-          "values": ["lisinopril", "dry cough", "losartan"],
-          "says": "Fernhill: stopped 2025-09-22 because of dry cough, changed to losartan"
+          "name": "lisinopril",
+          "quote": "dry cough"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: stopped 2025-09-22 because of dry cough, changed to losartan",
+          "name": "losartan"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 297
           },
+          "says": "Kestrel Harbor: discontinued 2025-09-22 (cough), replaced by losartan",
           "date": "2025-09-22",
-          "values": [
-            "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan"
-          ],
-          "says": "Kestrel Harbor: discontinued 2025-09-22 (cough), replaced by losartan"
+          "value": "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-2.xml",
             "line": 196
           },
+          "says": "pharmacy: discontinued by prescriber 2025-09-22",
           "date": "2025-09-22",
-          "values": ["Discontinued by prescriber September 22, 2025"],
-          "says": "pharmacy: discontinued by prescriber 2025-09-22"
+          "value": "Discontinued by prescriber September 22, 2025"
         }
       ],
       "links": [
@@ -788,45 +886,61 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 644
           },
+          "says": "A1c 6.9% of 2025-09-22 in Fernhill file 3",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c 6.9"],
-          "says": "A1c 6.9% of 2025-09-22 in Fernhill file 3"
+          "quote": "Hemoglobin A1c 6.9"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 654
           },
+          "says": "the same A1c in Fernhill file 4",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c 6.9"],
-          "says": "the same A1c in Fernhill file 4"
+          "quote": "Hemoglobin A1c 6.9"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 725
           },
+          "says": "the same A1c in Fernhill file 5",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c 6.9"],
-          "says": "the same A1c in Fernhill file 5"
+          "quote": "Hemoglobin A1c 6.9"
         },
         {
           "cite": {
             "file": "northbay-clinical-laboratories-results.xml",
             "line": 473
           },
+          "says": "the same draw in Northbay's results",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c", "6.9"],
-          "says": "the same draw in Northbay's results"
+          "value": "Hemoglobin A1c"
+        },
+        {
+          "cite": {
+            "file": "northbay-clinical-laboratories-results.xml",
+            "line": 473
+          },
+          "says": "the same draw in Northbay's results",
+          "value": "6.9"
         },
         {
           "cite": {
             "file": "northbay-clinical-laboratories-results-2.xml",
             "line": 760
           },
+          "says": "the same draw in Northbay's second download",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c", "6.9"],
-          "says": "the same draw in Northbay's second download"
+          "value": "Hemoglobin A1c"
+        },
+        {
+          "cite": {
+            "file": "northbay-clinical-laboratories-results-2.xml",
+            "line": 760
+          },
+          "says": "the same draw in Northbay's second download",
+          "value": "6.9"
         }
       ],
       "links": [
@@ -868,35 +982,35 @@
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 895
           },
+          "says": "influenza vaccine (Fluarix) given 2026-10-03 at the pharmacy",
           "date": "2026-10-03",
-          "values": ["Fluarix"],
-          "says": "influenza vaccine (Fluarix) given 2026-10-03 at the pharmacy"
+          "name": "Fluarix"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 896
           },
+          "says": "lot FL9M4C",
           "date": "2026-10-03",
-          "values": ["FL9M4C"],
-          "says": "lot FL9M4C"
+          "value": "FL9M4C"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 929
           },
-          "values": ["VX-261003-1"],
-          "says": "immunization entry VX-261003-1"
+          "says": "immunization entry VX-261003-1",
+          "id": "VX-261003-1"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 598
           },
+          "says": "Fernhill's list shows only the 2024-10-15 flu shot",
           "date": "2024-10-15",
-          "values": ["Influenza vaccine"],
-          "says": "Fernhill's list shows only the 2024-10-15 flu shot"
+          "quote": "Influenza vaccine"
         }
       ],
       "absent": [
@@ -937,53 +1051,84 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 645
           },
+          "says": "Fernhill's TSH 4.60 dated 2025-09-22 is labelled a historical result from Kestrel Harbor",
           "date": "2025-09-22",
-          "values": [
-            "TSH 4.60",
-            "historical result from Kestrel Harbor Hospital"
-          ],
-          "says": "Fernhill's TSH 4.60 dated 2025-09-22 is labelled a historical result from Kestrel Harbor"
+          "quote": "TSH 4.60"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 645
+          },
+          "says": "Fernhill's TSH 4.60 dated 2025-09-22 is labelled a historical result from Kestrel Harbor",
+          "quote": "historical result from Kestrel Harbor Hospital"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 655
           },
+          "says": "the same entry in file 4",
           "date": "2025-09-22",
-          "values": [
-            "TSH 4.60",
-            "historical result from Kestrel Harbor Hospital"
-          ],
-          "says": "the same entry in file 4"
+          "quote": "TSH 4.60"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-4.xml",
+            "line": 655
+          },
+          "says": "the same entry in file 4",
+          "quote": "historical result from Kestrel Harbor Hospital"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 726
           },
+          "says": "the same entry in file 5",
           "date": "2025-09-22",
-          "values": [
-            "TSH 4.60",
-            "historical result from Kestrel Harbor Hospital"
-          ],
-          "says": "the same entry in file 5"
+          "quote": "TSH 4.60"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-5.xml",
+            "line": 726
+          },
+          "says": "the same entry in file 5",
+          "quote": "historical result from Kestrel Harbor Hospital"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 1544
           },
+          "says": "Kestrel Harbor's TSH 4.60 (High) of 2024-08-20, the original",
           "date": "2024-08-20",
-          "values": ["TSH", "4.60"],
-          "says": "Kestrel Harbor's TSH 4.60 (High) of 2024-08-20, the original"
+          "value": "TSH"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 1544
+          },
+          "says": "Kestrel Harbor's TSH 4.60 (High) of 2024-08-20, the original",
+          "value": "4.60"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7885
           },
-          "values": ["TSH 4.60", "repeat with next year's labs"],
-          "says": "the 2024 visit note: TSH 4.60 with normal free T4, repeat with next year's labs"
+          "says": "the 2024 visit note: TSH 4.60 with normal free T4, repeat with next year's labs",
+          "value": "TSH 4.60"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 7885
+          },
+          "says": "the 2024 visit note: TSH 4.60 with normal free T4, repeat with next year's labs",
+          "value": "repeat with next year's labs"
         }
       ],
       "absent": [
@@ -1029,9 +1174,9 @@
             "file": "alder-street-pharmacy-patient-record-4.xml",
             "line": 902
           },
+          "says": "Prevnar 20 given at Alder Street Pharmacy on 2025-11-08",
           "date": "2025-11-08",
-          "values": ["Prevnar 20"],
-          "says": "Prevnar 20 given at Alder Street Pharmacy on 2025-11-08"
+          "quote": "Prevnar 20"
         }
       ],
       "links": [
@@ -1058,9 +1203,9 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 751
           },
+          "says": "normal colonoscopy 2019-04-16 at Kestrel Harbor; the next is due 2029",
           "date": "2019-04-16",
-          "values": ["Colonoscopy"],
-          "says": "normal colonoscopy 2019-04-16 at Kestrel Harbor; the next is due 2029"
+          "value": "Colonoscopy"
         }
       ],
       "links": [
@@ -1087,9 +1232,9 @@
             "file": "clearwater-eye-associates-visit-summary.xml",
             "line": 476
           },
+          "says": "Clearwater eye exam 2026-05-14: no diabetic retinopathy; the next is due 2027-05",
           "date": "2026-05-14",
-          "values": ["no diabetic retinopathy"],
-          "says": "Clearwater eye exam 2026-05-14: no diabetic retinopathy; the next is due 2027-05"
+          "value": "no diabetic retinopathy"
         }
       ],
       "links": ["the exam was done 2026-05-14 and the next is due 2027-05"],
@@ -1114,9 +1259,9 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 900
           },
+          "says": "Tdap given 2020-01-14 at Kestrel Harbor; the next is due 2030",
           "date": "2020-01-14",
-          "values": ["Tdap vaccine (Boostrix)"],
-          "says": "Tdap given 2020-01-14 at Kestrel Harbor; the next is due 2030"
+          "quote": "Tdap vaccine (Boostrix)"
         }
       ],
       "links": ["Tdap or Td every 10 years, so the next is due 2030"],
@@ -1140,9 +1285,10 @@
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 639
           },
+          "says": "the lowest eGFR is 61, on 2026-10-13",
           "date": "2026-10-13",
-          "values": ["eGFR", "61"],
-          "says": "the lowest eGFR is 61, on 2026-10-13"
+          "name": "eGFR",
+          "value": "61"
         }
       ],
       "links": [
@@ -1179,17 +1325,25 @@
             "file": "kestrel-harbor-health-summary-4.xml",
             "line": 7885
           },
-          "values": ["A1c 6.4%", "LDL 158 off statin"],
-          "says": "the 2024 visit note: A1c 6.4% and LDL 158 off the statin; her glucose and A1c rose from 2020 with her diabetes"
+          "says": "the 2024 visit note: A1c 6.4% and LDL 158 off the statin; her glucose and A1c rose from 2020 with her diabetes",
+          "value": "A1c 6.4%"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 7885
+          },
+          "says": "the 2024 visit note: A1c 6.4% and LDL 158 off the statin; her glucose and A1c rose from 2020 with her diabetes",
+          "value": "LDL 158 off statin"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-5.xml",
             "line": 725
           },
+          "says": "A1c 6.9 on 2025-09-22, the diabetes diagnosis",
           "date": "2025-09-22",
-          "values": ["Hemoglobin A1c 6.9"],
-          "says": "A1c 6.9 on 2025-09-22, the diabetes diagnosis"
+          "quote": "Hemoglobin A1c 6.9"
         }
       ],
       "links": [

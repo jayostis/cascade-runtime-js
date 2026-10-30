@@ -14,8 +14,14 @@
           "required": ["file", "line"],
           "additionalProperties": false,
           "properties": {
-            "file": { "type": "string", "minLength": 1 },
-            "line": { "type": "integer", "minimum": 1 }
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         {
@@ -23,32 +29,103 @@
           "required": ["file", "resource"],
           "additionalProperties": false,
           "properties": {
-            "file": { "type": "string", "minLength": 1 },
-            "resource": { "type": "string", "pattern": "^[A-Za-z]+/[^/]+$" }
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^[A-Za-z]+/[^/]+$"
+            }
           }
         },
         {
           "type": "object",
           "required": ["entry"],
           "additionalProperties": false,
-          "properties": { "entry": { "type": "string", "minLength": 1 } }
+          "properties": {
+            "entry": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       ]
     },
     "claim": {
       "type": "object",
+      "description": "A record and what is claimed of it, field by field: the citation checker compares each field with that field of the cited record only.",
       "required": ["cite"],
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["value"]
+        },
+        {
+          "required": ["status"]
+        },
+        {
+          "required": ["code"]
+        },
+        {
+          "required": ["name"]
+        },
+        {
+          "required": ["id"]
+        },
+        {
+          "required": ["date"]
+        },
+        {
+          "required": ["quote"]
+        }
+      ],
+      "dependentRequired": {
+        "unit": ["value"],
+        "dateKind": ["date"]
+      },
       "properties": {
-        "cite": { "$ref": "#/$defs/cite" },
-        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
-        "values": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+        "cite": {
+          "$ref": "#/$defs/cite"
         },
         "says": {
           "type": "string",
           "description": "What the record says, in words, for a page to show."
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "dateKind": {
+          "enum": ["when", "start", "end", "recorded"]
+        },
+        "quote": {
+          "type": "string",
+          "pattern": "\\S+\\s+\\S+"
         }
       }
     },
@@ -58,18 +135,30 @@
       "required": ["question"],
       "additionalProperties": false,
       "properties": {
-        "question": { "type": "string" },
+        "question": {
+          "type": "string"
+        },
         "where": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     }
   },
   "properties": {
-    "$schema": { "type": "string" },
-    "case": { "type": "string" },
-    "written": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "$schema": {
+      "type": "string"
+    },
+    "case": {
+      "type": "string"
+    },
+    "written": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
     "items": {
       "type": "array",
       "minItems": 1,
@@ -88,28 +177,58 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
-          "kind": { "enum": ["gap", "trap", "near-trap"] },
-          "title": { "type": "string" },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z]+[0-9]+$"
+          },
+          "kind": {
+            "enum": ["gap", "trap", "near-trap"]
+          },
+          "title": {
+            "type": "string"
+          },
           "lookingFor": {
             "type": "string",
             "description": "One line a reader scans: what an answer is looked at for."
           },
-          "evidence": { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/claim"
+            }
+          },
           "absent": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "What the item says is not in the records, and where it was looked for."
           },
           "links": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "The reasoning's steps from the facts to the question: the medical knowledge the chain needs."
           },
-          "found": { "type": "string" },
-          "partly": { "type": "string" },
-          "wrong": { "type": "array", "items": { "type": "string" } },
-          "notWrong": { "type": "array", "items": { "type": "string" } },
+          "found": {
+            "type": "string"
+          },
+          "partly": {
+            "type": "string"
+          },
+          "wrong": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notWrong": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "wording": {
             "type": "array",
             "description": "Trap wording a program flags: a regular expression (case-insensitive) and what a match means.",
@@ -118,8 +237,12 @@
               "required": ["pattern", "means"],
               "additionalProperties": false,
               "properties": {
-                "pattern": { "type": "string" },
-                "means": { "type": "string" }
+                "pattern": {
+                  "type": "string"
+                },
+                "means": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -127,8 +250,15 @@
             "enum": ["visible", "deeper", "narrative-only"],
             "description": "Where the pod holds the item's facts: in a first answer, one question deeper, or nowhere (narrative the pod does not carry)."
           },
-          "guideline": { "type": "string" },
-          "find": { "type": "array", "items": { "$ref": "#/$defs/find" } }
+          "guideline": {
+            "type": "string"
+          },
+          "find": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/find"
+            }
+          }
         }
       }
     },
@@ -139,12 +269,23 @@
         "required": ["id", "says"],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "says": { "type": "string" },
-          "legitimateFind": { "type": "boolean" }
+          "id": {
+            "type": "string"
+          },
+          "says": {
+            "type": "string"
+          },
+          "legitimateFind": {
+            "type": "boolean"
+          }
         }
       }
     },
-    "generic": { "type": "array", "items": { "type": "string" } }
+    "generic": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

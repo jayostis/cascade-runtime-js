@@ -14,26 +14,27 @@
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 478
           },
+          "says": "Alder Street Pharmacy immunization entry VX-251108-2, 2025-11-08",
           "date": "2025-11-08",
-          "values": ["VX-251108-2"],
-          "says": "Alder Street Pharmacy immunization entry VX-251108-2, 2025-11-08"
+          "id": "VX-251108-2"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 492
           },
-          "values": ["187", "zoster vaccine recombinant"],
-          "says": "the entry is Shingrix (CVX 187)"
+          "says": "the entry is Shingrix (CVX 187)",
+          "code": "187",
+          "name": "zoster vaccine recombinant"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 568
           },
+          "says": "Fernhill's immunization list (the PCP) shows only the 2024-10-15 flu shot",
           "date": "2024-10-15",
-          "values": ["Influenza vaccine"],
-          "says": "Fernhill's immunization list (the PCP) shows only the 2024-10-15 flu shot"
+          "quote": "Influenza vaccine"
         }
       ],
       "absent": ["a second CVX 187 dose in any source"],
@@ -67,104 +68,115 @@
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 334
           },
+          "says": "Kestrel Harbor medication MED-2611, status aborted, ended 2026-03-05",
           "date": "2026-03-05",
-          "values": ["MED-2611"],
-          "says": "Kestrel Harbor medication MED-2611, status aborted, ended 2026-03-05"
+          "dateKind": "end",
+          "id": "MED-2611"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 223
           },
+          "says": "narrative: discontinued March 5, 2026 (hyponatremia)",
           "date": "2026-03-05",
-          "values": ["Discontinued March 5, 2026 (hyponatremia)"],
-          "says": "narrative: discontinued March 5, 2026 (hyponatremia)"
+          "quote": "Discontinued March 5, 2026 (hyponatremia)"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 1256
           },
-          "values": ["STOP taking hydrochlorothiazide"],
-          "says": "discharge instructions: stop hydrochlorothiazide"
+          "says": "discharge instructions: stop hydrochlorothiazide",
+          "quote": "STOP taking hydrochlorothiazide"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 703
           },
+          "says": "admission sodium 123 (L)",
           "date": "2026-03-02",
-          "values": ["LAB-61202", "123"],
-          "says": "admission sodium 123 (L)"
+          "id": "LAB-61202",
+          "value": "123"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 524
           },
-          "values": ["Hyponatremia"],
-          "says": "problem Hyponatremia, resolved"
+          "says": "problem Hyponatremia, resolved",
+          "value": "Hyponatremia"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 1241
           },
-          "values": ["likely due to hydrochlorothiazide"],
-          "says": "encounter diagnosis: hyponatremia, likely due to hydrochlorothiazide"
+          "says": "encounter diagnosis: hyponatremia, likely due to hydrochlorothiazide",
+          "value": "likely due to hydrochlorothiazide"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 234
           },
+          "says": "Fernhill still lists it active (fm-7)",
           "date": "2025-12-09",
-          "values": ["hydrochlorothiazide", "fm-7"],
-          "says": "Fernhill still lists it active (fm-7)"
+          "name": "hydrochlorothiazide",
+          "id": "fm-7"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 1260
           },
+          "says": "the 2026-06-15 note continues current medications, HCTZ included",
           "date": "2026-06-15",
-          "values": ["Continue current medications"],
-          "says": "the 2026-06-15 note continues current medications, HCTZ included"
+          "quote": "Continue current medications"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 619
           },
+          "says": "sodium 134 (L) on 2026-06-15",
           "date": "2026-06-15",
-          "values": ["134"],
-          "says": "sodium 134 (L) on 2026-06-15"
+          "value": "134"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 218
           },
+          "says": "pharmacy: active, last filled 2026-04-02 (90 days), after the stop",
           "date": "2026-04-02",
-          "values": ["90 days", "2 refills remaining"],
-          "says": "pharmacy: active, last filled 2026-04-02 (90 days), after the stop"
+          "value": "90 days"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 218
+          },
+          "says": "pharmacy: active, last filled 2026-04-02 (90 days), after the stop",
+          "value": "2 refills remaining"
         },
         {
           "cite": {
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 358
           },
-          "values": ["RX6131090"],
-          "says": "pharmacy prescription RX6131090"
+          "says": "pharmacy prescription RX6131090",
+          "id": "RX6131090"
         },
         {
           "cite": {
             "file": "clearwater-eye-associates-visit-summary.xml",
             "line": 204
           },
+          "says": "Clearwater's patient-reported list, 2026-05-14, has it",
           "date": "2026-05-14",
-          "values": ["hydrochlorothiazide"],
-          "says": "Clearwater's patient-reported list, 2026-05-14, has it"
+          "value": "hydrochlorothiazide"
         }
       ],
       "links": [
@@ -197,63 +209,64 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 549
           },
+          "says": "type 2 diabetes from 2025-09-22; she also has hypertension, on losartan",
           "date": "2025-09-22",
-          "values": ["44054006"],
-          "says": "type 2 diabetes from 2025-09-22; she also has hypertension, on losartan"
+          "value": "44054006"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 762
           },
+          "says": "eGFR 75 at Fernhill (Northbay carries a copy)",
           "date": "2025-09-22",
-          "values": ["75"],
-          "says": "eGFR 75 at Fernhill (Northbay carries a copy)"
+          "value": "75"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 769
           },
+          "says": "eGFR 63 at the Saltmarsh ED",
           "date": "2025-10-18",
-          "values": ["63"],
-          "says": "eGFR 63 at the Saltmarsh ED"
+          "value": "63"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 795
           },
+          "says": "eGFR 62 at Kestrel Harbor, admission",
           "date": "2026-03-02",
-          "values": ["62"],
-          "says": "eGFR 62 at Kestrel Harbor, admission"
+          "value": "62"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 1040
           },
+          "says": "eGFR 70 at Kestrel Harbor, discharge",
           "date": "2026-03-05",
-          "values": ["70"],
-          "says": "eGFR 70 at Kestrel Harbor, discharge"
+          "value": "70"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 1068
           },
+          "says": "eGFR 71 at Fernhill",
           "date": "2026-06-15",
-          "values": ["71"],
-          "says": "eGFR 71 at Fernhill"
+          "value": "71"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 584
           },
+          "says": "the ED's urine dipstick protein, Negative: a test strip, not a uACR",
           "date": "2025-10-18",
-          "values": ["SRM-L-102", "5804-0"],
-          "says": "the ED's urine dipstick protein, Negative: a test strip, not a uACR"
+          "id": "SRM-L-102",
+          "code": "5804-0"
         }
       ],
       "absent": [
@@ -293,26 +306,27 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 549
           },
+          "says": "type 2 diabetes from 2025-09-22",
           "date": "2025-09-22",
-          "values": ["44054006"],
-          "says": "type 2 diabetes from 2025-09-22"
+          "value": "44054006"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 863
           },
+          "says": "LDL 142 mg/dL (H) on 2025-09-22; total cholesterol 221, HDL 48 the same day",
           "date": "2025-09-22",
-          "values": ["13457-7", "142"],
-          "says": "LDL 142 mg/dL (H) on 2025-09-22; total cholesterol 221, HDL 48 the same day"
+          "code": "13457-7",
+          "value": "142"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 30
           },
-          "values": ["19681104"],
-          "says": "born 1968-11-04, so 56 then and 57 now"
+          "says": "born 1968-11-04, so 56 then and 57 now",
+          "date": "1968-11-04"
         }
       ],
       "absent": ["a statin in any medication list of any source"],
@@ -353,18 +367,24 @@
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 545
           },
-          "date": "2025-10-18",
-          "values": ["right lower lobe"],
-          "says": "CT abdomen/pelvis findings: a 7 mm solid nodule in the right lower lobe"
+          "says": "CT abdomen/pelvis findings: a 7 mm solid nodule in the right lower lobe",
+          "quote": "right lower lobe"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 546
           },
-          "date": "2025-10-18",
-          "values": ["Incidental 7 mm solid pulmonary nodule", "6-12 months"],
-          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months"
+          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months",
+          "quote": "Incidental 7 mm solid pulmonary nodule"
+        },
+        {
+          "cite": {
+            "file": "saltmarsh-regional-medical-center-ed-summary.xml",
+            "line": 546
+          },
+          "says": "impression: incidental 7 mm solid pulmonary nodule; non-contrast chest CT recommended in 6-12 months",
+          "quote": "6-12 months"
         }
       ],
       "absent": [
@@ -394,17 +414,19 @@
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 889
           },
+          "says": "TSH 7.9 m[IU]/L (H, 0.40-4.00) at Kestrel Harbor",
           "date": "2026-03-03",
-          "values": ["LAB-61209", "3016-3", "7.9"],
-          "says": "TSH 7.9 m[IU]/L (H, 0.40-4.00) at Kestrel Harbor"
+          "id": "LAB-61209",
+          "code": "3016-3",
+          "value": "7.9"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 1258
           },
-          "values": ["repeated in 6-8 weeks"],
-          "says": "discharge instructions: have TSH and free T4 repeated in 6-8 weeks"
+          "says": "discharge instructions: have TSH and free T4 repeated in 6-8 weeks",
+          "quote": "repeated in 6-8 weeks"
         }
       ],
       "absent": [
@@ -438,18 +460,18 @@
             "file": "clearwater-eye-associates-visit-summary.xml",
             "line": 486
           },
+          "says": "procedure CPT 92004, comprehensive eye examination with dilation, Clearwater Eye Associates",
           "date": "2026-05-14",
-          "values": ["92004"],
-          "says": "procedure CPT 92004, comprehensive eye examination with dilation, Clearwater Eye Associates"
+          "code": "92004"
         },
         {
           "cite": {
             "file": "clearwater-eye-associates-visit-summary.xml",
             "line": 476
           },
+          "says": "findings: no diabetic retinopathy and no macular edema in either eye",
           "date": "2026-05-14",
-          "values": ["no diabetic retinopathy and no macular edema"],
-          "says": "findings: no diabetic retinopathy and no macular edema in either eye"
+          "value": "no diabetic retinopathy and no macular edema"
         }
       ],
       "links": [
@@ -480,60 +502,81 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 230
           },
+          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan",
           "date": "2025-09-22",
-          "values": ["lisinopril", "dry cough", "losartan"],
-          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan"
+          "name": "lisinopril",
+          "quote": "dry cough"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan",
+          "name": "losartan"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 306
           },
+          "says": "lisinopril record ended 2025-09-22",
           "date": "2025-09-22",
-          "values": ["20230615"],
-          "says": "lisinopril record ended 2025-09-22"
+          "dateKind": "end"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 306
+          },
+          "says": "lisinopril record ended 2025-09-22",
+          "date": "2023-06-15"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 174
           },
+          "says": "an intolerance entry, AL-91, from 2025-09-22",
           "date": "2025-09-22",
-          "values": ["AL-91", "Drug intolerance"],
-          "says": "an intolerance entry, AL-91, from 2025-09-22"
+          "id": "AL-91",
+          "value": "Drug intolerance"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 187
           },
-          "values": ["lisinopril"],
-          "says": "the intolerance is to lisinopril (cough)"
+          "says": "the intolerance is to lisinopril (cough)",
+          "name": "lisinopril"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 367
           },
+          "says": "Kestrel Harbor agrees: MED-2207 ended 2025-09-22",
           "date": "2025-09-22",
-          "values": ["MED-2207"],
-          "says": "Kestrel Harbor agrees: MED-2207 ended 2025-09-22"
+          "dateKind": "end",
+          "id": "MED-2207"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 238
           },
-          "values": ["MED-2604", "losartan"],
-          "says": "losartan MED-2604, active"
+          "says": "losartan MED-2604, active",
+          "id": "MED-2604",
+          "name": "losartan"
         },
         {
           "cite": {
             "file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
             "resource": "MedicationRequest/medrx-lisinopril-1"
           },
-          "values": ["active", "314076"],
-          "says": "only Apple Health's 2023 FHIR copy still says active"
+          "says": "only Apple Health's 2023 FHIR copy still says active",
+          "status": "active",
+          "code": "314076"
         }
       ],
       "links": [
@@ -575,18 +618,20 @@
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 940
           },
+          "says": "A1c 6.6% on 2026-06-15 in Fernhill's C-CDA",
           "date": "2026-06-15",
-          "values": ["4548-4", "6.6"],
-          "says": "A1c 6.6% on 2026-06-15 in Fernhill's C-CDA"
+          "code": "4548-4",
+          "value": "6.6"
         },
         {
           "cite": {
             "file": "northbay-clinical-laboratories-results.xml",
             "line": 556
           },
+          "says": "the same A1c 6.6% in Northbay's document",
           "date": "2026-06-15",
-          "values": ["4548-4", "6.6"],
-          "says": "the same A1c 6.6% in Northbay's document"
+          "code": "4548-4",
+          "value": "6.6"
         }
       ],
       "links": [
@@ -617,20 +662,26 @@
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 569
           },
+          "says": "Kestrel Harbor procedure: colonoscopy, 2019-04-16",
           "date": "2019-04-16",
-          "values": ["73761001", "Colonoscopy"],
-          "says": "Kestrel Harbor procedure: colonoscopy, 2019-04-16"
+          "code": "73761001",
+          "name": "Colonoscopy"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 559
           },
-          "values": [
-            "Normal colon; no polyps",
-            "Repeat colonoscopy in 10 years"
-          ],
-          "says": "result: normal colon, no polyps; repeat in 10 years"
+          "says": "result: normal colon, no polyps; repeat in 10 years",
+          "value": "Normal colon; no polyps"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 559
+          },
+          "says": "result: normal colon, no polyps; repeat in 10 years",
+          "value": "Repeat colonoscopy in 10 years"
         }
       ],
       "links": [
@@ -662,9 +713,10 @@
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 533
           },
+          "says": "PCV20 given by Alder Street Pharmacy on 2025-11-08",
           "date": "2025-11-08",
-          "values": ["216", "PCV20"],
-          "says": "PCV20 given by Alder Street Pharmacy on 2025-11-08"
+          "code": "216",
+          "name": "PCV20"
         }
       ],
       "links": [
@@ -691,9 +743,10 @@
             "file": "alder-street-pharmacy-patient-record.xml",
             "line": 451
           },
+          "says": "a flu shot given at the pharmacy on 2025-11-08",
           "date": "2025-11-08",
-          "values": ["140", "Influenza"],
-          "says": "a flu shot given at the pharmacy on 2025-11-08"
+          "code": "140",
+          "name": "Influenza"
         }
       ],
       "links": [
@@ -721,45 +774,45 @@
             "file": "fernhill-family-clinic-summary-3.xml",
             "line": 762
           },
+          "says": "eGFR 75 at Fernhill (Northbay carries a copy)",
           "date": "2025-09-22",
-          "values": ["75"],
-          "says": "eGFR 75 at Fernhill (Northbay carries a copy)"
+          "value": "75"
         },
         {
           "cite": {
             "file": "saltmarsh-regional-medical-center-ed-summary.xml",
             "line": 769
           },
+          "says": "eGFR 63 at the Saltmarsh ED",
           "date": "2025-10-18",
-          "values": ["63"],
-          "says": "eGFR 63 at the Saltmarsh ED"
+          "value": "63"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 795
           },
+          "says": "eGFR 62 at Kestrel Harbor, admission",
           "date": "2026-03-02",
-          "values": ["62"],
-          "says": "eGFR 62 at Kestrel Harbor, admission"
+          "value": "62"
         },
         {
           "cite": {
             "file": "kestrel-harbor-health-summary-5.xml",
             "line": 1040
           },
+          "says": "eGFR 70 at Kestrel Harbor, discharge",
           "date": "2026-03-05",
-          "values": ["70"],
-          "says": "eGFR 70 at Kestrel Harbor, discharge"
+          "value": "70"
         },
         {
           "cite": {
             "file": "fernhill-family-clinic-summary-4.xml",
             "line": 1068
           },
+          "says": "eGFR 71 at Fernhill",
           "date": "2026-06-15",
-          "values": ["71"],
-          "says": "eGFR 71 at Fernhill"
+          "value": "71"
         }
       ],
       "links": [

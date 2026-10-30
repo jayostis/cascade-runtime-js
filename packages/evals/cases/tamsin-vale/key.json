@@ -14,7 +14,7 @@
             "file": "north-2026-10/bundle.json",
             "resource": "Condition/story-stopped-cond-1"
           },
-          "values": ["Type 2 diabetes mellitus"]
+          "name": "Type 2 diabetes mellitus"
         },
         {
           "cite": {
@@ -22,7 +22,7 @@
             "resource": "Observation/story-stopped-egfr-1"
           },
           "date": "2025-02-18",
-          "values": ["73"]
+          "value": "73"
         },
         {
           "cite": {
@@ -30,14 +30,14 @@
             "resource": "Observation/story-stopped-egfr-2"
           },
           "date": "2026-02-16",
-          "values": ["69"]
+          "value": "69"
         },
         {
           "cite": {
             "file": "north-2026-10/bundle.json",
             "resource": "MedicationRequest/story-stopped-medrx-2"
           },
-          "values": ["empagliflozin"]
+          "name": "empagliflozin"
         }
       ],
       "absent": [
@@ -74,7 +74,8 @@
             "resource": "Observation/story-stopped-fit-1"
           },
           "date": "2025-11-04",
-          "values": ["29771-3", "Positive"]
+          "code": "29771-3",
+          "value": "Positive"
         },
         {
           "cite": {
@@ -82,7 +83,7 @@
             "resource": "Procedure/story-stopped-proc-1"
           },
           "date": "2025-07-08",
-          "values": ["CT angiography"]
+          "name": "CT angiography"
         }
       ],
       "absent": [
@@ -126,7 +127,8 @@
             "file": "north-2026-10/bundle.json",
             "resource": "MedicationStatement/story-stopped-med-1"
           },
-          "values": ["2024-04-15"]
+          "date": "2024-04-15",
+          "dateKind": "end"
         },
         {
           "cite": {
@@ -134,7 +136,7 @@
             "resource": "Observation/story-stopped-a1c-6"
           },
           "date": "2025-01-13",
-          "values": ["8.3"]
+          "value": "8.3"
         },
         {
           "cite": {
@@ -142,7 +144,7 @@
             "resource": "MedicationRequest/story-stopped-medrx-2"
           },
           "date": "2025-02-20",
-          "values": ["Jardiance"]
+          "name": "Jardiance"
         },
         {
           "cite": {
@@ -150,7 +152,7 @@
             "resource": "Observation/story-stopped-a1c-9"
           },
           "date": "2026-02-16",
-          "values": ["6.9"]
+          "value": "6.9"
         }
       ],
       "links": [
@@ -200,7 +202,8 @@
             "file": "north-2026-10/bundle.json",
             "resource": "Condition/story-stopped-cond-2"
           },
-          "values": ["Pulmonary embolism", "refuted"]
+          "name": "Pulmonary embolism",
+          "status": "refuted"
         },
         {
           "cite": {
@@ -208,14 +211,14 @@
             "resource": "Observation/story-stopped-ddimer-1"
           },
           "date": "2025-07-08",
-          "values": ["0.92"]
+          "value": "0.92"
         },
         {
           "cite": {
             "file": "north-2026-10/bundle.json",
             "resource": "DiagnosticReport/story-stopped-dr-1"
           },
-          "values": ["No pulmonary embolism"]
+          "quote": "No pulmonary embolism"
         }
       ],
       "links": [

@@ -13,6 +13,7 @@
     "jobs",
     "toolCalls",
     "checks",
+    "judgeDiscipline",
     "answers",
     "grades",
     "scores",
@@ -21,31 +22,52 @@
   ],
   "additionalProperties": false,
   "$defs": {
-    "commit": { "type": "string", "minLength": 1 },
-    "money": { "type": "number", "minimum": 0 },
-    "count": { "type": "integer", "minimum": 0 },
+    "commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "money": {
+      "type": "number",
+      "minimum": 0
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "cite": {
       "oneOf": [
         {
           "type": "object",
           "required": ["file", "line"],
           "properties": {
-            "file": { "type": "string" },
-            "line": { "type": "integer" }
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer"
+            }
           }
         },
         {
           "type": "object",
           "required": ["file", "resource"],
           "properties": {
-            "file": { "type": "string" },
-            "resource": { "type": "string" }
+            "file": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            }
           }
         },
         {
           "type": "object",
           "required": ["entry"],
-          "properties": { "entry": { "type": "string" } }
+          "properties": {
+            "entry": {
+              "type": "string"
+            }
+          }
         }
       ]
     },
@@ -54,11 +76,21 @@
       "required": ["input", "cacheCreation", "cacheRead", "output", "total"],
       "additionalProperties": false,
       "properties": {
-        "input": { "$ref": "#/$defs/count" },
-        "cacheCreation": { "$ref": "#/$defs/count" },
-        "cacheRead": { "$ref": "#/$defs/count" },
-        "output": { "$ref": "#/$defs/count" },
-        "total": { "$ref": "#/$defs/count" }
+        "input": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheCreation": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheRead": {
+          "$ref": "#/$defs/count"
+        },
+        "output": {
+          "$ref": "#/$defs/count"
+        },
+        "total": {
+          "$ref": "#/$defs/count"
+        }
       }
     },
     "call": {
@@ -76,14 +108,34 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "at": { "type": "string" },
-        "model": { "type": "string" },
-        "input": { "$ref": "#/$defs/count" },
-        "cacheCreation": { "$ref": "#/$defs/count" },
-        "cacheRead": { "$ref": "#/$defs/count" },
-        "output": { "$ref": "#/$defs/count" },
-        "toolCalls": { "type": "array", "items": { "type": "string" } },
-        "usd": { "type": ["number", "null"], "minimum": 0 }
+        "at": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheCreation": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheRead": {
+          "$ref": "#/$defs/count"
+        },
+        "output": {
+          "$ref": "#/$defs/count"
+        },
+        "toolCalls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
       }
     },
     "stats": {
@@ -100,48 +152,83 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "calls": { "$ref": "#/$defs/count" },
-        "models": { "type": "array", "items": { "type": "string" } },
-        "tokens": { "$ref": "#/$defs/tokens" },
-        "contextPeak": { "$ref": "#/$defs/count" },
+        "calls": {
+          "$ref": "#/$defs/count"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "contextPeak": {
+          "$ref": "#/$defs/count"
+        },
         "toolCalls": {
           "type": "object",
           "required": ["total", "byName"],
           "additionalProperties": false,
           "properties": {
-            "total": { "$ref": "#/$defs/count" },
+            "total": {
+              "$ref": "#/$defs/count"
+            },
             "byName": {
               "type": "object",
-              "additionalProperties": { "$ref": "#/$defs/count" }
+              "additionalProperties": {
+                "$ref": "#/$defs/count"
+              }
             }
           }
         },
-        "wallSeconds": { "type": "number", "minimum": 0 },
+        "wallSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
         "cost": {
           "type": "object",
           "required": ["usd", "basis", "priceTable"],
           "additionalProperties": false,
           "properties": {
-            "usd": { "type": ["number", "null"], "minimum": 0 },
-            "basis": { "enum": ["exact", "estimated"] },
-            "priceTable": { "type": "string" }
+            "usd": {
+              "type": ["number", "null"],
+              "minimum": 0
+            },
+            "basis": {
+              "enum": ["exact", "estimated"]
+            },
+            "priceTable": {
+              "type": "string"
+            }
           }
         },
-        "usageSource": { "enum": ["api", "transcript", "agent-total"] }
+        "usageSource": {
+          "enum": ["api", "transcript", "agent-total"]
+        }
       }
     },
     "estimate": {
       "type": "object",
       "required": ["tokens", "usd"],
       "properties": {
-        "tokens": { "$ref": "#/$defs/count" },
-        "usd": { "$ref": "#/$defs/money" },
-        "basis": { "type": "string" }
+        "tokens": {
+          "$ref": "#/$defs/count"
+        },
+        "usd": {
+          "$ref": "#/$defs/money"
+        },
+        "basis": {
+          "type": "string"
+        }
       }
     }
   },
   "properties": {
-    "schema": { "const": "cascade-evals/results/1" },
+    "schema": {
+      "const": "cascade-evals/results/1"
+    },
     "run": {
       "type": "object",
       "required": [
@@ -157,15 +244,34 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string" },
-        "tier": { "enum": ["smoke", "standard", "full", "custom"] },
-        "runner": { "enum": ["claude-code", "api"] },
-        "created": { "type": "string" },
-        "finished": { "type": "string" },
-        "wallSeconds": { "type": "number", "minimum": 0 },
-        "stoppedAtCap": { "type": "boolean" },
-        "config": { "type": "object" },
-        "configSha256": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "tier": {
+          "enum": ["smoke", "standard", "full", "custom"]
+        },
+        "runner": {
+          "enum": ["claude-code", "api"]
+        },
+        "created": {
+          "type": "string"
+        },
+        "finished": {
+          "type": "string"
+        },
+        "wallSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stoppedAtCap": {
+          "type": "boolean"
+        },
+        "config": {
+          "type": "object"
+        },
+        "configSha256": {
+          "type": "string"
+        }
       }
     },
     "versions": {
@@ -183,13 +289,19 @@
           "type": "object",
           "required": ["commit", "uncommitted"],
           "properties": {
-            "commit": { "$ref": "#/$defs/commit" },
-            "uncommitted": { "$ref": "#/$defs/count" }
+            "commit": {
+              "$ref": "#/$defs/commit"
+            },
+            "uncommitted": {
+              "$ref": "#/$defs/count"
+            }
           }
         },
         "podPackages": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "components": {
           "type": "array",
@@ -197,19 +309,33 @@
             "type": "object",
             "required": ["name", "repository", "commit", "source"],
             "properties": {
-              "name": { "type": "string" },
-              "repository": { "type": "string" },
-              "commit": { "$ref": "#/$defs/commit" },
-              "source": { "type": "string" },
-              "uncommitted": { "$ref": "#/$defs/count" }
+              "name": {
+                "type": "string"
+              },
+              "repository": {
+                "type": "string"
+              },
+              "commit": {
+                "$ref": "#/$defs/commit"
+              },
+              "source": {
+                "type": "string"
+              },
+              "uncommitted": {
+                "$ref": "#/$defs/count"
+              }
             }
           }
         },
         "prompts": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
-        "priceTable": { "type": "string" }
+        "priceTable": {
+          "type": "string"
+        }
       }
     },
     "budget": {
@@ -220,18 +346,30 @@
         "cap": {
           "type": "object",
           "properties": {
-            "tokens": { "$ref": "#/$defs/count" },
-            "usd": { "$ref": "#/$defs/money" }
+            "tokens": {
+              "$ref": "#/$defs/count"
+            },
+            "usd": {
+              "$ref": "#/$defs/money"
+            }
           }
         },
-        "estimate": { "$ref": "#/$defs/estimate" },
+        "estimate": {
+          "$ref": "#/$defs/estimate"
+        },
         "spent": {
           "type": "object",
           "required": ["tokens", "usd", "basis"],
           "properties": {
-            "tokens": { "$ref": "#/$defs/count" },
-            "usd": { "$ref": "#/$defs/money" },
-            "basis": { "enum": ["exact", "estimated"] }
+            "tokens": {
+              "$ref": "#/$defs/count"
+            },
+            "usd": {
+              "$ref": "#/$defs/money"
+            },
+            "basis": {
+              "enum": ["exact", "estimated"]
+            }
           }
         },
         "byRole": {
@@ -240,8 +378,12 @@
             "type": "object",
             "required": ["tokens", "usd"],
             "properties": {
-              "tokens": { "$ref": "#/$defs/count" },
-              "usd": { "$ref": "#/$defs/money" }
+              "tokens": {
+                "$ref": "#/$defs/count"
+              },
+              "usd": {
+                "$ref": "#/$defs/money"
+              }
             }
           }
         }
@@ -260,18 +402,30 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "downloadsSha256": { "type": "string" },
-          "keySha256": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
+          "downloadsSha256": {
+            "type": "string"
+          },
+          "keySha256": {
+            "type": "string"
+          },
           "imports": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["download", "records"],
               "properties": {
-                "download": { "type": "string" },
-                "records": { "$ref": "#/$defs/count" },
-                "refused": { "type": "string" }
+                "download": {
+                  "type": "string"
+                },
+                "records": {
+                  "$ref": "#/$defs/count"
+                },
+                "refused": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -282,8 +436,12 @@
               "type": "object",
               "required": ["file", "bytes"],
               "properties": {
-                "file": { "type": "string" },
-                "bytes": { "$ref": "#/$defs/count" }
+                "file": {
+                  "type": "string"
+                },
+                "bytes": {
+                  "$ref": "#/$defs/count"
+                }
               }
             }
           }
@@ -297,19 +455,41 @@
         "required": ["id", "role", "model", "tag", "status", "estimate"],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "role": { "enum": ["subject", "judge", "harness"] },
-          "case": { "type": "string" },
-          "arm": { "enum": ["pod", "records"] },
-          "model": { "type": "string" },
-          "alias": { "type": "string" },
-          "effort": { "type": "string" },
-          "repeat": { "type": "integer", "minimum": 1 },
-          "tag": { "type": "string" },
-          "inputsHash": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "enum": ["subject", "judge", "harness"]
+          },
+          "case": {
+            "type": "string"
+          },
+          "arm": {
+            "enum": ["pod", "records"]
+          },
+          "model": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tag": {
+            "type": "string"
+          },
+          "inputsHash": {
+            "type": "string"
+          },
           "status": {
             "enum": [
               "pending",
+              "dispatched",
               "running",
               "done",
               "reused",
@@ -317,17 +497,66 @@
               "failed"
             ]
           },
-          "reason": { "type": "string" },
-          "reusedFrom": { "type": "string" },
-          "estimate": { "$ref": "#/$defs/estimate" },
-          "stats": { "$ref": "#/$defs/stats" },
-          "calls": { "type": "array", "items": { "$ref": "#/$defs/call" } },
-          "answer": { "type": "string" },
-          "prompt": { "type": "string" },
-          "verdict": { "type": "string" },
+          "reason": {
+            "type": "string"
+          },
+          "reusedFrom": {
+            "type": "string"
+          },
+          "estimate": {
+            "$ref": "#/$defs/estimate"
+          },
+          "stats": {
+            "$ref": "#/$defs/stats"
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/call"
+            }
+          },
+          "answer": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          },
           "labels": {
             "type": "object",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dispatched": {
+            "type": "boolean"
+          },
+          "toolUses": {
+            "type": "array",
+            "description": "The tools the agent used, from its transcript (a written file's content left out).",
+            "items": {
+              "type": "object",
+              "required": ["name", "input"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "workdir": {
+            "type": "string"
+          },
+          "packet": {
+            "type": "string"
+          },
+          "packetSha256": {
+            "type": "string"
           }
         }
       }
@@ -349,15 +578,40 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "job": { "type": "string" },
-          "at": { "type": "string" },
-          "tool": { "type": "string" },
-          "input": { "type": "object" },
-          "ok": { "type": "boolean" },
-          "error": { "type": "string" },
-          "rows": { "$ref": "#/$defs/count" },
-          "entries": { "type": "array", "items": { "type": "string" } },
-          "milliseconds": { "$ref": "#/$defs/count" }
+          "job": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "rows": {
+            "$ref": "#/$defs/count"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "milliseconds": {
+            "$ref": "#/$defs/count"
+          },
+          "answer": {
+            "type": "string",
+            "description": "The answer's text, which absences are checked against."
+          }
         }
       }
     },
@@ -376,22 +630,54 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "answerValid": { "type": "boolean" },
-          "answerErrors": { "type": "array", "items": { "type": "string" } },
+          "answerValid": {
+            "type": "boolean"
+          },
+          "answerErrors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "citations": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["question", "fact", "cite", "ok"],
               "properties": {
-                "question": { "type": "integer" },
-                "fact": { "type": "integer" },
-                "cite": { "$ref": "#/$defs/cite" },
-                "ok": { "type": "boolean" },
-                "reason": { "type": "string" },
-                "missing": { "type": "array", "items": { "type": "string" } },
-                "foundAt": { "type": "array", "items": { "type": "integer" } },
-                "excerpt": { "type": "string" }
+                "question": {
+                  "type": "integer"
+                },
+                "fact": {
+                  "type": "integer"
+                },
+                "cite": {
+                  "$ref": "#/$defs/cite"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "foundAt": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "shows": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -401,10 +687,18 @@
               "type": "object",
               "required": ["question", "absence", "backed"],
               "properties": {
-                "question": { "type": "integer" },
-                "absence": { "type": "integer" },
-                "backed": { "type": "boolean" },
-                "reason": { "type": "string" }
+                "question": {
+                  "type": "integer"
+                },
+                "absence": {
+                  "type": "integer"
+                },
+                "backed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -414,11 +708,21 @@
               "type": "object",
               "required": ["item", "question", "pattern", "means", "text"],
               "properties": {
-                "item": { "type": "string" },
-                "question": { "type": "integer" },
-                "pattern": { "type": "string" },
-                "means": { "type": "string" },
-                "text": { "type": "string" }
+                "item": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "integer"
+                },
+                "pattern": {
+                  "type": "string"
+                },
+                "means": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -426,11 +730,23 @@
             "type": "object",
             "required": ["ok", "violations"],
             "properties": {
-              "ok": { "type": "boolean" },
-              "violations": { "type": "array", "items": { "type": "string" } }
+              "ok": {
+                "type": "boolean"
+              },
+              "violations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "read": { "type": "array", "items": { "type": "string" } }
+          "read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -451,12 +767,24 @@
           "chains"
         ],
         "properties": {
-          "subject": { "type": "string" },
-          "judge": { "type": "string" },
-          "items": { "type": "array" },
-          "falseQuestions": { "type": "array" },
-          "extraFinds": { "type": "array" },
-          "chains": { "type": "array" }
+          "subject": {
+            "type": "string"
+          },
+          "judge": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array"
+          },
+          "falseQuestions": {
+            "type": "array"
+          },
+          "extraFinds": {
+            "type": "array"
+          },
+          "chains": {
+            "type": "array"
+          }
         }
       }
     },
@@ -480,18 +808,42 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "subject": { "type": "string" },
-          "judge": { "type": "string" },
-          "found": { "$ref": "#/$defs/count" },
-          "partly": { "$ref": "#/$defs/count" },
-          "missed": { "$ref": "#/$defs/count" },
-          "gaps": { "$ref": "#/$defs/count" },
-          "trapsRaised": { "$ref": "#/$defs/count" },
-          "falseQuestions": { "$ref": "#/$defs/count" },
-          "extraFinds": { "$ref": "#/$defs/count" },
-          "chainsComplete": { "$ref": "#/$defs/count" },
-          "chainsFaithful": { "$ref": "#/$defs/count" },
-          "questions": { "$ref": "#/$defs/count" }
+          "subject": {
+            "type": "string"
+          },
+          "judge": {
+            "type": "string"
+          },
+          "found": {
+            "$ref": "#/$defs/count"
+          },
+          "partly": {
+            "$ref": "#/$defs/count"
+          },
+          "missed": {
+            "$ref": "#/$defs/count"
+          },
+          "gaps": {
+            "$ref": "#/$defs/count"
+          },
+          "trapsRaised": {
+            "$ref": "#/$defs/count"
+          },
+          "falseQuestions": {
+            "$ref": "#/$defs/count"
+          },
+          "extraFinds": {
+            "$ref": "#/$defs/count"
+          },
+          "chainsComplete": {
+            "$ref": "#/$defs/count"
+          },
+          "chainsFaithful": {
+            "$ref": "#/$defs/count"
+          },
+          "questions": {
+            "$ref": "#/$defs/count"
+          }
         }
       }
     },
@@ -501,11 +853,24 @@
         "type": "object",
         "required": ["case", "judges", "items", "agreed", "kappa"],
         "properties": {
-          "case": { "type": "string" },
-          "judges": { "type": "array", "items": { "type": "string" } },
-          "items": { "$ref": "#/$defs/count" },
-          "agreed": { "$ref": "#/$defs/count" },
-          "kappa": { "type": ["number", "null"] }
+          "case": {
+            "type": "string"
+          },
+          "judges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "$ref": "#/$defs/count"
+          },
+          "agreed": {
+            "$ref": "#/$defs/count"
+          },
+          "kappa": {
+            "type": ["number", "null"]
+          }
         }
       }
     },
@@ -516,8 +881,12 @@
         "type": "object",
         "required": ["case", "item", "nodes", "edges"],
         "properties": {
-          "case": { "type": "string" },
-          "item": { "type": "string" },
+          "case": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
           "nodes": {
             "type": "array",
             "maxItems": 12,
@@ -525,11 +894,21 @@
               "type": "object",
               "required": ["id", "kind", "label"],
               "properties": {
-                "id": { "type": "string" },
-                "kind": { "enum": ["entry", "record", "lab", "condition"] },
-                "label": { "type": "string" },
-                "detail": { "type": "string" },
-                "source": { "type": "string" }
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["entry", "record", "lab", "condition"]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -539,9 +918,32 @@
               "type": "object",
               "required": ["from", "to"],
               "properties": {
-                "from": { "type": "string" },
-                "to": { "type": "string" }
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
               }
+            }
+          }
+        }
+      }
+    },
+    "judgeDiscipline": {
+      "type": "object",
+      "description": "Each judge's tools beyond reading its packet and writing its verdict, by job id.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["ok", "violations"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

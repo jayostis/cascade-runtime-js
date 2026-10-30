@@ -18,11 +18,17 @@ first, in this form:
 {EXAMPLE}
 
 Each question is a chain:
-- "facts": each record you rely on, with its provider, its date (YYYY-MM-DD) when it has one, the values you rely on
-  exactly as the record writes them (a number, a code, a status), what it says in words, and "cite", where it is:
+- "facts": each record you rely on: what it says in words ("says"), its provider, and "cite", where it is:
 {CITE}
-- "absences": each thing you say the records lack, with "coverage": what you looked through (which sources, which
-  dates){ABSENCE}
+  Then each thing you rely on that record for, as the record itself writes it, in the field it belongs to, so a program
+  can check it against that record: "value" (its own result: 131, Positive; with "unit" if it has one), "status"
+  (active, completed, final, refuted), "code" (a LOINC, SNOMED CT, RxNorm, CVX or ICD-10 code it carries), "name"
+  (words of the test, condition, drug, vaccine or procedure), "id" (its identifier in its source), "date" (YYYY-MM-DD)
+  with "dateKind": "when" it happened, "start", "end" or "recorded", and "quote" (words of its text, such as a report's
+  conclusion). Give at least one; a fact with none cannot be checked. Never put a reference range, a flag or another
+  record's value in "value".
+- "absences": each thing you say the records lack: "what"; "match", the codes and words a record of it would carry
+  ({"codes": [...], "terms": [...]}); and "coverage", what you looked through (which sources, which dates){ABSENCE}
 - "knowledge": the medical knowledge of your own that links the facts to the question, and the guideline you have in
   mind if you can name one. It is yours, not the records'.
 - "question", in plain words, as {PRONOUN_SUBJECT} would ask it; "why", one or two sentences; "confidence": high, medium or
@@ -33,7 +39,8 @@ command names): cite only in "cite" and "query". When the answer is written, rep
 
 const RECORDS = `Your access: {PRONOUN_POSSESSIVE} records are the {COUNT} files listed below, under {FOLDER}. Read every file in full, in
 this order, with the Read tool, as if they were pasted into this conversation (a long file in several reads, until you
-have read every line). Use no other tool except Write for the answer: no search, no shell.
+have read every line). Use no other tool except Write for the answer: no search, no shell. An absence names, in
+"sources", the files (as listed) it looked through.
 {FILES}`;
 
 const POD = `Your access: {PRONOUN_POSSESSIVE} records are in a pod, which you reach only through this one command, run with the Bash tool:
@@ -41,13 +48,14 @@ const POD = `Your access: {PRONOUN_POSSESSIVE} records are in a pod, which you r
   {COMMAND} <tool> '<JSON input>'
 
 It calls the pod's MCP server (cascade-mcp) and prints the tool's answer. \`{COMMAND} --list\` prints the tools and
-their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}". Use no other command and read no file; use no tool except Bash for
-this command and Write for the answer.`;
+their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}". Run it once per Bash call, exactly as written, with one tool and its
+input: no loops, variables, pipes or chained commands (several Bash calls in one turn run together). Use no other
+command and read no file; use no tool except Bash for this command and Write for the answer.`;
 
 const EXAMPLE = (cite: string, query: string) =>
   `{"questions": [{"n": 1, "question": "…", "why": "…", "confidence": "high",
-  "facts": [{"says": "…", "provider": "…", "date": "2025-11-04", "values": ["Positive"], "cite": ${cite}}],
-  "absences": [{"what": "…", "coverage": "…"${query}}],
+  "facts": [{"says": "…", "provider": "…", "cite": ${cite}, "name": "…", "value": "Positive", "date": "2025-11-04", "dateKind": "when"}],
+  "absences": [{"what": "…", "match": {"codes": ["…"], "terms": ["…"]}, "coverage": "…"${query}}],
   "knowledge": {"says": "…", "guideline": "…"}}]}`;
 
 const FILE_CITE = `  {"file": "<path as listed>", "line": <line number>}, or for a FHIR JSON file {"file": "<path>", "resource":
@@ -98,7 +106,7 @@ export function subjectPrompt(p: SubjectPrompt): string {
             `{"entry": "pod://…#…"}`,
             `, "query": {"tool": "ask", "input": {…}}`,
           )
-        : EXAMPLE(`{"file": "…", "line": 120}`, ""),
+        : EXAMPLE(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
     CITE: p.arm === "pod" ? ENTRY_CITE : FILE_CITE,
     ABSENCE: p.arm === "pod" ? POD_ABSENCE : "",
     COUNT: String(p.files?.length ?? 0),
@@ -131,8 +139,16 @@ For each answer, give:
   key item, every link the item lists) and faithful (each fact it states is what the records say, as far as the key
   and the answer's own facts let you tell), with the steps it skips.
 
-Write the verdict, and nothing else, as JSON to {VERDICT} with the Write tool, in the form the JSON schema {SCHEMA}
-gives. Then reply with the word done.`;
+Read only that file. Write the verdict, and nothing else, as JSON to {VERDICT} with the Write tool, in this form,
+one entry of "outputs" per answer:
+
+{"outputs": [{"label": "A",
+  "items": [{"id": "<key item id>", "verdict": "found | partly | missed | raised | avoided", "questions": [1], "reason": "…"}],
+  "falseQuestions": [{"question": 3, "item": "<its id, if any>", "why": "…"}],
+  "extraFinds": [{"question": 4, "item": "<its id, if any>", "why": "…"}],
+  "chains": [{"question": 1, "complete": true, "faithful": true, "skipped": []}]}]}
+
+Then reply with the word done.`;
 
 export interface JudgePrompt {
   readonly tag: string;
@@ -140,7 +156,6 @@ export interface JudgePrompt {
   readonly today: string;
   readonly packet: string;
   readonly verdict: string;
-  readonly schema: string;
 }
 
 export function judgePrompt(p: JudgePrompt): string {
@@ -151,7 +166,6 @@ export function judgePrompt(p: JudgePrompt): string {
       TODAY: p.today,
       PACKET: p.packet,
       VERDICT: p.verdict,
-      SCHEMA: p.schema,
     }),
   ].join("\n\n");
 }

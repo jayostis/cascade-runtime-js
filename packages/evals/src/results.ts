@@ -48,6 +48,12 @@ export interface Stats {
   readonly usageSource: "api" | "transcript" | "agent-total";
 }
 
+/** A tool an agent used, with its input (a written file's content left out). */
+export interface ToolUse {
+  readonly name: string;
+  readonly input: Readonly<Record<string, unknown>>;
+}
+
 export interface Job {
   readonly id: string;
   readonly role: "subject" | "judge" | "harness";
@@ -61,9 +67,18 @@ export interface Job {
   readonly repeat?: number;
   readonly tag: string;
   readonly inputsHash?: string;
-  status: "pending" | "running" | "done" | "reused" | "skipped" | "failed";
+  status:
+    | "pending"
+    | "dispatched"
+    | "running"
+    | "done"
+    | "reused"
+    | "skipped"
+    | "failed";
   reason?: string;
   reusedFrom?: string;
+  /** Whether the meter handed it out. */
+  dispatched?: boolean;
   readonly estimate: {
     readonly tokens: number;
     readonly usd: number;
@@ -76,7 +91,14 @@ export interface Job {
   readonly prompt?: string;
   readonly verdict?: string;
   /** A judge's subjects, by job id, under the labels it saw. */
-  readonly labels?: Readonly<Record<string, string>>;
+  labels?: Readonly<Record<string, string>>;
+  /** The tools the agent used, from its transcript: what its discipline is checked on, kept when the job is reused. */
+  toolUses?: readonly ToolUse[];
+  /** A judge's own folder, outside the run, holding only its packet; and the packet. */
+  readonly workdir?: string;
+  readonly packet?: string;
+  /** The SHA-256 of the packet a judge read, which its letters and its verdict belong to. */
+  readonly packetSha256?: string;
 }
 
 export interface ToolCallRecord {
@@ -89,6 +111,8 @@ export interface ToolCallRecord {
   /** The rows the answer held (all of them, or how many there were), and the entries it named. */
   readonly rows: number;
   readonly entries: readonly string[];
+  /** The answer's text, which an absence is checked against. */
+  readonly answer?: string;
   readonly milliseconds: number;
 }
 
@@ -102,6 +126,8 @@ export interface CitationCheck {
   readonly foundAt?: readonly number[];
   /** The text the citation points at, cut short, for a page to show. */
   readonly excerpt?: string;
+  /** What the cited record does say, as the checker read it. */
+  readonly shows?: string;
 }
 
 export interface AbsenceCheck {
@@ -232,6 +258,13 @@ export interface Results {
   readonly jobs: readonly Job[];
   readonly toolCalls: readonly ToolCallRecord[];
   readonly checks: Readonly<Record<string, SubjectChecks>>;
+  /** Each judge's tools beyond reading its packet and writing its verdict. */
+  readonly judgeDiscipline: Readonly<
+    Record<
+      string,
+      { readonly ok: boolean; readonly violations: readonly string[] }
+    >
+  >;
   readonly answers: Readonly<Record<string, unknown>>;
   readonly grades: readonly Grade[];
   readonly scores: readonly Score[];
