@@ -76,7 +76,7 @@
     }
   },
   "devDependencies": {
-    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#1b36d6777b1b62041ba9e519db816043e7ca3d0d",
+    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#f7e9c651d130e8409db0f679954aa6f6e757c6c3",
     "esbuild": "0.28.2",
     "vite": "8.3.3"
   }
