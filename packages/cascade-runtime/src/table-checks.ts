@@ -2,17 +2,54 @@
 // that differs from ClinVar today, and each pair of active medications whose codes share an ingredient. Rows, each
 // naming its entries and the table row it cites; the starter's page says them in its own sentences.
 import type { Row } from "./pod.js";
-import type {
-  About,
-  Concept,
-  VariantAsked,
-  WhatClinVarSays,
-} from "./tables/types.js";
+import type { About, Concept, VariantAsked } from "./tables/types.js";
 import { terms } from "./terms.js";
 
 export const VARIANTS_QUESTION = "pod/My genetic variants";
 export const REPORTS_QUESTION = "pod/What each report says of a variant";
 export const HISTORY_QUESTION = "pod/My medication history";
+
+/**
+ * What the tables' `variantClassification` answers of one variant, as these checks read it (`WhatClinVarSays`, and
+ * the starter's own type of it, satisfy it).
+ */
+export type ClinVarSays =
+  | {
+      readonly found: "rows";
+      readonly version: string;
+      readonly series?: string;
+      readonly rows: readonly {
+        readonly variation: string;
+        readonly classification: readonly Concept[];
+      }[];
+    }
+  | {
+      readonly found: "not found" | "not covered" | "no series";
+      readonly genes?: readonly string[];
+    };
+
+/** A row of `Pod.agreement()`: how a report stands to the ClinVar row its variant finds, in a version. */
+export interface AgreementVerdict {
+  readonly report?: string;
+  readonly row?: string;
+  readonly origin?: string;
+  readonly verdict?: string;
+}
+
+/** A variant entry the ClinVar check could not check: ClinVar has no row for it, does not cover its gene, or the pod gives nothing to ask by. */
+export interface VariantNotChecked {
+  readonly entry: string;
+  readonly reason: "not found" | "not covered" | "no series" | "not asked";
+  /** The genes the series covers, when it does not cover this variant's. */
+  readonly genes?: readonly string[];
+}
+
+/** An active medication entry the ingredients check could not check: its rows give no code, or no ingredients row maps its codes. */
+export interface MedicationNotChecked {
+  readonly entry: string;
+  readonly code?: string;
+  readonly reason: "no code" | "no ingredients row";
+}
 
 /** A report that differs from the row of ClinVar the app holds today. */
 export interface ReportDifferingFromClinVar {
@@ -24,7 +61,7 @@ export interface ReportDifferingFromClinVar {
   /** The report's own ACMG classification. */
   readonly classification?: string;
   readonly clinvar: {
-    readonly series: string;
+    readonly series?: string;
     readonly version: string;
     readonly variation: string;
     readonly classification: readonly Concept[];
@@ -93,21 +130,12 @@ export function reportsDifferingFromClinVar(
     says,
     verdicts,
   }: {
-    says: ReadonlyMap<string, WhatClinVarSays>;
-    verdicts: readonly Row[];
+    says: ReadonlyMap<string, ClinVarSays>;
+    verdicts: readonly AgreementVerdict[];
   },
 ): ReportDifferingFromClinVar[] {
-  const reported = new Map<string, Row[]>();
-  for (const report of reports)
-    reported.set(report.variant!, [
-      ...(reported.get(report.variant!) ?? []),
-      report,
-    ]);
-  const order = new Set([
-    ...variants.map(({ variant }) => variant!),
-    ...reported.keys(),
-  ]);
-  return [...order].flatMap((entry) => {
+  const reported = reportsByVariant(reports);
+  return variantEntries(variants, reported).flatMap((entry) => {
     const said = says.get(entry);
     if (said?.found !== "rows") return [];
     const [row] = said.rows;
@@ -118,27 +146,118 @@ export function reportsDifferingFromClinVar(
           ? Number(a.date === undefined) - Number(b.date === undefined)
           : a.date.localeCompare(b.date),
       )
-      .filter(({ report }) =>
-        verdicts.some(
-          (each) =>
-            each.report === report &&
-            each.row === row.variation &&
-            each.origin === said.version &&
-            each.verdict === "differs",
-        ),
-      )
+      .filter(({ report }) => reportDiffers(report!, said, verdicts))
       .map(({ report, date, classification }) => ({
         entry,
         report: report!,
         ...(date !== undefined && { date }),
         ...(classification !== undefined && { classification }),
         clinvar: {
-          series: said.series,
+          ...(said.series !== undefined && { series: said.series }),
           version: said.version,
           variation: row.variation,
           classification: row.classification,
         },
       }));
+  });
+}
+
+/** Each report of `reports`, by its variant's entry, in their order. */
+function reportsByVariant(reports: readonly Row[]): Map<string, Row[]> {
+  const reported = new Map<string, Row[]>();
+  for (const report of reports)
+    reported.set(report.variant!, [
+      ...(reported.get(report.variant!) ?? []),
+      report,
+    ]);
+  return reported;
+}
+
+/** The variant entries in the order `variants` and then `reported` name them. */
+function variantEntries(
+  variants: readonly Row[],
+  reported: ReadonlyMap<string, readonly Row[]>,
+): string[] {
+  return [
+    ...new Set([
+      ...variants.map(({ variant }) => variant!),
+      ...reported.keys(),
+    ]),
+  ];
+}
+
+/**
+ * Whether `verdicts` (`Pod.agreement()`'s rows) say the report `report` differs from the one row `says` (the
+ * tables' `variantClassification` answer for its variant) found, in the version it was read from.
+ */
+export function reportDiffers(
+  report: string,
+  says: ClinVarSays | undefined,
+  verdicts: readonly AgreementVerdict[],
+): boolean {
+  if (says?.found !== "rows") return false;
+  const [row] = says.rows;
+  return (
+    row !== undefined &&
+    verdicts.some(
+      (each) =>
+        each.report === report &&
+        each.row === row.variation &&
+        each.origin === says.version &&
+        each.verdict === "differs",
+    )
+  );
+}
+
+/**
+ * Each variant entry of `variants` and `reports`, in the order `reportsDifferingFromClinVar` gives them, that `says`
+ * found no row for: what ClinVar answered (`not found`, `not covered` with the genes it covers, `no series`), or
+ * `not asked` for a variant the pod gives no expression or ClinVar ID of.
+ */
+export function variantsNotChecked(
+  { variants, reports }: { variants: readonly Row[]; reports: readonly Row[] },
+  says: ReadonlyMap<string, ClinVarSays>,
+): VariantNotChecked[] {
+  return variantEntries(variants, reportsByVariant(reports)).flatMap(
+    (entry): VariantNotChecked[] => {
+      const said = says.get(entry);
+      if (said === undefined) return [{ entry, reason: "not asked" }];
+      if (said.found === "rows") return [];
+      return [
+        {
+          entry,
+          reason: said.found,
+          ...(said.found === "not covered" &&
+            said.genes !== undefined && { genes: said.genes }),
+        },
+      ];
+    },
+  );
+}
+
+/**
+ * Each active medication entry of `history`, in the order of its rows, that `medicationsSharingAnIngredient` could
+ * not check: none of its rows gives a code (`no code`), or `about` maps none of its codes to an ingredient (`no
+ * ingredients row`, with its first code).
+ */
+export function medicationsNotChecked(
+  history: readonly Row[],
+  about: ReadonlyMap<string, Partial<About>>,
+): MedicationNotChecked[] {
+  const codes = new Map<string, string[]>();
+  for (const row of history)
+    if (row.lifecycle === terms.MedicationActive)
+      codes.set(row.entry!, [
+        ...(codes.get(row.entry!) ?? []),
+        ...(row.code === undefined ? [] : [row.code]),
+      ]);
+  return [...codes].flatMap(([entry, held]): MedicationNotChecked[] => {
+    if (held.length === 0) return [{ entry, reason: "no code" }];
+    return held.some(
+      (code) => (about.get(code)?.ingredients?.codes.length ?? 0) > 0,
+    )
+      ? []
+      : [{ entry, code: held[0]!, reason: "no ingredients row" }];
   });
 }
 
@@ -194,7 +313,8 @@ export function medicationsSharingAnIngredient(
         entries: [sharing(one), sharing(other)],
         ingredient: {
           code: shared,
-          ...(name !== undefined && { label: name.label, origin: name.origin }),
+          ...(name !== undefined && { label: name.label }),
+          ...(name?.origin !== undefined && { origin: name.origin }),
         },
       });
     }

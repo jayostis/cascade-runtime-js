@@ -12,11 +12,17 @@ import { checkInput, type InputSchema } from "./check.js";
 import type { Row } from "./pod.js";
 import {
   HISTORY_QUESTION,
+  medicationsNotChecked,
   medicationsSharingAnIngredient,
   REPORTS_QUESTION,
   reportsDifferingFromClinVar,
   VARIANTS_QUESTION,
   variantsAsked,
+  variantsNotChecked,
+  type MedicationNotChecked,
+  type MedicationsSharingAnIngredient,
+  type ReportDifferingFromClinVar,
+  type VariantNotChecked,
 } from "./table-checks.js";
 import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 
@@ -27,11 +33,11 @@ export const QUESTIONS = [
   "pod/My active allergies",
   "pod/My active conditions",
   "pod/My active medications",
-  "pod/My medication history",
+  HISTORY_QUESTION,
   "pod/My lab results",
   "pod/My immunizations",
   "pod/My procedures",
-  "pod/My genetic variants",
+  VARIANTS_QUESTION,
   "pod/The person this pod is about",
   "entry/Where it came from",
   "entry/What needs review",
@@ -92,15 +98,18 @@ const INGREDIENTS_KIND =
   "https://ns.cascadeprotocol.org/cascade#ProductIngredients";
 
 /**
- * One check's answer: `{ held: false }` when the app holds no series of the kind it reads, so nothing was checked;
- * else the current `versions` of the series of that kind it holds and the check's `rows`, none when nothing was found.
+ * One check's answer: `{ held: false }` when the app holds no series of the kind it reads, so nothing was checked and
+ * nothing was read for it; else the current `versions` of the series of that kind it holds, the check's `rows`, and
+ * `notChecked`, the entries it could not check and why. An entry neither in `rows` nor in `notChecked` was checked and
+ * nothing found.
  */
-export type Checked<T> =
+export type Checked<T, N> =
   | { readonly held: false }
   | {
       readonly held: true;
       readonly versions: readonly string[];
       readonly rows: readonly T[];
+      readonly notChecked: readonly N[];
     };
 
 export const TABLES_OFF =
@@ -110,7 +119,20 @@ export const TABLES_OFF =
 async function tableChecks(
   reads: PodReads,
   { pod }: ToolInput,
-): Promise<object> {
+): Promise<
+  | { tables: "off"; said: string }
+  | {
+      tables: "on";
+      reportsDifferingFromClinVar: Checked<
+        ReportDifferingFromClinVar,
+        VariantNotChecked
+      >;
+      medicationsSharingAnIngredient: Checked<
+        MedicationsSharingAnIngredient,
+        MedicationNotChecked
+      >;
+    }
+> {
   const lookups = await reads.tables?.({ pod: pod as string });
   if (lookups === undefined) return { tables: "off", said: TABLES_OFF };
   const held = await lookups.held();
@@ -118,46 +140,67 @@ async function tableChecks(
     held
       .filter((series) => series.kind === kind)
       .map(({ current }) => current.iri);
-  const checked = <T>(
-    versions: readonly string[],
-    rows: () => readonly T[],
-  ): Checked<T> =>
-    versions.length === 0
-      ? { held: false }
-      : { held: true, versions, rows: rows() };
   const rowsOf = async (question: string) =>
     (await reads.ask({ pod: pod as string, question })).rows;
-  const [variants, reports, history] = await Promise.all(
-    [VARIANTS_QUESTION, REPORTS_QUESTION, HISTORY_QUESTION].map(rowsOf),
-  );
-  const asked = variantsAsked(variants!);
-  const [says, verdicts, about] = await Promise.all([
-    Promise.all(
-      [...asked].map(
-        async ([variant, each]) =>
-          [variant, await lookups.variantClassification(each)] as const,
-      ),
-    ).then((pairs) => new Map(pairs)),
-    asked.size === 0 || reports!.length === 0 ? [] : lookups.agreement(),
-    lookups.about([...new Set(history!.flatMap(({ code }) => code ?? []))]),
+  const clinvar = versionsOf(CLINVAR_KIND);
+  const ingredientSeries = versionsOf(INGREDIENTS_KIND);
+  const [variantCheck, ingredientCheck] = await Promise.all([
+    clinvar.length === 0
+      ? ({ held: false } as const)
+      : (async () => {
+          const [variants, reports] = await Promise.all(
+            [VARIANTS_QUESTION, REPORTS_QUESTION].map(rowsOf),
+          );
+          const asked = variantsAsked(variants!);
+          const [says, verdicts] = await Promise.all([
+            Promise.all(
+              [...asked].map(
+                async ([variant, each]) =>
+                  [variant, await lookups.variantClassification(each)] as const,
+              ),
+            ).then((pairs) => new Map(pairs)),
+            asked.size === 0 || reports!.length === 0
+              ? []
+              : lookups.agreement(),
+          ]);
+          const rows = { variants: variants!, reports: reports! };
+          return {
+            held: true as const,
+            versions: clinvar,
+            rows: reportsDifferingFromClinVar(rows, { says, verdicts }),
+            notChecked: variantsNotChecked(rows, says),
+          };
+        })(),
+    ingredientSeries.length === 0
+      ? ({ held: false } as const)
+      : (async () => {
+          const history = await rowsOf(HISTORY_QUESTION);
+          const about = await lookups.about([
+            ...new Set(history.flatMap(({ code }) => code ?? [])),
+          ]);
+          const ingredients = [
+            ...new Set(
+              [...about.values()].flatMap(
+                (each) => each.ingredients?.codes ?? [],
+              ),
+            ),
+          ].filter((code) => !about.has(code));
+          const named = new Map([
+            ...about,
+            ...(await lookups.about(ingredients)),
+          ]);
+          return {
+            held: true as const,
+            versions: ingredientSeries,
+            rows: medicationsSharingAnIngredient(history, named),
+            notChecked: medicationsNotChecked(history, named),
+          };
+        })(),
   ]);
-  const ingredients = [
-    ...new Set(
-      [...about.values()].flatMap((each) => each.ingredients?.codes ?? []),
-    ),
-  ].filter((code) => !about.has(code));
-  const named = new Map([...about, ...(await lookups.about(ingredients))]);
   return {
     tables: "on",
-    reportsDifferingFromClinVar: checked(versionsOf(CLINVAR_KIND), () =>
-      reportsDifferingFromClinVar(
-        { variants: variants!, reports: reports! },
-        { says, verdicts },
-      ),
-    ),
-    medicationsSharingAnIngredient: checked(versionsOf(INGREDIENTS_KIND), () =>
-      medicationsSharingAnIngredient(history!, named),
-    ),
+    reportsDifferingFromClinVar: variantCheck,
+    medicationsSharingAnIngredient: ingredientCheck,
   };
 }
 
@@ -359,7 +402,7 @@ export const TOOLS: readonly PodTool[] = (
     {
       name: "reference_table_checks",
       description:
-        "What the pod's records and the reference tables say together, as rows naming their entries and the table row each cites: each variant report that differs from ClinVar's classification today, and each pair of active medications in two entries whose codes share an ingredient. Each check says whether a series it reads (ClinVar, product ingredients) is held and which versions: an empty rows list means checked and nothing found only when held is true; held false means it was not checked. Without the tables (cascade-mcp started without --check-tables) it says they are off and gives no rows.",
+        "What the pod's records and the reference tables say together, as rows naming their entries and the table row each cites: each variant report that differs from ClinVar's classification today, and each pair of active medications in two entries whose codes share an ingredient. Each check says whether a series it reads (ClinVar, product ingredients) is held and which versions; held false means nothing was checked. With held true, notChecked lists the entries it could not check and why (a variant ClinVar has no row for or whose gene it does not cover, a medication with no code or none an ingredients row maps); an entry in neither rows nor notChecked was checked and nothing found. Without the tables (cascade-mcp started without --check-tables) it says they are off and gives no rows.",
       inputSchema: {
         type: "object",
         properties: {},
