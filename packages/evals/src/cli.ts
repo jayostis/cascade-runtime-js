@@ -81,6 +81,12 @@ async function main(args: string[]): Promise<void> {
       );
       return;
     }
+    case "pod-serve": {
+      const run = option(args, "run");
+      const job = option(args, "job");
+      if (run === undefined || job === undefined) break;
+      return (await import("./pod-client.js")).podServe(run, job);
+    }
     case "meter": {
       const run = option(args, "run");
       if (run === undefined) break;
