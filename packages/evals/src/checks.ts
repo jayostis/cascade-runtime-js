@@ -66,6 +66,13 @@ export function entryRows(pod: Pod) {
 
 const EXCERPT = 600;
 
+/** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no arm's reading. */
+const HARNESS_TOOLS = new Set([
+  "ToolSearch",
+  "SubagentHandback",
+  "StructuredOutput",
+]);
+
 async function excerptOf(
   source: Source,
   cite: Cite,
@@ -97,7 +104,7 @@ function disciplineOf(
     if (tool.name === "Write" && path === resolve(answerPath)) continue;
     const prompt = join(dirname(dirname(answerPath)), job.prompt ?? "");
     if (tool.name === "Read" && path === resolve(prompt)) continue;
-    if (tool.name === "ToolSearch") continue;
+    if (HARNESS_TOOLS.has(tool.name)) continue;
     if (job.arm === "pod") {
       const command = String(tool.input.command ?? "");
       if (
