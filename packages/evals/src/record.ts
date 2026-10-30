@@ -168,7 +168,10 @@ async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
     if (wrote && !ran.includes(priced(job.model))) {
       job.status = "failed";
       job.reason = `ran ${ran.join(", ")}, not the ${job.model} its inputs' hash names`;
-    } else job.status = wrote ? "done" : "running";
+    } else {
+      job.status = wrote ? "done" : "running";
+      delete job.reason;
+    }
   }
   return found;
 }
