@@ -12,6 +12,7 @@ import {
   downloadsSource,
   podRowsSource,
   type Ran,
+  type Tie,
 } from "./citations.js";
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
@@ -235,6 +236,25 @@ export function judgeViolations(job: Job, uses: readonly ToolUse[]): string[] {
     .map((use) => `${use.name} ${JSON.stringify(use.input).slice(0, 200)}`);
 }
 
+/**
+ * The key item an absence is of, when it is one: an item whose absent codes or words the absence names, or whose words
+ * its "what" says. The absence is then held to that item's codes, words, kind and date as well as its own.
+ */
+export function tieOf(absence: Absence, key: Key): Tie | undefined {
+  const said = [absence.what, ...(absence.match.terms ?? [])]
+    .join(" ")
+    .toLowerCase();
+  const codes = new Set(absence.match.codes ?? []);
+  return key.items.find(
+    ({ absentMatch }) =>
+      absentMatch !== undefined &&
+      ((absentMatch.codes ?? []).some((code) => codes.has(code)) ||
+        (absentMatch.terms ?? []).some((term) =>
+          said.includes(term.toLowerCase()),
+        )),
+  )?.absentMatch;
+}
+
 /** The claim a fact makes, without its words: what the checker compares with the record. */
 const claimOf = ({ says: _says, provider: _provider, ...claim }: Fact): Claim =>
   claim;
@@ -312,10 +332,17 @@ export async function checkAnswer(options: {
       });
     }
     for (const [at, absence] of question.absences.entries()) {
+      const tied = tieOf(absence, key);
       const backing =
         job.arm === "pod"
-          ? checkAbsence(absence, ran)
-          : await checkRecordsAbsence(absence, read, text);
+          ? checkAbsence(absence, ran, tied)
+          : await checkRecordsAbsence(
+              absence,
+              read,
+              text,
+              options.reading,
+              tied,
+            );
       absences.push({ question: question.n, absence: at, ...backing });
     }
   }

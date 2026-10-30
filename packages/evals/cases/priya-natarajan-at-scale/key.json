@@ -89,7 +89,13 @@
           "question": "pod/My lab results",
           "where": ["14959-1"]
         }
-      ]
+      ],
+      "absentMatch": {
+        "codes": ["9318-7", "14959-1", "32294-1", "14958-3", "13705-9"],
+        "terms": ["albumin", "microalbumin", "uACR"],
+        "kind": "lab",
+        "after": "2023-06-16"
+      }
     },
     {
       "id": "G2",
@@ -267,7 +273,20 @@
           "question": "pod/My lab results",
           "where": ["13457-7"]
         }
-      ]
+      ],
+      "absentMatch": {
+        "terms": [
+          "statin",
+          "atorvastatin",
+          "rosuvastatin",
+          "simvastatin",
+          "pravastatin",
+          "lovastatin",
+          "pitavastatin"
+        ],
+        "kind": "medication",
+        "after": "2024-08-08"
+      }
     },
     {
       "id": "G3",
@@ -624,7 +643,13 @@
           "question": "pod/My immunizations",
           "where": ["codes/cvx/187"]
         }
-      ]
+      ],
+      "absentMatch": {
+        "codes": ["187"],
+        "terms": ["Shingrix", "zoster"],
+        "after": "2025-11-09",
+        "kind": "immunization"
+      }
     },
     {
       "id": "G6",
@@ -725,7 +750,13 @@
           "question": "pod/My lab results",
           "where": ["3016-3"]
         }
-      ]
+      ],
+      "absentMatch": {
+        "codes": ["3016-3"],
+        "terms": ["TSH", "thyrotropin"],
+        "after": "2026-03-04",
+        "kind": "lab"
+      }
     },
     {
       "id": "G7",
@@ -771,7 +802,12 @@
         "saying the follow-up was done"
       ],
       "pod": "narrative-only",
-      "guideline": "Fleischner Society 2017: a 6-8 mm solid nodule in a low-risk person, CT at 6-12 months"
+      "guideline": "Fleischner Society 2017: a 6-8 mm solid nodule in a low-risk person, CT at 6-12 months",
+      "absentMatch": {
+        "terms": ["chest CT", "CT chest", "CT of the chest"],
+        "after": "2025-10-19",
+        "kind": "procedure"
+      }
     },
     {
       "id": "T1",

@@ -394,10 +394,10 @@ test("a records absence is backed only by the sources it names, each read whole,
       { backed: false, reason: "source not read: summary.xml" },
     ],
     [
-      "no sources",
+      "sources naming no file",
       { ...absence, sources: [] },
       read,
-      { backed: false, reason: "no sources" },
+      { backed: false, reason: "sources leave out: bundle.json, summary.xml" },
     ],
     [
       "the records hold it",
@@ -419,7 +419,7 @@ test("a records absence is backed only by the sources it names, each read whole,
     ],
   ] as const)
     assert.deepEqual(
-      await checkRecordsAbsence(claim, files, text),
+      await checkRecordsAbsence(claim, files, text, read),
       backing,
       what,
     );

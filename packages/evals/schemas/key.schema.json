@@ -258,6 +258,38 @@
             "items": {
               "$ref": "#/$defs/find"
             }
+          },
+          "absentMatch": {
+            "type": "object",
+            "description": "What must be absent for the item to hold: the codes and words a record of it would carry, its kind, and the day after which one would count. An answer's absence that names any of them is held to all of them.",
+            "additionalProperties": false,
+            "properties": {
+              "codes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "terms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "after": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "kind": {
+                "enum": [
+                  "lab",
+                  "immunization",
+                  "procedure",
+                  "condition",
+                  "medication"
+                ]
+              }
+            }
           }
         }
       }

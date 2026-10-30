@@ -41,7 +41,7 @@ command names): cite only in "cite" and "query". When the answer is written, rep
 const RECORDS = `Your access: {PRONOUN_POSSESSIVE} records are the {COUNT} files listed below, under {FOLDER}. Read every file in full, in
 this order, with the Read tool, as if they were pasted into this conversation (a long file in several reads, until you
 have read every line). Use no other tool except Write for the answer: no search, no shell. An absence names, in
-"sources", the files (as listed) it looked through.
+"sources", the files (as listed) it looked through; leave "sources" out when it looked through every file.
 {FILES}`;
 
 const POD = `Your access: {PRONOUN_POSSESSIVE} records are in a pod, which you reach only through this one command, run with the Bash tool:

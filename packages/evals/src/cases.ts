@@ -9,7 +9,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { componentsOf } from "@cascade-runtime/runtime/node";
 import { openPod, type Pod } from "cascade-runtime";
-import type { Claim } from "./citations.js";
+import type { Claim, Tie } from "./citations.js";
 import { type Environment, pinnedPod } from "./pinned.js";
 import { CASES, WORK } from "./paths.js";
 import { valid } from "./schemas.js";
@@ -56,6 +56,8 @@ export interface KeyItem {
   }[];
   readonly pod: "visible" | "deeper" | "narrative-only";
   readonly guideline?: string;
+  /** What must be absent for the item to hold, its kind and since when: an absence that ties to it is held to this. */
+  readonly absentMatch?: Tie;
   readonly find?: readonly {
     readonly question: string;
     readonly where?: readonly string[];

@@ -60,7 +60,12 @@
           "question": "pod/My active conditions",
           "where": ["44054006"]
         }
-      ]
+      ],
+      "absentMatch": {
+        "codes": ["9318-7", "14959-1", "32294-1", "14958-3", "13705-9"],
+        "terms": ["albumin", "microalbumin", "uACR"],
+        "kind": "lab"
+      }
     },
     {
       "id": "TG2",
@@ -114,7 +119,13 @@
         {
           "question": "pod/My procedures"
         }
-      ]
+      ],
+      "absentMatch": {
+        "codes": ["73761001", "45378"],
+        "terms": ["colonoscopy"],
+        "kind": "procedure",
+        "after": "2025-11-05"
+      }
     },
     {
       "id": "TT1",

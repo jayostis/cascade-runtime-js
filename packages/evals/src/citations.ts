@@ -109,6 +109,42 @@ export interface Ran extends Call {
   readonly answer: string;
 }
 
+/** What a key item says must be absent, which an absence that ties to it is held to, and the kind of record it is. */
+export interface Tie {
+  readonly codes?: readonly string[];
+  readonly terms?: readonly string[];
+  readonly after?: string;
+  readonly kind?: RecordKind;
+}
+
+export type RecordKind =
+  "lab" | "immunization" | "procedure" | "condition" | "medication";
+
+/** The kind of record a pod tool call answers with; undefined for one that answers of several kinds. */
+export function kindOfCall(call: Call): RecordKind | undefined {
+  if (call.tool === "lab_series" || call.tool === "find_changes") return "lab";
+  if (call.tool === "timeline") return "medication";
+  const question = String(call.input.question ?? "");
+  if (/lab results/.test(question)) return "lab";
+  if (/immunizations/.test(question)) return "immunization";
+  if (/procedures/.test(question)) return "procedure";
+  if (/conditions/.test(question)) return "condition";
+  if (/medication/.test(question)) return "medication";
+  return undefined;
+}
+
+/** The match an absence is held to: its own codes and words, and those of the key item it ties to. */
+function heldTo(absence: Absence, tied?: Tie): Absence["match"] {
+  const after = absence.match.after ?? tied?.after;
+  return {
+    codes: [...(absence.match.codes ?? []), ...(tied?.codes ?? [])],
+    terms: [...(absence.match.terms ?? []), ...(tied?.terms ?? [])],
+    ...(after === undefined ? {} : { after }),
+  };
+}
+
+const LOINC = /^\d{1,5}-\d$/;
+
 export type Backing =
   | { readonly backed: true }
   | { readonly backed: false; readonly reason: string };
@@ -185,9 +221,7 @@ function holds(
     case "id":
       return values.some((value) => lower(value) === want);
     case "status":
-      return values.some(
-        (value) => lower(value) === want || lower(value).endsWith(want),
-      );
+      return values.some((value) => codeOf(value) === codeOf(want));
     case "code":
       return values.some((value) => codeOf(value) === codeOf(want));
     case "name":
@@ -373,20 +407,34 @@ function whole(answer: string): boolean {
  * Whether a pod's absence is backed: it says what it looks for and what it covered, its query ran and answered (a
  * refusal backs nothing), nothing in the answer matches, and the answer is whole, not cut at a row limit.
  */
-export function checkAbsence(absence: Absence, ran: readonly Ran[]): Backing {
+export function checkAbsence(
+  absence: Absence,
+  ran: readonly Ran[],
+  tied?: Tie,
+): Backing {
   const { query } = absence;
+  const match = heldTo(absence, tied);
+  const codes = match.codes ?? [];
+  const kind =
+    tied?.kind ??
+    (codes.length > 0 && codes.every((code) => LOINC.test(code))
+      ? "lab"
+      : undefined);
   if (!lookedFor(absence))
     return { backed: false, reason: "nothing to look for" };
   if (absence.coverage.trim() === "")
     return { backed: false, reason: "no coverage" };
   if (query === undefined) return { backed: false, reason: "no query" };
+  const asked = kindOfCall(query);
+  if (kind !== undefined && asked !== undefined && asked !== kind)
+    return { backed: false, reason: "a question of another kind" };
   const calls = ran.filter(
     (call) => call.tool === query.tool && sameInput(call.input, query.input),
   );
   if (calls.length === 0) return { backed: false, reason: "query not run" };
   const answered = calls.filter((call) => call.ok);
   if (answered.length === 0) return { backed: false, reason: "query refused" };
-  if (answered.some((call) => answerHolds(call.answer, absence.match)))
+  if (answered.some((call) => answerHolds(call.answer, match)))
     return { backed: false, reason: "query found it" };
   return answered.some((call) => whole(call.answer))
     ? { backed: true }
@@ -401,19 +449,24 @@ export async function checkRecordsAbsence(
   absence: Absence,
   read: readonly string[],
   text: (file: string) => Promise<string>,
+  all: readonly string[],
+  tied?: Tie,
 ): Promise<Backing> {
+  const match = heldTo(absence, tied);
   if (!lookedFor(absence))
     return { backed: false, reason: "nothing to look for" };
   if (absence.coverage.trim() === "")
     return { backed: false, reason: "no coverage" };
-  const sources = absence.sources ?? [];
-  if (sources.length === 0) return { backed: false, reason: "no sources" };
+  const sources = absence.sources ?? all;
+  const left = all.filter((file) => !sources.includes(file));
+  if (left.length > 0)
+    return { backed: false, reason: `sources leave out: ${left.join(", ")}` };
   const unread = sources.filter((file) => !read.includes(file));
   if (unread.length > 0)
     return { backed: false, reason: `source not read: ${unread.join(", ")}` };
   const holding: string[] = [];
   for (const file of sources)
-    if (documentHolds(await text(file), absence.match)) holding.push(file);
+    if (documentHolds(await text(file), match)) holding.push(file);
   return holding.length > 0
     ? { backed: false, reason: `records hold it: ${holding.join(", ")}` }
     : { backed: true };
@@ -480,7 +533,6 @@ export function fhirFields(r: Record<string, unknown>): Fields {
   for (const component of asArray(r.component))
     values(component as Record<string, unknown>);
   push(f.status, r.status);
-  push(f.status, r.intent);
   for (const key of ["clinicalStatus", "verificationStatus"])
     concept(f, ["status"], r[key]);
   for (const key of ["code", "medicationCodeableConcept", "vaccineCode"])
