@@ -1,12 +1,19 @@
 import { existsSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve as absolute } from "node:path";
-import { parseConfig, type RuntimeConfig } from "../config.js";
+import { fileURLToPath } from "node:url";
+import {
+  packedCommit,
+  parseConfig,
+  RUNTIME_REPOSITORY,
+  runtimeIri,
+  type RuntimeConfig,
+} from "../config.js";
 import type { VocabularyBuild } from "../build.js";
 import type { Layout } from "../layout.js";
 import { checkouts, vocabularyOf } from "./components.js";
 import type { FolderFiles } from "./folder-files.js";
-import { git } from "./git.js";
+import { checkout, git } from "./git.js";
 import { type Resolved, resolve } from "./resolver.js";
 
 export const CONFIG_FILE = "cascade-runtime.json";
@@ -85,4 +92,54 @@ export async function localVocabulary(
   log?: (line: string) => void,
 ): Promise<LocalVocabulary> {
   return vocabularyOf(await checkouts(root, log));
+}
+
+/** The name of this repository's own package.json, at the root of its checkout. */
+const REPOSITORY_PACKAGE = "cascade-runtime-js";
+
+let performing: Promise<string> | undefined;
+
+/**
+ * This runtime as every act it performs names it (N7), read once: the commit a packed package's manifest records,
+ * marked `#uncommitted` when it was packed from a checkout with changes; else,
+ * in a checkout of this repository, its commit, marked `#uncommitted` when files differ from it, since the tree at the
+ * commit is not what runs; else, where no commit can be read, as a Docker worktree whose `.git` names a path on its
+ * host, the repository marked `#unidentified`.
+ */
+export function thisRuntime(): Promise<string> {
+  performing ??= (async () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (let folder = here; ; folder = dirname(folder)) {
+      const manifest = join(folder, "package.json");
+      if (existsSync(manifest)) {
+        const { name, version, cascadeRuntime } = JSON.parse(
+          await readFile(manifest, "utf8"),
+        ) as {
+          name?: unknown;
+          version?: unknown;
+          cascadeRuntime?: { commit?: unknown; dirty?: unknown };
+        };
+        const commit =
+          typeof cascadeRuntime?.commit === "string"
+            ? cascadeRuntime.commit
+            : typeof version === "string"
+              ? packedCommit(version)
+              : undefined;
+        if (commit !== undefined)
+          return cascadeRuntime?.dirty === true
+            ? `${runtimeIri(commit)}#uncommitted`
+            : runtimeIri(commit);
+        if (name === REPOSITORY_PACKAGE) {
+          const found = await checkout(folder);
+          if (found === undefined) break;
+          return found.uncommitted === 0
+            ? runtimeIri(found.commit)
+            : `${runtimeIri(found.commit)}#uncommitted`;
+        }
+      }
+      if (dirname(folder) === folder) break;
+    }
+    return `${RUNTIME_REPOSITORY}#unidentified`;
+  })();
+  return performing;
 }

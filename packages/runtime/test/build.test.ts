@@ -1,32 +1,46 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
-import { vocabularyDerive } from "../src/build.js";
-import { dataset } from "../src/dataset.js";
+import {
+  deriveWith,
+  type VocabularyBuild,
+  vocabularyBuild,
+  vocabularyDerive,
+} from "../src/build.js";
+import { dataset, podDataset, podStated } from "../src/dataset.js";
+import { KeptBuild } from "../src/incremental.js";
 import { CorePod } from "../src/core-pod.js";
-import { DERIVED } from "../src/derive.js";
+import { DERIVED, type Keep } from "../src/derive.js";
+import { viewEntryName } from "../src/names.js";
 import { MemoryFiles, readText } from "../src/files.js";
 import { clock } from "../src/ids.js";
 import { LAYOUT_FILE, type Layout } from "../src/layout.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
+import { iri, type Triple } from "../src/rdf.js";
 import { References } from "../src/references.js";
 import { type Replayed, replay } from "../src/replay.js";
 import { type Dataset, Union } from "../src/store.js";
+import { localVocabulary } from "../src/node/runtime.js";
+import { featurePod } from "../src/node/story-pod.js";
 import { notIsomorphic } from "./graphs.js";
-import { layout as readLayout, storyFrom, vocabulary } from "./vocabulary.js";
+import {
+  layout as readLayout,
+  ROOT,
+  RUNTIME,
+  storyFrom,
+  vocabulary,
+} from "./vocabulary.js";
 
 const FEATURE = "runtime/matcher.feature";
 const EXAMPLE =
   "the matcher joins the pair a person called different, and not the pair a person called the same";
 const THROUGH = "persons-same";
 const LENS = "everyday";
-const PREFIXES = `PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
-  PREFIX jdg: <https://ns.cascadeprotocol.org/judgments/v1-draft#>
+const PREFIXES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
   PREFIX solid: <http://www.w3.org/ns/solid/terms#>
   PREFIX dct: <http://purl.org/dc/terms/>
   PREFIX pav: <http://purl.org/pav/>
   PREFIX prov: <http://www.w3.org/ns/prov#>
-  PREFIX cascade: <https://ns.cascadeprotocol.org/core/v1#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>`;
 
 let store: Dataset;
@@ -37,8 +51,10 @@ let layout: Layout;
 /** The pod the story was replayed into, with a build after every step. */
 let pod: CountedFiles;
 /** A pod over `pod`'s files, as an app opens a folder that holds a pod. */
-let reopened: () => CorePod;
+let reopened: (newStore?: () => OxigraphStore) => CorePod;
 let replayed: Replayed;
+/** The build kept across steps, which `reopened` builds with. */
+let incremental: VocabularyBuild;
 /** The folder the story's steps name their files under. */
 let storyFolder: string;
 
@@ -66,12 +82,14 @@ before(async () => {
   const files = await vocabulary();
   layout = await readLayout();
   const derive = await vocabularyDerive(files, layout);
+  incremental = await vocabularyBuild(files, layout);
   const { story, folder } = await storyFrom(FEATURE, EXAMPLE, THROUGH);
   address = story.address;
   storyFolder = folder;
   laidOut = new Union(new OxigraphStore());
   await laidOut.loadTurtle(await readText(files, LAYOUT_FILE), address);
   replayed = await replay({
+    runtime: RUNTIME,
     story,
     source: files,
     vocabulary: files,
@@ -84,19 +102,20 @@ before(async () => {
     build: { lens: LENS, derive },
   });
   store = await dataset(replayed, THROUGH, LENS, new OxigraphStore(), derive);
-  reopened = () =>
+  reopened = (newStore = () => new OxigraphStore()) =>
     new CorePod({
+      runtime: RUNTIME,
       pod,
       address,
       subject: story.subject,
       title: "matching",
       vocabulary: files,
       layout,
-      newStore: () => new OxigraphStore(),
+      newStore,
       time: clock,
       importers: [],
       references: () => Promise.reject(new Error("no step here matches")),
-      build: { lens: LENS, derive },
+      build: { lens: LENS, derive: deriveWith(incremental), incremental },
     });
 });
 
@@ -122,16 +141,16 @@ test("the build writes the labels, each view the layout marks written always, a 
   const held = (
     await values(
       store,
-      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a rec:View } } }`,
+      `SELECT DISTINCT ?class WHERE { GRAPH ?file { [] a ?class } FILTER NOT EXISTS { GRAPH ?file { ?file a cascade:View } } }`,
     )
   ).map((kind) => `<${kind}>`);
-  const written = await values(store, `GRAPH ?view { ?view a rec:View }`);
+  const written = await values(store, `GRAPH ?view { ?view a cascade:View }`);
   assert.deepEqual(
     written,
     await values(
       laidOut,
-      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a rec:Placement ; rec:writtenBy [] ; solid:instance ?file
-        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement rec:writtenAlways ?always }
+      `SELECT ?file WHERE { GRAPH <${address}> { ?placement a cascade:Placement ; cascade:writtenByQueryPath [] ; solid:instance ?file
+        OPTIONAL { ?placement solid:forClass ?class } OPTIONAL { ?placement cascade:writtenAlways ?always }
         FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
@@ -157,14 +176,14 @@ test("the build writes the labels, each view the layout marks written always, a 
     await values(
       laidOut,
       `SELECT ?class ?listing ?target ?title WHERE { GRAPH <${address}> {
-        ?placement a rec:Placement ; solid:forClass ${registration}
-        { ?placement rec:writtenBy [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
-        UNION { ?placement solid:forClass rec:View ; solid:instanceContainer [] } } }`,
+        ?placement a cascade:Placement ; solid:forClass ${registration}
+        { ?placement cascade:writtenByQueryPath [] ; solid:instance ?target FILTER (?target IN (${written.map((view) => `<${view}>`).join(", ")})) }
+        UNION { ?placement solid:forClass cascade:View ; solid:instanceContainer [] } } }`,
     ),
   );
 });
 
-test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it", async () => {
+test("a build after each step reads no file back, or one the pod held at its opening more than once, and writes only the files it changes, each as a build of the whole pod writes it; the first entry after an opening loads the records the pod held into one store, not one for the entry and one for its build, and writes the files as a build of the whole pod does", async () => {
   assert.deepEqual([...pod.found.keys()], []);
   const begun = replayed.steps.map(({ wrote }) =>
     wrote.length === 0 ? -1 : pod.log.indexOf(wrote[0] ?? ""),
@@ -182,12 +201,100 @@ test("a build after each step reads no file back, or one the pod held at its ope
     new Set([builtAt(layout.typeIndex), ...appeared]).size,
   );
   assert.ok((pod.writes.get(layout.manifest) ?? 0) > 1);
+  await writtenAsBuiltWhole((path) =>
+    store.construct(
+      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address}${path}> { ?s ?p ?o } }`,
+    ),
+  );
+  pod.found.clear();
+  const opened = reopened();
+  await opened.refuse("a first step");
+  await opened.refuse("a second step");
+  assert.ok(pod.found.size > 0);
+  assert.deepEqual(
+    [...pod.found].filter(([, reads]) => reads > 1),
+    [],
+  );
+
+  const records = (
+    await pod.list(
+      layout.records(
+        "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance",
+      )?.folder ?? "",
+    )
+  )
+    .filter((path) => layout.isRdf(path))
+    .map((path) => address + path);
+  const stores: Set<string>[] = [];
+  class CountedStore extends OxigraphStore {
+    readonly #loaded = new Set<string>();
+
+    constructor() {
+      super();
+      stores.push(this.#loaded);
+    }
+
+    override loadTurtle(
+      turtle: Uint8Array | string,
+      options: { readonly graph: string },
+    ): Promise<void> {
+      this.#loaded.add(options.graph);
+      return super.loadTurtle(turtle, options);
+    }
+  }
+  const entering = reopened(() => new CountedStore());
+  const owner = `${address}${layout.card}#me`;
+  const { refused } = await entering.enter({
+    bytes: new TextEncoder().encode(`
+      <urn:uuid:${crypto.randomUUID()}> a <http://www.w3.org/ns/prov#Activity> ;
+        <http://www.w3.org/2000/01/rdf-schema#label> "an entry" ;
+        <http://www.w3.org/ns/prov#qualifiedAssociation> [ <http://www.w3.org/ns/prov#agent> <${owner}> ;
+          <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#PatientRole> ] .
+      <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
+      <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
+        <https://ns.cascadeprotocol.org/cascade#allergen> "Penicillin" .`),
+    base: "urn:entry",
+    name: "an entry",
+  });
+  assert.equal(refused, undefined);
+  assert.ok(records.length > 0);
+  assert.equal(
+    stores.filter((loaded) => records.every((graph) => loaded.has(graph)))
+      .length,
+    1,
+  );
+  const stated = await podStated(pod, layout, new OxigraphStore());
+  const { kept, files } = await KeptBuild.whole(
+    {
+      pod,
+      layout,
+      address,
+      newStore: () => new OxigraphStore(),
+      build: incremental,
+      lens: LENS,
+      keep: () => Promise.resolve([]),
+    },
+    {
+      address,
+      at: stated.at ?? "",
+      title: "matching",
+      snapshot: entering.head?.snapshot ?? "",
+    },
+  );
+  kept.free();
+  await writtenAsBuiltWhole((path) =>
+    Promise.resolve([...(files.get(path) ?? [])]),
+  );
+});
+
+/** Asserts each file the build writes is in the pod as `whole`, a build of the whole pod, gives it, or absent as there. */
+async function writtenAsBuiltWhole(
+  whole: (path: string) => Promise<readonly Triple[]>,
+): Promise<void> {
   const parser = new OxigraphStore();
   for (const path of layout.rebuilt) {
     const bytes = await pod.read(path);
-    const full = await store.construct(
-      `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${address}${path}> { ?s ?p ?o } }`,
-    );
+    const full = await whole(path);
     if (full.length === 0) {
       assert.equal(bytes, undefined, path);
       continue;
@@ -199,33 +306,24 @@ test("a build after each step reads no file back, or one the pod held at its ope
       path,
     );
   }
-  pod.found.clear();
-  const opened = reopened();
-  await opened.refuse("a first step");
-  await opened.refuse("a second step");
-  assert.ok(pod.found.size > 0);
-  assert.deepEqual(
-    [...pod.found].filter(([, reads]) => reads > 1),
-    [],
-  );
-});
+}
 
 test("the labels label every record, current revision and current version of the derived state, each document a current revision came from, the subject, and every entry of a view", async () => {
   const labels = await placed(
-    `[] rec:writtenBy "labels.rq" ; solid:instance ?file`,
+    `[] cascade:writtenByQueryPath "labels.rq" ; solid:instance ?file`,
   );
   const views = await placed(
-    `[] solid:forClass rec:View ; solid:instanceContainer ?folder`,
+    `[] solid:forClass cascade:View ; solid:instanceContainer ?folder`,
   );
   const derived = `${DERIVED}${LENS}`;
   const { rows } = await store.select(`${PREFIXES}
     SELECT ?kind ?thing ?label WHERE {
-      { GRAPH <${derived}> { ?thing a rec:Record } BIND ("record" AS ?kind) }
-      UNION { GRAPH <${derived}> { [] rec:currentRevision ?thing } BIND ("revision" AS ?kind) }
+      { GRAPH <${derived}> { ?thing a cascade:Record } BIND ("record" AS ?kind) }
+      UNION { GRAPH <${derived}> { [] cascade:currentRevision ?thing } BIND ("revision" AS ?kind) }
       UNION { GRAPH <${derived}> { [] pav:hasCurrentVersion ?thing } BIND ("version" AS ?kind) }
-      UNION { GRAPH <${derived}> { [] rec:currentRevision ?revision } GRAPH ?file { ?revision prov:wasDerivedFrom ?thing }
+      UNION { GRAPH <${derived}> { [] cascade:currentRevision ?revision } GRAPH ?file { ?revision prov:wasDerivedFrom ?thing }
               BIND ("document" AS ?kind) }
-      UNION { GRAPH ?file { ?thing a rec:Subject } BIND ("subject" AS ?kind) }
+      UNION { GRAPH ?file { ?thing a cascade:Subject } BIND ("subject" AS ?kind) }
       UNION { GRAPH ?view { ?thing cascade:mergedFrom [] } FILTER (STRSTARTS(STR(?view), "${views}")) BIND ("entry" AS ?kind) }
       OPTIONAL { GRAPH <${labels}> { ?thing rdfs:label ?label } }
     }`);
@@ -245,18 +343,18 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
   const derived = `${DERIVED}${LENS}`;
   const judged = await values(
     store,
-    `SELECT DISTINCT ?verdict WHERE { GRAPH ?file { [] a jdg:Judgment ; jdg:verdict ?verdict } FILTER (?file != <${derived}>) }`,
+    `SELECT DISTINCT ?verdict WHERE { GRAPH ?file { [] a cascade:Judgment ; cascade:verdict ?verdict } FILTER (?file != <${derived}>) }`,
   );
   assert.deepEqual(judged, [
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#About",
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#Different",
-    "https://ns.cascadeprotocol.org/judgments/v1-draft#Same",
+    "https://ns.cascadeprotocol.org/cascade#About",
+    "https://ns.cascadeprotocol.org/cascade#Different",
+    "https://ns.cascadeprotocol.org/cascade#Same",
   ]);
   assert.deepEqual(
     await values(
       store,
-      `GRAPH ?file { ?judgment a jdg:Judgment } FILTER (?file != <${derived}>)
-       FILTER NOT EXISTS { GRAPH <${derived}> { ?judgment rec:counts true } }`,
+      `GRAPH ?file { ?judgment a cascade:Judgment } FILTER (?file != <${derived}>)
+       FILTER NOT EXISTS { GRAPH <${derived}> { ?judgment cascade:countsUnderLens true } }`,
     ),
     [],
   );
@@ -267,29 +365,29 @@ test("the derived state holds what the person's judgments say: each counts, a Sa
     assert.deepEqual(
       await values(
         store,
-        `GRAPH ?file { [] jdg:verdict jdg:${verdict} ; prov:hadMember ?one, ?other FILTER (?one != ?other) }
-         FILTER NOT EXISTS { GRAPH <${derived}> { ?one jdg:${currently} ?other } }`,
+        `GRAPH ?file { [] cascade:verdict cascade:${verdict} ; prov:hadMember ?one, ?other FILTER (?one != ?other) }
+         FILTER NOT EXISTS { GRAPH <${derived}> { ?one cascade:${currently} ?other } }`,
       ),
       [],
       verdict,
     );
   const leftOut = await values(
     store,
-    `GRAPH <${derived}> { ?record rec:leftOutFor [ rec:reason rec:PatientNotClaimed ; rec:because ?profile ] }`,
+    `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }`,
   );
   assert.ok(leftOut.length > 0, "no record is left out for its patient");
   assert.deepEqual(
     await values(
       store,
-      `GRAPH <${derived}> { ?record rec:leftOutFor [ rec:reason rec:PatientNotClaimed ; rec:because ?profile ] }
-       GRAPH ?file { [] jdg:verdict jdg:About ; prov:hadMember ?profile }`,
+      `GRAPH <${derived}> { ?record cascade:leftOutFor [ cascade:leftOutReason cascade:PatientNotClaimed ; cascade:leftOutBecauseOf ?profile ] }
+       GRAPH ?file { [] cascade:verdict cascade:About ; prov:hadMember ?profile }`,
     ),
     [],
   );
   assert.deepEqual(
     await values(
       store,
-      `GRAPH <${derived}> { ?record a rec:Record FILTER NOT EXISTS { ?record rec:leftOutFor [] } FILTER NOT EXISTS { ?record rec:inEntry [] } }`,
+      `GRAPH <${derived}> { ?record a cascade:Record FILTER NOT EXISTS { ?record cascade:leftOutFor [] } FILTER NOT EXISTS { ?record cascade:inEntry [] } }`,
     ),
     [],
   );
@@ -299,7 +397,7 @@ test("the matcher reads a statement two files of the pod make as one", async () 
   const [[first, record] = []] = (
     await values(
       store,
-      `SELECT ?first ?record WHERE { ?first rec:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf [] } }`,
+      `SELECT ?first ?record WHERE { ?first cascade:revisionOf ?record FILTER NOT EXISTS { ?first prov:wasRevisionOf [] } }`,
     )
   ).map((row) => row.split(" "));
   const files = await vocabulary();
@@ -307,10 +405,11 @@ test("the matcher reads a statement two files of the pod make as one", async () 
   await copy.files.write(
     "restated.ttl",
     new TextEncoder().encode(
-      `<${first ?? ""}> <https://ns.cascadeprotocol.org/records/v1-draft#revisionOf> <${record ?? ""}> .`,
+      `<${first ?? ""}> <https://ns.cascadeprotocol.org/cascade#revisionOf> <${record ?? ""}> .`,
     ),
   );
   const restated = new CorePod({
+    runtime: RUNTIME,
     pod: copy.files,
     address,
     subject: replayed.story.subject,
@@ -329,4 +428,130 @@ test("the matcher reads a statement two files of the pod make as one", async () 
     build: { lens: LENS, derive: await vocabularyDerive(files, layout) },
   });
   assert.equal((await restated.match()).refused, undefined);
+});
+
+test("each entry of a view is named in the view, its address, # and the hash of its least member, and is written <#hash>", async () => {
+  const { rows } = await store.select(
+    `SELECT ?view ?entry ?member WHERE { GRAPH ?view { ?view a <https://ns.cascadeprotocol.org/cascade#View> . ?entry <https://ns.cascadeprotocol.org/cascade#mergedFrom> ?member } }`,
+  );
+  const members = new Map<string, { view: string; members: string[] }>();
+  for (const row of rows) {
+    const entry = row.get("entry")?.value ?? "";
+    const found = members.get(entry) ?? {
+      view: row.get("view")?.value ?? "",
+      members: [],
+    };
+    found.members.push(row.get("member")?.value ?? "");
+    members.set(entry, found);
+  }
+  assert.ok(members.size > 0);
+  for (const [entry, { view, members: of }] of members)
+    assert.equal(entry, await viewEntryName(view, of));
+  const [view = ""] = [...new Set([...members.values()].map((m) => m.view))];
+  const text = new TextDecoder().decode(
+    await pod.read(view.slice(address.length)),
+  );
+  assert.match(text, /^<#[0-9a-f]{64}> /m);
+  assert.ok(!text.includes(address), text);
+  assert.ok(!text.includes("urn:cascade:entry:"), text);
+});
+
+test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose members the revised table still joins counts on (M7)", async () => {
+  const kit = await localVocabulary(ROOT);
+  const replayed = await featurePod(
+    kit,
+    FEATURE,
+    new MemoryFiles("https://pod.example/"),
+    {
+      example:
+        "a Same whose members the revised table still joins is not filed again, and counts on",
+    },
+  );
+  const last = replayed.steps.at(-1);
+  assert.ok(last);
+  const read = (keep?: Keep) =>
+    podDataset(
+      replayed.pod,
+      kit.layout,
+      kit.build,
+      kit.config.lens,
+      new OxigraphStore(),
+      { title: replayed.title, at: last.step.when },
+      keep,
+    );
+  /** The Same the example says counts on, by the name it gives it. */
+  const same = "urn:uuid:229f494f-26fa-8d9c-a2c9-badd04fd0356";
+  let kept: Triple[] = [];
+  const joinedByCurrentVersion: Keep = async (held) => {
+    const { rows } = await held.select(`${PREFIXES}
+      SELECT DISTINCT ?claim ?now WHERE {
+        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:used ?input .
+        ?input prov:specializationOf ?series .
+        ?series pav:hasCurrentVersion ?now .
+        FILTER (?now != ?input)
+      }`);
+    kept = rows
+      .filter((row) => row.get("claim")?.value === same)
+      .map((row) => [
+        iri(row.get("claim")?.value ?? ""),
+        iri(
+          "https://ns.cascadeprotocol.org/cascade#membersJoinedByCurrentTableVersion",
+        ),
+        iri(row.get("now")?.value ?? ""),
+      ]);
+    return kept;
+  };
+  const counted = `${PREFIXES}
+    ASK {
+      <${same}> prov:hadMember ?one , ?other .
+      ?one cascade:inEntry ?entry . ?other cascade:inEntry ?entry .
+      FILTER (?one != ?other)
+    }`;
+  assert.equal(await (await read()).store.ask(counted), false);
+  const counting = await read(joinedByCurrentVersion);
+  assert.equal(kept.length, 1);
+  assert.equal(await counting.store.ask(counted), true);
+});
+
+test("an entry another view points to is named in the view that gives it members: each variant interpretation's variant is an entry of the variants view", async () => {
+  const kit = await localVocabulary(ROOT);
+  const replayed = await featurePod(
+    kit,
+    "conformance/martin-okafor/martin-okafor.feature",
+    new MemoryFiles("https://pod.example/"),
+  );
+  const last = replayed.steps.at(-1);
+  assert.ok(last);
+  const { store: martin, address: martinAt } = await podDataset(
+    replayed.pod,
+    kit.layout,
+    kit.build,
+    kit.config.lens,
+    new OxigraphStore(),
+    { title: replayed.title, at: last.step.when },
+  );
+  const variants = `${martinAt}clinical/variants.ttl`;
+  const { rows } = await martin.select(
+    `SELECT ?interpretation ?variant ?member WHERE {
+      GRAPH ?view { ?view a cascade:View . ?interpretation cascade:mergedFrom [] ; cascade:variantInterpreted ?variant }
+      OPTIONAL { GRAPH <${variants}> { ?variant cascade:mergedFrom ?member } }
+    }`.replace(
+      /^/,
+      `${PREFIXES}
+`,
+    ),
+  );
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    const variant = row.get("variant")?.value ?? "";
+    assert.ok(
+      variant.startsWith(`${variants}#`) &&
+        /^[0-9a-f]{64}$/.test(variant.slice(variants.length + 1)),
+      variant,
+    );
+    assert.ok(
+      row.get("member"),
+      `${variant} has no member in the variants view`,
+    );
+  }
 });

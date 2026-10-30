@@ -39,7 +39,7 @@ before(async () => {
   await files.write(
     RECORD,
     encode(
-      "<urn:x:record> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .\n",
+      "<urn:x:record> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .\n",
     ),
   );
   pod = await podDataset(
@@ -84,7 +84,7 @@ test("a load creates the repository, sends each file of the pod and the derived 
   assert.deepEqual(
     await triples(fake.graphs.get(ADDRESS + RECORD)),
     new Set([
-      "<urn:x:record> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/health/v1#AllergyRecord>",
+      "<urn:x:record> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance>",
     ]),
   );
   assert.deepEqual(

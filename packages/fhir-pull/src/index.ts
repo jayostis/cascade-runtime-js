@@ -1,7 +1,7 @@
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const MEDIA_TYPE = "application/fhir+json";
@@ -10,10 +10,17 @@ const PULL = "pull.json";
 const BUNDLE = "bundle.json";
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
+export const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
 
 /** What `pullFiles` throws for a pull whose content the import would refuse: bad input, never a broken runtime. */
 export class PullRefused extends Error {
   override readonly name = "PullRefused";
+}
+
+/** One search of a pull: a resource type, with the category it was narrowed to, if any. */
+export interface SavedSearch {
+  readonly type: string;
+  readonly category?: string;
 }
 
 /** A pull as `cascade-runtime`'s `pull()` returns it, as far as saving it needs. */
@@ -25,6 +32,10 @@ export interface SavedPull {
   readonly retrievedAt: string;
   /** The world's date the hospital answered as of, when the host that made the hospital set one. */
   readonly asOf?: string;
+  /** Each search the pull made. */
+  readonly searches?: readonly SavedSearch[];
+  /** The searches the hospital refused. */
+  readonly denied?: readonly SavedSearch[];
   readonly bundle: object;
 }
 
@@ -55,17 +66,46 @@ interface Described {
   readonly source: string;
   readonly retrievedAt: string;
   readonly asOf?: string;
+  readonly searches: readonly SavedSearch[];
+  readonly denied: readonly SavedSearch[];
 }
 
-/** The word `rec:kind` gives each type of resource that is a record. */
-const KINDS: ReadonlyMap<string, string> = new Map([
-  ["AllergyIntolerance", "Allergy"],
-  ["Condition", "Condition"],
-  ["Immunization", "Immunization"],
-  ["Procedure", "Procedure"],
-  ["MedicationRequest", "Medication"],
-  ["MedicationStatement", "Medication"],
+interface RecordOfType {
+  /** The word `cascade:recordKind` gives it. */
+  readonly kind: string;
+  /** Its class's local name in the Cascade namespace. */
+  readonly class: string;
+}
+
+/** Each type of resource that is a record, but an Observation. */
+const KINDS: ReadonlyMap<string, RecordOfType> = new Map([
+  ["AllergyIntolerance", { kind: "Allergy", class: "AllergyOrIntolerance" }],
+  ["Condition", { kind: "Condition", class: "ProblemOrDiagnosis" }],
+  ["Immunization", { kind: "Immunization", class: "Vaccination" }],
+  ["Procedure", { kind: "Procedure", class: "MedicalProcedure" }],
+  [
+    "MedicationRequest",
+    { kind: "Medication", class: "PrescribedOrReportedMedication" },
+  ],
+  [
+    "MedicationStatement",
+    { kind: "Medication", class: "PrescribedOrReportedMedication" },
+  ],
 ]);
+const LAB_RESULT: RecordOfType = {
+  kind: "Lab result",
+  class: "LaboratoryTestResult",
+};
+
+/** What a resource of the type, in the categories, is a record of, or undefined where the adapter makes none of it. */
+function recordOf(
+  type: unknown,
+  categories: readonly unknown[],
+): RecordOfType | undefined {
+  if (type === "Observation")
+    return categories.includes("laboratory") ? LAB_RESULT : undefined;
+  return typeof type === "string" ? KINDS.get(type) : undefined;
+}
 
 /**
  * The pull as the folder `name` of two files: `bundle.json`, its Bundle, the import's one document; and `pull.json`,
@@ -109,26 +149,9 @@ function described(bytes: Uint8Array): Described {
 function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new PullRefused(`${PULL} is not a JSON object`);
-  const { fhirBase, patient, source, retrievedAt, asOf } = value as Record<
-    string,
-    unknown
-  >;
-  let base: URL | undefined;
-  try {
-    base = typeof fhirBase === "string" ? new URL(fhirBase) : undefined;
-  } catch {
-    base = undefined;
-  }
-  if (
-    typeof fhirBase !== "string" ||
-    fhirBase !== fhirBase.trim() ||
-    fhirBase.endsWith("/") ||
-    base?.protocol !== "https:" ||
-    base.search !== "" ||
-    base.hash !== "" ||
-    fhirBase.includes("?") ||
-    fhirBase.includes("#")
-  )
+  const { fhirBase, patient, source, retrievedAt, asOf, searches, denied } =
+    value as Record<string, unknown>;
+  if (!isFhirBase(fhirBase))
     throw new PullRefused(
       `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
     );
@@ -146,7 +169,61 @@ function checked(value: unknown): Described {
     source,
     retrievedAt,
     ...(asOf !== undefined && { asOf }),
+    searches: searchesIn(searches, "searches"),
+    denied: searchesIn(denied, "denied"),
   };
+}
+
+function searchesIn(value: unknown, field: string): readonly SavedSearch[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    !value.every((search: unknown) => {
+      const { type, category } = (
+        typeof search === "object" && search !== null ? search : {}
+      ) as Record<string, unknown>;
+      return (
+        typeof type === "string" &&
+        RESOURCE_TYPE.test(type) &&
+        (category === undefined ||
+          (typeof category === "string" && category !== ""))
+      );
+    })
+  )
+    throw new PullRefused(
+      `${PULL}'s ${field} is not a list of searches, each a resource type and an optional category`,
+    );
+  return value as SavedSearch[];
+}
+
+/** The IRI of the class of record each search returns, once each; a search whose resources become no record has none. */
+function classesOf(searches: readonly SavedSearch[]): string[] {
+  return [
+    ...new Set(
+      searches.flatMap(({ type, category }) => {
+        const record = recordOf(type, category === undefined ? [] : [category]);
+        return record === undefined ? [] : [`${CASCADE}${record.class}`];
+      }),
+    ),
+  ];
+}
+
+/** Whether the value is an https: URL with no query, fragment, trailing slash or surrounding space. */
+function isFhirBase(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value !== value.trim() ||
+    value.endsWith("/") ||
+    value.includes("?") ||
+    value.includes("#")
+  )
+    return false;
+  try {
+    const base = new URL(value);
+    return base.protocol === "https:" && base.search === "" && base.hash === "";
+  } catch {
+    return false;
+  }
 }
 
 function isUtc(value: unknown): value is string {
@@ -164,19 +241,33 @@ function facts(pull: Described, importStarted: string): Uint8Array {
   const thisImport = `<${BRIDGE}thisImport>`;
   const dateTime = (value: string): string =>
     `${quoted(value)}^^<${XSD}dateTime>`;
+  const refused = (search: SavedSearch): boolean =>
+    pull.denied.some(
+      ({ type, category }) =>
+        type === search.type && category === search.category,
+    );
+  const scope = (property: string, searches: readonly SavedSearch[]) =>
+    classesOf(searches).map(
+      (recordClass) => `${document} <${CASCADE}${property}> <${recordClass}> .`,
+    );
   const lines = [
     `${thisImport} <${RDFS}label> ${quoted("FHIR pull")} .`,
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
-    `${document} <${BRIDGE}serverBaseUrl> ${quoted(pull.fhirBase)} .`,
+    `${document} <${CASCADE}serverBaseUrl> ${quoted(pull.fhirBase)} .`,
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
     ...(pull.asOf === undefined
       ? []
-      : [`${document} <${REC}answeredAsOf> ${dateTime(pull.asOf)} .`]),
-    `${document} <${BRIDGE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
+      : [`${document} <${CASCADE}answeredAsOf> ${dateTime(pull.asOf)} .`]),
+    ...scope(
+      "answersForRecordClass",
+      pull.searches.filter((search) => !refused(search)),
+    ),
+    ...scope("refusedForRecordClass", pull.denied),
+    `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
     `${document} <${PROV}qualifiedAttribution> _:attribution .`,
     `_:attribution <${PROV}agent> _:agent .`,
     `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
-    `_:attribution <${PROV}hadRole> <${REC}author> .`,
+    `_:attribution <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
   ];
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
@@ -208,14 +299,9 @@ function codes(concepts: unknown): unknown[] {
   });
 }
 
-/** The resource's `rec:kind`, or undefined where the adapter makes no record of it. */
+/** The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it. */
 function kindOf(resource: Record<string, unknown>): string | undefined {
-  const type = resource.resourceType;
-  if (type === "Observation")
-    return codes(resource.category).includes("laboratory")
-      ? "Lab result"
-      : undefined;
-  return typeof type === "string" ? KINDS.get(type) : undefined;
+  return recordOf(resource.resourceType, codes(resource.category))?.kind;
 }
 
 /** The importer of a pull saved by `pullFiles`: its Bundle, with what `pull.json` says of it. */
@@ -274,3 +360,156 @@ export const fhirPull = {
     });
   },
 };
+
+const CONNECT = "connect.json";
+const CAPABILITY = "capability.json";
+const SMART_CONFIGURATION = "smart-configuration.json";
+const NOTHING: Record<string, unknown> = {};
+const OAUTH_URIS =
+  "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris";
+
+/** What `connectFiles` and `readConnect` throw for a connect the import would refuse: bad input, never a broken runtime. */
+export class ConnectRefused extends Error {
+  override readonly name = "ConnectRefused";
+}
+
+/**
+ * A connect as an app saves it: the base it connected to, the client id it signed in with, and what the server answered
+ * of itself.
+ */
+export interface SavedConnect {
+  readonly fhirBase: string;
+  readonly clientId: string;
+  /** The server's CapabilityStatement, as it answered `GET <fhirBase>/metadata`. */
+  readonly capability: object;
+  /** The server's SMART configuration, as it answered `GET <fhirBase>/.well-known/smart-configuration`, where it did. */
+  readonly smartConfiguration?: object;
+}
+
+/**
+ * What a connect says of its server (runtime/arrivals.feature, A16): the base and client id the app used, and each fact
+ * the server reported, as it wrote it, where it wrote a string that is not empty.
+ */
+export interface Reported {
+  readonly fhirBase: string;
+  readonly clientId: string;
+  readonly selfAssertedBaseUrl?: string;
+  readonly authorizationEndpoint?: string;
+  readonly softwareName?: string;
+  readonly softwareVersion?: string;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** `smart` is undefined where the connect saved no SMART configuration. */
+function reported(
+  connect: unknown,
+  capability: unknown,
+  smart: unknown,
+): Reported {
+  const saved = record(connect);
+  if (saved === undefined)
+    throw new ConnectRefused(`${CONNECT} is not a JSON object`);
+  const { fhirBase, clientId } = saved;
+  if (!isFhirBase(fhirBase))
+    throw new ConnectRefused(
+      `${CONNECT}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
+    );
+  if (text(clientId) === undefined)
+    throw new ConnectRefused(`${CONNECT} names no client id`);
+  const statement = record(capability);
+  if (statement?.resourceType !== "CapabilityStatement")
+    throw new ConnectRefused(`${CAPABILITY} is no CapabilityStatement`);
+  const configuration = smart === undefined ? NOTHING : record(smart);
+  if (configuration === undefined)
+    throw new ConnectRefused(`${SMART_CONFIGURATION} is not a JSON object`);
+  const server = list(statement.rest)
+    .map(record)
+    .find((rest) => rest?.mode === "server");
+  const authorize = list(record(server?.security)?.extension)
+    .map(record)
+    .find((extension) => extension?.url === OAUTH_URIS);
+  const facts: Record<string, string | undefined> = {
+    selfAssertedBaseUrl: text(record(statement.implementation)?.url),
+    authorizationEndpoint:
+      text(configuration.authorization_endpoint) ??
+      text(
+        list(authorize?.extension)
+          .map(record)
+          .find((extension) => extension?.url === "authorize")?.valueUri,
+      ),
+    softwareName: text(record(statement.software)?.name),
+    softwareVersion: text(record(statement.software)?.version),
+  };
+  return {
+    fhirBase,
+    clientId: clientId as string,
+    ...Object.fromEntries(
+      Object.entries(facts).filter(([, value]) => value !== undefined),
+    ),
+  };
+}
+
+/**
+ * The connect as the folder `name` of two files, `capability.json`, what the server answered, and `connect.json`, the
+ * base and the client id, and a third, `smart-configuration.json`, where the connect holds one. A connect the import
+ * would refuse is refused here, before it is saved.
+ */
+export function connectFiles(
+  connect: SavedConnect,
+  name: string,
+): ReadonlyMap<string, Uint8Array> {
+  if (name === "" || name === "." || name === ".." || /[/\\]/.test(name))
+    throw new TypeError(
+      `a connect is saved under one folder name, not ${name}`,
+    );
+  const { capability, fhirBase, clientId, smartConfiguration } = connect;
+  reported({ fhirBase, clientId }, capability, smartConfiguration);
+  const encoder = new TextEncoder();
+  return new Map([
+    [
+      `${name}/${CONNECT}`,
+      encoder.encode(`${JSON.stringify({ fhirBase, clientId }, null, 2)}\n`),
+    ],
+    [`${name}/${CAPABILITY}`, encoder.encode(JSON.stringify(capability))],
+    ...(smartConfiguration === undefined
+      ? []
+      : [
+          [
+            `${name}/${SMART_CONFIGURATION}`,
+            encoder.encode(JSON.stringify(smartConfiguration)),
+          ] as const,
+        ]),
+  ]);
+}
+
+/** What the connect saved in the folder reports; one that holds no `connect.json`, or that A14 refuses, is refused. */
+export async function readConnect(
+  files: PullFiles,
+  folder: string,
+): Promise<Reported> {
+  const saved = await files.read(`${folder}/${CONNECT}`);
+  if (saved === undefined)
+    throw new ConnectRefused(`${folder} holds no ${CONNECT}`);
+  const capability = await files.read(`${folder}/${CAPABILITY}`);
+  if (capability === undefined)
+    throw new ConnectRefused(`${folder} holds no ${CAPABILITY}`);
+  const smart = await files.read(`${folder}/${SMART_CONFIGURATION}`);
+  return reported(
+    json(saved),
+    json(capability),
+    smart === undefined ? undefined : (json(smart) ?? null),
+  );
+}

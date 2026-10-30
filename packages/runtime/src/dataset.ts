@@ -1,5 +1,5 @@
 import type { Derive, VocabularyBuild } from "./build.js";
-import type { DerivedStep } from "./derive.js";
+import type { DerivedStep, Keep } from "./derive.js";
 import type { Files } from "./files.js";
 import { type Layout, LAYOUT_GRAPH } from "./layout.js";
 import { iri, ntriples, type Term, type Triple } from "./rdf.js";
@@ -46,6 +46,7 @@ export async function built(
   lens: string,
   union: Union,
   derive?: Derive,
+  keep?: Keep,
 ): Promise<ReadonlyMap<string, readonly Triple[]>> {
   for (const path of files.filter((path) => layout.isRdf(path))) {
     const bytes = await pod.read(path);
@@ -54,13 +55,14 @@ export async function built(
     await union.loadTurtle(bytes, address + path);
   }
   if (derive === undefined || at === undefined) return new Map();
-  return derive(union, lens, { address, at, title });
+  return derive(union, lens, { address, at, title }, keep);
 }
 
 /**
  * The pod as it stood after the step, in the store: each RDF file a named graph, named by the pod's address plus its
- * path; what `derive` adds for the lens; and `urn:cascade:steps`, outside the union, listing each file new to the pod
- * that each step through this one wrote.
+ * path, as the writer that took the step holds it; what `derive` adds for the lens; and `urn:cascade:steps`, outside the
+ * union, listing each file new to the pod that each step through this one wrote, the files that arrived from another
+ * writer under the step that wrote them there.
  */
 export async function dataset(
   replayed: Replayed,
@@ -68,6 +70,7 @@ export async function dataset(
   lens: string,
   store: Store,
   derive?: Derive,
+  keep?: Keep,
 ): Promise<Union> {
   const index = replayed.steps.findLastIndex(
     ({ step }) => step.name === through,
@@ -81,18 +84,31 @@ export async function dataset(
     throw new Error(`the story has no step ${through}`);
   }
   const steps = replayed.steps.slice(0, index + 1);
+  const reader = steps.at(-1)?.step.writer ?? 0;
+  const started =
+    reader === 0
+      ? 0
+      : steps.findIndex(
+          ({ step }) =>
+            step.happened.kind === "writer" && step.writer === reader,
+        );
   const address = replayed.story.address;
   const union = new Union(store);
   await built(
     replayed.pod,
     replayed.layout,
     address,
-    steps.flatMap(({ wrote }) => wrote),
+    steps.flatMap(({ step, wrote, arrived }, at) =>
+      at < started || (step.writer ?? 0) === reader
+        ? [...wrote, ...(arrived ?? [])]
+        : [],
+    ),
     steps.at(-1)?.step.when,
     replayed.title,
     lens,
     union,
     derive,
+    keep,
   );
   await addLayout(union, replayed.layout, address);
   await store.add(
@@ -200,7 +216,8 @@ export async function podFiles(
 /**
  * A pod as a folder holds it, in the store: each RDF file but those the build writes a named graph, by the address its
  * owner's profile names plus its path; the lens's derived state; the files the build writes, written again for the
- * time and title the pod's manifest gives, or else those given; and the layout.
+ * time and title the pod's manifest gives, or else those given; and the layout. Given `keep`, the Sames M7 leaves as
+ * they were across a table version are derived with it, as a step's dataset derives them.
  */
 export async function podDataset(
   pod: Files,
@@ -209,6 +226,7 @@ export async function podDataset(
   lens: string,
   store: Store,
   otherwise: { readonly title: string; readonly at: string },
+  keep?: Keep,
 ): Promise<PodBuild> {
   const stated = await podStated(pod, layout, store);
   const { address } = stated;
@@ -216,7 +234,7 @@ export async function podDataset(
   const at = stated.at ?? otherwise.at;
   const union = new Union(store);
   const held = await podFiles(pod, layout, address, union);
-  const derived = await build.derivations.derive(union, lens);
+  const derived = await build.derivations.derive(union, lens, keep);
   const built = await build.files(union, { address, at, title });
   await addLayout(union, layout, address);
   return {

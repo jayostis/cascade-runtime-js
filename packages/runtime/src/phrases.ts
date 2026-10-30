@@ -10,7 +10,17 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import type { Layout } from "./layout.js";
 import { MATCHER } from "./matcher.js";
-import { documentName, inUtc } from "./names.js";
+import {
+  byCodePoint,
+  containedRecordName,
+  documentName,
+  enteredRecordName,
+  findingName,
+  recordFromCcdaName,
+  recordFromCcdaWithoutIdName,
+  recordFromDocumentName,
+  recordFromServerName,
+} from "./names.js";
 import {
   iri,
   literal,
@@ -23,12 +33,9 @@ import {
 import { versionsNumbered } from "./references.js";
 import type { Replayed } from "./replay.js";
 import { type Row, selected, type Dataset } from "./store.js";
-import { REC } from "./step.js";
+import { CASCADE } from "./step.js";
 import type { Happened, Step } from "./story.js";
 import {
-  CLINICAL,
-  HEALTH,
-  JDG,
   JUSTIFICATIONS,
   KINDS,
   listed,
@@ -39,23 +46,33 @@ import {
 } from "./words.js";
 
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const MERGED_FROM = `${CASCADE}mergedFrom`;
+const FINDING = `${CASCADE}FindingForReview`;
+const OA = "http://www.w3.org/ns/oa#";
+const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
+/** Each kind of finding, by its words: its skos:prefLabel. */
+const FINDING_KINDS: Readonly<Record<string, string>> = {
+  "claims no longer reached": `${CASCADE}ClaimsNoLongerReached`,
+  "different result values at one instant": `${CASCADE}DifferentResultValuesAtOneInstant`,
+  "different result units at one instant": `${CASCADE}DifferentResultUnitsAtOneInstant`,
+};
+/** The kinds of finding whose body applies to their targets together, records, read as one row of members. */
+const FINDINGS_OF_RECORDS: ReadonlySet<string> = new Set([
+  `${CASCADE}DifferentResultValuesAtOneInstant`,
+  `${CASCADE}DifferentResultUnitsAtOneInstant`,
+]);
 const UUID_V4 =
   /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export const PREFIXES: Readonly<Record<string, string>> = {
-  npx: "http://purl.org/nanopub/x/",
+  dct: "http://purl.org/dc/terms/",
   rdf: RDF,
   rdfs: RDFS,
   xsd: XSD,
   prov: PROV,
   pav: PAV,
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
-  rec: REC,
-  jdg: JDG,
-  health: HEALTH,
-  clinical: CLINICAL,
+  oa: "http://www.w3.org/ns/oa#",
   cascade: CASCADE,
 };
 
@@ -83,6 +100,10 @@ export interface Compiled {
   /** The step the pod is read as it stood after, by its name, and the lens; the last step under everyday otherwise. */
   at?: { readonly index: number; readonly lens: string };
   readonly checks: { readonly text: string; readonly check: Check }[];
+  /** How many writers the pod has, 1 until a second starts. */
+  writers?: number;
+  /** The writer that takes the steps that follow, numbered from 0, the pod's first. */
+  writer?: number;
   /** The query the last `When the query is:` or `When the query {name} is asked` gave, which the `it answers` steps after it read. */
   query?: string;
 }
@@ -160,6 +181,9 @@ parameter(
   /allergies|conditions|immunizations|procedures|medications|lab-results|patient-profile|variants|variant-interpretations/,
 );
 parameter("lens", /[a-z]+/);
+parameter("writer", /the first writer|the second writer/, (text) =>
+  text === "the first writer" ? 0 : 1,
+);
 /** Words, in which a colon is part of an HGVS expression when a non-space follows it, and the colon ending a step is not. */
 const WORDS = /(?:[^:]|:(?=\S))+/;
 parameter("record", WORDS);
@@ -207,6 +231,7 @@ function happen(
   quoted: string | undefined,
   when: string,
   happened: Happened,
+  writer = compiled.writer ?? 0,
 ): void {
   if (compiled.person === undefined)
     throw new Error("the example has no pod: its first step creates one");
@@ -224,7 +249,15 @@ function happen(
     name,
     when,
     happened,
+    ...(writer === 0 ? {} : { writer }),
   });
+}
+
+/** The writer so numbered, which the pod must have. */
+function writerOf(compiled: Compiled, writer: number): number {
+  if (writer >= (compiled.writers ?? 1))
+    throw new Error("the pod has no second writer: a step starts one first");
+  return writer;
 }
 
 function table(
@@ -328,16 +361,23 @@ const FIELDS: Readonly<Record<string, Field>> = {
     entry: true,
     shows: ({ value }) => localName(value),
   },
-  status: { predicates: [`${HEALTH}status`, `${CLINICAL}status`], entry: true },
+  status: {
+    predicates: [`${CASCADE}clinicalStatus`, `${CASCADE}workflowStatus`],
+    entry: true,
+  },
   criticality: {
-    predicates: [`${CLINICAL}criticality`],
+    predicates: [`${CASCADE}allergyCriticality`],
     entry: true,
     of: "version",
   },
-  "abatement date": { predicates: [`${CLINICAL}abatementDate`], entry: true },
-  "status from": { predicates: [`${REC}statusFrom`], entry: true, thing: true },
-  "latest member": {
-    predicates: [`${REC}latestMember`],
+  "abatement date": { predicates: [`${CASCADE}abatementDate`], entry: true },
+  "status from": {
+    predicates: [`${CASCADE}statusFrom`],
+    entry: true,
+    thing: true,
+  },
+  "lead member": {
+    predicates: [`${CASCADE}leadMember`],
     entry: true,
     thing: true,
   },
@@ -352,8 +392,8 @@ const FIELDS: Readonly<Record<string, Field>> = {
     shows: async ({ value }, reading, record) =>
       String((await reading.words.versions(record)).indexOf(value) + 1),
   },
-  subject: { predicates: [`${REC}subject`], of: "record", thing: true },
-  patient: { predicates: [`${REC}patient`], of: "version", thing: true },
+  subject: { predicates: [`${CASCADE}subject`], of: "record", thing: true },
+  patient: { predicates: [`${CASCADE}patient`], of: "version", thing: true },
   "influenced by": {
     predicates: [`${PROV}wasInfluencedBy`],
     of: "version",
@@ -448,7 +488,7 @@ async function revisionsOf(
   for (const [, version, at, after] of await selected(
     reading.store,
     `SELECT ?revision ?version ?at ?after WHERE {
-        ?revision <${REC}revisionOf> <${record}> ; <${REC}version> ?version ; <${PROV}generatedAtTime> ?at .
+        ?revision <${CASCADE}revisionOf> <${record}> ; <${CASCADE}version> ?version ; <${PROV}generatedAtTime> ?at .
         OPTIONAL { ?revision <${PROV}wasRevisionOf> ?previous . ?previous <${PROV}generatedAtTime> ?after }
       }`,
   )) {
@@ -498,24 +538,28 @@ function revisionsAre(stated: StatedStep, named?: string): Check {
   };
 }
 
-const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?at ?used WHERE {
-  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${JDG}verdict> <${JDG}Same> ;
-    <${JDG}justification> ?justification ; <${PROV}hadMember> ?member .
-  OPTIONAL { ?judgment <${PROV}generatedAtTime> ?at }
+const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used ?rule WHERE {
+  ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}verdict> <${CASCADE}Same> ;
+    <${CASCADE}justification> ?justification ; <${PROV}hadMember> ?member .
+  OPTIONAL { ?judgment <${CASCADE}matcherRule> ?rule }
+  OPTIONAL { ?assertion <${CASCADE}assertedClaim> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
   OPTIONAL { ?judgment <${PROV}used> ?used }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
+  /** The matcher rule terms the claim cites. */
+  readonly rules: Set<string>;
   readonly members: Set<string>;
-  readonly at: Set<string>;
+  /** The rule list versions the claim is asserted under. */
+  readonly assertedUnder: Set<string>;
   readonly used: Set<string>;
 }
 
 async function matcherJudgments(store: Dataset): Promise<Judged[]> {
   const found = new Map<string, Judged>();
-  for (const [name, justification, member, at, used] of await selected(
+  for (const [name, justification, member, under, used, rule] of await selected(
     store,
     MATCHER_JUDGMENTS,
   )) {
@@ -524,13 +568,15 @@ async function matcherJudgments(store: Dataset): Promise<Judged[]> {
       ({
         name: name ?? "",
         justification: justification ?? "",
+        rules: new Set(),
         members: new Set(),
-        at: new Set(),
+        assertedUnder: new Set(),
         used: new Set(),
       } satisfies Judged);
     judged.members.add(member ?? "");
-    if (at) judged.at.add(shownTime(at));
+    if (under) judged.assertedUnder.add(under);
     if (used) judged.used.add(used);
+    if (rule) judged.rules.add(rule);
     found.set(judged.name, judged);
   }
   return [...found.values()];
@@ -558,16 +604,16 @@ function judgmentRow(
           return JUSTIFIED[judged.justification] ?? `<${judged.justification}>`;
         case "members":
           return sorted(judged.members);
-        case "at":
-          return [...judged.at].join(", ");
+        case "asserted under":
+          return sorted(judged.assertedUnder);
         case "used":
           return sorted(judged.used);
         case "inputs":
           return [
-            MATCHER,
-            judged.justification,
-            ...[...judged.members].sort(),
-            ...[...judged.used].sort(),
+            "cascade:ClaimNamingRule",
+            ...[MATCHER, ...judged.rules, judged.justification].map(termShown),
+            `(${[...judged.members].sort(byCodePoint).join(", ")})`,
+            `(${[...judged.used].sort(byCodePoint).join(", ")})`,
           ].join(", ");
         case "name":
           return judged.name;
@@ -603,18 +649,21 @@ async function expectedJudgmentRow(
       cells.push(cell);
     } else if (column === "members")
       cells.push(await things(cell, (words) => reading.words.record(words)));
-    else if (column === "at") cells.push(cellTime(cell));
-    else if (column === "used")
+    else if (column === "used" || column === "asserted under")
       cells.push(await things(cell, (words) => reading.words.thing(words)));
     else cells.push(cell);
   }
   return cells.join(" | ");
 }
 
+const RETRACTION_COLUMNS = ["justification", "members", "inputs", "name"];
+
+const FINDING_COLUMNS = ["kind", "under", "justification", "members", "name"];
+
 const JUDGMENT_COLUMNS = [
   "justification",
   "members",
-  "at",
+  "asserted under",
   "used",
   "inputs",
   "name",
@@ -758,34 +807,80 @@ async function queryAnswers(
   });
 }
 
+/** A vocabulary term as a feature's cells write it, `cascade:` and its local name. */
+const termShown = (iri: string): string =>
+  iri.startsWith(CASCADE) ? `cascade:${iri.slice(CASCADE.length)}` : iri;
+
+/** The record name rules a `these are named:` table gives inputs to, by the rule term's local name. */
+const RECORD_RULES: Readonly<
+  Record<string, (inputs: readonly string[]) => Promise<string>>
+> = {
+  RecordFromServerNamingRule: ([base = "", type = "", id = ""]) =>
+    recordFromServerName(base, type, id),
+  RecordFromDocumentNamingRule: ([document = "", selector = ""]) =>
+    recordFromDocumentName(document, selector),
+  RecordFromCcdaNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    er = "",
+    ee = "",
+  ]) =>
+    recordFromCcdaName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entry: { root: er, extension: ee },
+    }),
+  RecordFromCcdaWithoutIdNamingRule: ([
+    cr = "",
+    ce = "",
+    pr = "",
+    pe = "",
+    entryClass = "",
+    key = "",
+    members = "",
+  ]) =>
+    recordFromCcdaWithoutIdName({
+      custodian: { root: cr, extension: ce },
+      patient: { root: pr, extension: pe },
+      entryClass: entryClass.replace(/^cascade:/, CASCADE),
+      keyFingerprint: key,
+      membersFingerprint: members,
+    }),
+  ContainedRecordNamingRule: ([container = "", versionId = "", id = ""]) =>
+    containedRecordName(container, { versionId }, id),
+  EnteredRecordNamingRule: ([session = "", position = ""]) =>
+    enteredRecordName(session, Number(position)),
+};
+
 /**
- * Whether an entry's record holds the inputs N2 names it from: the pod's subject and its entry's start, as the rule
- * writes it. The draft's position reaches the pod only through the name, so the name checks it.
+ * Whether the inputs a record is named from, its rule first, give the name; an entered record's session must also be
+ * the session its first revision came from, which the pod holds where the position reaches it only through the name.
  */
-async function entryInputs(
+async function recordInputs(
   reading: Reading,
   words: string,
   inputs: string,
+  name: string,
 ): Promise<string | undefined> {
-  const [subject, start, position] = inputs.split(", ");
-  if (position === undefined || !/^\d+$/.test(position))
-    return `"${inputs}" is no subject, start and position`;
-  const record = await reading.words.record(words);
-  const [first] = await selected(
-    reading.store,
-    `SELECT ?at WHERE { ?revision <${REC}revisionOf> <${record}> ; <${PROV}generatedAtTime> ?at .
-      FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
-  );
-  const held = [reading.person.subject, inUtc(first?.[0] ?? "")];
-  const wrong = [
-    ...(held[0] === subject
-      ? []
-      : [`its subject is ${held[0]}, not ${subject ?? ""}`]),
-    ...(held[1] === start
-      ? []
-      : [`its entry started ${held[1]}, not ${start ?? ""}`]),
-  ];
-  return wrong.length === 0 ? undefined : wrong.join("; ");
+  const [rule = "", ...given] = inputs.split(", ");
+  const named = RECORD_RULES[rule.replace(/^cascade:/, "")];
+  if (named === undefined) return `"${rule}" is no record naming rule`;
+  if (rule.endsWith("EnteredRecordNamingRule")) {
+    const record = await reading.words.record(words);
+    const [first] = await selected(
+      reading.store,
+      `SELECT ?session WHERE { ?revision <${CASCADE}revisionOf> <${record}> ; <${PROV}wasGeneratedBy> ?session .
+        FILTER NOT EXISTS { ?revision <${PROV}wasRevisionOf> ?earlier } }`,
+    );
+    if (first?.[0] !== given[0])
+      return `its entry's session is ${first?.[0] ?? "none"}, not ${given[0] ?? ""}`;
+  }
+  const computed = await named(given);
+  return computed === name
+    ? undefined
+    : `its inputs give ${computed}, not ${name}`;
 }
 
 /** The entry holding the record shows the table's fields; with `only`, nothing else but its members. */
@@ -907,6 +1002,15 @@ const DEFINITIONS: Definition[] = [
   ["the download {name} is imported on {time}", importDownloaded],
   ["the pull {name} is imported on {time}", importDownloaded],
   [
+    "the connect {name} is made on {time}",
+    (compiled, [name, when], _stated, _compiling, label) => {
+      happen(compiled, label, name as string, when as string, {
+        kind: "connect",
+        folder: `connects/${String(name)}`,
+      });
+    },
+  ],
+  [
     "{person} enters {name} on {time}",
     (compiled, [, name, when], _stated, _compiling, label) => {
       happen(compiled, label, name as string, when as string, {
@@ -976,6 +1080,42 @@ const DEFINITIONS: Definition[] = [
       });
     },
   ],
+  [
+    "a second writer of the pod",
+    (compiled, _args, _stated, _compiling, label) => {
+      if ((compiled.writers ?? 1) > 1)
+        throw new Error("the pod has a second writer already");
+      const when = compiled.steps.at(-1)?.when;
+      if (when === undefined)
+        throw new Error("the example has no pod: its first step creates one");
+      compiled.writers = 2;
+      happen(compiled, label, undefined, when, { kind: "writer" }, 1);
+    },
+  ],
+  [
+    "the steps that follow are {writer}'s",
+    (compiled, [writer]) => {
+      compiled.writer = writerOf(compiled, writer as number);
+    },
+  ],
+  [
+    "{writer} receives the files of {writer} on {time}",
+    (compiled, [to, from, when], _stated, _compiling, label) => {
+      const receiver = writerOf(compiled, to as number);
+      const sender = writerOf(compiled, from as number);
+      if (receiver === sender)
+        throw new Error("a writer receives the files of another writer");
+      happen(
+        compiled,
+        label,
+        undefined,
+        when as string,
+        { kind: "sync", from: sender },
+        receiver,
+      );
+      compiled.writer = receiver;
+    },
+  ],
   ["the pod is read as it stood after {step}", readAfter],
   [
     "the pod is read as it stood after {step}, under the {lens} lens",
@@ -1020,7 +1160,7 @@ const DEFINITIONS: Definition[] = [
     "the pod holds no revision",
     () =>
       async ({ store }) =>
-        (await store.ask(`ASK { ?revision a <${REC}Revision> }`))
+        (await store.ask(`ASK { ?revision a <${CASCADE}Revision> }`))
           ? "the pod holds a revision"
           : undefined,
   ),
@@ -1128,10 +1268,7 @@ const DEFINITIONS: Definition[] = [
     judgmentsHolding(words as string, [], ["justification", "members"]),
   ),
   then("{step} wrote these matcher judgments:", ([said], stated) => {
-    const rows = table(
-      stated,
-      JUDGMENT_COLUMNS.filter((column) => column !== "at"),
-    );
+    const rows = table(stated, JUDGMENT_COLUMNS);
     const columns = JUDGMENT_COLUMNS.filter((column) =>
       stated.table?.[0]?.includes(column),
     );
@@ -1140,45 +1277,80 @@ const DEFINITIONS: Definition[] = [
       if (step === undefined) return "no such step";
       const failures: string[] = [];
       const heldGraph = await wroteGraph(reading, [step]);
-      const judgments = new Set(
+      const claims = new Set(
         heldGraph
-          .subjects(`${RDF}type`, iri(`${JDG}Judgment`))
+          .subjects(`${RDF}type`, iri(`${CASCADE}Judgment`))
           .map(({ value }) => value),
       );
-      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
-        judgments.has(name),
+      const assertions = new Set(
+        heldGraph
+          .subjects(`${RDF}type`, iri(`${CASCADE}ClaimAssertion`))
+          .map(({ value }) => value),
       );
-      const allowed = new Set([
-        `${RDF}type`,
-        `${JDG}verdict`,
-        `${JDG}justification`,
-        `${PROV}wasAttributedTo`,
-        `${PROV}generatedAtTime`,
-        `${PROV}hadMember`,
-        `${PROV}used`,
-      ]);
-      for (const name of judgments) {
-        for (const [, p, o] of heldGraph.match(iri(name)))
-          if (
-            !allowed.has(p.value) ||
-            (p.value === `${RDF}type` && o.value !== `${JDG}Judgment`)
-          )
-            failures.push(`${name} also states ${p.value} ${written(o)}`);
-        const at = heldGraph
-          .objects(iri(name), `${PROV}generatedAtTime`)
-          .map(({ value }) => shownTime(value));
-        if (at.length !== 1 || at[0] !== shownTime(step.step.when))
-          failures.push(
-            `${name} is made at ${at.join(", ") || "no time"}, not the step's ${step.step.when}`,
-          );
+      const asserted = new Set(
+        [...assertions].flatMap((assertion) =>
+          heldGraph
+            .objects(iri(assertion), `${CASCADE}assertedClaim`)
+            .map(({ value }) => value),
+        ),
+      );
+      const actOf = new Set(
+        [
+          ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}MatcherRun`)),
+          ...heldGraph.subjects(
+            `${RDF}type`,
+            iri(`${CASCADE}RuleListVersionMigration`),
+          ),
+          ...heldGraph.subjects(`${PROV}invalidated`),
+          ...heldGraph.subjects(`${RDF}type`, iri(FINDING)),
+          ...heldGraph.subjects(`${RDF}type`, iri(`${CASCADE}Snapshot`)),
+          ...heldGraph.triples
+            .filter(([, p]) => p.value === `${PROV}wasAssociatedWith`)
+            .map(([, , o]) => o),
+        ].map(({ value }) => value),
+      );
+      const found = (await matcherJudgments(reading.store)).filter(({ name }) =>
+        asserted.has(name),
+      );
+      const allowed = {
+        [`${CASCADE}Judgment`]: new Set([
+          `${RDF}type`,
+          `${CASCADE}verdict`,
+          `${CASCADE}justification`,
+          `${CASCADE}matcherRule`,
+          `${PROV}wasAttributedTo`,
+          `${PROV}hadMember`,
+          `${PROV}used`,
+        ]),
+        [`${CASCADE}ClaimAssertion`]: new Set([
+          `${RDF}type`,
+          `${CASCADE}assertedClaim`,
+          `${CASCADE}assertedUnderRuleListVersion`,
+        ]),
+      };
+      for (const [kind, names] of [
+        [`${CASCADE}Judgment`, claims],
+        [`${CASCADE}ClaimAssertion`, assertions],
+      ] as const)
+        for (const name of names)
+          for (const [, p, o] of heldGraph.match(iri(name)))
+            if (
+              !(allowed[kind]?.has(p.value) ?? false) ||
+              (p.value === `${RDF}type` && o.value !== kind)
+            )
+              failures.push(`${name} also states ${p.value} ${written(o)}`);
+      for (const name of claims)
+        if (!asserted.has(name))
+          failures.push(`${name} is written and not asserted`);
+      for (const name of asserted)
         if (!found.some((judged) => judged.name === name))
           failures.push(`${name} is no Same the matcher made`);
-      }
       for (const subject of heldGraph
         .subjects(`${RDF}type`)
         .concat(heldGraph.triples.map(([s]) => s))) {
         const value = subject.value;
-        if (judgments.has(value)) continue;
+        if (claims.has(value) || assertions.has(value)) continue;
+        if (actOf.has(value)) continue;
         if (value === MATCHER) {
           const described = heldGraph
             .match(iri(MATCHER))
@@ -1198,9 +1370,11 @@ const DEFINITIONS: Definition[] = [
           heldGraph.match(
             iri(value),
             `${RDF}type`,
-            iri(`${REC}ReferenceSeries`),
+            iri(`${CASCADE}ReferenceSeries`),
           ).length > 0 ||
-          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0;
+          heldGraph.match(iri(value), `${PROV}specializationOf`).length > 0 ||
+          heldGraph.match(iri(value), `${CASCADE}rowOfRuleListVersion`).length >
+            0;
         if (!isReference) failures.push(`the step also wrote of ${value}`);
       }
       const problem = await comparedJudgments(reading, rows, found, columns);
@@ -1210,22 +1384,243 @@ const DEFINITIONS: Definition[] = [
         : [...new Set(failures)].join("\n");
     };
   }),
+  then("{step} wrote these retractions:", ([said], stated) => {
+    const rows = table(stated, RETRACTION_COLUMNS);
+    const columns = RETRACTION_COLUMNS.filter((column) =>
+      stated.table?.[0]?.includes(column),
+    );
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const held = await wroteGraph(reading, [step]);
+      const claims = new Map(
+        (await matcherJudgments(reading.store)).map((judged) => [
+          judged.name,
+          judged,
+        ]),
+      );
+      const claimOf = new Map(
+        (
+          await selected(
+            reading.store,
+            `SELECT ?assertion ?claim WHERE { ?assertion <${CASCADE}assertedClaim> ?claim }`,
+          )
+        ).map(([assertion = "", claim = ""]) => [assertion, claim]),
+      );
+      const failures: string[] = [];
+      /** Each row found, shown once the table's words are read, which names its records. */
+      const found: (() => string)[] = [];
+      for (const retraction of held.subjects(`${PROV}invalidated`)) {
+        const [assertion = ""] = held
+          .objects(retraction, `${PROV}invalidated`)
+          .map(({ value }) => value);
+        const claim = claimOf.get(assertion) ?? "";
+        const [release = ""] = held
+          .objects(retraction, `${PROV}used`)
+          .map(({ value }) => value);
+        const described = held
+          .match(retraction)
+          .map(([, p, o]) => `${p.value} ${written(o)}`)
+          .sort();
+        const wanted = [
+          `${RDF}type <${PROV}Activity>`,
+          `${PROV}invalidated <${assertion}>`,
+          `${PROV}used <${release}>`,
+        ].sort();
+        if (described.join("\n") !== wanted.join("\n"))
+          failures.push(`${retraction.value} states ${described.join("; ")}`);
+        const judged = claims.get(claim);
+        if (judged === undefined) {
+          failures.push(
+            `${retraction.value} invalidates ${assertion}, no assertion of a claim of the matcher's`,
+          );
+          continue;
+        }
+        found.push(() =>
+          columns
+            .map((column) =>
+              column === "inputs"
+                ? [
+                    "cascade:RetractionNamingRule",
+                    release,
+                    assertion,
+                    ...[...judged.rules].map(termShown),
+                  ].join(", ")
+                : column === "name"
+                  ? retraction.value
+                  : judgmentRow(reading, judged, [column]),
+            )
+            .join(" | "),
+        );
+      }
+      const expected = await Promise.all(
+        rows.map((row) => expectedJudgmentRow(reading, row, columns)),
+      );
+      const problem = compared(
+        expected,
+        found.map((row) => row()),
+      );
+      if (problem !== undefined) failures.push(problem);
+      return failures.length === 0 ? undefined : failures.join("\n");
+    };
+  }),
+  then("{step} wrote these findings:", ([said], stated) => {
+    const rows = table(stated, FINDING_COLUMNS);
+    const columns = FINDING_COLUMNS.filter((column) =>
+      stated.table?.[0]?.includes(column),
+    );
+    return async (reading) => {
+      const [step] = stepsOf(reading, said as string);
+      if (step === undefined) return "no such step";
+      const held = await wroteGraph(reading, [step]);
+      const claims = new Map(
+        (await matcherJudgments(reading.store)).map((judged) => [
+          judged.name,
+          judged,
+        ]),
+      );
+      const kinds = Object.fromEntries(
+        Object.entries(FINDING_KINDS).map(([words, kind]) => [kind, words]),
+      );
+      const failures: string[] = [];
+      const found: (() => string)[] = [];
+      for (const finding of held.subjects(`${RDF}type`, iri(FINDING))) {
+        const [body = ""] = held
+          .objects(finding, `${OA}hasBody`)
+          .map(({ value }) => value);
+        const [under = ""] = held
+          .objects(finding, NO_LONGER_REACHED_UNDER)
+          .map(({ value }) => value);
+        const stated = held.match(finding);
+        const allowed = new Set([
+          `${RDF}type`,
+          `${OA}hasBody`,
+          `${OA}motivatedBy`,
+          `${OA}hasTarget`,
+          NO_LONGER_REACHED_UNDER,
+          ...(FINDINGS_OF_RECORDS.has(body) ? [`${PROV}used`] : []),
+        ]);
+        const motivations = held
+          .objects(finding, `${OA}motivatedBy`)
+          .map(({ value }) => value);
+        if (motivations.join(" ") !== `${OA}classifying`)
+          failures.push(
+            `${finding.value} is motivated by ${motivations.join(", ") || "nothing"}, not oa:classifying`,
+          );
+        for (const [, p, o] of stated)
+          if (!allowed.has(p.value))
+            failures.push(
+              `${finding.value} also states ${p.value} ${written(o)}`,
+            );
+        const named = await findingName(
+          stated.map(([, p, o]): Triple => [
+            iri("urn:cascade:this-finding"),
+            p,
+            o,
+          ]),
+        );
+        if (named !== finding.value)
+          failures.push(`${finding.value} is named ${named} by its triples`);
+        if (FINDINGS_OF_RECORDS.has(body)) {
+          const targets = held
+            .objects(finding, `${OA}hasTarget`)
+            .map(({ value }) => value);
+          const members = (): string =>
+            targets
+              .map((target) => reading.words.shown(target))
+              .sort()
+              .join(", ");
+          found.push(() =>
+            columns
+              .map((column) =>
+                column === "kind"
+                  ? (kinds[body] ?? `<${body}>`)
+                  : column === "members"
+                    ? members()
+                    : column === "name"
+                      ? finding.value
+                      : "",
+              )
+              .join(" | "),
+          );
+          continue;
+        }
+        for (const { value: target } of held.objects(
+          finding,
+          `${OA}hasTarget`,
+        )) {
+          const judged = claims.get(target);
+          if (judged === undefined) {
+            failures.push(
+              `${finding.value} names ${target}, no claim of the matcher's`,
+            );
+            continue;
+          }
+          found.push(() =>
+            columns
+              .map((column) =>
+                column === "kind"
+                  ? (kinds[body] ?? `<${body}>`)
+                  : column === "under"
+                    ? reading.words.shown(under)
+                    : column === "name"
+                      ? finding.value
+                      : judgmentRow(reading, judged, [column]),
+              )
+              .join(" | "),
+          );
+        }
+      }
+      const expected = await Promise.all(
+        rows.map(async (row) =>
+          (
+            await Promise.all(
+              columns.map((column) =>
+                column === "kind" ||
+                column === "name" ||
+                (FINDINGS_OF_RECORDS.has(FINDING_KINDS[row.kind ?? ""] ?? "") &&
+                  column !== "members")
+                  ? (row[column] ?? "")
+                  : column === "under"
+                    ? expectedJudgmentRow(
+                        reading,
+                        { "asserted under": row.under ?? "" },
+                        ["asserted under"],
+                      )
+                    : expectedJudgmentRow(reading, row, [column]),
+              ),
+            )
+          ).join(" | "),
+        ),
+      );
+      const problem = compared(
+        expected,
+        found.map((row) => row()),
+      );
+      if (problem !== undefined) failures.push(problem);
+      return failures.length === 0 ? undefined : failures.join("\n");
+    };
+  }),
   then("{step} wrote these reference descriptions:", ([said], stated) => {
     const rows = table(stated, ["reference"]);
     return async (reading) => {
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
-      const described = valuesOf(
+      const described = new Map<string, string[]>();
+      for (const thing of valuesOf(
         await inWritten(
           reading,
           [step],
           "DISTINCT ?thing",
           `GRAPH ?file {
-              { ?thing a <${REC}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
-            } FILTER NOT EXISTS { ?thing <${REC}revisionOf> ?any } FILTER (!STRSTARTS(STR(?thing), "ni:"))`,
+              { ?thing a <${CASCADE}ReferenceSeries> } UNION { ?thing <${PROV}specializationOf> ?series }
+            } FILTER NOT EXISTS { ?thing <${CASCADE}revisionOf> ?any }`,
         ),
         "thing",
-      );
+      )) {
+        const said = await reading.words.described(thing);
+        if (said.length > 0) described.set(thing, said);
+      }
       const expected: string[] = [];
       for (const row of rows) {
         const name = await reading.words.reference(row.reference ?? "");
@@ -1235,16 +1630,24 @@ const DEFINITIONS: Definition[] = [
       }
       const problem = compared(
         expected,
-        described.map((thing) => reading.words.shown(thing)),
+        [...described.keys()].map((thing) => reading.words.shown(thing)),
       );
       if (problem !== undefined) return problem;
       const heldTriples = (await wroteGraph(reading, [step])).triples.map(
         (triple) => triple.map(written).join(" "),
       );
       const wrong: string[] = [];
-      for (const thing of described) {
+      const rowOf = `<${CASCADE}rowOfRuleListVersion>`;
+      for (const [thing, said] of described) {
+        const rows = heldTriples.filter((triple) =>
+          triple.endsWith(` ${rowOf} <${thing}>`),
+        );
+        if (rows.length > 0 !== (await reading.words.isRuleListVersion(thing)))
+          wrong.push(
+            `${reading.words.shown(thing)} has ${rows.length} rows, and is ${rows.length > 0 ? "no" : "a"} rule list version`,
+          );
         const why = compared(
-          await reading.words.described(thing),
+          said,
           heldTriples.filter((triple) => triple.startsWith(`<${thing}> `)),
         );
         if (why !== undefined)
@@ -1262,7 +1665,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const does = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}counts> true }`,
+            `ASK { <${judgment}> <${CASCADE}countsUnderLens> true }`,
           );
           if (does === counts) return undefined;
           return does ? "it counts" : "it does not count";
@@ -1276,7 +1679,7 @@ const DEFINITIONS: Definition[] = [
         async (reading) => {
           const judgment = await reading.words.judgment(words as string);
           const has = await reading.store.ask(
-            `ASK { <${judgment}> <${REC}lapsed> true }`,
+            `ASK { <${judgment}> <${CASCADE}lapsed> true }`,
           );
           if (has === lapsed) return undefined;
           return has ? "it has lapsed" : "it has not lapsed";
@@ -1364,7 +1767,7 @@ const DEFINITIONS: Definition[] = [
           found.push(`${words} is in a view`);
         for (const [why, because] of await selected(
           reading.store,
-          `SELECT ?why ?because WHERE { <${record}> <${REC}leftOutFor> ?left . ?left <${REC}reason> ?why . OPTIONAL { ?left <${REC}because> ?because } }`,
+          `SELECT ?why ?because WHERE { <${record}> <${CASCADE}leftOutFor> ?left . ?left <${CASCADE}leftOutReason> ?why . OPTIONAL { ?left <${CASCADE}leftOutBecauseOf> ?because } }`,
         ))
           found.push(
             `${words} | ${reasonWords(why ?? "")} | ${because ? reading.words.shown(because) : ""}`,
@@ -1379,7 +1782,12 @@ const DEFINITIONS: Definition[] = [
       const failures: string[] = [];
       for (const row of rows) {
         if (row.inputs !== undefined && row.inputs !== "") {
-          const why = await entryInputs(reading, row.thing ?? "", row.inputs);
+          const why = await recordInputs(
+            reading,
+            row.thing ?? "",
+            row.inputs,
+            row.name ?? "",
+          );
           if (why !== undefined) {
             failures.push(`${row.thing ?? ""}: ${why}`);
             continue;

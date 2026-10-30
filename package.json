@@ -14,7 +14,8 @@
     "packages/fhir-pull",
     "packages/site",
     "packages/graphdb",
-    "packages/cascade-runtime"
+    "packages/cascade-runtime",
+    "packages/mcp"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -24,13 +25,14 @@
     "test": "tsc -b && node scripts/test.mjs",
     "test:live": "tsc -b && node --test packages/site/dist/test-browser/live.test.js",
     "test:launcher": "tsc -b && node --test packages/cascade-runtime/dist/test-launcher/launcher.test.js",
-    "conformance": "tsc -b && node packages/runtime/dist/src/node/cli.js conformance",
-    "bridge": "tsc -b && node packages/runtime/dist/src/node/cli.js bridge",
+    "conformance": "tsc -b packages/runtime && node packages/runtime/dist/src/node/cli.js conformance",
+    "bridge": "tsc -b packages/runtime && node packages/runtime/dist/src/node/cli.js bridge",
     "build:example-pod": "tsc -b && node packages/runtime/dist/src/node/cli.js build-example-pod",
     "kit:bridge": "tsc -b && node packages/runtime/dist/src/node/cli.js kit-bridge",
     "build:example-site": "tsc -b && node packages/site/dist/src/node/cli.js build-example-site",
     "build:example": "tsc -b && node packages/site/dist/src/node/cli.js build-example",
     "build:pages": "tsc -b && node packages/site/dist/src/node/cli.js build-pages",
+    "build:spec": "tsc -b && node packages/site/dist/src/node/cli.js build-spec",
     "build:package": "tsc -b && node packages/cascade-runtime/dist/pack/pack.js",
     "serve:pages": "tsc -b && node packages/site/dist/src/node/cli.js serve-pages",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
@@ -40,7 +42,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
-    "cascade-reference-tables": "github:jayostis/cascade-reference-tables#e0a351577b0ce6085b20e80355b54093edd79003",
+    "cascade-reference-tables": "github:jayostis/cascade-reference-tables#abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab",
     "eslint": "10.12.0",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.9",

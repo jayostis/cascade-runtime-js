@@ -5,6 +5,7 @@ import {
   type DeriveKey,
   EncryptedFiles,
   type Files,
+  type Head,
   type Importer,
   type ImportProgress,
   type IndexEntry,
@@ -23,7 +24,6 @@ import {
   ExportedFiles,
   MemoryFiles,
   ntriples,
-  podFiles,
   podRevision,
   type PodKey,
   podStated,
@@ -33,6 +33,7 @@ import {
   readText,
   type References,
   Refusal,
+  type Store,
   type StoreFactory,
   tableTerms,
   type Triple,
@@ -49,19 +50,21 @@ import {
 } from "./answers.js";
 import { currentOf, shipped, type Tables } from "./tables.js";
 
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
-const PREFIXES = `PREFIX rec: <${REC}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX jdg: <${JDG}> PREFIX bridge: <${BRIDGE}>`;
+const STARTED_AT = `${PROV}startedAtTime`;
+const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
 /** What an app names the judgment it hands to `judge`, which the package names in its place. */
 const THIS_JUDGMENT = "urn:cascade:this-judgment";
 /** The verdicts that say something of their members' versions, which name each version they saw. */
-const SEEN = new Set(["Same", "Different", "Erroneous"].map((v) => JDG + v));
+const SEEN = new Set(
+  ["Same", "Different", "Erroneous"].map((v) => CASCADE + v),
+);
 const UUID = "urn:uuid:";
 
 /** A name as a person reads it, its runs of white space one space. */
@@ -91,7 +94,7 @@ export interface ImportOptions {
 export interface Pod {
   /** The pod's naming base, ending in a slash. */
   readonly address: string;
-  /** The one rec:Subject. */
+  /** The one cascade:Subject. */
   readonly subject: string;
   /** The owner's profile's #me. */
   readonly owner: string;
@@ -99,12 +102,22 @@ export interface Pod {
   readonly opened?: Opened;
   /** Whether its files and its kept answers are sealed under a key only its secret opens. */
   readonly encrypted: boolean;
+  /**
+   * The app's last snapshot in the pod (N14), which the app's tables store keeps beside the pod's name and hands back
+   * as the writer's head at the next open; none until the app performs an act in it, so a first act is a new writer's.
+   */
+  readonly head: Head | undefined;
   /** The export or download at the path, or the files the app holds of one. */
   look(exported: string | Exported): Promise<readonly ExportSource[]>;
   import(
     exported: string | Exported,
     options?: ImportOptions,
   ): Promise<Imported>;
+  /**
+   * A connect to a server, saved as `connectFiles` saves it: its act and a version of the server's record (A16), and the
+   * matcher run taking the server (M20), on unless false.
+   */
+  connect(saved: Exported, options?: { match?: boolean }): Promise<Done>;
   enter(turtle: string, options?: { match?: boolean }): Promise<Done>;
   judge(turtle: string): Promise<Done>;
   match(activity?: string): Promise<Done>;
@@ -143,6 +156,13 @@ export interface Pod {
    * row. It reads the pod and writes nothing.
    */
   joinedBy(): Promise<Row[]>;
+  /**
+   * The current table versions the pod names that the app's tables do not hold, of each series a matcher Same used
+   * another version of: such a Same counts where a device holds the version and its rows join the members, and not on
+   * this one (M7). It reads the pod and writes nothing. Undefined while they are not known: a browser's pod drawn from
+   * its kept answers knows them once the engine has opened it.
+   */
+  unheldTableVersions(): Promise<readonly string[] | undefined>;
   close(): Promise<void>;
 }
 
@@ -170,7 +190,7 @@ export interface Done {
   readonly wrote: readonly string[];
   /** Why the rules refused the step; it then wrote nothing. */
   readonly refused?: string;
-  /** The import or entry session it made. */
+  /** The import, entry session or connect it made. */
   readonly activity?: string;
   /** The judgment it filed, as the package named it. */
   readonly judgment?: string;
@@ -231,6 +251,8 @@ export async function bridgeLoaded(
 /** What a pod is opened with. */
 export interface Parts {
   readonly vocabulary: Files;
+  /** The runtime performing a pod's acts, as N7 names it. */
+  readonly performer: string;
   readonly layout: Layout;
   readonly build: VocabularyBuild;
   /** The lens `cascade-runtime.json` names. */
@@ -318,18 +340,17 @@ const AGREEMENT_QUERY = `${QUERIES}${AGREEMENT}.rq`;
 /** The medicines in a class are asked of the tables the app holds, beside the verdicts: a query beside the questions. */
 const CLASSES_QUERY = `${QUERIES}tables/medication-classes-through-precise-ingredients.rq`;
 /** The statements of the medication entries, which the classes query reads of the pod. */
-const MEDICATION_ENTRIES = `PREFIX clinical: <https://ns.cascadeprotocol.org/clinical/v1#>
-CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a clinical:Medication ; ?property ?value }`;
-const SELECTED_CODE = `${REC}selectedCode`;
-const RXNORM_CODE = "https://ns.cascadeprotocol.org/clinical/v1#rxNormCode";
+const MEDICATION_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+CONSTRUCT { ?entry ?property ?value } WHERE { ?entry a cascade:PrescribedOrReportedMedication ; ?property ?value }`;
+const SELECTED_CODE = `${CASCADE}userSelectedCode`;
+const RXNORM_CODE = "https://ns.cascadeprotocol.org/cascade#rxNormCode";
 
 /** A person's results in a panel are asked of the tables the app holds the same way. */
 const PANEL_RESULTS_QUERY = `${QUERIES}tables/panel-results.rq`;
 /** The lab result entries `tables/panel-results.rq` reads of the pod: their test codes. */
-const LAB_ENTRIES = `PREFIX health: <https://ns.cascadeprotocol.org/health/v1#>
-PREFIX rec: <${REC}>
-CONSTRUCT { ?entry health:testCode ?code ; rec:latestMember ?latest }
-WHERE { ?entry health:testCode ?code ; rec:latestMember ?latest }`;
+const LAB_ENTRIES = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+CONSTRUCT { ?entry cascade:testCode ?code ; cascade:leadMember ?lead }
+WHERE { ?entry cascade:testCode ?code ; cascade:leadMember ?lead }`;
 
 /** Which tables joined an entry is asked of the pod alone: its judgments name the versions, and it holds their descriptions. */
 const JOINED_BY_QUERY = `${QUERIES}tables/joined-by.rq`;
@@ -484,12 +505,12 @@ function failure(error: unknown): string {
 
 /** The About the claim records: the profile is the subject's, by the owner's statement. */
 function about(subject: string, profile: string, owner: string): string {
-  return `@prefix jdg: <${JDG}> .
+  return `@prefix cascade: <${CASCADE}> .
 @prefix prov: <${PROV}> .
-<${THIS_JUDGMENT}> a jdg:Judgment ;
-    jdg:verdict jdg:About ; jdg:subject <${subject}> ; jdg:basis jdg:OwnerStatement ;
+<${THIS_JUDGMENT}> a cascade:Judgment ;
+    cascade:verdict cascade:About ; cascade:subject <${subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${owner}> ; prov:hadRole jdg:patient ] .
+    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
 <${owner}> a prov:Person .
 `;
 }
@@ -529,6 +550,10 @@ class OpenPod implements Pod {
     return `${this.address}${this.#parts.layout.card}#me`;
   }
 
+  get head(): Head | undefined {
+    return this.#core.head;
+  }
+
   look(exported: string | Exported): Promise<readonly ExportSource[]> {
     return this.#next(() => this.#look(exported));
   }
@@ -538,6 +563,36 @@ class OpenPod implements Pod {
     options: ImportOptions = {},
   ): Promise<Imported> {
     return this.#next(() => this.#import(exported, options));
+  }
+
+  connect(saved: Exported, options: { match?: boolean } = {}): Promise<Done> {
+    return this.#next(async () => {
+      let names: string[];
+      try {
+        names = exportedNames(saved);
+      } catch (error) {
+        return this.#core.refuse(failure(error));
+      }
+      const [name] = names;
+      if (names.length !== 1 || name === undefined)
+        return this.#core.refuse(
+          `a connect is saved as one folder, not ${names.length === 0 ? "no file" : names.join(" and ")}`,
+        );
+      const connected = await this.#core.connect(
+        new ExportedFiles(saved, name),
+        name,
+      );
+      if (
+        options.match === false ||
+        connected.refused !== undefined ||
+        connected.activity === undefined
+      )
+        return connected;
+      return {
+        ...connected,
+        matched: await this.#core.match(connected.activity),
+      };
+    });
   }
 
   enter(turtle: string, options: { match?: boolean } = {}): Promise<Done> {
@@ -589,6 +644,10 @@ class OpenPod implements Pod {
 
   joinedBy(): Promise<Row[]> {
     return this.#next(() => this.#joinedBy());
+  }
+
+  unheldTableVersions(): Promise<readonly string[]> {
+    return this.#next(() => this.#core.unheldTableVersions());
   }
 
   close(): Promise<void> {
@@ -656,13 +715,15 @@ class OpenPod implements Pod {
       throw new Error(`no importer of ${this.#importerNames()} reads ${shown}`);
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?server ?author WHERE {
-        ?record rec:subject <${this.subject}> .
-        ?revision rec:revisionOf ?record ; prov:wasDerivedFrom ?document .
-        OPTIONAL { ?document bridge:serverBaseUrl ?server }
+        ?record cascade:subject <${this.subject}> .
+        ?revision cascade:revisionOf ?record ; prov:wasDerivedFrom ?document .
+        OPTIONAL { ?document cascade:serverBaseUrl ?server }
         OPTIONAL {
-          FILTER NOT EXISTS { ?document bridge:serverBaseUrl ?anyServer }
+          FILTER NOT EXISTS { ?document cascade:serverBaseUrl ?anyServer }
           ?document prov:qualifiedAttribution ?attribution .
-          ?attribution prov:hadRole rec:author ; prov:agent/<http://www.w3.org/2000/01/rdf-schema#label> ?author .
+          ?attribution prov:hadRole ?role ;
+            prov:agent/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
+          FILTER (?role IN (cascade:AuthorRole, cascade:CustodianRole))
         }
       }`);
     const claimedServers = new Set(
@@ -779,12 +840,12 @@ class OpenPod implements Pod {
   async #unclaimed(activity: string): Promise<string[]> {
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT DISTINCT ?profile WHERE {
-        ?revision prov:wasGeneratedBy <${activity}> ; rec:version ?version .
-        ?version rec:patient ?profile .
+        ?revision prov:wasGeneratedBy <${activity}> ; cascade:version ?version .
+        ?version cascade:patient ?profile .
         FILTER (isIRI(?profile) && ?profile != <${this.subject}>)
         FILTER NOT EXISTS {
-          ?judgment rec:counts true ; jdg:verdict jdg:About ;
-            prov:hadMember ?profile ; jdg:subject <${this.subject}> .
+          ?judgment cascade:countsUnderLens true ; cascade:verdict cascade:About ;
+            prov:hadMember ?profile ; cascade:subject <${this.subject}> .
         }
       } ORDER BY ?profile`);
     return rows.flatMap((row) => row.get("profile")?.value ?? []);
@@ -800,12 +861,19 @@ class OpenPod implements Pod {
       });
     }
     const judgments = stated
-      .filter(([, p, o]) => p.value === TYPE && o.value === `${JDG}Judgment`)
+      .filter(
+        ([, p, o]) => p.value === TYPE && o.value === `${CASCADE}Judgment`,
+      )
       .map(([s]) => s.value);
-    if (judgments.length !== 1 || judgments[0] !== THIS_JUDGMENT)
+    const retractions = stated
+      .filter(([, p]) => p.value === `${PROV}invalidated`)
+      .map(([s]) => s.value);
+    const found = [...new Set([...judgments, ...retractions])];
+    if (found.length !== 1 || found[0] !== THIS_JUDGMENT)
       throw new Error(
-        `the judgment's Turtle holds ${judgments.length === 0 ? "no judgment" : judgments.join(", ")}; it holds one, named <${THIS_JUDGMENT}>`,
+        `the judgment's Turtle holds ${found.length === 0 ? "no judgment or retraction" : found.join(", ")}; it holds one judgment or one retraction, named <${THIS_JUDGMENT}>`,
       );
+    const retracting = retractions.length > 0;
     const name = randomId();
     const judgment = iri(name);
     const named = stated
@@ -819,7 +887,12 @@ class OpenPod implements Pod {
       )
       .filter(
         ([s, p]) =>
-          !(s.value === name && (p.value === USED || p.value === GENERATED_AT)),
+          !(
+            s.value === name &&
+            (p.value === USED ||
+              p.value === GENERATED_AT ||
+              p.value === STARTED_AT)
+          ),
       );
     const of = (predicate: string): string[] =>
       named.flatMap(([s, p, o]) =>
@@ -828,14 +901,22 @@ class OpenPod implements Pod {
           : [],
       );
     const used: Triple[] = [];
-    if (of(`${JDG}verdict`).some((verdict) => SEEN.has(verdict))) {
-      const members = of(`${PROV}hadMember`);
+    const verdicts = of(`${CASCADE}verdict`);
+    const members = of(`${PROV}hadMember`);
+    const [only] = members;
+    const overFinding =
+      verdicts.length === 1 &&
+      verdicts[0] === `${CASCADE}Same` &&
+      members.length === 1 &&
+      only !== undefined &&
+      (await this.#isFinding(only));
+    if (!overFinding && verdicts.some((verdict) => SEEN.has(verdict))) {
       const current = await this.#currentVersions(members);
       for (const member of members) {
         const version = current.get(member);
         if (version === undefined)
           throw new Error(
-            `${member} has no current version in the pod: it names no record`,
+            `${member} has no current version in the pod: it names no record or revision`,
           );
         used.push([judgment, iri(USED), iri(version)]);
       }
@@ -844,7 +925,11 @@ class OpenPod implements Pod {
       bytes: ntriples([
         ...named,
         ...used,
-        [judgment, iri(GENERATED_AT), literal(clock.now(), `${XSD}dateTime`)],
+        [
+          judgment,
+          iri(retracting ? STARTED_AT : GENERATED_AT),
+          literal(clock.now(), `${XSD}dateTime`),
+        ],
       ]),
       base: this.address,
       name: "the judgment",
@@ -852,7 +937,14 @@ class OpenPod implements Pod {
     return filed.refused === undefined ? { ...filed, judgment: name } : filed;
   }
 
-  /** Each record's current version, under the everyday lens, by the record. */
+  /** Whether the pod holds the thing as a finding for review, which has no versions: a Same may name one alone. */
+  async #isFinding(thing: string): Promise<boolean> {
+    const { rows } = await this.#core.select(`${PREFIXES}
+      SELECT ?thing WHERE { BIND (<${thing}> AS ?thing) ?thing a cascade:FindingForReview }`);
+    return rows.length > 0;
+  }
+
+  /** Each record's current version, under the everyday lens, and each revision's version, by the member. */
   async #currentVersions(
     records: readonly string[],
   ): Promise<Map<string, string>> {
@@ -860,7 +952,7 @@ class OpenPod implements Pod {
     const { rows } = await this.#core.select(`${PREFIXES}
       SELECT ?record ?version WHERE {
         VALUES ?record { ${records.map((record) => `<${record}>`).join(" ")} }
-        ?record pav:hasCurrentVersion ?version .
+        { ?record pav:hasCurrentVersion ?version } UNION { ?record cascade:version ?version }
       }`);
     return new Map(
       rows.flatMap((row) => {
@@ -894,7 +986,7 @@ class OpenPod implements Pod {
     }
     const { rows } = await this.#core.selectWithRows(
       text,
-      `${REC}VariantClassifications`,
+      `${CASCADE}VariantClassifications`,
     );
     const verdicts = rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
@@ -937,7 +1029,9 @@ class OpenPod implements Pod {
       await union.add(rows, version);
       await union.add(description, "urn:cascade:references");
     }
-    const { rows } = await union.select(text);
+    const { rows } = await union
+      .select(text)
+      .finally(() => union.store.free?.());
     return rows.map((row) =>
       Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
     );
@@ -964,7 +1058,9 @@ class OpenPod implements Pod {
       await union.add(rows, version);
       await union.add(description, "urn:cascade:references");
     }
-    const { rows } = await union.select(text);
+    const { rows } = await union
+      .select(text)
+      .finally(() => union.store.free?.());
     return rows
       .map((row) =>
         Object.fromEntries([...row].map(([name, term]) => [name, term.value])),
@@ -1022,6 +1118,10 @@ class OpenPod implements Pod {
   }
 }
 
+/**
+ * The core over the pod's files. `writer`, given for a pod kept in a folder, holds the head the app's tables store kept
+ * for it, and each new head is kept there; a pod in memory keeps none.
+ */
 function coreOver(
   parts: Parts,
   references: References,
@@ -1029,31 +1129,62 @@ function coreOver(
   address: string,
   subject: string,
   title: string,
-  opened?: Union,
+  writer?: { readonly head: Head | undefined },
 ): CorePod {
   const { build } = parts;
-  return new CorePod(
-    {
-      pod,
-      address,
-      subject,
-      title,
-      vocabulary: parts.vocabulary,
-      layout: parts.layout,
-      newStore: parts.newStore,
-      time: clock,
-      importers: parts.importers,
-      references: () => Promise.resolve(references),
-      build: {
-        lens: parts.lens,
-        derive: async (store, lens, pod) => {
-          await build.derivations.derive(store, lens);
-          return build.files(store, pod);
-        },
+  return new CorePod({
+    pod,
+    address,
+    subject,
+    title,
+    vocabulary: parts.vocabulary,
+    layout: parts.layout,
+    newStore: parts.newStore,
+    time: clock,
+    importers: parts.importers,
+    runtime: parts.performer,
+    ...(writer?.head === undefined ? {} : { head: writer.head }),
+    ...(writer === undefined
+      ? {}
+      : { keepHead: (kept: Head) => parts.tables.keptHead(address, kept) }),
+    references: () => Promise.resolve(references),
+    build: {
+      lens: parts.lens,
+      derive: async (store, lens, pod, keep) => {
+        await build.derivations.derive(store, lens, keep);
+        return build.files(store, pod);
       },
+      incremental: build,
     },
-    opened,
-  );
+  });
+}
+
+/** The subjects the files where the layout files the subject state, read without loading the pod's other files. */
+async function subjectsFiled(
+  files: Files,
+  layout: Layout,
+  address: string,
+  store: Store,
+): Promise<string[]> {
+  const { file, folder } = layout.place(`${CASCADE}Subject`);
+  const paths = file === undefined ? await files.list(folder ?? "") : [file];
+  const found = new Set<string>();
+  for (const path of paths.filter((path) => layout.isRdf(path))) {
+    const bytes = await files.read(path);
+    if (bytes === undefined) continue;
+    let triples: readonly Triple[];
+    try {
+      triples = await store.parse(bytes, address + path);
+    } catch (error) {
+      throw new Error(`${files.iri}${path} is no Turtle: ${String(error)}`, {
+        cause: error,
+      });
+    }
+    for (const [subject, predicate, object] of triples)
+      if (predicate.value === TYPE && object.value === `${CASCADE}Subject`)
+        found.add(subject.value);
+  }
+  return [...found];
 }
 
 /** The parts with every file of a pod's folder and of its kept answers sealed under the key. */
@@ -1111,7 +1242,15 @@ export async function openPodWith(
       folder === undefined
         ? new MemoryFiles(address)
         : parts.folder(folder, address).files;
-    const core = coreOver(parts, references, files, address, subject, title);
+    const core = coreOver(
+      parts,
+      references,
+      files,
+      address,
+      subject,
+      title,
+      folder === undefined ? undefined : { head: undefined },
+    );
     const created = await core.create();
     if (created.refused !== undefined)
       throw new Error(`the pod's creation was refused: ${created.refused}`);
@@ -1134,33 +1273,19 @@ export async function openPodWith(
     answers?.described(),
   ]);
   const { address } = stated;
+  const subjects =
+    described?.address === address
+      ? [described.subject]
+      : await subjectsFiled(disk.files, parts.layout, address, store);
+  const [subject] = subjects;
+  if (subject === undefined || subjects.length > 1)
+    throw new Error(`${folder} holds ${subjects.length} subjects, not one`);
   const title = stated.title ?? disk.name;
-  let subject = described?.address === address ? described.subject : undefined;
-  let opened: Union | undefined;
-  if (subject === undefined) {
-    opened = new Union(store);
-    await podFiles(disk.files, parts.layout, address, opened);
-    const { rows } = await opened.select(
-      `SELECT DISTINCT ?subject WHERE { ?subject a <${REC}Subject> }`,
-    );
-    const [found, ...others] = rows.flatMap(
-      (row) => row.get("subject")?.value ?? [],
-    );
-    if (found === undefined || others.length > 0)
-      throw new Error(`${folder} holds ${rows.length} subjects, not one`);
-    subject = found;
-  }
   await answers?.describe({ address, subject, title });
   const files = parts.folder(folder, address).files;
-  const core = coreOver(
-    parts,
-    references,
-    files,
-    address,
-    subject,
-    title,
-    opened,
-  );
+  const core = coreOver(parts, references, files, address, subject, title, {
+    head: await parts.tables.headOf(address),
+  });
   return new OpenPod(
     parts,
     core,

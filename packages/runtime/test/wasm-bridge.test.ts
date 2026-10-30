@@ -19,7 +19,7 @@ import { kitsOf } from "../src/kit.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { PERFORMERS } from "../src/replay.js";
-import { REC } from "../src/step.js";
+import { CASCADE } from "../src/step.js";
 import { checkouts, type Components } from "../src/node/components.js";
 import {
   compiledBridge,
@@ -41,11 +41,11 @@ import {
   WasmBridge,
 } from "../src/wasm-bridge.js";
 import { notIsomorphic, triples } from "./graphs.js";
-import { layout, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 
 const ALEX = "conformance/alex-rivera/alex-rivera.feature";
 const TYPE = `${RDF}type`;
-const REVISION = `${REC}Revision`;
+const REVISION = `${CASCADE}Revision`;
 const GENERATED_BY = "http://www.w3.org/ns/prov#wasGeneratedBy";
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -349,7 +349,8 @@ async function filed(pod: MemoryFiles): Promise<Triple[]> {
     ),
   );
   const blanked = <T extends Term>(term: T): T | BlankNode =>
-    term.termType === "NamedNode" && runDependent.has(term.value)
+    term.termType === "NamedNode" &&
+    runDependent.has(term.value.split("#")[0] ?? "")
       ? blank(term.value)
       : term;
   return triples.map(
@@ -361,7 +362,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
   const files = await vocabulary();
   const { story, folder } = await storyFrom(
     "runtime/arrivals.feature",
-    "the latex allergy arrives again under a source version it already has, with other content",
+    "the latex allergy arrives under a source version it already has, with other content, and is a revision",
   );
   const step = story.steps.find(({ name }) => name === "known-source-version");
   if (step?.happened.kind !== "import") throw new Error("no such import");
@@ -378,6 +379,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
         activities: new Map(),
         time,
         newStore,
+        writer: () => pod,
       }),
     (pod: CorePod, time: StoryTime) => {
       time.begin(step.when);
@@ -388,6 +390,7 @@ test("an export imported through the WebAssembly Bridge files what it files thro
     const time = new StoryTime();
     await perform(
       new CorePod({
+        runtime: RUNTIME,
         pod,
         address: story.address,
         subject: story.subject,

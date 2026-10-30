@@ -5,13 +5,18 @@ import { type StoreFactory, Union } from "./store.js";
 export const LAYOUT_FILE = "runtime/pod-layout.ttl";
 export const LAYOUT_GRAPH = "urn:cascade:pod-layout";
 const BASE = "https://pod.invalid/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const SOLID = "http://www.w3.org/ns/solid/terms#";
 const DCT = "http://purl.org/dc/terms/";
 const PROV = "http://www.w3.org/ns/prov#";
-const CASCADE = "https://ns.cascadeprotocol.org/core/v1#";
 const FOAF = "http://xmlns.com/foaf/0.1/";
 const PIM = "http://www.w3.org/ns/pim/space#";
+/** Of two cascade:forSubjectsOf placements a thing states the properties of, the one that files it (cascade:Placement). */
+const PRECEDENCE = [`${PROV}invalidated`, `${PROV}used`];
+export const SYNC = `${CASCADE}SyncFromAnotherWriter`;
+/** A file stem N9 gives: a UUID, or a SHA-256 in lower-case hex. */
+const FILE_STEM =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$/;
 
 /** One entry of the layout: a file, a folder, or the property whose value's folder a thing goes in. */
 export class Placement {
@@ -27,6 +32,8 @@ export class Placement {
     readonly storesBytes: boolean,
     /** Whether the build writes this view at every build, not only once the pod holds a record of its kind. */
     readonly writtenAlways: boolean = false,
+    /** Whether this folder holds the records of its class, with their versions and revisions. */
+    readonly holdsRecords: boolean = false,
   ) {}
 
   /** The path of the file holding the thing named `name`: this placement's file, or one in `folder` or its own. */
@@ -49,16 +56,32 @@ export class Layout {
   readonly viewsFolder: string;
   /** The placement of the views' folder. */
   readonly viewsPlacement: Placement;
+  /** The folder of syncs' act files (cascade:SyncFromAnotherWriter), outside the set; undefined when the layout gives none. */
+  readonly syncsFolder: string | undefined;
+  /** The folders of act files, the syncs' among them; a retraction (prov:invalidated) is an activity and no act. */
+  readonly actFolders: readonly string[];
 
   private constructor(turtle: string, placements: readonly Placement[]) {
     this.turtle = turtle;
     this.placements = placements;
-    const views = placements.filter(({ kind }) => kind === `${REC}View`);
+    const views = placements.filter(({ kind }) => kind === `${CASCADE}View`);
     const [placement] = views;
     if (views.length !== 1 || placement?.folder === undefined)
       throw new Error(`${LAYOUT_FILE} gives no one folder for the views`);
     this.viewsPlacement = placement;
     this.viewsFolder = placement.folder;
+    this.syncsFolder = placements.find(
+      ({ kind, folder }) => kind === SYNC && folder !== undefined,
+    )?.folder;
+    this.actFolders = placements.flatMap(({ kind, folder, forSubjectsOf }) =>
+      ((kind === `${PROV}Activity` && forSubjectsOf !== `${PROV}invalidated`) ||
+        kind === SYNC) &&
+      folder !== undefined
+        ? [folder]
+        : [],
+    );
+    if (!placements.some(({ holdsRecords }) => holdsRecords))
+      throw new Error(`${LAYOUT_FILE} gives no folder that holds records`);
   }
 
   /** The layout of the Turtle placed as `read` placed it, such as its placements read back from JSON: no store is needed. */
@@ -78,6 +101,7 @@ export class Layout {
             placed.title,
             placed.storesBytes,
             placed.writtenAlways,
+            placed.holdsRecords,
           ),
       ),
     );
@@ -91,16 +115,17 @@ export class Layout {
     const layout = new Union(newStore());
     await layout.loadTurtle(turtle, BASE);
     const { rows } = await layout.select(`
-      PREFIX rec: <${REC}>
+      PREFIX cascade: <${CASCADE}>
       PREFIX solid: <${SOLID}>
       PREFIX dct: <${DCT}>
-      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways WHERE {
-        ?placement a rec:Placement .
+      SELECT ?placement ?kind ?file ?folder ?filedWith ?forSubjectsOf ?fanOut ?writtenBy ?title ?storesBytes ?writtenAlways ?holdsRecords WHERE {
+        ?placement a cascade:Placement .
         OPTIONAL { ?placement solid:forClass ?kind } OPTIONAL { ?placement solid:instance ?file }
-        OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement rec:filedWith ?filedWith }
-        OPTIONAL { ?placement rec:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement rec:fanOut ?fanOut }
-        OPTIONAL { ?placement rec:writtenBy ?writtenBy } OPTIONAL { ?placement dct:title ?title }
-        OPTIONAL { ?placement rec:storesBytes ?storesBytes } OPTIONAL { ?placement rec:writtenAlways ?writtenAlways }
+        OPTIONAL { ?placement solid:instanceContainer ?folder } OPTIONAL { ?placement cascade:filedWith ?filedWith }
+        OPTIONAL { ?placement cascade:forSubjectsOf ?forSubjectsOf } OPTIONAL { ?placement cascade:subfolderPrefixLength ?fanOut }
+        OPTIONAL { ?placement cascade:writtenByQueryPath ?writtenBy } OPTIONAL { ?placement dct:title ?title }
+        OPTIONAL { ?placement cascade:storesBytes ?storesBytes } OPTIONAL { ?placement cascade:writtenAlways ?writtenAlways }
+        OPTIONAL { ?placement cascade:holdsRecords ?holdsRecords }
       }`);
     const seen = new Set<string>();
     const placements = rows.map((row) => {
@@ -130,6 +155,7 @@ export class Layout {
         value("title"),
         value("storesBytes") === "true",
         value("writtenAlways") === "true",
+        value("holdsRecords") === "true",
       );
     });
     return new Layout(turtle, placements);
@@ -142,17 +168,72 @@ export class Layout {
   }
 
   /**
-   * Where a thing of the class is filed outside the views: by the placement for a property it states, else by the one
-   * for its class alone; undefined when the layout files it nowhere.
+   * Whether the file at the path is in a snapshot's set (cascade:Snapshot): named as N9 names a file in a folder the
+   * layout gives, the views' folder aside. A file the layout gives by itself changes in place, and is outside it, and
+   * so is any other file in those folders, such as a `.DS_Store`, `.acl` or `.meta`. The syncs' folder is outside it.
+   */
+  inSnapshotSet(path: string): boolean {
+    if (path.startsWith(this.viewsFolder)) return false;
+    if (this.syncsFolder !== undefined && path.startsWith(this.syncsFolder))
+      return false;
+    return this.#namedInAFolder(path);
+  }
+
+  /** Whether the file at the path is a sync's act file: named as N9 names a file in the syncs' folder. */
+  inSyncsFolder(path: string): boolean {
+    return (
+      this.syncsFolder !== undefined &&
+      path.startsWith(this.syncsFolder) &&
+      this.#namedInAFolder(path)
+    );
+  }
+
+  /** Whether the file at the path is an act's file: named as N9 names a file in a folder of acts. */
+  inActFolder(path: string): boolean {
+    return (
+      this.actFolders.some((folder) => path.startsWith(folder)) &&
+      this.#namedInAFolder(path)
+    );
+  }
+
+  /** Whether the file at the path is in the folder of documents' bytes. */
+  inStoredBytes(path: string): boolean {
+    return path.startsWith(this.storedBytes.folder ?? "");
+  }
+
+  #namedInAFolder(path: string): boolean {
+    return this.placements.some(({ folder, fanOut, storesBytes }) => {
+      if (folder === undefined || !path.startsWith(folder)) return false;
+      const extension = storesBytes ? "" : ".ttl";
+      const rest = path.slice(folder.length);
+      if (!rest.endsWith(extension)) return false;
+      const parts = rest.slice(0, rest.length - extension.length).split("/");
+      const stem = parts.at(-1) ?? "";
+      if (parts.length !== (fanOut > 0 ? 2 : 1)) return false;
+      if (fanOut > 0 && parts[0] !== stem.slice(0, fanOut)) return false;
+      return FILE_STEM.test(stem);
+    });
+  }
+
+  /**
+   * Where a thing of the class is filed outside the views: by the placement for a property it states, prov:invalidated
+   * over prov:used, else by the one for its class alone; undefined when the layout files it nowhere.
    */
   find(kind: string, stating: readonly string[] = []): Placement | undefined {
     const matching = this.placements.filter(
       (placement) => placement.kind === kind && !this.#inViews(placement),
     );
-    const narrowed = matching.filter(
+    const stated = matching.filter(
       ({ forSubjectsOf }) =>
         forSubjectsOf !== undefined && stating.includes(forSubjectsOf),
     );
+    const first = PRECEDENCE.find((property) =>
+      stated.some(({ forSubjectsOf }) => forSubjectsOf === property),
+    );
+    const narrowed =
+      first === undefined
+        ? stated
+        : stated.filter(({ forSubjectsOf }) => forSubjectsOf === first);
     const found =
       narrowed.length > 0
         ? narrowed
@@ -189,7 +270,7 @@ export class Layout {
 
   /** The path of a revision of a record that `of` files. */
   revision(of: Placement, name: string): string {
-    return this.#filedWith(`${REC}revisionOf`).path(name, of.folder);
+    return this.#filedWith(`${CASCADE}revisionOf`).path(name, of.folder);
   }
 
   /** Each view a query writes, listing the things of its class. */
@@ -213,16 +294,20 @@ export class Layout {
     return this.placements.filter(({ writtenBy }) => writtenBy !== undefined);
   }
 
-  /** Where a record of the class is filed, with its versions and revisions; only a class a view lists is filed. */
+  /**
+   * Where a record of the class is filed, with its versions and revisions: only a class whose placement the layout says
+   * holds records is filed, whether or not a view lists it, as no view lists an organization.
+   */
   records(kind: string): Placement | undefined {
-    return this.views.some((view) => view.kind === kind)
-      ? this.find(kind)
-      : undefined;
+    const found = this.find(kind);
+    return found?.holdsRecords === true ? found : undefined;
   }
 
   get recordPlacements(): readonly Placement[] {
-    return this.views.flatMap(({ kind }) =>
-      kind === undefined ? [] : (this.find(kind) ?? []),
+    return this.placements.filter(
+      (placement) =>
+        placement.kind !== undefined &&
+        this.records(placement.kind) === placement,
     );
   }
 
@@ -249,7 +334,7 @@ export class Layout {
   }
 
   get manifest(): string {
-    return this.#file(`${CASCADE}ExportManifest`);
+    return this.#file(`${CASCADE}PodManifest`);
   }
 
   get card(): string {

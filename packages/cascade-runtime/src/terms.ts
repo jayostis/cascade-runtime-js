@@ -1,9 +1,4 @@
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
-const GENOMICS = "https://ns.cascadeprotocol.org/genomics/v1#";
-const CORE = "https://ns.cascadeprotocol.org/core/v1#";
-const CLINICAL = "https://ns.cascadeprotocol.org/clinical/v1#";
-const HEALTH = "https://ns.cascadeprotocol.org/health/v1#";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 
 /**
  * The vocabulary's IRIs an app names, each under the local name the term takes in the vocabulary's one namespace, so
@@ -11,69 +6,95 @@ const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
  * `cascade-runtime/terms` with nothing of the runtime behind it, and from each entry.
  */
 export const terms = Object.freeze({
-  MedicationActive: `${REC}MedicationActive`,
-  MedicationPaused: `${REC}MedicationPaused`,
-  MedicationUnknown: `${REC}MedicationUnknown`,
-  MedicationStopped: `${REC}MedicationStopped`,
-  MedicationEnteredInError: `${REC}MedicationEnteredInError`,
+  MedicationActive: `${CASCADE}MedicationActive`,
+  MedicationPaused: `${CASCADE}MedicationPaused`,
+  MedicationUnknown: `${CASCADE}MedicationUnknown`,
+  MedicationStopped: `${CASCADE}MedicationStopped`,
+  MedicationEnteredInError: `${CASCADE}MedicationEnteredInError`,
 
-  Pathogenic: `${GENOMICS}Pathogenic`,
-  LikelyPathogenic: `${GENOMICS}LikelyPathogenic`,
-  UncertainSignificance: `${GENOMICS}VUS`,
-  LikelyBenign: `${GENOMICS}LikelyBenign`,
-  Benign: `${GENOMICS}Benign`,
+  Pathogenic: `${CASCADE}Pathogenic`,
+  LikelyPathogenic: `${CASCADE}LikelyPathogenic`,
+  UncertainSignificance: `${CASCADE}UncertainSignificance`,
+  LikelyBenign: `${CASCADE}LikelyBenign`,
+  Benign: `${CASCADE}Benign`,
 
-  ClinVarConflicting: `${REC}ClinVarConflicting`,
-  ClinVarConflictingData: `${REC}ClinVarConflictingData`,
-  ClinVarCombinationOnly: `${REC}ClinVarCombinationOnly`,
-  ClinVarVusHigh: `${REC}ClinVarVusHigh`,
-  ClinVarRiskFactor: `${REC}ClinVarRiskFactor`,
-  ClinVarMultipleSubmittersNoConflicts: `${REC}ClinVarMultipleSubmittersNoConflicts`,
-  ClinVarSingleSubmitter: `${REC}ClinVarSingleSubmitter`,
-  ClinVarNoAssertionCriteria: `${REC}ClinVarNoAssertionCriteria`,
+  ClinVarConflicting: `${CASCADE}ClinVarConflicting`,
+  ClinVarConflictingData: `${CASCADE}ClinVarConflictingData`,
+  ClinVarCombinationOnly: `${CASCADE}ClinVarCombinationOnly`,
+  ClinVarVusHigh: `${CASCADE}ClinVarVusHigh`,
+  ClinVarRiskFactor: `${CASCADE}ClinVarRiskFactor`,
+  ClinVarMultipleSubmittersNoConflicts: `${CASCADE}ClinVarMultipleSubmittersNoConflicts`,
+  ClinVarSingleSubmitter: `${CASCADE}ClinVarSingleSubmitter`,
+  ClinVarNoAssertionCriteria: `${CASCADE}ClinVarNoAssertionCriteria`,
 
-  establishedPharmacologicClass: `${REC}establishedPharmacologicClass`,
-  mechanismOfActionClass: `${REC}mechanismOfAction`,
-  physiologicEffectClass: `${REC}physiologicEffect`,
-  chemicalStructureClass: `${REC}chemicalStructure`,
+  establishedPharmacologicClass: `${CASCADE}establishedPharmacologicClass`,
+  mechanismOfActionClass: `${CASCADE}mechanismOfActionClass`,
+  physiologicEffectClass: `${CASCADE}physiologicEffectClass`,
+  chemicalStructureClass: `${CASCADE}chemicalStructureClass`,
 
-  mergedFrom: `${CORE}mergedFrom`,
-  hgvsCodingDnaExpression: `${GENOMICS}hgvsCDot`,
-  clinvarVariationId: `${GENOMICS}clinvarVariationId`,
-  geneSymbol: `${GENOMICS}geneSymbol`,
-  coversGene: `${REC}coversGene`,
-  clinvarClassification: `${REC}clinvarClassification`,
-  clinvarReviewStatus: `${REC}clinvarReviewStatus`,
-  contributingSubmitterCount: `${REC}contributingSubmitters`,
-  variantInterpreted: `${GENOMICS}variantInterpreted`,
-  acmgClassification: `${GENOMICS}acmgClassification`,
-  interpretedDate: `${GENOMICS}interpretedDate`,
+  mergedFrom: `${CASCADE}mergedFrom`,
+  hgvsCodingDnaExpression: `${CASCADE}hgvsCodingDnaExpression`,
+  clinvarVariationId: `${CASCADE}clinvarVariationId`,
+  geneSymbol: `${CASCADE}geneSymbol`,
+  coversGene: `${CASCADE}coversGene`,
+  clinvarClassification: `${CASCADE}clinvarClassification`,
+  clinvarReviewStatus: `${CASCADE}clinvarReviewStatus`,
+  contributingSubmitterCount: `${CASCADE}contributingSubmitterCount`,
+  variantInterpreted: `${CASCADE}variantInterpreted`,
+  acmgClassification: `${CASCADE}acmgClassification`,
+  interpretedDate: `${CASCADE}interpretedDate`,
 
-  drugName: `${CLINICAL}drugName`,
-  medicationUseEndDate: `${CLINICAL}endDate`,
-  allergen: `${HEALTH}allergen`,
-  Vaccination: `${HEALTH}ImmunizationRecord`,
-  vaccineCode: `${HEALTH}vaccineCode`,
-  vaccinationOccurrenceTime: `${HEALTH}administrationDate`,
+  drugName: `${CASCADE}drugName`,
+  medicationUseEndDate: `${CASCADE}medicationUseEndDate`,
+  allergen: `${CASCADE}allergen`,
+  Vaccination: `${CASCADE}Vaccination`,
+  vaccineCode: `${CASCADE}vaccineCode`,
+  vaccinationOccurrenceTime: `${CASCADE}vaccinationOccurrenceTime`,
 
-  patient: `${REC}patient`,
-  PatientRole: `${JDG}patient`,
-  justification: `${JDG}justification`,
-  SameMappedCodeAndDate: `${JDG}SameMappedCodeAndDate`,
+  patient: `${CASCADE}patient`,
+  PatientRole: `${CASCADE}PatientRole`,
+  justification: `${CASCADE}justification`,
+  SameMappedCodeAndDate: `${CASCADE}SameMappedCodeAndDate`,
 
-  CodeSystem: `${REC}CodeSystem`,
-  ReferenceSeries: `${REC}ReferenceSeries`,
-  defaultTableVersion: `${REC}shipsWith`,
+  CodeSystem: `${CASCADE}CodeSystem`,
+  ReferenceSeries: `${CASCADE}ReferenceSeries`,
+  defaultTableVersion: `${CASCADE}defaultTableVersion`,
 
   /** The property a version of each kind states its status by, under the kind's class. */
   statusOf: Object.freeze({
-    AllergyOrIntolerance: `${CLINICAL}status`,
-    ProblemOrDiagnosis: `${HEALTH}status`,
-    Vaccination: `${HEALTH}status`,
-    PrescribedOrReportedMedication: `${CLINICAL}status`,
-    MedicalProcedure: `${CLINICAL}status`,
-    LaboratoryTestResult: `${CLINICAL}status`,
+    AllergyOrIntolerance: `${CASCADE}clinicalStatus`,
+    ProblemOrDiagnosis: `${CASCADE}clinicalStatus`,
+    Vaccination: `${CASCADE}workflowStatus`,
+    PrescribedOrReportedMedication: `${CASCADE}workflowStatus`,
+    MedicalProcedure: `${CASCADE}workflowStatus`,
+    LaboratoryTestResult: `${CASCADE}workflowStatus`,
   }),
 });
 
 export type Terms = typeof terms;
+
+/**
+ * Each code system's IRI stem, its `void:uriSpace`, under the system's local name: a code's IRI is its stem followed by
+ * the code percent-encoded as SPARQL's ENCODE_FOR_URI does.
+ */
+export const codeStems = Object.freeze({
+  CVX: "https://ns.cascadeprotocol.org/codes/cvx/",
+  RxNorm: "https://ns.cascadeprotocol.org/codes/rxnorm/",
+  NDC: "https://ns.cascadeprotocol.org/codes/ndc11/",
+  ICD10CM: "https://ns.cascadeprotocol.org/codes/icd10cm/",
+  SNOMEDCT: "http://snomed.info/id/",
+  LOINC: "http://loinc.org/rdf/",
+  MEDRT: "https://ns.cascadeprotocol.org/codes/medrt/",
+  MeSH: "http://id.nlm.nih.gov/mesh/",
+  UNII: "https://identifiers.org/unii:",
+  CPT: "https://ns.cascadeprotocol.org/codes/cpt/",
+  ICD9CM: "https://ns.cascadeprotocol.org/codes/icd9cm/",
+  HGVS: "https://ns.cascadeprotocol.org/codes/hgvs/",
+  ClinVar: "https://identifiers.org/clinvar:",
+  DataAbsentReason: "https://ns.cascadeprotocol.org/codes/data-absent-reason/",
+  NullFlavor: "https://ns.cascadeprotocol.org/codes/nullflavor/",
+  ObservationInterpretation:
+    "https://ns.cascadeprotocol.org/codes/observationinterpretation/",
+});
+
+export type CodeStems = typeof codeStems;

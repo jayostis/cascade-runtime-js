@@ -16,20 +16,16 @@ const TYPE = `${RDF}type`;
 
 const PREFIXES: Readonly<Record<string, string>> = {
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
-  cascade: "https://ns.cascadeprotocol.org/core/v1#",
-  clinical: "https://ns.cascadeprotocol.org/clinical/v1#",
+  cascade: "https://ns.cascadeprotocol.org/cascade#",
   dct: "http://purl.org/dc/terms/",
   foaf: "http://xmlns.com/foaf/0.1/",
-  health: "https://ns.cascadeprotocol.org/health/v1#",
-  jdg: "https://ns.cascadeprotocol.org/judgments/v1-draft#",
   ldp: "http://www.w3.org/ns/ldp#",
-  npx: "http://purl.org/nanopub/x/",
+  oa: "http://www.w3.org/ns/oa#",
   pav: "http://purl.org/pav/",
   pim: "http://www.w3.org/ns/pim/space#",
   prov: "http://www.w3.org/ns/prov#",
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-  rec: "https://ns.cascadeprotocol.org/records/v1-draft#",
   solid: "http://www.w3.org/ns/solid/terms#",
   xsd: "http://www.w3.org/2001/XMLSchema#",
 };

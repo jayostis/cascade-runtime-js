@@ -5,7 +5,7 @@ import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, literal, RDF } from "../src/rdf.js";
 import { PERFORMERS, replay } from "../src/replay.js";
 import type { Story } from "../src/story.js";
-import { layout } from "./vocabulary.js";
+import { layout, RUNTIME, vocabulary } from "./vocabulary.js";
 
 test("a refused step writes nothing and the replay goes on; a step it cannot perform stops it, naming the kind", async () => {
   const story: Story = {
@@ -31,9 +31,10 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
   };
   const pod = new MemoryFiles(story.address);
   const replayed = await replay({
+    runtime: RUNTIME,
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
-    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
     folder: "",
     title: "",
     pod,
@@ -46,10 +47,10 @@ test("a refused step writes nothing and the replay goes on; a step it cannot per
         return pod.enter({
           bytes: new TextEncoder().encode(
             `@prefix prov: <http://www.w3.org/ns/prov#> .
-            <urn:cascade:this-entry> a prov:Activity .
-            <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+            <urn:uuid:1e6c3a8d-5f27-4b90-9d4e-a7b2c8f0e513> a prov:Activity .
+            <urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
             <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-              <https://ns.cascadeprotocol.org/records/v1-draft#patient> <${story.subject}> .
+              <https://ns.cascadeprotocol.org/cascade#patient> <${story.subject}> .
             <urn:cascade:zz-version> prov:specializationOf <urn:cascade:no-draft> .`,
           ),
           base: story.address,
@@ -102,9 +103,10 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
   const pod = new MemoryFiles(story.address);
   const seen: string[] = [];
   const replayed = await replay({
+    runtime: RUNTIME,
     story,
     source: new MemoryFiles("https://vocabulary.example/"),
-    vocabulary: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
     folder: "",
     title: "",
     pod,
@@ -140,5 +142,49 @@ test("with a build, the files it writes are rebuilt after every step, and no ste
   assert.deepEqual(
     built.map(([, , value]) => value),
     [literal("2026-02-02T08:00:00Z")],
+  );
+});
+
+test("a view is written relative to itself: it names itself and its entries by no pod address", async () => {
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53",
+    steps: [
+      {
+        name: "create",
+        when: "2026-02-01T08:00:00Z",
+        happened: { kind: "creation" },
+      },
+    ],
+  };
+  const [{ file = "" } = {}] = (await layout()).views;
+  const view = story.address + file;
+  const triples = [
+    [iri(view), iri(`${RDF}type`), iri("urn:example:View")],
+    [iri(`${view}#entry`), iri(`${RDF}value`), iri(`${view}#entry`)],
+  ] as const;
+  const pod = new MemoryFiles(story.address);
+  await replay({
+    runtime: RUNTIME,
+    story,
+    source: new MemoryFiles("https://vocabulary.example/"),
+    vocabulary: await vocabulary(),
+    folder: "",
+    title: "",
+    pod,
+    layout: await layout(),
+    newStore: () => new OxigraphStore(),
+    build: {
+      lens: "everyday",
+      derive: () => Promise.resolve(new Map([[file, triples]])),
+    },
+  });
+  const bytes = (await pod.read(file)) ?? new Uint8Array();
+  assert.ok(!new TextDecoder().decode(bytes).includes(story.address));
+  assert.deepEqual(
+    (await new OxigraphStore().parse(bytes, view))
+      .map((triple) => triple.map(({ value }) => value).join(" "))
+      .sort(),
+    triples.map((triple) => triple.map(({ value }) => value).join(" ")).sort(),
   );
 });

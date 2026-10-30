@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
+import { Revisions } from "../src/arrivals.js";
 import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
+import { vocabularyDerive } from "../src/build.js";
+import { dataset } from "../src/dataset.js";
 import { CorePod } from "../src/core-pod.js";
 import { MemoryFiles } from "../src/files.js";
 import { StoryTime } from "../src/ids.js";
-import { parseGraph } from "../src/graph.js";
+import { Graph, parseGraph } from "../src/graph.js";
+import { enteredRecordName } from "../src/names.js";
+import { iri, written } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
-import { replay } from "../src/replay.js";
+import { type Replayed, replay } from "../src/replay.js";
 import type { Step, Story } from "../src/story.js";
-import { layout, storyFrom, vocabulary } from "./vocabulary.js";
+import { layout, RUNTIME, storyFrom, vocabulary } from "./vocabulary.js";
 
 const newStore = (): OxigraphStore => new OxigraphStore();
 
@@ -18,6 +23,7 @@ async function replayed(feature: string, example: string) {
   const files = await vocabulary();
   const { story, folder } = await storyFrom(feature, example);
   return replay({
+    runtime: RUNTIME,
     story,
     source: files,
     vocabulary: files,
@@ -52,7 +58,7 @@ test("an import writes its content-addressed files first, then its revisions, an
     ranks.push(
       said("http://www.w3.org/ns/prov#used")
         ? 2
-        : said("https://ns.cascadeprotocol.org/records/v1-draft#Revision")
+        : said("https://ns.cascadeprotocol.org/cascade#Revision")
           ? 1
           : 0,
     );
@@ -63,6 +69,41 @@ test("an import writes its content-addressed files first, then its revisions, an
   );
   assert.deepEqual(new Set(ranks), new Set([0, 1, 2]));
   assert.equal(ranks.filter((rank) => rank === 2).length, 1);
+});
+
+test("an act's revisions read from the dataset the pod keeps are those read from the records' files", async () => {
+  const files = await vocabulary();
+  const replay = await replayed(
+    "runtime/arrivals.feature",
+    "the peanut allergy changes and changes back, and its third revision sets its first version again",
+  );
+  const { pod, layout: laidOut, story, steps } = replay;
+  const kept = await dataset(
+    replay,
+    steps.at(-1)?.step.name ?? "",
+    "everyday",
+    newStore(),
+    await vocabularyDerive(files, laidOut),
+  );
+  const context = {
+    pod,
+    newStore,
+    layout: laidOut,
+    vocabulary: files,
+    address: story.address,
+  };
+  const [fromFiles, fromKept] = await Promise.all([
+    Revisions.of({ ...context, keptDataset: async () => undefined }),
+    Revisions.of({ ...context, keptDataset: async () => kept }),
+  ]);
+  const records = (
+    await kept.select(
+      "SELECT DISTINCT ?record WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#revisionOf> ?record }",
+    )
+  ).rows.flatMap((row) => row.get("record")?.value ?? []);
+  assert.ok(records.some((record) => fromFiles.held(record).files.length > 3));
+  for (const record of records)
+    assert.deepEqual(fromKept.held(record), fromFiles.held(record), record);
 });
 
 test("a refused step says which rule refused it", async () => {
@@ -94,7 +135,13 @@ test("a refused step says which rule refused it", async () => {
   );
 });
 
-test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
+const OA = "http://www.w3.org/ns/oa#";
+
+/**
+ * Finn's stray-statement import, the stray line dropped, the arrival's selector node blank as saved, named `<urn:example:selector>`,
+ * or with a blank-node statement beside it, then an entry whose version holds a blank node and one that holds none.
+ */
+async function strayReplay(mode: "saved" | "named" | "blank" = "saved") {
   const files = await vocabulary();
   const finn = "runtime/scripted-input/finn";
   const source = new MemoryFiles("https://story.example/");
@@ -113,19 +160,41 @@ test("a step whose content to be named holds a blank node is refused, and the re
             new TextDecoder()
               .decode(bytes)
               .replace(/^<urn:example:stray>.*$/m, "")
-              .replace('bridge:selector ""', "bridge:selector _:selector"),
+              .replace(
+                /^(.*)oa:hasSelector (_:\w+)/m,
+                (_line, head: string, label: string) =>
+                  mode === "named"
+                    ? `${head}oa:hasSelector <urn:example:selector>`
+                    : mode === "blank"
+                      ? `${head}<urn:example:says> _:stray ; oa:hasSelector ${label}`
+                      : `${head}oa:hasSelector ${label}`,
+              )
+              .replace(/^_:\w+ a oa:FragmentSelector/m, (line) =>
+                mode === "named"
+                  ? line.replace(/^_:\w+/, "<urn:example:selector>")
+                  : line,
+              ),
           )
         : bytes,
     );
   }
-  const entry = (allergen: string): Uint8Array =>
+  const entry = (session: string, allergen: string): Uint8Array =>
     new TextEncoder()
-      .encode(`<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .
-<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+      .encode(`<${session}> a <http://www.w3.org/ns/prov#Activity> .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> <http://www.w3.org/ns/prov#specializationOf> <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/health/v1#allergen> ${allergen} .`);
-  await source.write("s/blank.ttl", entry("[ <urn:example:value> 2 ]"));
-  await source.write("s/plain.ttl", entry('"Peanut"'));
+  <https://ns.cascadeprotocol.org/cascade#allergen> ${allergen} .`);
+  await source.write(
+    "s/blank.ttl",
+    entry(
+      "urn:uuid:5b2e8f14-9c3a-4d71-a6e0-2f8b7c4d1e93",
+      `"Peanut" ; <urn:example:note> [ <urn:example:value> 2 ]`,
+    ),
+  );
+  await source.write(
+    "s/plain.ttl",
+    entry("urn:uuid:8c1f4e7a-2d93-4b56-b0a8-e3d6f9c2a147", '"Peanut"'),
+  );
   const story: Story = {
     address: "https://pod.example/",
     subject: "urn:uuid:a5e8c1d3-2f47-4b9a-8e60-1c3d5f7a9b24",
@@ -156,10 +225,11 @@ test("a step whose content to be named holds a blank node is refused, and the re
       },
     ],
   };
-  const { steps } = await replay({
+  return replay({
+    runtime: RUNTIME,
     story,
     source,
-    vocabulary: source,
+    vocabulary: files,
     folder: "s",
     title: "",
     pod: new MemoryFiles(story.address),
@@ -167,6 +237,27 @@ test("a step whose content to be named holds a blank node is refused, and the re
     layout: await layout(),
     importers: [appleHealthExport],
   });
+}
+
+/** What the step wrote, as one graph. */
+async function wroteBy(replayed: Replayed, index: number): Promise<Graph> {
+  const triples = [];
+  for (const path of replayed.steps[index]?.wrote ?? [])
+    if ((await layout()).isRdf(path))
+      triples.push(
+        ...(
+          await parseGraph(
+            (await replayed.pod.read(path)) ?? new Uint8Array(),
+            replayed.pod.iri + path,
+            newStore,
+          )
+        ).triples,
+      );
+  return new Graph(triples);
+}
+
+test("a step whose content to be named holds a blank node is refused, and the replay goes on", async () => {
+  const { steps } = await strayReplay("blank");
   assert.match(
     steps[1]?.refused ?? "",
     /^the revision of urn:uuid:.*holds a blank node/,
@@ -175,6 +266,54 @@ test("a step whose content to be named holds a blank node is refused, and the re
   for (const step of steps.slice(1, 3)) assert.deepEqual(step.wrote, []);
   assert.equal(steps[3]?.refused, undefined);
   assert.notDeepEqual(steps[3]?.wrote, []);
+});
+
+let selected: ReturnType<typeof strayReplay> | undefined;
+const withSelectorNode = () => (selected ??= strayReplay());
+
+/** The revision the import wrote carries the arrival's selector as its #selector, with the selector's statements and its source. */
+async function carriesSelector(replayed: Replayed): Promise<void> {
+  assert.equal(replayed.steps[1]?.refused, undefined);
+  const wrote = await wroteBy(replayed, 1);
+  const [revision] = wrote.subjects(
+    "https://ns.cascadeprotocol.org/cascade#revisionOf",
+  );
+  assert.ok(revision);
+  const selector = iri(`${revision.value}#selector`);
+  assert.deepEqual(wrote.objects(revision, `${OA}hasSelector`).map(written), [
+    written(selector),
+  ]);
+  assert.deepEqual(
+    wrote
+      .match(selector)
+      .map(([, p, o]) => `${p.value} ${written(o)}`)
+      .sort(),
+    [
+      `http://purl.org/dc/terms/conformsTo <https://www.rfc-editor.org/rfc/rfc6901>`,
+      `http://www.w3.org/1999/02/22-rdf-syntax-ns#type <${OA}FragmentSelector>`,
+      `http://www.w3.org/1999/02/22-rdf-syntax-ns#value ""`,
+    ],
+  );
+  assert.deepEqual(
+    wrote.objects(revision, `${OA}hasSource`).map((o) => o.value),
+    ["ni:///sha-256;L7Aq5iaUc_UqFtztmg97xtu1_5BAox3JtpOGELZzQww"],
+  );
+}
+
+test("an arrival's selector, a node of its own, blank or named, is carried into the revision as the revision's #selector, with the arrival's source", async () => {
+  await carriesSelector(await withSelectorNode());
+  await carriesSelector(await strayReplay("named"));
+});
+
+test("an entered record is named from its entry session's IRI and the draft's position", async () => {
+  const replayed = await withSelectorNode();
+  const wrote = await wroteBy(replayed, 3);
+  const [session] = wrote.subjects("http://www.w3.org/ns/prov#startedAtTime");
+  const records = wrote
+    .match(undefined, "https://ns.cascadeprotocol.org/cascade#revisionOf")
+    .map(([, , record]) => record.value);
+  assert.ok(session);
+  assert.deepEqual(records, [await enteredRecordName(session.value, 0)]);
 });
 
 test("a step given bad input by its story is refused, and the replay goes on", async () => {
@@ -208,12 +347,18 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     await source.write(
       `s/${file}`,
       new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
-<urn:cascade:this-entry> a prov:Activity .
-<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/health/v1#AllergyRecord> .
+<urn:uuid:7d4a1c9e-3b6f-4e28-8a15-c0f2e9b7d364> a prov:Activity .
+<urn:cascade:output-0> a <https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance> .
 <urn:cascade:output-0-version> prov:specializationOf <urn:cascade:output-0> ;
-  <https://ns.cascadeprotocol.org/health/v1#allergen> "${allergen}" ;
-  <https://ns.cascadeprotocol.org/clinical/v1#criticality> "${criticality}" .`),
+  <https://ns.cascadeprotocol.org/cascade#allergen> "${allergen}" ;
+  <https://ns.cascadeprotocol.org/cascade#allergyCriticality> "${criticality}" .`),
     );
+  await source.write(
+    "s/this-entry.ttl",
+    new TextEncoder().encode(
+      "<urn:cascade:this-entry> a <http://www.w3.org/ns/prov#Activity> .",
+    ),
+  );
   const refusals: readonly [Step["happened"], RegExp][] = [
     [
       { kind: "import", export: "apple_health_export", converted: "bridge" },
@@ -233,16 +378,20 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     ],
     [{ kind: "entry", file: "missing.ttl" }, /s\/missing\.ttl does not exist$/],
     [
+      { kind: "entry", file: "this-entry.ttl" },
+      /^this-entry\.ttl names its session urn:cascade:this-entry: an app mints a urn:uuid: for each entry session once, and keeps it$/,
+    ],
+    [
       { kind: "entry", file: "blank-allergen.ttl" },
-      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*health\/v1#allergen: /,
+      /^blank-allergen\.ttl does not conform to the vocabulary's shapes: .*cascade#allergen: /,
     ],
     [
       { kind: "entry", file: "made-up-criticality.ttl" },
-      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*clinical\/v1#criticality: /,
+      /^made-up-criticality\.ttl does not conform to the vocabulary's shapes: .*cascade#allergyCriticality: /,
     ],
     [
       { kind: "judgment", file: "no-judgment.ttl" },
-      /^no-judgment\.ttl holds 0 judgments, not one$/,
+      /^no-judgment\.ttl holds 0 judgments and 0 retractions, not one of either$/,
     ],
     [
       { kind: "judgment", file: "no-turtle.ttl" },
@@ -274,6 +423,7 @@ test("a step given bad input by its story is refused, and the replay goes on", a
     ],
   };
   const { steps, stopped } = await replay({
+    runtime: RUNTIME,
     story,
     source,
     vocabulary: await vocabulary(),
@@ -314,6 +464,7 @@ test("a document the Bridge fails on is refused with the Bridge's reason, and an
     const time = new StoryTime();
     time.begin("2026-06-01T09:00:00Z");
     return new CorePod({
+      runtime: RUNTIME,
       pod: new MemoryFiles("https://pod.example/"),
       address: "https://pod.example/",
       subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
@@ -342,4 +493,125 @@ test("a document the Bridge fails on is refused with the Bridge's reason, and an
       on,
     );
   }
+});
+
+test("an export holding the current version restamped, a new version, then the current version restamped again writes the last two", async () => {
+  const files = await vocabulary();
+  const ada = "runtime/scripted-input/ada/";
+  const bytes = async (path: string): Promise<Uint8Array> =>
+    (await files.read(`${ada}${path}`)) ?? new Uint8Array();
+  const text = async (path: string): Promise<string> =>
+    new TextDecoder().decode(await bytes(path));
+  const source = new MemoryFiles("https://story.example/");
+  const record = (file: string, received: string): string =>
+    `<ClinicalRecord type="HKClinicalTypeIdentifierAllergyRecord" identifier="peanut" sourceName="Example Hospital" sourceURL="https://fhir.example.org/r4/AllergyIntolerance/peanut" fhirVersion="4.0.1" receivedDate="${received}" resourceFilePath="/clinical-records/${file}"/>`;
+  const exported = (date: string, records: string[]): Uint8Array =>
+    new TextEncoder().encode(
+      `<?xml version="1.0" encoding="UTF-8"?><HealthData locale="en_US"><ExportDate value="${date}"/>${records.join("")}</HealthData>`,
+    );
+  await source.write(
+    "s/first/apple_health_export/export.xml",
+    exported("2026-01-02 10:00:00 +0000", [
+      record("AllergyIntolerance-peanut.json", "2026-01-02 10:00:00 +0000"),
+    ]),
+  );
+  await source.write(
+    "s/first/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    await bytes(
+      "downloads/first-export/apple_health_export/clinical-records/AllergyIntolerance-peanut.json",
+    ),
+  );
+  await source.write(
+    "s/bridge/first/AllergyIntolerance-peanut/graph.ttl",
+    await bytes("bridge/first-export/AllergyIntolerance-peanut/graph.ttl"),
+  );
+  await source.write(
+    "s/second/apple_health_export/export.xml",
+    exported("2026-01-08 10:00:00 +0000", [
+      record("AllergyIntolerance-peanut-1.json", "2026-01-08 10:00:00 +0000"),
+      record("AllergyIntolerance-peanut-2.json", "2026-01-08 10:00:00 +0000"),
+      record("AllergyIntolerance-peanut-3.json", "2026-01-08 10:00:00 +0000"),
+    ]),
+  );
+  for (const [file, from] of [
+    ["AllergyIntolerance-peanut-1", "current-version-again"],
+    ["AllergyIntolerance-peanut-2", "new-content"],
+    ["AllergyIntolerance-peanut-3", "change-undone"],
+  ] as const) {
+    await source.write(
+      `s/second/apple_health_export/clinical-records/${file}.json`,
+      await bytes(
+        `downloads/${from}/apple_health_export/clinical-records/AllergyIntolerance-peanut.json`,
+      ),
+    );
+    await source.write(
+      `s/bridge/second/${file}/graph.ttl`,
+      new TextEncoder().encode(
+        (
+          await text(`bridge/${from}/AllergyIntolerance-peanut/graph.ttl`)
+        ).replaceAll(/2026-01-0[56]T10:00:00Z/g, "2026-01-08T10:00:00Z"),
+      ),
+    );
+  }
+  const story: Story = {
+    address: "https://pod.example/",
+    subject: "urn:uuid:3c9f1a2e-7b64-4d08-9e5a-6f2b8c1d4e70",
+    steps: [
+      {
+        name: "create",
+        when: "2026-01-01T09:00:00Z",
+        happened: { kind: "creation" },
+      },
+      ...(["first", "second"] as const).map((name, index) => ({
+        name,
+        when: ["2026-01-02T10:00:00Z", "2026-01-08T10:00:00Z"][index] ?? "",
+        happened: {
+          kind: "import" as const,
+          export: `${name}/apple_health_export`,
+          converted: `bridge/${name}`,
+        },
+      })),
+    ],
+  };
+  const { pod, steps, stopped } = await replay({
+    runtime: RUNTIME,
+    story,
+    source,
+    vocabulary: files,
+    folder: "s",
+    title: "",
+    pod: new MemoryFiles(story.address),
+    newStore,
+    layout: await layout(),
+    importers: [appleHealthExport],
+  });
+  assert.equal(stopped, undefined);
+  assert.deepEqual(
+    steps.map(({ refused }) => refused),
+    [undefined, undefined, undefined],
+  );
+  const revisions: string[] = [];
+  for (const path of steps[2]?.wrote ?? []) {
+    if (!(await layout()).isRdf(path)) continue;
+    const { triples } = await parseGraph(
+      (await pod.read(path)) ?? new Uint8Array(),
+      pod.iri + path,
+      newStore,
+    );
+    for (const [s, p, o] of triples)
+      if (
+        p.value === "https://ns.cascadeprotocol.org/cascade#version" &&
+        triples.some(
+          ([t, q, k]) =>
+            t.value === s.value &&
+            q.value === "http://purl.org/pav/lastUpdateOn" &&
+            k.value !== "",
+        )
+      )
+        revisions.push(o.value);
+  }
+  assert.deepEqual(revisions.sort(), [
+    "ni:///sha-256;E64aGZVmGmEPgF7RM5roCn_8WdUdfQAgE1LC9RS2V4E",
+    "ni:///sha-256;EQDq-zpj8rTyF7HguJmKgu7Uqsz_dofpTOgIORGnaRM",
+  ]);
 });

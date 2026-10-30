@@ -1,4 +1,4 @@
-/** Mints the ID of what is new, an import or an entry session, and gives the time. */
+/** Mints the ID of what is new, an import or a matcher run, and gives the time. */
 export interface IdsAndTime {
   /** A new `urn:uuid:`, version 4, random on every call. */
   newId(): string;

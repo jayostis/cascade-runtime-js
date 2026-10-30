@@ -1,5 +1,9 @@
-import { BuildFailure, CorePod, type Performed } from "./core-pod.js";
-import type { Derive } from "./build.js";
+import {
+  BuildFailure,
+  CorePod,
+  type PodBuildOption,
+  type Performed,
+} from "./core-pod.js";
 import { StoryTime } from "./ids.js";
 import type { Files } from "./files.js";
 import type { Importer } from "./importer.js";
@@ -21,6 +25,8 @@ interface StorySide {
   /** The time the pod's steps are performed at, which a performer begins at its step's. */
   readonly time: StoryTime;
   readonly newStore: StoreFactory;
+  /** The pod of the writer so numbered, the first's 0. */
+  readonly writer: (index: number) => CorePod;
 }
 
 /** Performs a story's step by turning it into its inputs and calling the pod's step of its kind. */
@@ -49,6 +55,66 @@ async function withStoryFile(
   return bytes === undefined
     ? pod.refuse(`${story.source.iri}${at} does not exist`)
     : perform({ bytes, base: story.source.iri + at, name: path });
+}
+
+const SETTING = /<urn:cascade:revision-setting:([^>]+)>/g;
+
+/**
+ * A judgment's Turtle with each <urn:cascade:revision-setting:{version}> made the one revision that sets the version: a
+ * revision's name depends on its run, so a story cannot write it. A version no revision sets, or several do, is the
+ * story's mistake, and throws.
+ */
+async function revisionsNamed(
+  pod: CorePod,
+  bytes: Uint8Array,
+): Promise<Uint8Array> {
+  const text = new TextDecoder().decode(bytes);
+  const named = new Map<string, string>();
+  for (const [placeholder, version = ""] of text.matchAll(SETTING)) {
+    if (named.has(placeholder)) continue;
+    const { rows } = await pod.select(
+      `SELECT DISTINCT ?revision WHERE { ?revision <https://ns.cascadeprotocol.org/cascade#version> <${version}> }`,
+    );
+    const [only] = rows;
+    const revision = only?.get("revision")?.value;
+    if (rows.length !== 1 || revision === undefined)
+      throw new Error(
+        `the judgment names the revision setting ${version}, which ${rows.length} revisions set, not one`,
+      );
+    named.set(placeholder, `<${revision}>`);
+  }
+  return new TextEncoder().encode(
+    text.replace(
+      SETTING,
+      (placeholder) => named.get(placeholder) ?? placeholder,
+    ),
+  );
+}
+
+const ACT_OF_STEP = /<urn:cascade:act-of-step:([^>]+)>/g;
+
+/**
+ * A judgment's Turtle with each <urn:cascade:act-of-step:{step}> made the act the step so named performed: an act's name
+ * is random, so a story cannot write it. A step that performed no act, or none before this one, is the story's mistake,
+ * and throws.
+ */
+function actsNamed(
+  story: StorySide,
+  bytes: Uint8Array,
+  steps: Readonly<Record<string, string>> = {},
+): Uint8Array {
+  return new TextEncoder().encode(
+    new TextDecoder()
+      .decode(bytes)
+      .replace(ACT_OF_STEP, (_placeholder, step: string) => {
+        const act = story.activities.get(steps[step] ?? step);
+        if (act === undefined)
+          throw new Error(
+            `the judgment names the act of the step ${step}, which performed none before it`,
+          );
+        return `<${act}>`;
+      }),
+  );
 }
 
 /** The step happened when the story says. */
@@ -84,6 +150,12 @@ export const PERFORMERS: Performers = {
     return pod.create();
   },
   import: importSaved,
+  connect: (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "connect") throw new Error("the step is no connect");
+    begun(story, step);
+    return pod.connect(story.source, inStory(story.folder, happened.folder));
+  },
   entry: async (pod, step, story) => {
     const { happened } = step;
     if (happened.kind !== "entry") throw new Error("the step is no entry");
@@ -97,8 +169,14 @@ export const PERFORMERS: Performers = {
     if (happened.kind !== "judgment")
       throw new Error("the step is no judgment");
     begun(story, step);
-    return withStoryFile(pod, story, happened.file, (judgment) =>
-      pod.judge(judgment),
+    return withStoryFile(pod, story, happened.file, async (judgment) =>
+      pod.judge({
+        ...judgment,
+        bytes: await revisionsNamed(
+          pod,
+          actsNamed(story, judgment.bytes, happened.steps),
+        ),
+      }),
     );
   },
   reference: (pod, step, story) => {
@@ -119,6 +197,12 @@ export const PERFORMERS: Performers = {
     return activity === undefined
       ? Promise.resolve({ wrote: [] })
       : pod.match(activity);
+  },
+  sync: (pod, step, story) => {
+    const { happened } = step;
+    if (happened.kind !== "sync") throw new Error("the step is no sync");
+    begun(story, step);
+    return pod.receive(story.writer(happened.from).files);
   },
   open: async (pod, step, story) => {
     const { happened } = step;
@@ -147,6 +231,8 @@ export interface ReplayedStep extends Performed {
 
 /** A story replayed into a pod, as far as the runtime can perform its steps. */
 export interface Replayed {
+  /** The runtime that performed its acts (N7). */
+  readonly runtime: string;
   readonly story: Story;
   /** What a pod's manifest takes as its title: the name the source's crate gives the story's folder, or else the folder's own. */
   readonly title: string;
@@ -173,10 +259,12 @@ export interface ReplayOptions {
   readonly newStore: StoreFactory;
   readonly importers?: readonly Importer[];
   readonly performers?: Performers;
+  /** The runtime performing its acts, as N7 names it. */
+  readonly runtime: string;
   /** The tables the pod is given, instead of the story's own `references/`. */
   readonly references?: () => Promise<References>;
   /** When given, the files the build writes are rebuilt under the lens after every step and written to the pod. */
-  readonly build?: { readonly lens: string; readonly derive: Derive };
+  readonly build?: PodBuildOption;
 }
 
 /** The name the source's crate gives the folder, or else the folder's own. */
@@ -201,7 +289,8 @@ export async function titleOf(source: Files, folder: string): Promise<string> {
 
 /** Where a fork of a replay stands. */
 interface Standing {
-  readonly pod: CorePod;
+  /** The pod of each writer, the first's first. */
+  readonly pods: readonly CorePod[];
   readonly time: StoryTime;
   readonly steps: readonly ReplayedStep[];
   readonly stopped: Replayed["stopped"];
@@ -210,7 +299,7 @@ interface Standing {
 /** A story being replayed step by step, which can be forked to replay two ways from where it stands. */
 export class Replay {
   readonly #options: ReplayOptions;
-  readonly #pod: CorePod;
+  readonly #pods: CorePod[];
   readonly #time: StoryTime;
   readonly #steps: ReplayedStep[];
   readonly #activities: Map<string, string>;
@@ -219,28 +308,28 @@ export class Replay {
   constructor(options: ReplayOptions, standing?: Standing) {
     this.#options = options;
     this.#time = standing?.time ?? new StoryTime();
-    this.#pod =
-      standing?.pod ??
-      new CorePod({
-        pod: options.pod,
-        address: options.story.address,
-        subject: options.story.subject,
-        title: options.title,
-        vocabulary: options.vocabulary,
-        layout: options.layout,
-        newStore: options.newStore,
-        time: this.#time,
-        importers: options.importers ?? [],
-        references:
-          options.references ??
-          (() =>
-            References.of(
-              options.source,
-              inStory(options.folder, "references/"),
-              options.newStore,
-            )),
-        ...(options.build === undefined ? {} : { build: options.build }),
-      });
+    this.#pods = standing === undefined ? [] : [...standing.pods];
+    this.#pods[0] ??= new CorePod({
+      pod: options.pod,
+      address: options.story.address,
+      subject: options.story.subject,
+      title: options.title,
+      vocabulary: options.vocabulary,
+      layout: options.layout,
+      newStore: options.newStore,
+      time: this.#time,
+      importers: options.importers ?? [],
+      runtime: options.runtime,
+      references:
+        options.references ??
+        (() =>
+          References.of(
+            options.source,
+            inStory(options.folder, "references/"),
+            options.newStore,
+          )),
+      ...(options.build === undefined ? {} : { build: options.build }),
+    });
     const steps = standing?.steps ?? [];
     this.#steps = [...steps];
     this.#activities = new Map(
@@ -255,6 +344,14 @@ export class Replay {
   async perform(step: Step): Promise<void> {
     if (this.#stopped !== undefined) return;
     const options = this.#options;
+    const writer = step.writer ?? 0;
+    if (step.happened.kind === "writer") {
+      this.#pods[writer] = await (this.#pods[0] as CorePod).newWriter();
+      this.#record(step, { wrote: [] });
+      return;
+    }
+    const pod = this.#pods[writer];
+    if (pod === undefined) throw new Error(`the pod has no writer ${writer}`);
     const perform = (options.performers ?? PERFORMERS)[step.happened.kind];
     if (perform === undefined) {
       this.#stopped = {
@@ -265,13 +362,19 @@ export class Replay {
     }
     let performed: Performed;
     try {
-      performed = await perform(this.#pod, step, {
+      performed = await perform(pod, step, {
         source: options.source,
         folder: options.folder,
         vocabulary: options.vocabulary,
         activities: this.#activities,
         time: this.#time,
         newStore: options.newStore,
+        writer: (index) => {
+          const found = this.#pods[index];
+          if (found === undefined)
+            throw new Error(`the pod has no writer ${index}`);
+          return found;
+        },
       });
     } catch (error) {
       if (error instanceof BuildFailure) {
@@ -293,11 +396,13 @@ export class Replay {
     this.#steps.push({ step, ...performed });
   }
 
-  /** A replay that stands where this one does, over a copy of its pod. */
+  /** A replay that stands where this one does, over a copy of each writer's pod. */
   async fork(): Promise<Replay> {
     const time = new StoryTime();
+    const pods: CorePod[] = [];
+    for (const pod of this.#pods) pods.push(await pod.fork(time));
     return new Replay(this.#options, {
-      pod: await this.#pod.fork(time),
+      pods,
       time,
       steps: this.#steps,
       stopped: this.#stopped,
@@ -313,7 +418,8 @@ export class Replay {
       },
       title: this.#options.title,
       layout: this.#options.layout,
-      pod: this.#pod.files,
+      runtime: this.#options.runtime,
+      pod: (this.#pods[this.#steps.at(-1)?.step.writer ?? 0] as CorePod).files,
       steps: [...this.#steps],
       ...(this.#stopped === undefined ? {} : { stopped: this.#stopped }),
     };

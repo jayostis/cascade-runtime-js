@@ -115,9 +115,10 @@ published query by its file.
 | `packages/runtime`         | files arrivals, names things, runs the matcher and the views   |
 | `packages/apple-health`    | the importer: the documents in an export and the facts of each |
 | `packages/ccda-download`   | the importer: a C-CDA file as downloaded, and its header       |
-| `packages/site`            | the site that documents a pod and its queries                  |
+| `packages/site`            | the site that documents a pod and its queries, and the spec    |
 | `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
+| `packages/mcp`             | `cascade-mcp`, an MCP server on stdio over a folder of pods    |
 
 ## Working on this repository
 
@@ -136,6 +137,7 @@ npm run build:example alex-rivera        # the pod, then the site
 npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
 npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
 npm run build:pages                      # every kit's pod and site, under the newcomer's page, in build/pages
+npm run build:spec                       # every rule beside its note and its result in build/conformance/earl.nt, in build/spec
 ```
 
 Open `build/alex-rivera/site/index.html`. The pod is the vocabulary's
@@ -201,7 +203,7 @@ same test file runs it and checks those rows.
 `packages/cascade-runtime` is the package an app installs. It is not on npm:
 
 ```sh
-npm run build:package    # build/cascade-runtime-0.0.0-commit-<commit>.tgz and build/release-notes.md
+npm run build:package    # build/cascade-runtime-0.0.0-commit-<commit>.tgz, build/cascade-mcp-0.0.0-commit-<commit>.tgz and build/release-notes.md
 ```
 
 The tarball holds the package's code, the workspaces under it and the Bridge's
@@ -211,7 +213,10 @@ Installed, it reads nothing outside its own folder. CI installs it into an empty
 folder on Linux, Windows and macOS and runs the developer story there, and every
 merge to `main` attaches it to the pre-release `build-<commit>` under
 [releases](https://github.com/jayostis/cascade-runtime-js/releases), from which
-an app installs it by its URL.
+an app installs it by its URL. `cascade-mcp`, packed beside it, depends on it at
+the same commit: install the two tarballs in one `npm install`, then run
+`npx --no-install cascade-mcp --pods <folder>` in that folder. `--no-install` matters:
+without it, npx run elsewhere fetches whatever npm's registry calls `cascade-mcp`.
 
 ### Which version of each component a run uses
 

@@ -39,8 +39,9 @@ export const DEMO_PLAN: QueryPlan = {
     { type: "Observation", category: "laboratory" },
     { type: "Observation", category: "vital-signs" },
     { type: "DiagnosticReport" },
+    { type: "DocumentReference" },
   ],
-  backfill: ["Encounter"],
+  backfill: ["Encounter", "Organization"],
 };
 
 export interface Limits {

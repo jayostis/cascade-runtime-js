@@ -1,9 +1,10 @@
+import { answersQuery, entries } from "./entries.js";
 import { type Files, readText, under } from "./files.js";
 import { type Triple, written } from "./rdf.js";
 import type { Union } from "./store.js";
 
 export const DERIVED = "urn:cascade:derived:";
-export const QUERIES = "queries/v1-draft/";
+export const QUERIES = "queries/";
 const CRATE = "ro-crate-metadata.json";
 const DERIVATIONS = `${QUERIES}derivations`;
 export const LENSES = `${QUERIES}lenses/`;
@@ -17,10 +18,28 @@ function key(triple: Triple): string {
   return triple.map(written).join(" ");
 }
 
+/** What a runtime derives just before the lens that no query can: the Sames M7 leaves as they were across a table version. */
+export type Keep = (union: Union) => Promise<readonly Triple[]>;
+
+/** The term `Keep` derives, which only a lens that names it reads. */
+const KEPT_TERM = "membersJoinedByCurrentTableVersion";
+
 /** One derivation, or the lens, by its path in the vocabulary, and what it added that the store did not hold. */
 export interface DerivedStep {
   readonly path: string;
   readonly added: readonly Triple[];
+}
+
+const read = new WeakMap<Files, Promise<Derivations>>();
+
+/** The vocabulary's derivations, read once for each vocabulary. */
+export function derivationsOf(vocabulary: Files): Promise<Derivations> {
+  let found = read.get(vocabulary);
+  if (found === undefined) {
+    found = Derivations.of(vocabulary);
+    read.set(vocabulary, found);
+  }
+  return found;
 }
 
 /** The vocabulary's derivations and lenses, read once, each with the position its crate gives it. */
@@ -78,32 +97,42 @@ export class Derivations {
 
   /**
    * Runs the lens's derivations in turn over the union, each adding to `urn:cascade:derived:<lens>`, and so to the
-   * union, what it constructs that the union did not already hold; returns what each added.
+   * union, what it constructs that the union did not already hold; returns what each added. What `keep` gives is
+   * added just before a lens that reads it, as the lens's. Given `last`, the path of one of them, stops after it.
    */
-  async derive(union: Union, lens: string): Promise<DerivedStep[]> {
-    const { rows } = await union.select("SELECT ?s ?p ?o WHERE { ?s ?p ?o }");
-    const held = new Set(
-      rows.map((row) =>
-        ["s", "p", "o"]
-          .map((name) => {
-            const term = row.get(name);
-            if (term === undefined)
-              throw new Error("a triple of the union lacks a term");
-            return written(term);
-          })
-          .join(" "),
-      ),
-    );
+  async derive(
+    union: Union,
+    lens: string,
+    keep?: Keep,
+    last?: string,
+  ): Promise<DerivedStep[]> {
+    const steps = this.for(lens);
+    const through =
+      last === undefined
+        ? steps.length
+        : steps.findIndex(({ path }) => path === last) + 1;
+    if (through === 0) throw new Error(`the vocabulary has no ${last}`);
     const added: DerivedStep[] = [];
-    for (const { path, query } of this.for(lens)) {
-      const fresh: Triple[] = [];
-      for (const triple of await union.construct(query)) {
-        if (held.has(key(triple))) continue;
-        held.add(key(triple));
-        fresh.push(triple);
-      }
+    for (const { path, query } of steps.slice(0, through)) {
+      const kept =
+        keep !== undefined && under(LENSES, path) && query.includes(KEPT_TERM)
+          ? await keep(union)
+          : [];
+      if (kept.length > 0) await union.add(kept, DERIVED + lens);
+      const constructed = (await answersQuery(query))
+        ? await entries(union)
+        : await union.construct(query);
+      const held = await union.holds(constructed);
+      const seen = new Set<string>();
+      const fresh = constructed.filter((triple, at) => {
+        if (held[at]) return false;
+        const written = key(triple);
+        if (seen.has(written)) return false;
+        seen.add(written);
+        return true;
+      });
       await union.add(fresh, DERIVED + lens);
-      added.push({ path, added: fresh });
+      added.push({ path, added: [...kept, ...fresh] });
     }
     return added;
   }

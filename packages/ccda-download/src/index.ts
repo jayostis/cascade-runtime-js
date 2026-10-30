@@ -1,12 +1,18 @@
 import { SaxesParser, type SaxesTagNS } from "saxes";
 
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const HL7 = "urn:hl7-org:v3";
 const SLICE = 1 << 24;
 const US_REALM_HEADER = "2.16.840.1.113883.10.20.22.1.1";
+const NPI_ROOT = "2.16.840.1.113883.4.6";
+const NPI = "http://hl7.org/fhir/sid/us-npi";
+const OID = /^[0-2](\.(0|[1-9][0-9]*))+$/;
+const UUID =
+  /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
 const HEADER = ["ClinicalDocument"];
 const CUSTODIAN = [
   "ClinicalDocument",
@@ -14,6 +20,7 @@ const CUSTODIAN = [
   "assignedCustodian",
   "representedCustodianOrganization",
 ];
+const PATIENT = ["ClinicalDocument", "recordTarget", "patientRole"];
 const SECTION = [
   "ClinicalDocument",
   "component",
@@ -45,22 +52,101 @@ interface Section {
   entries: number;
 }
 
+/** A CDA `id`: its root, and its extension where it has one. */
+export interface CdaId {
+  readonly root: string;
+  readonly extension?: string;
+}
+
 /** What the header and the body's sections say. */
 interface Header {
   version?: string;
   effectiveTime?: string;
   custodian?: string;
+  readonly custodianIds: CdaId[];
+  patients: number;
+  patientId?: CdaId;
   readonly sections: Section[];
 }
 
 const OTHER = Symbol("another document element");
+
+/** An `id` with a root and no `nullFlavor`, its extension only where it is not empty. */
+function idOf(tag: SaxesTagNS): CdaId | undefined {
+  const root = tag.attributes.root?.value;
+  const extension = tag.attributes.extension?.value;
+  if (root === undefined || root === "" || tag.attributes.nullFlavor)
+    return undefined;
+  return extension === undefined || extension === ""
+    ? { root }
+    : { root, extension };
+}
+
+/**
+ * An organization's `id` as the identifier cascade-vocabulary's decisions/naming.md maps it to, keyed as the
+ * organization's name picks one: the NPI first, then the least type and value. Written back as a root and an extension,
+ * a UUID root in lower case. Undefined for an `id` that maps to no identifier.
+ */
+function organizationIdOf(
+  id: CdaId,
+): { readonly key: string; readonly id: CdaId } | undefined {
+  const root = OID.test(id.root)
+    ? id.root
+    : UUID.test(id.root)
+      ? id.root.toLowerCase()
+      : undefined;
+  if (root === undefined) return undefined;
+  const rootIri = OID.test(root) ? `urn:oid:${root}` : `urn:uuid:${root}`;
+  const system = root === NPI_ROOT ? NPI : rootIri;
+  if (id.extension === undefined && system !== rootIri) return undefined;
+  const [type, value] =
+    id.extension === undefined
+      ? ["urn:ietf:rfc:3986", rootIri]
+      : [system, id.extension];
+  return {
+    key: `${type === NPI ? "0" : "1"}${type} ${value}`,
+    id:
+      id.extension === undefined ? { root } : { root, extension: id.extension },
+  };
+}
+
+/** Compares two strings code point by code point, as SPARQL orders them; JavaScript's `<` compares UTF-16 code units. */
+function byCodePoint(a: string, b: string): number {
+  const left = Array.from(a, (c) => c.codePointAt(0) as number);
+  const right = Array.from(b, (c) => c.codePointAt(0) as number);
+  for (let at = 0; at < Math.min(left.length, right.length); at++)
+    if (left[at] !== right[at])
+      return (left[at] as number) - (right[at] as number);
+  return left.length - right.length;
+}
+
+/**
+ * The ids that scope a C-CDA document's records: its custodian's `id` that names its organization record, as
+ * cascade-vocabulary's RecordFromCcdaNamingRule says, and its one patient's first; null where its custodian has no `id`
+ * that names an organization, or the document states not exactly one patient with an id, so that its records are named
+ * by the document; undefined where the file is no C-CDA document.
+ */
+export function scopesOf(
+  bytes: Uint8Array,
+): { readonly custodian: CdaId; readonly patient: CdaId } | null | undefined {
+  const header = headerOf(bytes);
+  if (header === undefined) return undefined;
+  const { custodianIds, patientId: patient, patients } = header;
+  const custodian = custodianIds
+    .map(organizationIdOf)
+    .filter((picked) => picked !== undefined)
+    .sort((a, b) => byCodePoint(a.key, b.key))[0]?.id;
+  return custodian === undefined || patient === undefined || patients !== 1
+    ? null
+    : { custodian, patient };
+}
 
 /**
  * The header of the file's `ClinicalDocument`, or undefined where its document element is another, read no further
  * than that element; it throws where a CDA is not well-formed XML.
  */
 function headerOf(bytes: Uint8Array): Header | undefined {
-  const header: Header = { sections: [] };
+  const header: Header = { custodianIds: [], patients: 0, sections: [] };
   const path: string[] = [];
   let section: Section | undefined;
   let capture: { depth: number; text: string } | undefined;
@@ -85,6 +171,12 @@ function headerOf(bytes: Uint8Array): Header | undefined {
       header.version ??= tag.attributes.extension?.value;
     else if (at(HEADER, "effectiveTime"))
       header.effectiveTime = tag.attributes.value?.value;
+    else if (at(CUSTODIAN, "id")) {
+      const id = idOf(tag);
+      if (id !== undefined) header.custodianIds.push(id);
+    } else if (at(PATIENT)) header.patients++;
+    else if (at(PATIENT, "id") && header.patients === 1)
+      header.patientId ??= idOf(tag);
     else if (at(CUSTODIAN, "name") || at(SECTION, "title"))
       capture = { depth: path.length, text: "" };
     else if (at(SECTION)) {
@@ -169,7 +261,7 @@ function facts(header: Header, importStarted: string): Uint8Array {
   ];
   if (header.version !== undefined)
     lines.push(
-      `<${BRIDGE}thisDocument> <${BRIDGE}sourceFormatVersion> ${quoted(header.version)} .`,
+      `<${BRIDGE}thisDocument> <${CASCADE}sourceFormatVersion> ${quoted(header.version)} .`,
     );
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }

@@ -17,7 +17,7 @@ import {
   lenses,
   OxigraphStore,
   questions,
-  recordName,
+  recordFromServerName,
   Shapes,
   type Triple,
 } from "@cascade-runtime/runtime";
@@ -45,8 +45,7 @@ const ALEX = `${KIT}/scripted-input/alex`;
 const PICKED = ["x-e2", "x-e4", "x-e10", "x-e12"];
 /** Patient A at Cascade North, as whom `openBrowser()` signs in. */
 const A_NORTH = "pt-1001";
-const JDG = "https://ns.cascadeprotocol.org/judgments/v1-draft#";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const HAD_MEMBER = "http://www.w3.org/ns/prov#hadMember";
 
 interface Block {
@@ -170,7 +169,7 @@ async function recordOf(handle: string): Promise<string> {
   };
   const { server, type, id } = records[handle] ?? {};
   assert.ok(server && type && id, `${handle} is no hospital's record`);
-  return recordName([server, type, id]);
+  return recordFromServerName(server, type, id);
 }
 
 /** The module the guide's blocks make, in order, after the stand-ins for the person. */
@@ -319,7 +318,7 @@ test("the reading example shows each allergy as its entry states it, its records
   for (const { record, field, value } of await examplesPod().ask(
     "record/What each version says",
   ))
-    if (record && value && field?.endsWith("#criticality"))
+    if (record && value && field?.endsWith("#allergyCriticality"))
       stated.set(record, (stated.get(record) ?? new Set()).add(value));
   const severity = ["unable-to-assess", "low", "high"];
   const mostSevere = (records: readonly string[]): string | undefined =>
@@ -448,7 +447,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   }
   const persons = [...judged].filter(([, { byOwner }]) => byOwner);
   const ofVerdict = (verdict: string) =>
-    persons.filter(([, one]) => one.verdict === JDG + verdict);
+    persons.filter(([, one]) => one.verdict === CASCADE + verdict);
 
   for (const verdict of ["Same", "Different", "Erroneous"])
     assert.ok(ofVerdict(verdict).length > 0, `no ${verdict} by the person`);
@@ -501,7 +500,7 @@ test("each template does what the guide says, read through the vocabulary's ques
 
   const hidden = await ask("record/Why it is in no view");
   const hiddenFor = (record: string, why: string) =>
-    hidden.some((row) => row.record === record && row.why === REC + why);
+    hidden.some((row) => row.record === record && row.why === CASCADE + why);
   for (const [, { members }] of ofVerdict("Erroneous"))
     for (const member of members)
       assert.ok(
@@ -520,7 +519,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   const abouts = (profile: string) =>
     [...judged].filter(
       ([name, one]) =>
-        one.verdict === `${JDG}About` &&
+        one.verdict === `${CASCADE}About` &&
         one.members.includes(profile) &&
         counting.has(name),
     );

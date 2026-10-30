@@ -1,0 +1,55 @@
+# cascade-mcp
+
+An [MCP](https://modelcontextprotocol.io) server on stdio over a folder of Cascade pods, for Claude Desktop, VS Code or
+any MCP client to start. It offers the tools of `cascade-runtime/tools`, and every one of them reads: it never writes a
+pod, and never opens an encrypted one.
+
+Install it with the cascade-runtime tarball of the same build, both in one `npm install`
+(cascade-mcp names the runtime by that build's version, which no registry holds), then run
+it in that folder:
+
+```sh
+npm install <cascade-runtime tarball> <cascade-mcp tarball>
+npx --no-install cascade-mcp --pods <folder>
+```
+
+`--no-install` keeps npx from fetching whatever npm's registry calls `cascade-mcp`.
+
+`<folder>` holds the pods, one folder each, as an app keeps them (`pods/` in a starter app). The reference tables the
+folder holds (`.tables/`) are used as they are; `--check-tables` checks their feeds for newer tables, a network call,
+when the first pod opens, and turns on `reference_table_checks`.
+
+- `list_pods`: the pods' names.
+- `ask`: a pod's records by the name of a question (allergies, conditions, medications, medication history, lab results,
+  immunizations, procedures, genetic variants, the person, where an entry came from, what needs review), a few rows of
+  the many; never a query of your own.
+- `find_changes`: what changed in a pod's lab results after a medication started or stopped, strongest first, with the
+  numbers; `finding_rows` gives the lab rows behind one, `lab_series` one test's results over time and `timeline` each
+  medication's start and end. They state what changed, never why.
+- `reference_table_checks`: with `--check-tables`, each variant report that differs from ClinVar today and each pair of
+  active medications whose codes share an ingredient, each row citing the table version it was read from, and each check
+  saying whether its series is held (`held: false` is not checked, not nothing found); without it, that the tables are off.
+
+Every row names the entry it is about, so an answer can cite it.
+
+**A hosted client sends what the tools return to its provider.** A pod made from a person's own records is theirs to
+decide about: use a model that runs on their machine, or leave that pod out.
+
+**Claude Desktop.** Open Settings, Developer, Edit Config, and add the server to `claude_desktop_config.json`, with the
+absolute paths of the folder cascade-mcp is installed in and of the pods (forward slashes work on Windows too), then
+quit Claude Desktop and start it again:
+
+```json
+{
+  "mcpServers": {
+    "cascade": {
+      "command": "node",
+      "args": [
+        "C:/path/to/installed/node_modules/cascade-mcp/dist/src/cli.js",
+        "--pods",
+        "C:/path/to/pods"
+      ]
+    }
+  }
+}
+```

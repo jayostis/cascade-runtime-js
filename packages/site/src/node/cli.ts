@@ -26,8 +26,10 @@ import {
   localVocabulary,
   PACKED,
   type Packed,
+  readConfig,
   type Resolved,
   resolve,
+  resolveVocabulary,
   siblingsOf,
 } from "@cascade-runtime/runtime/node";
 import type * as Published from "cascade-runtime/published";
@@ -38,6 +40,7 @@ import {
   podOf,
 } from "../front-page.js";
 import { Site } from "../site.js";
+import { readSpecReport, type SpecReport, specPages } from "../spec.js";
 import { COPY } from "../terms.js";
 import { servePages } from "./serve.js";
 import { assertStagedCurrent } from "./staged.js";
@@ -59,6 +62,7 @@ const BRIDGE = "cascade-bridge-rs";
 const STAGE = join(ROOT, "build", "package");
 const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
+const SPEC = join(ROOT, "build", "spec");
 const log = (line: string): void => console.error(line);
 
 interface Target {
@@ -277,6 +281,71 @@ async function buildPages(): Promise<number> {
   return 0;
 }
 
+/**
+ * Builds the spec's pages into build/spec from the vocabulary beside this checkout and the conformance run's EARL
+ * report, and prints each place a rule and a note's Choice row do not name each other, which fails nothing yet.
+ */
+async function buildSpec(args: string[]): Promise<number> {
+  const started = performance.now();
+  const { values } = parseArgs({
+    args,
+    options: { report: { type: "string" }, out: { type: "string" } },
+  });
+  const reportFile = absolute(
+    values.report ?? join(ROOT, "build", "conformance", "earl.nt"),
+  );
+  const resolved = await resolveVocabulary(
+    ROOT,
+    await readConfig(ROOT),
+    undefined,
+    log,
+  );
+  let report: SpecReport = { results: new Map(), ranWith: [], repeated: [] };
+  if (existsSync(reportFile))
+    report = await readSpecReport(await readFile(reportFile));
+  else
+    log(
+      `build-spec: no report at ${reportFile}, so every example shows as not run`,
+    );
+  if (report.vocabulary !== undefined && report.vocabulary !== resolved.iri)
+    log(
+      `build-spec: the report is of ${report.vocabulary}, the pages read ${resolved.iri}; results are joined by path`,
+    );
+  const runtime = await checkout(ROOT);
+  const self = { repository: RUNTIME };
+  const { files, warnings, unnoted, waiting } = await specPages({
+    vocabulary: new FolderFiles(resolved.folder, resolved.iri),
+    report,
+    builtFrom: [
+      ...(runtime === undefined
+        ? []
+        : [
+            atCommit(
+              repositoryName(self),
+              treeIri(self, runtime.commit),
+              runtime.commit,
+              runtime.uncommitted,
+            ),
+          ]),
+      resolvedIngredient(resolved),
+    ],
+    at: clock.now(),
+  });
+  const out = absolute(values.out ?? SPEC);
+  await rm(out, { recursive: true, force: true });
+  const folder = new FolderFiles(out);
+  for (const [path, bytes] of files) await folder.write(path, bytes);
+  const kinds = new Map<string, number>();
+  for (const { kind, where, what } of warnings) {
+    console.error(`warning: ${where}: ${what}`);
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+  }
+  console.error(
+    `${warnings.length} warnings${kinds.size === 0 ? "" : ` (${[...kinds].map(([kind, count]) => `${count} ${kind}`).join(", ")})`}; ${unnoted.length} rules say no note rules them, ${waiting.length} Choice rows wait on an issue; ${files.size} files written to ${out} in ${Math.round(performance.now() - started)} ms`,
+  );
+  return 0;
+}
+
 /** Serves build/pages until stopped. */
 async function servePagesCommand(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { port: { type: "string" } } });
@@ -325,6 +394,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<number>> = {
   "build-example-site": buildExampleSite,
   "build-example": buildExample,
   "build-pages": buildPages,
+  "build-spec": buildSpec,
   "serve-pages": servePagesCommand,
   ask,
 };

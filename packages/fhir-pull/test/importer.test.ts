@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as oxigraph from "oxigraph";
-import { fhirPull, type PullFiles, pullFiles } from "../src/index.js";
+import {
+  connectFiles,
+  fhirPull,
+  type PullFiles,
+  pullFiles,
+  readConnect,
+  type SavedConnect,
+} from "../src/index.js";
 
 const BASE = "https://cascade-north.demo.invalid/fhir";
 const BUNDLE = {
@@ -106,14 +113,14 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
     store.query(`PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
       PREFIX prov: <http://www.w3.org/ns/prov#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#> PREFIX pav: <http://purl.org/pav/>
-      PREFIX rec: <https://ns.cascadeprotocol.org/records/v1-draft#>
+      PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       ASK {
         bridge:thisImport rdfs:label "FHIR pull" ; prov:startedAtTime "2026-10-07T08:00:00Z"^^xsd:dateTime .
-        bridge:thisDocument bridge:serverBaseUrl "${BASE}" ;
+        bridge:thisDocument cascade:serverBaseUrl "${BASE}" ;
           pav:retrievedOn "2026-10-07T07:00:00.000Z"^^xsd:dateTime ;
-          bridge:authenticatedPatient "Patient/p1" ;
-          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Cascade North Demo Hospital" ] ; prov:hadRole rec:author ] .
-        FILTER NOT EXISTS { ?attribution prov:hadRole rec:transmitter }
+          cascade:authenticatedPatient "Patient/p1" ;
+          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Cascade North Demo Hospital" ] ; prov:hadRole cascade:AuthorRole ] .
+        FILTER NOT EXISTS { ?attribution prov:hadRole cascade:TransmitterRole }
       }`),
     true,
   );
@@ -128,7 +135,7 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
     });
     return (
       facts.query(
-        `SELECT ?p ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?at FILTER (?p IN (<https://ns.cascadeprotocol.org/records/v1-draft#answeredAsOf>, <http://www.w3.org/ns/prov#generatedAtTime>)) }`,
+        `SELECT ?p ?at WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?at FILTER (?p IN (<https://ns.cascadeprotocol.org/cascade#answeredAsOf>, <http://www.w3.org/ns/prov#generatedAtTime>)) }`,
       ) as Map<string, oxigraph.Term>[]
     ).map((row) => [
       row.get("p")!.value.split(/[#/]/).pop(),
@@ -149,6 +156,57 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
       kind,
       received: "2026-10-07T07:00:00.000Z",
     })),
+  );
+});
+
+test("a pull states the class of each search it answered and each it was refused", async () => {
+  const scope = async (changed: Record<string, unknown>) => {
+    const [document] = (await fhirPull.documents(
+      filesOf(pullFiles({ ...PULL, ...changed }, "north")),
+      "north",
+    ))!;
+    const facts = new oxigraph.Store();
+    facts.load(document!.facts("2026-10-07T08:00:00Z"), {
+      format: "text/turtle",
+    });
+    return (
+      facts.query(
+        `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+        SELECT ?p ?class WHERE {
+          <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?class
+          FILTER (?p IN (cascade:answersForRecordClass, cascade:refusedForRecordClass))
+        }`,
+      ) as Map<string, oxigraph.Term>[]
+    )
+      .map((row) =>
+        [row.get("p")!, row.get("class")!]
+          .map(({ value }) => value.split("#").pop())
+          .join(" "),
+      )
+      .sort();
+  };
+  assert.deepEqual(await scope({}), [], "a pull that lists no searches");
+  assert.deepEqual(
+    await scope({
+      searches: [
+        { type: "Condition" },
+        { type: "MedicationRequest" },
+        { type: "MedicationStatement" },
+        { type: "Encounter" },
+        { type: "Observation", category: "laboratory" },
+        { type: "Observation", category: "vital-signs" },
+      ],
+      denied: [
+        { type: "MedicationStatement" },
+        { type: "Observation", category: "vital-signs" },
+      ],
+    }),
+    [
+      "answersForRecordClass LaboratoryTestResult",
+      "answersForRecordClass PrescribedOrReportedMedication",
+      "answersForRecordClass ProblemOrDiagnosis",
+      "refusedForRecordClass PrescribedOrReportedMedication",
+    ],
   );
 });
 
@@ -194,6 +252,27 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
           "retrievedAt",
         ],
         ["an as-of date with no time", { asOf: "2024-02-01" }, "asOf"],
+        ["searches that are no list", { searches: {} }, "searches"],
+        [
+          "a denied search with no resource type",
+          { denied: [{ category: "laboratory" }] },
+          "denied",
+        ],
+        [
+          "a search with an empty category",
+          { searches: [{ type: "Observation", category: "" }] },
+          "searches",
+        ],
+        [
+          "a denied search whose category is no string",
+          { denied: [{ type: "Observation", category: 3 }] },
+          "denied",
+        ],
+        [
+          "a search whose resource type is lowercase",
+          { searches: [{ type: "observation" }] },
+          "searches",
+        ],
       ] as const
     ).map(([name, changed, field]): [string, PullFiles, string] => {
       const why = {
@@ -203,6 +282,10 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
         source: "pull.json's source is not a name",
         retrievedAt: "pull.json's retrievedAt is not a time in UTC",
         asOf: "pull.json's asOf is not a time in UTC",
+        searches:
+          "pull.json's searches is not a list of searches, each a resource type and an optional category",
+        denied:
+          "pull.json's denied is not a list of searches, each a resource type and an optional category",
       }[field];
       assert.throws(
         () => pullFiles({ ...PULL, ...changed } as typeof PULL, "north"),
@@ -219,4 +302,109 @@ test("a folder with no pull.json is no pull, and a pull the import cannot state 
       { message: why },
       name,
     );
+});
+
+const CAPABILITY = {
+  resourceType: "CapabilityStatement",
+  software: { name: "Example EHR", version: "" },
+  implementation: { url: `${BASE}/` },
+  rest: [
+    { mode: "client" },
+    {
+      mode: "server",
+      security: {
+        extension: [
+          {
+            url: "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
+            extension: [
+              { url: "token", valueUri: `${BASE}/token` },
+              { url: "authorize", valueUri: `${BASE}/authorize` },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+};
+const CONNECT: SavedConnect = {
+  fhirBase: BASE,
+  clientId: "cascade-app",
+  capability: CAPABILITY,
+};
+
+test("a saved connect reports each string the server wrote and the client id, the authorization endpoint from its SMART configuration where it has one, and a connect the rules refuse is refused with why, and never saved", async () => {
+  assert.deepEqual(
+    await readConnect(filesOf(connectFiles(CONNECT, "north")), "north"),
+    {
+      fhirBase: BASE,
+      clientId: "cascade-app",
+      selfAssertedBaseUrl: `${BASE}/`,
+      authorizationEndpoint: `${BASE}/authorize`,
+      softwareName: "Example EHR",
+    },
+  );
+  const smartConfiguration = { authorization_endpoint: `${BASE}/smart` };
+  const withConfiguration = connectFiles(
+    { ...CONNECT, smartConfiguration },
+    "north",
+  );
+  assert.equal(
+    (await readConnect(filesOf(withConfiguration), "north"))
+      .authorizationEndpoint,
+    `${BASE}/smart`,
+  );
+  const rows: [string, SavedConnect, string][] = [
+    [
+      "an http: base",
+      { ...CONNECT, fhirBase: "http://cascade-north.demo.invalid/fhir" },
+      "connect.json's fhirBase is not an https: URL with no query, fragment or trailing slash",
+    ],
+    [
+      "no client id",
+      { ...CONNECT, clientId: "" },
+      "connect.json names no client id",
+    ],
+    [
+      "no CapabilityStatement",
+      { ...CONNECT, capability: { resourceType: "Bundle" } },
+      "capability.json is no CapabilityStatement",
+    ],
+    [
+      "a SMART configuration that is no object",
+      { ...CONNECT, smartConfiguration: [] },
+      "smart-configuration.json is not a JSON object",
+    ],
+  ];
+  for (const [name, connect, why] of rows) {
+    assert.throws(() => connectFiles(connect, "north"), { message: why }, name);
+    const encoder = new TextEncoder();
+    const { capability, smartConfiguration: smart, ...saved } = connect;
+    await assert.rejects(
+      readConnect(
+        filesOf(
+          new Map([
+            ["north/connect.json", encoder.encode(JSON.stringify(saved))],
+            [
+              "north/capability.json",
+              encoder.encode(JSON.stringify(capability)),
+            ],
+            ...(smart === undefined
+              ? []
+              : [
+                  [
+                    "north/smart-configuration.json",
+                    encoder.encode(JSON.stringify(smart)),
+                  ] as const,
+                ]),
+          ]),
+        ),
+        "north",
+      ),
+      { message: why },
+      name,
+    );
+  }
+  await assert.rejects(readConnect(filesOf(new Map()), "north"), {
+    message: "north holds no connect.json",
+  });
 });

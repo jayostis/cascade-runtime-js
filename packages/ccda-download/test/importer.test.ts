@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as oxigraph from "oxigraph";
-import { ccdaDownload, type DownloadFiles, received } from "../src/index.js";
+import {
+  ccdaDownload,
+  type DownloadFiles,
+  received,
+  scopesOf,
+} from "../src/index.js";
 
 const CDA = `<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3"><templateId root="2.16.840.1.113883.10.20.22.1.1"/></ClinicalDocument>`;
@@ -101,11 +106,12 @@ test("a download's facts are its import's label and start and the header's versi
   });
   assert.equal(
     store.query(`PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+      PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
       PREFIX prov: <http://www.w3.org/ns/prov#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       ASK {
         bridge:thisImport rdfs:label "C-CDA download" ; prov:startedAtTime "2026-01-02T10:00:00Z"^^xsd:dateTime .
-        bridge:thisDocument bridge:sourceFormatVersion "2015-08-01" .
+        bridge:thisDocument cascade:sourceFormatVersion "2015-08-01" .
       }`),
     true,
   );
@@ -126,4 +132,71 @@ test("a CDA time is a UTC time where it gives an hour and its offset, else its d
     ["2025-04-03", undefined],
   ])
     assert.equal(received(time ?? ""), when, time);
+});
+
+test("a document's records are scoped by the custodian id its organization is named by, the NPI, else the least type and value, and its one patient's first id; with no custodian id naming an organization, or not one patient with an id, it states no scope, and a file that is no C-CDA has none", () => {
+  const bytes = (xml: string): Uint8Array => new TextEncoder().encode(xml);
+  const document = (patients: string, custodianIds: string): Uint8Array =>
+    bytes(`<ClinicalDocument xmlns="urn:hl7-org:v3">
+  ${patients}
+  <custodian><assignedCustodian><representedCustodianOrganization>${custodianIds}</representedCustodianOrganization></assignedCustodian></custodian>
+</ClinicalDocument>`);
+  const patient = (ids: string): string =>
+    `<recordTarget><patientRole>${ids}</patientRole></recordTarget>`;
+  const one = patient(
+    '<id root="2.16.1" extension="P-7"/><id root="2.16.2" extension="other"/>',
+  );
+  assert.deepEqual(
+    scopesOf(
+      document(
+        one,
+        '<id nullFlavor="UNK" root="2.16.8" extension="flavoured"/><id root="2.16.9" extension=""/>',
+      ),
+    ),
+    {
+      custodian: { root: "2.16.9" },
+      patient: { root: "2.16.1", extension: "P-7" },
+    },
+  );
+  for (const [ids, custodian] of [
+    [
+      '<id root="Riverside" extension="77"/><id root="2.16.5" extension="RCH-1"/><id root="2.16.4"/>',
+      { root: "2.16.4" },
+    ],
+    [
+      '<id root="2.16.4"/><id root="2.16.5" extension="RCH-1"/><id root="Riverside" extension="77"/>',
+      { root: "2.16.4" },
+    ],
+    [
+      '<id root="2.16.4"/><id root="2.16.840.1.113883.4.6" extension="1234567893"/>',
+      { root: "2.16.840.1.113883.4.6", extension: "1234567893" },
+    ],
+    [
+      '<id root="2.16.840.1.113883.4.6"/><id root="0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D" extension="X"/>',
+      { root: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", extension: "X" },
+    ],
+  ] as const)
+    assert.deepEqual(scopesOf(document(one, ids))?.custodian, custodian, ids);
+  for (const [stated, file] of [
+    ["no custodian id", document(one, "")],
+    ["a nullFlavor custodian id", document(one, '<id nullFlavor="NI"/>')],
+    [
+      "custodian ids naming no organization",
+      document(
+        one,
+        '<id root="Riverside" extension="77"/><id root="2.16.840.1.113883.4.6"/>',
+      ),
+    ],
+    [
+      "two recordTargets",
+      document(
+        `${one}${patient('<id root="2.16.3"/>')}`,
+        '<id root="2.16.9"/>',
+      ),
+    ],
+    ["no patient id", document(patient(""), '<id root="2.16.9"/>')],
+    ["neither", bytes(CDA)],
+  ] as const)
+    assert.equal(scopesOf(file), null, stated);
+  assert.equal(scopesOf(bytes("<Bundle/>")), undefined);
 });

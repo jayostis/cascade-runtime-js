@@ -1,17 +1,25 @@
 import {
-  canonical,
   type Files,
+  type Head,
   fileStem,
   Graph,
+  iri,
   MemoryFiles,
   References,
   type TableTerms,
   tableTerms,
+  tableVersionName,
+  THIS_VERSION,
   type Triple,
 } from "@cascade-runtime/runtime";
-import { gunzipped, IN_THIS_THREAD, nameOver } from "./rows.js";
+import {
+  gunzipped,
+  IN_THIS_THREAD,
+  REVISION_OF,
+  SPECIALIZATION_OF,
+} from "./rows.js";
 import { about } from "./tables/about.js";
-import { HELD, INDEX, SHIPS_WITH } from "./tables/constants.js";
+import { HELD, INDEX, DEFAULT_TABLE_VERSION } from "./tables/constants.js";
 import { classedElsewhere, reached } from "./tables/drug-classes.js";
 import { facts } from "./tables/facts.js";
 import { checkFeed, kindsRead, withBuilt } from "./tables/feed-check.js";
@@ -72,14 +80,14 @@ export async function versionName(
   previous: string | undefined,
   rows: readonly Triple[],
 ): Promise<string> {
-  if (rows.some((triple) => triple.some((t) => t.termType === "BlankNode")))
-    throw new Error("content to be named holds a blank node");
-  const text = await canonical(rows);
-  return nameOver(
-    text.split("\n").filter((line) => line !== ""),
-    series,
-    previous,
-  );
+  const version = iri(THIS_VERSION);
+  return tableVersionName([
+    ...rows,
+    [version, iri(SPECIALIZATION_OF), iri(series)],
+    ...(previous === undefined
+      ? []
+      : [[version, iri(REVISION_OF), iri(previous)] as const]),
+  ]);
 }
 
 /** What `make` gives, made at the first `get` and kept until `forget`; one that fails is made again at the next. */
@@ -239,6 +247,19 @@ export class Tables {
       ...held,
       pods: { ...held.pods, [pod]: versions },
       ...(name === undefined ? {} : { names: { ...held.names, [pod]: name } }),
+    }));
+  }
+
+  /** The app's last snapshot in the pod, as `keptHead` recorded it; none for a pod it never wrote to. */
+  async headOf(pod: string): Promise<Head | undefined> {
+    return (await this.#held.read()).heads?.[pod];
+  }
+
+  /** Records the app's last snapshot in the pod, which it hands back as the writer's head when it next opens the pod. */
+  keptHead(pod: string, head: Head): Promise<void> {
+    return this.#held.change((held) => ({
+      ...held,
+      heads: { ...held.heads, [pod]: head },
     }));
   }
 
@@ -414,7 +435,7 @@ export class Tables {
     const stems = new Set<string>();
     for (const [, , version] of (await this.#index()).match(
       undefined,
-      SHIPS_WITH,
+      DEFAULT_TABLE_VERSION,
     )) {
       try {
         stems.add(fileStem(version.value));

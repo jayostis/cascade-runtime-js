@@ -8,6 +8,8 @@ import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   ConnectionFailure,
+  connectFiles,
+  DEMO_PLAN,
   type DirectoryRow,
   type FailureKind,
   type Pull,
@@ -36,7 +38,7 @@ let south: Loaded;
 let row: DirectoryRow;
 let happy: { pull: Pull; seen: Seen };
 
-function pulled(setup: Setup = {}): Promise<{ pull: Pull; seen: Seen }> {
+function pulled(setup: Setup = {}): ReturnType<typeof pulledAt> {
   return pulledAt(north, A_NORTH, setup);
 }
 
@@ -118,7 +120,7 @@ before(async () => {
   happy = await pulled();
 });
 
-test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it", async () => {
+test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it, with the plan's searches", async () => {
   const { pull: result, seen } = happy;
   assert.equal(result.patient, A_NORTH);
   assert.equal(result.fhirBase, north.hospital.fhirBase);
@@ -137,6 +139,7 @@ test("a pull from North signed in as patient A holds A's North record, each reso
     assert.ok(!elsewhere.some((other) => isDeepStrictEqual(other, resource)));
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.denied, []);
+  assert.deepEqual(result.searches, DEMO_PLAN.searches);
 
   const urls = seen.requests.map((r) => new URL(r.url));
   const [hidden] = north.hospital.hiddenFromSearch;
@@ -162,6 +165,159 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   seen.requests.forEach((r, at) =>
     assert.equal(r.headers.has("Authorization"), at > token, r.url),
   );
+});
+
+test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on; an OperationOutcome among the entries refuses nothing and is not kept", async () => {
+  const search = (type: string) => ({ type }) as const;
+  const unserved = search("CarePlan");
+  const laterRefused = new Map([
+    ["Condition", 403],
+    ["Observation", 404],
+    ["MedicationRequest", 410],
+  ]);
+  const plan = [
+    unserved,
+    ...[...laterRefused.keys()].map(search),
+    search("Immunization"),
+    search("Encounter"),
+    search("AllergyIntolerance"),
+  ];
+  assert.ok(!north.hospital.types.includes(unserved.type));
+  const typeOf = (request: Request) =>
+    new URL(request.url).pathname.split("/").at(-1)!;
+  const { pull: result } = await pulled({
+    plan: { searches: plan, backfill: [] },
+    alter: async (request, hospital) => {
+      const type = typeOf(request);
+      const later = laterRefused.get(type);
+      if (later !== undefined && new URL(request.url).searchParams.has("page"))
+        return new Response(null, { status: later });
+      if (isSearch(request, "Immunization"))
+        return new Response(null, { status: 400 });
+      const response = await hospital(request);
+      if (!isSearch(request, type)) return response;
+      const body = (await response.json()) as Record<string, unknown>;
+      if (type === "AllergyIntolerance")
+        body.entry = [
+          ...(body.entry as unknown[]),
+          { resource: { resourceType: "OperationOutcome", id: "warning" } },
+        ];
+      else if (type === "Encounter")
+        firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
+      else {
+        const next = new URL(request.url);
+        next.searchParams.set("page", "2");
+        body.link = [{ relation: "next", url: next.href }];
+      }
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: response.headers,
+      });
+    },
+  });
+  assert.deepEqual(result.searches, plan);
+  assert.deepEqual(result.denied, plan.slice(0, -1));
+  const kept = (type: string) =>
+    keysOf(result).filter((key) => key.startsWith(`${type}/`));
+  for (const type of laterRefused.keys())
+    assert.ok(kept(type).length > 0, `page 1's ${type} records are kept`);
+  assert.deepEqual(
+    kept("Encounter"),
+    [],
+    "no record of a page naming another patient is kept",
+  );
+  assert.ok(
+    kept("AllergyIntolerance").length > 0,
+    "the searches after are made, an OperationOutcome on a page refusing nothing",
+  );
+  assert.deepEqual(kept("OperationOutcome"), [], "an outcome is no record");
+});
+
+test("a demo pull of a patient with notes fetches each of them, by the plan's search for DocumentReference", async () => {
+  const notesOf = (bundle: Bundle) =>
+    recordsAt(bundle)
+      .filter(({ resourceType }) => resourceType === "DocumentReference")
+      .map(({ id }) => `DocumentReference/${id}`);
+  const [patient, bundle] =
+    Object.entries(north.patients).find(
+      ([, each]) => notesOf(each).length > 0,
+    ) ?? assert.fail("no patient at North holds a note");
+  const searches = DEMO_PLAN.searches.filter(
+    ({ type }) => type === "DocumentReference",
+  );
+  assert.equal(searches.length, 1);
+  const { pull: result } = await pulledAt(north, patient, {
+    plan: { searches, backfill: [] },
+  });
+  assert.deepEqual(result.denied, []);
+  assert.deepEqual(
+    keysOf(result)
+      .filter((key) => key.startsWith("DocumentReference/"))
+      .sort(),
+    notesOf(bundle).sort(),
+  );
+});
+
+test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
+  const lab = {
+    resourceType: "Organization",
+    id: "org-lab-1",
+    name: "North Laboratory",
+  };
+  const isLab = (request: Request) =>
+    new URL(request.url).pathname.endsWith("/Organization/org-lab-1");
+  const { pull: result, seen } = await pulled({
+    alter: async (request, hospital) => {
+      if (isLab(request)) return Response.json(lab);
+      const response = await hospital(request);
+      if (!isSearch(request, "Observation")) return response;
+      const body = (await response.json()) as {
+        entry?: { resource: Record<string, unknown> }[];
+      };
+      for (const { resource } of body.entry ?? [])
+        resource.performer = [{ reference: "Organization/org-lab-1" }];
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: response.headers,
+      });
+    },
+  });
+  assert.equal(seen.requests.filter(isLab).length, 1);
+  assert.deepEqual(
+    result.bundle.entry
+      .filter(
+        ({ resource }) =>
+          (resource as { resourceType?: string }).resourceType ===
+          "Organization",
+      )
+      .map(({ fullUrl, resource }) => [fullUrl, resource]),
+    [[`${result.fhirBase}/Organization/org-lab-1`, lab]],
+  );
+});
+
+test("the server's report is its CapabilityStatement, asked with no token, with the base, the client id and the SMART configuration the sign-in read, which connectFiles saves", async () => {
+  const { report, seen } = await pulled({ report: true });
+  assert.equal(report?.fhirBase, north.hospital.fhirBase);
+  assert.equal(report?.clientId, REGISTRATION.clientId);
+  const capability = report?.capability as {
+    resourceType?: unknown;
+    implementation?: { url?: unknown };
+  };
+  assert.equal(capability.resourceType, "CapabilityStatement");
+  assert.equal(capability.implementation?.url, north.hospital.fhirBase);
+  const asked = seen.requests.at(-1)!;
+  assert.equal(new URL(asked.url).href, `${north.hospital.fhirBase}/metadata`);
+  assert.equal(asked.headers.has("Authorization"), false);
+  const discovery = seen.requests.filter(({ url }) =>
+    url.endsWith("/.well-known/smart-configuration"),
+  );
+  assert.equal(discovery.length, 1);
+  assert.equal(
+    (report?.smartConfiguration as { authorization_endpoint?: unknown })
+      .authorization_endpoint,
+    `${north.hospital.fhirBase}/authorize`,
+  );
+  assert.equal(connectFiles(report!, "north").size, 3);
 });
 
 test("a pull retries a 503, a 429 and a transport error, and from a base written with a trailing slash names everything without it", async () => {
@@ -521,11 +677,26 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       "hospital-error",
     ],
     [
-      "a type North does not serve",
+      "a search's first page answered 410",
       () => ({
-        plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition")
+            ? new Response(null, { status: 410 })
+            : hospital(request),
       }),
       "hospital-error",
+      /answered 410 to Condition/,
+    ],
+    [
+      "a search answered 405",
+      () => ({
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition")
+            ? new Response(null, { status: 405 })
+            : hospital(request),
+      }),
+      "hospital-error",
+      /answered 405 to Condition/,
     ],
   ];
   try {

@@ -1,9 +1,9 @@
 import { SaxesParser } from "saxes";
 
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
 const PAV = "http://purl.org/pav/";
-const REC = "https://ns.cascadeprotocol.org/records/v1-draft#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
 const RECORDS = "clinical-records";
@@ -35,7 +35,7 @@ export interface AppleHealthIndexEntry {
 
 type Entry = Readonly<Record<string, string>>;
 
-/** The word `rec:kind` gives each type of clinical record that is a record. */
+/** The word `cascade:recordKind` gives each type of clinical record that is a record. */
 const KINDS: ReadonlyMap<string, string> = new Map([
   ["HKClinicalTypeIdentifierAllergyRecord", "Allergy"],
   ["HKClinicalTypeIdentifierConditionRecord", "Condition"],
@@ -125,18 +125,18 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
       `${document} <${PROV}qualifiedAttribution> _:attribution${n} .`,
       `_:attribution${n} <${PROV}agent> _:agent${n} .`,
       `_:agent${n} <${RDFS}label> ${quoted(label)} .`,
-      `_:attribution${n} <${PROV}hadRole> <${REC}${role}> .`,
+      `_:attribution${n} <${PROV}hadRole> <${CASCADE}${role}> .`,
     );
   };
-  attribution("Apple Health", "transmitter", 0);
+  attribution("Apple Health", "TransmitterRole", 0);
   if (entry !== undefined) {
     const sourceUrl = attribute(entry, "sourceURL");
-    attribution(attribute(entry, "sourceName"), "author", 1);
+    attribution(attribute(entry, "sourceName"), "AuthorRole", 1);
     lines.push(
-      `${document} <${BRIDGE}serverBaseUrl> ${quoted(server(sourceUrl))} .`,
+      `${document} <${CASCADE}serverBaseUrl> ${quoted(server(sourceUrl))} .`,
       `${document} <${PAV}retrievedFrom> ${iriRef(sourceUrl)} .`,
       `${document} <${PAV}retrievedOn> ${dateTime(utc(attribute(entry, "receivedDate")))} .`,
-      `${document} <${BRIDGE}sourceFormatVersion> ${quoted(attribute(entry, "fhirVersion"))} .`,
+      `${document} <${CASCADE}sourceFormatVersion> ${quoted(attribute(entry, "fhirVersion"))} .`,
     );
   }
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
