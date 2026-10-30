@@ -199,6 +199,7 @@ test("a citation holds only when the cited record's own fields say what is claim
       { cite: { entry: LDL }, value: "131", date: "2025-02-18" },
       ok,
     ],
+    ["a value written as a number", { cite: ldl, value: 131 }, ok],
     [
       "a pod entry's range is no value",
       { cite: { entry: LDL }, value: "99" },
@@ -244,6 +245,26 @@ test("a pod's absence is backed only by a query that ran, answered whole, and fo
   const none = {
     total: 1,
     rows: [{ procedure: "CT angiography of the chest" }],
+  };
+  const labs = {
+    tool: "ask",
+    input: { pod: "p", question: "pod/My lab results" },
+    ok: true,
+    answer: JSON.stringify({
+      total: 1,
+      rows: [
+        {
+          test: "Hemoglobin A1c",
+          code: "http://loinc.org/rdf/4548-4",
+          performed: "2026-02-16T16:00:00Z",
+        },
+      ],
+    }),
+  };
+  const a1cAfter = {
+    what: "an A1c since February",
+    coverage: "every lab result the pod holds",
+    match: { codes: ["4548-4"], after: "2026-02-17" },
   };
   for (const [what, claim, ran, backing] of [
     ["backed", absence, [procedures(none)], { backed: true }],
@@ -304,6 +325,22 @@ test("a pod's absence is backed only by a query that ran, answered whole, and fo
       [procedures(none)],
       { backed: false, reason: "no coverage" },
     ],
+    [
+      "only rows before the date it is absent after",
+      { ...a1cAfter, query: labs.input && { tool: "ask", input: labs.input } },
+      [labs],
+      { backed: true },
+    ],
+    [
+      "a row after that date",
+      {
+        ...a1cAfter,
+        match: { ...a1cAfter.match, after: "2026-01-01" },
+        query: { tool: "ask", input: labs.input },
+      },
+      [labs],
+      { backed: false, reason: "query found it" },
+    ],
   ] as const)
     assert.deepEqual(checkAbsence(claim, ran), backing, what);
 });
@@ -334,6 +371,18 @@ test("a records absence is backed only by the sources it names, each read whole,
     [
       "the records hold it",
       { ...absence, match: { terms: ["pulmonary embolism"] } },
+      read,
+      { backed: false, reason: "records hold it: bundle.json" },
+    ],
+    [
+      "only records before the date it is absent after",
+      { ...absence, match: { codes: ["4548-4"], after: "2025-08-19" } },
+      read,
+      { backed: true },
+    ],
+    [
+      "a record after that date",
+      { ...absence, match: { codes: ["4548-4"], after: "2025-08-01" } },
       read,
       { backed: false, reason: "records hold it: bundle.json" },
     ],
