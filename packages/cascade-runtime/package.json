@@ -35,6 +35,14 @@
       "types": "./dist/src/terms.d.ts",
       "default": "./dist/src/terms.js"
     },
+    "./tools": {
+      "types": "./dist/src/pod-tools.d.ts",
+      "default": "./dist/src/pod-tools.js"
+    },
+    "./tools/node": {
+      "types": "./dist/src/node/pod-reads.d.ts",
+      "default": "./dist/src/node/pod-reads.js"
+    },
     "./vite": {
       "types": "./dist/src/node/vite.d.ts",
       "default": "./dist/src/node/vite.js"
