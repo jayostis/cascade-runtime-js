@@ -1,3 +1,4 @@
+import { ccdaDownload } from "@cascade-runtime/ccda-download";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const PROV = "http://www.w3.org/ns/prov#";
@@ -11,6 +12,9 @@ const BUNDLE = "bundle.json";
 const CCDA_MEDIA_TYPE = "application/cda+xml";
 const DOCUMENT_FILE = /^document-[1-9][0-9]*\.xml$/;
 const DOCUMENT_REFERENCE = /^DocumentReference\/[A-Za-z0-9\-.]{1,64}$/;
+/** Whether the character is one the IRI grammar refuses: a control character, a space, or one of `<>"{}|^\`\\`. */
+const notInAnIri = (character: string): boolean =>
+  character.charCodeAt(0) <= 0x20 || '<>"{}|^`\\'.includes(character);
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
 export const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
@@ -76,11 +80,16 @@ export interface PullDocument {
   facts(importStarted: string): Uint8Array;
 }
 
+/**
+ * An entry of a pull's look: a record of its Bundle, by its kind and the hospital's base; or an entry of a C-CDA
+ * document it read, by the document's custodian and section, as a downloaded C-CDA's look counts it.
+ */
 export interface PullIndexEntry {
-  readonly source: string;
-  readonly server: string;
-  readonly kind: string;
-  readonly received: string;
+  readonly source?: string;
+  readonly server?: string;
+  readonly kind?: string;
+  readonly section?: string;
+  readonly received?: string;
 }
 
 /** What `pull.json` says, once each part of it the import states is checked. */
@@ -154,10 +163,15 @@ export function pullFiles(
     throw new TypeError(`a pull is saved under one folder name, not ${name}`);
   const { bundle, documents = [], ...rest } = pull;
   const files: [string, Uint8Array][] = [];
+  const paths = new Map<Uint8Array, string>();
   const saved = documents.map(({ bytes, ...document }) => {
     if (bytes === undefined) return document;
-    const path = `document-${files.length + 1}.xml`;
-    files.push([`${name}/${path}`, bytes]);
+    let path = paths.get(bytes);
+    if (path === undefined) {
+      path = `document-${files.length + 1}.xml`;
+      paths.set(bytes, path);
+      files.push([`${name}/${path}`, bytes]);
+    }
     return { ...document, path };
   });
   const described = { ...rest, ...(saved.length > 0 && { documents: saved }) };
@@ -226,12 +240,35 @@ function checked(value: unknown): Described {
     ...(asOf !== undefined && { asOf }),
     searches: searchesIn(searches, "searches"),
     denied: searchesIn(denied, "denied"),
-    documents: documentsIn(documents),
+    documents: documentsIn(documents, fhirBase),
   };
 }
 
+/**
+ * Whether the value is where a document of the pull was read: an https: URL on the FHIR base's origin, with no user
+ * name, as the URL writes it, holding no character an IRI may not, so it is stated as the IRI it is and nothing else.
+ */
+function isReadFrom(value: unknown, fhirBase: string): value is string {
+  if (typeof value !== "string" || [...value].some(notInAnIri)) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.href === value &&
+      url.protocol === "https:" &&
+      url.username === "" &&
+      url.password === "" &&
+      url.origin === new URL(fhirBase).origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Each document is a DocumentReference's content, read into one file of the folder or said why not, never both. */
-function documentsIn(value: unknown): readonly SavedDocumentFile[] {
+function documentsIn(
+  value: unknown,
+  fhirBase: string,
+): readonly SavedDocumentFile[] {
   if (value === undefined) return [];
   const text = (field: unknown) =>
     field === undefined || (typeof field === "string" && field !== "");
@@ -252,7 +289,7 @@ function documentsIn(value: unknown): readonly SavedDocumentFile[] {
         (typeof path === "string"
           ? DOCUMENT_FILE.test(path) &&
             notRead === undefined &&
-            typeof retrievedFrom === "string"
+            isReadFrom(retrievedFrom, fhirBase)
           : typeof notRead === "string" && notRead !== "")
       );
     })
@@ -483,8 +520,11 @@ export const fhirPull = {
     if (found === undefined) return undefined;
     const { pull, bytes } = found;
     const ccda: PullDocument[] = [];
+    const handed = new Set<string>();
     for (const { path, retrievedFrom } of pull.documents) {
-      if (path === undefined || retrievedFrom === undefined) continue;
+      if (path === undefined || retrievedFrom === undefined || handed.has(path))
+        continue;
+      handed.add(path);
       const document = await files.read(`${folder}/${path}`);
       if (document === undefined) throw new Error(`the pull holds no ${path}`);
       ccda.push({
@@ -507,7 +547,10 @@ export const fhirPull = {
     ];
   },
 
-  /** One entry for each resource of the Bundle the adapter makes a record of: a pull has no index apart from its document. */
+  /**
+   * One entry for each resource of the Bundle the adapter makes a record of, and one for each entry of each C-CDA
+   * document the pull read, so the look the person approves holds what the import brings in.
+   */
   async index(
     files: PullFiles,
     folder: string,
@@ -522,7 +565,7 @@ export const fhirPull = {
       !Array.isArray(bundle.entry ?? [])
     )
       throw new Error(`${BUNDLE} is not a Bundle`);
-    return ((bundle.entry ?? []) as unknown[]).flatMap((entry) => {
+    const records = ((bundle.entry ?? []) as unknown[]).flatMap((entry) => {
       const resource =
         typeof entry === "object" && entry !== null
           ? (entry as { resource?: unknown }).resource
@@ -539,6 +582,14 @@ export const fhirPull = {
         },
       ];
     });
+    const sections: PullIndexEntry[] = [];
+    for (const path of new Set(
+      pull.documents.flatMap(({ path }) => path ?? []),
+    ))
+      sections.push(
+        ...((await ccdaDownload.index(files, `${folder}/${path}`)) ?? []),
+      );
+    return [...records, ...sections];
   },
 };
 

@@ -284,6 +284,10 @@ export async function pull(
   }
 
   const documents: PulledDocument[] = [];
+  const readAt = new Map<
+    string,
+    Pick<PulledDocument, "retrievedFrom" | "bytes" | "notRead">
+  >();
   for (const { fullUrl, resource } of [...entries.values()]) {
     const documentReference = fullUrl.slice(base.length + 1);
     for (const { content, attachment } of ccdaContents(
@@ -311,9 +315,21 @@ export async function pull(
       }
       let at: URL;
       try {
-        at = new URL(url, `${base}/`);
+        at = new URL(iriSafe(new URL(url, `${base}/`).href));
       } catch {
         documents.push({ ...said, notRead: "its url is no address" });
+        continue;
+      }
+      if (at.username !== "" || at.password !== "") {
+        documents.push({
+          ...said,
+          notRead: "its url carries a user name or password",
+        });
+        continue;
+      }
+      const already = readAt.get(at.href);
+      if (already !== undefined) {
+        documents.push({ ...said, ...already });
         continue;
       }
       if (at.origin !== origin) {
@@ -329,25 +345,23 @@ export async function pull(
       } catch (error) {
         if (
           !(error instanceof ConnectionFailure) ||
-          error.kind === "unauthorized"
+          error.kind === "unauthorized" ||
+          error.kind === "cancelled"
         )
           throw error;
+        readAt.set(at.href, { notRead: error.message });
         documents.push({ ...said, notRead: error.message });
         continue;
       }
-      if (answer.status !== 200) {
-        documents.push({
-          ...said,
-          notRead: `the hospital answered ${answer.status}`,
-        });
-        continue;
-      }
-      const bytes = fromAnswer(answer);
-      documents.push(
-        bytes !== undefined && isCcda(bytes)
-          ? { ...said, retrievedFrom: at.href, bytes }
-          : { ...said, notRead: "the hospital's answer is no C-CDA document" },
-      );
+      const bytes = answer.status === 200 ? fromAnswer(answer) : undefined;
+      const read =
+        answer.status !== 200
+          ? { notRead: `the hospital answered ${answer.status}` }
+          : bytes !== undefined && isCcda(bytes)
+            ? { retrievedFrom: at.href, bytes }
+            : { notRead: "the hospital's answer is no C-CDA document" };
+      readAt.set(at.href, read);
+      documents.push({ ...said, ...read });
     }
   }
 
@@ -395,7 +409,24 @@ function fromAnswer(answer: Answer): Uint8Array | undefined {
   }
 }
 
-/** Whether the bytes read as XML whose root is a CDA ClinicalDocument. */
+/**
+ * The URL with each character the IRI grammar refuses, and a URL leaves as written (`|`, `^`, `\``, `{`, `}`),
+ * percent-encoded, so that it is the IRI `pav:retrievedFrom` states.
+ */
+function iriSafe(href: string): string {
+  return [...href]
+    .map((character) =>
+      character.charCodeAt(0) <= 0x20 || '<>"{}|^`\\'.includes(character)
+        ? encodeURIComponent(character)
+        : character,
+    )
+    .join("");
+}
+
+/**
+ * Whether the bytes read as XML whose root is a CDA ClinicalDocument. A document type declaration before the root,
+ * even one that declares no entity, is refused on purpose: no DTD reaches the Bridge by this path.
+ */
 function isCcda(bytes: Uint8Array): boolean {
   return /^(\uFEFF)?\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*<(\w+:)?ClinicalDocument[\s>/]/.test(
     new TextDecoder().decode(bytes.subarray(0, 4096)),
