@@ -73,6 +73,23 @@ const BUNDLE = {
       resource: { resourceType: "DocumentReference", id: "n1" },
     },
     {
+      fullUrl: `${BASE}/DocumentReference/n2`,
+      resource: {
+        resourceType: "DocumentReference",
+        id: "n2",
+        content: [
+          {
+            attachment: { contentType: "application/xml", url: "Binary/n2" },
+            format: {
+              system:
+                "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+              code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+            },
+          },
+        ],
+      },
+    },
+    {
       fullUrl: `${BASE}/Encounter/e1`,
       resource: { resourceType: "Encounter", id: "e1" },
     },
