@@ -17,6 +17,9 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Variants**: gene, HGVS expression, ClinVar variation ID.
 - **Variant interpretations**: a report's ACMG classification of a variant, and
   the day it was issued.
+- **Reports**: a report's name, code, conclusion and text, the results it
+  names, the time its results are about.
+- **Notes and documents**: a note's type, title, date and text.
 - **Patient profile**: how each hospital names the person.
 
 Nothing else: a daily measurement needs new terms in the vocabulary first, so
@@ -472,6 +475,11 @@ async function search(word) {
   stopped, paused, unknown or entered in error), which says whether the
   medication is still taken.
 - `pod/My procedures`: procedures, newest first.
+- `pod/My reports, notes and documents`: each report and note, newest first,
+  with what it says (`?kind`, `?code`, `?name`, `?title`, `?status`,
+  `?conclusion`, `?text`), its lead `?record` and the `?document`, `?hospital`
+  and `?retrieved` it came from; and a row for each result a report names
+  (`?result`, `?resultTest`, `?resultValue`, `?resultUnit`).
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.

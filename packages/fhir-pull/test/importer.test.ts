@@ -56,6 +56,23 @@ const BUNDLE = {
       },
     },
     {
+      fullUrl: `${BASE}/Observation/o4`,
+      resource: {
+        resourceType: "Observation",
+        id: "o4",
+        category: [{ coding: [{ code: "laboratory" }] }],
+        hasMember: [{ reference: "Observation/o1" }],
+      },
+    },
+    {
+      fullUrl: `${BASE}/DiagnosticReport/r1`,
+      resource: { resourceType: "DiagnosticReport", id: "r1" },
+    },
+    {
+      fullUrl: `${BASE}/DocumentReference/n1`,
+      resource: { resourceType: "DocumentReference", id: "n1" },
+    },
+    {
       fullUrl: `${BASE}/Encounter/e1`,
       resource: { resourceType: "Encounter", id: "e1" },
     },
@@ -150,7 +167,13 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
   );
   assert.deepEqual(
     await fhirPull.index(files, "north"),
-    [["Allergy"], ["Medication"], ["Lab result"]].map(([kind]) => ({
+    [
+      ["Allergy"],
+      ["Medication"],
+      ["Lab result"],
+      ["Report"],
+      ["Note or document"],
+    ].map(([kind]) => ({
       source: "Cascade North Demo Hospital",
       server: BASE,
       kind,
@@ -195,16 +218,21 @@ test("a pull states the class of each search it answered and each it was refused
         { type: "Encounter" },
         { type: "Observation", category: "laboratory" },
         { type: "Observation", category: "vital-signs" },
+        { type: "DiagnosticReport" },
+        { type: "DocumentReference" },
       ],
       denied: [
         { type: "MedicationStatement" },
         { type: "Observation", category: "vital-signs" },
+        { type: "DiagnosticReport" },
       ],
     }),
     [
+      "answersForRecordClass ClinicalNoteOrDocument",
       "answersForRecordClass LaboratoryTestResult",
       "answersForRecordClass PrescribedOrReportedMedication",
       "answersForRecordClass ProblemOrDiagnosis",
+      "refusedForRecordClass DiagnosticReport",
       "refusedForRecordClass PrescribedOrReportedMedication",
     ],
   );
