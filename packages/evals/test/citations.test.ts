@@ -9,7 +9,6 @@ import {
   checkRecordsAbsence,
   downloadsSource,
   podRowsSource,
-  type Verdict,
 } from "../src/citations.js";
 
 const FOLDER = fileURLToPath(
@@ -41,15 +40,23 @@ const metformin = {
 };
 const report = { file: "bundle.json", resource: "DiagnosticReport/dr-1" };
 
-const ok: Verdict = { ok: true };
-const otherwise = (...missing: string[]) => ({
+/** A verdict as the test compares it: what was held, why not, what was missing and where it is. */
+interface Expected {
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly missing?: readonly string[];
+  readonly foundAt?: readonly number[];
+}
+
+const ok: Expected = { ok: true };
+const otherwise = (...missing: string[]): Expected => ({
   ok: false,
   reason: "says otherwise",
   missing,
 });
 
 test("a citation holds only when the cited record's own fields say what is claimed", async () => {
-  const cases: [string, Claim, Verdict][] = [
+  const cases: [string, Claim, Expected][] = [
     [
       "a lab's value, unit and date",
       { cite: ldl, value: "131", unit: "mg/dL", date: "2025-02-18" },
@@ -207,7 +214,7 @@ test("a citation holds only when the cited record's own fields say what is claim
     } = (await checkCitation(
       claim,
       "entry" in claim.cite ? pod : downloads,
-    )) as Verdict & { reason?: string; missing?: string[]; foundAt?: number[] };
+    )) as Expected;
     assert.deepEqual(
       {
         ok: held,
