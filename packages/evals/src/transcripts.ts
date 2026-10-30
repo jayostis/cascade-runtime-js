@@ -98,9 +98,12 @@ export async function readTranscript(
       if (started === "") started = line.timestamp;
       ended = line.timestamp;
     }
-    if (line.type === "user" && first) {
-      first = false;
+    // The tag is in the prompt: the first user message, or for a Workflow agent the computed task after the relayed
+    // request; either way before the agent first answers.
+    if (line.type === "user" && first && tag === undefined)
       tag = TAG.exec(textOf(line.message?.content))?.[1];
+    if (line.type === "assistant" && first) {
+      first = false;
       if (tag === undefined) return undefined;
     }
     if (line.type !== "assistant" || line.message?.usage === undefined)
