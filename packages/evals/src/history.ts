@@ -7,6 +7,25 @@ import { HISTORY } from "./paths.js";
 import { type Results, runFolder } from "./results.js";
 import { valid } from "./schemas.js";
 
+/** What a run was not tested at a commit of: the harness's uncommitted files, a dirty runtime package or component. */
+export function uncommittedIn(results: Results): string[] {
+  const { harness, podPackages, components } = results.versions;
+  return [
+    ...(harness.uncommitted > 0
+      ? [
+          `cascade-runtime-js at ${harness.commit.slice(0, 12)} with ${harness.uncommitted} uncommitted files`,
+        ]
+      : []),
+    ...Object.entries(podPackages)
+      .filter(([, tree]) => tree.endsWith("+dirty"))
+      .map(([path]) => `${path} with uncommitted changes`),
+    ...components
+      .filter((it) => (it.uncommitted ?? 0) > 0)
+      .map((it) => `${it.name} with ${it.uncommitted} uncommitted files`),
+  ];
+}
+
+/** Copies a finished run into history/; a run planned from an uncommitted tree is refused, since no commit can reproduce it. */
 export async function recordHistory(given: string) {
   const folder = runFolder(given);
   const results = valid<Results>(
@@ -14,6 +33,11 @@ export async function recordHistory(given: string) {
     JSON.parse(await readFile(join(folder, "results.json"), "utf8")),
     join(folder, "results.json"),
   );
+  const dirty = uncommittedIn(results);
+  if (dirty.length > 0)
+    throw new Error(
+      `${results.run.id} was planned from uncommitted work, so no commit reproduces it and it is not recorded: ${dirty.join("; ")}. Commit, plan the run again (unchanged jobs are reused) and record that.`,
+    );
   const target = join(
     HISTORY,
     `${results.run.finished.slice(0, 10)}-${results.versions.harness.commit.slice(0, 7)}-${results.run.tier}`,

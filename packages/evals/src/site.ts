@@ -14,6 +14,7 @@ import type { Answer } from "./checks.js";
 import { HISTORY } from "./paths.js";
 import type { Grade, Job, Results, Score, Slice } from "./results.js";
 import { runFolder } from "./results.js";
+import { uncommittedIn } from "./history.js";
 
 const esc = (text: unknown) =>
   String(text ?? "")
@@ -332,7 +333,7 @@ function runIndex(l: Loaded, home: string, trend: string): string {
     `Eval run ${r.run.id}`,
     `<h1>Eval run ${esc(r.run.id)}</h1><p class="muted">The pod, through cascade-mcp, against the same records pasted in, on synthetic people with keys written before any run.</p>
 ${verdictText(l)}<div class="tiles">${tiles}</div><p class="small muted">By role: ${roles || "–"}. Prices: list prices of ${esc(r.versions.priceTable)}; "exact" means every call's usage as the API reported it.</p>
-<p class="small muted">Tested: ${commits}</p>
+<p class="small muted">Tested: ${commits}</p>${uncommittedIn(r).length > 0 ? `<p class="bad"><b>Not reproducible:</b> planned from uncommitted work (${esc(uncommittedIn(r).join("; "))}), so it cannot be recorded into history.</p>` : ""}
 <h2>Cases</h2><div class="table"><table><tr><th>Person</th><th>What the key looks for</th>${groups.map((g) => `<th>${esc(g)}</th>`).join("")}</tr>${caseRows}</table></div>
 ${headToHead(l)}<h2>Trend</h2>${trend}`,
     home,
