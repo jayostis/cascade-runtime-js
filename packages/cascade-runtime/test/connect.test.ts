@@ -194,6 +194,177 @@ test("a search the hospital refuses on its second page keeps the first page's re
   assert.ok(kept.length > 0, "page 1's conditions are kept");
 });
 
+test("a pull reads the C-CDA document each DocumentReference of one holds, from the hospital with its token, and says why of each it could not read, never stopping for one", async () => {
+  const ccd = '<?xml version="1.0"?><ClinicalDocument xmlns="urn:hl7-org:v3"/>';
+  const base = north.hospital.fhirBase;
+  const structured = {
+    system: "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+    code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+  };
+  const reference = (
+    id: string,
+    attachment: Record<string, unknown>,
+    format: object | undefined = structured,
+  ) => ({
+    resourceType: "DocumentReference",
+    id,
+    status: "current",
+    subject: { reference: `Patient/${A_NORTH}` },
+    content: [
+      {
+        attachment: { contentType: "application/pdf", url: `Binary/${id}-pdf` },
+      },
+      {
+        attachment: { contentType: "application/xml", ...attachment },
+        ...(format && { format }),
+      },
+    ],
+  });
+  const references = [
+    reference("raw", { url: "Binary/raw" }),
+    reference("binary", { url: `${base}/Binary/binary` }),
+    reference("inline", { data: btoa(ccd) }),
+    reference("gone", { url: "Binary/gone" }),
+    reference("elsewhere", { url: "https://elsewhere.example/Binary/x" }),
+    reference("large", { url: "Binary/large" }),
+    reference("not-a-ccd", { url: "Binary/not-a-ccd" }),
+    reference(
+      "unstructured",
+      { url: "Binary/unstructured" },
+      {
+        ...structured,
+        code: "urn:hl7-org:sdwg:ccda-nonXMLBody:2.1",
+      },
+    ),
+  ];
+  const isBinary = (request: Request, id: string) =>
+    new URL(request.url).pathname.endsWith(`/Binary/${id}`);
+  const { pull: result, seen } = await pulled({
+    plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+    limits: { responseBytes: 64 * 1024 },
+    alter: async (request, hospital) => {
+      if (isSearch(request, "DocumentReference"))
+        return Response.json({
+          resourceType: "Bundle",
+          type: "searchset",
+          entry: references.map((resource) => ({ resource })),
+        });
+      if (isBinary(request, "raw"))
+        return new Response(ccd, {
+          headers: { "Content-Type": "application/xml" },
+        });
+      if (isBinary(request, "binary"))
+        return Response.json(
+          {
+            resourceType: "Binary",
+            contentType: "application/xml",
+            data: btoa(ccd),
+          },
+          { headers: { "Content-Type": "application/fhir+json" } },
+        );
+      if (isBinary(request, "gone")) return new Response(null, { status: 404 });
+      if (isBinary(request, "large"))
+        return new Response("<ClinicalDocument>" + " ".repeat(70 * 1024), {
+          headers: { "Content-Type": "application/xml" },
+        });
+      if (isBinary(request, "not-a-ccd"))
+        return new Response("<html/>", {
+          headers: { "Content-Type": "text/html" },
+        });
+      return hospital(request);
+    },
+  });
+  const decoder = new TextDecoder();
+  assert.deepEqual(
+    result.documents?.map(
+      ({ documentReference, content, url, retrievedFrom, bytes, notRead }) => [
+        documentReference,
+        content,
+        url,
+        retrievedFrom,
+        bytes === undefined ? undefined : decoder.decode(bytes),
+        notRead,
+      ],
+    ),
+    [
+      [
+        "DocumentReference/raw",
+        1,
+        "Binary/raw",
+        `${base}/Binary/raw`,
+        ccd,
+        undefined,
+      ],
+      [
+        "DocumentReference/binary",
+        1,
+        `${base}/Binary/binary`,
+        `${base}/Binary/binary`,
+        ccd,
+        undefined,
+      ],
+      [
+        "DocumentReference/inline",
+        1,
+        undefined,
+        `${base}/DocumentReference/inline`,
+        ccd,
+        undefined,
+      ],
+      [
+        "DocumentReference/gone",
+        1,
+        "Binary/gone",
+        undefined,
+        undefined,
+        "the hospital answered 404",
+      ],
+      [
+        "DocumentReference/elsewhere",
+        1,
+        "https://elsewhere.example/Binary/x",
+        undefined,
+        undefined,
+        `it is at https://elsewhere.example, not the FHIR base's origin, where the token is not sent`,
+      ],
+      [
+        "DocumentReference/large",
+        1,
+        "Binary/large",
+        undefined,
+        undefined,
+        `${new URL(base).origin}'s answer for a C-CDA document passed the limit on bytes`,
+      ],
+      [
+        "DocumentReference/not-a-ccd",
+        1,
+        "Binary/not-a-ccd",
+        undefined,
+        undefined,
+        "the hospital's answer is no C-CDA document",
+      ],
+    ],
+  );
+  const binaries = seen.requests.filter((request) =>
+    new URL(request.url).pathname.includes("/Binary/"),
+  );
+  assert.ok(
+    binaries.every((request) =>
+      request.headers.get("Authorization")?.startsWith("Bearer "),
+    ),
+  );
+  assert.ok(
+    !binaries.some((request) =>
+      /-pdf$|unstructured|elsewhere/.test(request.url),
+    ),
+    "only a structured C-CDA document is read, and only from the FHIR base's origin",
+  );
+  assert.equal(
+    keysOf(result).filter((key) => key.startsWith("DocumentReference/")).length,
+    references.length,
+  );
+});
+
 test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
   const lab = {
     resourceType: "Organization",
