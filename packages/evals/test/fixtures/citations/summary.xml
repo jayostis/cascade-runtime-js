@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <title>Hand-made summary for the citation checker</title>
+  <substanceAdministration classCode="SBADM" moodCode="EVN">
+    <id root="2.16.840.1.113883.19.5" extension="VX-251108-2"/>
+    <effectiveTime value="20251108"/>
+    <consumable><manufacturedMaterial><code code="187" displayName="zoster vaccine recombinant, adjuvanted (Shingrix)"/></manufacturedMaterial></consumable>
+  </substanceAdministration>
+  <!-- filler 1 -->
+  <!-- filler 2 -->
+  <!-- filler 3 -->
+  <!-- filler 4 -->
+  <!-- filler 5 -->
+  <!-- filler 6 -->
+  <!-- filler 7 -->
+  <!-- filler 8 -->
+  <!-- filler 9 -->
+  <!-- filler 10 -->
+  <!-- filler 11 -->
+  <!-- filler 12 -->
+  <!-- filler 13 -->
+  <!-- filler 14 -->
+  <!-- filler 15 -->
+  <!-- filler 16 -->
+  <!-- filler 17 -->
+  <!-- filler 18 -->
+  <!-- filler 19 -->
+  <!-- filler 20 -->
+  <observation classCode="OBS" moodCode="EVN">
+    <id root="2.16.840.1.113883.19.5" extension="LAB-61209"/>
+    <code code="3016-3" displayName="Thyrotropin [Units/volume] in Serum or Plasma"/>
+    <effectiveTime value="20260303"/>
+    <value xsi:type="PQ" value="7.90" unit="m[IU]/L"/>
+  </observation>
+</ClinicalDocument>

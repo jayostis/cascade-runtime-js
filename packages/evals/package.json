@@ -1,0 +1,27 @@
+{
+  "name": "cascade-evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An eval harness for the pod against pasted records: synthetic cases with machine-readable keys, program checks, blind judges, budgets and reports.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "cascade-evals": "dist/src/cli.js"
+  },
+  "exports": {
+    "./citations": {
+      "types": "./dist/src/citations.d.ts",
+      "default": "./dist/src/citations.js"
+    }
+  },
+  "dependencies": {
+    "@cascade-runtime/runtime": "0.0.0",
+    "@modelcontextprotocol/client": "2.3.1",
+    "ajv": "8.20.0",
+    "cascade-mcp": "0.0.0",
+    "cascade-runtime": "0.0.0"
+  }
+}

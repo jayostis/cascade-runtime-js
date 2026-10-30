@@ -1,0 +1,32 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "fit-1",
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "29771-3" }],
+          "text": "Fecal immunochemical test"
+        },
+        "effectiveDateTime": "2025-11-04T15:00:00Z",
+        "valueCodeableConcept": { "text": "Positive" }
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "egfr-2",
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "98979-8" }],
+          "text": "eGFR"
+        },
+        "effectiveDateTime": "2026-02-16T16:00:00Z",
+        "valueQuantity": { "value": 69, "unit": "mL/min/{1.73_m2}" }
+      }
+    }
+  ]
+}
