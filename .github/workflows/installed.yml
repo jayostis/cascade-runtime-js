@@ -36,22 +36,27 @@ jobs:
         with:
           name: package
           path: ${{ runner.temp }}/package
-      - name: Install the tarball into an empty folder
+      - name: Install the tarballs into an empty folder
         working-directory: ${{ runner.temp }}/package
         env:
           CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
         run: |
-          tarball=$(node -p "require('node:path').resolve(process.argv[1])" cascade-runtime-*.tgz)
+          runtime=$(node -p "require('node:path').resolve(process.argv[1])" cascade-runtime-*.tgz)
+          mcp=$(node -p "require('node:path').resolve(process.argv[1])" cascade-mcp-*.tgz)
           mkdir "$CASCADE_RUNTIME_APP"
           cd "$CASCADE_RUNTIME_APP"
-          npm install "$tarball"
+          npm install "$runtime" "$mcp"
       - name: The developer stories on the installed package
         env:
           CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
         run: |
           cp -R developer-story/. "$CASCADE_RUNTIME_APP/"
           node --test packages/runtime/dist/test/developer-story.test.js
-      - name: Everything installed is the package, bundled in it, or from npm's registry
+      - name: cascade-mcp, started with npx in the folder, over a pod on stdio
+        env:
+          CASCADE_RUNTIME_APP: ${{ runner.temp }}/app
+        run: node --import ./packages/cascade-runtime/dist/test/offline.js --test packages/mcp/dist/test/mcp.test.js
+      - name: Everything installed is one of the packages, bundled in one, or from npm's registry
         working-directory: ${{ runner.temp }}/app
         run: |
           node --input-type=module -e '
@@ -61,10 +66,11 @@ jobs:
               ([path, entry]) =>
                 path !== "" &&
                 path !== "node_modules/cascade-runtime" &&
+                path !== "node_modules/cascade-mcp" &&
                 entry.inBundle !== true &&
                 !entry.resolved?.startsWith("https://registry.npmjs.org/"),
             );
             for (const [path, entry] of elsewhere) console.error(`${path} came from ${entry.resolved}`);
             if (elsewhere.length > 0) process.exit(1);
-            console.log(`${Object.keys(packages).length - 1} packages, each the package, bundled in it, or from https://registry.npmjs.org/`);
+            console.log(`${Object.keys(packages).length - 1} packages, each a package, bundled in it, or from https://registry.npmjs.org/`);
           '

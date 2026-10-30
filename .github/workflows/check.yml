@@ -527,6 +527,7 @@ jobs:
           name: package
           path: |
             cascade-runtime-js/build/cascade-runtime-*.tgz
+            cascade-runtime-js/build/cascade-mcp-*.tgz
             cascade-runtime-js/build/release-notes.md
           if-no-files-found: error
 
@@ -565,7 +566,7 @@ jobs:
             echo "::notice::$tag is a release already"
             exit 0
           fi
-          gh release create "$tag" package/cascade-runtime-*.tgz \
+          gh release create "$tag" package/cascade-runtime-*.tgz package/cascade-mcp-*.tgz \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$tag" \

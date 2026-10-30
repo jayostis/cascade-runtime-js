@@ -47,6 +47,19 @@ const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
 const ROOT = findRoot(WORKSPACE);
 const BUILD = join(ROOT, "build");
 const STAGE = join(BUILD, "package");
+/** Where cascade-mcp is staged: its compiled code, with the runtime it reads pinned to this build's. */
+const MCP_STAGE = join(BUILD, "mcp-package");
+const MCP = join(ROOT, "packages", "mcp");
+const KEPT_BY_MCP = [
+  "name",
+  "description",
+  "license",
+  "engines",
+  "type",
+  "bin",
+  "exports",
+  "files",
+];
 const CACHE = join(BUILD, "cache");
 const COMPONENTS = join(STAGE, "components");
 const NODE_MODULES = join(STAGE, "node_modules");
@@ -363,7 +376,9 @@ async function packOwnFiles(
   }
 }
 
-async function npmPack(): Promise<{ filename: string; integrity: string }> {
+async function npmPack(
+  stage = STAGE,
+): Promise<{ filename: string; integrity: string }> {
   const args = ["pack", "--json", "--pack-destination", BUILD];
   const npm = process.env.npm_execpath;
   if (npm === undefined)
@@ -373,7 +388,7 @@ async function npmPack(): Promise<{ filename: string; integrity: string }> {
   const { stdout } = await promisify(execFile)(
     process.execPath,
     [npm, ...args],
-    { cwd: STAGE, maxBuffer: 64 * 1024 * 1024 },
+    { cwd: stage, maxBuffer: 64 * 1024 * 1024 },
   );
   const [packed] = JSON.parse(stdout) as {
     filename: string;
@@ -383,8 +398,41 @@ async function npmPack(): Promise<{ filename: string; integrity: string }> {
   return packed;
 }
 
+/**
+ * cascade-mcp, packed beside the package and depending on it at this build's version, so installing the two tarballs
+ * together installs it, from a release or from files alike.
+ */
+async function packMcp(commit: string, runtime: Manifest): Promise<string> {
+  const manifest = await manifestOf(MCP);
+  await rm(MCP_STAGE, { recursive: true, force: true });
+  await cp(join(MCP, "dist", "src"), join(MCP_STAGE, "dist", "src"), {
+    recursive: true,
+    filter: compiled,
+  });
+  await copyFile(join(MCP, "README.md"), join(MCP_STAGE, "README.md"));
+  await copyFile(join(ROOT, "LICENSE"), join(MCP_STAGE, "LICENSE"));
+  await writeJson(join(MCP_STAGE, "package.json"), {
+    ...kept(manifest, KEPT_BY_MCP),
+    version: packageVersion(commit),
+    private: true,
+    repository: {
+      ...(runtime.repository as object),
+      directory: "packages/mcp",
+    },
+    dependencies: {
+      ...manifest.dependencies,
+      [runtime.name]: packageVersion(commit),
+    },
+  });
+  for (const file of await readdir(BUILD))
+    if (file.startsWith(`${manifest.name}-`) && file.endsWith(".tgz"))
+      await rm(join(BUILD, file));
+  return (await npmPack(MCP_STAGE)).filename;
+}
+
 function releaseNotes(
   address: string,
+  mcp: string,
   commit: string,
   integrity: string,
   resolved: readonly Resolved[],
@@ -393,6 +441,12 @@ function releaseNotes(
   return [
     "```sh",
     `npm install ${address}`,
+    "```",
+    "",
+    "With cascade-mcp, an MCP server over a folder of pods (`npx cascade-mcp --pods <folder>`):",
+    "",
+    "```sh",
+    `npm install ${address} ${mcp}`,
     "```",
     "",
     `Built from commit ${commit}. Integrity \`${integrity}\`.`,
@@ -443,12 +497,20 @@ async function main(): Promise<void> {
     if (file.startsWith(`${manifest.name}-`) && file.endsWith(".tgz"))
       await rm(join(BUILD, file));
   const { filename, integrity } = await npmPack();
+  const mcp = await packMcp(commit, manifest);
   await writeFile(
     join(BUILD, "release-notes.md"),
-    releaseNotes(address, commit, integrity, resolved, bridge),
+    releaseNotes(
+      address,
+      address.replace(filename, mcp),
+      commit,
+      integrity,
+      resolved,
+      bridge,
+    ),
   );
   log(
-    `packed ${join(BUILD, filename)}${head.uncommitted > 0 ? `, from ${commit} with ${head.uncommitted} uncommitted files` : `, from ${commit}`}`,
+    `packed ${join(BUILD, filename)} and ${join(BUILD, mcp)}${head.uncommitted > 0 ? `, from ${commit} with ${head.uncommitted} uncommitted files` : `, from ${commit}`}`,
   );
 }
 

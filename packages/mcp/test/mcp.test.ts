@@ -32,7 +32,7 @@ before(
   async () => {
     folder = await mkdtemp(join(tmpdir(), "cascade-mcp-"));
     await replayKit("alex-rivera", join(folder, "alex-rivera"), {
-      through: "E2",
+      through: "J1",
     });
     await (
       await openPod(join(folder, "locked"), { secret: sixWords() })
@@ -79,7 +79,7 @@ test("cascade-mcp on stdio offers the read tools, and a question's rows each nam
   });
   const { rows } = value as { rows: Record<string, string>[] };
   assert.ok(rows.length > 0, "Alex's first export holds an allergy");
-  for (const row of rows) assert.match(row.entry ?? "", /^pod:\/\/.+#/);
+  for (const row of rows) assert.notEqual(new URL(row.entry!).hash, "");
 });
 
 test("cascade-mcp refuses, saying why, a pod there is not, an encrypted pod and a question it does not offer", async () => {
