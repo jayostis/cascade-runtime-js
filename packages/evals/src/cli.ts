@@ -32,6 +32,11 @@ function option(args: string[], name: string): string | undefined {
   return value;
 }
 
+/** The tables as the folder holds them, never checked against the feeds: set once, before any pod opens. */
+async function tablesFirst(): Promise<void> {
+  (await import("cascade-runtime")).configureTables({ checkOnOpen: false });
+}
+
 async function main(args: string[]): Promise<void> {
   const command = args.shift();
   const log = (line: string) => stderr.write(`${line}\n`);
@@ -39,14 +44,17 @@ async function main(args: string[]): Promise<void> {
     case "cases":
       return print(await (await import("./cases.js")).caseIds());
     case "prepare":
+      await tablesFirst();
       return print(
         await (await import("./cases.js")).prepare(args[0] ?? "", log),
       );
     case "check-key":
+      await tablesFirst();
       return print(
         await (await import("./checks.js")).checkKey(args[0] ?? "", log),
       );
     case "plan": {
+      await tablesFirst();
       const config = option(args, "config") ?? "smoke";
       const run = option(args, "run");
       return print(await (await import("./plan.js")).planRun(config, run, log));
@@ -71,6 +79,7 @@ async function main(args: string[]): Promise<void> {
       return print(await (await import("./judging.js")).judgePackets(run));
     }
     case "finish": {
+      await tablesFirst();
       const run = option(args, "run");
       if (run === undefined) break;
       return print(await (await import("./record.js")).finish(run, log));

@@ -8,7 +8,7 @@ import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { componentsOf } from "@cascade-runtime/runtime/node";
-import { configureTables, openPod, type Pod } from "cascade-runtime";
+import { openPod, type Pod } from "cascade-runtime";
 import type { Claim } from "./citations.js";
 import { CASES, WORK } from "./paths.js";
 import { valid } from "./schemas.js";
@@ -251,7 +251,6 @@ export async function prepare(
     throw new Error(
       `${id}'s downloads are not the ones its key was written against: digest ${digest}, the case says ${found.downloads.sha256}. A kit download or the generator changed; check the key against the new downloads before updating the digest.`,
     );
-  configureTables({ checkOnOpen: false });
   const pods = join(folder, "pods");
   log(`${id}: importing ${found.imports.length} downloads into a new pod`);
   const pod = await openPod(join(pods, id), { title: found.person.name });
@@ -304,8 +303,10 @@ export async function prepare(
   return prepared;
 }
 
-/** The case's pod, opened to read; the caller closes it. */
+/**
+ * The case's pod, opened to read; the caller closes it. The tables are configured once per process, by the command
+ * that runs (or a test's setup), never here: the runtime refuses it once any pod has opened.
+ */
 export async function openPrepared(prepared: Prepared): Promise<Pod> {
-  configureTables({ checkOnOpen: false });
   return openPod(join(prepared.pods, prepared.pod));
 }
