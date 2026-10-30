@@ -1,10 +1,14 @@
 export const meta = {
   name: "cascade-eval-run",
   description:
-    "Run a planned cascade eval: subjects in waves the cap allows, then blind judges, then the checks and results.json",
+    "Plan and run a cascade eval: subjects in waves the cap allows, then blind judges, then the checks and results.json",
   whenToUse:
-    "After `cascade-evals plan` has written a run's folder; args: { run: <run id>, folder: <run folder>, cli: <path of dist/src/cli.js> }",
+    "args: { config: <a tier (smoke, standard, full, smoke-graded, baseline…) or a config file>, run: <a new run id>, cli: <absolute path of packages/evals/dist/src/cli.js> }; with folder: <an existing run folder> instead of config, it runs a run already planned",
   phases: [
+    {
+      title: "Plan",
+      detail: "prepare the cases, reuse, estimate against the cap",
+    },
     {
       title: "Subjects",
       detail: "each wave as the meter allows under the cap",
@@ -40,19 +44,31 @@ const METER = {
   },
 };
 
+const PLANNED = {
+  type: "object",
+  required: ["run", "folder"],
+  properties: {
+    run: { type: "string" },
+    folder: { type: "string" },
+    jobs: { type: "number" },
+    fitsCap: { type: "boolean" },
+  },
+};
+
 const DONE = {
   type: "object",
   required: ["stdout"],
   properties: { stdout: { type: "string" } },
 };
 
-const { run, folder, cli } = args;
+const { run, cli } = args;
+let folder = args.folder;
 let harness = 0;
 
 function shell(command, phase, schema) {
   harness += 1;
   return agent(
-    `eval-tag: ${run}/harness-${harness}\n\nRun this one command with the Bash tool, exactly as written, and return what it prints on stdout${schema === METER ? " as the structured output (the `next`, `running`, `stop` and `blockedByCap` fields of its JSON; for each `next` job only id, alias, effort, tag and promptPath)" : " verbatim in `stdout`"}. Do nothing else.\n\n${command}`,
+    `eval-tag: ${run}/harness-${harness}\n\nRun this one command with the Bash tool, exactly as written, and return what it prints on stdout${schema === METER ? " as the structured output (the `next`, `running`, `stop` and `blockedByCap` fields of its JSON; for each `next` job only id, alias, effort, tag and promptPath)" : schema === PLANNED ? " as the structured output (its JSON's run, folder, jobs and fitsCap)" : " verbatim in `stdout`"}. Do nothing else.\n\n${command}`,
     {
       label: `harness ${harness}`,
       phase,
@@ -69,7 +85,7 @@ const promptOf = (job) =>
 async function waves(phase) {
   for (;;) {
     const meter = await shell(
-      `node "${cli}" meter --run "${folder}"`,
+      `node "${cli}" meter --run "${folder}" --brief`,
       phase,
       METER,
     );
@@ -94,6 +110,20 @@ async function waves(phase) {
       ),
     );
   }
+}
+
+if (folder === undefined) {
+  phase("Plan");
+  const planned = await shell(
+    `node "${cli}" plan --config "${args.config}" --run "${run}" --brief`,
+    "Plan",
+    PLANNED,
+  );
+  if (planned === null) return "the plan did not answer; nothing ran";
+  folder = planned.folder;
+  log(
+    `planned ${planned.run}: ${planned.jobs} job(s)${planned.fitsCap ? "" : "; the estimate passes the cap, so the meter will hold some back"}`,
+  );
 }
 
 phase("Subjects");

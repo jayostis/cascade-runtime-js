@@ -9,10 +9,11 @@ const USAGE = `usage: cascade-evals <command>
   cases                                   the cases there are
   prepare <case>                          make a case's downloads and pod (once per input)
   check-key <case>                        check every claim of the case's key against its downloads
-  plan --config <file|tier> [--run <id>]  a run's jobs, what is reused, and its estimate against the cap
+  plan --config <file|tier> [--run <id>] [--brief]
+                                          a run's jobs, what is reused, and its estimate against the cap
   pod --run <dir> --job <id> <tool> [<json input>]
                                           the pod arm's one command: a cascade-mcp tool, logged to the run
-  meter --run <dir>                       what the run has spent (from its transcripts) and which jobs may start
+  meter --run <dir> [--brief]             what the run has spent (from its transcripts) and which jobs may start
   judges --run <dir>                      the blind packets for the run's judges
   finish --run <dir>                      checks, grades, scores and results.json
   record-history <run dir>                copy a finished run into history/
@@ -57,7 +58,19 @@ async function main(args: string[]): Promise<void> {
       await tablesFirst();
       const config = option(args, "config") ?? "smoke";
       const run = option(args, "run");
-      return print(await (await import("./plan.js")).planRun(config, run, log));
+      const plan = await (await import("./plan.js")).planRun(config, run, log);
+      return print(
+        args.includes("--brief")
+          ? {
+              run: plan.run,
+              folder: plan.folder,
+              jobs: plan.jobs.length,
+              estimate: plan.estimate,
+              cap: plan.config.cap,
+              fitsCap: plan.fitsCap,
+            }
+          : plan,
+      );
     }
     case "pod": {
       const run = option(args, "run");
@@ -71,7 +84,15 @@ async function main(args: string[]): Promise<void> {
     case "meter": {
       const run = option(args, "run");
       if (run === undefined) break;
-      return print(await (await import("./record.js")).recordRun(run));
+      const meter = await (await import("./record.js")).recordRun(run);
+      return print(
+        args.includes("--brief")
+          ? {
+              ...meter,
+              next: meter.next.map(({ prompt: _prompt, ...job }) => job),
+            }
+          : meter,
+      );
     }
     case "judges": {
       const run = option(args, "run");

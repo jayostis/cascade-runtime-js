@@ -22,9 +22,22 @@ The plan's folder is `packages/evals/runs/<run>/` (gitignored): `plan.json`, `pr
 
 ## 2. Run
 
-**With the Workflow tool** (preferred):
-`Workflow({ scriptPath: "packages/evals/workflow/eval-run.js", args: { run: "<run>", folder: "<absolute run folder>", cli: "<absolute path of packages/evals/dist/src/cli.js>" } })`.
-It meters, starts the jobs the cap allows in waves, plans and runs the blind judges, and finishes.
+**With the Workflow tool** (the maintainer's go-ahead first; it plans the run itself):
+
+```
+Workflow({
+  scriptPath: "packages/evals/workflow/eval-run.js",
+  args: {
+    config: "smoke",
+    run: "<a new run id>",
+    cli: "<absolute path of packages/evals/dist/src/cli.js>"
+  }
+})
+```
+
+`config` is a tier name or a config file; with `folder: "<absolute run folder>"` in place of `config` it runs a run
+already planned. It plans, meters, starts the jobs the cap allows in waves, plans and runs the blind judges, and
+finishes.
 
 **Without it**, the same loop by hand:
 
