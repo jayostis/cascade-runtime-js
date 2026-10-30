@@ -3,29 +3,135 @@
   "type": "collection",
   "entry": [
     {
+      "fullUrl": "https://north.demo.invalid/fhir/Observation/a1c-8",
       "resource": {
         "resourceType": "Observation",
-        "id": "fit-1",
+        "id": "a1c-8",
+        "meta": {
+          "lastUpdated": "2025-08-18T16:00:00Z"
+        },
         "status": "final",
         "code": {
-          "coding": [{ "system": "http://loinc.org", "code": "29771-3" }],
-          "text": "Fecal immunochemical test"
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4"
+            }
+          ],
+          "text": "Hemoglobin A1c"
         },
-        "effectiveDateTime": "2025-11-04T15:00:00Z",
-        "valueCodeableConcept": { "text": "Positive" }
+        "effectiveDateTime": "2025-08-18T16:00:00Z",
+        "valueQuantity": {
+          "value": 7.1,
+          "unit": "%"
+        }
       }
     },
     {
+      "fullUrl": "https://north.demo.invalid/fhir/Observation/fit-1",
       "resource": {
         "resourceType": "Observation",
-        "id": "egfr-2",
+        "id": "fit-1",
+        "meta": {
+          "lastUpdated": "2025-11-20T09:00:00Z"
+        },
         "status": "final",
         "code": {
-          "coding": [{ "system": "http://loinc.org", "code": "98979-8" }],
-          "text": "eGFR"
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "29771-3"
+            }
+          ],
+          "text": "Fecal immunochemical test"
         },
-        "effectiveDateTime": "2026-02-16T16:00:00Z",
-        "valueQuantity": { "value": 69, "unit": "mL/min/{1.73_m2}" }
+        "effectiveDateTime": "2025-11-04T15:00:00Z",
+        "valueCodeableConcept": {
+          "text": "Positive"
+        },
+        "referenceRange": [
+          {
+            "text": "Negative"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/Observation/ldl-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ldl-1",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "13457-7"
+            }
+          ],
+          "text": "LDL cholesterol"
+        },
+        "effectiveDateTime": "2025-02-18T16:00:00Z",
+        "valueQuantity": {
+          "value": 131,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "code": "H",
+                "display": "High"
+              }
+            ]
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 99,
+              "unit": "mg/dL"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/MedicationStatement/med-1",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "id": "med-1",
+        "meta": {
+          "lastUpdated": "2024-04-15T10:00:00Z"
+        },
+        "status": "completed",
+        "medicationCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "861007",
+              "display": "metformin hydrochloride 500 MG Oral Tablet"
+            }
+          ],
+          "text": "Metformin 500 mg tablet"
+        },
+        "effectivePeriod": {
+          "start": "2022-03-01",
+          "end": "2024-04-15"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/DiagnosticReport/dr-1",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "dr-1",
+        "status": "final",
+        "code": {
+          "text": "CT angiography chest"
+        },
+        "effectiveDateTime": "2025-07-08T22:30:00Z",
+        "conclusion": "No pulmonary embolism. No acute findings."
       }
     }
   ]
