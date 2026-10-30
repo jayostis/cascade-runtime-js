@@ -167,31 +167,95 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
-test("a search the hospital refuses on its second page keeps the first page's records, and is in both searches and denied", async () => {
-  const search = { type: "Condition" } as const;
-  const second = (request: Request) =>
-    isSearch(request, "Condition") &&
-    new URL(request.url).searchParams.has("page");
+test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on; an OperationOutcome among the entries refuses nothing and is not kept", async () => {
+  const search = (type: string) => ({ type }) as const;
+  const unserved = search("CarePlan");
+  const laterRefused = new Map([
+    ["Condition", 403],
+    ["Observation", 404],
+    ["MedicationRequest", 410],
+  ]);
+  const plan = [
+    unserved,
+    ...[...laterRefused.keys()].map(search),
+    search("Immunization"),
+    search("Encounter"),
+    search("AllergyIntolerance"),
+  ];
+  assert.ok(!north.hospital.types.includes(unserved.type));
+  const typeOf = (request: Request) =>
+    new URL(request.url).pathname.split("/").at(-1)!;
   const { pull: result } = await pulled({
-    plan: { searches: [search], backfill: [] },
+    plan: { searches: plan, backfill: [] },
     alter: async (request, hospital) => {
-      if (second(request)) return new Response(null, { status: 403 });
+      const type = typeOf(request);
+      const later = laterRefused.get(type);
+      if (later !== undefined && new URL(request.url).searchParams.has("page"))
+        return new Response(null, { status: later });
+      if (isSearch(request, "Immunization"))
+        return new Response(null, { status: 400 });
       const response = await hospital(request);
-      if (!isSearch(request, "Condition")) return response;
+      if (!isSearch(request, type)) return response;
       const body = (await response.json()) as Record<string, unknown>;
-      const next = new URL(request.url);
-      next.searchParams.set("page", "2");
-      body.link = [{ relation: "next", url: next.href }];
+      if (type === "AllergyIntolerance")
+        body.entry = [
+          ...(body.entry as unknown[]),
+          { resource: { resourceType: "OperationOutcome", id: "warning" } },
+        ];
+      else if (type === "Encounter")
+        firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
+      else {
+        const next = new URL(request.url);
+        next.searchParams.set("page", "2");
+        body.link = [{ relation: "next", url: next.href }];
+      }
       return new Response(JSON.stringify(body), {
         status: response.status,
         headers: response.headers,
       });
     },
   });
-  assert.deepEqual(result.searches, [search]);
-  assert.deepEqual(result.denied, [search]);
-  const kept = keysOf(result).filter((key) => key.startsWith("Condition/"));
-  assert.ok(kept.length > 0, "page 1's conditions are kept");
+  assert.deepEqual(result.searches, plan);
+  assert.deepEqual(result.denied, plan.slice(0, -1));
+  const kept = (type: string) =>
+    keysOf(result).filter((key) => key.startsWith(`${type}/`));
+  for (const type of laterRefused.keys())
+    assert.ok(kept(type).length > 0, `page 1's ${type} records are kept`);
+  assert.deepEqual(
+    kept("Encounter"),
+    [],
+    "no record of a page naming another patient is kept",
+  );
+  assert.ok(
+    kept("AllergyIntolerance").length > 0,
+    "the searches after are made, an OperationOutcome on a page refusing nothing",
+  );
+  assert.deepEqual(kept("OperationOutcome"), [], "an outcome is no record");
+});
+
+test("a demo pull of a patient with notes fetches each of them, by the plan's search for DocumentReference", async () => {
+  const notesOf = (bundle: Bundle) =>
+    recordsAt(bundle)
+      .filter(({ resourceType }) => resourceType === "DocumentReference")
+      .map(({ id }) => `DocumentReference/${id}`);
+  const [patient, bundle] =
+    Object.entries(north.patients).find(
+      ([, each]) => notesOf(each).length > 0,
+    ) ?? assert.fail("no patient at North holds a note");
+  const searches = DEMO_PLAN.searches.filter(
+    ({ type }) => type === "DocumentReference",
+  );
+  assert.equal(searches.length, 1);
+  const { pull: result } = await pulledAt(north, patient, {
+    plan: { searches, backfill: [] },
+  });
+  assert.deepEqual(result.denied, []);
+  assert.deepEqual(
+    keysOf(result)
+      .filter((key) => key.startsWith("DocumentReference/"))
+      .sort(),
+    notesOf(bundle).sort(),
+  );
 });
 
 test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
@@ -613,11 +677,26 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
       "hospital-error",
     ],
     [
-      "a type North does not serve",
+      "a search's first page answered 410",
       () => ({
-        plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition")
+            ? new Response(null, { status: 410 })
+            : hospital(request),
       }),
       "hospital-error",
+      /answered 410 to Condition/,
+    ],
+    [
+      "a search answered 405",
+      () => ({
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition")
+            ? new Response(null, { status: 405 })
+            : hospital(request),
+      }),
+      "hospital-error",
+      /answered 405 to Condition/,
     ],
   ];
   try {
