@@ -3,7 +3,15 @@ import prettier from "eslint-config-prettier";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/", "build/"] },
+  {
+    ignores: [
+      "**/dist/",
+      "build/",
+      "packages/evals/runs/",
+      "packages/evals/work/",
+      "packages/evals/site/",
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   prettier,

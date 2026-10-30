@@ -57,7 +57,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--soft)}
 .missed{color:var(--missed);background:var(--missed-bg)}.false,.raised{color:var(--false);background:var(--false-bg)}
 .avoided{color:var(--found);background:var(--found-bg)}.ungraded{color:var(--muted);background:var(--soft)}
 .ok{color:var(--ok)}.bad{color:var(--bad)}
-.arms{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.stack{display:grid;gap:12px}.arms{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
 .arm{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 .arm h4{margin:0 0 6px;font-size:.95rem}
 .chain{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:8px 0}
@@ -457,15 +457,57 @@ function timelineSvg(item: KeyItem, today: string): string {
   const start = Math.min(...dates.map((d) => d.at));
   const w = 640;
   const x = (t: number) =>
-    20 + ((t - start) / Math.max(1, end - start)) * (w - 40);
+    80 + ((t - start) / Math.max(1, end - start)) * (w - 160);
+  const anchor = (t: number) =>
+    x(t) < 140 ? "start" : x(t) > w - 140 ? "end" : "middle";
   const last = Math.max(...dates.map((d) => d.at));
   const marks = dates
     .map(
       (d, i) =>
-        `<circle cx="${x(d.at)}" cy="40" r="4" fill="currentColor"/><text x="${x(d.at)}" y="${i % 2 ? 66 : 24}" text-anchor="middle">${esc(d.date)}</text><text x="${x(d.at)}" y="${i % 2 ? 80 : 12}" text-anchor="middle" class="muted">${esc(d.text)}</text>`,
+        `<circle cx="${x(d.at)}" cy="40" r="4" fill="currentColor"/><text x="${x(d.at)}" y="${i % 2 ? 66 : 24}" text-anchor="${anchor(d.at)}">${esc(d.date)}</text><text x="${x(d.at)}" y="${i % 2 ? 80 : 12}" text-anchor="${anchor(d.at)}" class="muted">${esc(d.text)}</text>`,
     )
     .join("");
-  return `<svg viewBox="0 0 ${w} 92" width="100%" role="img" aria-label="The item's dates up to today"><line x1="20" y1="40" x2="${w - 20}" y2="40" stroke="currentColor" opacity=".3"/><line x1="${x(last)}" y1="40" x2="${x(end)}" y2="40" stroke="currentColor" stroke-width="4" stroke-dasharray="2 4" opacity=".6"/>${marks}<circle cx="${x(end)}" cy="40" r="5" fill="none" stroke="currentColor" stroke-width="2"/><text x="${x(end)}" y="66" text-anchor="end">today ${esc(today)}</text></svg>`;
+  return `<svg viewBox="0 0 ${w} 92" width="100%" style="max-width:760px" role="img" aria-label="The item's dates up to today"><line x1="60" y1="40" x2="${w - 60}" y2="40" stroke="currentColor" opacity=".3"/><line x1="${x(last)}" y1="40" x2="${x(end)}" y2="40" stroke="currentColor" stroke-width="4" stroke-dasharray="2 4" opacity=".6"/>${marks}<circle cx="${x(end)}" cy="40" r="5" fill="none" stroke="currentColor" stroke-width="2"/><text x="${x(end)}" y="${dates.length % 2 ? 66 : 24}" text-anchor="end">today ${esc(today)}</text></svg>`;
+}
+
+/** For an ungraded run, the questions whose citations land on the item: on half its key evidence's records (or its pod
+ * entries), two at most, so one shared record such as the diagnosis does not tie every question to it. */
+function citedFor(
+  item: KeyItem,
+  slice: Slice | undefined,
+  answer: Answer | undefined,
+): number[] {
+  const keys = new Set(
+    item.evidence.map((e) =>
+      "resource" in e.cite
+        ? `${e.cite.file}#${e.cite.resource}`
+        : "line" in e.cite
+          ? `${e.cite.file}:${e.cite.line}`
+          : e.cite.entry,
+    ),
+  );
+  const nodes = new Set(
+    slice?.nodes.filter((n) => n.kind !== "record").map((n) => n.id) ?? [],
+  );
+  const keyOf = (cite: Answer["questions"][number]["facts"][number]["cite"]) =>
+    "entry" in cite
+      ? cite.entry
+      : "resource" in cite
+        ? `${cite.file}#${cite.resource}`
+        : `${cite.file}:${cite.line}`;
+  return (answer?.questions ?? [])
+    .filter((q) => {
+      const hit = new Set(
+        q.facts
+          .map((f) => keyOf(f.cite))
+          .filter((k) => keys.has(k) || nodes.has(k)),
+      );
+      const of = q.facts.some((f) => "entry" in f.cite)
+        ? nodes.size
+        : keys.size;
+      return hit.size > 0 && hit.size >= Math.min(2, Math.ceil(of / 2));
+    })
+    .map((q) => q.n);
 }
 
 function recordsStrip(
@@ -536,12 +578,16 @@ function casePage(l: Loaded, caseId: string, home: string): string {
           const verdicts = grades
             .map((g) => g.items.find((it) => it.id === item.id))
             .filter(Boolean);
-          const questions = new Set(verdicts.flatMap((v) => v!.questions));
+          const questions = new Set(
+            grades.length > 0
+              ? verdicts.flatMap((v) => v!.questions)
+              : citedFor(item, slice, answer),
+          );
           const shown =
             answer?.questions.filter((q) => questions.has(q.n)) ?? [];
           const grade =
             grades.length === 0
-              ? chip("ungraded", "not graded")
+              ? `${chip("ungraded", "not graded")}${questions.size > 0 ? ` <span class="small muted">questions its citations tie to this item: ${[...questions].map((n) => `Q${n}`).join(", ")}</span>` : ""}`
               : verdicts
                   .map(
                     (v) =>
@@ -560,7 +606,7 @@ ${shown.map((q) => chainOf(r, job, q, item)).join("") || (grades.length === 0 ? 
 ${job.arm === "pod" ? sliceSvg(slice, r, job, answer) : recordsStrip(r, job, caseId, answer)}</div>`;
         })
         .join("");
-      return `<h3>${esc(item.id)} · ${esc(item.title)} ${chip(item.kind === "gap" ? "found" : "false", item.kind)}</h3>
+      return `<h3>${esc(item.id)} · ${esc(item.title)} ${chip("ungraded", item.kind)}</h3>
 <p class="small">Looking for: ${esc(item.lookingFor)}. <span class="muted">Found means ${esc(item.found)}${item.partly ? `; partly: ${esc(item.partly)}` : ""}. Wrong: ${esc(item.wrong.join("; "))}. The pod holds it: ${esc(item.pod)}.${item.guideline ? ` Guideline: ${esc(item.guideline)}.` : ""}</span></p>
 ${timelineSvg(item, found.today)}<div class="arms">${arms}</div>`;
     })
@@ -592,7 +638,7 @@ ${keyChanged ? `<p class="bad small">The key has changed since this run; the pag
 <div class="arm"><h4>Guidelines the key cites</h4><ul class="small">${d.guidelines.map((g) => `<li>${esc(g)}</li>`).join("")}</ul><p class="small muted">${esc(d.from)}</p></div></div>
 <h2>Each key item, both arms side by side</h2>${items}
 <h2>False questions</h2>${falseOnes || `<p class="muted small">${r.grades.length === 0 ? "Not graded in this run." : "None."}</p>`}
-<h2>The answers in full</h2><p class="small muted">Every question each arm asked, as a chain: facts (each checked by the program), what it says is absent (and what backs that), the model's own knowledge, and the question.</p><div class="arms">${answers}</div>
+<h2>The answers in full</h2><p class="small muted">Every question each arm asked, as a chain: facts (each checked by the program), what it says is absent (and what backs that), the model's own knowledge, and the question.</p><div class="stack">${answers}</div>
 <h2>Statistics</h2>${statsTable(r.jobs.filter((j) => j.case === caseId))}`,
     home,
   );

@@ -167,8 +167,9 @@ export async function checkAnswer(options: {
       : podRowsSource(entryRows(options.pod));
   const citations: SubjectChecks["citations"][number][] = [];
   const absences: SubjectChecks["absences"][number][] = [];
+  // A refused call counts as run: lab_series refuses a test the pod holds none of, which states the absence.
   const ran: Call[] = options.toolCalls
-    .filter((it) => it.job === job.id && it.ok)
+    .filter((it) => it.job === job.id)
     .map(({ tool, input }) => ({ tool, input }));
   const everyFileRead = read.length === options.reading.length;
   for (const question of answer.questions) {

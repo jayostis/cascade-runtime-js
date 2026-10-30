@@ -1,15 +1,8 @@
 #!/usr/bin/env node
 // `cascade-evals <command>`: the harness's commands. Every command prints JSON on stdout, except `pod`, which prints
-// what the tool answered, and `report`, which prints the page it wrote.
+// what the tool answered, and `report`, which prints the page it wrote. Each command loads only its own modules, so
+// the pod arm's command starts without the runtime.
 import { argv, exit, stderr, stdout } from "node:process";
-import { checkKey } from "./checks.js";
-import { caseIds, prepare } from "./cases.js";
-import { finish, recordRun } from "./record.js";
-import { judgePackets } from "./judging.js";
-import { planRun } from "./plan.js";
-import { podCommand } from "./pod-client.js";
-import { recordHistory } from "./history.js";
-import { buildSite } from "./site.js";
 
 const USAGE = `usage: cascade-evals <command>
 
@@ -44,47 +37,53 @@ async function main(args: string[]): Promise<void> {
   const log = (line: string) => stderr.write(`${line}\n`);
   switch (command) {
     case "cases":
-      return print(await caseIds());
+      return print(await (await import("./cases.js")).caseIds());
     case "prepare":
-      return print(await prepare(args[0] ?? "", log));
+      return print(
+        await (await import("./cases.js")).prepare(args[0] ?? "", log),
+      );
     case "check-key":
-      return print(await checkKey(args[0] ?? "", log));
+      return print(
+        await (await import("./checks.js")).checkKey(args[0] ?? "", log),
+      );
     case "plan": {
       const config = option(args, "config") ?? "smoke";
       const run = option(args, "run");
-      return print(await planRun(config, run, log));
+      return print(await (await import("./plan.js")).planRun(config, run, log));
     }
     case "pod": {
       const run = option(args, "run");
       const job = option(args, "job");
       if (run === undefined || job === undefined) break;
-      stdout.write(await podCommand(run, job, args));
+      stdout.write(
+        await (await import("./pod-client.js")).podCommand(run, job, args),
+      );
       return;
     }
     case "meter": {
       const run = option(args, "run");
       if (run === undefined) break;
-      return print(await recordRun(run));
+      return print(await (await import("./record.js")).recordRun(run));
     }
     case "judges": {
       const run = option(args, "run");
       if (run === undefined) break;
-      return print(await judgePackets(run));
+      return print(await (await import("./judging.js")).judgePackets(run));
     }
     case "finish": {
       const run = option(args, "run");
       if (run === undefined) break;
-      return print(await finish(run, log));
+      return print(await (await import("./record.js")).finish(run, log));
     }
     case "record-history":
       if (args[0] === undefined) break;
-      return print(await recordHistory(args[0]));
+      return print(await (await import("./history.js")).recordHistory(args[0]));
     case "report": {
       const out = option(args, "out");
       const history = args.includes("--history");
       const run = args.find((it) => !it.startsWith("--"));
       stdout.write(
-        `${await buildSite(history ? { history: true } : { run: run ?? "" }, out)}\n`,
+        `${await (await import("./site.js")).buildSite(history ? { history: true } : { run: run ?? "" }, out)}\n`,
       );
       return;
     }

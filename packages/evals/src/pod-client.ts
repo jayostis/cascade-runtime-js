@@ -1,12 +1,12 @@
 // The pod arm's one command: a cascade-mcp tool over the case's pods, called as an MCP client on stdio, its answer
 // printed as the server gave it and logged to the run with the entries it named.
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { loadPlan } from "./plan.js";
+import type { Plan } from "./plan.js";
 import { runFolder, type ToolCallRecord } from "./results.js";
 
 const MCP_CLI = join(
@@ -40,7 +40,9 @@ export async function podCommand(
   args: string[],
 ): Promise<string> {
   const folder = runFolder(given);
-  const plan = await loadPlan(folder);
+  const plan = JSON.parse(
+    await readFile(join(folder, "plan.json"), "utf8"),
+  ) as Plan;
   const planned = plan.jobs.find((it) => it.id === job && it.arm === "pod");
   if (planned === undefined)
     throw new Error(`${job} is no pod-arm job of ${plan.run}`);
