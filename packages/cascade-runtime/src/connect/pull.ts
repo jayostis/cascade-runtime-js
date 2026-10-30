@@ -31,7 +31,7 @@ export interface Pull {
   readonly missing: readonly string[];
   /** The plan's searches, each made. */
   readonly searches: readonly Search[];
-  /** Searches the hospital answered with 403. */
+  /** Searches the hospital refused, answering one of their pages 400, 403 or 404. */
   readonly denied: readonly Search[];
 }
 
@@ -43,6 +43,7 @@ export interface PullOptions {
 
 const REFERENCE = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/;
 const NOT_SERVED = new Set([403, 404, 410]);
+const SEARCH_REFUSED = new Set([400, 403, 404]);
 
 /** Every `reference` string anywhere in the value. */
 function references(value: unknown, found: string[]): string[] {
@@ -165,7 +166,7 @@ export async function pull(
         );
       pages.add(next.href);
       const { answer, url } = await get(next, search.type);
-      if (answer.status === 403) {
+      if (SEARCH_REFUSED.has(answer.status)) {
         denied.push(search);
         break;
       }
