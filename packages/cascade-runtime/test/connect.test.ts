@@ -167,7 +167,7 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
-test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on", async () => {
+test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on; an OperationOutcome among the entries refuses nothing and is not kept", async () => {
   const search = (type: string) => ({ type }) as const;
   const unserved = search("CarePlan");
   const laterRefused = new Map([
@@ -195,10 +195,14 @@ test("a search the hospital refuses (400, 403 or 404, a later page 410, or a pag
       if (isSearch(request, "Immunization"))
         return new Response(null, { status: 400 });
       const response = await hospital(request);
-      if (!isSearch(request, type) || type === "AllergyIntolerance")
-        return response;
+      if (!isSearch(request, type)) return response;
       const body = (await response.json()) as Record<string, unknown>;
-      if (type === "Encounter")
+      if (type === "AllergyIntolerance")
+        body.entry = [
+          ...(body.entry as unknown[]),
+          { resource: { resourceType: "OperationOutcome", id: "warning" } },
+        ];
+      else if (type === "Encounter")
         firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
       else {
         const next = new URL(request.url);
@@ -224,8 +228,9 @@ test("a search the hospital refuses (400, 403 or 404, a later page 410, or a pag
   );
   assert.ok(
     kept("AllergyIntolerance").length > 0,
-    "the searches after are made",
+    "the searches after are made, an OperationOutcome on a page refusing nothing",
   );
+  assert.deepEqual(kept("OperationOutcome"), [], "an outcome is no record");
 });
 
 test("a demo pull of a patient with notes fetches each of them, by the plan's search for DocumentReference", async () => {
