@@ -202,7 +202,9 @@ export async function pull(
         (entry: unknown) => {
           if (typeof entry !== "object" || entry === null) return [];
           const { resource, search: mode } = entry as Record<string, unknown>;
-          return (mode as { mode?: unknown } | undefined)?.mode === "outcome"
+          return (mode as { mode?: unknown } | undefined)?.mode === "outcome" ||
+            (resource as { resourceType?: unknown } | undefined)
+              ?.resourceType === "OperationOutcome"
             ? []
             : [resource];
         },
