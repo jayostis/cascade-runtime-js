@@ -73,22 +73,58 @@ export interface PodReads {
 
 /** What `reference_table_checks` asks of the reference tables, and of the pod against them. */
 export interface TableLookups {
+  /** The series the app holds, each with its kind and current version. */
+  held(): Promise<
+    readonly {
+      readonly kind?: string;
+      readonly current: { readonly iri: string };
+    }[]
+  >;
   about(codes: readonly string[]): Promise<ReadonlyMap<string, About>>;
   variantClassification(variant: VariantAsked): Promise<WhatClinVarSays>;
   /** `Pod.agreement()`'s rows. */
   agreement(): Promise<readonly Row[]>;
 }
 
+const CLINVAR_KIND =
+  "https://ns.cascadeprotocol.org/cascade#VariantClassifications";
+const INGREDIENTS_KIND =
+  "https://ns.cascadeprotocol.org/cascade#ProductIngredients";
+
+/**
+ * One check's answer: `{ held: false }` when the app holds no series of the kind it reads, so nothing was checked;
+ * else the current `versions` of the series of that kind it holds and the check's `rows`, none when nothing was found.
+ */
+export type Checked<T> =
+  | { readonly held: false }
+  | {
+      readonly held: true;
+      readonly versions: readonly string[];
+      readonly rows: readonly T[];
+    };
+
 export const TABLES_OFF =
   "The reference tables are off, so nothing is checked against them: cascade-mcp reads them only when started with --check-tables.";
 
-/** `reference_table_checks`' answer: with the tables, each check's rows; without them, that they are off. */
+/** `reference_table_checks`' answer: with the tables, each check as `Checked`; without them, that they are off. */
 async function tableChecks(
   reads: PodReads,
   { pod }: ToolInput,
 ): Promise<object> {
   const lookups = await reads.tables?.({ pod: pod as string });
   if (lookups === undefined) return { tables: "off", said: TABLES_OFF };
+  const held = await lookups.held();
+  const versionsOf = (kind: string) =>
+    held
+      .filter((series) => series.kind === kind)
+      .map(({ current }) => current.iri);
+  const checked = <T>(
+    versions: readonly string[],
+    rows: () => readonly T[],
+  ): Checked<T> =>
+    versions.length === 0
+      ? { held: false }
+      : { held: true, versions, rows: rows() };
   const rowsOf = async (question: string) =>
     (await reads.ask({ pod: pod as string, question })).rows;
   const [variants, reports, history] = await Promise.all(
@@ -113,13 +149,14 @@ async function tableChecks(
   const named = new Map([...about, ...(await lookups.about(ingredients))]);
   return {
     tables: "on",
-    reportsDifferingFromClinVar: reportsDifferingFromClinVar(
-      { variants: variants!, reports: reports! },
-      { says, verdicts },
+    reportsDifferingFromClinVar: checked(versionsOf(CLINVAR_KIND), () =>
+      reportsDifferingFromClinVar(
+        { variants: variants!, reports: reports! },
+        { says, verdicts },
+      ),
     ),
-    medicationsSharingAnIngredient: medicationsSharingAnIngredient(
-      history!,
-      named,
+    medicationsSharingAnIngredient: checked(versionsOf(INGREDIENTS_KIND), () =>
+      medicationsSharingAnIngredient(history!, named),
     ),
   };
 }
@@ -322,7 +359,7 @@ export const TOOLS: readonly PodTool[] = (
     {
       name: "reference_table_checks",
       description:
-        "What the pod's records and the reference tables say together, as rows naming their entries and the table row each cites: each variant report that differs from ClinVar's classification today, and each pair of active medications in two entries whose codes share an ingredient. Without the tables (cascade-mcp started without --check-tables) it says they are off and gives no rows.",
+        "What the pod's records and the reference tables say together, as rows naming their entries and the table row each cites: each variant report that differs from ClinVar's classification today, and each pair of active medications in two entries whose codes share an ingredient. Each check says whether a series it reads (ClinVar, product ingredients) is held and which versions: an empty rows list means checked and nothing found only when held is true; held false means it was not checked. Without the tables (cascade-mcp started without --check-tables) it says they are off and gives no rows.",
       inputSchema: {
         type: "object",
         properties: {},

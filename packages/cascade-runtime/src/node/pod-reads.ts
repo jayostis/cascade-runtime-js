@@ -19,7 +19,7 @@ import {
 export interface PodsHost {
   names(): Promise<string[]>;
   open(name: string): Promise<Pod>;
-  tables?(): Promise<Pick<Tables, "about" | "variantClassification">>;
+  tables?(): Promise<Pick<Tables, "about" | "variantClassification" | "held">>;
 }
 
 /** The pods of a folder: each folder in it that holds something and is not hidden, as `.answers/` and `.tables/` are. */
@@ -122,6 +122,7 @@ export function podReads(
             host.tables!(),
           ]);
           return {
+            held: () => tables.held(),
             about: (codes) => tables.about(codes),
             variantClassification: (variant) =>
               tables.variantClassification(variant),
