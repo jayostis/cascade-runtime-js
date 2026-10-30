@@ -89,3 +89,32 @@ test("find_changes, lab_series and timeline name the entry of each medication an
   assert.equal(medication!.entry, "urn:cascade:entry-medication");
   await reads.close();
 });
+
+test("calls that arrive together before a pod is open open it once, and close closes it", async () => {
+  let opens = 0;
+  let closes = 0;
+  const reads = podReads({
+    names: async () => ["p"],
+    open: async () => {
+      opens += 1;
+      return {
+        ask: async () => LABS,
+        close: async () => {
+          closes += 1;
+        },
+      } as unknown as Pod;
+    },
+  });
+  const run = (name: string, input: Record<string, unknown>) =>
+    TOOLS.find((tool) => tool.name === name)!.run(reads, {
+      pod: "p",
+      ...input,
+    });
+  await Promise.all([
+    run("ask", { question: "pod/My lab results" }),
+    run("ask", { question: "pod/My medication history" }),
+    run("timeline", {}),
+  ]);
+  await reads.close();
+  assert.deepEqual([opens, closes], [1, 1]);
+});
