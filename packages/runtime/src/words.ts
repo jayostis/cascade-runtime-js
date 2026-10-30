@@ -54,6 +54,7 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same business identifier and test code within one organization": `${CASCADE}SameBusinessIdentifierAndTestCodeWithinOneOrganization`,
   "same note type and text grown within one organization": `${CASCADE}SameNoteTypeAndTextGrownWithinOneOrganization`,
   "same note type and text": `${CASCADE}SameNoteTypeAndText`,
+  "same note or document master identifier": `${CASCADE}SameNoteOrDocumentMasterIdentifier`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
