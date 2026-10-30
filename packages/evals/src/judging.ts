@@ -16,7 +16,7 @@ import { errorsOf } from "./schemas.js";
 
 /** Words and names that would tell a judge how an answer reached the records. */
 const REVEALING =
-  /\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|bundle\.json|pull\.json|export\.xml|entry IRI|lead (?:record|member)|non-lead)\b|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|line \d+/gi;
+  /\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|bundle\.json|pull\.json|export\.xml|entry IRI|lead (?:record|member)|non-lead|\d+ rows?)\b|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|line \d+/gi;
 
 export const scrubbed = (text: string) => text.replace(REVEALING, "[…]");
 
@@ -88,7 +88,14 @@ export async function judgePackets(given: string) {
       prose,
       "## The key, machine-readable half",
       "```json",
-      JSON.stringify(key, null, 2),
+      JSON.stringify(
+        {
+          ...key,
+          items: key.items.map(({ pod: _pod, find: _find, ...item }) => item),
+        },
+        null,
+        2,
+      ),
       "```",
       "## The answers",
       ...Object.entries(labels).map(([label, id]) => {
