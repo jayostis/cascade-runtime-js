@@ -24,15 +24,22 @@ const REVEALING = new RegExp(
     String.raw`\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|lab_series|find_changes|finding_rows|list_pods)\b`,
     String.raw`\b(?:entry|entries|lead (?:record|member)|non-lead|bundles?|resources?|FHIR|C-CDA|XML|JSON|downloads?|exports?|pulls?)\b`,
     String.raw`\b\d+ (?:rows?|results?|records?|items?)\b`,
-    String.raw`\b(?:records? )?retriev\w*(?: [\d-]+(?:,? (?:and )?[\d-]+)*)?`,
-    String.raw`\b(?:Observation|Condition|MedicationStatement|MedicationRequest|Procedure|Immunization|DiagnosticReport|Patient)s?\b`,
+    String.raw`\bretriev\w*(?: (?:on )?\d{4}-\d{2}-\d{2}(?:,? (?:and )?\d{4}-\d{2}-\d{2})*)?`,
     String.raw`cascade:\S+|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|\bline \d+`,
   ].join("|"),
   "gi",
 );
 
+/**
+ * FHIR's resource names where they are used as names: capitalised, as a type or a reference ("Observation",
+ * "Observation/abc", "the Condition resource"). The same words in prose ("an active condition", "the patient") stay.
+ */
+const RESOURCE_NAMES =
+  /\b(?:Observation|Condition|MedicationStatement|MedicationRequest|Procedure|Immunization|DiagnosticReport|Patient|AllergyIntolerance|Encounter)s?(?:\/[\w.-]+)?(?: resources?)?\b/g;
+
 export const scrubbed = (text: string) =>
   text
+    .replace(RESOURCE_NAMES, "")
     .replace(REVEALING, "")
     .replace(/\(\s*\)/g, "")
     .replace(/\s+([,.;:)])/g, "$1")
@@ -115,7 +122,9 @@ export async function judgePackets(given: string) {
     for (const [at, model] of plan.config.judges.entries()) {
       const id = `${caseId}.judge.${model.replace(/^claude-/, "")}.j${at + 1}`;
       if (plan.jobs.some((it) => it.id === id)) continue;
-      const seed = `${caseId}/${model}/${at}`;
+      // The order is the run's own, so a judge does not see the arms in the same places in every run; a reused
+      // verdict brings the letters it was written to.
+      const seed = `${plan.run}/${caseId}/${model}/${at}`;
       const order = [...subjects].sort((a, b) =>
         sha256(`${seed}/${a.id}`).localeCompare(sha256(`${seed}/${b.id}`)),
       );
@@ -143,8 +152,16 @@ export async function judgePackets(given: string) {
       const inputsHash = sha256(
         JSON.stringify({
           role: "judge",
-          packetSha256,
+          // what the packet holds, not its order: the answers as the judge reads them and the key
+          content: sha256(
+            JSON.stringify({
+              answers: [...bodies.values()].sort(),
+              key: judgesKey(key),
+              prose,
+            }),
+          ),
           model,
+          at,
           prompt: PROMPT_VERSIONS.judge,
         }),
       );
