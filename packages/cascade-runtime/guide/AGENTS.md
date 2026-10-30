@@ -475,11 +475,17 @@ async function search(word) {
   stopped, paused, unknown or entered in error), which says whether the
   medication is still taken.
 - `pod/My procedures`: procedures, newest first.
-- `pod/My reports, notes and documents`: each report and note, newest first,
-  with what it says (`?kind`, `?code`, `?name`, `?title`, `?status`,
-  `?conclusion`, `?text`), its lead `?record` and the `?document`, `?hospital`
-  and `?retrieved` it came from; and a row for each result a report names
-  (`?result`, `?resultTest`, `?resultValue`, `?resultUnit`).
+- `pod/My reports, notes and documents`: one row for each report and note,
+  newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
+  `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
+  `?entry`. Four columns are lists, each value ended by "; " but the last,
+  unbound when empty: `?codes` (an IRI, or a code "in" its system);
+  `?attachments` (media type and title of a file the pod keeps but does not
+  read, so a report sent only as a PDF has one and no `?text`); `?results`
+  (each result's lab results entry, test, value, unit, reference range and
+  "flagged" with its own interpretation codes); and `?sources` (each record,
+  "from" its document, when that was retrieved, and each hospital as
+  "written by" or "kept by").
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.

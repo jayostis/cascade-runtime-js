@@ -435,3 +435,21 @@ test("the tools bundle for a page: nothing of Node is behind them", async () => 
   });
   assert.deepEqual(errors, []);
 });
+
+test("ask offers the question a model reads every report's and note's text by, and asks the pod it", async () => {
+  const asked: string[] = [];
+  const pod = {
+    ask: async (question: string) => {
+      asked.push(question);
+      return [];
+    },
+    close: async () => undefined,
+  } as unknown as Pod;
+  const reads = podReads({ names: async () => ["p"], open: async () => pod });
+  await TOOLS.find((tool) => tool.name === "ask")!.run(reads, {
+    pod: "p",
+    question: "pod/My reports, notes and documents",
+  });
+  await reads.close();
+  assert.deepEqual(asked, ["pod/My reports, notes and documents"]);
+});
