@@ -13,8 +13,9 @@ import { podServer } from "./server.js";
 const USAGE = `usage: cascade-mcp --pods <folder> [--check-tables]
 
   --pods <folder>   the folder whose folders are the pods, as an app keeps them
-  --check-tables    check the reference tables' feeds for newer tables when the first pod opens (a network call);
-                    without it, the tables the folder holds are used as they are
+  --check-tables    check the reference tables' feeds for newer tables when the first pod opens (a network call),
+                    and offer reference_table_checks' rows; without it, the tables the folder holds are used as
+                    they are, and reference_table_checks says the tables are off
 `;
 
 function refuse(message: string): never {
@@ -45,7 +46,7 @@ if (!statSync(folder, { throwIfNoEntry: false })?.isDirectory())
   refuse(`${folder} is no folder`);
 
 configureTables({ checkOnOpen: values["check-tables"] });
-const reads = podReads(podsIn(folder));
+const reads = podReads(podsIn(folder), { tables: values["check-tables"] });
 const serving = serveStdio(() => podServer(reads));
 
 stdin.on("close", async () => {

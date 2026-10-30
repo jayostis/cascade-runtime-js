@@ -9,7 +9,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { openPod, sixWords } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 
-/** A folder cascade-mcp's and cascade-runtime's tarballs are installed in, to run `npx cascade-mcp` as a person would. */
+/** A folder cascade-mcp's and cascade-runtime's tarballs are installed in, to run `npx --no-install cascade-mcp` as a person would. */
 const APP =
   process.env.CASCADE_RUNTIME_APP === undefined
     ? undefined
@@ -67,6 +67,7 @@ test("cascade-mcp on stdio offers the read tools, and a question's rows each nam
     "finding_rows",
     "lab_series",
     "list_pods",
+    "reference_table_checks",
     "timeline",
   ]);
   assert.deepEqual((await call("list_pods", {})).value, [
@@ -98,4 +99,13 @@ test("cascade-mcp refuses, saying why, a pod there is not, an encrypted pod and 
     ],
   ] as const)
     assert.match((await call("ask", input)).refused ?? "", said);
+});
+
+test("cascade-mcp started without --check-tables says the reference tables are off and checks nothing against them", async () => {
+  const { value } = await call("reference_table_checks", {
+    pod: "alex-rivera",
+  });
+  assert.deepEqual(Object.keys(value as object).sort(), ["said", "tables"]);
+  assert.equal((value as { tables: string }).tables, "off");
+  assert.match((value as { said: string }).said, /--check-tables/);
 });
