@@ -434,6 +434,34 @@ test("the look at a pull counts each entry of each C-CDA document it read, by th
   ]);
 });
 
+test("one C-CDA document a pull read twice, inline in one DocumentReference and by url in another, is saved once", () => {
+  const saved = pullFiles(
+    {
+      ...PULL,
+      documents: [
+        {
+          documentReference: "DocumentReference/n2",
+          content: 0,
+          retrievedFrom: `${BASE}/DocumentReference/n2`,
+          bytes: CCD,
+        },
+        {
+          documentReference: "DocumentReference/n4",
+          content: 0,
+          url: "Binary/n4",
+          retrievedFrom: `${BASE}/Binary/n4`,
+          bytes: CCD.slice(),
+        },
+      ],
+    },
+    "north",
+  );
+  assert.deepEqual(
+    [...saved.keys()].filter((path) => path.includes("document-")),
+    ["north/document-1.xml"],
+  );
+});
+
 test("a pull states the class of each search it answered and each it was refused", async () => {
   const scope = async (changed: Record<string, unknown>) => {
     const [document] = (await fhirPull.documents(

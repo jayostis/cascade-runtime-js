@@ -562,6 +562,80 @@ test("a C-CDA document redirected to another host, or at a url with a user name,
   );
 });
 
+test("a C-CDA document that is not well-formed, fetched or inline, is not read, and the pull keeps the rest; an inline one under a base written with an upper-case host and :443 is read from its canonical URL", async () => {
+  const broken =
+    '<ClinicalDocument xmlns="urn:hl7-org:v3"><component><structuredBody/></component><oops></ClinicalDocument>';
+  const format = {
+    system: "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+    code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+  };
+  const reference = (id: string, attachment: Record<string, unknown>) => ({
+    resourceType: "DocumentReference",
+    id,
+    status: "current",
+    subject: { reference: `Patient/${A_NORTH}` },
+    content: [
+      { attachment: { contentType: "application/xml", ...attachment }, format },
+    ],
+  });
+  const written = new URL(north.hospital.fhirBase);
+  const base = `https://${written.host.toUpperCase()}:443${written.pathname}`;
+  const { pull: result } = await pulled({
+    row: { ...rowOf(north), fhirBase: base },
+    plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+    alter: async (request, hospital) => {
+      if (isSearch(request, "DocumentReference"))
+        return Response.json({
+          resourceType: "Bundle",
+          type: "searchset",
+          entry: [
+            reference("broken", { url: "Binary/broken" }),
+            reference("broken-inline", { data: btoa(broken) }),
+            reference("inline", { data: btoa(CCD_XML) }),
+          ].map((resource) => ({ resource })),
+        });
+      const url = new URL(request.url);
+      if (url.searchParams.get("aud") === base) {
+        url.searchParams.set("aud", north.hospital.fhirBase);
+        return hospital(new Request(url, request));
+      }
+      if (isBinaryRequest(request))
+        return new Response(broken, {
+          headers: { "Content-Type": "application/xml" },
+        });
+      return hospital(request);
+    },
+  });
+  assert.deepEqual(
+    result.documents?.map(({ documentReference, retrievedFrom, notRead }) => [
+      documentReference,
+      retrievedFrom,
+      notRead,
+    ]),
+    [
+      [
+        "DocumentReference/broken",
+        undefined,
+        "the hospital's answer is no well-formed C-CDA document",
+      ],
+      [
+        "DocumentReference/broken-inline",
+        undefined,
+        "its inline data is no well-formed C-CDA document",
+      ],
+      [
+        "DocumentReference/inline",
+        `${written.origin}${written.pathname}/DocumentReference/inline`,
+        undefined,
+      ],
+    ],
+  );
+  assert.ok(
+    pullFiles(result, "north").has("north/document-1.xml"),
+    "the pull is saved, the one document read with it",
+  );
+});
+
 test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
   const lab = {
     resourceType: "Organization",
