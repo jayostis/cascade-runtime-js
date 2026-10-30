@@ -146,9 +146,12 @@ const CLINVAR = "https://identifiers.org/clinvar:";
 const ENTRY = "urn:cascade:entry-";
 const VARIANT = `${ENTRY}variant`;
 const REPORTED = `${ENTRY}report-2019`;
+const UNCOVERED = `${ENTRY}variant-uncovered`;
+const REPORT_ONLY = `${ENTRY}variant-report-only`;
 const RECLASSIFIED = {
   "pod/My genetic variants": [
     { variant: VARIANT, gene: "MLH1", hgvs: "NM_000249.4:c.2042C>T" },
+    { variant: UNCOVERED, gene: "BRCA1", hgvs: "NM_007294.4:c.68_69del" },
   ],
   "pod/What each report says of a variant": [
     {
@@ -163,6 +166,7 @@ const RECLASSIFIED = {
       classification: `${CASCADE}Benign`,
       date: "2019-05-02",
     },
+    { report: `${ENTRY}report-of-a-variant-only`, variant: REPORT_ONLY },
   ],
 };
 const ACTIVE = `${CASCADE}MedicationActive`;
@@ -192,13 +196,32 @@ const CO_INGREDIENT = {
       code: `${RXNORM}1002`,
       lifecycle: ACTIVE,
     },
+    {
+      entry: `${ENTRY}a`,
+      medication: "Drug 1004",
+      code: `${RXNORM}1004`,
+      lifecycle: ACTIVE,
+    },
+    {
+      entry: `${ENTRY}paused`,
+      medication: "Drug 1003",
+      code: `${RXNORM}1003`,
+      lifecycle: `${CASCADE}MedicationPaused`,
+    },
+    { entry: `${ENTRY}no-code`, medication: "Pain relief", lifecycle: ACTIVE },
+    {
+      entry: `${ENTRY}unmapped`,
+      medication: "Drug 1005",
+      code: `${RXNORM}1005`,
+      lifecycle: ACTIVE,
+    },
   ],
 };
 const INGREDIENTS = "urn:test:ingredients-v1";
 const NAMES = "urn:test:names-v1";
 const CLINVAR_VERSION = "urn:test:clinvar-v2026";
 const ABOUT = new Map<string, unknown>([
-  ...["1001", "1002", "1003"].map(
+  ...["1001", "1002", "1003", "1004"].map(
     (code) =>
       [
         `${RXNORM}${code}`,
@@ -272,18 +295,30 @@ function tableReads(tables: boolean, read: string[] = [], held = HELD) {
         read.push("tables");
         return {
           held: async () => held,
-          about: async (codes: readonly string[]) =>
-            new Map(
+          about: async (codes: readonly string[]) => {
+            read.push("about");
+            return new Map(
               codes.flatMap((code) =>
                 ABOUT.has(code) ? [[code, ABOUT.get(code)]] : [],
               ),
-            ),
-          variantClassification: async () => ({
-            found: "rows",
-            series: "urn:test:clinvar",
-            version: CLINVAR_VERSION,
-            rows: [ROW],
-          }),
+            );
+          },
+          variantClassification: async ({ gene }: { gene?: string }) => {
+            read.push("variantClassification");
+            return gene === "MLH1"
+              ? {
+                  found: "rows",
+                  series: "urn:test:clinvar",
+                  version: CLINVAR_VERSION,
+                  rows: [ROW],
+                }
+              : {
+                  found: "not covered",
+                  series: "urn:test:clinvar",
+                  version: CLINVAR_VERSION,
+                  genes: ["MLH1"],
+                };
+          },
         } as never;
       },
     },
@@ -313,6 +348,10 @@ test("reference_table_checks gives, with the tables, each report that differs fr
             classification: ROW.classification,
           },
         },
+      ],
+      notChecked: [
+        { entry: UNCOVERED, reason: "not covered", genes: ["MLH1"] },
+        { entry: REPORT_ONLY, reason: "not asked" },
       ],
     },
     medicationsSharingAnIngredient: {
@@ -346,18 +385,28 @@ test("reference_table_checks gives, with the tables, each report that differs fr
           },
         },
       ],
+      notChecked: [
+        { entry: `${ENTRY}no-code`, reason: "no code" },
+        {
+          entry: `${ENTRY}unmapped`,
+          code: `${RXNORM}1005`,
+          reason: "no ingredients row",
+        },
+      ],
     },
   });
   await reads.close();
 });
 
-test("reference_table_checks with the tables but no ClinVar or product ingredients series held says each is not held, so no list reads as nothing found", async () => {
-  const reads = tableReads(true, [], []);
+test("reference_table_checks with the tables but no ClinVar or product ingredients series held says each is not held, so no list reads as nothing found, and asks the tables nothing for either", async () => {
+  const read: string[] = [];
+  const reads = tableReads(true, read, []);
   assert.deepEqual(await checks!.run(reads, { pod: "p" }), {
     tables: "on",
     reportsDifferingFromClinVar: { held: false },
     medicationsSharingAnIngredient: { held: false },
   });
+  assert.deepEqual(read, ["tables"]);
   await reads.close();
 });
 
