@@ -167,28 +167,44 @@ test("a pull from North signed in as patient A holds A's North record, each reso
   );
 });
 
-test("a search the hospital answers 400, 403 or 404 (a type it does not serve) is in both searches and denied, keeps any page it answered, and the pull goes on", async () => {
-  const unserved = { type: "CarePlan" } as const;
-  const conditions = { type: "Condition" } as const;
-  const immunizations = { type: "Immunization" } as const;
-  const orders = { type: "MedicationRequest" } as const;
+test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on", async () => {
+  const search = (type: string) => ({ type }) as const;
+  const unserved = search("CarePlan");
+  const laterRefused = new Map([
+    ["Condition", 403],
+    ["Observation", 404],
+    ["MedicationRequest", 410],
+  ]);
+  const plan = [
+    unserved,
+    ...[...laterRefused.keys()].map(search),
+    search("Immunization"),
+    search("Encounter"),
+    search("AllergyIntolerance"),
+  ];
   assert.ok(!north.hospital.types.includes(unserved.type));
-  const second = (request: Request) =>
-    isSearch(request, "Condition") &&
-    new URL(request.url).searchParams.has("page");
-  const plan = [unserved, conditions, immunizations, orders];
+  const typeOf = (request: Request) =>
+    new URL(request.url).pathname.split("/").at(-1)!;
   const { pull: result } = await pulled({
     plan: { searches: plan, backfill: [] },
     alter: async (request, hospital) => {
-      if (second(request)) return new Response(null, { status: 403 });
+      const type = typeOf(request);
+      const later = laterRefused.get(type);
+      if (later !== undefined && new URL(request.url).searchParams.has("page"))
+        return new Response(null, { status: later });
       if (isSearch(request, "Immunization"))
         return new Response(null, { status: 400 });
       const response = await hospital(request);
-      if (!isSearch(request, "Condition")) return response;
+      if (!isSearch(request, type) || type === "AllergyIntolerance")
+        return response;
       const body = (await response.json()) as Record<string, unknown>;
-      const next = new URL(request.url);
-      next.searchParams.set("page", "2");
-      body.link = [{ relation: "next", url: next.href }];
+      if (type === "Encounter")
+        firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
+      else {
+        const next = new URL(request.url);
+        next.searchParams.set("page", "2");
+        body.link = [{ relation: "next", url: next.href }];
+      }
       return new Response(JSON.stringify(body), {
         status: response.status,
         headers: response.headers,
@@ -196,12 +212,18 @@ test("a search the hospital answers 400, 403 or 404 (a type it does not serve) i
     },
   });
   assert.deepEqual(result.searches, plan);
-  assert.deepEqual(result.denied, [unserved, conditions, immunizations]);
+  assert.deepEqual(result.denied, plan.slice(0, -1));
   const kept = (type: string) =>
     keysOf(result).filter((key) => key.startsWith(`${type}/`));
-  assert.ok(kept("Condition").length > 0, "page 1's conditions are kept");
+  for (const type of laterRefused.keys())
+    assert.ok(kept(type).length > 0, `page 1's ${type} records are kept`);
+  assert.deepEqual(
+    kept("Encounter"),
+    [],
+    "no record of a page naming another patient is kept",
+  );
   assert.ok(
-    kept("MedicationRequest").length > 0,
+    kept("AllergyIntolerance").length > 0,
     "the searches after are made",
   );
 });
@@ -648,6 +670,17 @@ test("connecting and pulling end in a typed outcome, never a Refusal, carrying n
         },
       }),
       "hospital-error",
+    ],
+    [
+      "a search's first page answered 410",
+      () => ({
+        alter: async (request, hospital) =>
+          isSearch(request, "Condition")
+            ? new Response(null, { status: 410 })
+            : hospital(request),
+      }),
+      "hospital-error",
+      /answered 410 to Condition/,
     ],
     [
       "a search answered 405",
