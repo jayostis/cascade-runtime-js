@@ -179,6 +179,17 @@ export async function judgePackets(given: string) {
       planned.push(job);
     }
   }
+  const pending = planned.filter((it) => it.status === "pending");
+  Object.assign(plan, {
+    estimate: {
+      tokens:
+        plan.estimate.tokens +
+        pending.reduce((sum, it) => sum + it.estimate.tokens, 0),
+      usd:
+        plan.estimate.usd +
+        pending.reduce((sum, it) => sum + it.estimate.usd, 0),
+    },
+  });
   await savePlan(plan);
   return {
     run: plan.run,
