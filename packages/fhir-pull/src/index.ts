@@ -8,6 +8,9 @@ const MEDIA_TYPE = "application/fhir+json";
 const ENVELOPE = "#envelope-bundle";
 const PULL = "pull.json";
 const BUNDLE = "bundle.json";
+const CCDA_MEDIA_TYPE = "application/cda+xml";
+const DOCUMENT_FILE = /^document-[1-9][0-9]*\.xml$/;
+const DOCUMENT_REFERENCE = /^DocumentReference\/[A-Za-z0-9\-.]{1,64}$/;
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/;
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
 export const RESOURCE_TYPE = /^[A-Z][A-Za-z]+$/;
@@ -23,6 +26,25 @@ export interface SavedSearch {
   readonly category?: string;
 }
 
+/**
+ * A C-CDA document a DocumentReference of the pull holds: the content that holds it, and the document as read, or why
+ * it was not.
+ */
+export interface SavedDocument {
+  /** `DocumentReference/<id>`. */
+  readonly documentReference: string;
+  /** The content's position in the DocumentReference's `content`, from 0. */
+  readonly content: number;
+  /** The attachment's `url` as the DocumentReference wrote it; none for one given inline. */
+  readonly url?: string;
+  /** Where the document was read: the URL fetched, or the DocumentReference's for one given inline. */
+  readonly retrievedFrom?: string;
+  /** The document as read. */
+  readonly bytes?: Uint8Array;
+  /** Why it was not read. */
+  readonly notRead?: string;
+}
+
 /** A pull as `cascade-runtime`'s `pull()` returns it, as far as saving it needs. */
 export interface SavedPull {
   readonly fhirBase: string;
@@ -36,6 +58,8 @@ export interface SavedPull {
   readonly searches?: readonly SavedSearch[];
   /** The searches the hospital refused. */
   readonly denied?: readonly SavedSearch[];
+  /** The C-CDA documents its DocumentReferences hold, each read or said why not. */
+  readonly documents?: readonly SavedDocument[];
   readonly bundle: object;
 }
 
@@ -47,7 +71,7 @@ export interface PullFiles {
 export interface PullDocument {
   readonly path: string;
   readonly bytes: Uint8Array;
-  readonly envelope: string;
+  readonly envelope?: string;
   readonly mediaType: string;
   facts(importStarted: string): Uint8Array;
 }
@@ -68,7 +92,13 @@ interface Described {
   readonly asOf?: string;
   readonly searches: readonly SavedSearch[];
   readonly denied: readonly SavedSearch[];
+  /** As saved: each read one names its file, `path`, in place of its bytes. */
+  readonly documents: readonly SavedDocumentFile[];
 }
+
+type SavedDocumentFile = Omit<SavedDocument, "bytes"> & {
+  readonly path?: string;
+};
 
 interface RecordOfType {
   /** The word `cascade:recordKind` gives it. */
@@ -122,12 +152,24 @@ export function pullFiles(
 ): ReadonlyMap<string, Uint8Array> {
   if (name === "" || name === "." || name === ".." || /[/\\]/.test(name))
     throw new TypeError(`a pull is saved under one folder name, not ${name}`);
-  const { bundle, ...rest } = pull;
-  checked(rest);
+  const { bundle, documents = [], ...rest } = pull;
+  const files: [string, Uint8Array][] = [];
+  const saved = documents.map(({ bytes, ...document }) => {
+    if (bytes === undefined) return document;
+    const path = `document-${files.length + 1}.xml`;
+    files.push([`${name}/${path}`, bytes]);
+    return { ...document, path };
+  });
+  const described = { ...rest, ...(saved.length > 0 && { documents: saved }) };
+  checked(described);
   const encoder = new TextEncoder();
   return new Map([
-    [`${name}/${PULL}`, encoder.encode(`${JSON.stringify(rest, null, 2)}\n`)],
+    [
+      `${name}/${PULL}`,
+      encoder.encode(`${JSON.stringify(described, null, 2)}\n`),
+    ],
     [`${name}/${BUNDLE}`, encoder.encode(JSON.stringify(bundle))],
+    ...files,
   ]);
 }
 
@@ -154,8 +196,16 @@ function described(bytes: Uint8Array): Described {
 function checked(value: unknown): Described {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new PullRefused(`${PULL} is not a JSON object`);
-  const { fhirBase, patient, source, retrievedAt, asOf, searches, denied } =
-    value as Record<string, unknown>;
+  const {
+    fhirBase,
+    patient,
+    source,
+    retrievedAt,
+    asOf,
+    searches,
+    denied,
+    documents,
+  } = value as Record<string, unknown>;
   if (!isFhirBase(fhirBase))
     throw new PullRefused(
       `${PULL}'s fhirBase is not an https: URL with no query, fragment or trailing slash`,
@@ -176,7 +226,41 @@ function checked(value: unknown): Described {
     ...(asOf !== undefined && { asOf }),
     searches: searchesIn(searches, "searches"),
     denied: searchesIn(denied, "denied"),
+    documents: documentsIn(documents),
   };
+}
+
+/** Each document is a DocumentReference's content, read into one file of the folder or said why not, never both. */
+function documentsIn(value: unknown): readonly SavedDocumentFile[] {
+  if (value === undefined) return [];
+  const text = (field: unknown) =>
+    field === undefined || (typeof field === "string" && field !== "");
+  if (
+    !Array.isArray(value) ||
+    !value.every((document: unknown) => {
+      const { documentReference, content, url, retrievedFrom, path, notRead } =
+        (
+          typeof document === "object" && document !== null ? document : {}
+        ) as Record<string, unknown>;
+      return (
+        typeof documentReference === "string" &&
+        DOCUMENT_REFERENCE.test(documentReference) &&
+        Number.isInteger(content) &&
+        (content as number) >= 0 &&
+        text(url) &&
+        text(retrievedFrom) &&
+        (typeof path === "string"
+          ? DOCUMENT_FILE.test(path) &&
+            notRead === undefined &&
+            typeof retrievedFrom === "string"
+          : typeof notRead === "string" && notRead !== "")
+      );
+    })
+  )
+    throw new PullRefused(
+      `${PULL}'s documents is not a list of C-CDA documents, each a DocumentReference's content, read into a file of the folder or said why not`,
+    );
+  return value as SavedDocumentFile[];
 }
 
 function searchesIn(value: unknown, field: string): readonly SavedSearch[] {
@@ -277,6 +361,30 @@ function facts(pull: Described, importStarted: string): Uint8Array {
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
 
+/** What the pull says of a C-CDA document it read, and of its import, as Turtle, for the Bridge to state. */
+function documentFacts(
+  pull: Described,
+  retrievedFrom: string,
+  importStarted: string,
+): Uint8Array {
+  const document = `<${BRIDGE}thisDocument>`;
+  const thisImport = `<${BRIDGE}thisImport>`;
+  const dateTime = (value: string): string =>
+    `${quoted(value)}^^<${XSD}dateTime>`;
+  const lines = [
+    `${thisImport} <${RDFS}label> ${quoted("FHIR pull")} .`,
+    `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
+    `${document} <${PAV}retrievedFrom> <${retrievedFrom}> .`,
+    `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
+    `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
+    `${document} <${PROV}qualifiedAttribution> _:attribution .`,
+    `_:attribution <${PROV}agent> _:agent .`,
+    `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
+    `_:attribution <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
+  ];
+  return new TextEncoder().encode(`${lines.join("\n")}\n`);
+}
+
 /** The pull in the folder, or undefined when the folder holds none. */
 async function read(
   files: PullFiles,
@@ -304,28 +412,45 @@ function codes(concepts: unknown): unknown[] {
   });
 }
 
-/** The systems of the format codes that say a DocumentReference's content is a C-CDA document, `urn:hl7-org:sdwg:ccda-…`. */
+/** The systems of the format codes that say a DocumentReference's content is a structured C-CDA document. */
 const FORMAT_CODE_SYSTEMS: ReadonlySet<unknown> = new Set([
   "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
   "http://ihe.net/fhir/ValueSet/IHE.FormatCode.codesystem",
   "http://ihe.net/fhir/ihe.formatcode.fhir/CodeSystem/formatcode",
 ]);
 
-/** Whether any content of a DocumentReference is a C-CDA document, by its format, as the FHIR adapter reads it. */
-function holdsCcdaDocument(resource: Record<string, unknown>): boolean {
-  return (Array.isArray(resource.content) ? resource.content : []).some(
-    (content: unknown) => {
-      const format =
-        typeof content === "object" && content !== null
-          ? (content as { format?: unknown }).format
-          : undefined;
-      if (typeof format !== "object" || format === null) return false;
+/** A content of a DocumentReference that holds a C-CDA document: its position, and its attachment. */
+export interface CcdaContent {
+  readonly content: number;
+  readonly attachment: Record<string, unknown>;
+}
+
+/**
+ * The contents of a DocumentReference that are structured C-CDA documents, by their format, as the FHIR adapter reads
+ * them: `urn:hl7-org:sdwg:ccda-structuredBody:` and a version, in HL7's or IHE's format codes. An unstructured one
+ * (`ccda-nonXMLBody:`), a PDF or text in a CDA header, holds no entries a C-CDA adapter reads, so it is a note.
+ */
+export function ccdaContents(resource: Record<string, unknown>): CcdaContent[] {
+  if (resource.resourceType !== "DocumentReference") return [];
+  return (Array.isArray(resource.content) ? resource.content : []).flatMap(
+    (content: unknown, at: number) => {
+      const { format, attachment } = (
+        typeof content === "object" && content !== null ? content : {}
+      ) as { format?: unknown; attachment?: unknown };
+      if (typeof format !== "object" || format === null) return [];
       const { system, code } = format as { system?: unknown; code?: unknown };
-      return (
-        FORMAT_CODE_SYSTEMS.has(system) &&
+      return FORMAT_CODE_SYSTEMS.has(system) &&
         typeof code === "string" &&
-        code.startsWith("urn:hl7-org:sdwg:ccda-")
-      );
+        code.startsWith("urn:hl7-org:sdwg:ccda-structuredBody:")
+        ? [
+            {
+              content: at,
+              attachment: (typeof attachment === "object" && attachment !== null
+                ? attachment
+                : {}) as Record<string, unknown>,
+            },
+          ]
+        : [];
     },
   );
 }
@@ -342,11 +467,7 @@ function kindOf(resource: Record<string, unknown>): string | undefined {
     resource.hasMember.length > 0
   )
     return undefined;
-  if (
-    resource.resourceType === "DocumentReference" &&
-    holdsCcdaDocument(resource)
-  )
-    return undefined;
+  if (ccdaContents(resource).length > 0) return undefined;
   return recordOf(resource.resourceType, codes(resource.category))?.kind;
 }
 
@@ -361,6 +482,19 @@ export const fhirPull = {
     const found = await read(files, folder);
     if (found === undefined) return undefined;
     const { pull, bytes } = found;
+    const ccda: PullDocument[] = [];
+    for (const { path, retrievedFrom } of pull.documents) {
+      if (path === undefined || retrievedFrom === undefined) continue;
+      const document = await files.read(`${folder}/${path}`);
+      if (document === undefined) throw new Error(`the pull holds no ${path}`);
+      ccda.push({
+        path: `${folder}/${path}`,
+        bytes: document,
+        mediaType: CCDA_MEDIA_TYPE,
+        facts: (importStarted) =>
+          documentFacts(pull, retrievedFrom, importStarted),
+      });
+    }
     return [
       {
         path: `${folder}/${BUNDLE}`,
@@ -369,6 +503,7 @@ export const fhirPull = {
         mediaType: MEDIA_TYPE,
         facts: (importStarted) => facts(pull, importStarted),
       },
+      ...ccda,
     ];
   },
 
