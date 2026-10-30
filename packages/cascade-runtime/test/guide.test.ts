@@ -573,3 +573,23 @@ test("the guide installs the cascade-reference-tables the runtime is tested with
     `the guide does not install ${pinned}`,
   );
 });
+
+test("every column the guide names for a question is a column that question's SELECT gives", async () => {
+  const lines = guide.sections.get("Questions") ?? [];
+  const items: string[] = [];
+  for (const line of lines)
+    if (line.startsWith("- ")) items.push(line);
+    else if (line.startsWith("  ") && items.length > 0)
+      items[items.length - 1] += ` ${line.trim()}`;
+  const asked = await questions(vocabulary.files);
+  const wrong: string[] = [];
+  for (const item of items) {
+    const name = /^- `([^`]+)`/.exec(item)?.[1] ?? "";
+    const text = asked.get(name)?.text ?? "";
+    const head = /\bSELECT\b([\s\S]*?)\bWHERE\b/.exec(text)?.[1] ?? "";
+    const given = new Set(head.match(/\?\w+/g) ?? []);
+    for (const column of item.match(/`\?\w+`/g) ?? [])
+      if (!given.has(column.slice(1, -1))) wrong.push(`${name}: ${column}`);
+  }
+  assert.deepEqual(wrong, []);
+});
