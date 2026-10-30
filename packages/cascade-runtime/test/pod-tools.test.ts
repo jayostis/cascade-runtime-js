@@ -221,8 +221,25 @@ const ROW = {
   classification: [{ iri: `${CASCADE}Pathogenic`, label: "Pathogenic" }],
 };
 
-/** The reads over one pod with a reclassified variant and co-ingredient medications, the tables read only when `tables`; `read` names each read of them. */
-function tableReads(tables: boolean, read: string[] = []) {
+/** A ClinVar series and a product ingredients series, each with its current version. */
+const HELD = [
+  {
+    iri: "urn:test:clinvar",
+    kind: `${CASCADE}VariantClassifications`,
+    current: { iri: CLINVAR_VERSION },
+  },
+  {
+    iri: "urn:test:ingredients",
+    kind: `${CASCADE}ProductIngredients`,
+    current: { iri: INGREDIENTS },
+  },
+];
+
+/**
+ * The reads over one pod with a reclassified variant and co-ingredient medications, the tables read only when
+ * `tables`, holding the series `held`; `read` names each read of them.
+ */
+function tableReads(tables: boolean, read: string[] = [], held = HELD) {
   const pod = {
     ask: async (question: string) =>
       (({ ...RECLASSIFIED, ...CO_INGREDIENT }) as Record<string, Row[]>)[
@@ -254,6 +271,7 @@ function tableReads(tables: boolean, read: string[] = []) {
       tables: async () => {
         read.push("tables");
         return {
+          held: async () => held,
           about: async (codes: readonly string[]) =>
             new Map(
               codes.flatMap((code) =>
@@ -279,48 +297,66 @@ test("reference_table_checks gives, with the tables, each report that differs fr
   const reads = tableReads(true);
   assert.deepEqual(await checks!.run(reads, { pod: "p" }), {
     tables: "on",
-    reportsDifferingFromClinVar: [
-      {
-        entry: VARIANT,
-        report: REPORTED,
-        date: "2019-05-02",
-        classification: `${CASCADE}Benign`,
-        clinvar: {
-          series: "urn:test:clinvar",
-          version: CLINVAR_VERSION,
-          variation: ROW.variation,
-          classification: ROW.classification,
-        },
-      },
-    ],
-    medicationsSharingAnIngredient: [
-      {
-        entries: [
-          { entry: `${ENTRY}a`, code: `${RXNORM}1001`, origin: INGREDIENTS },
-          { entry: `${ENTRY}b`, code: `${RXNORM}1002`, origin: INGREDIENTS },
-        ],
-        ingredient: {
-          code: `${RXNORM}9001`,
-          label: "ingredient a",
-          origin: NAMES,
-        },
-      },
-      {
-        entries: [
-          { entry: `${ENTRY}a`, code: `${RXNORM}1001`, origin: INGREDIENTS },
-          {
-            entry: `${ENTRY}same-code`,
-            code: `${RXNORM}1002`,
-            origin: INGREDIENTS,
+    reportsDifferingFromClinVar: {
+      held: true,
+      versions: [CLINVAR_VERSION],
+      rows: [
+        {
+          entry: VARIANT,
+          report: REPORTED,
+          date: "2019-05-02",
+          classification: `${CASCADE}Benign`,
+          clinvar: {
+            series: "urn:test:clinvar",
+            version: CLINVAR_VERSION,
+            variation: ROW.variation,
+            classification: ROW.classification,
           },
-        ],
-        ingredient: {
-          code: `${RXNORM}9001`,
-          label: "ingredient a",
-          origin: NAMES,
         },
-      },
-    ],
+      ],
+    },
+    medicationsSharingAnIngredient: {
+      held: true,
+      versions: [INGREDIENTS],
+      rows: [
+        {
+          entries: [
+            { entry: `${ENTRY}a`, code: `${RXNORM}1001`, origin: INGREDIENTS },
+            { entry: `${ENTRY}b`, code: `${RXNORM}1002`, origin: INGREDIENTS },
+          ],
+          ingredient: {
+            code: `${RXNORM}9001`,
+            label: "ingredient a",
+            origin: NAMES,
+          },
+        },
+        {
+          entries: [
+            { entry: `${ENTRY}a`, code: `${RXNORM}1001`, origin: INGREDIENTS },
+            {
+              entry: `${ENTRY}same-code`,
+              code: `${RXNORM}1002`,
+              origin: INGREDIENTS,
+            },
+          ],
+          ingredient: {
+            code: `${RXNORM}9001`,
+            label: "ingredient a",
+            origin: NAMES,
+          },
+        },
+      ],
+    },
+  });
+  await reads.close();
+});
+
+test("reference_table_checks with the tables but no ClinVar or product ingredients series held says each is not held, so no list reads as nothing found", async () => {
+  const reads = tableReads(true, [], []);
+  assert.deepEqual(await checks!.run(reads, { pod: "p" }), {
+    tables: "on",
+    reportsDifferingFromClinVar: { held: false },
+    medicationsSharingAnIngredient: { held: false },
   });
   await reads.close();
 });
