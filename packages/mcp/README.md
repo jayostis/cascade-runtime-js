@@ -17,7 +17,7 @@ npx --no-install cascade-mcp --pods <folder>
 
 `<folder>` holds the pods, one folder each, as an app keeps them (`pods/` in a starter app). The reference tables the
 folder holds (`.tables/`) are used as they are; `--check-tables` checks their feeds for newer tables, a network call,
-when the first pod opens.
+when the first pod opens, and turns on `reference_table_checks`.
 
 - `list_pods`: the pods' names.
 - `ask`: a pod's records by the name of a question (allergies, conditions, medications, medication history, lab results,
@@ -26,6 +26,9 @@ when the first pod opens.
 - `find_changes`: what changed in a pod's lab results after a medication started or stopped, strongest first, with the
   numbers; `finding_rows` gives the lab rows behind one, `lab_series` one test's results over time and `timeline` each
   medication's start and end. They state what changed, never why.
+- `reference_table_checks`: with `--check-tables`, each variant report that differs from ClinVar today and each pair of
+  active medications whose codes share an ingredient, each row citing the table version it was read from, and each check
+  saying whether its series is held (`held: false` is not checked, not nothing found); without it, that the tables are off.
 
 Every row names the entry it is about, so an answer can cite it.
 
