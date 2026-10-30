@@ -574,7 +574,19 @@ test("the guide installs the cascade-reference-tables the runtime is tested with
   );
 });
 
-test("every column the guide names for a question is a column that question's SELECT gives", async () => {
+/** The columns a query's outermost SELECT gives: a bare variable, or the one an expression is bound to with AS. */
+function projected(text: string): Set<string> {
+  let head =
+    /\bSELECT\b(?:\s+DISTINCT)?([\s\S]*?)\bWHERE\b/.exec(text)?.[1] ?? "";
+  for (let inner = /\(([^()]*)\)/; inner.test(head);)
+    head = head.replace(
+      inner,
+      (_, body: string) => /\bAS\s+(\?\w+)\s*$/.exec(body)?.[1] ?? "",
+    );
+  return new Set(head.match(/\?\w+/g) ?? []);
+}
+
+test("a question the guide names columns for has each of them, and the guide names every column it gives but labels", async () => {
   const lines = guide.sections.get("Questions") ?? [];
   const items: string[] = [];
   for (const line of lines)
@@ -585,11 +597,16 @@ test("every column the guide names for a question is a column that question's SE
   const wrong: string[] = [];
   for (const item of items) {
     const name = /^- `([^`]+)`/.exec(item)?.[1] ?? "";
-    const text = asked.get(name)?.text ?? "";
-    const head = /\bSELECT\b([\s\S]*?)\bWHERE\b/.exec(text)?.[1] ?? "";
-    const given = new Set(head.match(/\?\w+/g) ?? []);
-    for (const column of item.match(/`\?\w+`/g) ?? [])
-      if (!given.has(column.slice(1, -1))) wrong.push(`${name}: ${column}`);
+    const named = new Set(
+      (item.match(/`\?\w+`/g) ?? []).map((column) => column.slice(1, -1)),
+    );
+    if (named.size === 0) continue;
+    const given = projected(asked.get(name)?.text ?? "");
+    for (const column of named)
+      if (!given.has(column)) wrong.push(`${name} gives no ${column}`);
+    for (const column of given)
+      if (!named.has(column) && !column.endsWith("Label"))
+        wrong.push(`${name}: the guide omits ${column}`);
   }
   assert.deepEqual(wrong, []);
 });

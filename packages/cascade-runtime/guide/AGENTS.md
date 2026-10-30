@@ -473,7 +473,7 @@ async function search(word) {
   `?status`, `?lifecycle`, `?started`, `?written`, `?ended`); `?ended` is bound only when the source states a stop, `?status` is
   as the source writes it, and `?lifecycle` is its class under rule L1 (active,
   stopped, paused, unknown or entered in error), which says whether the
-  medication is still taken.
+  medication is still taken; `?records` is how many records its `?entry` joins.
 - `pod/My procedures`: procedures, newest first.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
@@ -490,7 +490,8 @@ async function search(word) {
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
 - `pod/What each report says of a variant`: each report's ACMG classification
-  of the variant it names (`?report`, `?variant`, `?classification`, `?date`).
+  of the variant it names (`?report`, `?variant`, `?classification`, `?date`),
+  and the lab's organization record and its name (`?lab`, `?labName`).
 - `pod/What everything is called`: every label.
 - `pod/What was seen more than once`: entries with more than one record, by place.
 - `pod/Which file states each thing`: where each thing is stated.
