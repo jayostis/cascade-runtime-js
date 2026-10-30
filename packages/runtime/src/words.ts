@@ -31,6 +31,7 @@ export const KINDS: Readonly<Record<string, string>> = {
   procedure: `${CASCADE}MedicalProcedure`,
   medication: `${CASCADE}PrescribedOrReportedMedication`,
   "lab result": `${CASCADE}LaboratoryTestResult`,
+  note: `${CASCADE}ClinicalNoteOrDocument`,
   variant: `${CASCADE}GeneticVariantFinding`,
   "variant interpretation": `${CASCADE}VariantInterpretation`,
 };
@@ -51,6 +52,8 @@ export const JUSTIFICATIONS: Readonly<Record<string, string>> = {
   "same variation through the table": `${CASCADE}SameVariationThroughTable`,
   "same self-asserted base URL and authorization endpoint on one host": `${CASCADE}SameSelfAssertedBaseUrlAndAuthorizationEndpointOnOneHost`,
   "same business identifier and test code within one organization": `${CASCADE}SameBusinessIdentifierAndTestCodeWithinOneOrganization`,
+  "same note type and text grown within one organization": `${CASCADE}SameNoteTypeAndTextGrownWithinOneOrganization`,
+  "same note type and text": `${CASCADE}SameNoteTypeAndText`,
 };
 
 /** What a code system's name in a step joins: the IRIs of a registered code system, a property's literals, or either. */
@@ -86,6 +89,7 @@ const NAMES = [
   `${CASCADE}procedureName`,
   `${CASCADE}drugName`,
   `${CASCADE}testName`,
+  `${CASCADE}noteOrDocumentTitle`,
   `${CASCADE}hgvsCodingDnaExpression`,
 ];
 
