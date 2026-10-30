@@ -488,6 +488,11 @@ export function fhirFields(r: Record<string, unknown>): Fields {
   for (const name of asArray(r.name)) {
     const { text, family, given } = (name ?? {}) as Record<string, unknown>;
     for (const part of [text, family, ...asArray(given)]) push(f.name, part);
+    const whole = [...asArray(given), family]
+      .map(str)
+      .filter(Boolean)
+      .join(" ");
+    if (whole !== "") f.name.push(whole);
   }
   push(f.id, r.id);
   for (const identifier of asArray(r.identifier))

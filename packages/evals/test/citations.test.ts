@@ -201,6 +201,15 @@ test("a citation holds only when the cited record's own fields say what is claim
     ],
     ["a value written as a number", { cite: ldl, value: 131 }, ok],
     [
+      "a person by full name",
+      {
+        cite: { file: "bundle.json", resource: "Patient/p-1" },
+        name: "Tamsin Vale",
+        date: "1957-09-30",
+      },
+      ok,
+    ],
+    [
       "a pod entry's range is no value",
       { cite: { entry: LDL }, value: "99" },
       otherwise("value 99"),

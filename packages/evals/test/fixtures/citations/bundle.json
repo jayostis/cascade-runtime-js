@@ -133,6 +133,20 @@
         "effectiveDateTime": "2025-07-08T22:30:00Z",
         "conclusion": "No pulmonary embolism. No acute findings."
       }
+    },
+    {
+      "fullUrl": "https://north.demo.invalid/fhir/Patient/p-1",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "p-1",
+        "name": [
+          {
+            "family": "Vale",
+            "given": ["Tamsin"]
+          }
+        ],
+        "birthDate": "1957-09-30"
+      }
     }
   ]
 }
