@@ -106,6 +106,8 @@ export interface Setup {
   readonly between?: () => void;
   /** Asks the server for its report once the pull is done. */
   readonly report?: boolean;
+  /** Cancels the pull. */
+  readonly signal?: AbortSignal;
 }
 
 /** Signs in to the demo hospital as the patient and pulls with `DEMO_PLAN`, unless the setup says otherwise. */
@@ -140,6 +142,7 @@ export async function pulled(
     const result = await pull(connection, setup.plan ?? DEMO_PLAN, {
       limits: { ...FAST, ...setup.limits },
       ...(setup.now ? { now: setup.now } : {}),
+      ...(setup.signal ? { signal: setup.signal } : {}),
     });
     if (setup.report !== true) return { pull: result, seen };
     return {

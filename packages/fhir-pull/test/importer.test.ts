@@ -327,6 +327,113 @@ test("each C-CDA document a pull read is a document of its own, stated with wher
   );
 });
 
+test("a pull's saved C-CDA document names where it was read by an https: URL on the hospital's origin, as the URL writes it, and nothing else, so a saved pull states no fact it was not given", async () => {
+  const read = {
+    documentReference: "DocumentReference/n2",
+    content: 0,
+    url: "Binary/n2",
+    path: "document-1.xml",
+  };
+  const files = (retrievedFrom: string) => {
+    const saved = new Map(pullFiles(PULL, "north"));
+    const { bundle, ...rest } = PULL;
+    void bundle;
+    saved.set(
+      "north/pull.json",
+      new TextEncoder().encode(
+        JSON.stringify({ ...rest, documents: [{ ...read, retrievedFrom }] }),
+      ),
+    );
+    saved.set("north/document-1.xml", CCD);
+    return filesOf(saved);
+  };
+  for (const retrievedFrom of [
+    `${BASE}/Binary/n2> . <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> <https://ns.cascadeprotocol.org/cascade#serverBaseUrl> "https://other.example/fhir" . <urn:x> <urn:y> <urn:z`,
+    `${BASE}/Binary/a|b`,
+    "https://other.example/fhir/Binary/n2",
+    `http://cascade-north.demo.invalid/fhir/Binary/n2`,
+    `https://user:pw@cascade-north.demo.invalid/fhir/Binary/n2`,
+    `${BASE}/Binary/../Binary/n2`,
+  ])
+    await assert.rejects(
+      fhirPull.documents(files(retrievedFrom), "north"),
+      {
+        message:
+          "pull.json's documents is not a list of C-CDA documents, each a DocumentReference's content, read into a file of the folder or said why not",
+      },
+      retrievedFrom,
+    );
+  const [, document] = (await fhirPull.documents(
+    files(`${BASE}/Binary/a%7Cb`),
+    "north",
+  ))!;
+  assert.match(
+    new TextDecoder().decode(document!.facts("2026-10-07T08:00:00Z")),
+    /<http:\/\/purl\.org\/pav\/retrievedFrom> <https:\/\/cascade-north\.demo\.invalid\/fhir\/Binary\/a%7Cb> \./,
+  );
+});
+
+test("the look at a pull counts each entry of each C-CDA document it read, by the document's custodian and section, as a downloaded C-CDA's look does", async () => {
+  const ccd = new TextEncoder().encode(`<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <effectiveTime value="20260901"/>
+  <recordTarget><patientRole><id root="2.16.840.1.113883.19.5" extension="p1"/></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>Kestrel Harbor Hospital</name></representedCustodianOrganization></assignedCustodian></custodian>
+  <component><structuredBody>
+    <component><section><title>Problems</title><entry/><entry/></section></component>
+    <component><section><title>Allergies</title><entry/></section></component>
+  </structuredBody></component>
+</ClinicalDocument>`);
+  const bundle = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      {
+        fullUrl: `${BASE}/Patient/p1`,
+        resource: { resourceType: "Patient", id: "p1" },
+      },
+      {
+        fullUrl: `${BASE}/DocumentReference/n2`,
+        resource: BUNDLE.entry.find(({ fullUrl }) => fullUrl.endsWith("/n2"))!
+          .resource,
+      },
+    ],
+  };
+  const saved = pullFiles(
+    {
+      ...PULL,
+      bundle,
+      documents: [
+        {
+          documentReference: "DocumentReference/n2",
+          content: 0,
+          url: "Binary/n2",
+          retrievedFrom: `${BASE}/Binary/n2`,
+          bytes: ccd,
+        },
+      ],
+    },
+    "north",
+  );
+  assert.deepEqual(await fhirPull.index(filesOf(saved), "north"), [
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Problems",
+      received: "2026-09-01",
+    },
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Problems",
+      received: "2026-09-01",
+    },
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Allergies",
+      received: "2026-09-01",
+    },
+  ]);
+});
+
 test("a pull states the class of each search it answered and each it was refused", async () => {
   const scope = async (changed: Record<string, unknown>) => {
     const [document] = (await fhirPull.documents(
