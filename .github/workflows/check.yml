@@ -34,9 +34,11 @@ jobs:
         with:
           path: cascade-runtime-js
           persist-credentials: false
+      # Node 24: on 22 its V8 aborts a test file now and then ("unreachable code" in the deoptimizer). The package,
+      # docs site, starter and installed jobs stay on 22, the oldest Node the package supports.
       - uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
