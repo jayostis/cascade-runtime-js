@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/answer.schema.json",
+  "title": "A subject's answer",
+  "description": "Up to ten questions for the doctor, most important first. Each is a chain: the facts the records state (each cited, with the fields a program checks against the cited record), what the records lack (each with what it looks for and what was looked through, and for the pod the query that looked), the model's own medical knowledge that links them, and the question.",
+  "type": "object",
+  "required": ["questions"],
+  "additionalProperties": false,
+  "$defs": {
+    "cite": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["file", "line"],
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["file", "resource"],
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resource": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["entry"],
+          "additionalProperties": false,
+          "properties": {
+            "entry": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "fact": {
+      "type": "object",
+      "required": ["says", "provider", "cite"],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["value"]
+        },
+        {
+          "required": ["status"]
+        },
+        {
+          "required": ["code"]
+        },
+        {
+          "required": ["name"]
+        },
+        {
+          "required": ["id"]
+        },
+        {
+          "required": ["date"]
+        },
+        {
+          "required": ["quote"]
+        }
+      ],
+      "dependentRequired": {
+        "unit": ["value"],
+        "dateKind": ["date"]
+      },
+      "properties": {
+        "says": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "cite": {
+          "$ref": "#/$defs/cite"
+        },
+        "value": {
+          "type": ["string", "number"],
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": ["string", "number"],
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3
+        },
+        "id": {
+          "type": ["string", "number"],
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "dateKind": {
+          "enum": ["when", "start", "end", "recorded"]
+        },
+        "quote": {
+          "type": "string",
+          "pattern": "\\S+\\s+\\S+"
+        }
+      }
+    },
+    "absence": {
+      "type": "object",
+      "required": ["what", "match", "coverage"],
+      "additionalProperties": false,
+      "properties": {
+        "what": {
+          "type": "string"
+        },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "terms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "after": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Only a record dated on or after this day would count against the absence."
+            }
+          }
+        },
+        "coverage": {
+          "type": "string"
+        },
+        "query": {
+          "type": "object",
+          "required": ["tool", "input"],
+          "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "string"
+            },
+            "input": {
+              "type": "object"
+            }
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "questions": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": [
+          "n",
+          "question",
+          "why",
+          "confidence",
+          "facts",
+          "absences",
+          "knowledge"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string"
+          },
+          "confidence": {
+            "enum": ["high", "medium", "low"]
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/fact"
+            }
+          },
+          "absences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/absence"
+            }
+          },
+          "knowledge": {
+            "type": "object",
+            "required": ["says"],
+            "additionalProperties": false,
+            "properties": {
+              "says": {
+                "type": "string"
+              },
+              "guideline": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -15,7 +15,8 @@
     "packages/site",
     "packages/graphdb",
     "packages/cascade-runtime",
-    "packages/mcp"
+    "packages/mcp",
+    "packages/evals"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -37,7 +38,10 @@
     "serve:pages": "tsc -b && node packages/site/dist/src/node/cli.js serve-pages",
     "ask": "tsc -b && node packages/site/dist/src/node/cli.js ask",
     "graphdb": "tsc -b && node packages/graphdb/dist/src/node/cli.js",
-    "story:pulls": "tsc -b && node packages/cascade-runtime/dist/test/story-pulls.js"
+    "story:pulls": "tsc -b && node packages/cascade-runtime/dist/test/story-pulls.js",
+    "evals": "tsc -b packages/evals && node packages/evals/dist/src/cli.js",
+    "evals:record": "tsc -b packages/evals && node packages/evals/dist/src/cli.js record-history",
+    "evals:report": "tsc -b packages/evals && node packages/evals/dist/src/cli.js report"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

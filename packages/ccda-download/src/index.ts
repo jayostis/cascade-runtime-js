@@ -197,7 +197,7 @@ function headerOf(bytes: Uint8Array): Header | undefined {
     }
     if (path.pop() === "section" && path.length === 4) section = undefined;
   });
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   try {
     for (let from = 0; from < bytes.length; from += SLICE)
       parser.write(
@@ -209,6 +209,15 @@ function headerOf(bytes: Uint8Array): Header | undefined {
     throw error;
   }
   return header;
+}
+
+/** Whether the bytes are a well-formed CDA ClinicalDocument whose header this importer reads, as the Bridge must. */
+export function isCdaDocument(bytes: Uint8Array): boolean {
+  try {
+    return headerOf(bytes) !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /**

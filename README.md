@@ -47,6 +47,9 @@ agent.
   Alex Rivera's, from Apple Health exports, Priya Natarajan's, from an
   export and C-CDA downloads together, and Martin Okafor's, two FHIR reports of
   one variant beside what ClinVar says today
+- [The eval runs](https://jayostis.github.io/cascade-runtime-js/evals/): how the
+  pod, through `cascade-mcp`, does against the same records pasted into a chat,
+  on synthetic people, with every citation checked and every cost
 
 ### In this README
 
@@ -119,6 +122,7 @@ published query by its file.
 | `packages/graphdb`         | puts a pod and its derived state in GraphDB, and asks it       |
 | `packages/cascade-runtime` | what an app imports, and the build that packs it               |
 | `packages/mcp`             | `cascade-mcp`, an MCP server on stdio over a folder of pods    |
+| `packages/evals`           | the eval harness: the pod against pasted records, judged blind |
 
 ## Working on this repository
 
