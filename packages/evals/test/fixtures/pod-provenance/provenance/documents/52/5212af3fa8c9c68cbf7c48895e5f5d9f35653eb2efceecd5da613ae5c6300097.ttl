@@ -1,0 +1,9 @@
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://purl.org/pav/retrievedOn> "2026-10-15T00:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Entity> .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/ns/prov#qualifiedAttribution> _:47f55b8719c62129c5af2cd52aeaebac .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <https://ns.cascadeprotocol.org/cascade#answeredAsOf> "2026-10-15T00:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <https://ns.cascadeprotocol.org/cascade#authenticatedPatient> "Patient/story-stopped" .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <https://ns.cascadeprotocol.org/cascade#serverBaseUrl> "https://cascade-north.demo.invalid/fhir" .
+_:47f55b8719c62129c5af2cd52aeaebac <http://www.w3.org/ns/prov#agent> _:803bd8e7ac4ac2d7c8ba65f82b9e9516 .
+_:47f55b8719c62129c5af2cd52aeaebac <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> .
+_:803bd8e7ac4ac2d7c8ba65f82b9e9516 <http://www.w3.org/2000/01/rdf-schema#label> "Cascade North Demo Hospital" .

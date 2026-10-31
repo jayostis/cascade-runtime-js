@@ -1,0 +1,11 @@
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#drugName> "Jardiance 10 mg tablet" .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#leadMember> <urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#lifecycle> <https://ns.cascadeprotocol.org/cascade#MedicationActive> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#memberCurrentValues> <#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3-4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#mergedFrom> <urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#prescribedOrReported> "prescribed" .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#prescriptionWrittenDate> "2025-02-20"^^<http://www.w3.org/2001/XMLSchema#date> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#rxNormCode> <https://ns.cascadeprotocol.org/codes/rxnorm/1545658> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#statusFrom> <urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> .
+<#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3> <https://ns.cascadeprotocol.org/cascade#workflowStatus> "active" .

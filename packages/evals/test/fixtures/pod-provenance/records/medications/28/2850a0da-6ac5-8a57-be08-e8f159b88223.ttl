@@ -1,0 +1,3 @@
+<urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://ns.cascadeprotocol.org/cascade#PrescribedOrReportedMedication> .
+<urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> <https://ns.cascadeprotocol.org/cascade#sourceRecordId> "story-stopped-medrx-2" .
+<urn:uuid:2850a0da-6ac5-8a57-be08-e8f159b88223> <https://ns.cascadeprotocol.org/cascade#sourceUrl> <https://cascade-north.demo.invalid/fhir/MedicationRequest/story-stopped-medrx-2> .
