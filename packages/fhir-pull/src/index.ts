@@ -137,6 +137,10 @@ const KINDS: ReadonlyMap<string, RecordOfType> = new Map([
     "DocumentReference",
     { kind: "Note or document", class: "ClinicalNoteOrDocument" },
   ],
+  [
+    "MedicationDispense",
+    { kind: "Medication dispense", class: "MedicationDispense" },
+  ],
 ]);
 const LAB_RESULT: RecordOfType = {
   kind: "Lab result",
