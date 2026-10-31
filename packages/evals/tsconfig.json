@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "resolveJsonModule": true
+  },
+  "include": ["src", "test"],
+  "references": [
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../cascade-runtime"
+    },
+    {
+      "path": "../mcp"
+    }
+  ]
+}

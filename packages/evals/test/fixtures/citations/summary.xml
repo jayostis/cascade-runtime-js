@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <title>Hand-made summary for the citation checker</title>
+  <component><structuredBody>
+  <component><section>
+    <title>Immunizations</title>
+    <entry>
+      <substanceAdministration classCode="SBADM" moodCode="EVN">
+        <id root="2.16.840.1.113883.19.5" extension="VX-251108-2"/>
+        <statusCode code="completed"/>
+        <effectiveTime value="20251108"/>
+        <consumable><manufacturedProduct><manufacturedMaterial>
+          <code code="187" displayName="zoster vaccine recombinant, adjuvanted (Shingrix)"/>
+        </manufacturedMaterial></manufacturedProduct></consumable>
+      </substanceAdministration>
+    </entry>
+  </section></component>
+  <component><section>
+    <title>Results</title>
+    <entry>
+      <organizer classCode="BATTERY" moodCode="EVN">
+        <effectiveTime value="20260303"/>
+        <component>
+          <observation classCode="OBS" moodCode="EVN">
+            <id root="2.16.840.1.113883.19.5" extension="LAB-61209"/>
+            <code code="3016-3" displayName="Thyrotropin [Units/volume] in Serum or Plasma"/>
+            <statusCode code="completed"/>
+            <effectiveTime value="20260303091500"/>
+            <value xsi:type="PQ" value="7.90" unit="m[IU]/L"/>
+            <referenceRange><observationRange><value xsi:type="IVL_PQ"><low value="0.40" unit="m[IU]/L"/><high value="4.00" unit="m[IU]/L"/></value></observationRange></referenceRange>
+          </observation>
+        </component>
+        <component>
+          <observation classCode="OBS" moodCode="EVN">
+            <id root="2.16.840.1.113883.19.5" extension="LAB-61210"/>
+            <code code="3024-7" displayName="Thyroxine (T4) free [Mass/volume] in Serum or Plasma"/>
+            <statusCode code="completed"/>
+            <effectiveTime value="20260303091500"/>
+            <value xsi:type="PQ" value="1.0" unit="ng/dL"/>
+          </observation>
+        </component>
+      </organizer>
+    </entry>
+  </section></component>
+  <component><section>
+    <title>Discharge instructions</title>
+    <text><paragraph>Have your TSH and free T4 repeated in 6-8 weeks.</paragraph></text>
+  </section></component>
+  </structuredBody></component>
+</ClinicalDocument>

@@ -1,0 +1,11 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "tier": "custom",
+  "cases": ["tamsin-vale"],
+  "arms": ["pod", "records"],
+  "subjects": ["claude-opus-5-5"],
+  "repeats": 1,
+  "judges": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+  "cap": { "tokens": 3000000, "usd": 3 },
+  "concurrency": 2
+}

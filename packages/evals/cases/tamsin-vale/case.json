@@ -1,0 +1,44 @@
+{
+  "$schema": "../../schemas/case.schema.json",
+  "id": "tamsin-vale",
+  "synthetic": true,
+  "person": { "name": "Tamsin Vale", "pronoun": "her" },
+  "today": "2026-10-30",
+  "description": {
+    "summary": "The small control: one source, three FHIR pulls, 33.5 KB. Pasted records should be cheap here, and the pod should match them.",
+    "who": "Tamsin Vale, born 1957-09-30, 69 on the eval date. Type 2 diabetes since 2022: metformin from 2022-03-01, stopped 2024-04-15 with no reason given, A1c rising to 8.3; empagliflozin and atorvastatin started 2025-02-20, A1c back to 6.9 by 2026-02-16. Seen for chest pain on 2025-07-08: D-dimer high, CT angiography negative, pulmonary embolism refuted. A stool test (FIT) was positive on 2025-11-04.",
+    "sources": "Cascade North Demo Hospital, three FHIR pulls: 2024-02-01 and 2025-02-01 (the vocabulary's kit) and 2026-10-15 (made for this case).",
+    "planted": "Two gaps: no urine albumin test in a person with diabetes whose eGFR is checked every year; a positive FIT with no colonoscopy after it.",
+    "traps": "Two traps: the rise in A1c after metformin stopped is out of date (empagliflozin was started, and A1c came down); a pulmonary embolism that was ruled out (verification status refuted, and the CT report says none).",
+    "guidelines": [
+      "ADA Standards of Care: urine albumin-to-creatinine ratio at diagnosis and at least yearly in type 2 diabetes",
+      "USPSTF 2021 and the US Multi-Society Task Force: a colonoscopy after a positive stool test",
+      "ADA Section 6: A1c at least twice a year when at goal",
+      "ADA Section 10 and ACC/AHA 2018: a lipid panel 4-12 weeks after starting a statin"
+    ],
+    "from": "The hand-run comparison of 2026-10-30, round 1's small control (reports/pod_vs_chat_comparison.md); its key was reviewed by an independent agent against cited US guidance, not by a clinician."
+  },
+  "downloads": {
+    "kit": [
+      {
+        "from": "conformance/tamsin-vale/scripted-input/tamsin/downloads/north-2024-02",
+        "to": "north-2024-02"
+      },
+      {
+        "from": "conformance/tamsin-vale/scripted-input/tamsin/downloads/north-2025-02",
+        "to": "north-2025-02"
+      }
+    ],
+    "generate": "generate.mjs",
+    "sha256": "2f5b553bf34e9ac626a9884f109f6e11a81a3fa6e4caf60fee9cea08bde5a46b"
+  },
+  "imports": ["north-2024-02", "north-2025-02", "north-2026-10"],
+  "reading": [
+    "north-2024-02/bundle.json",
+    "north-2024-02/pull.json",
+    "north-2025-02/bundle.json",
+    "north-2025-02/pull.json",
+    "north-2026-10/bundle.json",
+    "north-2026-10/pull.json"
+  ]
+}

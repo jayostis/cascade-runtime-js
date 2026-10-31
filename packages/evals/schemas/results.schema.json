@@ -1,0 +1,953 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/results.schema.json",
+  "title": "An eval run's results",
+  "description": "Everything one run did, machine-readable, and the only source the report site is built from. A run driven from Claude Code fills each model call from the agent's transcript (usageSource transcript); a runner on the Claude API fills the same fields from each response's usage (usageSource api). Tokens are the API's: input (uncached), cacheCreation, cacheRead and output; total is all four.",
+  "type": "object",
+  "required": [
+    "schema",
+    "run",
+    "versions",
+    "budget",
+    "cases",
+    "jobs",
+    "toolCalls",
+    "checks",
+    "judgeDiscipline",
+    "answers",
+    "grades",
+    "scores",
+    "agreement",
+    "slices"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "money": {
+      "type": "number",
+      "minimum": 0
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cite": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["file", "line"],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["file", "resource"],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["entry"],
+          "properties": {
+            "entry": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "type": "object",
+      "required": ["input", "cacheCreation", "cacheRead", "output", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheCreation": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheRead": {
+          "$ref": "#/$defs/count"
+        },
+        "output": {
+          "$ref": "#/$defs/count"
+        },
+        "total": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "call": {
+      "type": "object",
+      "description": "One model call.",
+      "required": [
+        "at",
+        "model",
+        "input",
+        "cacheCreation",
+        "cacheRead",
+        "output",
+        "toolCalls",
+        "usd"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheCreation": {
+          "$ref": "#/$defs/count"
+        },
+        "cacheRead": {
+          "$ref": "#/$defs/count"
+        },
+        "output": {
+          "$ref": "#/$defs/count"
+        },
+        "toolCalls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "calls",
+        "models",
+        "tokens",
+        "contextPeak",
+        "toolCalls",
+        "wallSeconds",
+        "cost",
+        "usageSource"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "$ref": "#/$defs/count"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "contextPeak": {
+          "$ref": "#/$defs/count"
+        },
+        "toolCalls": {
+          "type": "object",
+          "required": ["total", "byName"],
+          "additionalProperties": false,
+          "properties": {
+            "total": {
+              "$ref": "#/$defs/count"
+            },
+            "byName": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "wallSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "object",
+          "required": ["usd", "basis", "priceTable"],
+          "additionalProperties": false,
+          "properties": {
+            "usd": {
+              "type": ["number", "null"],
+              "minimum": 0
+            },
+            "basis": {
+              "enum": ["exact", "estimated"]
+            },
+            "priceTable": {
+              "type": "string"
+            }
+          }
+        },
+        "usageSource": {
+          "enum": ["api", "transcript", "agent-total"]
+        }
+      }
+    },
+    "estimate": {
+      "type": "object",
+      "required": ["tokens", "usd"],
+      "properties": {
+        "tokens": {
+          "$ref": "#/$defs/count"
+        },
+        "usd": {
+          "$ref": "#/$defs/money"
+        },
+        "basis": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "cascade-evals/results/1"
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "id",
+        "tier",
+        "runner",
+        "created",
+        "finished",
+        "wallSeconds",
+        "stoppedAtCap",
+        "config",
+        "configSha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tier": {
+          "enum": ["smoke", "standard", "full", "custom"]
+        },
+        "runner": {
+          "enum": ["claude-code", "api"]
+        },
+        "created": {
+          "type": "string"
+        },
+        "finished": {
+          "type": "string"
+        },
+        "wallSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stoppedAtCap": {
+          "type": "boolean"
+        },
+        "config": {
+          "type": "object"
+        },
+        "configSha256": {
+          "type": "string"
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "required": [
+        "harness",
+        "podPackages",
+        "components",
+        "prompts",
+        "priceTable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "harness": {
+          "type": "object",
+          "required": ["commit", "uncommitted"],
+          "properties": {
+            "commit": {
+              "$ref": "#/$defs/commit"
+            },
+            "uncommitted": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "podPackages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "repository", "commit", "source"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "repository": {
+                "type": "string"
+              },
+              "commit": {
+                "$ref": "#/$defs/commit"
+              },
+              "source": {
+                "type": "string"
+              },
+              "uncommitted": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "prompts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "priceTable": {
+          "type": "string"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["cap", "estimate", "spent", "byRole"],
+      "additionalProperties": false,
+      "properties": {
+        "cap": {
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "$ref": "#/$defs/count"
+            },
+            "usd": {
+              "$ref": "#/$defs/money"
+            }
+          }
+        },
+        "estimate": {
+          "$ref": "#/$defs/estimate"
+        },
+        "spent": {
+          "type": "object",
+          "required": ["tokens", "usd", "basis"],
+          "properties": {
+            "tokens": {
+              "$ref": "#/$defs/count"
+            },
+            "usd": {
+              "$ref": "#/$defs/money"
+            },
+            "basis": {
+              "enum": ["exact", "estimated"]
+            }
+          }
+        },
+        "byRole": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["tokens", "usd"],
+            "properties": {
+              "tokens": {
+                "$ref": "#/$defs/count"
+              },
+              "usd": {
+                "$ref": "#/$defs/money"
+              }
+            }
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "downloadsSha256",
+          "keySha256",
+          "imports",
+          "documents"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "downloadsSha256": {
+            "type": "string"
+          },
+          "keySha256": {
+            "type": "string"
+          },
+          "imports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["download", "records"],
+              "properties": {
+                "download": {
+                  "type": "string"
+                },
+                "records": {
+                  "$ref": "#/$defs/count"
+                },
+                "refused": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "documents": {
+            "type": "array",
+            "description": "The records arm's documents in reading order, with their sizes.",
+            "items": {
+              "type": "object",
+              "required": ["file", "bytes"],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "bytes": {
+                  "$ref": "#/$defs/count"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "role", "model", "tag", "status", "estimate"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "enum": ["subject", "judge", "harness"]
+          },
+          "case": {
+            "type": "string"
+          },
+          "arm": {
+            "enum": ["pod", "records"]
+          },
+          "model": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tag": {
+            "type": "string"
+          },
+          "inputsHash": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "dispatched",
+              "running",
+              "done",
+              "reused",
+              "skipped",
+              "failed"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reusedFrom": {
+            "type": "string"
+          },
+          "estimate": {
+            "$ref": "#/$defs/estimate"
+          },
+          "stats": {
+            "$ref": "#/$defs/stats"
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/call"
+            }
+          },
+          "answer": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dispatched": {
+            "type": "boolean"
+          },
+          "toolUses": {
+            "type": "array",
+            "description": "The tools the agent used, from its transcript (a written file's content left out).",
+            "items": {
+              "type": "object",
+              "required": ["name", "input"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "workdir": {
+            "type": "string"
+          },
+          "packet": {
+            "type": "string"
+          },
+          "packetSha256": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "toolCalls": {
+      "type": "array",
+      "description": "Every pod-arm tool call: its input, and the rows and entries it returned.",
+      "items": {
+        "type": "object",
+        "required": [
+          "job",
+          "at",
+          "tool",
+          "input",
+          "ok",
+          "rows",
+          "entries",
+          "milliseconds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "job": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "rows": {
+            "$ref": "#/$defs/count"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "milliseconds": {
+            "$ref": "#/$defs/count"
+          },
+          "answer": {
+            "type": "string",
+            "description": "The answer's text, which absences are checked against."
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "description": "The program checks of each subject's answer, by job id.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "answerValid",
+          "answerErrors",
+          "citations",
+          "absences",
+          "trapWording",
+          "discipline"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "answerValid": {
+            "type": "boolean"
+          },
+          "answerErrors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["question", "fact", "cite", "ok"],
+              "properties": {
+                "question": {
+                  "type": "integer"
+                },
+                "fact": {
+                  "type": "integer"
+                },
+                "cite": {
+                  "$ref": "#/$defs/cite"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "foundAt": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "shows": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "absences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["question", "absence", "backed"],
+              "properties": {
+                "question": {
+                  "type": "integer"
+                },
+                "absence": {
+                  "type": "integer"
+                },
+                "backed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "trapWording": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["item", "question", "pattern", "means", "text"],
+              "properties": {
+                "item": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "integer"
+                },
+                "pattern": {
+                  "type": "string"
+                },
+                "means": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "discipline": {
+            "type": "object",
+            "required": ["ok", "violations"],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "violations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "answers": {
+      "type": "object",
+      "description": "Each subject's final answer, by job id, as it wrote it (schemas/answer.schema.json when valid)."
+    },
+    "grades": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "subject",
+          "judge",
+          "items",
+          "falseQuestions",
+          "extraFinds",
+          "chains"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "judge": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array"
+          },
+          "falseQuestions": {
+            "type": "array"
+          },
+          "extraFinds": {
+            "type": "array"
+          },
+          "chains": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "scores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "subject",
+          "judge",
+          "found",
+          "partly",
+          "missed",
+          "gaps",
+          "trapsRaised",
+          "falseQuestions",
+          "extraFinds",
+          "chainsComplete",
+          "chainsFaithful",
+          "questions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "judge": {
+            "type": "string"
+          },
+          "found": {
+            "$ref": "#/$defs/count"
+          },
+          "partly": {
+            "$ref": "#/$defs/count"
+          },
+          "missed": {
+            "$ref": "#/$defs/count"
+          },
+          "gaps": {
+            "$ref": "#/$defs/count"
+          },
+          "trapsRaised": {
+            "$ref": "#/$defs/count"
+          },
+          "falseQuestions": {
+            "$ref": "#/$defs/count"
+          },
+          "extraFinds": {
+            "$ref": "#/$defs/count"
+          },
+          "chainsComplete": {
+            "$ref": "#/$defs/count"
+          },
+          "chainsFaithful": {
+            "$ref": "#/$defs/count"
+          },
+          "questions": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "agreement": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["case", "judges", "items", "agreed", "kappa"],
+        "properties": {
+          "case": {
+            "type": "string"
+          },
+          "judges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "$ref": "#/$defs/count"
+          },
+          "agreed": {
+            "$ref": "#/$defs/count"
+          },
+          "kappa": {
+            "type": ["number", "null"]
+          }
+        }
+      }
+    },
+    "slices": {
+      "type": "array",
+      "description": "Each key item's pod graph slice, taken from the case's pod at run time: its entries, their records per source and each record's state.",
+      "items": {
+        "type": "object",
+        "required": ["case", "item", "nodes", "edges"],
+        "properties": {
+          "case": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "required": ["id", "kind", "label"],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["entry", "record", "lab", "condition"]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to"],
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "judgeDiscipline": {
+      "type": "object",
+      "description": "Each judge's tools beyond reading its packet and writing its verdict, by job id.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["ok", "violations"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "source": "The hand-run comparison of 2026-10-30 (reports/pod_vs_chat_comparison.md, its Results table): each run's tokens as Claude Code reported an agent's total, read here as its final context. The estimate turns a final context into what a run processes: calls x (base + context) / 2. Used only until a recorded run of the same case, arm and model replaces it.",
+  "base": 20000,
+  "subjectOutput": 8000,
+  "podCalls": 25,
+  "runs": [
+    {
+      "case": "priya-natarajan",
+      "arm": "records",
+      "model": "opus",
+      "context": 271000
+    },
+    {
+      "case": "priya-natarajan",
+      "arm": "pod",
+      "model": "opus",
+      "context": 115000
+    },
+    {
+      "case": "priya-natarajan",
+      "arm": "records",
+      "model": "haiku",
+      "context": 300000
+    },
+    {
+      "case": "priya-natarajan",
+      "arm": "pod",
+      "model": "haiku",
+      "context": 94000
+    },
+    {
+      "case": "tamsin-vale",
+      "arm": "records",
+      "model": "opus",
+      "context": 66000
+    },
+    { "case": "tamsin-vale", "arm": "pod", "model": "opus", "context": 84000 },
+    {
+      "case": "priya-natarajan-at-scale",
+      "arm": "records",
+      "model": "opus",
+      "context": 311000
+    },
+    {
+      "case": "priya-natarajan-at-scale",
+      "arm": "pod",
+      "model": "opus",
+      "context": 126000
+    }
+  ]
+}

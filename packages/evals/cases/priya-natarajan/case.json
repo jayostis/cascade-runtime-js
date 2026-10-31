@@ -1,0 +1,112 @@
+{
+  "$schema": "../../schemas/case.schema.json",
+  "id": "priya-natarajan",
+  "synthetic": true,
+  "person": {
+    "name": "Priya Natarajan",
+    "pronoun": "her"
+  },
+  "today": "2026-10-30",
+  "description": {
+    "summary": "Seven sources, sixteen downloads, 490 KB: the history fits a model's context, so pasted records are the strong baseline.",
+    "who": "Priya Natarajan, born 1968-11-04, 57 on the eval date, never smoker. Hypertension since 2023, type 2 diabetes diagnosed 2025-09-22, hay fever; aspirin allergy (hives), lisinopril intolerance (cough). Kestrel Harbor Hospital treated her hypertension; Fernhill Family Clinic is her primary care; an emergency visit at Saltmarsh Regional (kidney stone), an admission at Kestrel Harbor in March 2026 (sodium 123), vaccines at Alder Street Pharmacy, an eye exam at Clearwater Eye Associates, and Fernhill's labs run at Northbay Clinical Laboratories.",
+    "sources": "The vocabulary kit's first nine downloads (Apple Health exports and C-CDAs from Kestrel Harbor and Fernhill, two of them refused on purpose), then seven made for this case: Saltmarsh, Fernhill twice, Kestrel Harbor, Clearwater, Northbay and Alder Street.",
+    "planted": "Six gaps: the second Shingrix dose missing; hydrochlorothiazide stopped at the hospital and still active at the clinic and pharmacy; no urine albumin test; no statin at 57 with diabetes and LDL 142; a TSH of 7.9 never repeated; a 7 mm lung nodule mentioned only in the text of an emergency CT report.",
+    "traps": "Four traps: a diabetic eye exam done at an optometrist; lisinopril properly switched to losartan for cough; the same results arriving from the clinic and the lab; a normal colonoscopy in 2019 (next due 2029).",
+    "guidelines": [
+      "ACIP: recombinant zoster vaccine, two doses 2-6 months apart, adults 50 and older",
+      "ADA Standards of Care: urine albumin-to-creatinine ratio at diagnosis and yearly; moderate-intensity statin for diabetes aged 40-75",
+      "Fleischner Society 2017: a 6-8 mm solid nodule in a low-risk person, CT at 6-12 months",
+      "USPSTF 2021: colonoscopy every 10 years after a normal one"
+    ],
+    "from": "The hand-run comparison of 2026-10-30, round 1 (reports/pod_vs_chat_comparison.md); its key was reviewed by an independent agent against cited US guidance, not by a clinician."
+  },
+  "downloads": {
+    "kit": [
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/x-e2",
+        "to": "x-e2"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/kestrel-harbor-health-summary.xml",
+        "to": "kestrel-harbor-health-summary.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/kestrel-harbor-health-summary-2.xml",
+        "to": "kestrel-harbor-health-summary-2.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/kestrel-harbor-health-summary-3.xml",
+        "to": "kestrel-harbor-health-summary-3.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/fernhill-family-clinic-summary.xml",
+        "to": "fernhill-family-clinic-summary.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/x-e8",
+        "to": "x-e8"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/fernhill-family-clinic-summary-2.xml",
+        "to": "fernhill-family-clinic-summary-2.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/export_cda.xml",
+        "to": "export_cda.xml"
+      },
+      {
+        "from": "conformance/priya-natarajan/scripted-input/priya/downloads/kestrel-harbor-health-summary-4.xml",
+        "to": "kestrel-harbor-health-summary-4.xml"
+      }
+    ],
+    "generate": "generate.mjs",
+    "sha256": "e943c0c4c380fc21155c2faf3ceb4ec18a7c37623ec9887f2636c39a21ada394"
+  },
+  "imports": [
+    "x-e2/apple_health_export",
+    "kestrel-harbor-health-summary.xml",
+    "kestrel-harbor-health-summary-2.xml",
+    "kestrel-harbor-health-summary-3.xml",
+    "fernhill-family-clinic-summary.xml",
+    "x-e8/apple_health_export",
+    "fernhill-family-clinic-summary-2.xml",
+    "export_cda.xml",
+    "kestrel-harbor-health-summary-4.xml",
+    "saltmarsh-regional-medical-center-ed-summary.xml",
+    "fernhill-family-clinic-summary-3.xml",
+    "kestrel-harbor-health-summary-5.xml",
+    "clearwater-eye-associates-visit-summary.xml",
+    "northbay-clinical-laboratories-results.xml",
+    "fernhill-family-clinic-summary-4.xml",
+    "alder-street-pharmacy-patient-record.xml"
+  ],
+  "reading": [
+    "x-e2/apple_health_export/clinical-records/AllergyIntolerance-alg-aspirin-1.json",
+    "x-e2/apple_health_export/clinical-records/Condition-cond-htn-1.json",
+    "x-e2/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
+    "x-e2/apple_health_export/clinical-records/Observation-obs-potassium-20250327.json",
+    "x-e2/apple_health_export/export.xml",
+    "kestrel-harbor-health-summary.xml",
+    "kestrel-harbor-health-summary-2.xml",
+    "kestrel-harbor-health-summary-3.xml",
+    "fernhill-family-clinic-summary.xml",
+    "x-e8/apple_health_export/clinical-records/AllergyIntolerance-alg-aspirin-1.json",
+    "x-e8/apple_health_export/clinical-records/Condition-cond-htn-1.json",
+    "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-amlodipine-1.json",
+    "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
+    "x-e8/apple_health_export/clinical-records/Observation-obs-potassium-20250327.json",
+    "x-e8/apple_health_export/clinical-records/Observation-obs-potassium-20250610.json",
+    "x-e8/apple_health_export/export.xml",
+    "fernhill-family-clinic-summary-2.xml",
+    "export_cda.xml",
+    "kestrel-harbor-health-summary-4.xml",
+    "saltmarsh-regional-medical-center-ed-summary.xml",
+    "fernhill-family-clinic-summary-3.xml",
+    "kestrel-harbor-health-summary-5.xml",
+    "clearwater-eye-associates-visit-summary.xml",
+    "northbay-clinical-laboratories-results.xml",
+    "fernhill-family-clinic-summary-4.xml",
+    "alder-street-pharmacy-patient-record.xml"
+  ]
+}
