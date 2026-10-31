@@ -39,7 +39,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      # The check installs only once it reaches the run; the steps after it need the tools when it stops earlier.
+      # For the Bridge's pick below. The start step merges the pull requests a Depends-On: line names here into this
+      # checkout and runs compatibility.json's host setup, `npm ci`, before the conformance command, so the steps after
+      # it run on that merge's lockfile; they run only once it has, which a conformance report shows.
       - run: npm ci
       # The Bridge's build, picked with the job's token and kept for the conformance command the start step runs, which
       # holds none.
@@ -61,7 +63,7 @@ jobs:
             exit 1
           fi
           echo "CASCADE_CONFORMANCE_REPORT=$REPORT" >> "$GITHUB_ENV"
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run typecheck
       # Every rule beside the note that ruled it and this run's result; its warnings fail nothing yet. Kept as an
       # artifact, published nowhere.
@@ -75,9 +77,9 @@ jobs:
           name: spec
           path: cascade-runtime-js/build/spec
           if-no-files-found: warn
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm test
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -105,11 +107,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      - run: npm ci
-      # Checks the vocabulary and the adapters out beside this repository; the package and the pages read those.
+      # Checks the vocabulary and the adapters out beside this repository, and merges into it the pull requests a
+      # Depends-On: line names here, before the install reads the lockfile; the package and the pages read those.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
+      - run: npm ci
       # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
       # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
       - id: rows
@@ -498,11 +501,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
-      - run: npm ci
+      # Before the install, which reads the lockfile of the pull requests the start step merges into this checkout.
       - if: ${{ github.event_name == 'pull_request' }}
         uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: "true"
+      - run: npm ci
       # The reference tables' row files are named by their content, so a copy kept from an earlier run is as good as a
       # fresh download, and a Pages blip cannot fail a run. What a run fetched anew is saved; a push to main saves where a pull request reads.
       - id: rows
