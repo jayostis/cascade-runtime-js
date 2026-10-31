@@ -87,6 +87,33 @@ test("a source deleted after a build takes every output of it with it at the nex
   }
 });
 
+test("a folder dropped from include takes its outputs with it at the next transpile", async () => {
+  const root = await workspace({ "kept.ts": "export const kept = 1;\n" });
+  try {
+    const p = join(root, "packages", "p");
+    const config = join(p, "tsconfig.json");
+    const layout = JSON.parse(await readFile(config, "utf8")) as object;
+    await mkdir(join(p, "old"));
+    await writeFile(join(p, "old", "x.ts"), "export const x = 1;\n");
+    await writeFile(
+      config,
+      JSON.stringify({ ...layout, include: ["src", "old"] }),
+    );
+    assert.equal(run(root, TSC, "-b", "packages/p").status, 0);
+    await writeFile(config, JSON.stringify(layout));
+    assert.equal(run(root, TRANSPILE).status, 0);
+    assert.deepEqual(
+      ["x.js", "x.js.map", "x.d.ts", "x.d.ts.map"].map((path) =>
+        existsSync(join(p, "dist", "old", path)),
+      ),
+      [false, false, false, false],
+    );
+    assert.ok(existsSync(dist(root, "kept.js")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("tsc -b after a transpile writes its own output again, not esbuild's", async () => {
   const root = await workspace({
     "a.ts": "// tsc keeps this comment\nexport const a = 1;\n",
