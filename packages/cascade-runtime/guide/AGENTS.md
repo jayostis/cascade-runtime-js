@@ -17,6 +17,9 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Variants**: gene, HGVS expression, ClinVar variation ID.
 - **Variant interpretations**: a report's ACMG classification of a variant, and
   the day it was issued.
+- **Reports**: a report's name, code, conclusion and text, the results it
+  names, the time its results are about.
+- **Notes and documents**: a note's type, title, date and text.
 - **Patient profile**: how each hospital names the person.
 
 Nothing else: a daily measurement needs new terms in the vocabulary first, so
@@ -470,13 +473,25 @@ async function search(word) {
   `?status`, `?lifecycle`, `?started`, `?written`, `?ended`); `?ended` is bound only when the source states a stop, `?status` is
   as the source writes it, and `?lifecycle` is its class under rule L1 (active,
   stopped, paused, unknown or entered in error), which says whether the
-  medication is still taken.
+  medication is still taken; `?records` is how many records its `?entry` joins.
 - `pod/My procedures`: procedures, newest first.
+- `pod/My reports, notes and documents`: one row for each report and note,
+  newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
+  `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
+  `?entry`. Four columns are lists, each value ended by "; " but the last,
+  unbound when empty: `?codes` (an IRI, or a code "in" its system);
+  `?attachments` (media type and title of a file the pod keeps but does not
+  read, so a report sent only as a PDF has one and no `?text`); `?results`
+  (each result's lab results entry, test, value, unit, reference range and
+  "flagged" with its own interpretation codes); and `?sources` (each record,
+  "from" its document, when that was retrieved, and each hospital as
+  "written by" or "kept by").
 - `pod/The person this pod is about`: the subject.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
 - `pod/What each report says of a variant`: each report's ACMG classification
-  of the variant it names (`?report`, `?variant`, `?classification`, `?date`).
+  of the variant it names (`?report`, `?variant`, `?classification`, `?date`),
+  and the lab's organization record and its name (`?lab`, `?labName`).
 - `pod/What everything is called`: every label.
 - `pod/What was seen more than once`: entries with more than one record, by place.
 - `pod/Which file states each thing`: where each thing is stated.
