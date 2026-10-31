@@ -52,7 +52,7 @@ test("a row file named by its content is fetched once and then read from the fol
   }
 });
 
-test("pruning the folder drops a row file unread for 30 days and a half-written file an hour old, and keeps what a read touched", async () => {
+test("pruning the folder drops a row file unread for 30 days and a half-written one an hour old, and keeps what a read touched and any file it did not write", async () => {
   const folder = await mkdtemp(join(tmpdir(), "rows-"));
   try {
     const now = Date.now();
@@ -72,6 +72,8 @@ test("pruning the folder drops a row file unread for 30 days and a half-written 
     await aged(`${hash}.nq.gz`, 31 * day);
     await aged(`${"c".repeat(64)}.nq.gz.1.tmp`, 2 * 60 * 60 * 1000);
     await aged(`${"d".repeat(64)}.nq.gz.2.tmp`, 60 * 1000);
+    await aged("notes.nq.gz", 31 * day);
+    await aged("someone-elses.tmp", 2 * 60 * 60 * 1000);
     const live: typeof fetch = async () => new Response("never asked");
     await keptRows(live, folder)(`https://tables.example/rows/${hash}.nq.gz`);
     await prunedRows(folder, now + 1000);
@@ -81,6 +83,8 @@ test("pruning the folder drops a row file unread for 30 days and a half-written 
         `${"b".repeat(64)}.nq.gz`,
         `${"d".repeat(64)}.nq.gz.2.tmp`,
         `${hash}.nq.gz`,
+        "notes.nq.gz",
+        "someone-elses.tmp",
       ].sort(),
     );
     await prunedRows(join(folder, "absent"), now);
