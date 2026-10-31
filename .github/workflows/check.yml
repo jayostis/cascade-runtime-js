@@ -40,7 +40,8 @@ jobs:
           cache: npm
           cache-dependency-path: cascade-runtime-js/package-lock.json
       # For the Bridge's pick below. The start step merges the pull requests a Depends-On: line names here into this
-      # checkout and installs again before the conformance command, so the steps after it run on that merge's lockfile.
+      # checkout and runs compatibility.json's host setup, `npm ci`, before the conformance command, so the steps after
+      # it run on that merge's lockfile; they run only once it has, which a conformance report shows.
       - run: npm ci
       # The Bridge's build, picked with the job's token and kept for the conformance command the start step runs, which
       # holds none.
@@ -62,7 +63,7 @@ jobs:
             exit 1
           fi
           echo "CASCADE_CONFORMANCE_REPORT=$REPORT" >> "$GITHUB_ENV"
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run typecheck
       # Every rule beside the note that ruled it and this run's result; its warnings fail nothing yet. Kept as an
       # artifact, published nowhere.
@@ -76,9 +77,9 @@ jobs:
           name: spec
           path: cascade-runtime-js/build/spec
           if-no-files-found: warn
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm test
         env:
           GITHUB_TOKEN: ${{ github.token }}
