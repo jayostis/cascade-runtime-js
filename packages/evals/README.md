@@ -17,7 +17,7 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
   written against.
 - `configs/`: the tiers. **smoke**: one case, one run per arm, programs only. **standard**: every case, one run, one
   judge. **full**: three runs, two judges and their agreement. Each config names the subject and judge models (judges
-  are cheap models picked by calibration, #550) and a hard cap in tokens and dollars.
+  are cheap models picked by calibration: [calibration.md](calibration.md)) and a hard cap in tokens and dollars.
 - `schemas/`: case, key, config, answer, verdict and results. `results.schema.json` is the contract a runner fills.
 - `src/citations.ts`: the citation checker, exported as `cascade-evals/citations` for an app to check a model's answer:
   a cited line, FHIR resource or pod entry exists and holds the date and values claimed; an absence counts only when

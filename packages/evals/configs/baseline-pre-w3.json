@@ -5,7 +5,7 @@
   "arms": ["pod", "records"],
   "subjects": ["claude-opus-5-5"],
   "repeats": 1,
-  "judges": ["claude-sonnet-5-5"],
+  "judges": ["claude-haiku-5-5"],
   "cap": {
     "tokens": 40000000,
     "usd": 40
