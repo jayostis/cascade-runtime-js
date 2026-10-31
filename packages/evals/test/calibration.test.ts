@@ -9,17 +9,24 @@ interface Calibration {
   readonly threshold: number;
   readonly judges: readonly {
     readonly model: string;
-    readonly agreement: number;
+    readonly items: number;
+    readonly agreed: number;
+    readonly gapItems: number;
+    readonly gapAgreed: number;
     readonly usd: number;
   }[];
 }
 
-test("the standard tier judges with the cheapest model calibration found in agreement with the reference", async () => {
+test("the standard tier judges with the cheapest model calibration found in agreement with the reference, on every item and on the gaps alone", async () => {
   const calibration = JSON.parse(
     await readFile(join(PACKAGE, "calibration.json"), "utf8"),
   ) as Calibration;
   const [cheapest] = calibration.judges
-    .filter((it) => it.agreement >= calibration.threshold)
+    .filter(
+      (it) =>
+        it.agreed / it.items >= calibration.threshold &&
+        it.gapAgreed / it.gapItems >= calibration.threshold,
+    )
     .sort((a, b) => a.usd - b.usd);
   assert.ok(
     cheapest !== undefined,
