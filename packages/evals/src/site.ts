@@ -102,7 +102,7 @@ ol.when li.today{font-weight:600}
 details{margin:8px 0}summary{cursor:pointer;color:var(--link);font-size:.88rem}details>:not(summary){margin-top:6px}
 details.more{border-top:1px solid var(--line);padding-top:8px;margin-top:18px}details.more>summary{font-size:1rem;font-weight:600;color:var(--fg)}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:8px;border-radius:6px;font-size:.78rem;max-height:240px;overflow:auto}
-svg text{fill:var(--fg);font-size:15px}svg .muted{fill:var(--muted)}
+svg text{fill:var(--fg);font-size:12px}svg .muted{fill:var(--muted)}
 .strip{display:flex;gap:2px;margin:6px 0;width:100%}.doc{height:22px;min-width:3px;border-radius:3px;background:var(--soft);border:1px solid var(--line);position:relative}
 .doc.read{background:var(--found-bg);border-color:var(--found)}.doc .pin{position:absolute;top:-4px;width:3px;height:30px;background:var(--know)}
 .nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:6px 0}
@@ -1340,7 +1340,7 @@ function trendSvg(
   const max = Math.max(1, ...points.flatMap((p) => Object.values(p.values)));
   const w = 640;
   const h = 180;
-  const x = (i: number) => 40 + (i * (w - 60)) / (points.length - 1);
+  const x = (i: number) => 90 + (i * (w - 180)) / (points.length - 1);
   const y = (v: number) => h - 24 - (v / max) * (h - 44);
   const dash = ["", "6 4", "2 3", "8 3 2 3"];
   const lines = series
@@ -1439,7 +1439,7 @@ export async function buildSite(
     join(target, "index.html"),
     page(home, {
       title: "Cascade evals",
-      crumbs: [["All runs"]],
+      crumbs: [],
       eyebrow: "Cascade evals",
       h1: "Does Cascade help an AI spot the gaps in a person’s care?",
       lead: `Every recorded run: the same model given a person’s <span class="pod-name">Cascade pod</span> or their <span class="bag-name">Grab bag</span> of raw files. <a href="about.html">How the test works</a>`,
