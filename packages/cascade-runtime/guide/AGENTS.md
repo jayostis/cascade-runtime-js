@@ -461,20 +461,37 @@ async function search(word) {
 - `judgment/Who judged what`: everything each judgment says.
 - `pod/How many judgments count`: counting judgments by verdict and maker.
 - `pod/How many of each kind`: things of each type.
-- `pod/My active allergies`: allergies a hospital gave the status active.
-- `pod/My active conditions`: conditions whose status is active.
-- `pod/My active medications`: medications whose status is active.
+- `pod/My active allergies`: allergies a hospital gave the status active
+  (`?allergen`, `?code`, `?criticality`, the most severe its records give), with
+  the reactions its lead record states, as text and as codes, and their
+  severity (`?reactions`, `?reactionCodes`, `?severity`), how many records its
+  `?entry` joins (`?records`), and `?sources`.
+- `pod/My active conditions`: conditions whose status is active, with the
+  sources of each.
+- `pod/My active medications`: medications whose status is active
+  (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
+  `?statuses`, each record's own status and the day it ended, so a medication
+  one hospital stopped and another still lists says both, and `?sources`. One
+  whose status was taken from a record that stopped it is only in
+  `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
-  (`?variant`, `?gene`, `?hgvs`, `?variation`).
-- `pod/My immunizations`: immunizations, newest first.
-- `pod/My lab results`: lab results, newest first.
+  (`?variant`, `?gene`, `?hgvs`, `?variation`), and the `?sources` of each.
+- `pod/My immunizations`: immunizations, newest first, with the sources of each.
+- `pod/My lab results`: lab results, newest first (`?performed`, `?test`,
+  `?code`, `?value`, `?unit`, `?status`, `?records`, `?entry`), with the flags
+  the source gave each, as codes of HL7's ObservationInterpretation such as H,
+  L and A (`?interpretations`), its reference range as text and each bound as
+  written with its unit (`?referenceRange`, `?referenceRangeLow`,
+  `?referenceRangeHigh`), and `?sources`.
 - `pod/My medication history`: every medication whatever its status, with when
   it started and the day its prescription was written (`?medication`, `?code`,
   `?status`, `?lifecycle`, `?started`, `?written`, `?ended`); `?ended` is bound only when the source states a stop, `?status` is
   as the source writes it, and `?lifecycle` is its class under rule L1 (active,
   stopped, paused, unknown or entered in error), which says whether the
-  medication is still taken; `?records` is how many records its `?entry` joins.
-- `pod/My procedures`: procedures, newest first.
+  medication is still taken; `?records` is how many records its `?entry` joins;
+  `?statuses` gives each record's own status and end, as in
+  `pod/My active medications`, and `?sources` each record's source.
+- `pod/My procedures`: procedures, newest first, with the sources of each.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
   `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
@@ -485,8 +502,14 @@ async function search(word) {
   (each result's lab results entry, test, value, unit, reference range and
   "flagged" with its own interpretation codes); and `?sources` (each record,
   "from" its document, when that was retrieved, and each hospital as
-  "written by" or "kept by").
-- `pod/The person this pod is about`: the subject.
+  "written by" or "kept by"). Every `pod/My …` question gives its sources so,
+  each record of the entry with where it came from, and its other lists in the
+  same form.
+- `pod/The person this pod is about`: the subject (`?subject`), with what each
+  profile tied to it says (`?dateOfBirth`, `?administrativeGender`,
+  `?deceased`, `?dateOfDeath`), each value after the profile that states it, so
+  hospitals that disagree are both shown, and the `?sources` of each profile.
+  No column gives sex: no term holds it.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
 - `pod/What each report says of a variant`: each report's ACMG classification

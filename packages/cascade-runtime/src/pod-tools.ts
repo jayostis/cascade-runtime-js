@@ -372,7 +372,7 @@ export const TOOLS: readonly PodTool[] = (
     {
       name: "ask",
       description:
-        "A pod's records by the name of a question, as rows, each naming its entry: its allergies, conditions, medications (active, or all with when each started and stopped), lab results, immunizations, procedures, genetic variants, the person it is about, where an entry came from, or which entries need review and why.",
+        "A pod's records by the name of a question, as rows, each naming its entry and the records, documents and hospitals it came from: its allergies with their reactions and severity, conditions, medications (active, or all with when each started and stopped) with each source's own status, lab results with their flags and reference ranges, immunizations, procedures, genetic variants, the person it is about with each source's date of birth, gender and death, where an entry came from, or which entries need review and why.",
       inputSchema: {
         type: "object",
         properties: {
