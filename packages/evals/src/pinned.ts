@@ -130,7 +130,8 @@ export async function environment(
           `the pinned clone ${at} is no longer ${name} at ${commit.slice(0, 12)} with nothing changed: remove ${folder} and plan again`,
         );
     }
-    return kept;
+    // asked again, so a kept environment records what its runtime resolves now
+    return { ...kept, components: resolvedBy(kept.runtime, kept.commits) };
   }
   await mkdir(folder, { recursive: true });
   for (const [name, pin] of Object.entries(resolved)) {
@@ -158,32 +159,8 @@ export async function environment(
     mcp: join(runtime, "packages", "mcp", "dist", "src", "cli.js"),
     components: [],
   };
-  // What the pinned runtime resolves, asked of it, and the pins it does not read (cascade-bridge-spec) beside them.
-  const asked = pinnedComponents(environment.runtime);
-  for (const [name, commit] of Object.entries(commits)) {
-    if (name === "cascade-runtime-js") continue;
-    const found = asked.find((it) => it.name === name);
-    if (found !== undefined && found.commit !== commit)
-      throw new Error(
-        `the pinned runtime resolves ${name} at ${found.commit.slice(0, 12)}, not the pinned ${commit.slice(0, 12)}`,
-      );
-  }
   Object.assign(environment, {
-    components: [
-      ...asked,
-      ...Object.entries(commits)
-        .filter(
-          ([name]) =>
-            name !== "cascade-runtime-js" &&
-            !asked.some((it) => it.name === name),
-        )
-        .map(([name, commit]) => ({
-          name,
-          repository: PINNABLE[name]!,
-          commit,
-          source: "pinned, not read by the runtime",
-        })),
-    ],
+    components: resolvedBy(environment.runtime, commits),
   });
   await writeFile(done, JSON.stringify(environment, null, 2) + "\n");
   return environment;
@@ -200,6 +177,39 @@ const SCRIPT = fileURLToPath(
  */
 export const runtimeRoot = (entry: string) =>
   join(dirname(entry), "..", "..", "..", "..");
+
+/**
+ * What the pinned runtime resolves, asked of it, refused where it differs from a pin; and the pins it does not read
+ * (cascade-bridge-spec) beside them.
+ */
+function resolvedBy(
+  runtime: string,
+  commits: Readonly<Record<string, string>>,
+): Component[] {
+  const asked = pinnedComponents(runtime);
+  for (const [name, commit] of Object.entries(commits)) {
+    const found = asked.find((it) => it.name === name);
+    if (found !== undefined && found.commit !== commit)
+      throw new Error(
+        `the pinned runtime resolves ${name} at ${found.commit.slice(0, 12)}, not the pinned ${commit.slice(0, 12)}`,
+      );
+  }
+  return [
+    ...asked,
+    ...Object.entries(commits)
+      .filter(
+        ([name]) =>
+          name !== "cascade-runtime-js" &&
+          !asked.some((it) => it.name === name),
+      )
+      .map(([name, commit]) => ({
+        name,
+        repository: PINNABLE[name]!,
+        commit,
+        source: "pinned, not read by the runtime",
+      })),
+  ];
+}
 
 /** The components a build of the runtime resolves, asked of it in its own process. */
 function pinnedComponents(runtime: string): Component[] {
