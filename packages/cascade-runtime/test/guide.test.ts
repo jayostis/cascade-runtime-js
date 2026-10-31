@@ -573,3 +573,40 @@ test("the guide installs the cascade-reference-tables the runtime is tested with
     `the guide does not install ${pinned}`,
   );
 });
+
+/** The columns a query's outermost SELECT gives: a bare variable, or the one an expression is bound to with AS. */
+function projected(text: string): Set<string> {
+  let head =
+    /\bSELECT\b(?:\s+DISTINCT)?([\s\S]*?)\bWHERE\b/.exec(text)?.[1] ?? "";
+  for (let inner = /\(([^()]*)\)/; inner.test(head);)
+    head = head.replace(
+      inner,
+      (_, body: string) => /\bAS\s+(\?\w+)\s*$/.exec(body)?.[1] ?? "",
+    );
+  return new Set(head.match(/\?\w+/g) ?? []);
+}
+
+test("a question the guide names columns for has each of them, and the guide names every column it gives but labels", async () => {
+  const lines = guide.sections.get("Questions") ?? [];
+  const items: string[] = [];
+  for (const line of lines)
+    if (line.startsWith("- ")) items.push(line);
+    else if (line.startsWith("  ") && items.length > 0)
+      items[items.length - 1] += ` ${line.trim()}`;
+  const asked = await questions(vocabulary.files);
+  const wrong: string[] = [];
+  for (const item of items) {
+    const name = /^- `([^`]+)`/.exec(item)?.[1] ?? "";
+    const named = new Set(
+      (item.match(/`\?\w+`/g) ?? []).map((column) => column.slice(1, -1)),
+    );
+    if (named.size === 0) continue;
+    const given = projected(asked.get(name)?.text ?? "");
+    for (const column of named)
+      if (!given.has(column)) wrong.push(`${name} gives no ${column}`);
+    for (const column of given)
+      if (!named.has(column) && !column.endsWith("Label"))
+        wrong.push(`${name}: the guide omits ${column}`);
+  }
+  assert.deepEqual(wrong, []);
+});

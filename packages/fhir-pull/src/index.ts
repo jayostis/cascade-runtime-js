@@ -91,6 +91,11 @@ const KINDS: ReadonlyMap<string, RecordOfType> = new Map([
     "MedicationStatement",
     { kind: "Medication", class: "PrescribedOrReportedMedication" },
   ],
+  ["DiagnosticReport", { kind: "Report", class: "DiagnosticReport" }],
+  [
+    "DocumentReference",
+    { kind: "Note or document", class: "ClinicalNoteOrDocument" },
+  ],
 ]);
 const LAB_RESULT: RecordOfType = {
   kind: "Lab result",
@@ -299,8 +304,17 @@ function codes(concepts: unknown): unknown[] {
   });
 }
 
-/** The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it. */
+/**
+ * The resource's `cascade:recordKind`, or undefined where the adapter makes no record of it: a laboratory Observation
+ * that groups others by `hasMember` is a panel, whose members are the records.
+ */
 function kindOf(resource: Record<string, unknown>): string | undefined {
+  if (
+    resource.resourceType === "Observation" &&
+    Array.isArray(resource.hasMember) &&
+    resource.hasMember.length > 0
+  )
+    return undefined;
   return recordOf(resource.resourceType, codes(resource.category))?.kind;
 }
 

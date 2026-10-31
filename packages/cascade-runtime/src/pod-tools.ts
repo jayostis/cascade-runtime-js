@@ -28,7 +28,7 @@ import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 
 export * from "./table-checks.js";
 
-/** The questions `ask` offers: the person's own records, who they are, where an entry came from and what needs review. Never free SPARQL. */
+/** The questions `ask` offers: the person's own records, what their reports and notes say, who they are, where an entry came from and what needs review. Never free SPARQL. */
 export const QUESTIONS = [
   "pod/My active allergies",
   "pod/My active conditions",
@@ -38,6 +38,7 @@ export const QUESTIONS = [
   "pod/My immunizations",
   "pod/My procedures",
   VARIANTS_QUESTION,
+  "pod/My reports, notes and documents",
   "pod/The person this pod is about",
   "entry/Where it came from",
   "entry/What needs review",
