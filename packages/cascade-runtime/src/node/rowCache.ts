@@ -65,3 +65,11 @@ export function keptRows(
     return new Response(bytes, { status: response.status });
   };
 }
+
+export async function prunedRows(
+  folder: string,
+  now = Date.now(),
+): Promise<void> {
+  void folder;
+  void now;
+}
