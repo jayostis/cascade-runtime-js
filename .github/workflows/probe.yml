@@ -51,7 +51,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           VARIANT: ${{ matrix.variant }}
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           node --version
           flags=""
           case "$VARIANT" in *--no-maglev*) flags="--no-maglev" ;; esac
@@ -66,6 +66,7 @@ jobs:
             echo "PROBE variant=$VARIANT shard=${{ matrix.shard }} run=$i status=$status aborts=$n ${fails} seconds=$(( $(date +%s) - start )) $files"
             aborts=$((aborts + n))
             [ "$status" = 0 ] || failed=$((failed + 1))
-            grep -B2 -A12 "unreachable code" "$RUNNER_TEMP/run-$i.log" | head -60 || true
+            grep -B2 -A12 "unreachable code" "$RUNNER_TEMP/run-$i.log" | head -60
+            grep -E "^not ok" "$RUNNER_TEMP/run-$i.log" | head -20
           done
           echo "PROBE-TOTAL variant=$VARIANT shard=${{ matrix.shard }} aborts=$aborts failed-runs=$failed" | tee -a "$GITHUB_STEP_SUMMARY"
