@@ -14,17 +14,18 @@ standard tier to them.
   cost, and `gradesOf` for the verdicts. Each packet holds the answers of one Opus round, at most 9, each answer once.
   The full tier's packets hold 6.
 - **Agreement** is the same verdict on the same item: found, partly or missed for a gap; raised or avoided for a trap
-  or near-trap. Kappa is Cohen's, computed as `agreementOf` computes it.
+  or near-trap. Kappa is Cohen's, with `agreementOf`'s formula, pooled over every item of all three cases rather than
+  per case.
 
-| judge             | items agreed | agreement | kappa | gaps only (181)    | cost, 33 answers | tokens |
-| ----------------- | ------------ | --------- | ----- | ------------------ | ---------------- | ------ |
-| claude-haiku-5-5  | 404 / 407    | 99.3%     | 0.987 | 100%, kappa 1.000  | $0.38            | 1.66M  |
-| claude-sonnet-5-5 | 404 / 407    | 99.3%     | 0.987 | 98.9%, kappa 0.950 | $1.98            | 1.96M  |
+| judge             | items agreed | agreement | kappa | gaps only (181)        | cost, 33 answers | tokens |
+| ----------------- | ------------ | --------- | ----- | ---------------------- | ---------------- | ------ |
+| claude-haiku-5-5  | 404 / 407    | 99.3%     | 0.987 | 181 / 181, kappa 1.000 | $0.38            | 1.66M  |
+| claude-sonnet-5-5 | 404 / 407    | 99.3%     | 0.987 | 179 / 181, kappa 0.950 | $1.98            | 1.96M  |
 
 The harness's estimate before the run was $1.67. Haiku and Sonnet agree with each other on 407 of 411 items (99.0%).
 
-**Choice: Haiku 5.5 is the standard tier's judge.** It is the cheapest judge that reaches 95% agreement, at about a
-fifth of Sonnet's cost. The full tier keeps Sonnet beside Haiku, so their agreement is still reported.
+**Choice: Haiku 5.5 is the standard tier's judge.** It is the cheapest judge that reaches 95% agreement both on every item and on the
+gap items alone, at about a fifth of Sonnet's cost. The full tier keeps Sonnet beside Haiku, so their agreement is still reported.
 
 ## Where the judges disagree with the reference
 
@@ -80,6 +81,10 @@ subjects write. Each was turned into the harness's answer form by program, with 
 - **Haiku kept the judge discipline:** it read the packet and wrote with Write.
 - **Sonnet broke it in two of five jobs.** It wrote the verdict from a Node script run through Bash, which
   the prompt does not allow. The verdicts were valid.
+
+**What one run per judge costs.** Each judge ran once, so these numbers carry no estimate of run-to-run noise: a
+second run could move a few items either way. The one lean seen is Haiku's: it raises a trap on a borderline answer
+where Opus stays neutral (both Tamsin TT1 calls), so expect Haiku's trap counts to run slightly high.
 
 Recalibrate when the judge prompt, the key format or a judge model changes. Two things a recalibration should add:
 packets of the full tier's size, and false questions alongside item verdicts.
