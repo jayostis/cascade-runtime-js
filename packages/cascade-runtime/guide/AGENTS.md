@@ -428,8 +428,8 @@ variable name, an unbound variable absent; `entry`, `record`, `profile` and
 
 An entry is what an app shows: one allergy, joining its records from every
 source. Show it first: read an allergy's criticality and status from
-`pod/My active allergies` (each active, its criticality the most severe its
-records give), never from `entry/What it shows`, whose fields are each
+`pod/My active allergies` (each active, or with no status stated, which it reads
+"not stated"; its criticality the most severe its records give), never from `entry/What it shows`, whose fields are each
 record's. Its records go beneath (`entry/Where it came from`,
 `record/What each version says`). Search the entries in the views, never the
 records: no view shows another person's records, or ones entered in error.
@@ -463,20 +463,40 @@ async function search(word) {
 - `judgment/Who judged what`: everything each judgment says.
 - `pod/How many judgments count`: counting judgments by verdict and maker.
 - `pod/How many of each kind`: things of each type.
-- `pod/My active allergies`: allergies a hospital gave the status active.
-- `pod/My active conditions`: conditions whose status is active.
-- `pod/My active medications`: medications whose status is active.
+- `pod/My active allergies`: allergies a hospital gave the status active, or none gave a status
+  (`?allergen`, `?code`, `?criticality`, the most severe its records give,
+  `?status`: `active` or `not stated`), with
+  what each of its records that states one says of the reaction
+  (`?reactionsByRecord`: each
+  record, its reaction texts, their codes in parentheses, and its severity, so a
+  record other than the lead is read as much as the lead), how many records its
+  `?entry` joins (`?records`), and `?sources`.
+- `pod/My active conditions`: conditions whose status is active, with the
+  sources of each.
+- `pod/My active medications`: medications whose status is active
+  (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
+  `?statuses`, each record's own status and the day it ended, so a medication
+  one hospital stopped and another still lists says both, and `?sources`. One
+  whose status was taken from a record that stopped it is only in
+  `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
-  (`?variant`, `?gene`, `?hgvs`, `?variation`).
-- `pod/My immunizations`: immunizations, newest first.
-- `pod/My lab results`: lab results, newest first.
+  (`?variant`, `?gene`, `?hgvs`, `?variation`), and the `?sources` of each.
+- `pod/My immunizations`: immunizations, newest first, with the sources of each.
+- `pod/My lab results`: lab results, newest first (`?performed`, `?test`,
+  `?code`, `?value`, `?unit`, `?status`, `?records`, `?entry`), with the flags
+  the source gave each, as codes of HL7's ObservationInterpretation such as H,
+  L and A (`?interpretations`), its reference range as text and each bound as
+  written with its unit (`?referenceRange`, `?referenceRangeLow`,
+  `?referenceRangeHigh`), and `?sources`.
 - `pod/My medication history`: every medication whatever its status, with when
   it started and the day its prescription was written (`?medication`, `?code`,
   `?status`, `?lifecycle`, `?started`, `?written`, `?ended`); `?ended` is bound only when the source states a stop, `?status` is
   as the source writes it, and `?lifecycle` is its class under rule L1 (active,
   stopped, paused, unknown or entered in error), which says whether the
-  medication is still taken; `?records` is how many records its `?entry` joins.
-- `pod/My procedures`: procedures, newest first.
+  medication is still taken; `?records` is how many records its `?entry` joins;
+  `?statuses` gives each record's own status and end, as in
+  `pod/My active medications`, and `?sources` each record's source.
+- `pod/My procedures`: procedures, newest first, with the sources of each.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
   `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
@@ -487,8 +507,14 @@ async function search(word) {
   (each result's lab results entry, test, value, unit, reference range and
   "flagged" with its own interpretation codes); and `?sources` (each record,
   "from" its document, when that was retrieved, and each hospital as
-  "written by" or "kept by").
-- `pod/The person this pod is about`: the subject.
+  "written by" or "kept by"). Every `pod/My …` question gives its sources so,
+  each record of the entry with where it came from, and its other lists in the
+  same form.
+- `pod/The person this pod is about`: the subject (`?subject`), with what each
+  profile tied to it says (`?dateOfBirth`, `?administrativeGender`,
+  `?deceased`, `?dateOfDeath`), each value after the profile that states it, so
+  hospitals that disagree are both shown, and the `?sources` of each profile.
+  No column gives sex: no term holds it.
 - `pod/What each folder holds`: each folder's things by type.
 - `pod/What each import brought in`: each import's or entry's revisions.
 - `pod/What each report says of a variant`: each report's ACMG classification
@@ -605,8 +631,8 @@ await entered(
 allergen or condition name is never blank, else `enter` refuses it; an allergen
 code, a vaccine code and a procedure's SNOMED code are each an absolute IRI in
 their system, else `iri()` throws. `enter` runs the matcher. Only a
-hospital's record gives an entry a status: an entered allergy joined to none is
-in `search`, never in `pod/My active allergies`.
+hospital's record gives an entry a status: an entered allergy joined to none has
+none, and `pod/My active allergies` lists it with the status `not stated`.
 
 ## Judge
 

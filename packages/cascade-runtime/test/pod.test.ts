@@ -876,7 +876,7 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
       assert.ok(cited.length > 0, "the matcher cites no reference");
       for (const version of cited)
         assert.ok(held.includes(version), `${version} is not the app's`);
-      assert.equal((await allergens(replayed)).length, 4);
+      assert.equal((await allergens(replayed)).length, 5);
     } finally {
       await replayed.close();
     }
