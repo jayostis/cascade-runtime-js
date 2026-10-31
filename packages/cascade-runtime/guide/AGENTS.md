@@ -463,8 +463,9 @@ async function search(word) {
 - `pod/How many of each kind`: things of each type.
 - `pod/My active allergies`: allergies a hospital gave the status active
   (`?allergen`, `?code`, `?criticality`, the most severe its records give), with
-  the reactions its lead record states, as text and as codes, and their
-  severity (`?reactions`, `?reactionCodes`, `?severity`), how many records its
+  what each of its records states of the reaction (`?reactionsByRecord`: each
+  record, its reaction texts, their codes in parentheses, and its severity, so a
+  record other than the lead is read as much as the lead), how many records its
   `?entry` joins (`?records`), and `?sources`.
 - `pod/My active conditions`: conditions whose status is active, with the
   sources of each.
