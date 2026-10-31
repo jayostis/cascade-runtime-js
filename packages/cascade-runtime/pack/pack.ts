@@ -9,6 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -38,7 +39,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
-import { keptRows } from "../src/node/rowCache.js";
+import { keptRows, ROWS_CACHE } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 import { bundleBrowser } from "./browser.js";
@@ -61,6 +62,14 @@ const KEPT_BY_MCP = [
   "files",
 ];
 const CACHE = join(BUILD, "cache");
+/** Every checkout's pack keeps the row files here unless `CASCADE_ROWS_CACHE` names another folder, or `""` none. */
+const ROWS =
+  process.env[ROWS_CACHE] ??
+  join(
+    process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"),
+    "cascade-runtime",
+    "rows",
+  );
 const COMPONENTS = join(STAGE, "components");
 const NODE_MODULES = join(STAGE, "node_modules");
 const METADATA = "ro-crate-metadata.json";
@@ -250,7 +259,7 @@ async function packStarterTables(
     {
       feeds,
       vocabulary: new FolderFiles(vocabulary),
-      fetch: keptRows(fetch),
+      fetch: keptRows(fetch, ROWS),
       newStore: () => new OxigraphStore(),
     },
     (path, bytes) => written.write(path, bytes),
