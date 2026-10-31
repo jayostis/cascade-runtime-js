@@ -409,6 +409,7 @@ test("each template does what the guide says, read through the vocabulary's ques
     "Procedures",
   ]);
   for (const [title, question] of [
+    ["Allergies", "pod/My active allergies"],
     ["Conditions", "pod/My active conditions"],
     ["Immunizations", "pod/My immunizations"],
     ["Procedures", "pod/My procedures"],
@@ -417,12 +418,6 @@ test("each template does what the guide says, read through the vocabulary's ques
       (await entriesIn(question)).has(enteredIn.get(title) ?? ""),
       `the entered ${title} is no row of ${question}`,
     );
-  assert.ok(
-    !(await entriesIn("pod/My active allergies")).has(
-      enteredIn.get("Allergies") ?? "",
-    ),
-    "the entered allergy is a row of pod/My active allergies",
-  );
 
   const counting = new Set(
     (await ask("judgment/Whether it counts")).flatMap(({ judgment, counts }) =>

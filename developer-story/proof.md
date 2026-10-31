@@ -192,8 +192,8 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   shows"). An app that shows Sam's records as hers, or claims his profile, is
   wrong.
 - **W3.** Shellfish then appears among her allergies, an entry of its own with
-  one record and no status, and is not in `pod/My active allergies`, as Peanuts
-  is not (under `Rule: P16.`, "APP-ALG-PEANUT is Alex's, and its entry shows
+  one record and no status, and is in `pod/My active allergies` with the status
+  `not stated`, as Peanuts is (under `Rule: P16.`, "APP-ALG-PEANUT is Alex's, and its entry shows
   its criticality and no status").
 - **W4.** The app offers the import's join of Larkspur's two asthma records, old
   server and new. Because her Same of bronchitis with the old one (J10) still
