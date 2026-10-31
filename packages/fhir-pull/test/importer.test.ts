@@ -4,6 +4,7 @@ import * as oxigraph from "oxigraph";
 import {
   connectFiles,
   fhirPull,
+  isCdaDocument,
   type PullFiles,
   pullFiles,
   readConnect,
@@ -71,6 +72,56 @@ const BUNDLE = {
     {
       fullUrl: `${BASE}/DocumentReference/n1`,
       resource: { resourceType: "DocumentReference", id: "n1" },
+    },
+    {
+      fullUrl: `${BASE}/DocumentReference/n2`,
+      resource: {
+        resourceType: "DocumentReference",
+        id: "n2",
+        content: [
+          {
+            attachment: { contentType: "application/xml", url: "Binary/n2" },
+            format: {
+              system:
+                "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+              code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+            },
+          },
+        ],
+      },
+    },
+    {
+      fullUrl: `${BASE}/DocumentReference/n3`,
+      resource: {
+        resourceType: "DocumentReference",
+        id: "n3",
+        content: [
+          {
+            attachment: { contentType: "application/xml", url: "Binary/x" },
+            format: {
+              system:
+                "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+              code: "urn:hl7-org:sdwg:ccda-nonXMLBody:2.1",
+            },
+          },
+        ],
+      },
+    },
+    {
+      fullUrl: `${BASE}/DocumentReference/n4`,
+      resource: {
+        resourceType: "DocumentReference",
+        id: "n4",
+        content: [
+          {
+            attachment: { contentType: "application/xml", url: "Binary/x" },
+            format: {
+              system: "http://ihe.net/fhir/ValueSet/IHE.FormatCode.codesystem",
+              code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+            },
+          },
+        ],
+      },
     },
     {
       fullUrl: `${BASE}/Encounter/e1`,
@@ -173,12 +224,255 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
       ["Lab result"],
       ["Report"],
       ["Note or document"],
+      ["Note or document"],
     ].map(([kind]) => ({
       source: "Cascade North Demo Hospital",
       server: BASE,
       kind,
       received: "2026-10-07T07:00:00.000Z",
     })),
+  );
+});
+
+const CCD = new TextEncoder().encode(
+  '<?xml version="1.0"?><ClinicalDocument xmlns="urn:hl7-org:v3"/>',
+);
+
+test("each C-CDA document a pull read is a document of its own, stated with where and when it was read, the patient and the hospital, and one it could not read is only said why", async () => {
+  const documents = [
+    {
+      documentReference: "DocumentReference/n2",
+      content: 0,
+      url: "Binary/n2",
+      retrievedFrom: `${BASE}/Binary/n2`,
+      bytes: CCD,
+    },
+    {
+      documentReference: "DocumentReference/n6",
+      content: 1,
+      url: "Binary/n6",
+      notRead: "the hospital answered 404",
+    },
+  ];
+  const saved = pullFiles({ ...PULL, documents }, "north");
+  assert.deepEqual(saved.get("north/document-1.xml"), CCD);
+  assert.deepEqual(
+    (
+      JSON.parse(new TextDecoder().decode(saved.get("north/pull.json"))) as {
+        documents: unknown;
+      }
+    ).documents,
+    [
+      {
+        documentReference: "DocumentReference/n2",
+        content: 0,
+        url: "Binary/n2",
+        retrievedFrom: `${BASE}/Binary/n2`,
+        path: "document-1.xml",
+      },
+      {
+        documentReference: "DocumentReference/n6",
+        content: 1,
+        url: "Binary/n6",
+        notRead: "the hospital answered 404",
+      },
+    ],
+  );
+  assert.equal(
+    pullFiles(PULL, "north").get("north/pull.json")?.length,
+    pullFiles({ ...PULL, documents: [] }, "north").get("north/pull.json")
+      ?.length,
+    "a pull that read no document says nothing of documents",
+  );
+  const found = (await fhirPull.documents(filesOf(saved), "north"))!;
+  assert.deepEqual(
+    found.map(({ path, mediaType, envelope }) => [path, mediaType, envelope]),
+    [
+      ["north/bundle.json", "application/fhir+json", "#envelope-bundle"],
+      ["north/document-1.xml", "application/cda+xml", undefined],
+    ],
+  );
+  assert.deepEqual(found[1]!.bytes, CCD);
+  const facts = new oxigraph.Store();
+  facts.load(found[1]!.facts("2026-10-07T08:00:00Z"), {
+    format: "text/turtle",
+  });
+  assert.deepEqual(
+    (
+      facts.query(
+        `SELECT ?p ?o WHERE { <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> ?p ?o FILTER (isLiteral(?o) || isIRI(?o)) }`,
+      ) as Map<string, oxigraph.Term>[]
+    )
+      .map(
+        (row) =>
+          `${row.get("p")!.value.split(/[#/]/).pop()} ${row.get("o")!.value}`,
+      )
+      .sort(),
+    [
+      "authenticatedPatient Patient/p1",
+      `retrievedFrom ${BASE}/Binary/n2`,
+      "retrievedOn 2026-10-07T07:00:00Z",
+    ],
+  );
+  await assert.rejects(
+    fhirPull.documents(
+      withPull({
+        documents: [{ documentReference: "DocumentReference/n2", content: 0 }],
+      }),
+      "north",
+    ),
+    {
+      message:
+        "pull.json's documents is not a list of C-CDA documents, each a DocumentReference's content, read into a file of the folder or said why not",
+    },
+  );
+});
+
+test("a pull's saved C-CDA document names where it was read by an https: URL on the hospital's origin, as the URL writes it, and nothing else, so a saved pull states no fact it was not given", async () => {
+  const read = {
+    documentReference: "DocumentReference/n2",
+    content: 0,
+    url: "Binary/n2",
+    path: "document-1.xml",
+  };
+  const files = (retrievedFrom: string) => {
+    const saved = new Map(pullFiles(PULL, "north"));
+    const { bundle, ...rest } = PULL;
+    void bundle;
+    saved.set(
+      "north/pull.json",
+      new TextEncoder().encode(
+        JSON.stringify({ ...rest, documents: [{ ...read, retrievedFrom }] }),
+      ),
+    );
+    saved.set("north/document-1.xml", CCD);
+    return filesOf(saved);
+  };
+  for (const retrievedFrom of [
+    `${BASE}/Binary/n2> . <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> <https://ns.cascadeprotocol.org/cascade#serverBaseUrl> "https://other.example/fhir" . <urn:x> <urn:y> <urn:z`,
+    `${BASE}/Binary/a|b`,
+    "https://other.example/fhir/Binary/n2",
+    `http://cascade-north.demo.invalid/fhir/Binary/n2`,
+    `https://user:pw@cascade-north.demo.invalid/fhir/Binary/n2`,
+    `${BASE}/Binary/../Binary/n2`,
+  ])
+    await assert.rejects(
+      fhirPull.documents(files(retrievedFrom), "north"),
+      {
+        message:
+          "pull.json's documents is not a list of C-CDA documents, each a DocumentReference's content, read into a file of the folder or said why not",
+      },
+      retrievedFrom,
+    );
+  const [, document] = (await fhirPull.documents(
+    files(`${BASE}/Binary/a%7Cb`),
+    "north",
+  ))!;
+  assert.match(
+    new TextDecoder().decode(document!.facts("2026-10-07T08:00:00Z")),
+    /<http:\/\/purl\.org\/pav\/retrievedFrom> <https:\/\/cascade-north\.demo\.invalid\/fhir\/Binary\/a%7Cb> \./,
+  );
+});
+
+test("the look at a pull counts each entry of each C-CDA document it read, by the document's custodian and section, as a downloaded C-CDA's look does", async () => {
+  const ccd = new TextEncoder().encode(`<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <effectiveTime value="20260901"/>
+  <recordTarget><patientRole><id root="2.16.840.1.113883.19.5" extension="p1"/></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>Kestrel Harbor Hospital</name></representedCustodianOrganization></assignedCustodian></custodian>
+  <component><structuredBody>
+    <component><section><title>Problems</title><entry/><entry/></section></component>
+    <component><section><title>Allergies</title><entry/></section></component>
+  </structuredBody></component>
+</ClinicalDocument>`);
+  const bundle = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      {
+        fullUrl: `${BASE}/Patient/p1`,
+        resource: { resourceType: "Patient", id: "p1" },
+      },
+      {
+        fullUrl: `${BASE}/DocumentReference/n2`,
+        resource: BUNDLE.entry.find(({ fullUrl }) => fullUrl.endsWith("/n2"))!
+          .resource,
+      },
+    ],
+  };
+  const saved = pullFiles(
+    {
+      ...PULL,
+      bundle,
+      documents: [
+        {
+          documentReference: "DocumentReference/n2",
+          content: 0,
+          url: "Binary/n2",
+          retrievedFrom: `${BASE}/Binary/n2`,
+          bytes: ccd,
+        },
+      ],
+    },
+    "north",
+  );
+  assert.deepEqual(await fhirPull.index(filesOf(saved), "north"), [
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Problems",
+      received: "2026-09-01",
+    },
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Problems",
+      received: "2026-09-01",
+    },
+    {
+      source: "Kestrel Harbor Hospital",
+      section: "Allergies",
+      received: "2026-09-01",
+    },
+  ]);
+});
+
+test("one C-CDA document a pull read twice, inline in one DocumentReference and by url in another, is saved once", () => {
+  const saved = pullFiles(
+    {
+      ...PULL,
+      documents: [
+        {
+          documentReference: "DocumentReference/n2",
+          content: 0,
+          retrievedFrom: `${BASE}/DocumentReference/n2`,
+          bytes: CCD,
+        },
+        {
+          documentReference: "DocumentReference/n4",
+          content: 0,
+          url: "Binary/n4",
+          retrievedFrom: `${BASE}/Binary/n4`,
+          bytes: CCD.slice(),
+        },
+      ],
+    },
+    "north",
+  );
+  assert.deepEqual(
+    [...saved.keys()].filter((path) => path.includes("document-")),
+    ["north/document-1.xml"],
+  );
+});
+
+test("a C-CDA document is one only where it is well-formed XML in UTF-8: a stray byte that is no UTF-8 makes none", () => {
+  const encoder = new TextEncoder();
+  const head = encoder.encode(
+    '<ClinicalDocument xmlns="urn:hl7-org:v3"><title>',
+  );
+  const tail = encoder.encode("</title></ClinicalDocument>");
+  assert.equal(isCdaDocument(new Uint8Array([...head, ...tail])), true);
+  assert.equal(
+    isCdaDocument(new Uint8Array([...head, 0xff, 0xfe, ...tail])),
+    false,
   );
 });
 

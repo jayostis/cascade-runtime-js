@@ -1,4 +1,8 @@
-import { RESOURCE_TYPE } from "@cascade-runtime/fhir-pull";
+import {
+  ccdaContents,
+  isCdaDocument,
+  RESOURCE_TYPE,
+} from "@cascade-runtime/fhir-pull";
 import { type Connection, FHIR_ID, held } from "./connect.js";
 import { ConnectionFailure } from "./outcome.js";
 import { limited, type Limits, type QueryPlan, type Search } from "./plan.js";
@@ -9,6 +13,23 @@ export interface PulledEntry {
   readonly fullUrl: string;
   /** The resource exactly as the hospital sent it. */
   readonly resource: object;
+}
+
+/**
+ * A C-CDA document a DocumentReference of the pull holds, as the pull read it, or why it could not: the hospital's
+ * answer, the limit on bytes, an address on another origin, or an answer that is no C-CDA document.
+ */
+export interface PulledDocument {
+  /** `DocumentReference/<id>`. */
+  readonly documentReference: string;
+  /** The content's position in the DocumentReference's `content`, from 0. */
+  readonly content: number;
+  /** The attachment's `url` as written; none for one given inline. */
+  readonly url?: string;
+  /** The URL read, or the DocumentReference's for one given inline. */
+  readonly retrievedFrom?: string;
+  readonly bytes?: Uint8Array;
+  readonly notRead?: string;
 }
 
 /** A patient's records as one pull from one hospital found them: what an import is made from. */
@@ -36,6 +57,8 @@ export interface Pull {
    * held a record that is not the patient's, of which nothing is kept.
    */
   readonly denied: readonly Search[];
+  /** The C-CDA documents its DocumentReferences hold, where one holds any: each read, or said why not. */
+  readonly documents?: readonly PulledDocument[];
 }
 
 export interface PullOptions {
@@ -141,6 +164,26 @@ export async function pull(
     }
     return { answer, url };
   };
+  const getDocument = async (url: URL): Promise<{ answer: Answer }> => {
+    const answer = await requests.send(url, {
+      what: "a C-CDA document",
+      headers: {
+        Accept:
+          "application/xml, application/cda+xml, application/fhir+json;q=0.5",
+        Authorization: `Bearer ${token}`,
+      },
+      retry: true,
+      follow: origin,
+    });
+    retrievedAt = now();
+    if (answer.status === 401)
+      throw new ConnectionFailure(
+        "unauthorized",
+        `${origin} refused a C-CDA document with 401: the hospital did not accept the access token, so connect again`,
+        { origin, status: 401, resourceType: "Binary" },
+      );
+    return { answer };
+  };
   const failed = (answer: Answer, what: string) =>
     new ConnectionFailure(
       "hospital-error",
@@ -244,6 +287,94 @@ export async function pull(
     else keep(parsed(answer, url, match[1]!), match[1]!);
   }
 
+  const documents: PulledDocument[] = [];
+  const readAt = new Map<
+    string,
+    Pick<PulledDocument, "retrievedFrom" | "bytes" | "notRead">
+  >();
+  for (const { fullUrl, resource } of [...entries.values()]) {
+    const documentReference = fullUrl.slice(base.length + 1);
+    for (const { content, attachment } of ccdaContents(
+      resource as Record<string, unknown>,
+    )) {
+      const url =
+        typeof attachment.url === "string" ? attachment.url : undefined;
+      const said = {
+        documentReference,
+        content,
+        ...(url !== undefined && { url }),
+      };
+      if (typeof attachment.data === "string") {
+        const bytes = decoded(attachment.data);
+        documents.push(
+          bytes !== undefined && isCcda(bytes) && isCdaDocument(bytes)
+            ? { ...said, retrievedFrom: iriSafe(new URL(fullUrl).href), bytes }
+            : {
+                ...said,
+                notRead: "its inline data is no well-formed C-CDA document",
+              },
+        );
+        continue;
+      }
+      if (url === undefined) {
+        documents.push({ ...said, notRead: "it gives neither data nor a url" });
+        continue;
+      }
+      let at: URL;
+      try {
+        at = new URL(iriSafe(new URL(url, `${base}/`).href));
+      } catch {
+        documents.push({ ...said, notRead: "its url is no address" });
+        continue;
+      }
+      if (at.username !== "" || at.password !== "") {
+        documents.push({
+          ...said,
+          notRead: "its url carries a user name or password",
+        });
+        continue;
+      }
+      const already = readAt.get(at.href);
+      if (already !== undefined) {
+        documents.push({ ...said, ...already });
+        continue;
+      }
+      if (at.origin !== origin) {
+        documents.push({
+          ...said,
+          notRead: `it is at ${at.origin}, not the FHIR base's origin, where the token is not sent`,
+        });
+        continue;
+      }
+      let answer: Answer;
+      try {
+        ({ answer } = await getDocument(at));
+      } catch (error) {
+        if (
+          !(error instanceof ConnectionFailure) ||
+          error.kind === "unauthorized" ||
+          error.kind === "cancelled"
+        )
+          throw error;
+        readAt.set(at.href, { notRead: error.message });
+        documents.push({ ...said, notRead: error.message });
+        continue;
+      }
+      const bytes = answer.status === 200 ? fromAnswer(answer) : undefined;
+      const read =
+        answer.status !== 200
+          ? { notRead: `the hospital answered ${answer.status}` }
+          : bytes !== undefined && isCcda(bytes) && isCdaDocument(bytes)
+            ? { retrievedFrom: at.href, bytes }
+            : {
+                notRead:
+                  "the hospital's answer is no well-formed C-CDA document",
+              };
+      readAt.set(at.href, read);
+      documents.push({ ...said, ...read });
+    }
+  }
+
   return {
     fhirBase: base,
     patient: connection.patient,
@@ -257,7 +388,59 @@ export async function pull(
     missing,
     searches: plan.searches,
     denied,
+    ...(documents.length > 0 && { documents }),
   };
+}
+
+/** The bytes a base64 string holds, or undefined where it is no canonical base64. */
+function decoded(data: string): Uint8Array | undefined {
+  try {
+    const text = atob(data);
+    return Uint8Array.from(text, (character) => character.charCodeAt(0));
+  } catch {
+    return undefined;
+  }
+}
+
+/** A document's bytes from the hospital's answer: the body as sent, or a Binary resource's data. */
+function fromAnswer(answer: Answer): Uint8Array | undefined {
+  if (!/json/i.test(answer.headers.get("Content-Type") ?? ""))
+    return answer.body;
+  try {
+    const binary = JSON.parse(new TextDecoder().decode(answer.body)) as {
+      resourceType?: unknown;
+      data?: unknown;
+    };
+    return binary.resourceType === "Binary" && typeof binary.data === "string"
+      ? decoded(binary.data)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The URL with each character the IRI grammar refuses, and a URL leaves as written (`|`, `^`, `\``, `{`, `}`),
+ * percent-encoded, so that it is the IRI `pav:retrievedFrom` states.
+ */
+function iriSafe(href: string): string {
+  return [...href]
+    .map((character) =>
+      character.charCodeAt(0) <= 0x20 || '<>"{}|^`\\'.includes(character)
+        ? encodeURIComponent(character)
+        : character,
+    )
+    .join("");
+}
+
+/**
+ * Whether the bytes read as XML whose root is a CDA ClinicalDocument. A document type declaration before the root,
+ * even one that declares no entity, is refused on purpose: no DTD reaches the Bridge by this path.
+ */
+function isCcda(bytes: Uint8Array): boolean {
+  return /^(\uFEFF)?\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*<(\w+:)?ClinicalDocument[\s>/]/.test(
+    new TextDecoder().decode(bytes.subarray(0, 4096)),
+  );
 }
 
 /** The page's `next` link, exactly as given, resolved only if it is relative. */
