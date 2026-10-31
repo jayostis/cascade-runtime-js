@@ -10,6 +10,7 @@ import {
   checkRecordsAbsence,
   type Claim,
   downloadsSource,
+  holdsRecords,
   podRowsSource,
   type Ran,
   type Tie,
@@ -313,6 +314,11 @@ export async function checkAnswer(options: {
     }));
   const text = (file: string) =>
     readFile(join(prepared.downloads, file), "utf8");
+  // The files an absence must cover: every one that holds records (a pull's pull.json holds none).
+  const couldHold: string[] = [];
+  if (job.arm === "records")
+    for (const file of options.reading)
+      if (holdsRecords(await text(file))) couldHold.push(file);
   for (const question of answer.questions) {
     for (const [at, fact] of question.facts.entries()) {
       const source = "entry" in fact.cite ? entries : files;
@@ -336,13 +342,7 @@ export async function checkAnswer(options: {
       const backing =
         job.arm === "pod"
           ? checkAbsence(absence, ran, tied)
-          : await checkRecordsAbsence(
-              absence,
-              read,
-              text,
-              options.reading,
-              tied,
-            );
+          : await checkRecordsAbsence(absence, read, text, couldHold, tied);
       absences.push({ question: question.n, absence: at, ...backing });
     }
   }

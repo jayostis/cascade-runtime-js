@@ -832,6 +832,13 @@ function jsonRecords(text: string): Span[] {
   return spans;
 }
 
+/** Whether a download holds any record (a FHIR resource, a C-CDA entry or narrative line): a file that could hold what an absence says is not there. */
+export function holdsRecords(text: string): boolean {
+  return (
+    (/^s*[{[]/.test(text) ? jsonRecords(text) : ccdaRecords(text)).length > 0
+  );
+}
+
 /** The downloads in `folder`, cited by file and line or by FHIR resource; a path out of the folder names nothing. */
 export function downloadsSource(folder: string): Source {
   const root = resolve(folder);
