@@ -411,7 +411,7 @@ export async function planRun(
     JSON.stringify(plan, null, 2) + "\n",
   );
   log(
-    `${id}: ${pending.length} job(s) to run, ${jobs.length - pending.length} reused; estimate ${estimate.tokens} tokens, $${estimate.usd.toFixed(2)}; cap ${JSON.stringify(config.cap)}${fitsCap ? "" : " — the estimate passes the cap: the run stops when the next job would pass it"}`,
+    `${id}: ${pending.length} job(s) to run, ${jobs.length - pending.length} reused; estimate ${estimate.tokens} tokens, $${estimate.usd.toFixed(2)}; subjects ${config.subjects.join(", ")}; judges, planned once the subjects answer, ${config.judges.join(", ") || "none"}; cap ${JSON.stringify(config.cap)}${fitsCap ? "" : " — the estimate passes the cap: the run stops when the next job would pass it"}`,
   );
   return plan;
 }

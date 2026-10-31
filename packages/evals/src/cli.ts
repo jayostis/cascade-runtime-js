@@ -70,6 +70,8 @@ async function main(args: string[]): Promise<void> {
               estimate: plan.estimate,
               cap: plan.config.cap,
               fitsCap: plan.fitsCap,
+              subjects: plan.config.subjects,
+              judges: plan.config.judges,
             }
           : plan,
       );
