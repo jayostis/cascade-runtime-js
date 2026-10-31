@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../src/plan.js";
-import { resolvePins } from "../src/pinned.js";
+import {
+  cloneAt,
+  type Environment,
+  pinnedPod,
+  resolvePins,
+} from "../src/pinned.js";
 
 test("a pinned run pins the runtime and only the repositories the pod arm depends on, each at a commit", async () => {
   const { pins } = await loadConfig("baseline-pre-w3");
@@ -25,4 +34,64 @@ test("a pinned run pins the runtime and only the repositories the pod arm depend
       }),
     /cascade-site is no repository a run pins/,
   );
+});
+
+test("a pinned runtime runs in its own checkout, so it reads its own cascade-runtime.json, never the one where the harness runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cascade-evals-pinned-"));
+  try {
+    const index = join(
+      root,
+      "packages",
+      "cascade-runtime",
+      "dist",
+      "src",
+      "index.js",
+    );
+    await mkdir(dirname(index), { recursive: true });
+    // A stand-in for an older runtime build: its pod answers each question with the folder it runs in.
+    await writeFile(
+      index,
+      "export const configureTables = () => undefined;\n" +
+        "export const openPod = async () => ({ ask: async () => process.cwd(), close: async () => undefined });\n",
+    );
+    const rows = pinnedPod(
+      { runtime: index } as Environment,
+      "ask",
+      join(root, "pod"),
+      ["pod/My lab results"],
+    );
+    assert.deepEqual(rows, { "pod/My lab results": root });
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test("a pinned clone keeps long paths on, so the runtime and git see every file of it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cascade-evals-clone-"));
+  try {
+    const source = join(root, "source");
+    await mkdir(source);
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    git(source, "init", "--quiet");
+    await writeFile(join(source, "a.txt"), "a\n");
+    git(source, "add", "a.txt");
+    git(
+      source,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "commit",
+      "--quiet",
+      "-m",
+      "a",
+    );
+    const commit = git(source, "rev-parse", "HEAD");
+    cloneAt(root, "clone", source, commit);
+    assert.equal(git(join(root, "clone"), "config", "core.longpaths"), "true");
+    assert.equal(git(join(root, "clone"), "rev-parse", "HEAD"), commit);
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
 });
