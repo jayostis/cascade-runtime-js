@@ -13,6 +13,8 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Immunizations**: vaccine, the day given.
 - **Procedures**: name, the day done.
 - **Medications**: drug, RxNorm code, prescribed or on the person's list.
+- **Medication dispenses**: a pharmacy's fill: drug, RxNorm and NDC codes, when it
+  was handed over, the prescription it fills, whether it was picked up.
 - **Lab results**: test, LOINC code, value, unit, the time taken.
 - **Variants**: gene, HGVS expression, ClinVar variation ID.
 - **Variant interpretations**: a report's ACMG classification of a variant, and
