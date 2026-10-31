@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -39,7 +39,7 @@ import {
   resolve,
   type Resolved,
 } from "@cascade-runtime/runtime/node";
-import { keptRows, ROWS_CACHE } from "../src/node/rowCache.js";
+import { keptRows, prunedRows, ROWS_CACHE } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
 import { bundleBrowser } from "./browser.js";
@@ -63,10 +63,11 @@ const KEPT_BY_MCP = [
 ];
 const CACHE = join(BUILD, "cache");
 /** Every checkout's pack keeps the row files here unless `CASCADE_ROWS_CACHE` names another folder, or `""` none. */
+const XDG_CACHE = process.env.XDG_CACHE_HOME ?? "";
 const ROWS =
   process.env[ROWS_CACHE] ??
   join(
-    process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"),
+    isAbsolute(XDG_CACHE) ? XDG_CACHE : join(homedir(), ".cache"),
     "cascade-runtime",
     "rows",
   );
@@ -223,6 +224,7 @@ async function packComponents(): Promise<{
     });
   await copyFile(join(ROOT, CONFIG_FILE), join(COMPONENTS, CONFIG_FILE));
   await packStarterTables(config.tables.feeds, treeOf(vocabulary));
+  if (ROWS !== "") await prunedRows(ROWS);
   const resolved = [vocabulary, ...adapters, ...others];
   const record: Packed = {
     components: resolved.map(({ component, version }) => ({

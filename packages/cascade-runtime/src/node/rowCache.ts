@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 /** The folder that keeps the tables' row files between runs; unset, nothing is kept. */
@@ -46,6 +55,8 @@ export function keptRows(
     const kept = await readFile(path).catch(() => undefined);
     if (kept !== undefined && sha256(kept) === hash) {
       hits += 1;
+      const now = new Date();
+      await utimes(path, now, now).catch(() => undefined);
       return new Response(kept);
     }
     const response = await fetching(input, init);
@@ -66,10 +77,25 @@ export function keptRows(
   };
 }
 
+const HOUR = 60 * 60 * 1000;
+const UNREAD_FOR = 30 * 24 * HOUR;
+
+/** Drops the folder's row files no read has touched for 30 days, and half-written files an hour old, which no run is still writing. */
 export async function prunedRows(
   folder: string,
   now = Date.now(),
 ): Promise<void> {
-  void folder;
-  void now;
+  const names = await readdir(folder).catch(() => [] as string[]);
+  for (const name of names) {
+    const oldest = name.endsWith(".tmp")
+      ? now - HOUR
+      : name.endsWith(".nq.gz")
+        ? now - UNREAD_FOR
+        : undefined;
+    if (oldest === undefined) continue;
+    const path = join(folder, name);
+    const touched = (await stat(path).catch(() => undefined))?.mtimeMs;
+    if (touched !== undefined && touched < oldest)
+      await rm(path, { force: true }).catch(() => undefined);
+  }
 }
