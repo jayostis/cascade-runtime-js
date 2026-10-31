@@ -514,6 +514,7 @@ test("a pull states the class of each search it answered and each it was refused
         { type: "Observation", category: "vital-signs" },
         { type: "DiagnosticReport" },
         { type: "DocumentReference" },
+        { type: "MedicationDispense" },
       ],
       denied: [
         { type: "MedicationStatement" },
@@ -524,6 +525,7 @@ test("a pull states the class of each search it answered and each it was refused
     [
       "answersForRecordClass ClinicalNoteOrDocument",
       "answersForRecordClass LaboratoryTestResult",
+      "answersForRecordClass MedicationDispense",
       "answersForRecordClass PrescribedOrReportedMedication",
       "answersForRecordClass ProblemOrDiagnosis",
       "refusedForRecordClass DiagnosticReport",

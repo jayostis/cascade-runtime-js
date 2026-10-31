@@ -162,8 +162,8 @@ npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the
 ### Running it
 
 ```sh
-npm test                                  # the unit tests, and one run of the conformance command
-npm run typecheck
+npm test                                  # the unit tests, and one run of the conformance command, types unchecked
+npm run typecheck                         # before a push
 npm run lint
 npm run conformance -- --report earl.nt   # every example and each kit's checks, as one EARL report
 ```
@@ -221,6 +221,12 @@ an app installs it by its URL. `cascade-mcp`, packed beside it, depends on it at
 the same commit: install the two tarballs in one `npm install`, then run
 `npx --no-install cascade-mcp --pods <folder>` in that folder. `--no-install` matters:
 without it, npx run elsewhere fetches whatever npm's registry calls `cascade-mcp`.
+
+The pack keeps the reference tables' row files it fetches in
+`~/.cache/cascade-runtime/rows` (under `$XDG_CACHE_HOME` when that is set), or
+in the folder `CASCADE_ROWS_CACHE` names; `CASCADE_ROWS_CACHE=""` keeps none.
+Each pack drops the files no pack has read for 30 days, and the folder is safe
+to delete.
 
 ### Which version of each component a run uses
 

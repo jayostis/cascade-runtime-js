@@ -45,6 +45,8 @@ it; it resolves the vocabulary as `cascade-runtime.json` says.
 ## Conventions
 
 - Dependencies are pinned exactly.
+- `npm test` transpiles without checking types; run `npm run typecheck` before
+  a push.
 - Conventional commits: `feat(runtime): ...`, `fix(resolver): ...`; why a change
   was made goes in its message, never in the file.
 - No comment that restates a name, a type or another file.
