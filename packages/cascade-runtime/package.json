@@ -76,7 +76,7 @@
     }
   },
   "devDependencies": {
-    "@the-cascade-protocol/sandbox": "github:jayostis/cascade-sandbox#f7e9c651d130e8409db0f679954aa6f6e757c6c3",
+    "@the-cascade-protocol/sandbox": "https://github.com/jayostis/cascade-sandbox/releases/download/build-f7e9c651d130e8409db0f679954aa6f6e757c6c3/the-cascade-protocol-sandbox-0.0.0-commit-f7e9c651d130e8409db0f679954aa6f6e757c6c3.tgz",
     "esbuild": "0.28.2",
     "vite": "8.3.3"
   }

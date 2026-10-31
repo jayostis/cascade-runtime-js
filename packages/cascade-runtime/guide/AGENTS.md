@@ -13,6 +13,8 @@ of `cascade-runtime` below: <https://jayostis.github.io/cascade-runtime-js/>.
 - **Immunizations**: vaccine, the day given.
 - **Procedures**: name, the day done.
 - **Medications**: drug, RxNorm code, prescribed or on the person's list.
+- **Medication dispenses**: a pharmacy's fill: drug, RxNorm and NDC codes, when it
+  was handed over, the prescription it fills, whether it was picked up.
 - **Lab results**: test, LOINC code, value, unit, the time taken.
 - **Variants**: gene, HGVS expression, ClinVar variation ID.
 - **Variant interpretations**: a report's ACMG classification of a variant, and
@@ -172,7 +174,7 @@ each check, a name under cascade-reference-tables' `builders/` or a path from
 the file; what one builds is kept as a feed's versions are, from
 `pods/.builds/<name>/`. A builder runs through cascade-reference-tables, which
 the app installs itself:
-`npm install --save-exact github:jayostis/cascade-reference-tables#abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab`.
+`npm install --save-exact https://github.com/jayostis/cascade-reference-tables/releases/download/package-builds/cascade-reference-tables-0.0.0-commit-abcb8bd9a99f3f2d9b33351b97416fc0b81f7bab.tgz`.
 A version that does not descend from the one held of its series is never kept.
 
 In a browser, the same import, served with the package's `components/` beside
