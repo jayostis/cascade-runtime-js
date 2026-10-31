@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-30",
+  "issue": "https://github.com/jayostis/cascade-runtime-js/issues/550",
+  "note": "calibration.md",
+  "reference": {
+    "scorer": "claude-opus-5-5",
+    "answers": 33,
+    "items": 407,
+    "excludedItems": 4,
+    "description": "The comparison of 2026-10-30: two blind Opus scorings per answer (four for the six answers scored in two rounds), an item kept only where every scoring of it agrees."
+  },
+  "threshold": 0.95,
+  "judges": [
+    {
+      "model": "claude-haiku-5-5",
+      "items": 407,
+      "agreed": 404,
+      "agreement": 0.993,
+      "kappa": 0.987,
+      "gapItems": 181,
+      "gapAgreed": 181,
+      "gapAgreement": 1,
+      "gapKappa": 1,
+      "usd": 0.38,
+      "tokens": 1655017,
+      "disagreements": [
+        {
+          "answer": "pod_tamsin_r1",
+          "item": "TT1",
+          "reference": "avoided",
+          "judge": "raised"
+        },
+        {
+          "answer": "records_tamsin_r1",
+          "item": "TT1",
+          "reference": "avoided",
+          "judge": "raised"
+        },
+        {
+          "answer": "pod_priyal_r1",
+          "item": "T1",
+          "reference": "avoided",
+          "judge": "raised"
+        }
+      ]
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "items": 407,
+      "agreed": 404,
+      "agreement": 0.993,
+      "kappa": 0.987,
+      "gapItems": 181,
+      "gapAgreed": 179,
+      "gapAgreement": 0.989,
+      "gapKappa": 0.95,
+      "usd": 1.98,
+      "tokens": 1958514,
+      "disagreements": [
+        {
+          "answer": "guidedhaikupod_priya_r3",
+          "item": "G2",
+          "reference": "partly",
+          "judge": "missed"
+        },
+        {
+          "answer": "guidedhaikupod_priya_r2",
+          "item": "G2",
+          "reference": "partly",
+          "judge": "missed"
+        },
+        {
+          "answer": "pod_priyal_r1",
+          "item": "T1",
+          "reference": "avoided",
+          "judge": "raised"
+        }
+      ]
+    }
+  ]
+}
