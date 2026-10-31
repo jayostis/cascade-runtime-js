@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { PACKAGE } from "../src/paths.js";
+import { CONFIGS, PACKAGE } from "../src/paths.js";
 import { loadConfig } from "../src/plan.js";
 
 interface Calibration {
@@ -25,12 +25,15 @@ test("the standard tier judges with the cheapest model calibration found in agre
     cheapest !== undefined,
     "no calibrated judge reaches the threshold",
   );
-  assert.deepEqual((await loadConfig("standard")).judges, [cheapest.model]);
   const calibrated = new Set(calibration.judges.map((it) => it.model));
-  for (const tier of ["standard", "full"])
-    for (const model of (await loadConfig(tier)).judges)
+  for (const name of await readdir(CONFIGS)) {
+    const config = await loadConfig(join(CONFIGS, name));
+    if (config.tier === "standard")
+      assert.deepEqual(config.judges, [cheapest.model], name);
+    for (const model of config.judges)
       assert.ok(
         calibrated.has(model),
-        `${tier} judges with ${model}, which no calibration measured`,
+        `${name} judges with ${model}, which no calibration measured`,
       );
+  }
 });
