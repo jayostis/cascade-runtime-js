@@ -426,8 +426,8 @@ variable name, an unbound variable absent; `entry`, `record`, `profile` and
 
 An entry is what an app shows: one allergy, joining its records from every
 source. Show it first: read an allergy's criticality and status from
-`pod/My active allergies` (each active, its criticality the most severe its
-records give), never from `entry/What it shows`, whose fields are each
+`pod/My active allergies` (each active, or with no status stated, which it reads
+"not stated"; its criticality the most severe its records give), never from `entry/What it shows`, whose fields are each
 record's. Its records go beneath (`entry/Where it came from`,
 `record/What each version says`). Search the entries in the views, never the
 records: no view shows another person's records, or ones entered in error.
@@ -461,9 +461,11 @@ async function search(word) {
 - `judgment/Who judged what`: everything each judgment says.
 - `pod/How many judgments count`: counting judgments by verdict and maker.
 - `pod/How many of each kind`: things of each type.
-- `pod/My active allergies`: allergies a hospital gave the status active
-  (`?allergen`, `?code`, `?criticality`, the most severe its records give), with
-  what each of its records states of the reaction (`?reactionsByRecord`: each
+- `pod/My active allergies`: allergies a hospital gave the status active, or none gave a status
+  (`?allergen`, `?code`, `?criticality`, the most severe its records give,
+  `?status`: `active` or `not stated`), with
+  what each of its records that states one says of the reaction
+  (`?reactionsByRecord`: each
   record, its reaction texts, their codes in parentheses, and its severity, so a
   record other than the lead is read as much as the lead), how many records its
   `?entry` joins (`?records`), and `?sources`.
@@ -627,8 +629,8 @@ await entered(
 allergen or condition name is never blank, else `enter` refuses it; an allergen
 code, a vaccine code and a procedure's SNOMED code are each an absolute IRI in
 their system, else `iri()` throws. `enter` runs the matcher. Only a
-hospital's record gives an entry a status: an entered allergy joined to none is
-in `search`, never in `pod/My active allergies`.
+hospital's record gives an entry a status: an entered allergy joined to none has
+none, and `pod/My active allergies` lists it with the status `not stated`.
 
 ## Judge
 
