@@ -79,6 +79,7 @@ export function keptRows(
 
 const HOUR = 60 * 60 * 1000;
 const UNREAD_FOR = 30 * 24 * HOUR;
+const KEPT_NAME = /^[0-9a-f]{64}\.nq\.gz(\.[^.]+\.tmp)?$/;
 
 /** Drops the folder's row files no read has touched for 30 days, and half-written files an hour old, which no run is still writing. */
 export async function prunedRows(
@@ -87,12 +88,9 @@ export async function prunedRows(
 ): Promise<void> {
   const names = await readdir(folder).catch(() => [] as string[]);
   for (const name of names) {
-    const oldest = name.endsWith(".tmp")
-      ? now - HOUR
-      : name.endsWith(".nq.gz")
-        ? now - UNREAD_FOR
-        : undefined;
-    if (oldest === undefined) continue;
+    const written = KEPT_NAME.exec(name);
+    if (written === null) continue;
+    const oldest = written[1] === undefined ? now - UNREAD_FOR : now - HOUR;
     const path = join(folder, name);
     const touched = (await stat(path).catch(() => undefined))?.mtimeMs;
     if (touched !== undefined && touched < oldest)
