@@ -15,12 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ["22.23.4", "22.23.4 --no-maglev", "24.22.2"]
-        shard: [1, 2, 3, 4]
+        variant: ["22.23.4", "24.22.2"]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
         include:
           - variant: "22.23.4"
-            node: "22.23.4"
-          - variant: "22.23.4 --no-maglev"
             node: "22.23.4"
           - variant: "24.22.2"
             node: "24.22.2"
@@ -53,6 +51,8 @@ jobs:
         run: |
           set +e -uo pipefail
           node --version
+          cpu=$(lscpu | sed -n "s/^Model name: *//p" | head -1)
+          echo "CPU $cpu"
           flags=""
           case "$VARIANT" in *--no-maglev*) flags="--no-maglev" ;; esac
           aborts=0; failed=0
@@ -63,10 +63,10 @@ jobs:
             n=$(grep -c "unreachable code" "$RUNNER_TEMP/run-$i.log" || true)
             fails=$(grep -E "^# fail [0-9]+" "$RUNNER_TEMP/run-$i.log" | tail -1)
             files=$(grep -A1 "DoComputeOutputFrames\|V8_Fatal" "$RUNNER_TEMP/run-$i.log" | grep -o "Subtest: [^ ]*" | sort -u | tr '\n' ' ')
-            echo "PROBE variant=$VARIANT shard=${{ matrix.shard }} run=$i status=$status aborts=$n ${fails} seconds=$(( $(date +%s) - start )) $files"
+            echo "PROBE cpu=\"$cpu\" variant=$VARIANT shard=${{ matrix.shard }} run=$i status=$status aborts=$n ${fails} seconds=$(( $(date +%s) - start )) $files"
             aborts=$((aborts + n))
             [ "$status" = 0 ] || failed=$((failed + 1))
             grep -B2 -A12 "unreachable code" "$RUNNER_TEMP/run-$i.log" | head -60
             grep -E "^not ok" "$RUNNER_TEMP/run-$i.log" | head -20
           done
-          echo "PROBE-TOTAL variant=$VARIANT shard=${{ matrix.shard }} aborts=$aborts failed-runs=$failed" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "PROBE-TOTAL variant=$VARIANT shard=${{ matrix.shard }} cpu=\"$cpu\" aborts=$aborts failed-runs=$failed" | tee -a "$GITHUB_STEP_SUMMARY"
