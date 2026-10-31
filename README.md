@@ -162,8 +162,8 @@ npm run graphdb -- <name> <GraphDB's URL>     # a repository <name>, holding the
 ### Running it
 
 ```sh
-npm test                                  # the unit tests, and one run of the conformance command
-npm run typecheck
+npm test                                  # the unit tests, and one run of the conformance command, types unchecked
+npm run typecheck                         # before a push
 npm run lint
 npm run conformance -- --report earl.nt   # every example and each kit's checks, as one EARL report
 ```
