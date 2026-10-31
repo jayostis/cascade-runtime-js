@@ -3,7 +3,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Component } from "./cases.js";
 import { sha256 } from "./cases.js";
@@ -39,6 +39,40 @@ const git = (cwd: string, ...args: string[]) =>
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+
+/**
+ * The repository cloned into `folder/name` and checked out at `pin`, with long paths on in its own config, so the
+ * runtime, git and the harness see every file of it (the vocabulary's file names pass 260 characters). Its commit.
+ */
+export function cloneAt(
+  folder: string,
+  name: string,
+  source: string,
+  pin: string,
+): string {
+  const at = join(folder, name);
+  if (!existsSync(join(at, ".git")))
+    git(
+      folder,
+      "clone",
+      "--quiet",
+      "--filter=blob:none",
+      "--no-checkout",
+      source,
+      name,
+    );
+  git(at, "config", "core.longpaths", "true");
+  git(
+    at,
+    "-c",
+    "advice.detachedHead=false",
+    "checkout",
+    "--quiet",
+    "--detach",
+    pin,
+  );
+  return git(at, "rev-parse", "HEAD");
+}
 
 /** Each pin as a full commit: "main" is the default branch's head as the repository has it now. */
 export function resolvePins(
@@ -87,6 +121,7 @@ export async function environment(
     const kept = JSON.parse(await readFile(done, "utf8")) as Environment;
     for (const [name, commit] of Object.entries(kept.commits)) {
       const at = join(folder, name);
+      git(at, "config", "core.longpaths", "true");
       if (
         git(at, "rev-parse", "HEAD") !== commit ||
         git(at, "status", "--porcelain") !== ""
@@ -100,28 +135,9 @@ export async function environment(
   await mkdir(folder, { recursive: true });
   for (const [name, pin] of Object.entries(resolved)) {
     const at = join(folder, name);
-    if (!existsSync(join(at, ".git"))) {
+    if (!existsSync(join(at, ".git")))
       log(`pinned: cloning ${name} at ${pin.slice(0, 12)}`);
-      git(
-        folder,
-        "clone",
-        "--quiet",
-        "--filter=blob:none",
-        "--no-checkout",
-        PINNABLE[name]!,
-        name,
-      );
-    }
-    git(
-      at,
-      "-c",
-      "advice.detachedHead=false",
-      "checkout",
-      "--quiet",
-      "--detach",
-      pin,
-    );
-    commits[name] = git(at, "rev-parse", "HEAD");
+    commits[name] = cloneAt(folder, name, PINNABLE[name]!, pin);
   }
   const runtime = join(folder, "cascade-runtime-js");
   log("pinned: installing and building cascade-runtime-js (several minutes)");
@@ -177,10 +193,19 @@ const SCRIPT = fileURLToPath(
   new URL("../../scripts/pinned.mjs", import.meta.url),
 );
 
+/**
+ * The checkout a build of the runtime is in, from its cascade-runtime entry: the folder its processes run in, so it
+ * reads its own cascade-runtime.json, never the one of the folder the harness runs from (which an older runtime takes
+ * for an app's, and refuses).
+ */
+export const runtimeRoot = (entry: string) =>
+  join(dirname(entry), "..", "..", "..", "..");
+
 /** The components a build of the runtime resolves, asked of it in its own process. */
 function pinnedComponents(runtime: string): Component[] {
   return JSON.parse(
     execFileSync(process.execPath, [SCRIPT, runtime, "components"], {
+      cwd: runtimeRoot(runtime),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
     }),
@@ -199,6 +224,7 @@ export function pinnedPod(
       process.execPath,
       [SCRIPT, env.runtime, command, pod, ...args],
       {
+        cwd: runtimeRoot(env.runtime),
         encoding: "utf8",
         maxBuffer: 1 << 30,
         stdio: ["ignore", "pipe", "inherit"],

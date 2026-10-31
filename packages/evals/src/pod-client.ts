@@ -118,6 +118,10 @@ export async function podServe(given: string, job: string): Promise<void> {
     new StdioClientTransport({
       command: process.execPath,
       args: [prepared.mcp ?? MCP_CLI, "--pods", prepared.pods],
+      // a pinned build runs in its own checkout (see runtimeRoot); this checkout's own runs where it is
+      ...(prepared.mcp === undefined
+        ? {}
+        : { cwd: join(dirname(prepared.mcp), "..", "..", "..", "..") }),
       stderr: "ignore",
     }),
   );
