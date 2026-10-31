@@ -11,6 +11,8 @@ import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Client } from "@modelcontextprotocol/client";
+import type { Prepared } from "./cases.js";
+import { runtimeRoot } from "./paths.js";
 import type { Plan } from "./plan.js";
 import { runFolder, type ToolCallRecord } from "./results.js";
 
@@ -51,6 +53,19 @@ function socketOf(folder: string, job: string): string {
   return process.platform === "win32"
     ? `\\\\.\\pipe\\${name}`
     : join(tmpdir(), `${name}.sock`);
+}
+
+/**
+ * How a job's cascade-mcp starts: this checkout's, where the harness runs, or a pinned build's, in its own checkout so it
+ * reads its own cascade-runtime.json (see runtimeRoot).
+ */
+export function mcpServer(prepared: Pick<Prepared, "mcp" | "pods">) {
+  return {
+    command: process.execPath,
+    args: [prepared.mcp ?? MCP_CLI, "--pods", prepared.pods],
+    ...(prepared.mcp === undefined ? {} : { cwd: runtimeRoot(prepared.mcp) }),
+    stderr: "ignore" as const,
+  };
 }
 
 /** Sends one call to the job's server and returns its answer, or undefined when no server listens. */
@@ -114,17 +129,7 @@ export async function podServe(given: string, job: string): Promise<void> {
   const { StdioClientTransport } =
     await import("@modelcontextprotocol/client/stdio");
   const client = new Client({ name: "cascade-evals", version: "0.0.0" });
-  await client.connect(
-    new StdioClientTransport({
-      command: process.execPath,
-      args: [prepared.mcp ?? MCP_CLI, "--pods", prepared.pods],
-      // a pinned build runs in its own checkout (see runtimeRoot); this checkout's own runs where it is
-      ...(prepared.mcp === undefined
-        ? {}
-        : { cwd: join(dirname(prepared.mcp), "..", "..", "..", "..") }),
-      stderr: "ignore",
-    }),
-  );
+  await client.connect(new StdioClientTransport(mcpServer(prepared)));
   let idle: NodeJS.Timeout;
   const server = createServer((connection: Socket) => {
     clearTimeout(idle);

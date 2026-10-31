@@ -1,4 +1,5 @@
 // Where the harness's own files are: the package folder, from `dist/src/` once built.
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const at = (path: string) =>
@@ -19,3 +20,11 @@ export const HISTORY = at("history");
 export const WORK = at("work");
 export const PRICES = at("prices.json");
 export const PRIORS = at("priors.json");
+
+/**
+ * The checkout a build of the runtime is in, from its cascade-runtime entry: the folder its processes run in, so it
+ * reads its own cascade-runtime.json, never the one of the folder the harness runs from (which an older runtime takes
+ * for an app's, and refuses).
+ */
+export const runtimeRoot = (entry: string) =>
+  join(dirname(entry), "..", "..", "..", "..");

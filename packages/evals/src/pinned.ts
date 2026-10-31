@@ -3,11 +3,11 @@
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Component } from "./cases.js";
 import { sha256 } from "./cases.js";
-import { WORK } from "./paths.js";
+import { runtimeRoot, WORK } from "./paths.js";
 
 /** The repositories a run can pin, and where each is fetched from. */
 export const PINNABLE: Readonly<Record<string, string>> = {
@@ -74,6 +74,27 @@ export function cloneAt(
   return git(at, "rev-parse", "HEAD");
 }
 
+/**
+ * A kept environment's clones, each given long paths in its own config and then held to its commit with nothing
+ * changed; it throws, saying which clone, otherwise.
+ */
+export function checkKept(
+  folder: string,
+  commits: Readonly<Record<string, string>>,
+): void {
+  for (const [name, commit] of Object.entries(commits)) {
+    const at = join(folder, name);
+    git(at, "config", "core.longpaths", "true");
+    if (
+      git(at, "rev-parse", "HEAD") !== commit ||
+      git(at, "status", "--porcelain") !== ""
+    )
+      throw new Error(
+        `the pinned clone ${at} is no longer ${name} at ${commit.slice(0, 12)} with nothing changed: remove ${folder} and plan again`,
+      );
+  }
+}
+
 /** Each pin as a full commit: "main" is the default branch's head as the repository has it now. */
 export function resolvePins(
   pins: Readonly<Record<string, string>>,
@@ -119,17 +140,7 @@ export async function environment(
   const done = join(folder, "environment.json");
   if (existsSync(done)) {
     const kept = JSON.parse(await readFile(done, "utf8")) as Environment;
-    for (const [name, commit] of Object.entries(kept.commits)) {
-      const at = join(folder, name);
-      git(at, "config", "core.longpaths", "true");
-      if (
-        git(at, "rev-parse", "HEAD") !== commit ||
-        git(at, "status", "--porcelain") !== ""
-      )
-        throw new Error(
-          `the pinned clone ${at} is no longer ${name} at ${commit.slice(0, 12)} with nothing changed: remove ${folder} and plan again`,
-        );
-    }
+    checkKept(folder, kept.commits);
     // asked again, so a kept environment records what its runtime resolves now
     return { ...kept, components: resolvedBy(kept.runtime, kept.commits) };
   }
@@ -170,13 +181,7 @@ const SCRIPT = fileURLToPath(
   new URL("../../scripts/pinned.mjs", import.meta.url),
 );
 
-/**
- * The checkout a build of the runtime is in, from its cascade-runtime entry: the folder its processes run in, so it
- * reads its own cascade-runtime.json, never the one of the folder the harness runs from (which an older runtime takes
- * for an app's, and refuses).
- */
-export const runtimeRoot = (entry: string) =>
-  join(dirname(entry), "..", "..", "..", "..");
+export { runtimeRoot } from "./paths.js";
 
 /**
  * What the pinned runtime resolves, asked of it, refused where it differs from a pin; and the pins it does not read
