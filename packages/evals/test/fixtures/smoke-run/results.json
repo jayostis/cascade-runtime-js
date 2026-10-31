@@ -5,8 +5,8 @@
     "tier": "custom",
     "runner": "claude-code",
     "created": "2026-10-30T22:40:14.085Z",
-    "finished": "2026-10-30T22:52:54.065Z",
-    "wallSeconds": 760,
+    "finished": "2026-10-31T00:01:54.043Z",
+    "wallSeconds": 4900,
     "stoppedAtCap": false,
     "config": {
       "$schema": "../schemas/config.schema.json",
@@ -1190,7 +1190,7 @@
             "resource": "MedicationRequest/story-stopped-medrx-3"
           },
           "ok": true,
-          "shows": "Atorvastatin 20 mg tablet · status active, order · on 2025-02-20"
+          "shows": "Atorvastatin 20 mg tablet · status active · on 2025-02-20"
         },
         {
           "question": 4,
@@ -1230,7 +1230,7 @@
             "resource": "MedicationRequest/story-stopped-medrx-2"
           },
           "ok": true,
-          "shows": "Jardiance 10 mg tablet · status active, order · on 2025-02-20"
+          "shows": "Jardiance 10 mg tablet · status active · on 2025-02-20"
         },
         {
           "question": 5,
@@ -1318,13 +1318,13 @@
           "question": 3,
           "absence": 0,
           "backed": false,
-          "reason": "records hold it: north-2026-10/bundle.json"
+          "reason": "sources leave out: north-2024-02/bundle.json, north-2025-02/bundle.json"
         },
         {
           "question": 4,
           "absence": 0,
           "backed": false,
-          "reason": "records hold it: north-2026-10/bundle.json"
+          "reason": "sources leave out: north-2024-02/bundle.json, north-2025-02/bundle.json"
         },
         {
           "question": 5,
