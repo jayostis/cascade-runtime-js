@@ -5,7 +5,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
 import process from "node:process";
 import { build } from "esbuild";
 
@@ -98,6 +98,30 @@ for (const name of readdirSync("packages").sort()) {
       if (existsSync(join(pkg, folder, `${entry.slice(0, -ending.length)}.ts`)))
         continue;
       rmSync(join(pkg, "dist", folder, entry));
+      gone += 1;
+    }
+  }
+  const included = new Set(include.map((folder) => normalize(folder)));
+  for (const folder of existsSync(join(pkg, "dist"))
+    ? readdirSync(join(pkg, "dist"))
+    : []) {
+    if (
+      included.has(folder) ||
+      !statSync(join(pkg, "dist", folder)).isDirectory()
+    )
+      continue;
+    for (const entry of filesUnder(join(pkg, "dist", folder))) {
+      if (!entry.endsWith(".js.map")) continue;
+      const map = join(pkg, "dist", folder, entry);
+      const stem = entry.slice(0, -".js.map".length);
+      const { sources } = JSON.parse(readFileSync(map, "utf8"));
+      if (
+        sources?.length !== 1 ||
+        resolve(dirname(map), sources[0]) !== resolve(pkg, folder, `${stem}.ts`)
+      )
+        continue;
+      for (const ending of EMITTED)
+        rmSync(join(pkg, "dist", folder, `${stem}${ending}`), { force: true });
       gone += 1;
     }
   }
