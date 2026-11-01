@@ -139,5 +139,5 @@ export function graphBlock(graph: Graph, id: string, note: string): string {
         `<div class="ndetail" data-id="${esc(node.id)}" hidden><span class="kl">${esc(KIND[node.kind])}${node.check === undefined ? "" : ` · <span class="${node.check}">${node.check === "ok" ? "checked by a program: the record says this" : "checked by a program: the record does not say this"}</span>`}</span><b>${esc(node.label)}</b>${node.sub === undefined ? "" : ` <span class="muted">· ${esc(node.sub)}</span>`}${node.detail ?? ""}</div>`,
     )
     .join("");
-  return `<div class="gwrap"><div class="svgwrap">${svgOf(graph, id)}<div class="gpanel"><span class="muted small">Click a box for what it holds.</span></div></div>${treeOf(graph)}<p class="tiny muted">${note}</p>${details}</div>`;
+  return `<div class="gwrap"><div class="svgblock"><div class="svgwrap">${svgOf(graph, id)}</div><div class="gpanel"><span class="muted small">Click a box for what it holds.</span></div></div>${treeOf(graph)}<p class="tiny muted">${note}</p>${details}</div>`;
 }

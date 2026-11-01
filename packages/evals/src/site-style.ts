@@ -135,7 +135,7 @@ table.plain th{font-size:.76rem;color:var(--muted);font-weight:600}table.plain t
 @media (max-width:780px){
  main{padding:12px 14px 64px}
  .arms,.two{grid-template-columns:1fr}
- .svgwrap{display:none}.tree{display:block}
+ .svgblock{display:none}.tree{display:block}
  .arm .head{flex-direction:column;align-items:flex-start}.arm .head .how{text-align:left}
  .expect table,.expect thead,.expect tbody,.expect tr,.expect td,.expect th{display:block}.expect thead{display:none}
  .expect td{border:0;padding:4px 12px;width:auto !important}
