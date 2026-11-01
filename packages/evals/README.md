@@ -16,7 +16,10 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
   downloads beside the vocabulary kit's copies), `key.json` (the machine-readable key: for each question, one item per
   expected fact, absence or negation, planted gap, trap or near-trap, with its evidence, the links the reasoning must
   state, and what counts as found, partly found or wrong) and `key.md` (the rationale and its guideline citations). A case must say `"synthetic": true`, and its downloads must hash to the digest its key was
-  written against.
+  written against. A judge reads both halves of the key and is not told which arm wrote an answer, so what is true of one
+  arm only (where the pod holds an item, what a view shows) goes in a `- **Pod:**` bullet of `key.md`, a `pod` field of an
+  item or a `podNote` of a pre-existing item, none of which reach the judge; a test builds each case's packet and fails on
+  any term that names an arm.
 - `configs/`: the tiers. **smoke**: one case, one run per arm, one judge (so the judging path runs end to end). **standard**: every case, one run, one
   judge. **full**: three runs, two judges and their agreement. Each config names the subject and judge models (judges
   are cheap models picked by calibration: [calibration.md](calibration.md)) and a hard cap in tokens and dollars.

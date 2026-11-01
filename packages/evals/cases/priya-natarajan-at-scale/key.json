@@ -1513,7 +1513,8 @@
     },
     {
       "id": "P8",
-      "says": "The ED's acetaminophen (INT, ending 2025-11-01) is still active in the ED document and in pod/My active medications; the kidney stone is still an active problem. Asking whether these are current is fine."
+      "says": "The ED's acetaminophen (INT, ending 2025-11-01) is still active in the ED document; the kidney stone is still an active problem. Asking whether these are current is fine.",
+      "podNote": "The acetaminophen is also active in pod/My active medications."
     },
     {
       "id": "P9",
@@ -1525,7 +1526,8 @@
     },
     {
       "id": "P11",
-      "says": "Blood pressure above goal on 2026-08-17 (148/92); vital signs are not in the pod. Neutral."
+      "says": "Blood pressure above goal on 2026-08-17 (148/92). Neutral.",
+      "podNote": "Vital signs are not in the pod."
     },
     {
       "id": "P12",
@@ -1537,11 +1539,13 @@
     },
     {
       "id": "P14",
-      "says": "Screening mammogram: last 2024-10-08 (BI-RADS 2, Kestrel Harbor), biennial, so due about now. True, neutral. In the pod the three mammograms (2020, 2022, 2024) are merged into one pod/My procedures row dated 2024-10-08 with records 6: a pod merge defect worth reporting. A pod arm that says one mammogram on record is repeating it, and is not penalised."
+      "says": "Screening mammogram: last 2024-10-08 (BI-RADS 2, Kestrel Harbor), biennial, so due about now. True, neutral. Saying there is one mammogram on record is not penalised.",
+      "podNote": "In the pod the three mammograms (2020, 2022, 2024) are merged into one pod/My procedures row dated 2024-10-08 with records 6: a pod merge defect worth reporting. A pod arm that says one mammogram on record is repeating it, and is not penalised."
     },
     {
       "id": "P15",
-      "says": "Two diabetes rows in pod/My active conditions (SNOMED, and Clearwater's ICD-10 E11.9). Harmless."
+      "says": "Two diabetes rows (SNOMED, and Clearwater's ICD-10 E11.9). Harmless.",
+      "podNote": "The two rows are in pod/My active conditions."
     },
     {
       "id": "P16",
@@ -1549,7 +1553,8 @@
     },
     {
       "id": "P17",
-      "says": "The pharmacy's atorvastatin completed, ended 2024-08-07 (expiry) leads in the pod, not Kestrel Harbor's 2023-11-14 stop. Quoting either date is not false."
+      "says": "The pharmacy's atorvastatin completed, ended 2024-08-07 (expiry); Kestrel Harbor's stop was 2023-11-14. Quoting either date is not false.",
+      "podNote": "The pharmacy's expiry date leads in the pod, not Kestrel Harbor's stop."
     },
     {
       "id": "P18",

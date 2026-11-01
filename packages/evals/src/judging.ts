@@ -96,18 +96,22 @@ const answered = (job: Job) =>
 
 /**
  * The key's prose as a judge reads it: without the sections that score by the older rules (a gap found, a false
- * question counted), since the judge's verdicts have the one vocabulary its prompt gives.
+ * question counted), since the judge's verdicts have the one vocabulary its prompt gives, and without the summary
+ * table and the bullets that say where the pod holds an item, which would say which answer came from the pod.
  */
 export const judgesProse = (prose: string) =>
-  prose.replace(
-    /^## (?:Scoring rules|How to score)\b.*?(?=^## |(?![\s\S]))/gms,
-    "",
-  );
+  prose
+    .replace(
+      /^## (?:Scoring rules|How to score|Summary)\b.*?(?=^## |(?![\s\S]))/gms,
+      "",
+    )
+    .replace(/^- \*\*Pod[ :(].*(?:\n {2,}\S.*)*\n?/gm, "");
 
-/** The key as a judge reads it: without where the pod holds each item. */
+/** The key as a judge reads it: without where the pod holds each item or what only the pod has to say about one. */
 const judgesKey = (key: Key) => ({
   ...key,
   items: key.items.map(({ pod: _pod, ...item }) => item),
+  preExisting: key.preExisting?.map(({ podNote: _note, ...item }) => item),
 });
 
 /**
