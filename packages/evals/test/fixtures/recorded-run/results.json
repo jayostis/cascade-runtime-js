@@ -1,0 +1,3270 @@
+{
+  "schema": "cascade-evals/results/2",
+  "run": {
+    "id": "fixture-1",
+    "tier": "smoke",
+    "runner": "claude-code",
+    "created": "2026-10-31T17:00:00.000Z",
+    "finished": "2026-10-31T17:15:00.000Z",
+    "wallSeconds": 900,
+    "stoppedAtCap": false,
+    "config": {
+      "tier": "smoke",
+      "cases": ["tamsin-vale"],
+      "arms": ["pod", "records"],
+      "subjects": ["claude-opus-5-5"],
+      "repeats": 1,
+      "judges": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+      "cap": {
+        "usd": 5
+      }
+    },
+    "configSha256": ""
+  },
+  "versions": {
+    "harness": {
+      "commit": "0123456789abcdef",
+      "uncommitted": 0
+    },
+    "podPackages": {},
+    "components": [
+      {
+        "name": "cascade-bridge-adapter-fhir-r4",
+        "repository": "the-cascade-protocol/cascade-bridge-adapter-fhir-r4",
+        "commit": "fedcba9876543210",
+        "source": "main"
+      }
+    ],
+    "prompts": {
+      "pod": "7c1d2e",
+      "records": "a93b10",
+      "question": "5e5e5e",
+      "judge": "b2b2b2"
+    },
+    "priceTable": "2026-10-06"
+  },
+  "budget": {
+    "cap": {
+      "usd": 5
+    },
+    "estimate": {
+      "tokens": 0,
+      "usd": 0
+    },
+    "spent": {
+      "tokens": 315300,
+      "usd": 0.7128,
+      "basis": "exact"
+    },
+    "byRole": {
+      "subject": {
+        "tokens": 256800,
+        "usd": 0.5592
+      },
+      "judge": {
+        "tokens": 58500,
+        "usd": 0.1536
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "tamsin-vale",
+      "downloadsSha256": "",
+      "keySha256": "",
+      "imports": [
+        {
+          "download": "north-2024-02",
+          "records": 14
+        },
+        {
+          "download": "north-2025-02",
+          "records": 14
+        },
+        {
+          "download": "north-2026-10",
+          "records": 14
+        }
+      ],
+      "documents": [
+        {
+          "file": "north-2024-02/bundle.json",
+          "bytes": 12400
+        },
+        {
+          "file": "north-2024-02/pull.json",
+          "bytes": 310
+        },
+        {
+          "file": "north-2025-02/bundle.json",
+          "bytes": 14100
+        },
+        {
+          "file": "north-2025-02/pull.json",
+          "bytes": 310
+        },
+        {
+          "file": "north-2026-10/bundle.json",
+          "bytes": 33500
+        },
+        {
+          "file": "north-2026-10/pull.json",
+          "bytes": 310
+        }
+      ],
+      "sessions": [
+        {
+          "id": "checkup",
+          "questions": [
+            {
+              "id": "checkup",
+              "asks": "I have a check-up coming. Looking at my records, what should I bring up with my doctor: anything overdue, missed, or that doesn't add up?"
+            },
+            {
+              "id": "medications",
+              "asks": "What medications am I on right now?"
+            },
+            {
+              "id": "last-a1c",
+              "asks": "When was my last A1c, and what was it?"
+            }
+          ]
+        },
+        {
+          "id": "worries",
+          "questions": [
+            {
+              "id": "blood-clot",
+              "asks": "Did I ever have a blood clot in my lung? I remember a scan in summer 2025."
+            },
+            {
+              "id": "allergies",
+              "asks": "Am I allergic to anything?"
+            }
+          ]
+        }
+      ],
+      "key": [
+        {
+          "id": "TG1",
+          "question": "checkup",
+          "kind": "gap",
+          "title": "Urine albumin-to-creatinine ratio never done, eGFR yearly",
+          "lookingFor": "the missing urine albumin test (uACR) for her diabetes",
+          "pod": "visible"
+        },
+        {
+          "id": "TG2",
+          "question": "checkup",
+          "kind": "gap",
+          "title": "Positive stool test (FIT) with no colonoscopy",
+          "lookingFor": "a colonoscopy after the positive stool test of 2025-11-04",
+          "pod": "visible"
+        },
+        {
+          "id": "TT1",
+          "question": "checkup",
+          "kind": "trap",
+          "title": "Untreated rising A1c: out of date",
+          "lookingFor": "no claim that her diabetes is untreated or her A1c is 8.3 now",
+          "pod": "visible"
+        },
+        {
+          "id": "TT2",
+          "question": "checkup",
+          "kind": "trap",
+          "title": "A pulmonary embolism that was ruled out",
+          "lookingFor": "no question treating the refuted pulmonary embolism as real",
+          "pod": "deeper"
+        },
+        {
+          "id": "TF1",
+          "question": "medications",
+          "kind": "fact",
+          "title": "Her current medicines: Jardiance and atorvastatin",
+          "lookingFor": "Jardiance (empagliflozin) 10 mg and atorvastatin 20 mg, both once daily, both active since 2025-02-20",
+          "pod": "visible"
+        },
+        {
+          "id": "TF2",
+          "question": "medications",
+          "kind": "fact",
+          "title": "Metformin is stopped",
+          "lookingFor": "metformin stopped on 2024-04-15, not current",
+          "pod": "visible"
+        },
+        {
+          "id": "TT3",
+          "question": "medications",
+          "kind": "trap",
+          "title": "Metformin listed as current",
+          "lookingFor": "no claim that she takes metformin now",
+          "pod": "visible"
+        },
+        {
+          "id": "TF3",
+          "question": "last-a1c",
+          "kind": "fact",
+          "title": "Last A1c: 6.9% on 2026-02-16",
+          "lookingFor": "6.9% on 2026-02-16",
+          "pod": "visible"
+        },
+        {
+          "id": "TT4",
+          "question": "last-a1c",
+          "kind": "trap",
+          "title": "An older A1c given as the last",
+          "lookingFor": "no older value (8.3% in January 2025, the last one in the 2025 download) given as the latest",
+          "pod": "visible"
+        },
+        {
+          "id": "TN1",
+          "question": "blood-clot",
+          "kind": "negation",
+          "title": "No: a pulmonary embolism was suspected and ruled out",
+          "lookingFor": "no blood clot in the lung: suspected on 2025-07-08 and ruled out by CT the same day",
+          "pod": "deeper"
+        },
+        {
+          "id": "TT5",
+          "question": "blood-clot",
+          "kind": "trap",
+          "title": "\"Yes, in July 2025\" from the condition's name",
+          "lookingFor": "no claim that she had a pulmonary embolism",
+          "pod": "deeper"
+        },
+        {
+          "id": "TA1",
+          "question": "allergies",
+          "kind": "absence",
+          "title": "No allergy recorded, and what was looked through",
+          "lookingFor": "none recorded, with what was looked through: one hospital, three downloads",
+          "pod": "visible"
+        },
+        {
+          "id": "TT6",
+          "question": "allergies",
+          "kind": "trap",
+          "title": "An intolerance read into metformin's stop",
+          "lookingFor": "no allergy or intolerance invented from metformin's unexplained stop",
+          "pod": "visible"
+        }
+      ],
+      "keyUrl": "https://github.com/jayostis/cascade-runtime-js/blob/0123456/packages/evals/cases/tamsin-vale/key.md",
+      "build": {
+        "seconds": 3.1,
+        "modelCalls": 0,
+        "tokens": 0,
+        "usd": 0
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "role": "subject",
+      "case": "tamsin-vale",
+      "session": "checkup",
+      "questions": ["checkup", "medications", "last-a1c"],
+      "arm": "pod",
+      "model": "claude-opus-5-5",
+      "alias": "opus",
+      "repeat": 1,
+      "tag": "fixture-1/tamsin-vale.checkup.pod.opus-5-5.r1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "answers": "answers/tamsin-vale.checkup.pod.opus-5-5.r1",
+      "prompt": "prompts/tamsin-vale.checkup.pod.opus-5-5.r1.txt",
+      "stats": {
+        "calls": 8,
+        "models": ["claude-opus-5-5"],
+        "tokens": {
+          "input": 3060,
+          "cacheCreation": 6900,
+          "cacheRead": 31000,
+          "output": 2980,
+          "total": 43940
+        },
+        "contextPeak": 33000,
+        "toolCalls": {
+          "total": 3,
+          "byName": {
+            "ask": 3,
+            "Write": 2
+          }
+        },
+        "wallSeconds": 118,
+        "cost": {
+          "usd": 0.1459,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "split": {
+        "shared": {
+          "calls": 1,
+          "tokens": {
+            "input": 3000,
+            "cacheCreation": 0,
+            "cacheRead": 0,
+            "output": 60,
+            "total": 3060
+          },
+          "usd": 0.0141,
+          "seconds": 8
+        },
+        "questions": {
+          "checkup": {
+            "calls": 5,
+            "tokens": {
+              "input": 40,
+              "cacheCreation": 6000,
+              "cacheRead": 22000,
+              "output": 2400,
+              "total": 30440
+            },
+            "usd": 0.1105,
+            "seconds": 96
+          },
+          "medications": {
+            "calls": 2,
+            "tokens": {
+              "input": 20,
+              "cacheCreation": 900,
+              "cacheRead": 9000,
+              "output": 520,
+              "total": 10440
+            },
+            "usd": 0.0213,
+            "seconds": 14
+          }
+        }
+      }
+    },
+    {
+      "id": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "role": "subject",
+      "case": "tamsin-vale",
+      "session": "checkup",
+      "questions": ["checkup", "medications", "last-a1c"],
+      "arm": "records",
+      "model": "claude-opus-5-5",
+      "alias": "opus",
+      "repeat": 1,
+      "tag": "fixture-1/tamsin-vale.checkup.records.opus-5-5.r1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "answers": "answers/tamsin-vale.checkup.records.opus-5-5.r1",
+      "prompt": "prompts/tamsin-vale.checkup.records.opus-5-5.r1.txt",
+      "stats": {
+        "calls": 6,
+        "models": ["claude-opus-5-5"],
+        "tokens": {
+          "input": 3040,
+          "cacheCreation": 19200,
+          "cacheRead": 82000,
+          "output": 2700,
+          "total": 106940
+        },
+        "contextPeak": 62000,
+        "toolCalls": {
+          "total": 3,
+          "byName": {
+            "Read": 6,
+            "Write": 2
+          }
+        },
+        "wallSeconds": 107,
+        "cost": {
+          "usd": 0.2081,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "split": {
+        "shared": {
+          "calls": 2,
+          "tokens": {
+            "input": 3000,
+            "cacheCreation": 18000,
+            "cacheRead": 0,
+            "output": 120,
+            "total": 21120
+          },
+          "usd": 0.0937,
+          "seconds": 21,
+          "recordsContext": 18000
+        },
+        "questions": {
+          "checkup": {
+            "calls": 3,
+            "tokens": {
+              "input": 30,
+              "cacheCreation": 900,
+              "cacheRead": 61000,
+              "output": 2100,
+              "total": 64030
+            },
+            "usd": 0.0961,
+            "seconds": 70,
+            "recordsTokens": 54000
+          },
+          "medications": {
+            "calls": 1,
+            "tokens": {
+              "input": 10,
+              "cacheCreation": 300,
+              "cacheRead": 21000,
+              "output": 480,
+              "total": 21790
+            },
+            "usd": 0.0183,
+            "seconds": 16,
+            "recordsTokens": 18000
+          }
+        }
+      }
+    },
+    {
+      "id": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "role": "subject",
+      "case": "tamsin-vale",
+      "session": "worries",
+      "questions": ["blood-clot", "allergies"],
+      "arm": "pod",
+      "model": "claude-opus-5-5",
+      "alias": "opus",
+      "repeat": 1,
+      "tag": "fixture-1/tamsin-vale.worries.pod.opus-5-5.r1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "answers": "answers/tamsin-vale.worries.pod.opus-5-5.r1",
+      "prompt": "prompts/tamsin-vale.worries.pod.opus-5-5.r1.txt",
+      "stats": {
+        "calls": 6,
+        "models": ["claude-opus-5-5"],
+        "tokens": {
+          "input": 3050,
+          "cacheCreation": 2000,
+          "cacheRead": 16500,
+          "output": 940,
+          "total": 22490
+        },
+        "contextPeak": 33000,
+        "toolCalls": {
+          "total": 3,
+          "byName": {
+            "ask": 3,
+            "Write": 2
+          }
+        },
+        "wallSeconds": 48,
+        "cost": {
+          "usd": 0.0594,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "split": {
+        "shared": {
+          "calls": 1,
+          "tokens": {
+            "input": 3000,
+            "cacheCreation": 0,
+            "cacheRead": 0,
+            "output": 50,
+            "total": 3050
+          },
+          "usd": 0.0138,
+          "seconds": 7
+        },
+        "questions": {
+          "blood-clot": {
+            "calls": 3,
+            "tokens": {
+              "input": 30,
+              "cacheCreation": 1500,
+              "cacheRead": 9500,
+              "output": 560,
+              "total": 11590
+            },
+            "usd": 0.0309,
+            "seconds": 30
+          },
+          "allergies": {
+            "calls": 2,
+            "tokens": {
+              "input": 20,
+              "cacheCreation": 500,
+              "cacheRead": 7000,
+              "output": 330,
+              "total": 7850
+            },
+            "usd": 0.0147,
+            "seconds": 11
+          }
+        }
+      }
+    },
+    {
+      "id": "tamsin-vale.worries.records.opus-5-5.r1",
+      "role": "subject",
+      "case": "tamsin-vale",
+      "session": "worries",
+      "questions": ["blood-clot", "allergies"],
+      "arm": "records",
+      "model": "claude-opus-5-5",
+      "alias": "opus",
+      "repeat": 1,
+      "tag": "fixture-1/tamsin-vale.worries.records.opus-5-5.r1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "answers": "answers/tamsin-vale.worries.records.opus-5-5.r1",
+      "prompt": "prompts/tamsin-vale.worries.records.opus-5-5.r1.txt",
+      "stats": {
+        "calls": 5,
+        "models": ["claude-opus-5-5"],
+        "tokens": {
+          "input": 3030,
+          "cacheCreation": 18600,
+          "cacheRead": 61000,
+          "output": 800,
+          "total": 83430
+        },
+        "contextPeak": 62000,
+        "toolCalls": {
+          "total": 3,
+          "byName": {
+            "Read": 6,
+            "Write": 2
+          }
+        },
+        "wallSeconds": 48,
+        "cost": {
+          "usd": 0.1458,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      },
+      "split": {
+        "shared": {
+          "calls": 2,
+          "tokens": {
+            "input": 3000,
+            "cacheCreation": 18000,
+            "cacheRead": 0,
+            "output": 110,
+            "total": 21110
+          },
+          "usd": 0.0935,
+          "seconds": 20,
+          "recordsContext": 18000
+        },
+        "questions": {
+          "blood-clot": {
+            "calls": 2,
+            "tokens": {
+              "input": 20,
+              "cacheCreation": 400,
+              "cacheRead": 40000,
+              "output": 470,
+              "total": 40890
+            },
+            "usd": 0.0371,
+            "seconds": 19,
+            "recordsTokens": 36000
+          },
+          "allergies": {
+            "calls": 1,
+            "tokens": {
+              "input": 10,
+              "cacheCreation": 200,
+              "cacheRead": 21000,
+              "output": 220,
+              "total": 21430
+            },
+            "usd": 0.0152,
+            "seconds": 9,
+            "recordsTokens": 18000
+          }
+        }
+      }
+    },
+    {
+      "id": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "role": "judge",
+      "case": "tamsin-vale",
+      "instance": "tamsin-vale.opus-5-5.r1",
+      "model": "claude-haiku-5-5",
+      "alias": "haiku",
+      "tag": "fixture-1/tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "verdict": "judges/tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1.json",
+      "prompt": "prompts/tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1.txt",
+      "labels": {
+        "A": {
+          "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+          "question": "checkup"
+        },
+        "B": {
+          "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+          "question": "checkup"
+        },
+        "C": {
+          "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+          "question": "medications"
+        },
+        "D": {
+          "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+          "question": "medications"
+        },
+        "E": {
+          "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+          "question": "blood-clot"
+        },
+        "F": {
+          "job": "tamsin-vale.worries.records.opus-5-5.r1",
+          "question": "blood-clot"
+        },
+        "G": {
+          "job": "tamsin-vale.worries.records.opus-5-5.r1",
+          "question": "allergies"
+        },
+        "H": {
+          "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+          "question": "allergies"
+        }
+      },
+      "stats": {
+        "calls": 1,
+        "models": ["claude-haiku-5-5"],
+        "tokens": {
+          "input": 26000,
+          "cacheCreation": 0,
+          "cacheRead": 0,
+          "output": 3400,
+          "total": 29400
+        },
+        "contextPeak": 26000,
+        "toolCalls": {
+          "total": 0,
+          "byName": {}
+        },
+        "wallSeconds": 41,
+        "cost": {
+          "usd": 0.0292,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      }
+    },
+    {
+      "id": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "role": "judge",
+      "case": "tamsin-vale",
+      "instance": "tamsin-vale.opus-5-5.r1",
+      "model": "claude-sonnet-5-5",
+      "alias": "sonnet",
+      "tag": "fixture-1/tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "status": "done",
+      "dispatched": true,
+      "estimate": {
+        "tokens": 0,
+        "usd": 0
+      },
+      "verdict": "judges/tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1.json",
+      "prompt": "prompts/tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1.txt",
+      "labels": {
+        "A": {
+          "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+          "question": "checkup"
+        },
+        "B": {
+          "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+          "question": "checkup"
+        },
+        "C": {
+          "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+          "question": "medications"
+        },
+        "D": {
+          "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+          "question": "medications"
+        },
+        "E": {
+          "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+          "question": "blood-clot"
+        },
+        "F": {
+          "job": "tamsin-vale.worries.records.opus-5-5.r1",
+          "question": "blood-clot"
+        },
+        "G": {
+          "job": "tamsin-vale.worries.records.opus-5-5.r1",
+          "question": "allergies"
+        },
+        "H": {
+          "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+          "question": "allergies"
+        }
+      },
+      "stats": {
+        "calls": 1,
+        "models": ["claude-sonnet-5-5"],
+        "tokens": {
+          "input": 26000,
+          "cacheCreation": 0,
+          "cacheRead": 0,
+          "output": 3100,
+          "total": 29100
+        },
+        "contextPeak": 26000,
+        "toolCalls": {
+          "total": 0,
+          "byName": {}
+        },
+        "wallSeconds": 58,
+        "cost": {
+          "usd": 0.1244,
+          "basis": "exact",
+          "priceTable": "2026-10-06"
+        },
+        "usageSource": "transcript"
+      }
+    }
+  ],
+  "asked": [
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "at": "2026-10-31T17:00:25.000Z",
+      "message": "I have a check-up coming. Looking at my records, what should I bring up with my doctor: anything overdue, missed, or that doesn't add up?"
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "at": "2026-10-31T17:00:40.000Z",
+      "message": "What medications am I on right now?"
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "at": "2026-10-31T17:00:55.000Z",
+      "message": "I have a check-up coming. Looking at my records, what should I bring up with my doctor: anything overdue, missed, or that doesn't add up?"
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "at": "2026-10-31T17:01:10.000Z",
+      "message": "What medications am I on right now?"
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "blood-clot",
+      "at": "2026-10-31T17:01:25.000Z",
+      "message": "Did I ever have a blood clot in my lung? I remember a scan in summer 2025."
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "allergies",
+      "at": "2026-10-31T17:01:40.000Z",
+      "message": "Am I allergic to anything?"
+    },
+    {
+      "job": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "blood-clot",
+      "at": "2026-10-31T17:01:55.000Z",
+      "message": "Did I ever have a blood clot in my lung? I remember a scan in summer 2025."
+    },
+    {
+      "job": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "allergies",
+      "at": "2026-10-31T17:02:10.000Z",
+      "message": "Am I allergic to anything?"
+    }
+  ],
+  "toolCalls": [
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "call": 1,
+      "at": "2026-10-31T17:00:20.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My lab results"
+      },
+      "ok": true,
+      "rows": 30,
+      "entries": [],
+      "answer": "{\"total\":30}",
+      "milliseconds": 41
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "call": 2,
+      "at": "2026-10-31T17:00:24.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My procedures"
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [],
+      "answer": "{\"total\":1}",
+      "milliseconds": 14
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "call": 3,
+      "at": "2026-10-31T17:00:50.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My medications"
+      },
+      "ok": true,
+      "rows": 3,
+      "entries": [],
+      "answer": "{\"total\":3}",
+      "milliseconds": 12
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "call": 1,
+      "at": "2026-10-31T17:01:00.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My conditions"
+      },
+      "ok": true,
+      "rows": 3,
+      "entries": [],
+      "answer": "{\"total\":3}",
+      "milliseconds": 11
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "call": 2,
+      "at": "2026-10-31T17:01:01.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My procedures"
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [],
+      "answer": "{\"total\":1}",
+      "milliseconds": 9
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "call": 3,
+      "at": "2026-10-31T17:01:03.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My active conditions"
+      },
+      "ok": true,
+      "rows": 1,
+      "entries": [],
+      "answer": "{\"total\":1}",
+      "milliseconds": 12
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "call": 4,
+      "at": "2026-10-31T17:01:20.000Z",
+      "tool": "ask",
+      "input": {
+        "pod": "tamsin",
+        "question": "pod/My active allergies"
+      },
+      "ok": true,
+      "rows": 0,
+      "entries": [],
+      "answer": "{\"total\":0}",
+      "milliseconds": 8
+    }
+  ],
+  "checks": {
+    "tamsin-vale.checkup.pod.opus-5-5.r1": {
+      "checkup": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "entry": "pod://tamsin/clinical/conditions.ttl#612592c5"
+            },
+            "ok": true,
+            "shows": "Type 2 diabetes mellitus · active · 2022-03-01"
+          },
+          {
+            "item": 1,
+            "fact": 1,
+            "cite": {
+              "entry": "pod://tamsin/clinical/lab-results.ttl#9a31e0b7"
+            },
+            "ok": true,
+            "shows": "eGFR · 69 · 2026-02-16"
+          },
+          {
+            "item": 2,
+            "fact": 0,
+            "cite": {
+              "entry": "pod://tamsin/clinical/lab-results.ttl#31bb5d2c"
+            },
+            "ok": true,
+            "shows": "Fecal immunochemical test · Positive · 2025-11-04"
+          },
+          {
+            "item": 2,
+            "fact": 1,
+            "cite": {
+              "entry": "pod://tamsin/clinical/procedures.ttl#7eb7ac1d"
+            },
+            "ok": true,
+            "shows": "CT angiography of the chest · 2025-07-08"
+          },
+          {
+            "item": 3,
+            "fact": 0,
+            "cite": {
+              "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+            },
+            "ok": true,
+            "shows": "Atorvastatin 20 mg tablet · active · 2025-02-20"
+          }
+        ],
+        "absences": [
+          {
+            "item": 1,
+            "absence": 0,
+            "backed": true
+          },
+          {
+            "item": 2,
+            "absence": 0,
+            "backed": true
+          }
+        ],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        }
+      },
+      "medications": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "entry": "pod://tamsin/clinical/medications.ttl#4c38f471"
+            },
+            "ok": true,
+            "shows": "Jardiance 10 mg tablet · active · 2025-02-20"
+          },
+          {
+            "item": 1,
+            "fact": 1,
+            "cite": {
+              "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+            },
+            "ok": true,
+            "shows": "Atorvastatin 20 mg tablet · active · 2025-02-20"
+          },
+          {
+            "item": 1,
+            "fact": 2,
+            "cite": {
+              "entry": "pod://tamsin/clinical/medications.ttl#be8dd2c5"
+            },
+            "ok": true,
+            "shows": "Metformin 500 mg tablet · completed · 2024-04-15"
+          }
+        ],
+        "absences": [],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        }
+      }
+    },
+    "tamsin-vale.worries.pod.opus-5-5.r1": {
+      "blood-clot": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "entry": "pod://tamsin/clinical/conditions.ttl#pe000000"
+            },
+            "ok": false,
+            "reason": "no such record",
+            "missing": []
+          }
+        ],
+        "absences": [
+          {
+            "item": 1,
+            "absence": 0,
+            "backed": true
+          }
+        ],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        }
+      },
+      "allergies": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [],
+        "absences": [
+          {
+            "item": 1,
+            "absence": 0,
+            "backed": true
+          }
+        ],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        }
+      }
+    },
+    "tamsin-vale.checkup.records.opus-5-5.r1": {
+      "checkup": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "Condition/story-stopped-cond-1"
+            },
+            "ok": true,
+            "shows": "Condition · Type 2 diabetes mellitus · on 2022-03-01",
+            "excerpt": "{\n  \"resourceType\": \"Condition\",\n  \"id\": \"story-stopped-cond-1\",\n  \"code\": { \"te"
+          },
+          {
+            "item": 2,
+            "fact": 0,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "Observation/story-stopped-fit-1"
+            },
+            "ok": true,
+            "shows": "Observation · Fecal immunochemical test · on 2025-11-04",
+            "excerpt": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"story-stopped-fit-1\",\n  \"status\": \"f"
+          },
+          {
+            "item": 3,
+            "fact": 0,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "MedicationRequest/story-stopped-medrx-3"
+            },
+            "ok": true,
+            "shows": "MedicationRequest · Atorvastatin 20 mg tablet · on 2025-02-20",
+            "excerpt": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-3\",\n  \"sta"
+          }
+        ],
+        "absences": [
+          {
+            "item": 1,
+            "absence": 0,
+            "backed": true
+          },
+          {
+            "item": 2,
+            "absence": 0,
+            "backed": false,
+            "reason": "sources leave out north-2024-02/bundle.json, north-2025-02/bundle.json"
+          }
+        ],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        },
+        "read": [
+          "north-2024-02/bundle.json",
+          "north-2024-02/pull.json",
+          "north-2025-02/bundle.json",
+          "north-2025-02/pull.json",
+          "north-2026-10/bundle.json",
+          "north-2026-10/pull.json"
+        ]
+      },
+      "medications": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "MedicationRequest/story-stopped-medrx-2"
+            },
+            "ok": true,
+            "shows": "MedicationRequest · Jardiance 10 mg tablet · on 2025-02-20",
+            "excerpt": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-2\",\n  \"sta"
+          },
+          {
+            "item": 1,
+            "fact": 1,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "MedicationRequest/story-stopped-medrx-3"
+            },
+            "ok": true,
+            "shows": "MedicationRequest · Atorvastatin 20 mg tablet · on 2025-02-20",
+            "excerpt": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-3\",\n  \"sta"
+          },
+          {
+            "item": 1,
+            "fact": 2,
+            "cite": {
+              "file": "north-2024-02/bundle.json",
+              "resource": "MedicationStatement/story-stopped-med-1"
+            },
+            "ok": true,
+            "shows": "MedicationStatement · Metformin 500 mg tablet · on 2022-03-01",
+            "excerpt": "{\n  \"resourceType\": \"MedicationStatement\",\n  \"id\": \"story-stopped-med-1\",\n  \"sta"
+          },
+          {
+            "item": 1,
+            "fact": 3,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "MedicationStatement/story-stopped-med-1"
+            },
+            "ok": true,
+            "shows": "MedicationStatement · Metformin 500 mg tablet · on 2024-04-15",
+            "excerpt": "{\n  \"resourceType\": \"MedicationStatement\",\n  \"id\": \"story-stopped-med-1\",\n  \"sta"
+          }
+        ],
+        "absences": [],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        },
+        "read": [
+          "north-2024-02/bundle.json",
+          "north-2024-02/pull.json",
+          "north-2025-02/bundle.json",
+          "north-2025-02/pull.json",
+          "north-2026-10/bundle.json",
+          "north-2026-10/pull.json"
+        ]
+      }
+    },
+    "tamsin-vale.worries.records.opus-5-5.r1": {
+      "blood-clot": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [
+          {
+            "item": 1,
+            "fact": 0,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "Observation/story-stopped-ddimer-1"
+            },
+            "ok": true,
+            "shows": "Observation · D-dimer · on 2025-07-08",
+            "excerpt": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"story-stopped-ddimer-1\",\n  \"status\":"
+          },
+          {
+            "item": 1,
+            "fact": 1,
+            "cite": {
+              "file": "north-2026-10/bundle.json",
+              "resource": "DiagnosticReport/story-stopped-dr-1"
+            },
+            "ok": true,
+            "shows": "DiagnosticReport · No pulmonary embolism. Lungs are clear. · on 2025-07-08",
+            "excerpt": "{\n  \"resourceType\": \"DiagnosticReport\",\n  \"id\": \"story-stopped-dr-1\",\n  \"status\""
+          }
+        ],
+        "absences": [],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        },
+        "read": [
+          "north-2024-02/bundle.json",
+          "north-2024-02/pull.json",
+          "north-2025-02/bundle.json",
+          "north-2025-02/pull.json",
+          "north-2026-10/bundle.json",
+          "north-2026-10/pull.json"
+        ]
+      },
+      "allergies": {
+        "answerValid": true,
+        "answerErrors": [],
+        "citations": [],
+        "absences": [
+          {
+            "item": 1,
+            "absence": 0,
+            "backed": true
+          }
+        ],
+        "trapWording": [],
+        "discipline": {
+          "ok": true,
+          "violations": []
+        },
+        "read": [
+          "north-2024-02/bundle.json",
+          "north-2024-02/pull.json",
+          "north-2025-02/bundle.json",
+          "north-2025-02/pull.json",
+          "north-2026-10/bundle.json",
+          "north-2026-10/pull.json"
+        ]
+      }
+    }
+  },
+  "judgeDiscipline": {
+    "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1": {
+      "ok": true,
+      "violations": []
+    },
+    "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1": {
+      "ok": true,
+      "violations": []
+    }
+  },
+  "answers": {
+    "tamsin-vale.checkup.pod.opus-5-5.r1": {
+      "checkup": {
+        "answer": "Two things stand out for your check-up: a kidney screening urine test you have never had, and a colonoscopy that has not followed your positive stool test. A cholesterol recheck is also worth asking about.",
+        "short": "Ask about a urine albumin test, a colonoscopy after the positive stool test, and a cholesterol recheck.",
+        "items": [
+          {
+            "n": 1,
+            "says": "No urine albumin (uACR) test is on record, though your kidney function is checked every year.",
+            "why": "Diabetes calls for a urine albumin test at least yearly; the kidney blood test is done but the urine half never appears.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "Type 2 diabetes is active, since 2022.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/conditions.ttl#612592c5"
+                },
+                "name": "Type 2 diabetes mellitus",
+                "status": "active",
+                "date": "2022-03-01",
+                "dateKind": "start"
+              },
+              {
+                "says": "eGFR was 69 on 2026-02-16.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/lab-results.ttl#9a31e0b7"
+                },
+                "name": "eGFR",
+                "value": "69",
+                "date": "2026-02-16"
+              }
+            ],
+            "absences": [
+              {
+                "what": "Any urine albumin result",
+                "match": {
+                  "codes": ["9318-7", "14959-1"],
+                  "terms": ["albumin", "uACR"]
+                },
+                "coverage": "Every lab result the pod holds from every source, any date.",
+                "query": {
+                  "tool": "ask",
+                  "input": {
+                    "pod": "tamsin",
+                    "question": "pod/My lab results"
+                  },
+                  "call": 1
+                }
+              }
+            ]
+          },
+          {
+            "n": 2,
+            "says": "Your stool test of 4 November 2025 was positive and no colonoscopy followed.",
+            "why": "A positive stool test is followed by a colonoscopy; the only procedure on record is the July 2025 chest CT.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "The stool test (FIT) was positive on 2025-11-04.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/lab-results.ttl#31bb5d2c"
+                },
+                "name": "Fecal immunochemical test",
+                "value": "Positive",
+                "date": "2025-11-04"
+              },
+              {
+                "says": "The only procedure on record is the chest CT of 2025-07-08.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/procedures.ttl#7eb7ac1d"
+                },
+                "name": "CT angiography of the chest",
+                "date": "2025-07-08"
+              }
+            ],
+            "links": [
+              {
+                "from": 0,
+                "to": 1,
+                "says": "a later procedure would have been the colonoscopy; the CT is not one"
+              }
+            ],
+            "absences": [
+              {
+                "what": "A colonoscopy after 2025-11-04",
+                "match": {
+                  "terms": ["colonoscopy"],
+                  "after": "2025-11-04"
+                },
+                "coverage": "Every procedure the pod holds, from every source.",
+                "query": {
+                  "tool": "ask",
+                  "input": {
+                    "pod": "tamsin",
+                    "question": "pod/My procedures"
+                  },
+                  "call": 2
+                }
+              }
+            ]
+          },
+          {
+            "n": 3,
+            "says": "Your cholesterol may be due for a recheck since the statin started.",
+            "why": "A lipid panel is advised some weeks after a statin begins; none is in the pod.",
+            "confidence": "medium",
+            "facts": [
+              {
+                "says": "Atorvastatin 20 mg has been active since 2025-02-20.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+                },
+                "name": "Atorvastatin 20 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              }
+            ],
+            "absences": [],
+            "knowledge": {
+              "says": "A lipid panel is usually repeated 4 to 12 weeks after a statin starts.",
+              "guideline": "ACC/AHA 2018 cholesterol guideline"
+            }
+          }
+        ]
+      },
+      "medications": {
+        "answer": "You take Jardiance 10 mg and atorvastatin 20 mg, both since 20 February 2025. Metformin stopped in April 2024.",
+        "short": "Jardiance and atorvastatin; metformin is stopped.",
+        "items": [
+          {
+            "n": 1,
+            "says": "Jardiance 10 mg and atorvastatin 20 mg are your current medicines; metformin is stopped.",
+            "why": "Two active prescriptions; metformin ended 2024-04-15.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "Jardiance 10 mg is active.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/medications.ttl#4c38f471"
+                },
+                "name": "Jardiance 10 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              },
+              {
+                "says": "Atorvastatin 20 mg is active.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+                },
+                "name": "Atorvastatin 20 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              },
+              {
+                "says": "Metformin ended on 2024-04-15.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/medications.ttl#be8dd2c5"
+                },
+                "name": "Metformin 500 mg tablet",
+                "status": "completed",
+                "date": "2024-04-15",
+                "dateKind": "end"
+              }
+            ],
+            "absences": []
+          }
+        ]
+      }
+    },
+    "tamsin-vale.worries.pod.opus-5-5.r1": {
+      "blood-clot": {
+        "answer": "No. A clot in the lung was looked for on 8 July 2025 and ruled out.",
+        "short": "No: suspected and ruled out on 2025-07-08.",
+        "items": [
+          {
+            "n": 1,
+            "says": "No pulmonary embolism is among your conditions.",
+            "why": "The one recorded was refuted.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "A pulmonary embolism, refuted.",
+                "provider": "Cascade North",
+                "cite": {
+                  "entry": "pod://tamsin/clinical/conditions.ttl#pe000000"
+                },
+                "status": "refuted"
+              }
+            ],
+            "absences": [
+              {
+                "what": "An active pulmonary embolism",
+                "match": {
+                  "codes": ["59282003"],
+                  "terms": ["pulmonary embolism"]
+                },
+                "coverage": "Every active condition from every source",
+                "query": {
+                  "tool": "ask",
+                  "input": {
+                    "pod": "tamsin",
+                    "question": "pod/My active conditions"
+                  },
+                  "call": 3
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "allergies": {
+        "answer": "No allergies are recorded, from the one hospital whose records you have.",
+        "short": "None recorded.",
+        "items": [
+          {
+            "n": 1,
+            "says": "No allergies are recorded.",
+            "why": "The allergy list is empty.",
+            "confidence": "high",
+            "facts": [],
+            "absences": [
+              {
+                "what": "Any allergy",
+                "match": {
+                  "terms": ["allergy"]
+                },
+                "coverage": "Every allergy from every source, any date",
+                "query": {
+                  "tool": "ask",
+                  "input": {
+                    "pod": "tamsin",
+                    "question": "pod/My active allergies"
+                  },
+                  "call": 4
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "tamsin-vale.checkup.records.opus-5-5.r1": {
+      "checkup": {
+        "answer": "Bring up a urine albumin test, the missing colonoscopy after your positive stool test, and cholesterol.",
+        "short": "Urine albumin test, colonoscopy after the positive stool test, cholesterol.",
+        "items": [
+          {
+            "n": 1,
+            "says": "You have never had a urine albumin test.",
+            "why": "Type 2 diabetes calls for one yearly; no file lists one.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "Type 2 diabetes mellitus, active since 2022-03-01.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "Condition/story-stopped-cond-1"
+                },
+                "name": "Type 2 diabetes mellitus",
+                "status": "active",
+                "date": "2022-03-01",
+                "dateKind": "start"
+              }
+            ],
+            "absences": [
+              {
+                "what": "Any urine albumin result",
+                "match": {
+                  "codes": ["9318-7"],
+                  "terms": ["albumin", "uACR"]
+                },
+                "coverage": "All three bundles.",
+                "sources": [
+                  "north-2024-02/bundle.json",
+                  "north-2025-02/bundle.json",
+                  "north-2026-10/bundle.json"
+                ]
+              }
+            ]
+          },
+          {
+            "n": 2,
+            "says": "Your stool test was positive on 4 November 2025 and no colonoscopy followed.",
+            "why": "The only procedure in any file is the July 2025 chest CT.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "The stool test was positive on 2025-11-04.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "Observation/story-stopped-fit-1"
+                },
+                "name": "Fecal immunochemical test",
+                "value": "Positive",
+                "date": "2025-11-04"
+              }
+            ],
+            "absences": [
+              {
+                "what": "A colonoscopy after 2025-11-04",
+                "match": {
+                  "terms": ["colonoscopy"],
+                  "after": "2025-11-04"
+                },
+                "coverage": "The latest bundle.",
+                "sources": ["north-2026-10/bundle.json"]
+              }
+            ]
+          },
+          {
+            "n": 3,
+            "says": "A cholesterol recheck since the statin started.",
+            "why": "The statin began on 2025-02-20; no later lipid result.",
+            "confidence": "medium",
+            "facts": [
+              {
+                "says": "Atorvastatin 20 mg prescribed 2025-02-20.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "MedicationRequest/story-stopped-medrx-3"
+                },
+                "name": "Atorvastatin 20 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              }
+            ],
+            "absences": []
+          }
+        ],
+        "links": [
+          {
+            "from": {
+              "item": 1,
+              "fact": 0
+            },
+            "to": {
+              "item": 3,
+              "fact": 0
+            },
+            "says": "her diabetes is the usual reason a statin is started"
+          }
+        ]
+      },
+      "medications": {
+        "answer": "You are taking Jardiance 10 mg and atorvastatin 20 mg. Metformin shows as active in the 2024 download but completed in the latest, so I treat it as stopped.",
+        "short": "Jardiance and atorvastatin; metformin is stopped.",
+        "items": [
+          {
+            "n": 1,
+            "says": "Jardiance and atorvastatin are current; metformin is stopped.",
+            "why": "The latest download closes the metformin line the first still shows open.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "Jardiance 10 mg prescribed 2025-02-20.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "MedicationRequest/story-stopped-medrx-2"
+                },
+                "name": "Jardiance 10 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              },
+              {
+                "says": "Atorvastatin 20 mg prescribed 2025-02-20.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "MedicationRequest/story-stopped-medrx-3"
+                },
+                "name": "Atorvastatin 20 mg tablet",
+                "status": "active",
+                "date": "2025-02-20",
+                "dateKind": "recorded"
+              },
+              {
+                "says": "Metformin is active in the February 2024 download.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2024-02/bundle.json",
+                  "resource": "MedicationStatement/story-stopped-med-1"
+                },
+                "name": "Metformin 500 mg tablet",
+                "status": "active",
+                "date": "2022-03-01",
+                "dateKind": "start"
+              },
+              {
+                "says": "The same line is completed, ended 2024-04-15, in the October 2026 download.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "MedicationStatement/story-stopped-med-1"
+                },
+                "name": "Metformin 500 mg tablet",
+                "status": "completed",
+                "date": "2024-04-15",
+                "dateKind": "end"
+              }
+            ],
+            "links": [
+              {
+                "from": 2,
+                "to": 3,
+                "says": "the later copy closes the earlier one"
+              }
+            ],
+            "absences": []
+          }
+        ]
+      }
+    },
+    "tamsin-vale.worries.records.opus-5-5.r1": {
+      "blood-clot": {
+        "answer": "No. On 8 July 2025 a CT angiogram was done after a high D-dimer, and its report reads: \"No pulmonary embolism. Lungs are clear.\"",
+        "short": "No: the CT of 8 July 2025 found no pulmonary embolism.",
+        "items": [
+          {
+            "n": 1,
+            "says": "The CT report says there was no pulmonary embolism.",
+            "why": "Its conclusion says so, in the radiologist's words.",
+            "confidence": "high",
+            "facts": [
+              {
+                "says": "D-dimer was 0.92 mg/L FEU, high.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "Observation/story-stopped-ddimer-1"
+                },
+                "name": "D-dimer",
+                "value": "0.92",
+                "unit": "mg/L{FEU}",
+                "date": "2025-07-08"
+              },
+              {
+                "says": "The CT angiogram report concludes no pulmonary embolism.",
+                "provider": "Cascade North Demo Hospital",
+                "cite": {
+                  "file": "north-2026-10/bundle.json",
+                  "resource": "DiagnosticReport/story-stopped-dr-1"
+                },
+                "quote": "No pulmonary embolism. Lungs are clear.",
+                "date": "2025-07-08"
+              }
+            ],
+            "absences": []
+          }
+        ]
+      },
+      "allergies": {
+        "answer": "You have no allergies.",
+        "short": "None.",
+        "items": [
+          {
+            "n": 1,
+            "says": "You have no allergies.",
+            "why": "None of the files lists one.",
+            "confidence": "high",
+            "facts": [],
+            "absences": [
+              {
+                "what": "Any allergy",
+                "match": {
+                  "terms": ["AllergyIntolerance"]
+                },
+                "coverage": "Every file."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "evidence": [
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "entry": "pod://tamsin/clinical/conditions.ttl#612592c5"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/conditions.ttl#612592c5",
+        "type": "Condition",
+        "fields": [
+          ["label", "Type 2 diabetes mellitus"],
+          ["clinicalStatus", "active"],
+          ["onset", "2022-03-01"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/c1.ttl#rec",
+            "sourceId": "story-stopped-cond-1",
+            "sourceUrl": "https://fhir.north.example/r4/Condition/story-stopped-cond-1",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev1.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2024-02-01T08:58:00Z",
+                "selector": "/entry/3/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/aa/north-2024-02.ttl#doc",
+                  "retrievedOn": "2024-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2024-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev2.ttl#rev",
+                "version": "2",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/9/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 1,
+      "fact": 1,
+      "cite": {
+        "entry": "pod://tamsin/clinical/lab-results.ttl#9a31e0b7"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/lab-results.ttl#9a31e0b7",
+        "type": "Observation",
+        "fields": [
+          ["label", "eGFR"],
+          ["value", "69"],
+          ["effective", "2026-02-16"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/o1.ttl#rec",
+            "sourceId": "story-stopped-egfr-2",
+            "sourceUrl": "https://fhir.north.example/r4/Observation/story-stopped-egfr-2",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev3.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/14/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 1,
+      "absence": 0,
+      "call": {
+        "call": 1,
+        "at": "2026-10-31T17:00:20.000Z",
+        "ok": true,
+        "rows": 30,
+        "milliseconds": 41
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 2,
+      "fact": 0,
+      "cite": {
+        "entry": "pod://tamsin/clinical/lab-results.ttl#31bb5d2c"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/lab-results.ttl#31bb5d2c",
+        "type": "Observation",
+        "fields": [
+          ["label", "Fecal immunochemical test"],
+          ["value", "Positive"],
+          ["effective", "2025-11-04"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/o2.ttl#rec",
+            "sourceId": "story-stopped-fit-1",
+            "sourceUrl": "https://fhir.north.example/r4/Observation/story-stopped-fit-1",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev4.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/18/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 2,
+      "fact": 1,
+      "cite": {
+        "entry": "pod://tamsin/clinical/procedures.ttl#7eb7ac1d"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/procedures.ttl#7eb7ac1d",
+        "type": "Procedure",
+        "fields": [
+          ["label", "CT angiography of the chest"],
+          ["performed", "2025-07-08"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/p1.ttl#rec",
+            "sourceId": "story-stopped-proc-1",
+            "sourceUrl": "https://fhir.north.example/r4/Procedure/story-stopped-proc-1",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev5.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/21/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 2,
+      "absence": 0,
+      "call": {
+        "call": 2,
+        "at": "2026-10-31T17:00:24.000Z",
+        "ok": true,
+        "rows": 1,
+        "milliseconds": 14
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "item": 3,
+      "fact": 0,
+      "cite": {
+        "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a",
+        "type": "MedicationRecord",
+        "fields": [
+          ["label", "Atorvastatin 20 mg tablet"],
+          ["status", "active"],
+          ["authoredOn", "2025-02-20"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/m3.ttl#rec",
+            "sourceId": "story-stopped-medrx-3",
+            "sourceUrl": "https://fhir.north.example/r4/MedicationRequest/story-stopped-medrx-3",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev8.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2025-02-01T08:58:00Z",
+                "selector": "/entry/6/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/bb/north-2025-02.ttl#doc",
+                  "retrievedOn": "2025-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2025-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev9.ttl#rev",
+                "version": "2",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/12/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "entry": "pod://tamsin/clinical/medications.ttl#4c38f471"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/medications.ttl#4c38f471",
+        "type": "MedicationRecord",
+        "fields": [
+          ["label", "Jardiance 10 mg tablet"],
+          ["status", "active"],
+          ["authoredOn", "2025-02-20"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/m2.ttl#rec",
+            "sourceId": "story-stopped-medrx-2",
+            "sourceUrl": "https://fhir.north.example/r4/MedicationRequest/story-stopped-medrx-2",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev6.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2025-02-01T08:58:00Z",
+                "selector": "/entry/5/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/bb/north-2025-02.ttl#doc",
+                  "retrievedOn": "2025-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2025-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev7.ttl#rev",
+                "version": "2",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/11/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 1,
+      "cite": {
+        "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/medications.ttl#d8d1152a",
+        "type": "MedicationRecord",
+        "fields": [
+          ["label", "Atorvastatin 20 mg tablet"],
+          ["status", "active"],
+          ["authoredOn", "2025-02-20"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/m3.ttl#rec",
+            "sourceId": "story-stopped-medrx-3",
+            "sourceUrl": "https://fhir.north.example/r4/MedicationRequest/story-stopped-medrx-3",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev8.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2025-02-01T08:58:00Z",
+                "selector": "/entry/6/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/bb/north-2025-02.ttl#doc",
+                  "retrievedOn": "2025-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2025-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev9.ttl#rev",
+                "version": "2",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/12/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 2,
+      "cite": {
+        "entry": "pod://tamsin/clinical/medications.ttl#be8dd2c5"
+      },
+      "entry": {
+        "entry": "pod://tamsin/clinical/medications.ttl#be8dd2c5",
+        "type": "MedicationRecord",
+        "fields": [
+          ["label", "Metformin 500 mg tablet"],
+          ["status", "completed"],
+          ["end", "2024-04-15"]
+        ],
+        "members": [
+          {
+            "record": "pod://tamsin/records/m1.ttl#rec",
+            "sourceId": "story-stopped-med-1",
+            "sourceUrl": "https://fhir.north.example/r4/MedicationStatement/story-stopped-med-1",
+            "revisions": [
+              {
+                "revision": "pod://tamsin/records/rev10.ttl#rev",
+                "version": "1",
+                "observedAsOf": "2024-02-01T08:58:00Z",
+                "selector": "/entry/7/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/aa/north-2024-02.ttl#doc",
+                  "retrievedOn": "2024-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2024-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev11.ttl#rev",
+                "version": "2",
+                "observedAsOf": "2025-02-01T08:58:00Z",
+                "selector": "/entry/8/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/bb/north-2025-02.ttl#doc",
+                  "retrievedOn": "2025-02-01T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2025-02-01T08:58:00Z"
+                }
+              },
+              {
+                "revision": "pod://tamsin/records/rev12.ttl#rev",
+                "version": "3",
+                "observedAsOf": "2026-10-15T08:58:00Z",
+                "selector": "/entry/13/resource",
+                "document": {
+                  "iri": "pod://tamsin/provenance/documents/cc/north-2026-10.ttl#doc",
+                  "retrievedOn": "2026-10-15T09:00:00Z",
+                  "author": "Cascade North Demo Hospital",
+                  "server": "https://fhir.north.example/r4",
+                  "answeredAsOf": "2026-10-15T08:58:00Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "blood-clot",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "entry": "pod://tamsin/clinical/conditions.ttl#pe000000"
+      },
+      "entry": null
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "blood-clot",
+      "item": 1,
+      "absence": 0,
+      "call": {
+        "call": 3,
+        "at": "2026-10-31T17:01:03.000Z",
+        "ok": true,
+        "rows": 1,
+        "milliseconds": 12
+      }
+    },
+    {
+      "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "allergies",
+      "item": 1,
+      "absence": 0,
+      "call": {
+        "call": 4,
+        "at": "2026-10-31T17:01:20.000Z",
+        "ok": true,
+        "rows": 0,
+        "milliseconds": 8
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Condition/story-stopped-cond-1"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Condition/story-stopped-cond-1",
+        "from": 90,
+        "to": 104,
+        "pointer": "/entry/3/resource",
+        "text": "{\n  \"resourceType\": \"Condition\",\n  \"id\": \"story-stopped-cond-1\",\n  \"code\": { \"text\": \"Type 2 diabetes mellitus\" },\n  \"clinicalStatus\": { \"coding\": [{ \"code\": \"active\" }] },\n  \"onsetDateTime\": \"2022-03-01\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "item": 1,
+      "absence": 0,
+      "stated": true,
+      "files": [
+        {
+          "file": "north-2024-02/bundle.json",
+          "read": true,
+          "bytes": 12400
+        },
+        {
+          "file": "north-2024-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2025-02/bundle.json",
+          "read": true,
+          "bytes": 14100
+        },
+        {
+          "file": "north-2025-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2026-10/bundle.json",
+          "read": true,
+          "bytes": 33500
+        },
+        {
+          "file": "north-2026-10/pull.json",
+          "read": true,
+          "bytes": 310
+        }
+      ]
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "item": 2,
+      "fact": 0,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Observation/story-stopped-fit-1"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Observation/story-stopped-fit-1",
+        "from": 702,
+        "to": 716,
+        "pointer": "/entry/24/resource",
+        "text": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"story-stopped-fit-1\",\n  \"status\": \"final\",\n  \"code\": { \"coding\": [{ \"code\": \"29771-3\" }], \"text\": \"Fecal immunochemical test\" },\n  \"effectiveDateTime\": \"2025-11-04\",\n  \"valueString\": \"Positive\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "item": 2,
+      "absence": 0,
+      "stated": true,
+      "files": [
+        {
+          "file": "north-2024-02/bundle.json",
+          "read": true,
+          "bytes": 12400
+        },
+        {
+          "file": "north-2024-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2025-02/bundle.json",
+          "read": true,
+          "bytes": 14100
+        },
+        {
+          "file": "north-2025-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2026-10/bundle.json",
+          "read": true,
+          "bytes": 33500
+        },
+        {
+          "file": "north-2026-10/pull.json",
+          "read": true,
+          "bytes": 310
+        }
+      ]
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "item": 3,
+      "fact": 0,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-3"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-3",
+        "from": 320,
+        "to": 338,
+        "pointer": "/entry/12/resource",
+        "text": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-3\",\n  \"status\": \"active\",\n  \"medicationCodeableConcept\": { \"text\": \"Atorvastatin 20 mg tablet\" },\n  \"authoredOn\": \"2025-02-20\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-2"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-2",
+        "from": 300,
+        "to": 318,
+        "pointer": "/entry/11/resource",
+        "text": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-2\",\n  \"status\": \"active\",\n  \"medicationCodeableConcept\": { \"text\": \"Jardiance 10 mg tablet\" },\n  \"authoredOn\": \"2025-02-20\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 1,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-3"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationRequest/story-stopped-medrx-3",
+        "from": 320,
+        "to": 338,
+        "pointer": "/entry/12/resource",
+        "text": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"story-stopped-medrx-3\",\n  \"status\": \"active\",\n  \"medicationCodeableConcept\": { \"text\": \"Atorvastatin 20 mg tablet\" },\n  \"authoredOn\": \"2025-02-20\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 2,
+      "cite": {
+        "file": "north-2024-02/bundle.json",
+        "resource": "MedicationStatement/story-stopped-med-1"
+      },
+      "passage": {
+        "file": "north-2024-02/bundle.json",
+        "resource": "MedicationStatement/story-stopped-med-1",
+        "from": 140,
+        "to": 156,
+        "pointer": "/entry/7/resource",
+        "text": "{\n  \"resourceType\": \"MedicationStatement\",\n  \"id\": \"story-stopped-med-1\",\n  \"status\": \"active\",\n  \"medicationCodeableConcept\": { \"text\": \"Metformin 500 mg tablet\" },\n  \"effectivePeriod\": { \"start\": \"2022-03-01\" }\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2024-02-01T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "item": 1,
+      "fact": 3,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationStatement/story-stopped-med-1"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "MedicationStatement/story-stopped-med-1",
+        "from": 400,
+        "to": 418,
+        "pointer": "/entry/13/resource",
+        "text": "{\n  \"resourceType\": \"MedicationStatement\",\n  \"id\": \"story-stopped-med-1\",\n  \"status\": \"completed\",\n  \"medicationCodeableConcept\": { \"text\": \"Metformin 500 mg tablet\" },\n  \"effectivePeriod\": { \"start\": \"2022-03-01\", \"end\": \"2024-04-15\" }\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "blood-clot",
+      "item": 1,
+      "fact": 0,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Observation/story-stopped-ddimer-1"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "Observation/story-stopped-ddimer-1",
+        "from": 610,
+        "to": 622,
+        "pointer": "/entry/20/resource",
+        "text": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"story-stopped-ddimer-1\",\n  \"status\": \"final\",\n  \"code\": { \"text\": \"D-dimer\" },\n  \"effectiveDateTime\": \"2025-07-08T21:10:00Z\",\n  \"valueQuantity\": { \"value\": 0.92, \"unit\": \"mg/L{FEU}\" }\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "blood-clot",
+      "item": 1,
+      "fact": 1,
+      "cite": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "DiagnosticReport/story-stopped-dr-1"
+      },
+      "passage": {
+        "file": "north-2026-10/bundle.json",
+        "resource": "DiagnosticReport/story-stopped-dr-1",
+        "from": 640,
+        "to": 652,
+        "pointer": "/entry/21/resource",
+        "text": "{\n  \"resourceType\": \"DiagnosticReport\",\n  \"id\": \"story-stopped-dr-1\",\n  \"status\": \"final\",\n  \"code\": { \"text\": \"CT angiography chest (pulmonary embolism protocol)\" },\n  \"effectiveDateTime\": \"2025-07-08T22:30:00Z\",\n  \"conclusion\": \"No pulmonary embolism. Lungs are clear. No pleural or pericardial effusion.\"\n}",
+        "download": {
+          "source": "Cascade North Demo Hospital",
+          "retrievedAt": "2026-10-15T09:00:00Z"
+        }
+      }
+    },
+    {
+      "job": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "allergies",
+      "item": 1,
+      "absence": 0,
+      "stated": false,
+      "files": [
+        {
+          "file": "north-2024-02/bundle.json",
+          "read": true,
+          "bytes": 12400
+        },
+        {
+          "file": "north-2024-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2025-02/bundle.json",
+          "read": true,
+          "bytes": 14100
+        },
+        {
+          "file": "north-2025-02/pull.json",
+          "read": true,
+          "bytes": 310
+        },
+        {
+          "file": "north-2026-10/bundle.json",
+          "read": true,
+          "bytes": 33500
+        },
+        {
+          "file": "north-2026-10/pull.json",
+          "read": true,
+          "bytes": 310
+        }
+      ]
+    }
+  ],
+  "grades": [
+    {
+      "subject": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "names the urine albumin test and why"
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "items": [2],
+          "reason": "positive FIT, no colonoscopy"
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 3,
+          "verdict": "fair",
+          "why": "no lipid panel since the statin; the key lists it as true"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 3,
+          "complete": false,
+          "faithful": true,
+          "skipped": [
+            "the guideline is the model's own; no record shows the date of the last lipid panel"
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "checkup",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "names the urine albumin test and why"
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "items": [2],
+          "reason": "positive FIT, no colonoscopy"
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 3,
+          "verdict": "fair",
+          "why": "no lipid panel since the statin; the key lists it as true"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 3,
+          "complete": false,
+          "faithful": true,
+          "skipped": [
+            "the guideline is the model's own; no record shows the date of the last lipid panel"
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "uACR named"
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "items": [2],
+          "reason": "FIT positive, colonoscopy missing"
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 3,
+          "verdict": "fair",
+          "why": "same cholesterol point"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "checkup",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TG1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "uACR named"
+        },
+        {
+          "id": "TG2",
+          "verdict": "found",
+          "items": [2],
+          "reason": "FIT positive, colonoscopy missing"
+        },
+        {
+          "id": "TT1",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        },
+        {
+          "id": "TT2",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 3,
+          "verdict": "fair",
+          "why": "same cholesterol point"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 2,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        },
+        {
+          "item": 3,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TF1",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TF2",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TT3",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "medications",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TF1",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TF2",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TT3",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TF1",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TF2",
+          "verdict": "found",
+          "items": [1],
+          "reason": "says stopped"
+        },
+        {
+          "id": "TT3",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "medications",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TF1",
+          "verdict": "found",
+          "items": [1],
+          "reason": ""
+        },
+        {
+          "id": "TF2",
+          "verdict": "partly",
+          "items": [1],
+          "reason": "stopped, but no reason noted that none is recorded"
+        },
+        {
+          "id": "TT3",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "blood-clot",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TN1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "refuted, and says the report text is not in the pod"
+        },
+        {
+          "id": "TT5",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": false,
+          "faithful": true,
+          "skipped": ["the refuted embolism it cites is in no pod view"]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "blood-clot",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TN1",
+          "verdict": "partly",
+          "items": [1],
+          "reason": "ruled out, but the cited record could not be checked"
+        },
+        {
+          "id": "TT5",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": false,
+          "faithful": false,
+          "skipped": ["cites a record that is not in the pod"]
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "blood-clot",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TN1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "quotes the CT report"
+        },
+        {
+          "id": "TT5",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "blood-clot",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TN1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "quotes the CT report"
+        },
+        {
+          "id": "TT5",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "allergies",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TA1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "none recorded, and what was looked through"
+        },
+        {
+          "id": "TT6",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.pod.opus-5-5.r1",
+      "question": "allergies",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TA1",
+          "verdict": "found",
+          "items": [1],
+          "reason": "none recorded, and what was looked through"
+        },
+        {
+          "id": "TT6",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": true,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "allergies",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+      "items": [
+        {
+          "id": "TA1",
+          "verdict": "partly",
+          "items": [1],
+          "reason": "overstates"
+        },
+        {
+          "id": "TT6",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 1,
+          "verdict": "speculative",
+          "why": "turns an empty list into a fact about her"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": false,
+          "skipped": []
+        }
+      ]
+    },
+    {
+      "subject": "tamsin-vale.worries.records.opus-5-5.r1",
+      "question": "allergies",
+      "judge": "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1",
+      "items": [
+        {
+          "id": "TA1",
+          "verdict": "partly",
+          "items": [1],
+          "reason": "overstates"
+        },
+        {
+          "id": "TT6",
+          "verdict": "avoided",
+          "items": [],
+          "reason": ""
+        }
+      ],
+      "beyond": [
+        {
+          "item": 1,
+          "verdict": "true-not-planted",
+          "why": "no allergy is in the files"
+        }
+      ],
+      "chains": [
+        {
+          "item": 1,
+          "complete": true,
+          "faithful": false,
+          "skipped": []
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "id": "tamsin-vale.opus-5-5.r1",
+      "case": "tamsin-vale",
+      "model": "claude-opus-5-5",
+      "repeat": 1,
+      "arms": {
+        "pod": {
+          "sessions": [
+            "tamsin-vale.checkup.pod.opus-5-5.r1",
+            "tamsin-vale.worries.pod.opus-5-5.r1"
+          ],
+          "questions": 4,
+          "expected": {
+            "split": 1,
+            "ungraded": 0,
+            "unanswered": 1,
+            "of": 7,
+            "found": 5,
+            "partly": 0,
+            "missed": 0
+          },
+          "traps": {
+            "split": 0,
+            "ungraded": 0,
+            "unanswered": 1,
+            "of": 6,
+            "avoided": 5,
+            "raised": 0
+          },
+          "beyond": {
+            "fair": 1,
+            "trueNotPlanted": 0,
+            "speculative": 0,
+            "contradicted": 0,
+            "split": 0
+          },
+          "citations": {
+            "held": 8,
+            "failed": 1
+          },
+          "tokens": 66430,
+          "usd": 0.2053,
+          "seconds": 166
+        },
+        "records": {
+          "sessions": [
+            "tamsin-vale.checkup.records.opus-5-5.r1",
+            "tamsin-vale.worries.records.opus-5-5.r1"
+          ],
+          "questions": 4,
+          "expected": {
+            "split": 1,
+            "ungraded": 0,
+            "unanswered": 1,
+            "of": 7,
+            "found": 4,
+            "partly": 1,
+            "missed": 0
+          },
+          "traps": {
+            "split": 0,
+            "ungraded": 0,
+            "unanswered": 1,
+            "of": 6,
+            "avoided": 5,
+            "raised": 0
+          },
+          "beyond": {
+            "fair": 1,
+            "trueNotPlanted": 0,
+            "speculative": 0,
+            "contradicted": 0,
+            "split": 1
+          },
+          "citations": {
+            "held": 9,
+            "failed": 0
+          },
+          "tokens": 190370,
+          "usd": 0.3539,
+          "seconds": 155
+        }
+      },
+      "judging": {
+        "judges": [
+          "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+          "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1"
+        ],
+        "tokens": 58500,
+        "usd": 0.1536
+      }
+    }
+  ],
+  "agreement": [
+    {
+      "instance": "tamsin-vale.opus-5-5.r1",
+      "judges": [
+        "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
+        "tamsin-vale.opus-5-5.r1.judge.sonnet-5-5.j1"
+      ],
+      "items": 31,
+      "agreed": 29,
+      "kappa": 0.86
+    }
+  ]
+}
