@@ -249,3 +249,32 @@ test("a verdict of the wrong kind for its key item is rejected, so counts never 
     ["found", "avoided"],
   );
 });
+
+test("no key item tells a judge which arm it favours", async () => {
+  const { readdir, access } = await import("node:fs/promises");
+  const { CASES } = await import("../src/paths.js");
+  const { loadKey } = await import("../src/cases.js");
+  const revealing = /\b(?:pod|records|dump) arm\b|grab.?bag|near impossible/i;
+  const told: string[] = [];
+  for (const id of await readdir(CASES)) {
+    if (
+      await access(join(CASES, id, "key.json")).then(
+        () => false,
+        () => true,
+      )
+    )
+      continue;
+    for (const item of (await loadKey(id)).key.items)
+      for (const [field, text] of Object.entries(item))
+        for (const line of [text].flat())
+          if (
+            ["lookingFor", "found", "partly", "wrong", "notWrong"].includes(
+              field,
+            ) &&
+            typeof line === "string" &&
+            revealing.test(line)
+          )
+            told.push(`${id} ${item.id} ${field}`);
+  }
+  assert.deepEqual(told, []);
+});

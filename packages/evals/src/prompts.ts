@@ -121,7 +121,7 @@ export const ARM_PARTS = {
   },
 };
 
-const PRONOUNS: Record<string, [string, string]> = {
+export const PRONOUNS: Record<string, [string, string]> = {
   her: ["she", "Her"],
   his: ["he", "His"],
   their: ["they", "Their"],

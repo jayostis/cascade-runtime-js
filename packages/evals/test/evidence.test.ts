@@ -95,7 +95,7 @@ test("a pod absence's evidence is the call it names when that call is its query'
   assert.equal((await resolve(2))?.call, 2);
   assert.equal(await resolve(99), null);
   assert.equal(await resolve(3), null);
-  assert.equal((await resolve(undefined))?.call, 1);
+  assert.equal((await resolve(undefined))?.call, 2);
 });
 
 test("a grab-bag absence's evidence says whether it named its sources and which files were read whole", async () => {

@@ -980,3 +980,16 @@ test("an answer may link facts across its items, and a judge reads that link", (
     [],
   );
 });
+
+test("an arm's prompt version covers the pronouns a prompt is written with", async () => {
+  const { PRONOUNS } = await import("../src/prompts.js");
+  const before = versionOf("pod");
+  const kept = PRONOUNS.her!;
+  try {
+    PRONOUNS.her = ["she", "Hers"];
+    assert.notEqual(versionOf("pod"), before);
+  } finally {
+    PRONOUNS.her = kept;
+  }
+  assert.equal(versionOf("pod"), before);
+});
