@@ -519,7 +519,7 @@ function recordsGraph(t: Turn, item: Item): Graph {
       ev?.files ??
       a.sources?.map((file) => ({
         file,
-        read: true,
+        read: undefined as boolean | undefined,
         bytes: undefined as number | undefined,
       }));
     if (files === undefined) return;
@@ -532,7 +532,7 @@ function recordsGraph(t: Turn, item: Item): Graph {
       sub: stated
         ? files.map((f) => f.file.split("/")[0]).join(", ")
         : "did not name its sources",
-      detail: `<ul class="small">${files.map((f) => `<li><span class="mono">${esc(f.file)}</span>${f.bytes === undefined ? "" : ` · ${thousands(f.bytes)} bytes`}${f.read ? "" : " · not read whole"}</li>`).join("")}</ul><p class="small muted">${stated ? "The files the agent said it looked through for this absence; the checker wants each read whole." : "The agent did not name its sources, so the files its job was offered stand in for them."}</p>`,
+      detail: `<ul class="small">${files.map((f) => `<li><span class="mono">${esc(f.file)}</span>${f.bytes === undefined ? "" : ` · ${thousands(f.bytes)} bytes`}${f.read === undefined ? " · whether it was read whole is not recorded" : f.read ? "" : " · not read whole"}</li>`).join("")}</ul><p class="small muted">${stated ? "The files the agent said it looked through for this absence; the checker wants each read whole." : "The agent did not name its sources, so the files its job was offered stand in for them."}</p>`,
     });
     edges.push({ from: `a${i}`, to: `as${i}` });
   });

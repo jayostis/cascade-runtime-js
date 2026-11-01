@@ -6,6 +6,7 @@ import type {
   Grade,
   Instance,
   ItemVerdict,
+  Job,
   Results,
 } from "./results.js";
 import {
@@ -110,6 +111,25 @@ function cellOf(s: Sitting, t: Turn | undefined, k: KeyItem): string {
   return `${mark("part", "the judges split")}<span class="said">${given.map((it) => `${esc(it.judge)}: ${esc(it.verdict)}`).join(" · ")}</span>${said(reason)}`;
 }
 
+/** What a judge could have told the arms apart by in the answers to one question, when the run recorded any. */
+function tellsHtml(s: Sitting, q: string): string {
+  const mine = new Set(ARMS.flatMap((arm) => s.jobs[arm].map((j) => j.id)));
+  const found = (s.results.blinding?.tells ?? []).filter(
+    (it) => it.question === q && mine.has(it.job),
+  );
+  const parts = ARMS.flatMap((arm) => {
+    const terms = [
+      ...new Set(found.filter((it) => it.arm === arm).map((it) => it.term)),
+    ];
+    return terms.length === 0
+      ? []
+      : [`${terms.map(esc).join(", ")} (${ARM_NAME[arm]})`];
+  });
+  return parts.length === 0
+    ? ""
+    : `<p class="tiny muted tells">Judges may have been able to tell the arms apart: ${parts.join(" · ")}</p>`;
+}
+
 function keyHtml(
   s: Sitting,
   found: Results["cases"][number],
@@ -157,7 +177,7 @@ function keyHtml(
           )
           .join("")}</tbody></table>`;
   return `<details class="fold key"><summary>The answer key, as a quiet reference <span class="sum">· written before any model ran · ${items.length} item${items.length === 1 ? "" : "s"}${beyond.length === 0 ? "" : ` · ${beyond.length} raised beyond it`}</span></summary><div class="body"><section class="expect">
-<p class="small muted" style="margin:0 0 8px">The key is a reference, not a verdict: it says what a careful reader would say and would not, and what an answer raised beyond it is shown as possibly good, never as wrong (<a href="${esc(found.keyUrl)}">the key's rationale</a>).</p>
+<p class="small muted" style="margin:0 0 8px">The key is a reference, not a verdict: it says what a careful reader would say and would not, and what an answer raised beyond it is shown as possibly good, never as wrong (<a href="${esc(found.keyUrl)}">the key's rationale</a>).</p>${tellsHtml(s, q)}
 <table><thead><tr><th>Expected</th>${ARMS.map((arm) => `<th>${ARM_NAME[arm]}</th>`).join("")}</tr></thead><tbody>${rows(
     "Should say",
     "what the records support",
@@ -183,7 +203,6 @@ function promptHtml(s: Sitting, q: string): string {
 
 const TABS = [
   ["answer", "Answer"],
-  ["reasoning", "Reasoning"],
   ["doctor", "Show my doctor"],
 ] as const;
 
@@ -201,7 +220,6 @@ function armHtml(
   const group = `t-${arm}-${esc(q)}`;
   const panels = {
     answer: replyHtml(t),
-    reasoning: reasoningHtml(t),
     doctor: doctorCardHtml(t, asks, day(today)),
   };
   return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="tabset">${TABS.map(
@@ -212,6 +230,24 @@ function armHtml(
   )}${TABS.map(([name]) => `<div class="panel" data-tab="${name}">${panels[name]}</div>`).join("")}</div>${costHtml(t)}</div>`;
 }
 
+/** Each arm's reasoning and evidence for a question, full width under both arms: the graph is wider than half a page. */
+function drillHtml(s: Sitting, q: string): string {
+  return `<div class="drills">${ARMS.map((arm) => {
+    const t = turnOf(s, arm, q);
+    return t?.answer === undefined
+      ? ""
+      : `<details class="fold drill" data-arm="${arm}"><summary><b class="${arm}">${ARM_NAME[arm]}</b>: the reasoning and the evidence behind each point</summary><div class="body">${reasoningHtml(t)}</div></details>`;
+  }).join("")}</div>`;
+}
+
+/** The letters one judge saw the answers under, each with the arm and question it stood for. */
+function lettersOf(r: Results, judge: Job): string {
+  const letters = Object.entries(judge.labels ?? {});
+  if (letters.length === 0) return "";
+  const arm = (job: string) => r.jobs.find((it) => it.id === job)?.arm;
+  return `<p class="small muted">${esc(modelName(judge.model))} saw the answers under these letters: ${letters.map(([letter, l]) => `${esc(letter)} = ${arm(l.job) === undefined ? "unknown arm" : esc(ARM_NAME[arm(l.job)!])}, ${esc(l.question)}`).join("; ")}.</p>`;
+}
+
 function foldsHtml(s: Sitting, from: string): string {
   const r = s.results;
   const subjects = ARMS.flatMap((arm) => s.jobs[arm]);
@@ -219,11 +255,10 @@ function foldsHtml(s: Sitting, from: string): string {
     (it) => it.role === "judge" && it.instance === s.instance.id,
   );
   const agreement = r.agreement.filter((it) => it.instance === s.instance.id);
-  const letters = (judges[0]?.labels && Object.entries(judges[0].labels)) || [];
   const judgesFold = `<details class="fold" id="judges"><summary>What the judges said <span class="sum">· ${judges.map((it) => esc(modelName(it.model))).join(" and ") || "none"} · the test's overhead, ${dollars(s.instance.judging.usd)}</span></summary><div class="body"><p class="small">Models scored each answer against the key without knowing which arm produced it. Their verdicts are the evidence for the marks in each key, not the marks; their cost is the harness's, charged to neither arm.</p>
 <table class="plain"><tr><th>Judge</th><th class="n">Tokens</th><th class="n">Cost</th><th class="n">Time</th></tr>${judges.map((it) => `<tr><td>${esc(modelName(it.model))}</td><td class="n">${thousands(it.stats?.tokens.total)}</td><td class="n">${dollars(it.stats?.cost.usd)}</td><td class="n">${seconds(it.stats?.wallSeconds)}</td></tr>`).join("")}</table>
 ${agreement.map((a) => `<p class="small">Agreement: ${a.agreed} of ${a.items} verdicts shared${a.kappa === null ? "" : `, kappa ${a.kappa}`}.</p>`).join("")}
-${letters.length === 0 ? "" : `<p class="small muted">The first judge saw the answers under these letters: ${letters.map(([letter, l]) => `${esc(letter)} = ${esc(ARM_NAME[(r.jobs.find((it) => it.id === l.job)?.arm ?? "pod") as Arm])}, ${esc(l.question)}`).join("; ")}.</p>`}</div></details>`;
+${judges.map((j) => lettersOf(r, j)).join("")}</div></details>`;
   const calls = r.toolCalls.filter((it) =>
     s.jobs.pod.some((j) => j.id === it.job),
   );
@@ -318,12 +353,12 @@ export function runPages(
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
 <div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
 <div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
-${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
+${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )
     .join("\n");
   const body = `<p class="small muted"><a href="${hrefTo(where.run, "index.html")}">All runs</a> · run ${esc(r.run.id)} · ${esc(day(r.run.finished))} · <a href="${hrefTo(where.run, personPath(instance.case))}">${esc(person)}</a>, a synthetic person · <a href="${hrefTo(where.run, "how_it_works.html")}">how the test works</a></p>
 <h1>${esc(title)}: With Cascade and the grab bag, side by side</h1>
-<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it, and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor. The exact prompt each agent was handed is one click away under each question.</p>
+<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer two tabs, the answer and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor, and under both answers the reasoning and the evidence graph behind each. The exact prompt each agent was handed is one click away under each question.</p>
 ${head}
 <p class="printlinks noprint">Show my doctor, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
 ${sections}
@@ -344,7 +379,7 @@ ${foldsHtml(s, where.run)}`;
       .map((q) => {
         const t = turnOf(s, arm, q.id);
         return t?.answer === undefined
-          ? ""
+          ? `<article class="card"><header><span><b>You asked</b> <q>${esc(q.asks)}</q></span></header>${notAnswered}</article>`
           : doctorCardHtml(t, q.asks, day(found.today));
       })
       .join("\n");

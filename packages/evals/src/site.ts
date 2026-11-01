@@ -46,22 +46,22 @@ function tally(arms: readonly (ArmSummary | undefined)[]) {
     unanswered: of((a) => a.expected.unanswered + a.traps.unanswered),
     contradicted: of((a) => a.traps.raised + a.beyond.contradicted),
     beyond: of(
-      (a) =>
-        a.beyond.fair +
-        a.beyond.trueNotPlanted +
-        a.beyond.speculative +
-        a.beyond.contradicted +
-        a.beyond.split,
+      (a) => a.beyond.fair + a.beyond.trueNotPlanted + a.beyond.speculative,
     ),
+    beyondSplit: of((a) => a.beyond.split),
   };
 }
 
 const dots = (t: ReturnType<typeof tally>) => {
   if (t.of === 0 || t.of > 30) return "";
+  const open = t.split + t.ungraded + t.unanswered;
   const cells = [
     ...Array<string>(t.right).fill("d-yes"),
     ...Array<string>(t.partly).fill("d-part"),
-    ...Array<string>(Math.max(0, t.of - t.right - t.partly)).fill("d-no"),
+    ...Array<string>(open).fill("d-open"),
+    ...Array<string>(Math.max(0, t.of - t.right - t.partly - open)).fill(
+      "d-no",
+    ),
   ];
   return `<span class="dots">${cells.map((c) => `<span class="dot ${c}"></span>`).join("")}${t.contradicted === 0 ? "" : `<span class="dot d-contra" title="said something the records contradict">!</span>`}</span>`;
 };
@@ -72,6 +72,8 @@ const extras = (t: ReturnType<typeof tally>) => {
     t.split > 0 && `judges split on ${t.split}`,
     t.ungraded > 0 && `${t.ungraded} not graded`,
     t.unanswered > 0 && `${t.unanswered} unanswered`,
+    t.beyondSplit > 0 &&
+      `judges split on ${t.beyondSplit} raised beyond the key`,
   ].filter((it) => it !== false);
   return `${parts.length === 0 ? "" : `<div class="tiny muted">${parts.join(" · ")}</div>`}${t.contradicted === 0 ? "" : `<div class="tiny bad">${t.contradicted} said something the records contradict</div>`}`;
 };
@@ -167,7 +169,7 @@ ${
 ${headline(entries)}
 <h2>Every run</h2>
 <div class="runs">${entries.map((e) => runRow(from, e)).join("")}</div>
-<div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}</div>`
+<div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}${mark("none", "not counted: judges split, unanswered or not graded")}${mark("contra", "said something the records contradict")}</div>`
 }`;
   return page({
     path: from,
@@ -192,10 +194,27 @@ function builds(runs: readonly { results: Results }[]): string {
         c.person.name,
         b === null || b === undefined
           ? "not timed"
-          : `${b.seconds} s for ${c.imports.length} import${c.imports.length === 1 ? "" : "s"}, ${b.modelCalls === 0 ? "no model calls" : `${b.modelCalls} model calls, ${thousands(b.tokens)} tokens, ${dollars(b.usd)}`}. Amortised over ${questions} question${questions === 1 ? "" : "s"}: ${(b.seconds / questions).toFixed(2)} s and ${b.usd === 0 ? "$0.00" : dollars(b.usd / questions)} each`,
+          : `${b.seconds} s for ${c.imports.length} import${c.imports.length === 1 ? "" : "s"}, ${b.modelCalls === 0 ? "no model calls" : `${b.modelCalls} model calls, ${thousands(b.tokens)} tokens, ${dollars(b.usd)}`}${questions === 0 ? "" : `. Amortised over ${questions} question${questions === 1 ? "" : "s"}: ${(b.seconds / questions).toFixed(2)} s and ${b.usd === 0 ? "$0.00" : dollars(b.usd / questions)} each`}`,
       ]);
     }
   return `<ul>${[...seen.values()].map(([name, what]) => `<li><b>${esc(name)}</b>: ${what}.</li>`).join("")}</ul>`;
+}
+
+/** How many answers kept a word that could give the arm away, when the runs recorded it; nothing when they did not. */
+function tellsLine(runs: readonly { results: Results }[]): string {
+  const recorded = runs.filter((it) => it.results.blinding !== undefined);
+  if (recorded.length === 0) return "";
+  const tells = recorded.flatMap((it, run) =>
+    (it.results.blinding?.tells ?? []).map((t) => ({ ...t, run })),
+  );
+  const answers = new Set(
+    tells.map(
+      (t) => `${t.run}
+${t.job}
+${t.question}`,
+    ),
+  );
+  return ` In the runs recorded here, ${tells.length} term${tells.length === 1 ? "" : "s"} in ${answers.size} answer${answers.size === 1 ? "" : "s"} could have given an arm away.`;
 }
 
 function howPage(runs: readonly { results: Results }[]): string {
@@ -210,6 +229,8 @@ function howPage(runs: readonly { results: Results }[]): string {
 <li><b>Follow the pod's provenance</b> from a cited entry to the member records the pod merged into it, their revisions, and the source documents with their authors and arrival dates; for the grab bag, follow a file and resource to the passage and the folder's download date. That is the right-hand side of every evidence graph. It is a lookup: the joining was done when the pod was built, and the grab bag's graph has no link between files unless the agent wrote one.</li>
 <li><b>Render.</b></li></ol>
 <p>Nothing infers a link the agent did not state, and nothing explains an answer after the fact. Each arm's graph is exactly as rich as its agent's own output. Were a secondary agent ever used to explain or link, its cost would be added to that arm and shown.</p>
+<h2>Judging</h2>
+<p>Models score each answer against the key without being told which arm produced it. Answers are scrubbed of what names the arm, but a fixed list of words that cannot be taken out without damaging the prose is left in and recorded.${tellsLine(runs)}</p>
 <h2>Costs</h2>
 <p>Each answer's cost is shown under it: time, tokens with the cache split, dollars at list prices, and the session's own start beside it (the grab bag reads its files once per session). <b>Judging</b> is the harness's own judgment and is paid by the harness: shown as the test's overhead, separately, never charged to either arm.</p>
 <h3 id="build">The pod is built once per person</h3>

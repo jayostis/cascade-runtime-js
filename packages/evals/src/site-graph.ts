@@ -58,7 +58,7 @@ export const kv = (rows: readonly (readonly [string, string | undefined])[]) =>
     .map(([key, value]) => `<tr><th>${esc(key)}</th><td>${value}</td></tr>`)
     .join("")}</table>`;
 
-const BOX = { w: 200, h: 48, gx: 36, gy: 10 };
+const BOX = { w: 176, h: 48, gx: 28, gy: 10 };
 
 function svgOf(graph: Graph, id: string): string {
   const cols: GNode[][] = [];
@@ -104,7 +104,7 @@ function svgOf(graph: Graph, id: string): string {
     .map((node) => {
       const p = at.get(node.id)!;
       const sub = node.sub ?? KIND[node.kind];
-      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l">${esc(cut(node.label, node.check === undefined ? 30 : 24))}</text><text x="10" y="36" class="s">${esc(cut(sub, 34))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
+      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l">${esc(cut(node.label, node.check === undefined ? 26 : 20))}</text><text x="10" y="36" class="s">${esc(cut(sub, 30))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
     })
     .join("");
   return `<svg class="graph" data-graph="${esc(id)}" viewBox="0 0 ${width} ${total}" width="${width}" height="${total}" role="img" aria-label="Evidence graph">${edges}${nodes}</svg>`;

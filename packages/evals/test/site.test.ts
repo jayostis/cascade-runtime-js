@@ -306,8 +306,8 @@ test("each run has a print view of every doctor card for one arm, one click from
   assert.match(run, new RegExp(`href="${ID}\\.print-pod\\.html"`));
   assert.match(run, new RegExp(`href="${ID}\\.print-records\\.html"`));
   for (const [which, other, answered] of [
-    ["pod", "records", 4],
-    ["records", "pod", 4],
+    ["pod", "records", 5],
+    ["records", "pod", 5],
   ] as const) {
     const print = page(`instances/${ID}.print-${which}.html`);
     assert.equal(
@@ -608,11 +608,11 @@ test("a letter's arm is never invented, every judge's letters are listed, and a 
   ]).get(`instances/${ID}.html`)!;
   const sources = text(
     element(
-      element(bare, /<section[^>]*id="q_allergies"/),
+      element(bare, /<section[^>]*id="q_checkup"/),
       /<details[^>]*class="fold drill"[^>]*data-arm="records"/,
     ),
   );
-  assert.match(sources, /whether they were read whole is not recorded/);
+  assert.match(sources, /whether it was read whole is not recorded/);
 });
 
 test("the print view lists a question that was not answered, as not answered", () => {

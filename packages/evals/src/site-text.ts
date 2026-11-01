@@ -60,11 +60,11 @@ export const median = (values: readonly number[]) => {
     : (sorted[mid - 1]! + sorted[mid]!) / 2;
 };
 
-export type Tone = "yes" | "part" | "no" | "beyond" | "none";
+export type Tone = "yes" | "part" | "no" | "beyond" | "none" | "contra";
 
 /** A verdict as a small mark: a tick, a half, a cross, a plus, a dot. */
 export const mark = (tone: Tone, label: string) =>
-  `<span class="mark m-${tone}"><i>${{ yes: "✓", part: "◐", no: "✗", beyond: "+", none: "·" }[tone]}</i>${esc(label)}</span>`;
+  `<span class="mark m-${tone}"><i>${{ yes: "✓", part: "◐", no: "✗", beyond: "+", none: "·", contra: "!" }[tone]}</i>${esc(label)}</span>`;
 
 export const badge = (arm: Arm) =>
   `<span class="badge b-${arm}">${ARM_NAME[arm]}</span>`;

@@ -33,7 +33,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:12
 .mark{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 9px 1px 6px;font-size:.8rem;font-weight:600;line-height:1.5}
 .mark i{font-style:normal;font-weight:800;width:1em;text-align:center}
 .m-yes{background:var(--yes-bg);color:var(--yes)}.m-part{background:var(--part-bg);color:var(--part)}.m-no{background:var(--no-bg);color:var(--no)}
-.m-beyond{background:var(--beyond-bg);color:var(--beyond)}.m-none{background:var(--soft);color:var(--muted)}
+.m-contra{background:var(--no);color:#fff}.m-beyond{background:var(--beyond-bg);color:var(--beyond)}.m-none{background:var(--soft);color:var(--muted)}
 .ok{color:var(--yes)}.bad{color:var(--no)}
 .hl{overflow-x:auto}.hl table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);margin:10px 0;min-width:640px}
 .hl th,.hl td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:.92rem}
@@ -42,7 +42,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:12
 .dots{display:inline-flex;flex-wrap:wrap;gap:3px;vertical-align:middle;margin-left:4px}
 .dot{display:inline-block;width:14px;height:14px;border-radius:4px;font-size:.66rem;line-height:14px;text-align:center;font-weight:800}
 .d-yes{background:var(--yes-bg);box-shadow:inset 0 0 0 1px var(--yes)}.d-part{background:var(--part-bg);box-shadow:inset 0 0 0 1px var(--part)}
-.d-no{background:var(--no-bg)}.d-contra{background:var(--no);color:#fff}
+.d-no{background:var(--no-bg)}.d-open{background:var(--soft2);box-shadow:inset 0 0 0 1px var(--line)}.d-contra{background:var(--no);color:#fff}
 .runs{display:grid;gap:8px;margin:12px 0}
 .runrow{display:grid;grid-template-columns:170px 1fr 1fr 170px;gap:8px 18px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;text-decoration:none;color:inherit}
 .runrow:hover{border-color:var(--fg)}
@@ -96,7 +96,7 @@ svg.graph{max-width:none;display:block;margin:4px 0}
 .graph .node.k-document rect,.graph .node.k-passage rect{fill:var(--yes-bg);stroke:var(--yes)}
 .graph .node.k-query rect,.graph .node.k-sources rect,.graph .node.k-link rect{fill:var(--soft);stroke-dasharray:4 3}
 .graph .node .ck{font-size:13px;font-weight:800}.graph .node .ck.ok{fill:var(--yes)}.graph .node .ck.bad{fill:var(--no)}
-.arm.pod .graph .node.k-fact rect{stroke:var(--pod)}.arm.records .graph .node.k-fact rect{stroke:var(--records)}
+.drill[data-arm=pod] .graph .node.k-fact rect{stroke:var(--pod)}.drill[data-arm=records] .graph .node.k-fact rect{stroke:var(--records)}.drill>summary b.pod{color:var(--pod)}.drill>summary b.records{color:var(--records)}
 .gpanel{margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:.86rem;min-height:40px}
 .kl{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
 .gpanel pre{max-height:320px;background:var(--card)}
