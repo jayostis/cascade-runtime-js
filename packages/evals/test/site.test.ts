@@ -475,7 +475,7 @@ test("a person page from the recorded name and description, one click from the f
   const { summary, who, sources, planted } = recorded.cases[0]!.description;
   for (const part of [summary, who, sources, planted])
     assert.ok(said.includes(part), part);
-  assert.match(person, new RegExp(`href="../instances/${ID}\.html"`));
+  assert.match(person, new RegExp(`href="../instances/${ID}[.]html"`));
   assert.match(
     page("index.html"),
     /href="people\/tamsin-vale\.html"[^>]*>Who Tamsin Vale is/,
