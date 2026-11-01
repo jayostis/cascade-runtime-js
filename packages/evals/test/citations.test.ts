@@ -10,6 +10,7 @@ import {
   checkRecordsAbsence,
   downloadsSource,
   fhirFields,
+  isoDate,
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
@@ -968,4 +969,221 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
   assert.deepEqual(pod("entered-in-error"), { backed: true });
   assert.deepEqual(pod("refuted"), { backed: true });
   assert.deepEqual(pod("active"), { backed: false, reason: "query found it" });
+});
+
+const held = (file: string) => ({
+  backed: false,
+  reason: `records hold it: ${file}`,
+});
+const inRecords = (
+  after: string | undefined,
+  terms: string[],
+  doc: string,
+  codes: string[] = [],
+) =>
+  checkRecordsAbsence(
+    {
+      what: "x",
+      coverage: "every record",
+      match: { codes, terms, ...(after === undefined ? {} : { after }) },
+    },
+    ["b"],
+    async () => doc,
+    ["b"],
+  );
+const observation = (fields: Record<string, unknown>) => ({
+  resourceType: "Observation",
+  id: "o",
+  code: { coding: [{ code: "4548-4" }], text: "Hemoglobin A1c" },
+  effectiveDateTime: "2026-02-16",
+  ...fields,
+});
+const bundle = (...resources: unknown[]) =>
+  JSON.stringify({
+    resourceType: "Bundle",
+    entry: [
+      ...resources.map((resource) => ({ resource })),
+      {
+        resource: {
+          resourceType: "Patient",
+          id: "pt",
+          birthDate: "2026-03-01",
+        },
+      },
+    ],
+  });
+
+test("a JSON download that starts with a newline or a byte-order mark is read as JSON", async () => {
+  const doc = bundle(observation({}));
+  const after = "2026-02-17";
+  assert.deepEqual(await inRecords(after, [], doc, ["4548-4"]), {
+    backed: true,
+  });
+  assert.deepEqual(await inRecords(after, [], `\n${doc}`, ["4548-4"]), {
+    backed: true,
+  });
+  assert.deepEqual(await inRecords(after, [], `\uFEFF${doc}`, ["4548-4"]), {
+    backed: true,
+  });
+});
+
+test("a code is not a date: a long number is a day only when it is one", async () => {
+  const condition = (onset: string) =>
+    bundle({
+      resourceType: "Condition",
+      id: "c",
+      code: { coding: [{ code: "44054006" }], text: "Type 2 diabetes" },
+      onsetDateTime: onset,
+    });
+  assert.deepEqual(
+    await inRecords("2030-01-01", [], condition("2022-01-01"), ["44054006"]),
+    {
+      backed: true,
+    },
+  );
+  assert.deepEqual(
+    await inRecords("2020-01-01", [], condition("2022-01-01"), ["44054006"]),
+    held("b"),
+  );
+  assert.equal(isoDate("44054006"), undefined);
+  assert.equal(isoDate("20250230"), undefined);
+  assert.equal(isoDate("20250219120000"), "2025-02-19");
+  assert.equal(isoDate("2025-13-01"), undefined);
+  const input = { pod: "p", question: "pod/My active conditions" };
+  assert.deepEqual(
+    checkAbsence(
+      {
+        what: "x",
+        coverage: "every condition",
+        match: { codes: ["44054006"], after: "2030-01-01" },
+        query: { tool: "ask", input },
+      },
+      [
+        {
+          tool: "ask",
+          input,
+          ok: true,
+          answer: JSON.stringify({
+            total: 1,
+            rows: [{ condition: "T2DM 44054006", onset: "2022-01-01" }],
+          }),
+        },
+      ],
+    ),
+    { backed: true },
+  );
+});
+
+test("a record is dated by its clinical dates, not by when it was written: the same A1c has the same verdict in both arms", async () => {
+  const absence = {
+    what: "an A1c since February",
+    coverage: "every lab result",
+    match: { codes: ["4548-4"], after: "2026-02-17" },
+  };
+  assert.deepEqual(
+    await inRecords(
+      "2026-02-17",
+      [],
+      bundle(observation({ meta: { lastUpdated: "2026-10-15T16:00:00Z" } })),
+      ["4548-4"],
+    ),
+    { backed: true },
+  );
+  const input = { pod: "p", question: "pod/My lab results" };
+  assert.deepEqual(
+    checkAbsence({ ...absence, query: { tool: "ask", input } }, [
+      {
+        tool: "ask",
+        input,
+        ok: true,
+        answer: JSON.stringify({
+          total: 1,
+          rows: [
+            {
+              test: "Hemoglobin A1c 4548-4",
+              performed: "2026-02-16",
+              sources: [{ retrieved: "2026-10-15" }],
+            },
+          ],
+        }),
+      },
+    ]),
+    { backed: true },
+  );
+  const ccda = (author: string) =>
+    `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"><code code="4548-4"/><effectiveTime value="20260216"/>${author}</observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  const written = '<author><time value="20261015"/></author>';
+  assert.deepEqual(
+    await inRecords("2026-02-17", [], ccda(written), ["4548-4"]),
+    { backed: true },
+  );
+  assert.deepEqual(
+    await inRecords("2026-02-01", [], ccda(written), ["4548-4"]),
+    held("b"),
+  );
+});
+
+test("a C-CDA record that is negated, nullified or entered in error is no presence", async () => {
+  const entry = (tag: string, status: string, body = "") =>
+    `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"${tag}><code code="59282003" displayName="Pulmonary embolism"/>${status}<effectiveTime value="20250708"/>${body}</observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  const live = entry("", '<statusCode code="completed"/>');
+  const negated = entry(
+    ' negationInd="true"',
+    '<statusCode code="completed"/>',
+  );
+  const nullified = entry("", '<statusCode code="nullified"/>');
+  for (const after of [undefined, "2025-01-01"]) {
+    assert.deepEqual(
+      await inRecords(after, ["pulmonary embolism"], live, ["59282003"]),
+      held("b"),
+    );
+    assert.deepEqual(
+      await inRecords(after, ["pulmonary embolism"], negated, ["59282003"]),
+      { backed: true },
+    );
+    assert.deepEqual(
+      await inRecords(after, ["pulmonary embolism"], nullified, ["59282003"]),
+      { backed: true },
+    );
+  }
+  const narrative = (status: string) =>
+    `<ClinicalDocument><component><structuredBody><component><section><text><table><tbody><tr><td>Pulmonary embolism</td><td>${status}</td><td>July 8, 2025</td></tr></tbody></table></text></section></component></structuredBody></component></ClinicalDocument>`;
+  for (const after of [undefined, "2025-01-01"]) {
+    assert.deepEqual(
+      await inRecords(after, ["pulmonary embolism"], narrative("active")),
+      held("b"),
+    );
+    assert.deepEqual(
+      await inRecords(
+        after,
+        ["pulmonary embolism"],
+        narrative("entered in error"),
+      ),
+      { backed: true },
+    );
+  }
+});
+
+test("a withdrawn record with an after date holds nothing", async () => {
+  const pe = (verification: string) =>
+    bundle({
+      resourceType: "Condition",
+      id: "pe",
+      verificationStatus: { coding: [{ code: verification }] },
+      code: { coding: [{ code: "59282003" }], text: "Pulmonary embolism" },
+      onsetDateTime: "2025-07-08",
+    });
+  for (const status of ["refuted", "entered-in-error"])
+    assert.deepEqual(
+      await inRecords("2025-01-01", ["pulmonary embolism"], pe(status)),
+      { backed: true },
+    );
+  assert.deepEqual(
+    await inRecords("2025-01-01", ["pulmonary embolism"], pe("confirmed")),
+    held("b"),
+  );
+  assert.deepEqual(
+    await inRecords("2026-01-01", ["pulmonary embolism"], pe("confirmed")),
+    { backed: true },
+  );
 });
