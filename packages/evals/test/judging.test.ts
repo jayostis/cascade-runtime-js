@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, test } from "node:test";
 import type { Answer } from "../src/checks.js";
+import { loadCase } from "../src/cases.js";
 import { blinded, judgePackets } from "../src/judging.js";
 import { RUNS } from "../src/paths.js";
 import type { Job } from "../src/results.js";
@@ -50,43 +51,66 @@ const answer = (says: string): Answer => ({
 const POD = "tamsin-vale.checkup.pod.opus-5-5.r1";
 const RECORDS = "tamsin-vale.checkup.records.opus-5-5.r1";
 
-/** A run of the two subjects' answers, planned for the given judges. */
-async function runOf(name: string, judges: string[]) {
+/**
+ * A run of both arms' answers, planned for the given judges: one chat of one question for tamsin-vale, or with a case
+ * named every chat the case has.
+ */
+async function runOf(name: string, judges: string[], caseId?: string) {
   const folder = join(temporary, name);
   await mkdir(join(folder, "answers"), { recursive: true });
   await mkdir(join(folder, "prompts"), { recursive: true });
-  for (const [id, text] of [
-    [POD, "Has a colonoscopy been booked?"],
-    [RECORDS, "Should I have a colonoscopy now?"],
-  ] as const) {
-    await mkdir(join(folder, "answers", id), { recursive: true });
-    await writeFile(
-      join(folder, "answers", id, "checkup.json"),
-      JSON.stringify(answer(text)),
-    );
-  }
-  const subject = (id: string, arm: string) => ({
+  const sessions =
+    caseId === undefined
+      ? [{ id: "checkup", questions: [{ id: "checkup" }] }]
+      : (await loadCase(caseId)).sessions;
+  const subjects = sessions.flatMap((session) =>
+    (
+      [
+        ["pod", "Has a colonoscopy been booked?"],
+        ["records", "Should I have a colonoscopy now?"],
+      ] as const
+    ).map(([arm, text]) => ({
+      id:
+        caseId === undefined
+          ? arm === "pod"
+            ? POD
+            : RECORDS
+          : `${caseId}.${session.id}.${arm}.opus-5-5.r1`,
+      arm,
+      text,
+      session,
+    })),
+  );
+  const subject = ({ id, arm, session }: (typeof subjects)[0]) => ({
     id,
     role: "subject",
-    case: "tamsin-vale",
+    case: caseId ?? "tamsin-vale",
     arm,
     model: "claude-opus-5-5",
     repeat: 1,
-    session: "checkup",
-    questions: ["checkup"],
+    session: session.id,
+    questions: session.questions.map((it) => it.id),
     tag: `${name}/${id}`,
     status: "done",
     estimate: { tokens: 0, usd: 0 },
     answers: `answers/${id}`,
   });
+  for (const { id, text, session } of subjects) {
+    await mkdir(join(folder, "answers", id), { recursive: true });
+    for (const question of session.questions)
+      await writeFile(
+        join(folder, "answers", id, `${question.id}.json`),
+        JSON.stringify(answer(text)),
+      );
+  }
   await writeFile(
     join(folder, "plan.json"),
     JSON.stringify({
       run: name,
       folder,
       config: { judges },
-      cases: [{ id: "tamsin-vale" }],
-      jobs: [subject(POD, "pod"), subject(RECORDS, "records")],
+      cases: [{ id: caseId ?? "tamsin-vale" }],
+      jobs: subjects.map(subject),
       estimate: { tokens: 0, usd: 0 },
     }),
   );
@@ -250,31 +274,37 @@ test("a verdict of the wrong kind for its key item is rejected, so counts never 
   );
 });
 
-test("no key item tells a judge which arm it favours", async () => {
-  const { readdir, access } = await import("node:fs/promises");
-  const { CASES } = await import("../src/paths.js");
-  const { loadKey } = await import("../src/cases.js");
-  const revealing = /\b(?:pod|records|dump) arm\b|grab.?bag|near impossible/i;
-  const told: string[] = [];
-  for (const id of await readdir(CASES)) {
-    if (
-      await access(join(CASES, id, "key.json")).then(
-        () => false,
-        () => true,
-      )
-    )
-      continue;
-    for (const item of (await loadKey(id)).key.items)
-      for (const [field, text] of Object.entries(item))
-        for (const line of [text].flat())
-          if (
-            ["lookingFor", "found", "partly", "wrong", "notWrong"].includes(
-              field,
-            ) &&
-            typeof line === "string" &&
-            revealing.test(line)
-          )
-            told.push(`${id} ${item.id} ${field}`);
+/** What would tell a judge which arm wrote an answer: the arms by name, what the pod holds and how it is read. */
+const ARM_TERMS = new RegExp(
+  [
+    String.raw`\b(?:pods?|arms?|dump|grab.?bag|importer|views?)\b`,
+    String.raw`\b(?:first|second) answers?\b`,
+    String.raw`\b(?:pod|record|entry)/\S+`,
+    String.raw`\b(?:lab_series|find_changes|cascade-mcp|pod\.mjs)\b`,
+    String.raw`\bMy (?:(?:active|lab|medication|procedure|immunization|allergy|condition)\w* ?)+`,
+    String.raw`\b(?:What was seen more than once|Why it is in no view|Where it came from|What it shows)\b`,
+  ].join("|"),
+  "gi",
+);
+
+test("no judge packet, for any case, names an arm or what only one arm holds", async () => {
+  const { caseIds } = await import("../src/cases.js");
+  const leaks: string[] = [];
+  for (const id of await caseIds()) {
+    const { judges } = await runOf(`blind-${id}`, ["claude-haiku-5-5"], id);
+    const [judge] = judges;
+    assert.ok(judge?.packet !== undefined, id);
+    for (const [what, path] of [
+      ["packet", judge.packet],
+      ["prompt", join(judge.workdir!, "prompt.txt")],
+    ] as const) {
+      const lines = (await readFile(path, "utf8")).split("\n");
+      for (const [at, line] of lines.entries())
+        for (const found of new Set(line.match(ARM_TERMS) ?? []))
+          leaks.push(
+            `${id} ${what}:${at + 1} "${found}": ${line.trim().slice(0, 100)}`,
+          );
+    }
   }
-  assert.deepEqual(told, []);
+  assert.deepEqual(leaks, []);
 });
