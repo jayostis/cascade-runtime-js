@@ -77,7 +77,7 @@ const tab = (q: string, which: string, name: string) =>
 const drill = (q: string, which: string) =>
   element(
     element(run, new RegExp(`<section[^>]*id="q_${q}"`)),
-    new RegExp(`<details[^>]*class="fold drill"[^>]*data-arm="${which}"`),
+    new RegExp(`<div[^>]*class="drill"[^>]*data-arm="${which}"`),
   );
 
 test("the front page: a row per model with each arm's key items right as counts, the typical cost per answer, and a row per run instance that opens its run; judging is the test's overhead, in no arm", () => {
@@ -139,7 +139,7 @@ test("the front page: a row per model with each arm's key items right as counts,
   assert.match(index, /href="how_it_works\.html"/);
 });
 
-test("a run page: each question in her words, both answers exactly as given with tabs Answer and Show my doctor, cost per answer, the exact prompt one click away", () => {
+test("a run page: each question in her words, both answers exactly as given with tabs Answer, Reasoning and Show my doctor, cost per answer, the exact prompt one click away", () => {
   for (const [q, asks] of [
     ["checkup", /I have a check-up coming/],
     ["medications", /What medications am I on right now\?/],
@@ -152,7 +152,7 @@ test("a run page: each question in her words, both answers exactly as given with
       const names = [
         ...arm(q, which).matchAll(/<label[^>]*data-tab-label="(\w+)"/g),
       ].map((m) => m[1]);
-      assert.deepEqual(names, ["answer", "doctor"]);
+      assert.deepEqual(names, ["answer", "reasoning", "doctor"]);
     }
   }
   assert.match(
@@ -545,8 +545,22 @@ test("the reasoning and evidence of each arm are full width under both arms, and
   for (const q of ["checkup", "medications", "blood-clot", "allergies"]) {
     const section = element(run, new RegExp(`<section[^>]*id="q_${q}"`));
     const arms = element(section, /<div class="arms"/);
-    assert.equal(/class="fold drill"/.test(arms), false, q);
-    for (const which of ARMS) assert.ok(drill(q, which).length > 0, q);
+    assert.equal(/class="drill"/.test(arms), false, q);
+    const before = section.slice(0, section.indexOf(arms));
+    for (const which of ARMS) {
+      assert.ok(drill(q, which).length > 0, q);
+      const labels = [
+        ...arm(q, which).matchAll(
+          /<label for="([^"]+)"[^>]*data-tab-label="reasoning"/g,
+        ),
+      ];
+      assert.equal(labels.length, 1, `${q} ${which} has a Reasoning tab`);
+      const id = labels[0]![1]!;
+      assert.ok(
+        new RegExp(`<input type="radio"[^>]*id="${id}"`).test(before),
+        `${q} ${which}: the Reasoning radio sits before the arms, so its panel can follow it`,
+      );
+    }
   }
   for (const m of run.matchAll(/<svg class="graph"[^>]* width="(\d+)"/g))
     assert.ok(Number(m[1]) <= 1000, `a graph ${m[1]} px wide`);
@@ -609,7 +623,7 @@ test("a letter's arm is never invented, every judge's letters are listed, and a 
   const sources = text(
     element(
       element(bare, /<section[^>]*id="q_checkup"/),
-      /<details[^>]*class="fold drill"[^>]*data-arm="records"/,
+      /<div[^>]*class="drill"[^>]*data-arm="records"/,
     ),
   );
   assert.match(sources, /whether it was read whole is not recorded/);
