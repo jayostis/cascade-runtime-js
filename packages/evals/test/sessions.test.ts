@@ -197,9 +197,15 @@ test("a grab-bag citation resolves to the passage it names and its download's da
   assert.ok(passage !== undefined);
   assert.equal(passage.pointer, "/entry/7/resource");
   assert.match(passage.text, /Jardiance 10 mg tablet/);
-  assert.equal(
-    passage.text,
-    lines.slice(passage.from - 1, passage.to).join("\n"),
+  const bundle = JSON.parse(lines.join("\n")) as {
+    entry: { resource: unknown }[];
+  };
+  assert.deepEqual(JSON.parse(passage.text), bundle.entry[7]!.resource);
+  assert.ok(
+    lines
+      .slice(passage.from - 1, passage.to)
+      .join("\n")
+      .includes(passage.text),
   );
   assert.deepEqual(passage.download, PULL);
   const line = await passageOf(at, { file, line: 3 });

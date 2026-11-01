@@ -147,23 +147,86 @@ function pick<T extends Record<string, string | undefined>>(
   ) as { [K in keyof T]?: string };
 }
 
-const RESOURCE = /^\s*"resource": \{\s*$/;
-
-/** The line a JSON value opening on `start` closes on, by its braces outside strings. */
-function closing(lines: readonly string[], start: number): number {
-  let depth = 0;
-  for (let at = start; at < lines.length; at++) {
-    for (const char of lines[at]!.replace(/"(?:[^"\\]|\\.)*"/g, '""'))
-      if (char === "{") depth++;
-      else if (char === "}") depth--;
-    if (depth === 0) return at;
-  }
-  return lines.length - 1;
+/**
+ * Where the value a JSON pointer names sits in a JSON text: its first and past-last character, whatever the text's
+ * layout (a download is often one minified line). Undefined when the pointer names nothing.
+ */
+export function spanOf(
+  text: string,
+  pointer: readonly (string | number)[],
+): [number, number] | undefined {
+  let at = 0;
+  const space = () => {
+    while (/\s/.test(text[at] ?? "")) at++;
+  };
+  const string = () => {
+    const start = at++;
+    while (at < text.length && text[at] !== '"')
+      at += text[at] === "\\" ? 2 : 1;
+    at++;
+    return JSON.parse(text.slice(start, at)) as string;
+  };
+  const skip = (): void => {
+    space();
+    const open = text[at];
+    if (open === '"') {
+      string();
+      return;
+    }
+    if (open !== "{" && open !== "[") {
+      while (at < text.length && !/[,\]}\s]/.test(text[at]!)) at++;
+      return;
+    }
+    at++;
+    space();
+    if (text[at] === (open === "{" ? "}" : "]")) {
+      at++;
+      return;
+    }
+    for (;;) {
+      if (open === "{") {
+        space();
+        string();
+        space();
+        at++;
+      }
+      skip();
+      space();
+      if (text[at++] !== ",") return;
+    }
+  };
+  const find = (depth: number): [number, number] | undefined => {
+    space();
+    if (depth === pointer.length) {
+      const start = at;
+      skip();
+      return [start, at];
+    }
+    const open = text[at];
+    if (open !== "{" && open !== "[") return undefined;
+    at++;
+    for (let index = 0; ; index++) {
+      space();
+      if (text[at] === "}" || text[at] === "]") return undefined;
+      let name: string | number = index;
+      if (open === "{") {
+        name = string();
+        space();
+        at++;
+      }
+      if (name === pointer[depth]) return find(depth + 1);
+      skip();
+      space();
+      if (text[at++] !== ",") return undefined;
+    }
+  };
+  return find(0);
 }
 
 /**
- * The passage a grab-bag citation names: for a FHIR resource, the lines it spans and its JSON pointer; for a line,
- * that line. With the download's source and date from its folder's `pull.json`, when it has one.
+ * The passage a grab-bag citation names: for a FHIR resource, its text exactly as the file holds it, the lines it
+ * spans and its JSON pointer; for a line, that line. With the download's source and date from its folder's
+ * `pull.json`, when it has one.
  */
 export async function passageOf(
   downloads: string,
@@ -185,19 +248,24 @@ export async function passageOf(
     ) as { source?: string; retrievedAt?: string };
     download = pick({ source, retrievedAt });
   }
-  const passage = (from: number, to: number, rest: Partial<Passage>) => ({
+  const lineAt = (offset: number) => text.slice(0, offset).split("\n").length;
+  const passage = (
+    rest: Partial<Passage> & Pick<Passage, "from" | "to" | "text">,
+  ) => ({
     file: cite.file,
     ...rest,
-    from,
-    to,
-    text: lines.slice(from - 1, to).join("\n"),
     ...(download === undefined ? {} : { download }),
   });
   if ("line" in cite)
     return Number.isInteger(cite.line) &&
       cite.line >= 1 &&
       cite.line <= lines.length
-      ? passage(cite.line, cite.line, { line: cite.line })
+      ? passage({
+          line: cite.line,
+          from: cite.line,
+          to: cite.line,
+          text: lines[cite.line - 1]!,
+        })
       : undefined;
   let parsed: { resourceType?: string; id?: string; entry?: unknown };
   try {
@@ -205,21 +273,24 @@ export async function passageOf(
   } catch {
     return undefined;
   }
-  if (`${parsed.resourceType}/${parsed.id}` === cite.resource)
-    return passage(1, lines.length, { resource: cite.resource, pointer: "" });
-  const entries = Array.isArray(parsed.entry) ? parsed.entry : [];
-  const at = entries.findIndex((it) => {
-    const { resourceType, id } = ((it as { resource?: unknown }).resource ??
-      {}) as { resourceType?: string; id?: string };
-    return `${resourceType}/${id}` === cite.resource;
-  });
+  const named = (it: unknown) => {
+    const { resourceType, id } = (it ?? {}) as Record<string, unknown>;
+    return `${String(resourceType)}/${String(id)}` === cite.resource;
+  };
+  const at = named(parsed)
+    ? undefined
+    : (Array.isArray(parsed.entry) ? parsed.entry : []).findIndex((it) =>
+        named((it as { resource?: unknown }).resource),
+      );
   if (at === -1) return undefined;
-  const opening = lines
-    .map((line, n) => (RESOURCE.test(line) ? n : -1))
-    .filter((n) => n !== -1)[at];
-  if (opening === undefined) return undefined;
-  return passage(opening + 1, closing(lines, opening) + 1, {
+  const pointer = at === undefined ? [] : ["entry", at, "resource"];
+  const span = spanOf(text, pointer);
+  if (span === undefined) return undefined;
+  return passage({
     resource: cite.resource,
-    pointer: `/entry/${at}/resource`,
+    pointer: pointer.map((it) => `/${it}`).join(""),
+    from: lineAt(span[0]),
+    to: lineAt(span[1]),
+    text: text.slice(span[0], span[1]),
   });
 }
