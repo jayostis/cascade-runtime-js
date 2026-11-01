@@ -1,14 +1,14 @@
 # Answer key: Priya Natarajan
 
-Written 2026-10-30, before any arm ran. Scorers only: never show this file, `inputs.md`'s notes or the file names'
-history to an arm.
+Written 2026-10-30, before any answer was given. Scorers only: never show this file, `inputs.md`'s notes or the file names'
+history to whoever answers.
 
 - **Evaluation "today": 2026-10-30.** Every "overdue" and "not done" below is judged on that date.
 - **Priya Natarajan:** female, born 1968-11-04, **57** (58 on 2026-11-04). Never smoker. Problems: essential
   hypertension (2023), type 2 diabetes (diagnosed 2025-09-22), hay fever. Aspirin allergy (hives); lisinopril
   intolerance (cough).
 - The inputs are listed in [case.json](case.json). File references below are relative to the case's downloads folder, `file:line`.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
@@ -55,8 +55,7 @@ history to an arm.
 > The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
 > [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
 > (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
 > command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Priya
@@ -76,7 +75,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 
 #### G1. Second Shingrix dose never given (dose 1 at a pharmacy)
 
-- **Kind:** gap. **Pod feature:** cross-source, absence, dates.
+- **Kind:** gap.
 - **Evidence:** Shingrix (CVX 187) given **2025-11-08** by Alder Street Pharmacy:
   `alder-street-pharmacy-patient-record.xml:492` (immunization entry `VX-251108-2`). No second
   CVX 187 in any source. Fernhill's immunization list (the PCP) shows only the 2024-10-15 flu shot:
@@ -88,12 +87,12 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
   missing or due now.
 - **Wrong:** saying the series must be restarted; saying she is not eligible (she is 57); saying no zoster vaccine was
   ever given.
-- **Pod:** `pod/My immunizations`, one CVX 187 row, `given` 2025-11-08; `entry/Where it came from` gives Alder Street
+- **Pod:** feature: cross-source, absence, dates. `pod/My immunizations`, one CVX 187 row, `given` 2025-11-08; `entry/Where it came from` gives Alder Street
   Pharmacy.
 
 #### G2. Hydrochlorothiazide stopped at hospital discharge, still active at the clinic and the pharmacy
 
-- **Kind:** gap. **Pod feature:** cross-source, dates (a stop in one source against "active" in three later ones).
+- **Kind:** gap.
 - **Evidence:**
   - KH stopped it for hyponatremia: medication `MED-2611` status `aborted`, ended **2026-03-05**,
     `kestrel-harbor-health-summary-5.xml:334` (narrative "Discontinued March 5, 2026
@@ -110,18 +109,19 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Good question:** "The hospital stopped my hydrochlorothiazide in March 2026 because my sodium was low, but my clinic
   and pharmacy still have it active and it was refilled in April. Should I still be taking it?"
 - **Found (minimum):** names HCTZ (or "the water pill"), that the hospital stopped it in March 2026, and that a later
-  list still shows it active. The reason (low sodium) and the April refill are optional: they are narrative-only, and
-  the pod arm can only infer the reason (sodium 123 on 2026-03-02).
+  list still shows it active. The reason (low sodium) and the April refill are optional: they are not coded, and
+  the reason can only be inferred from the coded results (sodium 123 on 2026-03-02).
 - **Wrong:** advising her to keep taking it without noting the hospital's stop; saying she stopped it and nothing is
   outstanding.
-- **Pod:** `pod/My active medications` lists HCTZ active (5 records, the pharmacy's leading). The stop is visible only
+- **Pod:** feature: cross-source, dates (a stop in one source against "active" in three later ones). `pod/My active medications` lists HCTZ active (5 records, the pharmacy's leading). The stop is visible only
   in `entry/What it shows` (a non-lead `workflowStatus` "stopped" and `medicationUseEndDate` 2026-03-05) and per record
   in `record/What each version says`; `entry/Where it came from` names the four places. The `timeline` tool shows the
-  lead's status only. This item tests whether an arm looks past the lead.
+  lead's status only. This item tests whether an arm looks past the lead. A pod arm can only infer the reason (sodium 123
+  on 2026-03-02).
 
 #### G3. Urine albumin-to-creatinine ratio never done, eGFR done five times
 
-- **Kind:** gap. **Pod feature:** absence, cross-source (eGFR from three places).
+- **Kind:** gap.
 - **Evidence:** type 2 diabetes from 2025-09-22, `fernhill-family-clinic-summary-3.xml:549`;
   also hypertension, on losartan. eGFR 75 on 2025-09-22 (Fernhill, `fernhill-family-clinic-summary-3.xml:762`, and Northbay), 63 on 2025-10-18 (Saltmarsh,
   `saltmarsh-regional-medical-center-ed-summary.xml:769`), 62 and 70 on 2026-03-02 and 03-05
@@ -137,12 +137,12 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Found:** names the urine albumin / albumin-creatinine / microalbumin test and that it is missing; diabetes (or
   diabetes plus hypertension) as the reason.
 - **Wrong:** saying it was done (citing the dipstick); saying her kidneys need nothing because eGFR is normal.
-- **Pod:** `pod/My lab results` (no uACR code; `lab_series` 98979-8 gives the five eGFRs); `pod/My active conditions`
+- **Pod:** feature: absence, cross-source (eGFR from three places). `pod/My lab results` (no uACR code; `lab_series` 98979-8 gives the five eGFRs); `pod/My active conditions`
   for the diabetes.
 
 #### G4. No statin, with diabetes at 57 and LDL 142
 
-- **Kind:** gap. **Pod feature:** absence, cross-source (diagnosis, lipids and age in different records).
+- **Kind:** gap.
 - **Evidence:** diabetes (above); LDL 142 mg/dL (H), total cholesterol 221, HDL 48 on 2025-09-22,
   `fernhill-family-clinic-summary-3.xml:863` (also Northbay's copy). Born 1968-11-04 (every
   patient header). No statin in any medication list of any source.
@@ -151,19 +151,20 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Good question:** "I'm 57 with diabetes and my LDL was 142. Should I be on a statin?"
 - **Found:** statin (or cholesterol medicine) not prescribed, with diabetes and age or the LDL as the reason.
 - **Wrong:** saying she takes one; recommending a specific drug and dose as settled (a question is fine).
-- **Pod:** `pod/My medication history` (no statin), `pod/My lab results` (LDL), `pod/My active conditions`,
+- **Pod:** feature: absence, cross-source (diagnosis, lipids and age in different records). `pod/My medication history` (no statin), `pod/My lab results` (LDL), `pod/My active conditions`,
   `record/What each version says --where field=…#dateOfBirth`.
 
-#### G5. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (narrative-only)
+#### G5. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (free text only)
 
-- **Kind:** gap. **Pod feature: narrative-only.** The pod does not carry it: no row of any of the 35 questions on
-  `eval-priya` mentions a nodule, the lung or Fleischner (checked 2026-10-30). Only the dump arm can see it; a pod arm
-  can find it only by reading the document, which `pod.mjs` does not offer.
+- **Kind:** gap.
 - **Evidence:** Saltmarsh ED CT abdomen/pelvis, 2025-10-18, Results section narrative: findings "a 7 mm solid nodule ...
   right lower lobe" and impression "Incidental 7 mm solid pulmonary nodule ... non-contrast CT of the chest is
   recommended in 6-12 months", `saltmarsh-regional-medical-center-ed-summary.xml:545` and 546. The ED discharge instructions (line 985 on) do not mention it. No chest CT anywhere afterwards; no source's
   problem list names it. Never smoker (low risk; Fleischner: CT at 6-12 months for a 6-8 mm solid nodule). The window
   closed 2026-10-18.
+- **Pod:** feature: narrative-only. The pod does not carry it: no row of any of the 35 questions on
+  `eval-priya` mentions a nodule, the lung or Fleischner (checked 2026-10-30). Only the dump arm can see it; a pod arm
+  can find it only by reading the document, which `pod.mjs` does not offer.
 - **Rate:** 29% follow-up for ED CTA nodules with explicit report instructions; 51.7% completed at one year (research #3).
 - **Good question:** "A CT at Saltmarsh in October 2025 found a small lung nodule and recommended a chest CT in 6-12
   months. I don't see one. Should I have it?"
@@ -172,7 +173,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 
 #### G6. TSH 7.9 at the hospital, repeat recommended in 6-8 weeks, never repeated
 
-- **Kind:** gap. **Pod feature:** dates (an abnormal result with nothing after it), absence.
+- **Kind:** gap.
 - **Evidence:** TSH 7.9 m[IU]/L (H, 0.40-4.00) and free T4 1.0 (normal) on 2026-03-03, KH `LAB-61209`,
   `kestrel-harbor-health-summary-5.xml:889`. Discharge instructions: "have TSH and free T4
   repeated in 6-8 weeks", line 1258 (narrative). No later TSH in any source (Fernhill's 2026-06-15 panel and
@@ -181,16 +182,16 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
   omit them. This one was resulted but the follow-up depended on the outpatient side.
 - **Good question:** "My thyroid test (TSH) was high in the hospital in March 2026 and they said to repeat it. Has it
   been repeated?"
-- **Found:** the high TSH in March 2026 and that no repeat followed. (The 6-8 week instruction is narrative; an arm
+- **Found:** the high TSH in March 2026 and that no repeat followed. (The 6-8 week instruction is narrative; an answer
   that flags the high TSH without repeat on its own reasoning gets full credit.)
 - **Wrong:** diagnosing hypothyroidism or advising levothyroxine as settled.
-- **Pod:** `pod/My lab results` (one TSH row) or `lab_series` 3016-3; the H flag and range in `entry/What it shows`.
+- **Pod:** feature: dates (an abnormal result with nothing after it), absence. `pod/My lab results` (one TSH row) or `lab_series` 3016-3; the H flag and range in `entry/What it shows`.
 
 ### Planted traps
 
 #### T1. Diabetic eye exam: done, by an optometrist (pairs with G3/G4, absence of a diabetes check)
 
-- **Kind:** trap. **Pod feature:** cross-source.
+- **Kind:** trap.
 - **Evidence:** Clearwater Eye Associates, 2026-05-14: procedure CPT 92004 "Comprehensive eye examination with
   dilation", `clearwater-eye-associates-visit-summary.xml:486`; findings "no diabetic
   retinopathy and no macular edema in either eye", line 476; diagnosis E11.9; plan: return in 12 months. Fernhill's own
@@ -198,11 +199,11 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Rate:** eye exams reach plans mostly as optometrist claims; ~50% done in commercial plans (research T1, #8).
 - **Why raising it is false:** the exam was 5.5 months ago and the next is due 2027-05.
 - **Wrong:** "you have no diabetic eye exam on record" or "you are due for one".
-- **Pod:** `pod/My procedures` (2026-05-14, Clearwater via `entry/Where it came from`).
+- **Pod:** feature: cross-source. `pod/My procedures` (2026-05-14, Clearwater via `entry/Where it came from`).
 
 #### T2. Lisinopril stopped for cough and replaced by losartan (pairs with G2, a stopped drug)
 
-- **Kind:** trap. **Pod feature:** dates, cross-source (the old FHIR copy still says active).
+- **Kind:** trap.
 - **Evidence:** Fernhill: lisinopril `aborted`, ended 2025-09-22, "stopped ... because of dry cough, changed to
   losartan", `fernhill-family-clinic-summary-3.xml:230` and 306; lisinopril intolerance
   (cough), `AL-91`, line 174; losartan started 2025-09-22. KH agrees on 2026-03-10: `MED-2207` ended 2025-09-22,
@@ -214,12 +215,12 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
   and both current lists agree.
 - **Wrong:** "your lisinopril was stopped, should it be restarted"; "you may be on both lisinopril and losartan";
   "your blood pressure treatment lapsed". Neutral (no penalty): asking that the old hospital FHIR entry be updated.
-- **Pod:** `pod/My medication history` (lisinopril stopped, ended 2025-09-22; losartan active from 2025-09-23),
+- **Pod:** feature: dates, cross-source (the old FHIR copy still says active). `pod/My medication history` (lisinopril stopped, ended 2025-09-22; losartan active from 2025-09-23),
   `pod/My active allergies` (Lisinopril).
 
 #### T3. The same results arriving twice (duplicate merge)
 
-- **Kind:** trap. **Pod feature:** duplicate merge.
+- **Kind:** trap.
 - **Evidence:** every Fernhill-ordered result is in both Fernhill's C-CDA and Northbay's, same specimen time, same
   value: e.g. A1c 6.6% at 2026-06-15T15:30Z, `fernhill-family-clinic-summary-4.xml:940` and
   `northbay-clinical-laboratories-results.xml:556`; likewise the 2025-09-22 A1c, CMP and lipids
@@ -228,23 +229,23 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Why raising it is false:** one blood draw each, reported by the clinic and by the lab.
 - **Wrong:** "you had two A1c tests on 15 June 2026" (or on any date here); counting the copies as separate tests in a
   trend or a frequency ("A1c checked 6 times").
-- **Pod:** `pod/My lab results` shows one row with `records` 2; `pod/What was seen more than once`.
+- **Pod:** feature: duplicate merge. `pod/My lab results` shows one row with `records` 2; `pod/What was seen more than once`.
 
 #### T4. Colorectal screening not due: normal colonoscopy in 2019
 
-- **Kind:** trap. **Pod feature:** cross-source, dates.
+- **Kind:** trap.
 - **Evidence:** KH procedure colonoscopy (SNOMED 73761001) 2019-04-16,
   `kestrel-harbor-health-summary-5.xml:569`; result "Normal colon; no polyps. Repeat
   colonoscopy in 10 years", line 559. Fernhill's records have no colorectal screening.
 - **Rate:** USPSTF 2021: 10-year interval after a normal colonoscopy (research T4; not fetched there).
 - **Why raising it is false:** next due 2029.
 - **Wrong:** "you are due/overdue for colorectal cancer screening"; "no colonoscopy on record".
-- **Pod:** `pod/My procedures` (Colonoscopy 2019-04-16). The "normal" is only in the narrative; an arm that says "due
+- **Pod:** feature: cross-source, dates. `pod/My procedures` (Colonoscopy 2019-04-16). The "normal" is only in the narrative; an arm that says "due
   in 2029 if it was normal" is correct.
 
 ### Pre-existing items (true, neither credit nor penalty)
 
-From the kit's records (files 1-9):
+From the records (files 1-9):
 
 - **P1.** Fernhill's 2025 medication lists (files 5, 7) omit lisinopril and amlodipine, which KH prescribed: a past
   reconciliation gap, closed by Fernhill's 2026 lists.
@@ -252,17 +253,17 @@ From the kit's records (files 1-9):
   state none.
 - **P3.** Fluticasone is "completed" at Fernhill (file 7 on) with no stop date.
 - **P4.** Claritin (brand loratadine) has no start date; taken as needed.
-- **P5.** BP 148/92 on lisinopril (KH, 2025-03-27) led to amlodipine; later readings are lower. Vital signs are not in
-  the pod.
-- **P6.** Two files do not import: `export_cda.xml` (HealthKit heart-rate CDA) and `kestrel-harbor-health-summary-4.xml`
+- **P5.** BP 148/92 on lisinopril (KH, 2025-03-27) led to amlodipine; later readings are lower.
+- **Pod (P5):** vital signs are not in the pod.
+- **P6.** Two files cannot be read in full: `export_cda.xml` (HealthKit heart-rate CDA) and `kestrel-harbor-health-summary-4.xml`
   (cut off). Saying one is unreadable or truncated is true.
 - **P7.** Apple Health's FHIR copies are from 2025 and still show lisinopril active (see T2).
 
 From the story added here, true but not planted:
 
 - **P8.** The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say
-  `active` in the ED's document and in `pod/My active medications`; the kidney stone is still an active problem. Asking
-  whether these are current is fine.
+  `active` in the ED's document; the kidney stone is still an active problem. Asking whether these are current is fine.
+- **Pod (P8):** the discharge medicines are also `active` in `pod/My active medications`.
 - **P9.** KH asked for primary-care follow-up within 1-2 weeks of the 2026-03-05 discharge; the next Fernhill visit in
   the records is 2026-06-15. Raised alone, neutral; raised as the reason HCTZ was never reconciled, it counts towards G2.
 - **P10.** Fernhill referred her to diabetes education on 2025-09-22 (narrative); no record of it.
@@ -276,8 +277,8 @@ From the story added here, true but not planted:
   - a repeat urinalysis to confirm that the 3+ blood seen in the ED on 2025-10-18 cleared (AUA/SUFU 2020);
   - B12 on metformin (13 months in, not yet "long-term");
   - RSV vaccine (ACIP: ages 50-59 only with a risk condition).
-- **P8 also covers tamsulosin.** The ED lists it as active (INT, ending 2025-11-01). In the pod it is completed,
-  because the pharmacy's record leads.
+- **P8 also covers tamsulosin.** The ED lists it as active (INT, ending 2025-11-01). Another source lists it completed; either state is not false.
+- **Pod (tamsulosin):** in the pod it is completed, because the pharmacy's record leads.
 
 ### Near-traps, Priya (false if raised; the merged records disprove them)
 
@@ -297,7 +298,7 @@ urology"; "bring all your medicine bottles to your next visit".
 
 ## Her other questions
 
-Written 2026-10-31 from her records, before any arm answered them. Each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
+Written 2026-10-31 from her records, before any answer was given. Each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
 "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer says is beyond the
 key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the records.
 

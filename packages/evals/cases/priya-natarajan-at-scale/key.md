@@ -1,7 +1,7 @@
 # Answer key: Priya Natarajan at scale
 
-Written 2026-10-30, before any arm ran. Scorers only: never show this file, `inputs_l.md`'s notes or the generator to an
-arm.
+Written 2026-10-30, before any answer was given. Scorers only: never show this file, `inputs_l.md`'s notes or the generator to
+whoever answers.
 
 - **Evaluation "today": 2026-10-30.** Every "overdue" and "not done" below is judged on that date.
 - **Priya Natarajan:** female, born 1968-11-04, **57** (58 on 2026-11-04). Never smoker. Problems: prediabetes
@@ -10,18 +10,11 @@ arm.
   Fernhill only).
 - The inputs are listed in [case.json](case.json): 18 downloads, 2,472,816 bytes. File references below are
   relative to this file, `file:line`; `D` stands for the case's downloads folder.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 - What changed from round 1: the same person and story, grown back to 2020 and on to October 2026, and every portal
   summary downloaded several times (Kestrel Harbor 4 C-CDAs and an Apple Health export, Fernhill 5, Alder Street
   Pharmacy 4, Northbay 2). Each planted item below depends on reading across those repeats. Round 1's G1 (Shingrix),
   G2 (HCTZ), G3 (uACR), G4 (statin), G5 (nodule) and G6 (TSH) survive in changed forms as G5, G3, G1, G2, G7 and G6.
-
-> The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
-> [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
-> (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
-> command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
@@ -96,6 +89,12 @@ arm.
   marked "legitimate find".
 - **Generic** questions are neither credit nor penalty.
 - Anything else is scored on its merits.
+
+> The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
+> [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
+> (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Her story as the records tell it
 
@@ -260,9 +259,10 @@ creatinine 0.94 to 1.06. The pharmacy gave the **2026-27 flu shot on 2026-10-03*
 - **Pod:** TSH rows (3016-3), 7.90 on 2026-03-03 with `resultInterpretationCode` H and range 0.40-4.00 in `entry/What
 it shows`. The planned order is in no question (the plan section is not read).
 
-### G7. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (**narrative-only**)
+### G7. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (**free text only**)
 
-- **Kind:** gap. **Narrative-only:** no row of any of the 35 questions on `eval-priya-l` mentions a nodule, the lung or
+- **Kind:** gap.
+- **Pod:** narrative-only: no row of any of the 35 questions on `eval-priya-l` mentions a nodule, the lung or
   Fleischner (checked 2026-10-30). Only the dump arm can see it.
 - **Evidence:** Saltmarsh CT 2025-10-18, findings and impression "Incidental 7 mm solid pulmonary nodule … non-contrast
   CT of the chest is recommended in 6-12 months", `D/saltmarsh-regional-medical-center-ed-summary.xml:545` and `:546`.
@@ -353,25 +353,28 @@ Consequences of growing the story, audited against the records:
   (`D/kestrel-harbor-health-summary-4.xml:7966`); the next Fernhill visit is 2026-06-15. Raised alone, neutral; raised as
   why HCTZ was never reconciled, it counts towards G3.
 - **P7.** Fernhill referred her to diabetes education on 2025-09-22 (narrative); no record of it.
-- **P8.** The ED's acetaminophen (INT, ending 2025-11-01) is still `active` in the ED document and in `pod/My active
-medications`; the kidney stone is still an active problem. Asking whether these are current is fine.
+- **P8.** The ED's acetaminophen (INT, ending 2025-11-01) is still `active` in the ED document; the kidney stone is still an active problem. Asking whether these are current is fine.
+- **Pod (P8):** the acetaminophen is also `active` in `pod/My active medications`.
 - **P9.** Sodium 134 (L) on 2026-06-15 and 2026-10-13; part of G3's evidence; raised alone, neutral.
 - **P10.** eGFR has drifted from 88 (2020) to the low 70s (2025-2026) and fell to 61 with spironolactone. True; part of
   G4's context when tied to spironolactone. "CKD" is a near-trap (below).
-- **P11.** Blood pressure above goal on 2026-08-17 (148/92); vital signs are not in the pod. Neutral.
+- **P11.** Blood pressure above goal on 2026-08-17 (148/92). Neutral.
+- **Pod (P11):** vital signs are not in the pod.
 - **P12.** A1c 6.8 on 2026-10-13, up from 6.6. True, neutral (generic diabetes question).
 - **P13.** Valid absences, neutral: COVID-19 vaccine since 2022-10;
   hepatitis C and HIV one-time screening; cervical screening; a yearly diabetic foot exam; a repeat urinalysis after
   the ED's 3+ blood; B12 on metformin (13 months, not yet long-term); RSV vaccine (ages 50-59 only with a risk
   condition).
-- **P14.** Screening mammogram: last 2024-10-08 (BI-RADS 2, KH), biennial, so due about now. True, neutral. In the pod
-  the three mammograms (2020, 2022, 2024) are merged into **one** `pod/My procedures` row dated 2024-10-08 with
-  `records` 6: a pod merge defect worth reporting. A pod arm that says "one mammogram on record" is repeating it, and is
-  not penalised.
-- **P15.** Two diabetes rows in `pod/My active conditions` (SNOMED, and Clearwater's ICD-10 E11.9). Harmless.
+- **P14.** Screening mammogram: last 2024-10-08 (BI-RADS 2, KH), biennial, so due about now. True, neutral. Saying there is one mammogram on record is not penalised, and not credited.
+- **Pod (P14):** the three mammograms (2020, 2022, 2024) are merged into **one** `pod/My procedures` row dated
+  2024-10-08 with `records` 6: a pod merge defect worth reporting. A pod arm that says "one mammogram on record" is
+  repeating it, and is not penalised, and not credited. The same line for a records answer loosens its side slightly, on purpose: the symmetric wording is what a blind judge can apply.
+- **P15.** Two diabetes rows (SNOMED, and Clearwater's ICD-10 E11.9). Harmless.
+- **Pod (P15):** the two rows are in `pod/My active conditions`.
 - **P16.** Aspirin allergy reaction severity "Moderate" at KH; others state none. Neutral.
-- **P17.** The pharmacy's atorvastatin "completed, ended 2024-08-07" (expiry) leads in the pod, not KH's 2023-11-14
-  stop. Quoting either date is not false.
+- **P17.** The pharmacy's atorvastatin "completed, ended 2024-08-07" (expiry); KH's stop was
+  2023-11-14. Quoting either date is not false.
+- **Pod (P17):** the pharmacy's expiry date leads in the pod, not KH's stop.
 - **P18. Hepatitis B vaccine never given: legitimate find** (rule 3; credit optional, never false). ACIP 2022 (Weng et
   al., MMWR 2022;71:477) recommends HepB for all adults 19-59, and diabetes is a separate indication. She is 57 with no
   HepB dose in any source.
@@ -386,18 +389,19 @@ medications`; the kidney stone is still an active problem. Asking whether these 
 - "Colorectal screening is due / no colonoscopy": normal colonoscopy 2019-04-16
   (`D/kestrel-harbor-health-summary-4.xml:751`), next 2029.
 - "No diabetic eye exam / one is due": Clearwater 2026-05-14, no retinopathy
-  (`D/clearwater-eye-associates-visit-summary.xml:476`), next due 2027-05. "Ask what it showed" is fine for the pod arm.
+  (`D/clearwater-eye-associates-visit-summary.xml:476`), next due 2027-05. "Ask what it showed" is fine.
 - "Tdap is due": Tdap 2020-01-14 (`D/kestrel-harbor-health-summary-4.xml:900`), next 2030.
 - "You have CKD stage 3 / eGFR below 60": the lowest eGFR is 61 (2026-10-13); two below 60 at least 90 days apart would
   be needed.
 - "No flu shot this season": T3.
 - "You are on atorvastatin" or "you are on lisinopril": G2's and T1's "Wrong".
 - Any count of tests inflated by copies: rule 4.
-- A causal claim from a before/after association (the pod's `find_changes` ranks these first): "fluticasone (or
+- A causal claim from a before/after association: "fluticasone (or
   amlodipine) raised your blood sugar / A1c", "stopping atorvastatin raised your A1c". False: her glucose and A1c have
   risen since 2020 with her diabetes; intranasal fluticasone has negligible systemic glucose effect, amlodipine is
   metabolically neutral, and statins slightly raise A1c. Not false: "eGFR dipped after losartan started" (77 to 75,
   the expected ARB effect) and "eGFR fell after spironolactone" (P10).
+- **Pod (near-traps):** the pod's `find_changes` ranks before/after associations first.
 
 ## Generic questions (neither credit nor penalty)
 
@@ -407,7 +411,7 @@ stone passed".
 
 ## Her other questions
 
-Written 2026-10-31 from her records, before any arm answered them. Each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
+Written 2026-10-31 from her records, before any answer was given. Each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
 "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer says is beyond the
 key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the records.
 

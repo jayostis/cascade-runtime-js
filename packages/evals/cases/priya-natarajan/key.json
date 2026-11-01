@@ -930,11 +930,13 @@
     },
     {
       "id": "P5",
-      "says": "BP 148/92 on lisinopril (Kestrel Harbor, 2025-03-27) led to amlodipine; later readings are lower. Vital signs are not in the pod."
+      "says": "BP 148/92 on lisinopril (Kestrel Harbor, 2025-03-27) led to amlodipine; later readings are lower.",
+      "podNote": "Vital signs are not in the pod."
     },
     {
       "id": "P6",
-      "says": "Two files do not import: export_cda.xml (HealthKit heart-rate CDA) and kestrel-harbor-health-summary-4.xml (cut off). Saying one is unreadable or truncated is true."
+      "says": "Two files cannot be read in full: export_cda.xml (HealthKit heart-rate CDA) and kestrel-harbor-health-summary-4.xml (cut off). Saying one is unreadable or truncated is true.",
+      "podNote": "These two files do not import."
     },
     {
       "id": "P7",
@@ -942,7 +944,8 @@
     },
     {
       "id": "P8",
-      "says": "The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say active in the ED's document and in pod/My active medications; the kidney stone is still an active problem. Tamsulosin too: the ED lists it as active (INT, ending 2025-11-01); in the pod it is completed, because the pharmacy's record leads. Asking whether these are current is fine."
+      "says": "The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say active in the ED's document; the kidney stone is still an active problem. Tamsulosin too: the ED lists it as active (INT, ending 2025-11-01). Another source lists it completed; either state is not false. Asking whether these are current is fine.",
+      "podNote": "The discharge medicines are also active in pod/My active medications; tamsulosin is completed in the pod, because the pharmacy's record leads."
     },
     {
       "id": "P9",

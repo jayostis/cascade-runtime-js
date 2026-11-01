@@ -1,12 +1,12 @@
 # Answer key: Tamsin Vale
 
-Written 2026-10-30, before any arm ran. Scorers only: never show this file, `inputs.md`'s notes or the file names'
-history to an arm.
+Written 2026-10-30, before any answer was given. Scorers only: never show this file, `inputs.md`'s notes or the file names'
+history to whoever answers.
 
 - **Evaluation "today": 2026-10-30.** Every "overdue" and "not done" below is judged on that date.
 - **Tamsin Vale:** female, born 1957-09-30, **69**. Type 2 diabetes since 2022. One source, Cascade North.
 - The inputs are listed in [case.json](case.json). File references below are relative to the case's downloads folder, `file:line`.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
@@ -53,8 +53,7 @@ history to an arm.
 > The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
 > [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
 > (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
 > command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Tamsin
@@ -73,7 +72,7 @@ id) unless named.
 
 #### TG1. Urine albumin-to-creatinine ratio never done, eGFR yearly
 
-- **Kind:** gap. **Pod feature:** absence.
+- **Kind:** gap.
 - **Evidence:** `Condition/story-stopped-cond-1` type 2 diabetes (onset 2022-03-01, recorded 2025-02-20); eGFR 73 on
   2025-02-18 (`Observation/story-stopped-egfr-1`) and 69 on 2026-02-16 (`…-egfr-2`); on empagliflozin
   (`MedicationRequest/story-stopped-medrx-2`). No urine albumin result in any of the three pulls.
@@ -82,24 +81,24 @@ id) unless named.
   test. Should I have one?"
 - **Found:** the missing urine albumin / uACR test, with diabetes as the reason.
 - **Wrong:** saying it was done.
-- **Pod:** `pod/My lab results` (no uACR; eGFR rows), `pod/My active conditions`.
+- **Pod:** feature: absence. `pod/My lab results` (no uACR; eGFR rows), `pod/My active conditions`.
 
 #### TG2. Positive stool test (FIT) with no colonoscopy
 
-- **Kind:** gap. **Pod feature:** dates, absence.
+- **Kind:** gap.
 - **Evidence:** `Observation/story-stopped-fit-1`, LOINC 29771-3, **Positive**, 2025-11-04. No colonoscopy procedure,
   no GI result after it; the only procedure is the 2025-07-08 CT angiogram. Today is 12 months after the FIT.
 - **Rate:** 19-35% have a colonoscopy within 6 months of an abnormal FIT (research #2).
 - **Good question:** "My stool test in November 2025 was positive. I don't see a colonoscopy. Has one been arranged?"
 - **Found:** positive FIT (stool blood test), no colonoscopy after it.
 - **Wrong:** "repeat the stool test" as the follow-up; saying a positive FIT needs nothing further.
-- **Pod:** `pod/My lab results` (FIT Positive), `pod/My procedures` (no colonoscopy).
+- **Pod:** feature: dates, absence. `pod/My lab results` (FIT Positive), `pod/My procedures` (no colonoscopy).
 
 ### Planted traps
 
 #### TT1. Untreated rising A1c: out of date (pairs with TG1, a diabetes-care finding)
 
-- **Kind:** trap. **Pod feature:** dates.
+- **Kind:** trap.
 - **Evidence:** metformin stopped 2024-04-15 (`MedicationStatement/story-stopped-med-1`) and A1c rose to 8.3 by
   2025-01-13 (`…-a1c-6`); the 2025-02 pull (`north-2025-02/bundle.json`) ends there. But
   empagliflozin was started 2025-02-20 (`…-medrx-2`), and A1c was 7.6, 7.1 and 6.9 after it (`…-a1c-7`, `-8`, `-9`).
@@ -107,36 +106,35 @@ id) unless named.
   a true find, not this trap (see PT6).
 - **Wrong:** "your diabetes is untreated since metformin stopped"; "your A1c is 8.3 and rising"; "should you restart
   metformin because nothing replaced it". Neutral: asking why metformin was stopped (no reason is recorded).
-- **Pod:** `pod/My medication history` (metformin ended 2024-04-15; Jardiance active from 2025-02-20), `lab_series`
+- **Pod:** feature: dates. `pod/My medication history` (metformin ended 2024-04-15; Jardiance active from 2025-02-20), `lab_series`
   4548-4.
 
 #### TT2. "Pulmonary embolism" that was ruled out (code semantics)
 
-- **Kind:** trap. **Pod feature:** code semantics (verification status).
+- **Kind:** trap.
 - **Evidence:** `Condition/story-stopped-cond-2` Pulmonary embolism, `verificationStatus` **refuted**, clinicalStatus
-  resolved, 2025-07-08, encounter-diagnosis; `DiagnosticReport/story-stopped-dr-1` "No pulmonary embolism" (dump arm
-  only: the importer drops DiagnosticReport); D-dimer 0.92 (H) `…-ddimer-1`; CT angiography `Procedure/story-stopped-proc-1`;
+  resolved, 2025-07-08, encounter-diagnosis; `DiagnosticReport/story-stopped-dr-1` "No pulmonary embolism"; D-dimer 0.92 (H) `…-ddimer-1`; CT angiography `Procedure/story-stopped-proc-1`;
   final diagnosis chest wall pain (`…-cond-3`, resolved).
 - **Rate:** "rule out" diagnoses wrongly carried forward (research T5; PRSB; 59.4% problem-list agreement).
 - **Why raising it is false:** she never had a PE.
 - **Wrong:** "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up for it"; "your high
   D-dimer was not followed up". Not wrong: "a CT angiogram was done the same day and its result isn't in my records"
   (scoring rule 3).
-- **Pod:** absent from `pod/My active conditions`; `record/Why it is in no view` gives it with `RefutedAtSource`.
+- **Pod:** feature: code semantics (verification status). The DiagnosticReport is in the dump arm only: the importer drops it. Absent from `pod/My active conditions`; `record/Why it is in no view` gives it with `RefutedAtSource`.
 
 ### Pre-existing items (true, neither credit nor penalty)
 
-- **PT1.** Metformin's stop has no reason recorded (kit). Asking why is neutral.
-- **PT2.** A1c 7.4 to 8.3 through 2024 with no therapy, before 2025-02-20 (kit, and see TT1): true of that past
+- **PT1.** Metformin's stop has no reason recorded. Asking why is neutral.
+- **PT2.** A1c 7.4 to 8.3 through 2024 with no therapy, before 2025-02-20 (see TT1): true of that past
   period; penalise only as TT1 says, when presented as current.
-- **PT3.** The kit's pulls carry no problem list; diabetes is first coded in the 2026 pull.
-- **PT4.** The kit's synthetic markers: patient id `story-stopped`, "Cascade North Demo Hospital", `demo.invalid`.
+- **PT3.** The earlier downloads carry no problem list; diabetes is first coded in the 2026 download.
+- **PT4.** The synthetic markers: patient id `story-stopped`, "Cascade North Demo Hospital", `demo.invalid`.
   Remarks on them are neutral.
 - **PT5.** Valid absences not planted: no diabetic eye exam in her record, no immunizations at all (Shingrix,
   pneumococcal, flu, Tdap, COVID-19), no osteoporosis screening (women 65+), no mammogram, no blood pressure in the
   record (vitals are not pulled). Neutral.
 - **PT6. A1c not repeated since 2026-02-16, 8.5 months ago** (ADA: at least twice a year when at goal). True. Never
-  penalise it. Count it as a **legitimate find** (scoring rule 3). It is TT1 only if the arm claims she is untreated,
+  penalise it. Count it as a **legitimate find** (scoring rule 3). It is TT1 only if the answer claims she is untreated,
   or that her A1c is 8.3.
 - **PT7. No lipid panel since atorvastatin started on 2025-02-20.** The only panel is from 2025-02-18 (LDL 131). ADA
   Section 10 and ACC/AHA 2018 call for a recheck 4-12 weeks after starting a statin, then every 3-12 months. True;
@@ -150,7 +148,7 @@ PE).
 
 ## Her other questions
 
-Written 2026-10-31 from her records, before any arm answered them. Each of these is scored by its items alone: a fact, absence or negation is **found**, **partly** or
+Written 2026-10-31 from her records, before any answer was given. Each of these is scored by its items alone: a fact, absence or negation is **found**, **partly** or
 **missed** by its "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer
 says is beyond the key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the
 records.

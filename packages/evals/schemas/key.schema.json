@@ -307,6 +307,9 @@
           "says": {
             "type": "string"
           },
+          "podNote": {
+            "type": "string"
+          },
           "legitimateFind": {
             "type": "boolean"
           }
