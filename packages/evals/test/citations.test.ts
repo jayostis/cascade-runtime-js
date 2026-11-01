@@ -9,15 +9,12 @@ import {
   checkCitation,
   checkRecordsAbsence,
   downloadsSource,
+  fhirFields,
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
+  type Source,
 } from "../src/citations.js";
-import {
-  entryRows as entryRowsOf,
-  PINNED_QUESTIONS,
-  personRows as personRowsOf,
-} from "../src/checks.js";
 import { readConfig, resolveVocabulary } from "@cascade-runtime/runtime/node";
 
 const FOLDER = fileURLToPath(
@@ -623,38 +620,77 @@ test("a FHIR resource's dosage and instruction text can be quoted", async () => 
     assert.equal((await checkCitation(claim, downloads)).ok, held, what);
 });
 
-/** The field names the vocabulary's views construct on an entry; the nodes the entry question leaves out are not fields. */
+/** Nodes the views construct beside the entry, which the entry question leaves out; they are not fields. */
+const APART = new Set([
+  "valuesOfMember",
+  "memberCurrentValues",
+  "paddedDateTime",
+  "paddedDateTimeProperty",
+  "writtenDate",
+  "referenceRangeLow",
+  "referenceRangeHigh",
+  "decimalValue",
+  "writtenValue",
+  "ucumUnit",
+  "unitText",
+]);
+
+/** The field names one view's CONSTRUCT template writes; it throws, saying what to do, on a view or a prefix it cannot read. */
+function constructedBy(file: string, text: string): string[] {
+  const from = text.indexOf("CONSTRUCT {");
+  const to = text.search(/^WHERE/m);
+  if (from === -1 || to < from)
+    throw new Error(
+      `${file} has no "CONSTRUCT {" block ending at a line that starts with WHERE, so its fields cannot be read: ` +
+        `put the template in that shape, or teach this test the view's shape`,
+    );
+  const template = text.slice(from, to);
+  const prefix = /\b([A-Za-z]\w*):([A-Za-z_]\w*)/g;
+  const names: string[] = [];
+  for (const [, at, name] of template.matchAll(prefix)) {
+    if (!["cascade", "prov", "obo"].includes(at!))
+      throw new Error(
+        `${file} writes ${at}:${name}, a prefix this test does not read, so a field could be missed: ` +
+          `add "${at}" to the prefixes read in constructedBy, then map the field in POD_FIELDS or POD_NOT_CHECKABLE`,
+      );
+    if (/^[a-z]|^RO_/.test(name!) && !APART.has(name!)) names.push(name!);
+  }
+  if (/<https?:/.test(template))
+    throw new Error(
+      `${file} writes a field by full IRI, which this test does not read: write it with a prefix`,
+    );
+  return names;
+}
+
+/** The field names the vocabulary's views construct on an entry. */
 async function viewFields(): Promise<string[]> {
   const root = fileURLToPath(new URL("../../../../", import.meta.url));
   const { folder } = await resolveVocabulary(root, await readConfig(root));
   const dir = join(folder, "queries", "views");
-  const apart = new Set([
-    "valuesOfMember",
-    "memberCurrentValues",
-    "paddedDateTime",
-    "paddedDateTimeProperty",
-    "writtenDate",
-    "referenceRangeLow",
-    "referenceRangeHigh",
-    "decimalValue",
-    "writtenValue",
-    "ucumUnit",
-    "unitText",
-  ]);
   const names = new Set<string>();
-  for (const file of (await readdir(dir)).filter((it) => it.endsWith(".rq"))) {
-    const text = await readFile(join(dir, file), "utf8");
-    const template = text.slice(
-      text.indexOf("CONSTRUCT {"),
-      text.search(/^WHERE/m),
-    );
-    for (const [, name] of template.matchAll(
-      /\b(?:cascade|prov|obo):([a-z_A-Z]\w*)/g,
+  for (const file of (await readdir(dir)).filter((it) => it.endsWith(".rq")))
+    for (const name of constructedBy(
+      file,
+      await readFile(join(dir, file), "utf8"),
     ))
-      if (/^[a-z]|^RO_/.test(name!) && !apart.has(name!)) names.add(name!);
-  }
+      names.add(name);
   return [...names].sort();
 }
+
+test("a view this test cannot read fails saying so and what to do", () => {
+  assert.throws(
+    () => constructedBy("x.rq", "SELECT ?a WHERE { }"),
+    /x\.rq has no "CONSTRUCT \{" block.*WHERE/,
+  );
+  assert.throws(
+    () => constructedBy("x.rq", "CONSTRUCT { ?e foo:bar ?v }\nWHERE { }"),
+    /x\.rq writes foo:bar, a prefix this test does not read.*add "foo"/,
+  );
+  assert.deepEqual(
+    constructedBy("x.rq", "CONSTRUCT { ?e cascade:testName ?v }\nWHERE { }"),
+    ["testName"],
+  );
+});
 
 test("every field the vocabulary's views construct is a kind of field or on the not-checkable list", async () => {
   const fields = await viewFields();
@@ -662,18 +698,25 @@ test("every field the vocabulary's views construct is a kind of field or on the 
   const unmapped = fields.filter(
     (name) => !(name in POD_FIELDS) && !POD_NOT_CHECKABLE.includes(name),
   );
-  assert.deepEqual(unmapped, []);
+  assert.deepEqual(
+    unmapped,
+    [],
+    `the views construct ${unmapped.join(", ")}, which the checker does not know. If a view now sends a field: map it in ` +
+      `POD_FIELDS, or list it in POD_NOT_CHECKABLE. If the vocabulary change is not on this branch: land this runtime ` +
+      `PR with the vocabulary PR, each naming the other on a Depends-On line. If it is a helper node beside the entry: ` +
+      `add it to APART in this test`,
+  );
   assert.deepEqual(
     POD_NOT_CHECKABLE.filter((name) => name in POD_FIELDS),
     [],
-    "a field is checkable or not, never both",
+    "a field is checkable or not, never both: remove it from one of POD_FIELDS and POD_NOT_CHECKABLE",
   );
   assert.deepEqual(
     [...Object.keys(POD_FIELDS), ...POD_NOT_CHECKABLE].filter(
       (name) => !fields.includes(name) && !DERIVED.includes(name),
     ),
     [],
-    "a field no view sends is no coverage",
+    "a field no view sends is no coverage: remove it from POD_FIELDS or POD_NOT_CHECKABLE, or add it to DERIVED if a derivation puts it on the entry",
   );
 });
 
@@ -684,21 +727,6 @@ const DERIVED = [
   "prescriptionWrittenDateFrom",
   "type",
 ];
-
-test("the pinned runtime is asked every question the checks read", async () => {
-  const asked: string[] = [];
-  const recorder = {
-    async ask(question: string) {
-      asked.push(question);
-      return [];
-    },
-  };
-  await entryRowsOf(recorder)("x");
-  await personRowsOf(recorder)();
-  assert.equal(asked.length, 2);
-  for (const question of asked)
-    assert.ok(PINNED_QUESTIONS.includes(question), question);
-});
 
 test("a quote holds as whole words, not as a fragment of a word, in both arms", async () => {
   const cases: [string, Claim, boolean][] = [
@@ -778,4 +806,75 @@ test("both arms read the person alike: a death is an end, a gender a value", asy
       `records: ${what}`,
     );
   }
+});
+
+test("a name holds as whole words in both arms, and a gene change's coding expression is a code, not a name", async () => {
+  const variant = "pod://p/genetics.ttl#v1";
+  const variants = podRowsSource(async (entry) =>
+    entry === variant
+      ? [
+          {
+            field: `${NS}hgvsCodingDnaExpression`,
+            value: "NM_000249.3:c.2042C>T",
+          },
+        ]
+      : undefined,
+  );
+  const patient = { file: "bundle.json", resource: "Patient/p-1" };
+  const cases: [string, Claim, Source, boolean][] = [
+    [
+      "pod: a fragment of a word",
+      { cite: { entry: REPORT }, name: "pulm" },
+      person,
+      false,
+    ],
+    [
+      "pod: a fragment inside a word",
+      { cite: { entry: REPORT }, name: "ulmonary" },
+      person,
+      false,
+    ],
+    [
+      "pod: whole words",
+      { cite: { entry: REPORT }, name: "pulmonary embolism" },
+      person,
+      true,
+    ],
+    [
+      "records: a fragment of a word",
+      { cite: patient, name: "Tam" },
+      downloads,
+      false,
+    ],
+    [
+      "records: a whole name",
+      { cite: patient, name: "tamsin vale" },
+      downloads,
+      true,
+    ],
+    [
+      "a coding expression is no name",
+      { cite: { entry: variant }, name: "c.2" },
+      variants,
+      false,
+    ],
+    [
+      "a coding expression is a code",
+      { cite: { entry: variant }, code: "NM_000249.3:c.2042C>T" },
+      variants,
+      true,
+    ],
+  ];
+  for (const [what, claim, source, held] of cases)
+    assert.equal((await checkCitation(claim, source)).ok, held, what);
+});
+
+test("a Patient's deceasedBoolean is a value and its deceasedDateTime an end", () => {
+  const fields = fhirFields({
+    resourceType: "Patient",
+    deceasedBoolean: true,
+    deceasedDateTime: "2024-03-04T10:00:00Z",
+  });
+  assert.deepEqual(fields.value, ["true"]);
+  assert.deepEqual(fields.end, ["2024-03-04T10:00:00Z"]);
 });

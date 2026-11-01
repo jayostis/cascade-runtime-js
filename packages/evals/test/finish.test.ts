@@ -4,11 +4,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import type { Prepared } from "../src/cases.js";
+import type { pinnedPod } from "../src/pinned.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-finish-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
 const { openPod } = await import("cascade-runtime");
-const { finish } = await import("../src/record.js");
+const { askerOf, finish } = await import("../src/record.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 test("finish checks and writes a run of two cases in one process, opening each case's pod, and records each case's person and description and each subject job's opening prompt", async () => {
@@ -199,4 +201,22 @@ test("finish numbers an answer's items by their place before it stores the answe
     [1, 2, 3, 4, 5],
   );
   assert.ok(results.evidence.some((it) => it.item === 2));
+});
+
+test("a pinned run's checks ask its runtime every question they read", async () => {
+  let asked: readonly string[] = [];
+  const answers = { "entry/What it shows": [{ entry: "x" }] };
+  const reader = await askerOf(
+    { runtime: "built/runtime", pods: "pods", pod: "p" } as Prepared,
+    ((_env, _command, _pod, questions) => {
+      asked = questions;
+      return answers;
+    }) as typeof pinnedPod,
+  );
+  assert.deepEqual(
+    [...asked].sort(),
+    ["entry/What it shows", "pod/The person this pod is about"],
+    "the list handed to the pinned call",
+  );
+  assert.deepEqual(await reader.ask("entry/What it shows"), [{ entry: "x" }]);
 });

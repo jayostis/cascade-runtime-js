@@ -201,6 +201,14 @@ const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const codeOf = (written: string) => lower(written).split(/[/#]/).pop() ?? "";
 
+/** Whether a value holds `want` as whole words, not as a fragment of a word. */
+function wholeWords(want: string): (value: string) => boolean {
+  const before = /^\w/.test(want) ? "(?<!\\w)" : "";
+  const after = /\w$/.test(want) ? "(?!\\w)" : "";
+  const whole = new RegExp(`${before}${escaped(want)}${after}`);
+  return (value) => whole.test(lower(value));
+}
+
 /** Whether the record's values of one kind of field hold the claimed one, compared as that kind. */
 function holds(
   kind: keyof Fields,
@@ -225,15 +233,9 @@ function holds(
     case "code":
       return values.some((value) => codeOf(value) === codeOf(want));
     case "name":
-      return (
-        want.length >= 3 && values.some((value) => lower(value).includes(want))
-      );
-    case "text": {
-      const before = /^\w/.test(want) ? "(?<!\\w)" : "";
-      const after = /\w$/.test(want) ? "(?!\\w)" : "";
-      const whole = new RegExp(`${before}${escaped(want)}${after}`);
-      return values.some((value) => whole.test(lower(value)));
-    }
+      return want.length >= 3 && values.some(wholeWords(want));
+    case "text":
+      return values.some(wholeWords(want));
     default:
       return values.some((value) => isoDate(value) === isoDate(claimed));
   }
@@ -1007,7 +1009,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   dispensePreparedTime: ["when"],
   dispenseHandedOverTime: ["when"],
   clinvarVariationId: ["id"],
-  hgvsCodingDnaExpression: ["code", "name"],
+  hgvsCodingDnaExpression: ["code"],
   interpretedDate: ["when"],
   dateOfBirth: ["when"],
   dateOfDeath: ["end"],
