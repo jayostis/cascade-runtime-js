@@ -73,6 +73,12 @@ const arm = (q: string, which: string) =>
   );
 const tab = (q: string, which: string, name: string) =>
   element(arm(q, which), new RegExp(`<div[^>]*data-tab="${name}"`));
+/** An arm's reasoning and evidence for a question: full width under both arms, not inside either. */
+const drill = (q: string, which: string) =>
+  element(
+    element(run, new RegExp(`<section[^>]*id="q_${q}"`)),
+    new RegExp(`<details[^>]*class="fold drill"[^>]*data-arm="${which}"`),
+  );
 
 test("the front page: a row per model with each arm's key items right as counts, the typical cost per answer, and a row per run instance that opens its run; judging is the test's overhead, in no arm", () => {
   const sonnet = asModel("fixture-2", "claude-sonnet-5-5");
@@ -133,7 +139,7 @@ test("the front page: a row per model with each arm's key items right as counts,
   assert.match(index, /href="how_it_works\.html"/);
 });
 
-test("a run page: each question in her words, both answers exactly as given with tabs Answer, Reasoning and Show my doctor, cost per answer, the exact prompt one click away", () => {
+test("a run page: each question in her words, both answers exactly as given with tabs Answer and Show my doctor, cost per answer, the exact prompt one click away", () => {
   for (const [q, asks] of [
     ["checkup", /I have a check-up coming/],
     ["medications", /What medications am I on right now\?/],
@@ -146,7 +152,7 @@ test("a run page: each question in her words, both answers exactly as given with
       const names = [
         ...arm(q, which).matchAll(/<label[^>]*data-tab-label="(\w+)"/g),
       ].map((m) => m[1]);
-      assert.deepEqual(names, ["answer", "reasoning", "doctor"]);
+      assert.deepEqual(names, ["answer", "doctor"]);
     }
   }
   assert.match(
@@ -227,7 +233,7 @@ test("a run page states the test's overhead apart from both arms, the pod build 
 });
 
 test("the pod's graph is the agent's citations plus the pod's own provenance lookups; where a lookup finds nothing it says so", () => {
-  const reasoning = text(tab("medications", "pod", "reasoning"));
+  const reasoning = text(drill("medications", "pod"));
   for (const said of [
     "story-stopped-med-1",
     "3 revisions",
@@ -236,10 +242,10 @@ test("the pod's graph is the agent's citations plus the pod's own provenance loo
     "2026-10-15",
   ])
     assert.ok(reasoning.includes(said), `the medications graph shows ${said}`);
-  const checkup = text(tab("checkup", "pod", "reasoning"));
+  const checkup = text(drill("checkup", "pod"));
   assert.match(checkup, /30 rows back/);
   assert.match(checkup, /41 ms/);
-  const clot = tab("blood-clot", "pod", "reasoning");
+  const clot = drill("blood-clot", "pod");
   assert.match(text(clot), /no such record/);
   assert.ok(/class="ck bad"/.test(clot), "the failed citation is marked");
   assert.equal(
@@ -259,23 +265,23 @@ test("the pod's graph is the agent's citations plus the pod's own provenance loo
 });
 
 test("the grab bag's graph ends at the passage the agent's citation names; a link between files exists only where the agent wrote one", () => {
-  const meds = tab("medications", "records", "reasoning");
+  const meds = drill("medications", "records");
   const said = text(meds);
   assert.match(said, /north-2026-10\/bundle\.json:300-318/);
   assert.match(said, /\/entry\/11\/resource/);
   assert.match(said, /retrieved 2026-10-15/);
   assert.match(said, /the later copy closes the earlier one/);
-  const clot = text(tab("blood-clot", "records", "reasoning"));
+  const clot = text(drill("blood-clot", "records"));
   assert.match(clot, /No pulmonary embolism\. Lungs are clear/);
   assert.equal(
     /Agent's link/.test(clot),
     false,
     "the agent wrote no link here",
   );
-  const checkup = text(tab("checkup", "records", "reasoning"));
+  const checkup = text(drill("checkup", "records"));
   assert.match(checkup, /her diabetes is the usual reason a statin is started/);
   assert.match(checkup, /sources leave out north-2024-02\/bundle\.json/);
-  const allergies = text(tab("allergies", "records", "reasoning"));
+  const allergies = text(drill("allergies", "records"));
   assert.match(allergies, /6 files/);
   assert.match(allergies, /did not name its sources/);
 });
@@ -518,5 +524,127 @@ test("a doctor card is dated the case's day, not the day the run finished", () =
   assert.match(
     text(page(`instances/${ID}.print-pod.html`)),
     /claude-opus-5-5 . 2026-10-30/,
+  );
+});
+
+const count = (html: string, pattern: RegExp) =>
+  [...html.matchAll(pattern)].length;
+
+test("a dot is grey for a verdict not reached (split, unanswered, not graded), red only for a miss, and the legend explains the grey and the !", () => {
+  const front = page("index.html");
+  const pod = element(front, /<td data-arm="pod"/);
+  assert.equal(count(pod, /class="dot d-yes"/g), 10);
+  assert.equal(count(pod, /class="dot d-open"/g), 3);
+  assert.equal(count(pod, /class="dot d-no"/g), 0);
+  const legend = text(element(front, /<div class="legend"/));
+  assert.match(legend, /not counted/);
+  assert.match(legend, /! .*records contradict/);
+});
+
+test("the reasoning and evidence of each arm are full width under both arms, and every graph fits a 1280 px page", () => {
+  for (const q of ["checkup", "medications", "blood-clot", "allergies"]) {
+    const section = element(run, new RegExp(`<section[^>]*id="q_${q}"`));
+    const arms = element(section, /<div class="arms"/);
+    assert.equal(/class="fold drill"/.test(arms), false, q);
+    for (const which of ARMS) assert.ok(drill(q, which).length > 0, q);
+  }
+  for (const m of run.matchAll(/<svg class="graph"[^>]* width="(\d+)"/g))
+    assert.ok(Number(m[1]) <= 1000, `a graph ${m[1]} px wide`);
+});
+
+test("small honest numbers: no NaN for a case with no questions, '+N beyond the key' counts only what is possibly good, a split beyond the key is said apart", () => {
+  const empty = renderSite([
+    {
+      name: "e",
+      results: {
+        ...recorded,
+        cases: recorded.cases.map((it) => ({
+          ...it,
+          sessions: it.sessions.map((s) => ({ ...s, questions: [] })),
+        })),
+      },
+    },
+  ]);
+  for (const [path, html] of empty)
+    assert.equal(/NaN|Infinity/.test(html), false, path);
+  const row = text(
+    element(page("index.html"), /<a class="runrow"[^>]*data-instance/),
+  );
+  assert.match(row, /\+1 beyond the key/);
+  assert.match(row, /judges split on 1 raised beyond the key/);
+});
+
+test("a letter's arm is never invented, every judge's letters are listed, and a missing evidence row is not a claim that files were read", () => {
+  const unknown = {
+    ...recorded,
+    jobs: recorded.jobs.map((j) =>
+      j.labels === undefined
+        ? j
+        : {
+            ...j,
+            labels: Object.fromEntries(
+              Object.entries(j.labels).map(([letter, l]) => [
+                letter,
+                letter === "A" ? { ...l, job: "gone" } : l,
+              ]),
+            ),
+          },
+    ),
+  };
+  const judges = text(
+    element(
+      renderSite([{ name: "u", results: unknown }]).get(
+        `instances/${ID}.html`,
+      )!,
+      /<details class="fold" id="judges"/,
+    ),
+  );
+  assert.match(judges, /A = unknown arm/);
+  const real = text(element(run, /<details class="fold" id="judges"/));
+  for (const judge of ["haiku-5-5", "sonnet-5-5"])
+    assert.match(real, new RegExp(`${judge} saw the answers under`));
+  const bare = renderSite([
+    { name: "bare", results: { ...recorded, evidence: [] } },
+  ]).get(`instances/${ID}.html`)!;
+  const sources = text(
+    element(
+      element(bare, /<section[^>]*id="q_allergies"/),
+      /<details[^>]*class="fold drill"[^>]*data-arm="records"/,
+    ),
+  );
+  assert.match(sources, /whether they were read whole is not recorded/);
+});
+
+test("the print view lists a question that was not answered, as not answered", () => {
+  const printed = text(page(`instances/${ID}.print-pod.html`));
+  assert.match(printed, /When was my last A1c/);
+  assert.match(printed, /Not answered/);
+});
+
+test("what a judge could have told the arms apart by is said quietly under each question and counted on how the test works; with no record of it, nothing is said", () => {
+  const meds = text(
+    element(
+      element(run, /<section[^>]*id="q_medications"/),
+      /<p class="tiny muted tells"/,
+    ),
+  );
+  assert.match(
+    meds,
+    /Judges may have been able to tell the arms apart: merged, latest \(With Cascade\) · document \(Grab bag\)/,
+  );
+  assert.match(
+    text(element(page("how_it_works.html"), /<h2>Judging<\/h2>/)) +
+      text(page("how_it_works.html")),
+    /4 terms in 3 answers could have given an arm away/,
+  );
+  const without = JSON.parse(
+    JSON.stringify(recorded, (key, value: unknown) =>
+      key === "blinding" ? undefined : value,
+    ),
+  ) as Results;
+  const quiet = renderSite([{ name: "q", results: without }]);
+  assert.equal(
+    /tell the arms apart|given an arm away/.test([...quiet.values()].join(" ")),
+    false,
   );
 });

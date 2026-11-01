@@ -3606,5 +3606,33 @@
       "agreed": 29,
       "kappa": 0.86
     }
-  ]
+  ],
+  "blinding": {
+    "tells": [
+      {
+        "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+        "arm": "pod",
+        "question": "medications",
+        "term": "merged"
+      },
+      {
+        "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+        "arm": "pod",
+        "question": "medications",
+        "term": "latest"
+      },
+      {
+        "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+        "arm": "records",
+        "question": "medications",
+        "term": "document"
+      },
+      {
+        "job": "tamsin-vale.worries.pod.opus-5-5.r1",
+        "arm": "pod",
+        "question": "allergies",
+        "term": "one row"
+      }
+    ]
+  }
 }
