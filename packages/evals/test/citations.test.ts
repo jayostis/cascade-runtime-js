@@ -8,6 +8,8 @@ import {
   checkCitation,
   checkRecordsAbsence,
   downloadsSource,
+  POD_FIELDS,
+  POD_NOT_CHECKABLE,
   podRowsSource,
 } from "../src/citations.js";
 
@@ -503,5 +505,138 @@ test("an absence is held to what it is of: a pod question of its kind, every fil
   assert.deepEqual(
     await checkRecordsAbsence(fit, all, text, all, { codes: ["29771-3"] }),
     { backed: false, reason: "records hold it: bundle.json" },
+  );
+});
+
+const REPORT = "pod://p/clinical/reports.ttl#ct";
+const PERSON = "urn:uuid:a6bce037-019e-4220-92b1-cab8d308410a";
+const NS = "https://ns.cascadeprotocol.org/cascade#";
+const entryRows = (entry: string) =>
+  entry === REPORT
+    ? [
+        {
+          field: `${NS}reportName`,
+          value: "CT angiography chest (pulmonary embolism protocol)",
+        },
+        { field: `${NS}reportCode`, value: "http://loinc.org/rdf/24627-2" },
+        { field: `${NS}reportEffectiveTime`, value: "2025-07-08T22:30:00Z" },
+        { field: `${NS}reportIssuedTime`, value: "2025-07-08T23:05:00Z" },
+        { field: `${NS}workflowStatus`, value: "final" },
+        {
+          field: `${NS}reportConclusion`,
+          value:
+            "No pulmonary embolism. Lungs are clear. Mild degenerative changes of the thoracic spine.",
+        },
+      ]
+    : undefined;
+const person = podRowsSource(
+  async (entry) => entryRows(entry),
+  async () => [
+    {
+      subject: PERSON,
+      subjectLabel: "The person this pod is about",
+      dateOfBirth: "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 1957-09-30",
+      administrativeGender:
+        "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc female",
+    },
+  ],
+);
+
+test("a pod report is read for its name, code, dates and conclusion, and the person by their subject IRI", async () => {
+  const cases: [string, Claim, boolean][] = [
+    [
+      "a report by name, code, date and quote",
+      {
+        cite: { entry: REPORT },
+        name: "CT angiography chest",
+        code: "24627-2",
+        date: "2025-07-08",
+        quote: "No pulmonary embolism. Lungs are clear.",
+      },
+      true,
+    ],
+    [
+      "a report's issue time is its recorded date",
+      { cite: { entry: REPORT }, date: "2025-07-08", dateKind: "recorded" },
+      true,
+    ],
+    [
+      "words the conclusion does not say",
+      { cite: { entry: REPORT }, quote: "A large pulmonary embolism" },
+      false,
+    ],
+    [
+      "the person's birth date",
+      { cite: { entry: PERSON }, date: "1957-09-30" },
+      true,
+    ],
+    [
+      "another birth date of the person",
+      { cite: { entry: PERSON }, date: "1957-09-29" },
+      false,
+    ],
+    [
+      "an IRI that is not the person",
+      { cite: { entry: "urn:uuid:other" }, date: "1957-09-30" },
+      false,
+    ],
+  ];
+  for (const [what, claim, held] of cases)
+    assert.equal((await checkCitation(claim, person)).ok, held, what);
+});
+
+test("a FHIR resource's dosage and instruction text can be quoted", async () => {
+  const cases: [string, Claim, boolean][] = [
+    [
+      "a request's dosage text",
+      {
+        cite: order,
+        quote: "Take 1 tablet by mouth once daily in the morning.",
+      },
+      true,
+    ],
+    [
+      "a request's patient instruction",
+      { cite: order, quote: "Take with food." },
+      true,
+    ],
+    [
+      "a statement's dosage text",
+      { cite: metformin, quote: "500 mg twice daily" },
+      true,
+    ],
+    [
+      "words the dosage does not say",
+      { cite: order, quote: "Take 2 tablets daily" },
+      false,
+    ],
+  ];
+  for (const [what, claim, held] of cases)
+    assert.equal((await checkCitation(claim, downloads)).ok, held, what);
+});
+
+test("every field the pod's entry question returns is a kind of field or on the not-checkable list", async () => {
+  const { fields } = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        new URL(
+          "../../test/fixtures/pod-fields/tamsin-vale-entry-fields.json",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    ),
+  ) as { fields: string[] };
+  const local = (iri: string) => iri.split(/[#/:]/).pop()!;
+  const unmapped = fields
+    .map(local)
+    .filter(
+      (name) => !(name in POD_FIELDS) && !POD_NOT_CHECKABLE.includes(name),
+    );
+  assert.deepEqual(unmapped, []);
+  assert.deepEqual(
+    POD_NOT_CHECKABLE.filter((name) => name in POD_FIELDS),
+    [],
+    "a field is checkable or not, never both",
   );
 });
