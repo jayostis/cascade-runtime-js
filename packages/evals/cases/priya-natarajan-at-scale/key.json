@@ -1539,8 +1539,8 @@
     },
     {
       "id": "P14",
-      "says": "Screening mammogram: last 2024-10-08 (BI-RADS 2, Kestrel Harbor), biennial, so due about now. True, neutral. Saying there is one mammogram on record is not penalised.",
-      "podNote": "In the pod the three mammograms (2020, 2022, 2024) are merged into one pod/My procedures row dated 2024-10-08 with records 6: a pod merge defect worth reporting. A pod arm that says one mammogram on record is repeating it, and is not penalised."
+      "says": "Screening mammogram: last 2024-10-08 (BI-RADS 2, Kestrel Harbor), biennial, so due about now. True, neutral. Saying there is one mammogram on record is not penalised, and not credited.",
+      "podNote": "In the pod the three mammograms (2020, 2022, 2024) are merged into one pod/My procedures row dated 2024-10-08 with records 6: a pod merge defect worth reporting. A pod arm that says one mammogram on record is repeating it, and is not penalised, and not credited. The same line for a records answer loosens its side slightly, on purpose: the symmetric wording is what a blind judge can apply."
     },
     {
       "id": "P15",

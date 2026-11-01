@@ -10,7 +10,7 @@ whoever answers.
   Fernhill only).
 - The inputs are listed in [case.json](case.json): 18 downloads, 2,472,816 bytes. File references below are
   relative to this file, `file:line`; `D` stands for the case's downloads folder.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 - What changed from round 1: the same person and story, grown back to 2020 and on to October 2026, and every portal
   summary downloaded several times (Kestrel Harbor 4 C-CDAs and an Apple Health export, Fernhill 5, Alder Street
   Pharmacy 4, Northbay 2). Each planted item below depends on reading across those repeats. Round 1's G1 (Shingrix),
@@ -93,8 +93,7 @@ whoever answers.
 > The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
 > [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
 > (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
 > command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Her story as the records tell it
@@ -260,7 +259,7 @@ creatinine 0.94 to 1.06. The pharmacy gave the **2026-27 flu shot on 2026-10-03*
 - **Pod:** TSH rows (3016-3), 7.90 on 2026-03-03 with `resultInterpretationCode` H and range 0.40-4.00 in `entry/What
 it shows`. The planned order is in no question (the plan section is not read).
 
-### G7. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (**narrative-only**)
+### G7. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (**free text only**)
 
 - **Kind:** gap.
 - **Pod:** narrative-only: no row of any of the 35 questions on `eval-priya-l` mentions a nodule, the lung or
@@ -366,10 +365,10 @@ Consequences of growing the story, audited against the records:
   hepatitis C and HIV one-time screening; cervical screening; a yearly diabetic foot exam; a repeat urinalysis after
   the ED's 3+ blood; B12 on metformin (13 months, not yet long-term); RSV vaccine (ages 50-59 only with a risk
   condition).
-- **P14.** Screening mammogram: last 2024-10-08 (BI-RADS 2, KH), biennial, so due about now. True, neutral.
+- **P14.** Screening mammogram: last 2024-10-08 (BI-RADS 2, KH), biennial, so due about now. True, neutral. Saying there is one mammogram on record is not penalised, and not credited.
 - **Pod (P14):** the three mammograms (2020, 2022, 2024) are merged into **one** `pod/My procedures` row dated
   2024-10-08 with `records` 6: a pod merge defect worth reporting. A pod arm that says "one mammogram on record" is
-  repeating it, and is not penalised.
+  repeating it, and is not penalised, and not credited. The same line for a records answer loosens its side slightly, on purpose: the symmetric wording is what a blind judge can apply.
 - **P15.** Two diabetes rows (SNOMED, and Clearwater's ICD-10 E11.9). Harmless.
 - **Pod (P15):** the two rows are in `pod/My active conditions`.
 - **P16.** Aspirin allergy reaction severity "Moderate" at KH; others state none. Neutral.

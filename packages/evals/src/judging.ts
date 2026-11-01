@@ -17,37 +17,79 @@ import type { Grade, Job, Label } from "./results.js";
 import { runFolder } from "./results.js";
 import { errorsOf } from "./schemas.js";
 
-/**
- * Words that would tell a judge how an answer reached the records: tool and file names, the pod's own terms, row and
- * result counts, retrieval wording. They are taken out without a mark, since a mark would itself say which arm named
- * its tools.
- */
-const REVEALING = new RegExp(
-  [
-    String.raw`\b(?:cascade-mcp|MCP|pods?|tools?|quer(?:y|ied|ies)|files?|lab_series|find_changes|finding_rows|list_pods)\b`,
-    String.raw`\b(?:entry|entries|lead (?:record|member)|non-lead|bundles?|resources?|FHIR|C-CDA|XML|JSON|downloads?|exports?|pulls?)\b`,
-    String.raw`\b\d+ (?:rows?|results?|records?|items?)\b`,
-    String.raw`\bretriev\w*(?: (?:on )?\d{4}-\d{2}-\d{2}(?:,? (?:and )?\d{4}-\d{2}-\d{2})*)?`,
-    String.raw`cascade:\S+|pod:\/\/\S+|urn:uuid:\S+|ni:\/\/\/\S+|[\w./-]+\.(?:xml|json)\b|\bline \d+`,
-  ].join("|"),
-  "gi",
-);
+const PLACEHOLDER = "[record]";
+
+const RESOURCES =
+  "Observation|Condition|MedicationStatement|MedicationRequest|MedicationAdministration|Medication|Procedure|Immunization|DiagnosticReport|Patient|AllergyIntolerance|Encounter|Practitioner|Organization|Location|DocumentReference|CarePlan|Provenance|Bundle";
+const VIEWS =
+  "My [a-z]+(?: [a-z]+)*|What it shows|What each version says|Where it came from|Why it is in no view|What was seen more than once";
 
 /**
- * FHIR's resource names where they are used as names: capitalised, as a type or a reference ("Observation",
- * "Observation/abc", "the Condition resource"). The same words in prose ("an active condition", "the patient") stay.
+ * Tokens that name a source file or the pod's own vocabulary and nothing else: a resource reference (Name/id), a file
+ * name or path with its line, a pod, record or entry path and the view it names, a vocabulary property or class name,
+ * a tool's name. Each is replaced by one placeholder, the same for both arms; no word that is also prose is touched.
  */
-const RESOURCE_NAMES =
-  /\b(?:Observation|Condition|MedicationStatement|MedicationRequest|Procedure|Immunization|DiagnosticReport|Patient|AllergyIntolerance|Encounter)s?(?:\/[\w.-]+)?(?: resources?)?\b/g;
+const UNAMBIGUOUS = new RegExp(
+  [
+    String.raw`\b(?:${RESOURCES})\/[\w.:-]+`,
+    String.raw`(?:[\w.-]+\/)*[\w.-]+\.(?:xml|json|ttl|pdf|csv|zip|txt)\b(?::\d+(?:-\d+)?)?`,
+    String.raw`\b(?:[a-z][a-z0-9]*[-_])+(?:summary|record|results|cda)-\d+\b|\b(?:summary|record)-\d+\b`,
+    String.raw`\b(?:[a-z][a-z0-9]*-)+(?:summary|patient-record)\b`,
+    String.raw`(?<![\w/])(?:pod|record|entry)\/(?:${VIEWS}|\S+)(?: --\w+ \S+)*`,
+    String.raw`\b(?:lab_series|find_changes|finding_rows|list_pods|export_cda|cascade-mcp)\b`,
+    String.raw`\b(?:urn:uuid|cascade|pod|ni):(?:\/\/\/?)?[^\s,;)]+`,
+    String.raw`\b[a-z]{3,}(?:[A-Z][a-z0-9]+)+\b|\b(?:[A-Z][a-z]+){3,}\b|\bRefutedAtSource\b`,
+  ].join("|"),
+  "g",
+);
+
+const JOINED = new RegExp(
+  String.raw`\[record\](?:(?:\s*,\s*|\s+and\s+|\s+or\s+|\s*\/\s*|\s+)\[record\])+`,
+  "g",
+);
 
 export const scrubbed = (text: string) =>
   text
-    .replace(RESOURCE_NAMES, "")
-    .replace(REVEALING, "")
-    .replace(/\(\s*\)/g, "")
-    .replace(/\s+([,.;:)])/g, "$1")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+    .replace(UNAMBIGUOUS, PLACEHOLDER)
+    .replace(JOINED, PLACEHOLDER)
+    .replace(/(\[record\])(?:,?\s+lines?\s+\d+(?:-\d+)?|:\d+(?:-\d+)?)/g, "$1");
+
+/**
+ * What would still tell a judge how an answer reached the records but cannot be taken out without damaging prose, by a
+ * fixed list: kept in the text, and recorded by answer so the report can say how imperfect the blinding was.
+ */
+const TELLS: readonly (readonly [string, RegExp])[] = [
+  ["merged", /\bmerged\b/i],
+  ["seen in N sources", /\bseen in \d+ sources?\b/i],
+  ["records N", /\brecords \d+\b/i],
+  [
+    "My view",
+    /\bMy (?:active|lab|medication|procedure|immunization|allergy|condition)\w*/,
+  ],
+  ["What each version says", /\bWhat each version says\b/i],
+  ["Where it came from", /\bWhere it came from\b/i],
+  ["document", /\bdocuments?\b/i],
+  ["copies", /\bcop(?:y|ies)\b/i],
+  ["section", /\bsections?\b/i],
+  ["narrative", /\bnarrative\b/i],
+  ["CDA", /\bC?-?CDA\b/],
+  ["page", /\bpages?\b/i],
+  ["PDF", /\bPDF\b/],
+  ["latest", /\blatest\b/i],
+  ["importer", /\bimporter\b/i],
+  ["timeline", /\btimeline\b/i],
+  ["one row", /\bone row\b/i],
+];
+
+/** The fixed-list tells in a text, each once, in the list's order. */
+export const tellsOf = (text: string): string[] =>
+  TELLS.filter(([, pattern]) => pattern.test(text)).map(([term]) => term);
+
+/** The tells in one blinded answer, with the job (and so the arm) and the question it answers. */
+export const tellsIn = (
+  at: { job: string; arm: string; question: string },
+  answer: Answer,
+) => tellsOf(blinded(answer)).map((term) => ({ ...at, term }));
 
 /**
  * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says

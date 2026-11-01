@@ -6,7 +6,7 @@ history to whoever answers.
 - **Evaluation "today": 2026-10-30.** Every "overdue" and "not done" below is judged on that date.
 - **Tamsin Vale:** female, born 1957-09-30, **69**. Type 2 diabetes since 2022. One source, Cascade North.
 - The inputs are listed in [case.json](case.json). File references below are relative to the case's downloads folder, `file:line`.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
@@ -53,8 +53,7 @@ history to whoever answers.
 > The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
 > [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
 > (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
 > command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Tamsin
@@ -125,11 +124,11 @@ id) unless named.
 
 ### Pre-existing items (true, neither credit nor penalty)
 
-- **PT1.** Metformin's stop has no reason recorded (kit). Asking why is neutral.
-- **PT2.** A1c 7.4 to 8.3 through 2024 with no therapy, before 2025-02-20 (kit, and see TT1): true of that past
+- **PT1.** Metformin's stop has no reason recorded. Asking why is neutral.
+- **PT2.** A1c 7.4 to 8.3 through 2024 with no therapy, before 2025-02-20 (see TT1): true of that past
   period; penalise only as TT1 says, when presented as current.
-- **PT3.** The kit's pulls carry no problem list; diabetes is first coded in the 2026 pull.
-- **PT4.** The kit's synthetic markers: patient id `story-stopped`, "Cascade North Demo Hospital", `demo.invalid`.
+- **PT3.** The earlier downloads carry no problem list; diabetes is first coded in the 2026 download.
+- **PT4.** The synthetic markers: patient id `story-stopped`, "Cascade North Demo Hospital", `demo.invalid`.
   Remarks on them are neutral.
 - **PT5.** Valid absences not planted: no diabetic eye exam in her record, no immunizations at all (Shingrix,
   pneumococcal, flu, Tdap, COVID-19), no osteoporosis screening (women 65+), no mammogram, no blood pressure in the

@@ -944,7 +944,7 @@
     },
     {
       "id": "P8",
-      "says": "The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say active in the ED's document; the kidney stone is still an active problem. Tamsulosin too: the ED lists it as active (INT, ending 2025-11-01). Asking whether these are current is fine.",
+      "says": "The ED discharge medicines (ondansetron, acetaminophen; INT, end dates 2025-10-25 and 2025-11-01) still say active in the ED's document; the kidney stone is still an active problem. Tamsulosin too: the ED lists it as active (INT, ending 2025-11-01). Another source lists it completed; either state is not false. Asking whether these are current is fine.",
       "podNote": "The discharge medicines are also active in pod/My active medications; tamsulosin is completed in the pod, because the pharmacy's record leads."
     },
     {

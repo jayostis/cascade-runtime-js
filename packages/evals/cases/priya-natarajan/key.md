@@ -8,7 +8,7 @@ history to whoever answers.
   hypertension (2023), type 2 diabetes (diagnosed 2025-09-22), hay fever. Aspirin allergy (hives); lisinopril
   intolerance (cough).
 - The inputs are listed in [case.json](case.json). File references below are relative to the case's downloads folder, `file:line`.
-- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named.
+- Clinical sources are those of `../research/real_world_gaps.md` ("research", with its item number) unless named. "research #N" is item N of that file.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
@@ -55,8 +55,7 @@ history to whoever answers.
 > The prose half of this case's key: the rationale and its guideline citations. The machine-readable half is
 > [key.json](key.json); the case itself is [case.json](case.json). Moved from the hand-run comparison of 2026-10-30
 > (`epic-care-gaps/comparison/key/answer_key.md` in the-cascade-protocol), where it was written before any arm ran.
-> File references are relative to the case's downloads folder; "research #N" is that comparison's
-> `research/real_world_gaps.md`. Each item's "Pod" line describes the comparison's pod arm (35 questions through a
+> Each item's "Pod" line describes the comparison's pod arm (35 questions through a
 > command), not cascade-mcp's tools; key.json's `pod` field says only where the pod holds the fact.
 
 ## Priya
@@ -110,7 +109,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Good question:** "The hospital stopped my hydrochlorothiazide in March 2026 because my sodium was low, but my clinic
   and pharmacy still have it active and it was refilled in April. Should I still be taking it?"
 - **Found (minimum):** names HCTZ (or "the water pill"), that the hospital stopped it in March 2026, and that a later
-  list still shows it active. The reason (low sodium) and the April refill are optional: they are narrative-only, and
+  list still shows it active. The reason (low sodium) and the April refill are optional: they are not coded, and
   the reason can only be inferred from the coded results (sodium 123 on 2026-03-02).
 - **Wrong:** advising her to keep taking it without noting the hospital's stop; saying she stopped it and nothing is
   outstanding.
@@ -155,7 +154,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Pod:** feature: absence, cross-source (diagnosis, lipids and age in different records). `pod/My medication history` (no statin), `pod/My lab results` (LDL), `pod/My active conditions`,
   `record/What each version says --where field=…#dateOfBirth`.
 
-#### G5. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (narrative-only)
+#### G5. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (free text only)
 
 - **Kind:** gap.
 - **Evidence:** Saltmarsh ED CT abdomen/pelvis, 2025-10-18, Results section narrative: findings "a 7 mm solid nodule ...
@@ -246,7 +245,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 
 ### Pre-existing items (true, neither credit nor penalty)
 
-From the kit's records (files 1-9):
+From the records (files 1-9):
 
 - **P1.** Fernhill's 2025 medication lists (files 5, 7) omit lisinopril and amlodipine, which KH prescribed: a past
   reconciliation gap, closed by Fernhill's 2026 lists.
@@ -278,7 +277,7 @@ From the story added here, true but not planted:
   - a repeat urinalysis to confirm that the 3+ blood seen in the ED on 2025-10-18 cleared (AUA/SUFU 2020);
   - B12 on metformin (13 months in, not yet "long-term");
   - RSV vaccine (ACIP: ages 50-59 only with a risk condition).
-- **P8 also covers tamsulosin.** The ED lists it as active (INT, ending 2025-11-01).
+- **P8 also covers tamsulosin.** The ED lists it as active (INT, ending 2025-11-01). Another source lists it completed; either state is not false.
 - **Pod (tamsulosin):** in the pod it is completed, because the pharmacy's record leads.
 
 ### Near-traps, Priya (false if raised; the merged records disprove them)

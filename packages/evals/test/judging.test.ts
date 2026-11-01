@@ -261,7 +261,7 @@ const lineAnswer = (lines: readonly string[]): Answer => ({
 test("the scrubber puts one placeholder where an unambiguous token was and changes nothing else", async () => {
   const { scrubbed } = await import("../src/judging.js");
   for (const lines of [POD_LINES, FILE_LINES]) {
-    const packet = lines.map(scrubbed).join("\n");
+    const packet = lines.map(scrubbed).join(" ~ ");
     assert.doesNotMatch(packet, UNAMBIGUOUS);
     assert.match(packet, /\[record\]/);
     assert.doesNotMatch(packet, /\[record\]\s*\[record\]|\s{2,}|\(\s*\)/);
