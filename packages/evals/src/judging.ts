@@ -9,7 +9,7 @@ import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
 import { instanceOf } from "./instances.js";
 import { answerPath } from "./sessions.js";
 import type { Answer } from "./checks.js";
-import { errorsOf } from "./schemas.js";
+import { errorsOf, numbered } from "./schemas.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
 import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
@@ -112,7 +112,7 @@ function packetBody(text: string): string {
   const errors = errorsOf("answer", value);
   return errors.length > 0
     ? `(the answer is not a valid answer: ${errors.join("; ")})`
-    : blinded(value as Answer);
+    : blinded(numbered(value) as Answer);
 }
 
 export function blinded(answer: Answer): string {

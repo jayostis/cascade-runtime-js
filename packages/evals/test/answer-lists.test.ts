@@ -7,7 +7,7 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { Answer } from "../src/checks.js";
 import { blinded, judgePackets } from "../src/judging.js";
-import { errorsOf } from "../src/schemas.js";
+import { errorsOf, numbered } from "../src/schemas.js";
 import { ask } from "../src/sessions.js";
 
 const temporary = await mkdtemp(join(tmpdir(), "cascade-evals-lists-"));
@@ -34,16 +34,16 @@ test("a point with no facts, no absences, or neither is a valid answer, and a ju
   ]) {
     const answer = smoke(name);
     assert.deepEqual(errorsOf("answer", answer), [], name);
-    const packet = blinded(answer);
-    for (const item of answer.items)
-      assert.match(packet, new RegExp(`### Item ${item.n}. `), name);
+    const packet = blinded(numbered(answer) as Answer);
+    for (const [at] of answer.items.entries())
+      assert.match(packet, new RegExp(`### Item ${at + 1}. `), name);
   }
   const knowledgeOnly = smoke("pod-allergies").items.find(
     (it) => it.facts === undefined && it.absences === undefined,
   );
   assert.ok(knowledgeOnly?.knowledge !== undefined);
   assert.match(
-    blinded(smoke("pod-allergies")),
+    blinded(numbered(smoke("pod-allergies")) as Answer),
     new RegExp(`- Knowledge: ${knowledgeOnly.knowledge.says.slice(0, 20)}`),
   );
 });
@@ -136,4 +136,59 @@ test("ask gives no new question while the last answer is malformed, and says how
     );
     assert.equal(await ask(run, job), "Second.");
   }
+});
+
+test("an item without n is numbered by its place, an n given is kept, and two items with one n are no answer", async () => {
+  const answer = smoke("pod-blood-clot");
+  assert.deepEqual(errorsOf("answer", answer), []);
+  assert.deepEqual(
+    (numbered(answer) as Answer).items.map((it) => it.n),
+    [1, 2, 3, 4, 5],
+  );
+  const given = JSON.parse(JSON.stringify(answer)) as Answer & {
+    items: { n?: number }[];
+  };
+  given.items[1]!.n = 7;
+  assert.deepEqual(
+    (numbered(given) as Answer).items.map((it) => it.n),
+    [1, 7, 3, 4, 5],
+  );
+  assert.deepEqual(errorsOf("answer", given), []);
+  given.items[2]!.n = 7;
+  assert.match(errorsOf("answer", given).join(" "), /items.*\bn 7/);
+  const derived = JSON.parse(JSON.stringify(answer)) as typeof given;
+  derived.items[1]!.n = 3;
+  assert.match(errorsOf("answer", derived).join(" "), /items.*\bn 3/);
+
+  const run = join(temporary, "ask-numbers");
+  const job = "c.s.pod.opus-5-5.r1";
+  await mkdir(join(run, "prompts", job), { recursive: true });
+  await mkdir(join(run, "answers", job), { recursive: true });
+  await writeFile(join(run, "prompts", job, "a.txt"), "First.");
+  await writeFile(join(run, "prompts", job, "b.txt"), "Second.");
+  await writeFile(
+    join(run, "plan.json"),
+    JSON.stringify({
+      run: "ask-numbers",
+      folder: run,
+      jobs: [
+        {
+          id: job,
+          role: "subject",
+          session: "s",
+          questions: ["a", "b"],
+          answers: `answers/${job}`,
+          prompt: `prompts/${job}.txt`,
+        },
+      ],
+    }),
+  );
+  assert.equal(await ask(run, job), "First.");
+  await writeFile(join(run, "answers", job, "a.json"), JSON.stringify(given));
+  const refused = await ask(run, job);
+  assert.match(refused, /a\.json/);
+  assert.match(refused, /more than one item has n 7/);
+  assert.doesNotMatch(refused, /Second/);
+  await writeFile(join(run, "answers", job, "a.json"), JSON.stringify(answer));
+  assert.equal(await ask(run, job), "Second.");
 });

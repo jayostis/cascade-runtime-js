@@ -209,7 +209,7 @@
       "maxItems": 10,
       "items": {
         "type": "object",
-        "required": ["n", "says", "why", "confidence"],
+        "required": ["says", "why", "confidence"],
         "additionalProperties": false,
         "properties": {
           "n": {

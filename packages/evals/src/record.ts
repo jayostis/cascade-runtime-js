@@ -36,7 +36,7 @@ import {
   type SubjectChecks,
   type ToolCallRecord,
 } from "./results.js";
-import { valid } from "./schemas.js";
+import { numbered, valid } from "./schemas.js";
 import { buildSite } from "./site.js";
 import { type Transcript, transcriptsSince } from "./transcripts.js";
 
@@ -452,7 +452,7 @@ export async function finish(given: string, log: (line: string) => void) {
           if (!existsSync(path)) continue;
           let answer: unknown;
           try {
-            answer = JSON.parse(await readFile(path, "utf8"));
+            answer = numbered(JSON.parse(await readFile(path, "utf8")));
           } catch (error) {
             answer = { unparsed: String(error) };
           }
