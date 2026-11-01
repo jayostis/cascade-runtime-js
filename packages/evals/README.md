@@ -17,7 +17,7 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
   expected fact, absence or negation, planted gap, trap or near-trap, with its evidence, the links the reasoning must
   state, and what counts as found, partly found or wrong) and `key.md` (the rationale and its guideline citations). A case must say `"synthetic": true`, and its downloads must hash to the digest its key was
   written against.
-- `configs/`: the tiers. **smoke**: one case, one run per arm, programs only. **standard**: every case, one run, one
+- `configs/`: the tiers. **smoke**: one case, one run per arm, one judge (so the judging path runs end to end). **standard**: every case, one run, one
   judge. **full**: three runs, two judges and their agreement. Each config names the subject and judge models (judges
   are cheap models picked by calibration: [calibration.md](calibration.md)) and a hard cap in tokens and dollars.
 - `schemas/`: case, key, config, answer, verdict and results. `results.schema.json` is the contract a runner fills.

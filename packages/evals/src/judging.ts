@@ -78,6 +78,10 @@ export function blinded(answer: Answer): string {
         `- Confidence: ${item.confidence}`,
       ].join("\n"),
     ),
+    ...(answer.links ?? []).map(
+      (link) =>
+        `- Link: item ${link.from.item} fact ${link.from.fact} to item ${link.to.item} fact ${link.to.fact}: ${scrubbed(link.says)}`,
+    ),
   ].join("\n\n");
 }
 
@@ -89,6 +93,16 @@ const labelAt = (at: number) =>
 
 const answered = (job: Job) =>
   job.role === "subject" && (job.status === "done" || job.status === "reused");
+
+/**
+ * The key's prose as a judge reads it: without the sections that score by the older rules (a gap found, a false
+ * question counted), since the judge's verdicts have the one vocabulary its prompt gives.
+ */
+export const judgesProse = (prose: string) =>
+  prose.replace(
+    /^## (?:Scoring rules|How to score)\b.*?(?=^## |(?![\s\S]))/gms,
+    "",
+  );
 
 /** The key as a judge reads it: without where the pod holds each item. */
 const judgesKey = (key: Key) => ({
@@ -117,7 +131,8 @@ export async function judgePackets(given: string) {
   for (const [instance, subjects] of sittings) {
     const caseId = subjects[0]!.case!;
     const found = await loadCase(caseId);
-    const { key, prose } = await loadKey(caseId);
+    const { key, prose: whole } = await loadKey(caseId);
+    const prose = judgesProse(whole);
     const bodies = new Map<string, string>();
     for (const job of subjects)
       for (const question of job.questions ?? []) {
@@ -320,6 +335,7 @@ function judgeEstimate(
 /** Each judge's verdict turned into a grade per answer it labelled: one subject job's answer to one question. */
 export async function gradesOf(plan: Plan): Promise<Grade[]> {
   const grades: Grade[] = [];
+  const kinds = new Map<string, Map<string, boolean>>();
   for (const job of plan.jobs) {
     if (job.role !== "judge" || job.verdict === undefined) continue;
     const path = join(plan.folder, job.verdict);
@@ -335,9 +351,28 @@ export async function gradesOf(plan: Plan): Promise<Grade[]> {
       continue;
     }
     if (errorsOf("verdict", verdict).length > 0) continue;
+    if (job.case !== undefined && !kinds.has(job.case))
+      kinds.set(
+        job.case,
+        new Map(
+          (await loadKey(job.case)).key.items.map((it) => [
+            it.id,
+            it.kind === "trap" || it.kind === "near-trap",
+          ]),
+        ),
+      );
+    const traps = kinds.get(job.case ?? "");
     for (const { label, ...grade } of verdict.outputs) {
       const answer = job.labels?.[label];
-      if (answer !== undefined)
+      // a trap is raised or avoided, anything else found, partly or missed: the other kind's verdict is rejected
+      const wrong = grade.items.some((it) => {
+        const trap = traps?.get(it.id);
+        return (
+          trap !== undefined &&
+          trap !== (it.verdict === "raised" || it.verdict === "avoided")
+        );
+      });
+      if (answer !== undefined && !wrong)
         grades.push({
           subject: answer.job,
           question: answer.question,

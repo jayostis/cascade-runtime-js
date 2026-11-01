@@ -21,7 +21,10 @@ const { errorsOf } = await import("../src/schemas.js");
 const { ask, sessionInputsHash, splitSession } =
   await import("../src/sessions.js");
 const { passageOf, podProvenance } = await import("../src/evidence.js");
-const { countsOf } = await import("../src/instances.js");
+const { countsOf, instancesOf } = await import("../src/instances.js");
+const { keeps } = await import("../src/cases.js");
+const { ARM_PARTS, versionOf } = await import("../src/prompts.js");
+const { blinded } = await import("../src/judging.js");
 const { finish } = await import("../src/record.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
@@ -313,6 +316,7 @@ test("an arm is counted from its judges: a verdict they share, else split; beyon
     missed: 0,
     split: 1,
     ungraded: 1,
+    unanswered: 0,
     of: 3,
   });
   assert.deepEqual(counts.traps, {
@@ -320,6 +324,7 @@ test("an arm is counted from its judges: a verdict they share, else split; beyon
     raised: 0,
     split: 0,
     ungraded: 0,
+    unanswered: 0,
     of: 1,
   });
   assert.deepEqual(counts.beyond, {
@@ -782,7 +787,8 @@ test("a recorded session run finishes into results that hold to their schema: ea
     missed: 0,
     split: 0,
     ungraded: 0,
-    of: 2,
+    unanswered: 5,
+    of: 7,
   });
   assert.deepEqual(instance.arms.records.expected, {
     found: 1,
@@ -790,7 +796,8 @@ test("a recorded session run finishes into results that hold to their schema: ea
     missed: 0,
     split: 0,
     ungraded: 0,
-    of: 2,
+    unanswered: 5,
+    of: 7,
   });
   assert.equal(instance.arms.records.beyond.speculative, 1);
   assert.equal(instance.arms.records.citations.held, 1);
@@ -800,7 +807,7 @@ test("a recorded session run finishes into results that hold to their schema: ea
   assert.equal(instance.arms.pod.usd, job(POD).stats.cost.usd);
   const index = await readFile(join(run, "site", "index.html"), "utf8");
   assert.match(index, /href="cases\/tamsin-vale\.html"/);
-  assert.match(index, /2 of 2 found/);
+  assert.match(index, /2 of 7 found/);
   const page = await readFile(
     join(run, "site", "cases", "tamsin-vale.html"),
     "utf8",
@@ -812,4 +819,164 @@ test("a recorded session run finishes into results that hold to their schema: ea
     "judge haiku-5-5",
   ])
     assert.ok(page.includes(said), `the case page shows ${said}`);
+});
+
+test("a question an arm never answered stays in the total, counted unanswered, so both arms share it", () => {
+  const items = [
+    { id: "F1", kind: "fact" as const, question: "a" },
+    { id: "F2", kind: "fact" as const, question: "b" },
+    { id: "T1", kind: "trap" as const, question: "b" },
+  ];
+  const answeredA = countsOf(
+    items,
+    [
+      {
+        subject: "s",
+        question: "a",
+        items: [{ id: "F1", verdict: "found", items: [1], reason: "" }],
+        beyond: [],
+      },
+    ],
+    ["a"],
+  );
+  assert.deepEqual(answeredA.expected, {
+    found: 1,
+    partly: 0,
+    missed: 0,
+    split: 0,
+    ungraded: 0,
+    unanswered: 1,
+    of: 2,
+  });
+  assert.deepEqual(answeredA.traps, {
+    avoided: 0,
+    raised: 0,
+    split: 0,
+    ungraded: 0,
+    unanswered: 1,
+    of: 1,
+  });
+});
+
+test("an instance totals every key item for both arms, and its judging cost is null when a judge's is", () => {
+  const job = (id: string, extra: Record<string, unknown>) =>
+    ({
+      id,
+      case: "tamsin-vale",
+      model: "claude-opus-5-5",
+      repeat: 1,
+      status: "done",
+      estimate: { tokens: 0, usd: 0 },
+      ...extra,
+    }) as never;
+  const judge = (id: string, usd: number | null) =>
+    job(id, {
+      role: "judge",
+      instance: "tamsin-vale.opus-5-5.r1",
+      stats: { tokens: { total: 10 }, cost: { usd } },
+    });
+  const [instance] = instancesOf(
+    [
+      job("p", { role: "subject", arm: "pod" }),
+      job("r", { role: "subject", arm: "records" }),
+      judge("j1", 0.5),
+      judge("j2", null),
+    ],
+    [],
+    {},
+    { r: { a: {} } },
+    new Map([
+      [
+        "tamsin-vale",
+        [
+          { id: "F1", kind: "fact", question: "a" },
+          { id: "F2", kind: "fact", question: "b" },
+        ],
+      ],
+    ]) as never,
+  );
+  assert.equal(instance!.arms.pod!.expected.of, 2);
+  assert.equal(instance!.arms.records!.expected.of, 2);
+  assert.equal(instance!.arms.pod!.expected.unanswered, 2);
+  assert.equal(instance!.arms.records!.expected.unanswered, 1);
+  assert.equal(instance!.judging.usd, null);
+});
+
+test("a download is reused only with its build time: a prepared record without one is stale", () => {
+  const components = [{ repository: "r", commit: "c" }];
+  const kept = {
+    downloadsSha256: "d",
+    components,
+    build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
+  } as never;
+  assert.equal(keeps(kept, "d", components as never), true);
+  assert.equal(
+    keeps(
+      { ...(kept as object), build: undefined } as never,
+      "d",
+      components as never,
+    ),
+    false,
+  );
+  assert.equal(keeps(kept, "other", components as never), false);
+});
+
+test("an arm's prompt version covers everything that reaches its prompt: changing its example changes its version alone", () => {
+  assert.notEqual(
+    versionOf("pod", {
+      ...ARM_PARTS.pod,
+      example: ARM_PARTS.pod.example + " ",
+    }),
+    versionOf("pod"),
+  );
+  assert.notEqual(
+    versionOf("records", { ...ARM_PARTS.records, cite: "changed" }),
+    versionOf("records"),
+  );
+  assert.notEqual(versionOf("pod"), versionOf("records"));
+  assert.equal(
+    versionOf("records", {
+      ...ARM_PARTS.pod,
+      example: "x",
+    }) === versionOf("records"),
+    false,
+  );
+});
+
+test("an answer may link facts across its items, and a judge reads that link", () => {
+  const fact = (says: string) => ({
+    says,
+    provider: "Cascade North",
+    cite: { entry: "pod://p/clinical/medications.ttl#a" },
+    name: says,
+  });
+  const item = (n: number, says: string) => ({
+    n,
+    says,
+    why: "",
+    confidence: "high",
+    facts: [fact(says)],
+    absences: [],
+  });
+  const answer = {
+    answer: "r",
+    short: "s",
+    items: [item(1, "Metformin listed active"), item(2, "Metformin completed")],
+    links: [
+      {
+        from: { item: 1, fact: 0 },
+        to: { item: 2, fact: 0 },
+        says: "the later copy closes the earlier one",
+      },
+    ],
+  };
+  assert.deepEqual(errorsOf("answer", answer), []);
+  assert.match(
+    blinded(answer as never),
+    /^- Link: item 1 fact 0 to item 2 fact 0: the later copy closes the earlier one$/m,
+  );
+  assert.notDeepEqual(
+    errorsOf("answer", { ...answer, links: [{ from: 1, to: 2 }] }),
+    [],
+  );
 });

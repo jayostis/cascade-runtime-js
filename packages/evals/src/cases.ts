@@ -234,6 +234,16 @@ const sameComponents = (a: readonly Component[], b: readonly Component[]) =>
   JSON.stringify(a.map((it) => [it.repository, it.commit])) ===
   JSON.stringify(b.map((it) => [it.repository, it.commit]));
 
+/** A prepared record is kept for these downloads and components only if it carries its build time: older ones do not. */
+export const keeps = (
+  kept: Pick<Prepared, "downloadsSha256" | "components" | "build">,
+  downloadsSha256: string,
+  components: readonly Component[],
+) =>
+  kept.build !== undefined &&
+  kept.downloadsSha256 === downloadsSha256 &&
+  sameComponents(kept.components, components);
+
 /**
  * The case's downloads and its pod in `work/<case>/`, made once per downloads and components: the kit's copies from
  * the vocabulary, the generator's files beside them, the digest checked against the case's, then each import in order.
@@ -260,8 +270,7 @@ export async function prepare(
   if (existsSync(record)) {
     const kept = JSON.parse(await readFile(record, "utf8")) as Prepared;
     if (
-      kept.downloadsSha256 === found.downloads.sha256 &&
-      sameComponents(kept.components, resolved) &&
+      keeps(kept, found.downloads.sha256, resolved) &&
       existsSync(join(kept.pods, kept.pod))
     )
       return kept;

@@ -46,6 +46,12 @@ export interface Answer {
       readonly says: string;
     }[];
   }[];
+  /** Links the agent states between facts of different items. */
+  readonly links?: readonly {
+    readonly from: { readonly item: number; readonly fact: number };
+    readonly to: { readonly item: number; readonly fact: number };
+    readonly says: string;
+  }[];
 }
 
 /** Every claim of the case's key, checked against its downloads: a key whose evidence does not hold is no key. */

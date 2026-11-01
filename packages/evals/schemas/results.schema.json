@@ -255,12 +255,18 @@
         }
       }
     },
-    "verdicts": {
+    "expectedCounts": {
       "type": "object",
-      "required": ["of", "split", "ungraded"],
-      "additionalProperties": {
-        "$ref": "#/$defs/count"
-      },
+      "required": [
+        "of",
+        "split",
+        "ungraded",
+        "unanswered",
+        "found",
+        "partly",
+        "missed"
+      ],
+      "additionalProperties": false,
       "properties": {
         "of": {
           "$ref": "#/$defs/count"
@@ -269,6 +275,50 @@
           "$ref": "#/$defs/count"
         },
         "ungraded": {
+          "$ref": "#/$defs/count"
+        },
+        "unanswered": {
+          "$ref": "#/$defs/count"
+        },
+        "found": {
+          "$ref": "#/$defs/count"
+        },
+        "partly": {
+          "$ref": "#/$defs/count"
+        },
+        "missed": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "trapCounts": {
+      "type": "object",
+      "required": [
+        "of",
+        "split",
+        "ungraded",
+        "unanswered",
+        "avoided",
+        "raised"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "of": {
+          "$ref": "#/$defs/count"
+        },
+        "split": {
+          "$ref": "#/$defs/count"
+        },
+        "ungraded": {
+          "$ref": "#/$defs/count"
+        },
+        "unanswered": {
+          "$ref": "#/$defs/count"
+        },
+        "avoided": {
+          "$ref": "#/$defs/count"
+        },
+        "raised": {
           "$ref": "#/$defs/count"
         }
       }
@@ -1287,15 +1337,37 @@
                   "$ref": "#/$defs/count"
                 },
                 "expected": {
-                  "$ref": "#/$defs/verdicts"
+                  "$ref": "#/$defs/expectedCounts"
                 },
                 "traps": {
-                  "$ref": "#/$defs/verdicts"
+                  "$ref": "#/$defs/trapCounts"
                 },
                 "beyond": {
                   "type": "object",
-                  "additionalProperties": {
-                    "$ref": "#/$defs/count"
+                  "required": [
+                    "fair",
+                    "trueNotPlanted",
+                    "speculative",
+                    "contradicted",
+                    "split"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "fair": {
+                      "$ref": "#/$defs/count"
+                    },
+                    "trueNotPlanted": {
+                      "$ref": "#/$defs/count"
+                    },
+                    "speculative": {
+                      "$ref": "#/$defs/count"
+                    },
+                    "contradicted": {
+                      "$ref": "#/$defs/count"
+                    },
+                    "split": {
+                      "$ref": "#/$defs/count"
+                    }
                   }
                 },
                 "citations": {
@@ -1339,7 +1411,8 @@
                 "$ref": "#/$defs/count"
               },
               "usd": {
-                "$ref": "#/$defs/money"
+                "type": ["number", "null"],
+                "minimum": 0
               }
             }
           }

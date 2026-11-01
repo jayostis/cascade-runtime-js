@@ -275,6 +275,54 @@
           }
         }
       }
+    },
+    "links": {
+      "type": "array",
+      "description": "That a fact of one item bears on a fact of another, in the agent's own words, when the two are not in one item: by each fact's item and place. Only what the agent states.",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "says"],
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "object",
+            "required": ["item", "fact"],
+            "additionalProperties": false,
+            "properties": {
+              "item": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The item's n."
+              },
+              "fact": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The fact's place in that item, from 0."
+              }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["item", "fact"],
+            "additionalProperties": false,
+            "properties": {
+              "item": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The item's n."
+              },
+              "fact": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The fact's place in that item, from 0."
+              }
+            }
+          },
+          "says": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

@@ -28,8 +28,8 @@ history to an arm.
 4. **Citation check:** for every record an arm cites, check that it exists in the inputs and says what the arm claims.
    Report the number cited, the number correct, and the wrong ones.
 5. **Totals:** report each arm's gap score twice, with and without G5. G5 is narrative-only, so its ceiling for the pod
-   arm is zero. Also note that TT2 is hard for the pod arm to fail. The refuted PE is in no `pod/My …` view; it appears
-   only in `record/Why it is in no view` as `RefutedAtSource`. So TT2 is not a symmetric test of judgment.
+   arm is zero. Also note that TT2, TN1 and TT5 are hard for the pod arm to fail. The refuted PE is in no `pod/My …` view; it appears
+   only in `record/Why it is in no view` as `RefutedAtSource`. So they are not symmetric tests of judgment.
 6. **Narrative-only facts:** the pod arm cannot see them. It sees none of these:
    - the HCTZ stop reason and the April refill (G2);
    - the TSH repeat advice (G6);
@@ -150,8 +150,7 @@ PE).
 
 ## Her other questions
 
-Written 2026-10-31 from her records, before any arm answered them. The scoring rules above score the check-up
-question; each of these is scored by its items alone: a fact, absence or negation is **found**, **partly** or
+Written 2026-10-31 from her records, before any arm answered them. Each of these is scored by its items alone: a fact, absence or negation is **found**, **partly** or
 **missed** by its "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer
 says is beyond the key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the
 records.
@@ -162,7 +161,7 @@ records.
   story-stopped-medrx-2 and -3): Jardiance (empagliflozin) 10 mg, one tablet each morning, and atorvastatin 20 mg, one
   tablet daily.
 - **TF2.** Metformin 500 mg, from 2022-03-01, completed 2024-04-15 in the 2025 and 2026 downloads
-  (MedicationStatement story-stopped-med-1). Saying it was stopped, or leaving it out of the current list, is right.
+  (MedicationStatement story-stopped-med-1). Saying it was stopped is right (found); leaving it out of the current list without saying so is partly.
 - **TT3.** The 2024-02 download, read alone, lists the same metformin record as active. Giving metformin as a current
   medicine is the trap: a newer copy of the same record closes it.
 

@@ -297,8 +297,7 @@ urology"; "bring all your medicine bottles to your next visit".
 
 ## Her other questions
 
-Written 2026-10-31 from her records, before any arm answered them. The scoring rules above score the check-up
-question; each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
+Written 2026-10-31 from her records, before any arm answered them. Each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
 "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer says is beyond the
 key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the records.
 

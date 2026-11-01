@@ -196,3 +196,56 @@ test("the scrubber takes out resource names used as type names and keeps the wor
   ] as const)
     assert.equal(scrubbed(said), kept, said);
 });
+
+test("a packet carries the key's prose without its old scoring rules, so one vocabulary reaches the judge", async () => {
+  const { judges } = await runOf("vocabulary", ["claude-haiku-5-5"]);
+  const packet = await readFile(judges[0]!.packet!, "utf8");
+  assert.match(packet, /## Planted gaps|## Tamsin/);
+  assert.doesNotMatch(packet, /## Scoring rules|## How to score/);
+});
+
+test("a verdict of the wrong kind for its key item is rejected, so counts never gain a stray key", async () => {
+  const { gradesOf } = await import("../src/judging.js");
+  const folder = join(temporary, "wrong-kind");
+  await mkdir(folder, { recursive: true });
+  const item = (id: string, verdict: string) => ({
+    id,
+    verdict,
+    items: [1],
+    reason: "",
+  });
+  await writeFile(
+    join(folder, "v.json"),
+    JSON.stringify({
+      outputs: [
+        // TF1 is a fact and TT3 a trap: "raised" and "found" are each the other's verdict
+        { label: "A", items: [item("TF1", "raised")], beyond: [], chains: [] },
+        { label: "B", items: [item("TT3", "found")], beyond: [], chains: [] },
+        {
+          label: "C",
+          items: [item("TF1", "found"), item("TT3", "avoided")],
+          beyond: [],
+          chains: [],
+        },
+      ],
+    }),
+  );
+  const at = (label: string) => ({ job: POD, question: "medications", label });
+  const grades = await gradesOf({
+    folder,
+    jobs: [
+      {
+        id: "j",
+        role: "judge",
+        case: "tamsin-vale",
+        verdict: "v.json",
+        labels: { A: at("A"), B: at("B"), C: at("C") },
+      },
+    ],
+  } as never);
+  assert.equal(grades.length, 1);
+  assert.deepEqual(
+    grades[0]!.items.map((it) => it.verdict),
+    ["found", "avoided"],
+  );
+});

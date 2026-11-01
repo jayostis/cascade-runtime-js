@@ -19,22 +19,36 @@ const isTrap = (kind: string) => kind === "trap" || kind === "near-trap";
 /**
  * An arm's key items, counted: for each item of a question it answered, the verdict its judges share, else split; an
  * item a judge graded the question without naming is missed (or avoided, for a trap); a question no judge graded
- * leaves its items ungraded. Beyond the key, each point by the verdict its judges share, else split.
+ * leaves its items ungraded; a question it never answered leaves its items unanswered, still in the total, so skipping
+ * a hard question never scores better than answering it badly. Beyond the key, each point by the verdict its judges share, else split.
  */
 export function countsOf(
   items: readonly Pick<KeyItem, "id" | "kind" | "question">[],
   grades: readonly Pick<Grade, "subject" | "question" | "items" | "beyond">[],
   questions: readonly string[],
 ): Pick<ArmSummary, "expected" | "traps" | "beyond"> {
-  const expected: Record<string, number> = { split: 0, ungraded: 0, of: 0 };
-  const traps: Record<string, number> = { split: 0, ungraded: 0, of: 0 };
+  const expected: Record<string, number> = {
+    split: 0,
+    ungraded: 0,
+    unanswered: 0,
+    of: 0,
+  };
+  const traps: Record<string, number> = {
+    split: 0,
+    ungraded: 0,
+    unanswered: 0,
+    of: 0,
+  };
   for (const it of EXPECTED) expected[it] = 0;
   for (const it of TRAPS) traps[it] = 0;
   for (const item of items) {
-    if (!questions.includes(item.question)) continue;
     const trap = isTrap(item.kind);
     const counts = trap ? traps : expected;
     counts.of!++;
+    if (!questions.includes(item.question)) {
+      counts.unanswered!++;
+      continue;
+    }
     const graded = grades.filter((it) => it.question === item.question);
     const verdicts = new Set(
       graded.map(
@@ -143,7 +157,9 @@ export function instancesOf(
           (sum, it) => sum + (it.stats?.tokens.total ?? 0),
           0,
         ),
-        usd: judges.reduce((sum, it) => sum + (it.stats?.cost.usd ?? 0), 0),
+        usd: judges.some((it) => it.stats?.cost.usd === null)
+          ? null
+          : judges.reduce((sum, it) => sum + (it.stats?.cost.usd ?? 0), 0),
       },
     };
   });

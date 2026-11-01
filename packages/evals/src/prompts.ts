@@ -45,6 +45,9 @@ Write each answer, and nothing else, as JSON to the file its question names, wit
   - "links", when you draw any: that one of your facts bears on another, as {"from": <fact's place, from 0>, "to":
     <fact's place>, "says": "how"}, such as an older copy of a record against a newer one.
 
+When a fact of one item bears on a fact of another item, say so once in the same answer, beside "items", as "links":
+[{"from": {"item": <n>, "fact": <place>}, "to": {"item": <n>, "fact": <place>}, "says": "how"}].
+
 Do not mention how you reached the records in "answer", "short", "says", "why" or "knowledge" (no file names, paths,
 tool or command names): cite only in "cite" and "query". When the command says there are no more questions, reply
 with the word done.`;
@@ -99,6 +102,25 @@ export interface SessionPrompt {
   readonly pod?: string;
 }
 
+/** What differs by arm in a session's prompt: its access, how a fact is cited, the absence line and the example. */
+export const ARM_PARTS = {
+  pod: {
+    access: POD,
+    cite: ENTRY_CITE,
+    absence: POD_ABSENCE,
+    example: EXAMPLE(
+      `{"entry": "pod://…#…"}`,
+      `, "query": {"tool": "ask", "input": {…}, "call": 3}`,
+    ),
+  },
+  records: {
+    access: RECORDS,
+    cite: FILE_CITE,
+    absence: "",
+    example: EXAMPLE(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
+  },
+};
+
 const PRONOUNS: Record<string, [string, string]> = {
   her: ["she", "Her"],
   his: ["he", "His"],
@@ -115,6 +137,7 @@ function filled(template: string, values: Record<string, string>): string {
 /** A session's prompt: who, today, the arm's access, how to ask for each question and how to write each answer. */
 export function sessionPrompt(p: SessionPrompt): string {
   const [subject, possessive] = PRONOUNS[p.pronoun] ?? ["they", "Their"];
+  const parts = ARM_PARTS[p.arm];
   const values = {
     NAME: p.name,
     PRONOUN: p.pronoun,
@@ -122,15 +145,9 @@ export function sessionPrompt(p: SessionPrompt): string {
     PRONOUN_POSSESSIVE: possessive,
     TODAY: p.today,
     ASK: p.ask,
-    EXAMPLE:
-      p.arm === "pod"
-        ? EXAMPLE(
-            `{"entry": "pod://…#…"}`,
-            `, "query": {"tool": "ask", "input": {…}, "call": 3}`,
-          )
-        : EXAMPLE(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
-    CITE: p.arm === "pod" ? ENTRY_CITE : FILE_CITE,
-    ABSENCE: p.arm === "pod" ? POD_ABSENCE : "",
+    EXAMPLE: parts.example,
+    CITE: parts.cite,
+    ABSENCE: parts.absence,
     COUNT: String(p.files?.length ?? 0),
     FOLDER: p.folder ?? "",
     FILES: (p.files ?? []).map((file, at) => `${at + 1}. ${file}`).join("\n"),
@@ -140,7 +157,7 @@ export function sessionPrompt(p: SessionPrompt): string {
   return [
     tagLine(p.tag),
     filled(SESSION, values),
-    filled(p.arm === "pod" ? POD : RECORDS, values),
+    filled(parts.access, values),
   ].join("\n\n");
 }
 
@@ -197,13 +214,20 @@ export function judgePrompt(p: JudgePrompt): string {
   ].join("\n\n");
 }
 
-/** The version of each template a run's results name. */
-export const PROMPT_VERSIONS = {
-  pod: sha256(SESSION + POD + ENTRY_CITE + POD_ABSENCE + EXAMPLE("", "")).slice(
+/** An arm's prompt version: the hash of everything that reaches its prompt, so editing any of it reruns the arm. */
+export const versionOf = (
+  arm: Arm,
+  parts: (typeof ARM_PARTS)[Arm] = ARM_PARTS[arm],
+) =>
+  sha256(SESSION + JSON.stringify(parts) + JSON.stringify(PRONOUNS)).slice(
     0,
     16,
-  ),
-  records: sha256(SESSION + RECORDS + FILE_CITE + EXAMPLE("", "")).slice(0, 16),
+  );
+
+/** The version of each template a run's results name. */
+export const PROMPT_VERSIONS = {
+  pod: versionOf("pod"),
+  records: versionOf("records"),
   question: sha256(QUESTION).slice(0, 16),
   judge: sha256(JUDGE).slice(0, 16),
 };

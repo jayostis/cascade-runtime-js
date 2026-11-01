@@ -224,6 +224,7 @@ export interface Grade {
 export type Verdicts<V extends string> = Readonly<Record<V, number>> & {
   readonly split: number;
   readonly ungraded: number;
+  readonly unanswered: number;
   readonly of: number;
 };
 
@@ -256,7 +257,7 @@ export interface Instance {
   readonly judging: {
     readonly judges: readonly string[];
     readonly tokens: number;
-    readonly usd: number;
+    readonly usd: number | null;
   };
 }
 

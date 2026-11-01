@@ -296,8 +296,8 @@
       "links": [
         "the 2024 download lists metformin as active; the later downloads close it on 2024-04-15"
       ],
-      "found": "says metformin was stopped (2024-04-15), or leaves it out of the current list",
-      "partly": "leaves it out without saying it was stopped",
+      "found": "says metformin was stopped (2024-04-15)",
+      "partly": "leaves it out of the current list without saying it was stopped",
       "wrong": ["metformin is a current medicine"],
       "pod": "visible"
     },
@@ -419,14 +419,14 @@
       "found": "says no, it was ruled out",
       "partly": "says none is recorded, without the July 2025 work-up",
       "wrong": ["yes, in July 2025"],
-      "pod": "visible"
+      "pod": "deeper"
     },
     {
       "id": "TT5",
       "question": "blood-clot",
       "kind": "trap",
       "title": "\"Yes, in July 2025\" from the condition's name",
-      "lookingFor": "no claim that she had a pulmonary embolism",
+      "lookingFor": "no claim that she had a pulmonary embolism (the refuted embolism is in no pod view, so it is near impossible for the pod arm to fail this)",
       "evidence": [
         {
           "cite": {
@@ -446,7 +446,7 @@
           "means": "treatment for an embolism she never had"
         }
       ],
-      "pod": "visible"
+      "pod": "deeper"
     },
     {
       "id": "TA1",

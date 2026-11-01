@@ -92,7 +92,7 @@ function chip(verdict: string, text = verdict) {
 function armCell(arm: ArmSummary | undefined): string {
   if (arm === undefined) return `<td class="muted small">did not run</td>`;
   const { expected: e, traps: t, beyond: b } = arm;
-  return `<td>${chip("found", `${e.found} of ${e.of} found`)}${e.partly ? chip("partly", `${e.partly} partly`) : ""}${e.split ? chip("ungraded", `${e.split} split`) : ""}${e.ungraded ? chip("ungraded", `${e.ungraded} ungraded`) : ""}
+  return `<td>${chip("found", `${e.found} of ${e.of} found`)}${e.partly ? chip("partly", `${e.partly} partly`) : ""}${e.split ? chip("ungraded", `${e.split} split`) : ""}${e.ungraded ? chip("ungraded", `${e.ungraded} ungraded`) : ""}${e.unanswered + t.unanswered ? chip("ungraded", `${e.unanswered + t.unanswered} unanswered`) : ""}
 <br>${chip(t.raised ? "raised" : "avoided", `${t.avoided} of ${t.of} traps avoided`)}
 <br><span class="small muted">beyond the key: ${b.fair} fair, ${b.trueNotPlanted} true not planted, ${b.speculative} speculative, ${b.contradicted} contradicted${b.split ? `, ${b.split} split` : ""} · citations ${arm.citations.held} held, ${arm.citations.failed} failed</span>
 <br><span class="small muted">${arm.questions} question(s) · ${thousands(arm.tokens)} tokens · ${dollars(arm.usd)} · ${seconds(arm.seconds)}</span></td>`;
