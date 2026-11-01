@@ -1206,7 +1206,7 @@
       "links": ["the exam was done 2026-05-14 and the next is due 2027-05"],
       "found": "not raised as missing or due",
       "wrong": ["no diabetic eye exam on record", "one is due"],
-      "notWrong": ["asking what the eye exam showed (fine for the pod arm)"],
+      "notWrong": ["asking what the eye exam showed"],
       "pod": "visible"
     },
     {

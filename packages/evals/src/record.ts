@@ -307,8 +307,8 @@ async function askerOf(
 
 /**
  * Each citation and absence of one answer, resolved mechanically: a pod entry to its provenance, a file to its
- * passage, a pod absence to the call it names, which must be a call of its tool and input (else the first call of that
- * tool and input when it names no number), a grab-bag absence to the files it names (else every file offered, marked
+ * passage, a pod absence to the call it names, which must be a call of its tool and input (else the first answered call
+ * of that tool and input when it names no number), a grab-bag absence to the files it names (else every file offered, marked
  * as defaulted), each marked read whole or not.
  */
 export async function evidenceOf(o: {
@@ -338,8 +338,8 @@ export async function evidenceOf(o: {
       });
     for (const [absence, { query, sources }] of item.absences.entries()) {
       if (o.job.arm === "pod") {
-        const call =
-          query === undefined ? undefined : callsFor(calls, query)[0];
+        const named = query === undefined ? [] : callsFor(calls, query);
+        const call = named.find((it) => it.ok) ?? named[0];
         found.push({
           ...at,
           item: item.n,

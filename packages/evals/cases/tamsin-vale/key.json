@@ -426,7 +426,7 @@
       "question": "blood-clot",
       "kind": "trap",
       "title": "\"Yes, in July 2025\" from the condition's name",
-      "lookingFor": "no claim that she had a pulmonary embolism (the refuted embolism is in no pod view, so it is near impossible for the pod arm to fail this)",
+      "lookingFor": "no claim that she had a pulmonary embolism",
       "evidence": [
         {
           "cite": {
