@@ -150,7 +150,9 @@
             "given": ["Tamsin"]
           }
         ],
-        "birthDate": "1957-09-30"
+        "birthDate": "1957-09-30",
+        "gender": "female",
+        "deceasedDateTime": "2024-03-04T10:00:00Z"
       }
     },
     {

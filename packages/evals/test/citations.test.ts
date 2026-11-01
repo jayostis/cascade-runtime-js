@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
@@ -12,6 +13,12 @@ import {
   POD_NOT_CHECKABLE,
   podRowsSource,
 } from "../src/citations.js";
+import {
+  entryRows as entryRowsOf,
+  PINNED_QUESTIONS,
+  personRows as personRowsOf,
+} from "../src/checks.js";
+import { readConfig, resolveVocabulary } from "@cascade-runtime/runtime/node";
 
 const FOLDER = fileURLToPath(
   new URL("../../test/fixtures/citations/", import.meta.url),
@@ -536,6 +543,7 @@ const person = podRowsSource(
       subject: PERSON,
       subjectLabel: "The person this pod is about",
       dateOfBirth: "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 1957-09-30",
+      dateOfDeath: "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc 2024-03-04",
       administrativeGender:
         "urn:uuid:04cd6e3f-922b-8f2d-ad65-81a0a7842efc female",
     },
@@ -615,28 +623,159 @@ test("a FHIR resource's dosage and instruction text can be quoted", async () => 
     assert.equal((await checkCitation(claim, downloads)).ok, held, what);
 });
 
-test("every field the pod's entry question returns is a kind of field or on the not-checkable list", async () => {
-  const { fields } = JSON.parse(
-    await readFile(
-      fileURLToPath(
-        new URL(
-          "../../test/fixtures/pod-fields/tamsin-vale-entry-fields.json",
-          import.meta.url,
-        ),
-      ),
-      "utf8",
-    ),
-  ) as { fields: string[] };
-  const local = (iri: string) => iri.split(/[#/:]/).pop()!;
-  const unmapped = fields
-    .map(local)
-    .filter(
-      (name) => !(name in POD_FIELDS) && !POD_NOT_CHECKABLE.includes(name),
+/** The field names the vocabulary's views construct on an entry; the nodes the entry question leaves out are not fields. */
+async function viewFields(): Promise<string[]> {
+  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  const { folder } = await resolveVocabulary(root, await readConfig(root));
+  const dir = join(folder, "queries", "views");
+  const apart = new Set([
+    "valuesOfMember",
+    "memberCurrentValues",
+    "paddedDateTime",
+    "paddedDateTimeProperty",
+    "writtenDate",
+    "referenceRangeLow",
+    "referenceRangeHigh",
+    "decimalValue",
+    "writtenValue",
+    "ucumUnit",
+    "unitText",
+  ]);
+  const names = new Set<string>();
+  for (const file of (await readdir(dir)).filter((it) => it.endsWith(".rq"))) {
+    const text = await readFile(join(dir, file), "utf8");
+    const template = text.slice(
+      text.indexOf("CONSTRUCT {"),
+      text.search(/^WHERE/m),
     );
+    for (const [, name] of template.matchAll(
+      /(?:cascade|prov|obo):([a-z_A-Z]w*)/g,
+    ))
+      if (/^[a-z]|^RO_/.test(name!) && !apart.has(name!)) names.add(name!);
+  }
+  return [...names].sort();
+}
+
+test("every field the vocabulary's views construct is a kind of field or on the not-checkable list", async () => {
+  const fields = await viewFields();
+  assert.ok(fields.length > 40, "the views were read");
+  const unmapped = fields.filter(
+    (name) => !(name in POD_FIELDS) && !POD_NOT_CHECKABLE.includes(name),
+  );
   assert.deepEqual(unmapped, []);
   assert.deepEqual(
     POD_NOT_CHECKABLE.filter((name) => name in POD_FIELDS),
     [],
     "a field is checkable or not, never both",
   );
+  assert.deepEqual(
+    [...Object.keys(POD_FIELDS), ...POD_NOT_CHECKABLE].filter(
+      (name) => !fields.includes(name) && !DERIVED.includes(name),
+    ),
+    [],
+    "a field no view sends is no coverage",
+  );
+});
+
+/** Fields a derivation, not a view, puts on an entry. */
+const DERIVED = [
+  "dateFrom",
+  "medicationUseStartDateFrom",
+  "prescriptionWrittenDateFrom",
+  "type",
+];
+
+test("the pinned runtime is asked every question the checks read", async () => {
+  const asked: string[] = [];
+  const recorder = {
+    async ask(question: string) {
+      asked.push(question);
+      return [];
+    },
+  };
+  await entryRowsOf(recorder)("x");
+  await personRowsOf(recorder)();
+  assert.equal(asked.length, 2);
+  for (const question of asked)
+    assert.ok(PINNED_QUESTIONS.includes(question), question);
+});
+
+test("a quote holds as whole words, not as a fragment of a word, in both arms", async () => {
+  const cases: [string, Claim, boolean][] = [
+    [
+      "pod: a fragment from mid-word to mid-word",
+      { cite: { entry: REPORT }, quote: "m. Lungs are cl" },
+      false,
+    ],
+    [
+      "pod: words that start mid-word",
+      { cite: { entry: REPORT }, quote: "ungs are clear" },
+      false,
+    ],
+    [
+      "pod: whole words, any case and spacing",
+      { cite: { entry: REPORT }, quote: "lungs  ARE clear." },
+      true,
+    ],
+    [
+      "records: a fragment from mid-word",
+      { cite: order, quote: "ake 1 tablet by mouth" },
+      false,
+    ],
+    [
+      "records: whole words",
+      { cite: order, quote: "Take 1 tablet by mouth" },
+      true,
+    ],
+  ];
+  for (const [what, claim, held] of cases)
+    assert.equal(
+      (
+        await checkCitation(
+          claim,
+          claim.cite && "entry" in claim.cite ? person : downloads,
+        )
+      ).ok,
+      held,
+      what,
+    );
+});
+
+test("both arms read the person alike: a death is an end, a gender a value", async () => {
+  const pods = { entry: PERSON };
+  const patient = { file: "bundle.json", resource: "Patient/p-1" };
+  const cases: [string, Claim, Claim, boolean][] = [
+    [
+      "gender",
+      { cite: pods, value: "female" },
+      { cite: patient, value: "female" },
+      true,
+    ],
+    [
+      "another gender",
+      { cite: pods, value: "male" },
+      { cite: patient, value: "male" },
+      false,
+    ],
+    [
+      "the death as an end",
+      { cite: pods, date: "2024-03-04", dateKind: "end" },
+      { cite: patient, date: "2024-03-04", dateKind: "end" },
+      true,
+    ],
+    [
+      "the death date as a birth date",
+      { cite: pods, date: "2024-03-04" },
+      { cite: patient, date: "2024-03-04" },
+      false,
+    ],
+  ];
+  for (const [what, onPod, onRecords, held] of cases) {
+    assert.equal((await checkCitation(onPod, person)).ok, held, `pod: ${what}`);
+    assert.equal(
+      (await checkCitation(onRecords, downloads)).ok,
+      held,
+      `records: ${what}`,
+    );
+  }
 });
