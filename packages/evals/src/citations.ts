@@ -182,10 +182,10 @@ const MONTHS = [
 /** A date written as HL7 digits, ISO or words, as YYYY-MM-DD; undefined when it is none. */
 export function isoDate(written: string): string | undefined {
   const text = written.trim();
-  const digits = /^(\d{4})(\d{2})(\d{2})/.exec(text);
-  if (digits !== null) return `${digits[1]}-${digits[2]}-${digits[3]}`;
+  const digits = /^(\d{4})(\d{2})(\d{2})(?:\d{4}(?:\d{2})?)?(?!\d)/.exec(text);
+  if (digits !== null) return calendar(digits[1]!, digits[2]!, digits[3]!);
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
-  if (iso !== null) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (iso !== null) return calendar(iso[1]!, iso[2]!, iso[3]!);
   const words = /^([A-Za-z]+)\.? (\d{1,2}), (\d{4})$/.exec(text);
   if (words === null) return undefined;
   const at = MONTHS.findIndex((month) =>
@@ -193,7 +193,27 @@ export function isoDate(written: string): string | undefined {
   );
   return at < 0
     ? undefined
-    : `${words[3]}-${String(at + 1).padStart(2, "0")}-${words[2]!.padStart(2, "0")}`;
+    : calendar(
+        words[3]!,
+        String(at + 1).padStart(2, "0"),
+        words[2]!.padStart(2, "0"),
+      );
+}
+
+/** A real calendar day in a plausible range, as YYYY-MM-DD; a number that only looks like one (a code) is none. */
+function calendar(
+  year: string,
+  month: string,
+  day: string,
+): string | undefined {
+  const at = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return Number(year) >= 1900 &&
+    Number(year) <= 2100 &&
+    at.getUTCFullYear() === Number(year) &&
+    at.getUTCMonth() === Number(month) - 1 &&
+    at.getUTCDate() === Number(day)
+    ? `${year}-${month}-${day}`
+    : undefined;
 }
 
 const lower = (text: string) => text.trim().toLowerCase().replace(/\s+/g, " ");
@@ -353,41 +373,95 @@ export function mentions(text: string, match: Absence["match"]): boolean {
 /** The latest date a text writes, as YYYY-MM-DD; undefined when it writes none. */
 function latestDate(text: string): string | undefined {
   const days = [
-    ...text.matchAll(/\b(\d{4}-\d{2}-\d{2})|\b(\d{8})(?:\d{0,6})(?=[^\d]|$)/g),
+    ...text.matchAll(/\b\d{4}-\d{2}-\d{2}|\b\d{8}(?:\d{4}(?:\d{2})?)?(?!\d)/g),
   ]
     .map(([whole]) => isoDate(whole))
-    .filter((day): day is string => day !== undefined && day >= "1900-01-01");
+    .filter((day): day is string => day !== undefined);
   return days.sort().pop();
 }
 
 /** Whether something mentioning the absence counts against it: it is dated on or after its day, or has no date. */
-const countsAgainst = (text: string, match: Absence["match"]) => {
+const countsAgainst = (
+  text: string,
+  match: Absence["match"],
+  dated: string = text,
+) => {
   if (!mentions(text, match)) return false;
   if (match.after === undefined) return true;
-  const latest = latestDate(text);
+  const latest = latestDate(dated);
   return latest === undefined || latest >= match.after;
 };
+
+/** A status that withdraws a record: what it says was not so, so it is no presence. */
+const RETRACTED = /^(refuted|entered-in-error|nullified|negated)$/i;
+
+/** A record without what says when it was written or retrieved, not when the clinical thing happened: FHIR meta, a C-CDA author, informant or authenticator. */
+function clinicalText(fragment: string, json: boolean): string {
+  if (!json)
+    return fragment.replace(
+      /<((?:\w+:)?(?:author|informant|dataEnterer|authenticator|legalAuthenticator))\b[^>]*>[\s\S]*?<\/\1>/g,
+      "",
+    );
+  try {
+    return JSON.stringify(
+      JSON.parse(fragment, (key, value: unknown) =>
+        key === "meta" ? undefined : value,
+      ),
+    );
+  } catch {
+    return fragment;
+  }
+}
+
+/** The fields of a pod row that say where it came from, not what it records: a retrieval date is not the record's. */
+const PROVENANCE = new Set(["entry", "sources"]);
 
 /** Whether a tool's answer holds what an absence says is not there: any of its rows, or the whole answer. */
 function answerHolds(answer: string, match: Absence["match"]): boolean {
   try {
     const { rows } = JSON.parse(answer) as { rows?: unknown };
     if (Array.isArray(rows))
-      return rows.some((row) => countsAgainst(JSON.stringify(row), match));
+      return rows.some((row) => {
+        const own = Object.fromEntries(
+          Object.entries((row ?? {}) as Record<string, unknown>).filter(
+            ([name]) => !PROVENANCE.has(name),
+          ),
+        );
+        return (
+          !RETRACTED.test(String(own.status ?? "")) &&
+          countsAgainst(JSON.stringify(own), match)
+        );
+      });
   } catch {
     // not rows
   }
   return countsAgainst(answer, match);
 }
 
-/** Whether a document holds what an absence says is not there: any of its records, or, with no date bound, its text. */
+/** Whether a document holds what an absence says is not there: any of its records, or, with no date bound, its text; a withdrawn record holds nothing. */
 function documentHolds(text: string, match: Absence["match"]): boolean {
-  if (match.after === undefined) return mentions(text, match);
   const json = /^\s*[{[]/.test(text);
   const records = json ? jsonRecords(text) : ccdaRecords(text);
+  const withdrawn = records.filter((it) =>
+    it.fields.status.some((status) => RETRACTED.test(status)),
+  );
+  if (match.after === undefined) {
+    let kept = "";
+    let at = 0;
+    for (const { from, to } of withdrawn.sort((x, y) => x.from - y.from)) {
+      if (from < at) continue;
+      kept += text.slice(at, from);
+      at = to;
+    }
+    return mentions(kept + text.slice(at), match);
+  }
+  const live = records.filter((it) => !withdrawn.includes(it));
   return records.length === 0
     ? countsAgainst(text, match)
-    : records.some((it) => countsAgainst(text.slice(it.from, it.to), match));
+    : live.some((it) => {
+        const fragment = text.slice(it.from, it.to);
+        return countsAgainst(fragment, match, clinicalText(fragment, json));
+      });
 }
 
 const lookedFor = (absence: Absence) =>
@@ -655,6 +729,8 @@ export function ccdaFields(xml: string): Fields {
   ))
     f.value.push(text!.trim());
   for (const tag of tags("statusCode")) push(f.status, attribute(tag, "code"));
+  if (attribute(/^<[^>]*>/.exec(own)?.[0] ?? "", "negationInd") === "true")
+    f.status.push("negated");
   for (const tag of tags("code|translation"))
     push(f.code, attribute(tag, "code"));
   for (const tag of tags("\\w+")) push(f.name, attribute(tag, "displayName"));
@@ -697,7 +773,7 @@ const plain = (xml: string) =>
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
 const STATUS_WORDS =
-  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|cancelled)\b/gi;
+  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
 /**
  * A line of a document's narrative, a table row or a list item: its cells (a cell holding one number, with or without
@@ -759,7 +835,7 @@ export function narrativeFields(xml: string): Fields {
       f.end.push(match[0]);
   }
   for (const [word] of text.matchAll(STATUS_WORDS))
-    f.status.push(word.toLowerCase());
+    f.status.push(word.toLowerCase().replace(/ /g, "-"));
   const id = /\sID="([^"]+)"/.exec(xml)?.[1];
   if (id !== undefined) f.id.push(id);
   return f;
@@ -880,7 +956,7 @@ function jsonRecords(text: string): Span[] {
 /** Whether a download holds any record (a FHIR resource, a C-CDA entry or narrative line): a file that could hold what an absence says is not there. */
 export function holdsRecords(text: string): boolean {
   return (
-    (/^s*[{[]/.test(text) ? jsonRecords(text) : ccdaRecords(text)).length > 0
+    (/^\s*[{[]/.test(text) ? jsonRecords(text) : ccdaRecords(text)).length > 0
   );
 }
 
