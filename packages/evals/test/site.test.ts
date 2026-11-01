@@ -67,7 +67,7 @@ function element(html: string, open: RegExp): string {
 const arm = (q: string, which: string) =>
   element(
     element(run, new RegExp(`<section[^>]*id="q_${q}"`)),
-    new RegExp(`<div[^>]*class="arm"[^>]*data-arm="${which}"`),
+    new RegExp(`<div[^>]*class="arm[^"]*"[^>]*data-arm="${which}"`),
   );
 const tab = (q: string, which: string, name: string) =>
   element(arm(q, which), new RegExp(`<div[^>]*data-tab="${name}"`));

@@ -1,207 +1,235 @@
-// The report site, generated from results.json and the case files and never edited by hand: an index of the run (or
-// of every recorded run) with one row per instance, and a page per case with each question, both replies and the key.
-// Both arms get the same treatment on every page.
+// The report site, generated from results.json alone and never edited by hand: a front page (how each model did, then
+// every run instance), a page and two print views per instance, and one page on how the test works. Both arms get the
+// same treatment on every page.
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import type { Answer } from "./checks.js";
+import { dirname, join, resolve } from "node:path";
 import { HISTORY } from "./paths.js";
+import type { Arm } from "./prompts.js";
 import type { ArmSummary, Instance, Results } from "./results.js";
 import { runFolder } from "./results.js";
+import { valid } from "./schemas.js";
+import { hrefTo, page } from "./site-page.js";
+import { runPages, whereIs } from "./site-run.js";
+import {
+  ARMS,
+  ARM_NAME,
+  badge,
+  dollars,
+  esc,
+  mark,
+  median,
+  modelName,
+  personOf,
+  seconds,
+  thousands,
+} from "./site-text.js";
 
-const esc = (text: unknown) =>
-  String(text ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-
-const thousands = (n: number | undefined | null) =>
-  n === undefined || n === null ? "–" : Math.round(n).toLocaleString("en-US");
-const dollars = (n: number | undefined | null) =>
-  n === undefined || n === null
-    ? "–"
-    : `$${n < 1 ? n.toFixed(3) : n.toFixed(2)}`;
-const seconds = (n: number | undefined) =>
-  n === undefined ? "–" : n < 90 ? `${n} s` : `${Math.round(n / 60)} min`;
-
-const STYLE = `
-:root{--bg:#fbfbfa;--fg:#1f2328;--muted:#5d6670;--line:#d8dde3;--card:#fff;--soft:#f2f4f6;
---found:#1a7f37;--found-bg:#dcf3e2;--partly:#9a6700;--partly-bg:#fbefc8;--missed:#57606a;--missed-bg:#eaeef2;
---false:#c0262d;--false-bg:#fde2e1;--know:#6639ba;--know-bg:#efe7fb;--ok:#1a7f37;--bad:#c0262d;--link:#0b5cad}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111418;--fg:#e6e9ee;--muted:#9aa4af;--line:#2f363e;
---card:#181c21;--soft:#20262d;--found:#4fc26b;--found-bg:#123821;--partly:#e3b341;--partly-bg:#3a2e0b;--missed:#9aa4af;
---missed-bg:#262c33;--false:#ff7b72;--false-bg:#45191a;--know:#b69cf4;--know-bg:#2a1f45;--ok:#4fc26b;--bad:#ff7b72;--link:#6cb6ff}}
-:root[data-theme=dark]{--bg:#111418;--fg:#e6e9ee;--muted:#9aa4af;--line:#2f363e;--card:#181c21;--soft:#20262d;--found:#4fc26b;
---found-bg:#123821;--partly:#e3b341;--partly-bg:#3a2e0b;--missed:#9aa4af;--missed-bg:#262c33;--false:#ff7b72;--false-bg:#45191a;
---know:#b69cf4;--know-bg:#2a1f45;--ok:#4fc26b;--bad:#ff7b72;--link:#6cb6ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:24px 16px 64px}a{color:var(--link)}h1{font-size:1.6rem;margin:.2em 0 .1em}
-h2{font-size:1.2rem;margin:2em 0 .5em;padding-bottom:.25em;border-bottom:1px solid var(--line)}h3{font-size:1.02rem;margin:1.4em 0 .4em}
-.muted{color:var(--muted)}.small{font-size:.86rem}code,.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.84em}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:12px 0}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}.tile b{display:block;font-size:1.25rem}
-.tile span{color:var(--muted);font-size:.82rem}
-.table{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
-table{border-collapse:collapse;width:100%;min-width:560px}th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{font-size:.8rem;color:var(--muted);font-weight:600;background:var(--soft)}tr:last-child td{border-bottom:0}
-tr.link{cursor:pointer}tr.link:hover td{background:var(--soft)}
-.chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:600;white-space:nowrap;margin:1px 2px 1px 0}
-.found{color:var(--found);background:var(--found-bg)}.partly{color:var(--partly);background:var(--partly-bg)}
-.missed{color:var(--missed);background:var(--missed-bg)}.false,.raised{color:var(--false);background:var(--false-bg)}
-.avoided{color:var(--found);background:var(--found-bg)}.ungraded{color:var(--muted);background:var(--soft)}
-.ok{color:var(--ok)}.bad{color:var(--bad)}
-.stack{display:grid;gap:12px}.arms{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
-.arm{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
-.arm h4{margin:0 0 6px;font-size:.95rem}
-.chain{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:8px 0}
-.chain>.col{flex:1 1 200px;display:flex;flex-direction:column;gap:6px;min-width:180px}
-.card{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--card);font-size:.88rem}
-.card.knowledge{background:var(--know-bg);border-color:var(--know);color:var(--fg)}.card.knowledge .lab{color:var(--know);font-weight:600}
-.card.question{border-width:2px}.card.expected{border-style:dashed;opacity:.65;background:transparent}
-.card.absence{background:var(--soft)}.lab{font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
-.src{display:inline-block;font-size:.76rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-top:3px}
-details{margin:6px 0}summary{cursor:pointer;color:var(--muted);font-size:.86rem}pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:8px;border-radius:6px;font-size:.78rem;max-height:240px;overflow:auto}
-svg text{fill:var(--fg);font-size:15px}svg .muted{fill:var(--muted)}
-.strip{display:flex;gap:2px;margin:6px 0;width:100%}.doc{height:22px;min-width:3px;border-radius:3px;background:var(--missed-bg);border:1px solid var(--line);position:relative}
-.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:6px 0}
-.node{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--card)}.node ul{margin:4px 0 0;padding-left:18px}
-.node.cited{border:2px solid var(--fg)}.node.returned{border-style:dashed}.node.never{opacity:.55}
-.doc.read{background:var(--found-bg);border-color:var(--found)}.doc .pin{position:absolute;top:-4px;width:3px;height:30px;background:var(--know)}
-nav.top{display:flex;gap:14px;font-size:.86rem;margin-bottom:8px}.legend{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
-`;
-
-function page(title: string, body: string, home: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title><style>${STYLE}</style></head><body><main>
-<nav class="top"><a href="${home}">Eval runs</a></nav>${body}
-<p class="muted small">Generated from results.json and the case files by <code>npm run evals:report</code>; never edited by hand.</p>
-</main><script>document.querySelectorAll("tr[data-href]").forEach(r=>r.addEventListener("click",()=>location.href=r.dataset.href))</script></body></html>`;
+interface Entry {
+  readonly name: string;
+  readonly results: Results;
+  readonly instance: Instance;
+  readonly where: ReturnType<typeof whereIs>;
 }
 
-const ARMS = ["pod", "records"] as const;
-const armName = (arm: string) =>
-  arm === "pod" ? "Cascade pod (cascade-mcp)" : "Grab bag (records pasted)";
-const model = (id: string) => id.replace(/^claude-/, "");
-
-function chip(verdict: string, text = verdict) {
-  return `<span class="chip ${esc(verdict)}">${esc(text)}</span>`;
+/** What an arm got right: the key's expected items said and its traps avoided, as counts. */
+function tally(arms: readonly (ArmSummary | undefined)[]) {
+  const of = (pick: (a: ArmSummary) => number) =>
+    arms.reduce((sum, a) => sum + (a === undefined ? 0 : pick(a)), 0);
+  return {
+    right: of((a) => a.expected.found + a.traps.avoided),
+    partly: of((a) => a.expected.partly),
+    of: of((a) => a.expected.of + a.traps.of),
+    split: of((a) => a.expected.split + a.traps.split),
+    ungraded: of((a) => a.expected.ungraded + a.traps.ungraded),
+    unanswered: of((a) => a.expected.unanswered + a.traps.unanswered),
+    contradicted: of((a) => a.traps.raised + a.beyond.contradicted),
+    beyond: of(
+      (a) =>
+        a.beyond.fair +
+        a.beyond.trueNotPlanted +
+        a.beyond.speculative +
+        a.beyond.contradicted +
+        a.beyond.split,
+    ),
+  };
 }
 
-/** An arm's counts, as counts: the key's expected items, its traps, what it said beyond the key, its citations, its cost. */
-function armCell(arm: ArmSummary | undefined): string {
-  if (arm === undefined) return `<td class="muted small">did not run</td>`;
-  const { expected: e, traps: t, beyond: b } = arm;
-  return `<td>${chip("found", `${e.found} of ${e.of} found`)}${e.partly ? chip("partly", `${e.partly} partly`) : ""}${e.split ? chip("ungraded", `${e.split} split`) : ""}${e.ungraded ? chip("ungraded", `${e.ungraded} ungraded`) : ""}${e.unanswered + t.unanswered ? chip("ungraded", `${e.unanswered + t.unanswered} unanswered`) : ""}
-<br>${chip(t.raised ? "raised" : "avoided", `${t.avoided} of ${t.of} traps avoided`)}
-<br><span class="small muted">beyond the key: ${b.fair} fair, ${b.trueNotPlanted} true not planted, ${b.speculative} speculative, ${b.contradicted} contradicted${b.split ? `, ${b.split} split` : ""} · citations ${arm.citations.held} held, ${arm.citations.failed} failed</span>
-<br><span class="small muted">${arm.questions} question(s) · ${thousands(arm.tokens)} tokens · ${dollars(arm.usd)} · ${seconds(arm.seconds)}</span></td>`;
-}
+const dots = (t: ReturnType<typeof tally>) => {
+  if (t.of === 0 || t.of > 30) return "";
+  const cells = [
+    ...Array<string>(t.right).fill("d-yes"),
+    ...Array<string>(t.partly).fill("d-part"),
+    ...Array<string>(Math.max(0, t.of - t.right - t.partly)).fill("d-no"),
+  ];
+  return `<span class="dots">${cells.map((c) => `<span class="dot ${c}"></span>`).join("")}${t.contradicted === 0 ? "" : `<span class="dot d-contra" title="said something the records contradict">!</span>`}</span>`;
+};
 
-function instanceRows(r: Results, prefix: string): string {
-  return r.instances
-    .map(
-      (it: Instance) =>
-        `<tr class="link" data-href="${prefix}cases/${esc(it.case)}.html"><td><a href="${prefix}cases/${esc(it.case)}.html">${esc(it.case)}</a><br><span class="small muted">${esc(model(it.model))} r${it.repeat}</span></td>${ARMS.map((arm) => armCell(it.arms[arm])).join("")}<td class="small">${dollars(it.judging.usd)}<br><span class="muted">${it.judging.judges.length} judge(s), charged to neither arm</span></td></tr>`,
-    )
-    .join("");
-}
+const extras = (t: ReturnType<typeof tally>) => {
+  const parts = [
+    t.partly > 0 && `${t.partly} partly`,
+    t.split > 0 && `${t.split} judges split`,
+    t.ungraded > 0 && `${t.ungraded} not graded`,
+    t.unanswered > 0 && `${t.unanswered} unanswered`,
+  ].filter((it) => it !== false);
+  return `${parts.length === 0 ? "" : `<div class="tiny muted">${parts.join(" · ")}</div>`}${t.contradicted === 0 ? "" : `<div class="tiny bad">${t.contradicted} said something the records contradict</div>`}`;
+};
 
-const instanceTable = (r: Results, prefix = "") =>
-  r.instances.length === 0
-    ? `<p class="muted">No session answered.</p>`
-    : `<div class="table"><table><tr><th>Instance</th>${ARMS.map((arm) => `<th>${armName(arm)}</th>`).join("")}<th>Judging</th></tr>${instanceRows(r, prefix)}</table></div>`;
+const perAnswer = (a: ArmSummary | undefined) =>
+  a === undefined || a.usd === null || a.questions === 0
+    ? undefined
+    : a.usd / a.questions;
 
-function runIndex(r: Results, home: string): string {
-  const build = r.cases
-    .map(
-      (it) =>
-        `<li>${esc(it.id)}: ${it.build === null || it.build === undefined ? "not timed" : `${it.build.seconds} s, ${it.build.modelCalls} model calls`}</li>`,
-    )
-    .join("");
-  return page(
-    `Eval run ${r.run.id}`,
-    `<h1>Eval run ${esc(r.run.id)}</h1><p class="muted">${esc(r.run.tier)} · ${r.cases.length} case(s) · spent ${thousands(r.budget.spent.tokens)} tokens, ${dollars(r.budget.spent.usd)} (${esc(r.budget.spent.basis)})</p>
-<h2>Instances</h2>${instanceTable(r)}
-<h2>The pods' build</h2><p class="small muted">Once per person, outside every answer's cost.</p><ul class="small">${build}</ul>`,
-    home,
-  );
-}
-
-function replyOf(answer: unknown): string {
-  const it = answer as Partial<Answer> | undefined;
-  if (it === undefined) return `<p class="muted">Not answered.</p>`;
-  if (typeof it.answer !== "string" || !Array.isArray(it.items))
-    return `<p class="bad">Not a valid answer.</p>`;
-  return `<p>${esc(it.answer)}</p><ol class="small">${it.items
-    .map(
-      (item) =>
-        `<li>${esc(item.says)} <span class="muted">(${esc(item.confidence)} confidence; ${item.facts.length} fact(s), ${item.absences.length} absence(s)${item.knowledge === undefined ? "" : ", the model's own knowledge"})</span></li>`,
-    )
-    .join("")}</ol>`;
-}
-
-function casePage(r: Results, caseId: string, home: string): string {
-  const found = r.cases.find((it) => it.id === caseId)!;
-  const jobs = r.jobs.filter(
-    (it) => it.role === "subject" && it.case === caseId,
-  );
-  const judgeName = (id: string) =>
-    `judge ${model(r.jobs.find((it) => it.id === id)?.model ?? id)}`;
-  const sections = found.sessions
-    .flatMap((session) => session.questions)
-    .map((question) => {
-      const answering = jobs.filter((it) =>
-        (it.questions ?? []).includes(question.id),
-      );
-      const columns = ARMS.map((arm) => {
-        const own = answering.filter((it) => it.arm === arm);
-        return `<div class="arm"><h4>${armName(arm)}</h4>${own
-          .map((job) => {
-            const grades = r.grades
-              .filter(
-                (it) => it.subject === job.id && it.question === question.id,
-              )
-              .map(
-                (it) =>
-                  `<div class="small">${esc(judgeName(it.judge))}: ${it.items.map((one) => chip(one.verdict, `${one.id} ${one.verdict}`)).join("")}${it.beyond.map((one) => chip("ungraded", `item ${one.item} ${one.verdict}`)).join("")}</div>`,
-              )
-              .join("");
-            const cost = job.split?.questions[question.id];
-            return `<p class="small muted">${esc(model(job.model))} r${job.repeat ?? 1} · ${cost === undefined ? "" : `${thousands(cost.tokens.total)} tokens · ${dollars(cost.usd)} · ${seconds(cost.seconds)}`}</p>${replyOf(r.answers[job.id]?.[question.id])}${grades}`;
-          })
-          .join("")}</div>`;
+function headline(entries: readonly Entry[]): string {
+  const models = [...new Set(entries.map((it) => it.instance.model))].sort();
+  return `<div class="hl"><table class="headline"><thead><tr><th>Model</th><th>Runs</th><th>${ARM_NAME.pod}: right</th><th>${ARM_NAME.records}: right</th><th>Typical cost per answer<br><span class="tiny">${ARM_NAME.pod} · ${ARM_NAME.records}</span></th></tr></thead><tbody>${models
+    .map((model) => {
+      const own = entries.filter((it) => it.instance.model === model);
+      const cells = ARMS.map((arm) => {
+        const t = tally(own.map((it) => it.instance.arms[arm]));
+        return `<td data-arm="${arm}"><b>${t.right} of ${t.of}</b> ${dots(t)}${extras(t)}</td>`;
       }).join("");
-      const key = found.key
-        .filter((it) => it.question === question.id)
-        .map(
-          (it) =>
-            `<li><b>${esc(it.id)}</b> (${esc(it.kind)}): ${esc(it.lookingFor)}</li>`,
-        )
-        .join("");
-      return `<h2>${esc(question.asks)}</h2><div class="arms">${columns}</div><details><summary>The key, a reference</summary><ul class="small">${key}</ul></details>`;
+      const typical = ARMS.map((arm) =>
+        dollars(
+          median(own.flatMap((it) => perAnswer(it.instance.arms[arm]) ?? [])),
+        ),
+      );
+      return `<tr data-model="${esc(model)}"><td><b>${esc(modelName(model))}</b><div class="tiny muted">${esc(model)}</div></td><td>${own.length} run${own.length === 1 ? "" : "s"}</td>${cells}<td class="money" data-cell="cost"><b>${typical[0]}</b> · <b>${typical[1]}</b></td></tr>`;
     })
-    .join("");
-  return page(
-    caseId,
-    `<h1>${esc(caseId)}</h1><p class="muted">Her questions, both arms' replies, and the key. <a href="${esc(found.keyUrl)}">The key's rationale</a>.</p>${sections}`,
-    home,
-  );
+    .join("")}</tbody></table></div>`;
 }
 
-async function writeRun(
-  results: Results,
-  out: string,
-  home: string,
-): Promise<string> {
-  await mkdir(join(out, "cases"), { recursive: true });
-  await writeFile(join(out, "index.html"), runIndex(results, home));
-  for (const { id } of results.cases)
-    await writeFile(
-      join(out, "cases", `${id}.html`),
-      casePage(results, id, `../${home}`),
-    );
+function runRow(from: string, e: Entry): string {
+  const { instance: i } = e;
+  const arm = (which: Arm) => {
+    const a = i.arms[which];
+    if (a === undefined)
+      return `<div class="res" data-arm="${which}">${badge(which)} <span class="small muted">did not run</span></div>`;
+    const t = tally([a]);
+    return `<div class="res" data-arm="${which}"><div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
+  };
+  return `<a class="runrow" data-instance="${esc(i.id)}" href="${hrefTo(from, e.where.run)}"><div class="who"><b>${esc(modelName(i.model))} · run ${i.repeat}</b><div class="tiny muted">${esc(personOf(i.case))} · ${esc(e.name)} · ${esc(e.results.run.finished.slice(0, 10))}</div></div>${ARMS.map(arm).join("")}<div class="overhead">judging ${dollars(i.judging.usd)} (the test's overhead, charged to neither arm)</div></a>`;
+}
+
+function frontPage(entries: readonly Entry[]): string {
+  const from = "index.html";
+  const latest = entries[0];
+  const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a></p>
+<h1>Ask your health records a question. Which answer would you rather get?</h1>
+<p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
+<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a></div>
+${
+  entries.length === 0
+    ? `<p class="muted">No run is recorded yet: <code>npm run evals:record &lt;run&gt;</code> records one.</p>`
+    : `<h2>Per model</h2>
+<p class="small muted">&ldquo;Right&rdquo; counts the answer key's expected items said and its traps avoided, over every question asked, as counts. An item an answer only half said, a split between judges, a question not answered or not graded is not counted right and is shown beside the count.</p>
+${headline(entries)}
+<h2>Every run</h2>
+<div class="runs">${entries.map((e) => runRow(from, e)).join("")}</div>
+<div class="legend"><span>Marks used inside a run:</span>${mark("yes", "said what we expected")}${mark("part", "part of it")}${mark("no", "missed it")}${mark("beyond", "beyond the key: not wrong, possibly good")}</div>`
+}`;
+  return page({
+    path: from,
+    title: "Cascade evals — ask your records a question",
+    crumbs: [["Cascade evals"]],
+    body,
+  });
+}
+
+/** Each case's pod build, once, from the first run that holds it. */
+function builds(runs: readonly { results: Results }[]): string {
+  const seen = new Map<string, string>();
+  for (const { results } of runs)
+    for (const c of results.cases) {
+      if (seen.has(c.id)) continue;
+      const questions = c.sessions.reduce(
+        (sum, s) => sum + s.questions.length,
+        0,
+      );
+      const b = c.build;
+      seen.set(
+        c.id,
+        b === null || b === undefined
+          ? "not timed"
+          : `${b.seconds} s for ${c.imports.length} import${c.imports.length === 1 ? "" : "s"}, ${b.modelCalls === 0 ? "no model calls" : `${b.modelCalls} model calls, ${thousands(b.tokens)} tokens, ${dollars(b.usd)}`}. Amortised over ${questions} question${questions === 1 ? "" : "s"}: ${(b.seconds / questions).toFixed(2)} s and ${b.usd === 0 ? "$0.00" : dollars(b.usd / questions)} each`,
+      );
+    }
+  return `<ul>${[...seen].map(([id, what]) => `<li><b>${esc(personOf(id))}</b>: ${what}.</li>`).join("")}</ul>`;
+}
+
+function howPage(runs: readonly { results: Results }[]): string {
+  const body = `<h1>How the test works</h1>
+<p class="lead">A synthetic person with real-shaped downloads and an answer key written before any model ran. The same model answers her questions twice: once with her records joined into a Cascade pod and read through tools, once with the same downloads read whole, as if pasted into the chat. Judges score both blind. A program checks every cited fact.</p>
+<h2>The two arms</h2>
+<dl class="story"><dt>${ARM_NAME.pod}</dt><dd>Her downloads are imported into a pod once. The model reaches it only through cascade-mcp's tools, each call logged with its rows and time. It cites a fact as the pod entry a row named: <code>{"entry": "pod://…#…"}</code>.</dd>
+<dt>${ARM_NAME.records}</dt><dd>The model is told to read every download file in full, in order, once per chat session. It cites a fact as <code>{"file", "resource"}</code> for FHIR JSON or <code>{"file", "line"}</code> for anything else, and an absence names the files it looked through.</dd></dl>
+<h2>No free work</h2>
+<p>Everything the report shows as an answer's reasoning or evidence was produced by the answering agent itself: which facts support which point, which absence matters and what was searched for it, what is the model's own knowledge, and any link between records. The harness may only do mechanical work, and does exactly three things:</p>
+<ol><li><b>Resolve a citation</b> to the record it names and compare the fields the agent relied on. That is the tick or cross on a fact.</li>
+<li><b>Follow the pod's provenance</b> from a cited entry to the member records the pod merged into it, their revisions, and the source documents with their authors and arrival dates; for the grab bag, follow a file and resource to the passage and the folder's download date. That is the right-hand side of every evidence graph. It is a lookup: the joining was done when the pod was built, and the grab bag's graph has no link between files unless the agent wrote one.</li>
+<li><b>Render.</b></li></ol>
+<p>Nothing infers a link the agent did not state, and nothing explains an answer after the fact. Each arm's graph is exactly as rich as its agent's own output. Were a secondary agent ever used to explain or link, its cost would be added to that arm and shown.</p>
+<h2>Costs</h2>
+<p>Each answer's cost is shown under it: time, tokens with the cache split, dollars at list prices, and the session's own start beside it (the grab bag reads its files once per session). <b>Judging</b> is the harness's own judgment and is paid by the harness: shown as the test's overhead, separately, never charged to either arm.</p>
+<h3 id="build">The pod is built once per person</h3>
+<p>The pod's build (import, matching, derivations) sits outside the answering agent's cost: it happens once per person and is reused for every question, in every session, while the grab bag pays to read its files in every chat session. As recorded:</p>
+${builds(runs)}
+<p class="small muted">Wall time is the build as the harness timed it; any model calls would show their tokens and dollars the same way, per person and per question.</p>
+<h2>Scale and small numbers</h2>
+<p>A full run is cases × questions × 2 arms × models × repeats, a person's questions batched into chat sessions, in tiers (smoke, full). Results are counts and paired comparisons on the same question, never percentages of a small number.</p>
+<h2>The key</h2>
+<p>Each person's key says what a careful reader would say and would not, with the records that support each line, written before any run. It is a reference, not the truth: what an answer raises beyond it is shown as possibly good, with the judges' view, never as wrong.</p>
+<p class="small muted">Case files and keys: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals/cases">packages/evals/cases</a>. Harness: <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals#readme">packages/evals</a>.</p>`;
+  return page({
+    path: "how_it_works.html",
+    title: "How the test works — Cascade evals",
+    crumbs: [["Cascade evals", "index.html"], ["How the test works"]],
+    body,
+  });
+}
+
+/**
+ * Every page of the site, by path from its root. One run is laid out at the root; several are each under
+ * `runs/<name>/`, newest first as given.
+ */
+export function renderSite(
+  runs: readonly { name: string; results: Results }[],
+  history = runs.length !== 1,
+): Map<string, string> {
+  const site = new Map<string, string>();
+  const entries: Entry[] = [];
+  for (const { name, results } of runs)
+    for (const instance of results.instances) {
+      const where = whereIs(
+        history ? `runs/${name}/instances/` : "instances/",
+        instance.id,
+      );
+      entries.push({ name, results, instance, where });
+      for (const [path, html] of runPages(results, instance, where, [
+        ["Cascade evals", "index.html"],
+      ]))
+        site.set(path, html);
+    }
+  site.set("index.html", frontPage(entries));
+  site.set("how_it_works.html", howPage(runs));
+  return site;
+}
+
+async function write(site: Map<string, string>, out: string): Promise<string> {
+  for (const [path, html] of site) {
+    const file = join(out, ...path.split("/"));
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, html);
+  }
   return join(out, "index.html");
+}
+
+async function load(path: string): Promise<Results> {
+  return valid<Results>(
+    "results",
+    JSON.parse(await readFile(path, "utf8")),
+    path,
+  );
 }
 
 /** Builds the site of one run's folder, or of every run in history/. Returns the index. */
@@ -211,44 +239,20 @@ export async function buildSite(
 ): Promise<string> {
   if (from.history !== true) {
     const folder = runFolder(from.run ?? "");
-    const results = JSON.parse(
-      await readFile(join(folder, "results.json"), "utf8"),
-    ) as Results;
-    return writeRun(
-      results,
+    const results = await load(join(folder, "results.json"));
+    return write(
+      renderSite([{ name: results.run.id, results }], false),
       resolve(out ?? join(folder, "site")),
-      "index.html",
     );
   }
-  const target = resolve(out ?? join(HISTORY, "..", "site"));
   const runs: { name: string; results: Results }[] = [];
   if (existsSync(HISTORY))
-    for (const name of (await readdir(HISTORY)).sort()) {
+    for (const name of (await readdir(HISTORY)).sort().reverse()) {
       const path = join(HISTORY, name, "results.json");
-      if (existsSync(path))
-        runs.push({
-          name,
-          results: JSON.parse(await readFile(path, "utf8")) as Results,
-        });
+      if (existsSync(path)) runs.push({ name, results: await load(path) });
     }
-  for (const { name, results } of runs)
-    await writeRun(results, join(target, "runs", name), "../../index.html");
-  await mkdir(target, { recursive: true });
-  const listed = runs
-    .slice()
-    .reverse()
-    .map(
-      ({ name, results: r }) =>
-        `<h2><a href="runs/${esc(name)}/index.html">${esc(r.run.id)}</a></h2>${instanceTable(r, `runs/${esc(name)}/`)}`,
-    )
-    .join("");
-  await writeFile(
-    join(target, "index.html"),
-    page(
-      "Cascade eval runs",
-      `<h1>Eval runs</h1><p class="muted">Every recorded run of the eval harness: a person's own questions answered through her Cascade pod and from the grab bag of her downloads, on synthetic people.</p>${runs.length === 0 ? `<p class="muted">No run is recorded yet: <code>npm run evals:record &lt;run&gt;</code> records one.</p>` : listed}`,
-      "index.html",
-    ),
+  return write(
+    renderSite(runs, true),
+    resolve(out ?? join(HISTORY, "..", "site")),
   );
-  return join(target, "index.html");
 }
