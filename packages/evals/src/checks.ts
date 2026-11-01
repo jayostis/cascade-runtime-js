@@ -85,6 +85,14 @@ export function entryRows(pod: Asker) {
   };
 }
 
+/** The row `pod/The person this pod is about` gives, which names no entry: the person is cited by its subject IRI. */
+export function personRows(pod: Asker) {
+  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+  return () => (all ??= pod.ask(PERSON_QUESTION));
+}
+
+const PERSON_QUESTION = "pod/The person this pod is about";
+
 /** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no one's reading. */
 const HARNESS_TOOLS = new Set([
   "ToolSearch",
@@ -350,7 +358,7 @@ export async function checkAnswer(options: {
   const entries =
     options.pod === undefined
       ? undefined
-      : podRowsSource(entryRows(options.pod));
+      : podRowsSource(entryRows(options.pod), personRows(options.pod));
   const citations: SubjectChecks["citations"][number][] = [];
   const absences: SubjectChecks["absences"][number][] = [];
   const ran: (Ran & { call?: number })[] = options.toolCalls
