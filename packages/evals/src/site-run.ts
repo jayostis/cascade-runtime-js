@@ -1,4 +1,4 @@
-// One run instance of one model, as pages: the run page (her questions, both answers, the key as a reference, the
+// One run instance of one model, as pages: the run page (the person's questions, both answers, the key as a reference, the
 // run's own folds) and, for each arm, a print view of every doctor card.
 import type { Arm } from "./prompts.js";
 import type {
@@ -30,8 +30,10 @@ import {
   esc,
   mark,
   modelName,
-  personOf,
+  personIn,
+  personPath,
   seconds,
+  subjectOf,
   thousands,
   type Tone,
 } from "./site-text.js";
@@ -174,7 +176,7 @@ function promptHtml(s: Sitting, q: string): string {
     const asked = s.results.asked.find(
       (it) => it.job === t.job.id && it.question === q,
     );
-    return `<div><h4 class="${arm}">${ARM_NAME[arm]}</h4>${asked === undefined ? `<p class="muted small">Not handed out.</p>` : `<pre>${esc(asked.message)}</pre><p class="small muted">Handed out at ${esc(asked.at.slice(11, 19))} UTC.</p>`}<p class="small muted">The session's opening prompt is <span class="mono">${esc(t.job.prompt ?? "")}</span> in the run folder; results.json holds its path, not its text.</p></div>`;
+    return `<div><h4 class="${arm}">${ARM_NAME[arm]}</h4>${asked === undefined ? `<p class="muted small">Not handed out.</p>` : `<pre>${esc(asked.message)}</pre><p class="small muted">Handed out at ${esc(asked.at.slice(11, 19))} UTC.</p>`}${t.job.promptText === undefined ? `<p class="small muted">The session's opening prompt is not recorded.</p>` : `<details class="opening"><summary class="small">The session's opening prompt</summary><pre>${esc(t.job.promptText)}</pre></details>`}</div>`;
   }).join("");
   return `<details class="fold prompt"><summary>The exact prompt <span class="sum">· what each agent was handed for this question</span></summary><div class="body"><div class="two">${parts}</div></div></details>`;
 }
@@ -190,7 +192,7 @@ function armHtml(
   arm: Arm,
   q: string,
   asks: string,
-  finished: string,
+  today: string,
 ): string {
   const t = turnOf(s, arm, q);
   const head = `<div class="head"><b>${ARM_NAME[arm]}</b><span class="how">${ARM_HOW[arm]}</span></div>`;
@@ -200,7 +202,7 @@ function armHtml(
   const panels = {
     answer: replyHtml(t),
     reasoning: reasoningHtml(t),
-    doctor: doctorCardHtml(t, asks, day(finished)),
+    doctor: doctorCardHtml(t, asks, day(today)),
   };
   return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="tabset">${TABS.map(
     ([name, label], at) =>
@@ -301,7 +303,7 @@ export function runPages(
 ): Map<string, string> {
   const s = sittingOf(r, instance);
   const found = r.cases.find((it) => it.id === instance.case)!;
-  const person = personOf(instance.case);
+  const { name: person, pronoun } = personIn(r, instance.case);
   const questions = questionsOf(s, found);
   const title = `${modelName(instance.model)}, run ${instance.repeat}`;
   const head = `<div class="runhead">${ARMS.map((arm) => {
@@ -315,13 +317,13 @@ export function runPages(
       (q, at) =>
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
 <div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
-<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, r.run.finished)).join("")}</div>
+<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
 ${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )
     .join("\n");
-  const body = `<p class="small muted"><a href="${hrefTo(where.run, "index.html")}">All runs</a> · run ${esc(r.run.id)} · ${esc(day(r.run.finished))} · ${esc(person)}, a synthetic person · <a href="${hrefTo(where.run, "how_it_works.html")}">how the test works</a></p>
+  const body = `<p class="small muted"><a href="${hrefTo(where.run, "index.html")}">All runs</a> · run ${esc(r.run.id)} · ${esc(day(r.run.finished))} · <a href="${hrefTo(where.run, personPath(instance.case))}">${esc(person)}</a>, a synthetic person · <a href="${hrefTo(where.run, "how_it_works.html")}">how the test works</a></p>
 <h1>${esc(title)}: With Cascade and the grab bag, side by side</h1>
-<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: her words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it, and the card she would show her doctor. The exact prompt each agent was handed is one click away under each question.</p>
+<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it, and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor. The exact prompt each agent was handed is one click away under each question.</p>
 ${head}
 <p class="printlinks noprint">Show my doctor, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
 ${sections}
@@ -343,7 +345,7 @@ ${foldsHtml(s, where.run)}`;
         const t = turnOf(s, arm, q.id);
         return t?.answer === undefined
           ? ""
-          : doctorCardHtml(t, q.asks, day(r.run.finished));
+          : doctorCardHtml(t, q.asks, day(found.today));
       })
       .join("\n");
     const other = ARMS.find((it) => it !== arm)!;
@@ -356,7 +358,7 @@ ${foldsHtml(s, where.run)}`;
         crumbs: [...crumbs, [title, where.run], ["Show my doctor"]],
         print: true,
         body: `<p class="noprint small"><a href="${hrefTo(path, where.run)}">Back to the run</a> · showing the ${ARM_NAME[arm]}'s cards · <a href="${hrefTo(path, where.print[other])}">show the ${ARM_NAME[other]}'s instead</a> · <a href="#" onclick="window.print();return false">Print this page</a></p>
-<h1>What I'd show my doctor</h1><p class="muted">${esc(person)} · prepared ${arm === "pod" ? "with Cascade" : "from the grab bag"} · ${esc(instance.model)} · ${esc(day(r.run.finished))}</p>
+<h1>What I'd show my doctor</h1><p class="muted">${esc(person)} · prepared ${arm === "pod" ? "with Cascade" : "from the grab bag"} · ${esc(instance.model)} · ${esc(day(found.today))}</p>
 ${cards}`,
       }),
     );

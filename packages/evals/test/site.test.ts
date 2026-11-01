@@ -459,10 +459,7 @@ test("the recorded run is what the harness writes: valid, every subject job with
       ),
       `${job.id} was asked it`,
     );
-    assert.ok(
-      job.split?.questions["last-a1c"],
-      `${job.id} was charged for it`,
-    );
+    assert.ok(job.split?.questions["last-a1c"], `${job.id} was charged for it`);
     assert.equal(recorded.answers[job.id]?.["last-a1c"], undefined);
   }
   const [only] = recorded.cases;
@@ -508,10 +505,7 @@ test("the person's recorded name and pronoun are used everywhere: no slug turned
     const how = text(site.get("how_it_works.html")!);
     assert.match(how, /Sam Rivera/);
     assert.equal(/\b(her|she)\b/i.test(how), false);
-    assert.match(
-      text(site.get("people/tamsin-vale.html")!),
-      /Sam Rivera/,
-    );
+    assert.match(text(site.get("people/tamsin-vale.html")!), /Sam Rivera/);
   }
 });
 
@@ -521,5 +515,8 @@ test("a doctor card is dated the case's day, not the day the run finished", () =
     text(tab("checkup", "pod", "doctor")),
     /Prepared with Cascade . opus-5-5 . 2026-10-30/,
   );
-  assert.match(text(page(`instances/${ID}.print-pod.html`)), /opus-5-5 2026-10-30/);
+  assert.match(
+    text(page(`instances/${ID}.print-pod.html`)),
+    /claude-opus-5-5 . 2026-10-30/,
+  );
 });

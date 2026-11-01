@@ -20,7 +20,8 @@ import {
   mark,
   median,
   modelName,
-  personOf,
+  personIn,
+  personPath,
   seconds,
   thousands,
 } from "./site-text.js";
@@ -108,7 +109,40 @@ function runRow(from: string, e: Entry): string {
     const t = tally([a]);
     return `<div class="res" data-arm="${which}"><div>${badge(which)} ${dots(t)} <span class="small"><b>${t.right} of ${t.of}</b>${t.beyond === 0 ? "" : ` · +${t.beyond} beyond the key`}</span></div>${extras(t)}<div class="money"><b>${dollars(a.usd)}</b> · ${seconds(a.seconds)} · ${thousands(a.tokens)} tokens</div><div class="tiny muted">${a.citations.held} of ${a.citations.held + a.citations.failed} cited facts borne out</div></div>`;
   };
-  return `<a class="runrow" data-instance="${esc(i.id)}" href="${hrefTo(from, e.where.run)}"><div class="who"><b>${esc(modelName(i.model))} · run ${i.repeat}</b><div class="tiny muted">${esc(personOf(i.case))} · ${esc(e.name)} · ${esc(e.results.run.finished.slice(0, 10))}</div></div>${ARMS.map(arm).join("")}<div class="overhead">judging ${dollars(i.judging.usd)} (the test's overhead, charged to neither arm)</div></a>`;
+  return `<a class="runrow" data-instance="${esc(i.id)}" href="${hrefTo(from, e.where.run)}"><div class="who"><b>${esc(modelName(i.model))} · run ${i.repeat}</b><div class="tiny muted">${esc(personIn(e.results, i.case).name)} · ${esc(e.name)} · ${esc(e.results.run.finished.slice(0, 10))}</div></div>${ARMS.map(arm).join("")}<div class="overhead">judging ${dollars(i.judging.usd)} (the test's overhead, charged to neither arm)</div></a>`;
+}
+
+/** Each person the runs are about, once, in the order the runs come. */
+function people(entries: readonly Entry[]): [string, string][] {
+  const seen = new Map<string, string>();
+  for (const e of entries)
+    for (const c of e.results.cases)
+      if (!seen.has(c.id)) seen.set(c.id, c.person.name);
+  return [...seen];
+}
+
+function personPage(id: string, entries: readonly Entry[]): string {
+  const path = personPath(id);
+  const own = entries.filter((e) => e.results.cases.some((c) => c.id === id));
+  const c = own[0]!.results.cases.find((it) => it.id === id)!;
+  const { name } = c.person;
+  const body = `<p class="small muted">A synthetic person · as of ${esc(c.today)} · <a href="https://github.com/jayostis/cascade-runtime-js/tree/main/packages/evals/cases/${esc(id)}">the case files and answer key</a></p>
+<h1>${esc(name)}</h1>
+<dl class="story"><dt>Who</dt><dd>${esc(c.description.who)}</dd>
+<dt>The records</dt><dd>${esc(c.description.sources)}</dd>
+<dt>What is planted</dt><dd>${esc(c.description.planted)}</dd>
+<dt>Why ${esc(name)} is here</dt><dd>${esc(c.description.summary)}</dd></dl>
+<h2>Runs about ${esc(name)}</h2>
+<div class="runs">${own
+    .filter((e) => e.instance.case === id)
+    .map((e) => runRow(path, e))
+    .join("")}</div>`;
+  return page({
+    path,
+    title: `${name} — Cascade evals`,
+    crumbs: [["Cascade evals", "index.html"], [name]],
+    body,
+  });
 }
 
 function frontPage(entries: readonly Entry[]): string {
@@ -117,7 +151,14 @@ function frontPage(entries: readonly Entry[]): string {
   const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a></p>
 <h1>Ask your health records a question. Which answer would you rather get?</h1>
 <p class="lead">Cascade joins a person's downloaded health records into one <b>pod</b>: one entry per real thing, with its history across sources, read by a model through tools. The <b>grab bag</b> is the same downloads read whole, as if pasted into the chat. The same model answers the same questions both ways. Below: how each model did, then every run, one row per model per sitting. Open a row to read both answers and the evidence behind each.</p>
-<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a></div>
+<div class="links"><a href="https://github.com/jayostis/cascade-runtime-js#readme">What Cascade is</a><a href="${hrefTo(from, "how_it_works.html")}">How this test works</a>${people(
+    entries,
+  )
+    .map(
+      ([id, name]) =>
+        `<a href="${hrefTo(from, personPath(id))}">Who ${esc(name)} is →</a>`,
+    )
+    .join("")}</div>
 ${
   entries.length === 0
     ? `<p class="muted">No run is recorded yet: <code>npm run evals:record &lt;run&gt;</code> records one.</p>`
@@ -138,7 +179,7 @@ ${headline(entries)}
 
 /** Each case's pod build, once, from the first run that holds it. */
 function builds(runs: readonly { results: Results }[]): string {
-  const seen = new Map<string, string>();
+  const seen = new Map<string, [string, string]>();
   for (const { results } of runs)
     for (const c of results.cases) {
       if (seen.has(c.id)) continue;
@@ -147,21 +188,21 @@ function builds(runs: readonly { results: Results }[]): string {
         0,
       );
       const b = c.build;
-      seen.set(
-        c.id,
+      seen.set(c.id, [
+        c.person.name,
         b === null || b === undefined
           ? "not timed"
           : `${b.seconds} s for ${c.imports.length} import${c.imports.length === 1 ? "" : "s"}, ${b.modelCalls === 0 ? "no model calls" : `${b.modelCalls} model calls, ${thousands(b.tokens)} tokens, ${dollars(b.usd)}`}. Amortised over ${questions} question${questions === 1 ? "" : "s"}: ${(b.seconds / questions).toFixed(2)} s and ${b.usd === 0 ? "$0.00" : dollars(b.usd / questions)} each`,
-      );
+      ]);
     }
-  return `<ul>${[...seen].map(([id, what]) => `<li><b>${esc(personOf(id))}</b>: ${what}.</li>`).join("")}</ul>`;
+  return `<ul>${[...seen.values()].map(([name, what]) => `<li><b>${esc(name)}</b>: ${what}.</li>`).join("")}</ul>`;
 }
 
 function howPage(runs: readonly { results: Results }[]): string {
   const body = `<h1>How the test works</h1>
-<p class="lead">A synthetic person with real-shaped downloads and an answer key written before any model ran. The same model answers her questions twice: once with her records joined into a Cascade pod and read through tools, once with the same downloads read whole, as if pasted into the chat. Judges score both blind. A program checks every cited fact.</p>
+<p class="lead">A synthetic person with real-shaped downloads and an answer key written before any model ran. The same model answers the person's questions twice: once with the records joined into a Cascade pod and read through tools, once with the same downloads read whole, as if pasted into the chat. Judges score both blind. A program checks every cited fact.</p>
 <h2>The two arms</h2>
-<dl class="story"><dt>${ARM_NAME.pod}</dt><dd>Her downloads are imported into a pod once. The model reaches it only through cascade-mcp's tools, each call logged with its rows and time. It cites a fact as the pod entry a row named: <code>{"entry": "pod://…#…"}</code>.</dd>
+<dl class="story"><dt>${ARM_NAME.pod}</dt><dd>The downloads are imported into a pod once. The model reaches it only through cascade-mcp's tools, each call logged with its rows and time. It cites a fact as the pod entry a row named: <code>{"entry": "pod://…#…"}</code>.</dd>
 <dt>${ARM_NAME.records}</dt><dd>The model is told to read every download file in full, in order, once per chat session. It cites a fact as <code>{"file", "resource"}</code> for FHIR JSON or <code>{"file", "line"}</code> for anything else, and an absence names the files it looked through.</dd></dl>
 <h2>No free work</h2>
 <p>Everything the report shows as an answer's reasoning or evidence was produced by the answering agent itself: which facts support which point, which absence matters and what was searched for it, what is the model's own knowledge, and any link between records. The harness may only do mechanical work, and does exactly three things:</p>
@@ -210,6 +251,8 @@ export function renderSite(
       ]))
         site.set(path, html);
     }
+  for (const [id] of people(entries))
+    site.set(personPath(id), personPage(id, entries));
   site.set("index.html", frontPage(entries));
   site.set("how_it_works.html", howPage(runs));
   return site;

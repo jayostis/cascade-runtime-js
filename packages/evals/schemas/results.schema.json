@@ -494,6 +494,9 @@
         "type": "object",
         "required": [
           "id",
+          "person",
+          "today",
+          "description",
           "downloadsSha256",
           "keySha256",
           "imports",
@@ -507,6 +510,42 @@
         "properties": {
           "id": {
             "type": "string"
+          },
+          "person": {
+            "type": "object",
+            "required": ["name", "pronoun"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "pronoun": {
+                "enum": ["her", "his", "their"]
+              }
+            }
+          },
+          "today": {
+            "type": "string",
+            "description": "The day the case is set on."
+          },
+          "description": {
+            "type": "object",
+            "required": ["summary", "who", "sources", "planted"],
+            "additionalProperties": false,
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "who": {
+                "type": "string"
+              },
+              "sources": {
+                "type": "string"
+              },
+              "planted": {
+                "type": "string"
+              }
+            }
           },
           "downloadsSha256": {
             "type": "string"
@@ -705,6 +744,10 @@
           },
           "prompt": {
             "type": "string"
+          },
+          "promptText": {
+            "type": "string",
+            "description": "A subject job's opening prompt, as handed out."
           },
           "verdict": {
             "type": "string"

@@ -1,5 +1,6 @@
 // What every page of the report writes the same way: escaping, numbers, names and the two arms' marks.
 import type { Arm } from "./prompts.js";
+import type { Results } from "./results.js";
 
 export const esc = (text: unknown) =>
   String(text ?? "")
@@ -32,17 +33,23 @@ export const ARM_NAME: Readonly<Record<Arm, string>> = {
   records: "Grab bag",
 };
 export const ARM_HOW: Readonly<Record<Arm, string>> = {
-  pod: "her downloads joined into one pod, read through tools",
+  pod: "the downloads joined into one pod, read through tools",
   records: "the same downloads read whole, as if pasted into the chat",
 };
 export const modelName = (id: string) => id.replace(/^claude-/, "");
 
-/** A person's name from her case id: `tamsin-vale` is Tamsin Vale. */
-export const personOf = (id: string) =>
-  id
-    .split("-")
-    .map((it) => it.slice(0, 1).toUpperCase() + it.slice(1))
-    .join(" ");
+type Person = Results["cases"][number]["person"];
+
+/** The person a case is about, as the case file recorded them. */
+export const personIn = (r: Results, id: string): Person =>
+  r.cases.find((it) => it.id === id)?.person ?? { name: id, pronoun: "their" };
+
+/** The person's subject pronoun, to go with the possessive the case file records. */
+export const subjectOf = (person: Person) =>
+  ({ her: "she", his: "he", their: "they" })[person.pronoun];
+
+/** Where a person's page is, from the site's root. */
+export const personPath = (id: string) => `people/${id}.html`;
 
 export const median = (values: readonly number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
