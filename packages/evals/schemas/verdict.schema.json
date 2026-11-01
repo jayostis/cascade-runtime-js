@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/verdict.schema.json",
   "title": "A judge's verdict",
-  "description": "One grade per blinded answer, by its label: every key item found, partly or missed (a gap) or raised or avoided (a trap or near-trap), the false questions, the legitimate extra finds, and each question's chain.",
+  "description": "One grade per blinded answer to one question, by its label: every key item of that question found, partly or missed (a fact, absence, negation or gap) or raised or avoided (a trap or near-trap), every point of the answer beyond the key with its verdict, and each point's chain.",
   "type": "object",
   "required": ["outputs"],
   "additionalProperties": false,
@@ -11,58 +11,61 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "label",
-          "items",
-          "falseQuestions",
-          "extraFinds",
-          "chains"
-        ],
+        "required": ["label", "items", "beyond", "chains"],
         "additionalProperties": false,
         "properties": {
-          "label": { "type": "string", "pattern": "^[A-Z]{1,2}$" },
+          "label": {
+            "type": "string",
+            "pattern": "^[A-Z]{1,2}$"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "verdict", "questions", "reason"],
+              "required": ["id", "verdict", "items", "reason"],
               "additionalProperties": false,
               "properties": {
-                "id": { "type": "string" },
+                "id": {
+                  "type": "string"
+                },
                 "verdict": {
                   "enum": ["found", "partly", "missed", "raised", "avoided"]
                 },
-                "questions": {
+                "items": {
                   "type": "array",
-                  "items": { "type": "integer", "minimum": 1 }
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
                 },
-                "reason": { "type": "string" }
+                "reason": {
+                  "type": "string"
+                }
               }
             }
           },
-          "falseQuestions": {
+          "beyond": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["question", "why"],
+              "required": ["item", "verdict", "why"],
               "additionalProperties": false,
               "properties": {
-                "question": { "type": "integer", "minimum": 1 },
-                "item": { "type": "string" },
-                "why": { "type": "string" }
-              }
-            }
-          },
-          "extraFinds": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["question", "why"],
-              "additionalProperties": false,
-              "properties": {
-                "question": { "type": "integer", "minimum": 1 },
-                "item": { "type": "string" },
-                "why": { "type": "string" }
+                "item": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "verdict": {
+                  "enum": [
+                    "fair",
+                    "true-not-planted",
+                    "speculative",
+                    "contradicted"
+                  ]
+                },
+                "why": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -70,13 +73,25 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["question", "complete", "faithful", "skipped"],
+              "required": ["item", "complete", "faithful", "skipped"],
               "additionalProperties": false,
               "properties": {
-                "question": { "type": "integer", "minimum": 1 },
-                "complete": { "type": "boolean" },
-                "faithful": { "type": "boolean" },
-                "skipped": { "type": "array", "items": { "type": "string" } }
+                "complete": {
+                  "type": "boolean"
+                },
+                "faithful": {
+                  "type": "boolean"
+                },
+                "skipped": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "item": {
+                  "type": "integer",
+                  "minimum": 1
+                }
               }
             }
           }

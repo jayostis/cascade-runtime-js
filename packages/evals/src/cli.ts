@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// `cascade-evals <command>`: the harness's commands. Every command prints JSON on stdout, except `pod`, which prints
-// what the tool answered, and `report`, which prints the page it wrote. Each command loads only its own modules, so
+// `cascade-evals <command>`: the harness's commands. Every command prints JSON on stdout, except `ask`, which prints
+// the next question, `pod`, which prints what the tool answered, and `report`, which prints the page it wrote. Each command loads only its own modules, so
 // the pod arm's command starts without the runtime.
 import { argv, exit, stderr, stdout } from "node:process";
 
@@ -11,6 +11,7 @@ const USAGE = `usage: cascade-evals <command>
   check-key <case>                        check every claim of the case's key against its downloads
   plan --config <file|tier> [--run <id>] [--brief]
                                           a run's jobs, what is reused, and its estimate against the cap
+  ask --run <dir> --job <id>              a session's next question, once the last is answered
   pod --run <dir> --job <id> <tool> [<json input>]
                                           the pod arm's one command: a cascade-mcp tool, logged to the run
   meter --run <dir> [--brief] [--after-wave]
@@ -75,6 +76,14 @@ async function main(args: string[]): Promise<void> {
             }
           : plan,
       );
+    }
+    case "ask": {
+      const run = option(args, "run");
+      const job = option(args, "job");
+      if (run === undefined || job === undefined) break;
+      stdout.write(`${await (await import("./sessions.js")).ask(run, job)}
+`);
+      return;
     }
     case "pod": {
       const run = option(args, "run");

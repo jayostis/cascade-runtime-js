@@ -1,34 +1,37 @@
 // What a run has spent and done, read from its jobs' transcripts after each wave (`meter`): it says which jobs may
-// start without passing the cap, so a run stops cleanly at it. `finish` checks, grades and scores what ran and writes
-// results.json.
+// start without passing the cap, so a run stops cleanly at it. `finish` checks, grades and counts what ran, resolves
+// its evidence and writes results.json.
 import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  answerFile,
+  type Answer,
   type Asker,
   checkAnswer,
   judgeViolations,
 } from "./checks.js";
+import { callsFor } from "./citations.js";
+import { passageOf, podProvenance } from "./evidence.js";
+import { instancesOf } from "./instances.js";
+import { answerPath, askedIn, splitSession } from "./sessions.js";
 import { type Environment, pinnedPod } from "./pinned.js";
 import {
-  type Key,
   type KeyItem,
   loadCase,
   loadKey,
   openPrepared,
   type Prepared,
 } from "./cases.js";
-import { agreementOf, gradesOf, scoresOf } from "./judging.js";
+import { agreementOf, gradesOf } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
 import { callCost, PRICE_TABLE, priced } from "./prices.js";
 import {
   type CallRecord,
+  type EntryProvenance,
+  type Evidence,
   type Job,
   type Results,
   runFolder,
-  type Slice,
-  type SliceNode,
   type Stats,
   type SubjectChecks,
   type ToolCallRecord,
@@ -134,6 +137,7 @@ async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
   const found = await transcriptsSince(since, (tag) =>
     tag.startsWith(`${plan.run}/`),
   );
+  const asked = await askedIn(plan.folder);
   for (const [tag, transcript] of found) {
     let job = plan.jobs.find((it) => it.tag === tag);
     if (job === undefined) {
@@ -162,8 +166,22 @@ async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
       if (existsSync(written))
         await copyFile(written, join(plan.folder, job.verdict));
     }
-    const output = job.role === "judge" ? job.verdict : job.answer;
-    const wrote = output !== undefined && existsSync(join(plan.folder, output));
+    if (job.role === "subject")
+      job.split = splitSession(
+        calls,
+        asked.filter((it) => it.job === job!.id),
+        transcript.ended,
+        job.arm!,
+      );
+    const outputs =
+      job.role === "judge"
+        ? [job.verdict]
+        : (job.questions ?? []).map((it) => answerPath(job!, it));
+    const wrote =
+      outputs.length > 0 &&
+      outputs.every(
+        (it) => it !== undefined && existsSync(join(plan.folder, it)),
+      );
     const ran = stats.models.map(priced);
     if (wrote && !ran.includes(priced(job.model))) {
       job.status = "failed";
@@ -267,98 +285,19 @@ async function toolCallsOf(folder: string): Promise<ToolCallRecord[]> {
     .map((line) => JSON.parse(line) as ToolCallRecord);
 }
 
-/** The fields of a record a slice shows: its state and its dates and values. */
-const DETAIL =
-  /Status|EndDate|StartDate|effective|performed|resultValue|value|verification/i;
-
-const local = (iri: string) => iri.split(/[#/]/).pop() ?? iri;
-
-/** The pod around a key item: the entries its `find` selects, each with its records per source and their state. */
-export async function sliceOf(
-  pod: Asker,
-  caseId: string,
-  item: KeyItem,
-): Promise<Slice | undefined> {
-  if (item.find === undefined || item.find.length === 0) return undefined;
-  const nodes: SliceNode[] = [];
-  const edges: { from: string; to: string }[] = [];
-  const sources = await pod.ask("entry/Where it came from");
-  const shows = await pod.ask("entry/What it shows");
-  for (const { question, where = [] } of item.find) {
-    const rows = (await pod.ask(question)).filter((row) =>
-      where.every((text) =>
-        Object.values(row).some((value) => value.includes(text)),
-      ),
-    );
-    for (const row of rows.slice(0, 6)) {
-      const entry = row.entry;
-      if (nodes.length >= 12) break;
-      if (entry === undefined || nodes.some((it) => it.id === entry)) continue;
-      nodes.push({
-        id: entry,
-        kind: question.includes("lab")
-          ? "lab"
-          : question.includes("condition")
-            ? "condition"
-            : "entry",
-        label: row.entryLabel ?? local(entry),
-        detail: Object.entries(row)
-          .filter(
-            ([name]) =>
-              !/^(entry|entryLabel|records|code|snomed|icd10|lifecycle)$/.test(
-                name,
-              ),
-          )
-          .map(([name, value]) => `${name}: ${value}`)
-          .join("; "),
-      });
-      for (const source of sources
-        .filter((it) => it.entry === entry)
-        .slice(0, 4)) {
-        if (nodes.length >= 12) break;
-        const record = source.record ?? `${entry} ${source.recordLabel ?? ""}`;
-        if (nodes.some((it) => it.id === record)) continue;
-        nodes.push({
-          id: record,
-          kind: "record",
-          label: source.recordLabel ?? local(record),
-          source: [source.hospital, source.retrieved?.slice(0, 10)]
-            .filter(Boolean)
-            .join(", "),
-          detail: shows
-            .filter((it) => it.from === record && DETAIL.test(it.field ?? ""))
-            .slice(0, 4)
-            .map((it) => `${local(it.field ?? "")}: ${local(it.value ?? "")}`)
-            .join("; "),
-        });
-        edges.push({ from: entry, to: record });
-      }
-    }
-  }
-  return { case: caseId, item: item.id, nodes, edges };
-}
-
 /**
- * What reads a case's pod for the checks and slices: the pod itself, or for a pinned run its own build of the runtime,
- * asked every question the checks need in one process, since another build may not read the pod the same way.
+ * What reads a case's pod for the checks: the pod itself, or for a pinned run its own build of the runtime, asked
+ * every question the checks need in one process, since another build may not read the pod the same way.
  */
 async function askerOf(
   prepared: Prepared,
-  key: Key,
 ): Promise<Asker & { close(): Promise<void> }> {
   if (prepared.runtime === undefined) return openPrepared(prepared);
-  const questions = [
-    "entry/What it shows",
-    "entry/Where it came from",
-    ...new Set(
-      key.items.flatMap((it) => (it.find ?? []).map((one) => one.question)),
-    ),
-  ];
   const rows = pinnedPod(
     { runtime: prepared.runtime } as Environment,
     "ask",
     join(prepared.pods, prepared.pod),
-    questions,
+    ["entry/What it shows"],
   ) as Record<string, Readonly<Record<string, string>>[]>;
   return {
     ask: async (question) => rows[question] ?? [],
@@ -366,7 +305,75 @@ async function askerOf(
   };
 }
 
-/** Checks, grades and scores the run, and writes results.json and the run's report site. */
+/**
+ * Each citation and absence of one answer, resolved mechanically: a pod entry to its provenance, a file to its
+ * passage, a pod absence to the call it names, which must be a call of its tool and input (else the first answered call
+ * of that tool and input when it names no number), a grab-bag absence to the files it names (else every file offered, marked
+ * as defaulted), each marked read whole or not.
+ */
+export async function evidenceOf(o: {
+  job: Job;
+  question: string;
+  answer: Answer;
+  prepared: Prepared;
+  reading: readonly string[];
+  /** The files the job read whole, as its checks found them. */
+  read?: readonly string[];
+  provenance: (entry: string) => EntryProvenance | undefined;
+  toolCalls: readonly ToolCallRecord[];
+}): Promise<Evidence[]> {
+  const found: Evidence[] = [];
+  const at = { job: o.job.id, question: o.question };
+  const calls = o.toolCalls.filter((it) => it.job === o.job.id);
+  for (const item of o.answer.items) {
+    for (const [fact, { cite }] of item.facts.entries())
+      found.push({
+        ...at,
+        item: item.n,
+        fact,
+        cite,
+        ...("entry" in cite
+          ? { entry: o.provenance(cite.entry) ?? null }
+          : { passage: (await passageOf(o.prepared.downloads, cite)) ?? null }),
+      });
+    for (const [absence, { query, sources }] of item.absences.entries()) {
+      if (o.job.arm === "pod") {
+        const named = query === undefined ? [] : callsFor(calls, query);
+        const call = named.find((it) => it.ok) ?? named[0];
+        found.push({
+          ...at,
+          item: item.n,
+          absence,
+          call:
+            call === undefined
+              ? null
+              : {
+                  ...(call.call === undefined ? {} : { call: call.call }),
+                  at: call.at,
+                  ok: call.ok,
+                  rows: call.rows,
+                  milliseconds: call.milliseconds,
+                },
+        });
+      } else
+        found.push({
+          ...at,
+          item: item.n,
+          absence,
+          stated: sources !== undefined,
+          files: (sources ?? o.reading).map((file) => ({
+            file,
+            read: (o.read ?? []).includes(file),
+            bytes:
+              o.prepared.documents.find((it) => it.file === file)?.bytes ?? 0,
+          })),
+        });
+    }
+  }
+  return found;
+}
+
+/** Checks, grades and counts the run, resolves its evidence, and writes results.json and the run's report site. */
 export async function finish(given: string, log: (line: string) => void) {
   const folder = runFolder(given);
   const plan = await loadPlan(folder);
@@ -376,7 +383,7 @@ export async function finish(given: string, log: (line: string) => void) {
     if (job.status === "pending" || job.status === "running") {
       job.reason =
         job.status === "running"
-          ? "it wrote no output"
+          ? "it did not answer every question"
           : fits(plan, spentBefore, job)
             ? "not run"
             : "the cap";
@@ -384,41 +391,80 @@ export async function finish(given: string, log: (line: string) => void) {
     }
   await savePlan(plan);
   const toolCalls = await toolCallsOf(folder);
-  const checks: Record<string, SubjectChecks> = {};
-  const answers: Record<string, unknown> = {};
-  const slices: Slice[] = [];
-  for (const { id: caseId, prepared } of plan.cases) {
+  const checks: Record<string, Record<string, SubjectChecks>> = {};
+  const answers: Record<string, Record<string, unknown>> = {};
+  const evidence: Evidence[] = [];
+  const keys = new Map<string, readonly KeyItem[]>();
+  const cases: Results["cases"][number][] = [];
+  for (const {
+    id: caseId,
+    downloadsSha256,
+    keySha256,
+    prepared,
+  } of plan.cases) {
     const found = await loadCase(caseId);
     const { key } = await loadKey(caseId);
-    const pod = await askerOf(prepared, key);
+    keys.set(caseId, key.items);
+    cases.push({
+      id: caseId,
+      downloadsSha256,
+      keySha256,
+      imports: prepared.imports,
+      documents: prepared.documents,
+      sessions: found.sessions,
+      key: key.items.map(({ id, question, kind, title, lookingFor, pod }) => ({
+        id,
+        question,
+        kind,
+        title,
+        lookingFor,
+        pod,
+      })),
+      keyUrl: `https://github.com/jayostis/cascade-runtime-js/blob/${plan.harness.commit}/packages/evals/cases/${caseId}/key.md`,
+      build: prepared.build ?? null,
+    });
+    const provenance = await podProvenance(join(prepared.pods, prepared.pod));
+    const pod = await askerOf(prepared);
     try {
-      for (const item of key.items) {
-        const slice = await sliceOf(pod, caseId, item);
-        if (slice !== undefined) slices.push(slice);
-      }
       for (const job of plan.jobs.filter(
         (it) => it.role === "subject" && it.case === caseId,
-      )) {
-        const path = answerFile(folder, job);
-        if (!existsSync(path)) continue;
-        let answer: unknown;
-        try {
-          answer = JSON.parse(await readFile(path, "utf8"));
-        } catch (error) {
-          answer = { unparsed: String(error) };
+      ))
+        for (const question of job.questions ?? []) {
+          const path = join(folder, answerPath(job, question));
+          if (!existsSync(path)) continue;
+          let answer: unknown;
+          try {
+            answer = JSON.parse(await readFile(path, "utf8"));
+          } catch (error) {
+            answer = { unparsed: String(error) };
+          }
+          (answers[job.id] ??= {})[question] = answer;
+          const checked = await checkAnswer({
+            job,
+            question,
+            answer,
+            folder,
+            prepared,
+            reading: found.reading,
+            key,
+            toolCalls,
+            pod: job.arm === "pod" ? pod : undefined,
+          });
+          (checks[job.id] ??= {})[question] = checked;
+          if (checked.answerValid)
+            evidence.push(
+              ...(await evidenceOf({
+                job,
+                question,
+                answer: answer as Answer,
+                prepared,
+                reading: found.reading,
+                ...(checked.read === undefined ? {} : { read: checked.read }),
+                provenance,
+                toolCalls,
+              })),
+            );
         }
-        answers[job.id] = answer;
-        checks[job.id] = await checkAnswer({
-          job,
-          answer,
-          folder,
-          prepared,
-          reading: found.reading,
-          key,
-          toolCalls,
-          pod: job.arm === "pod" ? pod : undefined,
-        });
-      }
     } finally {
       await pod.close();
     }
@@ -432,8 +478,7 @@ export async function finish(given: string, log: (line: string) => void) {
       }),
   );
   const grades = await gradesOf(plan);
-  const scores = await scoresOf(plan, grades, answers);
-  const agreement = await agreementOf(plan, grades);
+  const agreement = agreementOf(plan, grades);
   const spent = spentOf(plan.jobs);
   const byRole: Record<string, { tokens: number; usd: number }> = {};
   for (const job of plan.jobs) {
@@ -444,7 +489,7 @@ export async function finish(given: string, log: (line: string) => void) {
   }
   const finished = new Date();
   const results: Results = {
-    schema: "cascade-evals/results/1",
+    schema: "cascade-evals/results/2",
     run: {
       id: plan.run,
       tier: plan.config.tier,
@@ -480,22 +525,17 @@ export async function finish(given: string, log: (line: string) => void) {
       },
       byRole,
     },
-    cases: plan.cases.map(({ id, downloadsSha256, keySha256, prepared }) => ({
-      id,
-      downloadsSha256,
-      keySha256,
-      imports: prepared.imports,
-      documents: prepared.documents,
-    })),
+    cases,
     jobs: plan.jobs,
+    asked: await askedIn(folder),
     toolCalls,
     checks,
     judgeDiscipline,
     answers,
+    evidence,
     grades,
-    scores,
+    instances: instancesOf(plan.jobs, grades, checks, answers, keys),
     agreement,
-    slices,
   };
   valid(
     "results",

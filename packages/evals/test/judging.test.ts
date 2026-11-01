@@ -16,11 +16,13 @@ after(async () => {
   await rm(earlier, { recursive: true, force: true, maxRetries: 5 });
 });
 
-const answer = (question: string): Answer => ({
-  questions: [
+const answer = (says: string): Answer => ({
+  answer: `${says} A positive stool test needs a colonoscopy.`,
+  short: says,
+  items: [
     {
       n: 1,
-      question,
+      says,
       why: "It is due.",
       confidence: "high",
       facts: [
@@ -45,8 +47,8 @@ const answer = (question: string): Answer => ({
   ],
 });
 
-const POD = "tamsin-vale.pod.opus-5-5.r1";
-const RECORDS = "tamsin-vale.records.opus-5-5.r1";
+const POD = "tamsin-vale.checkup.pod.opus-5-5.r1";
+const RECORDS = "tamsin-vale.checkup.records.opus-5-5.r1";
 
 /** A run of the two subjects' answers, planned for the given judges. */
 async function runOf(name: string, judges: string[]) {
@@ -56,21 +58,26 @@ async function runOf(name: string, judges: string[]) {
   for (const [id, text] of [
     [POD, "Has a colonoscopy been booked?"],
     [RECORDS, "Should I have a colonoscopy now?"],
-  ] as const)
+  ] as const) {
+    await mkdir(join(folder, "answers", id), { recursive: true });
     await writeFile(
-      join(folder, "answers", `${id}.json`),
+      join(folder, "answers", id, "checkup.json"),
       JSON.stringify(answer(text)),
     );
+  }
   const subject = (id: string, arm: string) => ({
     id,
     role: "subject",
     case: "tamsin-vale",
     arm,
     model: "claude-opus-5-5",
+    repeat: 1,
+    session: "checkup",
+    questions: ["checkup"],
     tag: `${name}/${id}`,
     status: "done",
     estimate: { tokens: 0, usd: 0 },
-    answer: `answers/${id}.json`,
+    answers: `answers/${id}`,
   });
   await writeFile(
     join(folder, "plan.json"),
@@ -101,7 +108,7 @@ test("a judge reads its packet alone, in its own folder, with neither arm's cita
   assert.ok(relative(folder, judge.workdir).startsWith(".."));
   const packet = await readFile(judge.packet, "utf8");
   assert.doesNotMatch(
-    packet.slice(packet.indexOf("## The answers")),
+    packet.slice(packet.indexOf("## The questions and their answers")),
     /pod:\/\/|\bpod\b|21 rows|retriev|\[…\]/i,
   );
   assert.match(blinded(answer("Q")), /- Absent: No colonoscopy$/m);
@@ -117,7 +124,10 @@ test("a judge sees the answers in an order of its run, and a reused verdict keep
   const { judges } = await runOf("two", ["claude-haiku-5-5"]);
   const [planned] = judges;
   // Letters no run of this harness hands out, so only the earlier verdict's own can be what the reuse keeps.
-  const swapped = { Y: POD, Z: RECORDS };
+  const swapped = {
+    Y: { job: POD, question: "checkup" },
+    Z: { job: RECORDS, question: "checkup" },
+  };
   await mkdir(join(earlier, "judges"), { recursive: true });
   await writeFile(join(earlier, "judges", "verdict.json"), "{}");
   const stats = {
@@ -185,4 +195,86 @@ test("the scrubber takes out resource names used as type names and keeps the wor
     ],
   ] as const)
     assert.equal(scrubbed(said), kept, said);
+});
+
+test("a packet carries the key's prose without its old scoring rules, so one vocabulary reaches the judge", async () => {
+  const { judges } = await runOf("vocabulary", ["claude-haiku-5-5"]);
+  const packet = await readFile(judges[0]!.packet!, "utf8");
+  assert.match(packet, /## Planted gaps|## Tamsin/);
+  assert.doesNotMatch(packet, /## Scoring rules|## How to score/);
+});
+
+test("a verdict of the wrong kind for its key item is rejected, so counts never gain a stray key", async () => {
+  const { gradesOf } = await import("../src/judging.js");
+  const folder = join(temporary, "wrong-kind");
+  await mkdir(folder, { recursive: true });
+  const item = (id: string, verdict: string) => ({
+    id,
+    verdict,
+    items: [1],
+    reason: "",
+  });
+  await writeFile(
+    join(folder, "v.json"),
+    JSON.stringify({
+      outputs: [
+        // TF1 is a fact and TT3 a trap: "raised" and "found" are each the other's verdict
+        { label: "A", items: [item("TF1", "raised")], beyond: [], chains: [] },
+        { label: "B", items: [item("TT3", "found")], beyond: [], chains: [] },
+        {
+          label: "C",
+          items: [item("TF1", "found"), item("TT3", "avoided")],
+          beyond: [],
+          chains: [],
+        },
+      ],
+    }),
+  );
+  const at = (label: string) => ({ job: POD, question: "medications", label });
+  const grades = await gradesOf({
+    folder,
+    jobs: [
+      {
+        id: "j",
+        role: "judge",
+        case: "tamsin-vale",
+        verdict: "v.json",
+        labels: { A: at("A"), B: at("B"), C: at("C") },
+      },
+    ],
+  } as never);
+  assert.equal(grades.length, 1);
+  assert.deepEqual(
+    grades[0]!.items.map((it) => it.verdict),
+    ["found", "avoided"],
+  );
+});
+
+test("no key item tells a judge which arm it favours", async () => {
+  const { readdir, access } = await import("node:fs/promises");
+  const { CASES } = await import("../src/paths.js");
+  const { loadKey } = await import("../src/cases.js");
+  const revealing = /\b(?:pod|records|dump) arm\b|grab.?bag|near impossible/i;
+  const told: string[] = [];
+  for (const id of await readdir(CASES)) {
+    if (
+      await access(join(CASES, id, "key.json")).then(
+        () => false,
+        () => true,
+      )
+    )
+      continue;
+    for (const item of (await loadKey(id)).key.items)
+      for (const [field, text] of Object.entries(item))
+        for (const line of [text].flat())
+          if (
+            ["lookingFor", "found", "partly", "wrong", "notWrong"].includes(
+              field,
+            ) &&
+            typeof line === "string" &&
+            revealing.test(line)
+          )
+            told.push(`${id} ${item.id} ${field}`);
+  }
+  assert.deepEqual(told, []);
 });

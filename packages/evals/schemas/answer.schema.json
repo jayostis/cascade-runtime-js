@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/answer.schema.json",
-  "title": "A subject's answer",
-  "description": "Up to ten questions for the doctor, most important first. Each is a chain: the facts the records state (each cited, with the fields a program checks against the cited record), what the records lack (each with what it looks for and what was looked through, and for the pod the query that looked), the model's own medical knowledge that links them, and the question.",
+  "title": "A subject's answer to one question",
+  "description": "The reply as the person reads it, a short answer for the doctor card, and its items: each a point of the reply, with the facts the records state (each cited, with the fields a program checks against the cited record), what the records lack (each with what it looks for and what was looked through, and for the pod the query that looked), the model's own medical knowledge if it used any, and the links it draws between its facts.",
   "type": "object",
-  "required": ["questions"],
+  "required": ["answer", "short", "items"],
   "additionalProperties": false,
   "$defs": {
     "cite": {
@@ -175,6 +175,11 @@
             },
             "input": {
               "type": "object"
+            },
+            "call": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The number the pod command printed with the call's answer."
             }
           }
         },
@@ -188,27 +193,30 @@
     }
   },
   "properties": {
-    "questions": {
+    "answer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The reply, as the person reads it."
+    },
+    "short": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One or two sentences: the short answer on the doctor card."
+    },
+    "items": {
       "type": "array",
+      "minItems": 1,
       "maxItems": 10,
       "items": {
         "type": "object",
-        "required": [
-          "n",
-          "question",
-          "why",
-          "confidence",
-          "facts",
-          "absences",
-          "knowledge"
-        ],
+        "required": ["n", "says", "why", "confidence", "facts", "absences"],
         "additionalProperties": false,
         "properties": {
           "n": {
             "type": "integer",
             "minimum": 1
           },
-          "question": {
+          "says": {
             "type": "string",
             "minLength": 1
           },
@@ -242,6 +250,76 @@
                 "type": "string"
               }
             }
+          },
+          "links": {
+            "type": "array",
+            "description": "That one fact bears on another, in the agent's own words: by the facts' places in this item.",
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "says"],
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "to": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "says": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "description": "That a fact of one item bears on a fact of another, in the agent's own words, when the two are not in one item: by each fact's item and place. Only what the agent states.",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "says"],
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "object",
+            "required": ["item", "fact"],
+            "additionalProperties": false,
+            "properties": {
+              "item": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The item's n."
+              },
+              "fact": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The fact's place in that item, from 0."
+              }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["item", "fact"],
+            "additionalProperties": false,
+            "properties": {
+              "item": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The item's n."
+              },
+              "fact": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The fact's place in that item, from 0."
+              }
+            }
+          },
+          "says": {
+            "type": "string"
           }
         }
       }

@@ -92,7 +92,7 @@ export interface Absence {
     readonly after?: string;
   };
   /** The pod arm: the tool call that looked. */
-  readonly query?: Call | undefined;
+  readonly query?: (Call & { readonly call?: number }) | undefined;
   /** The records arm: the files that were looked through. */
   readonly sources?: readonly string[];
 }
@@ -404,6 +404,23 @@ function whole(answer: string): boolean {
 }
 
 /**
+ * The calls an absence's query names: those of its tool and input, and when it names a call by number, only that
+ * call, which must be one of them. A number the log does not hold for that query names nothing; it never widens to
+ * the other calls.
+ */
+export function callsFor<T extends Call & { readonly call?: number }>(
+  calls: readonly T[],
+  query: Call & { readonly call?: number },
+): T[] {
+  return calls.filter(
+    (it) =>
+      it.tool === query.tool &&
+      sameInput(it.input, query.input) &&
+      (query.call === undefined || it.call === query.call),
+  );
+}
+
+/**
  * Whether a pod's absence is backed: it says what it looks for and what it covered, its query ran and answered (a
  * refusal backs nothing), nothing in the answer matches, and the answer is whole, not cut at a row limit.
  */
@@ -428,10 +445,12 @@ export function checkAbsence(
   const asked = kindOfCall(query);
   if (kind !== undefined && asked !== undefined && asked !== kind)
     return { backed: false, reason: "a question of another kind" };
-  const calls = ran.filter(
-    (call) => call.tool === query.tool && sameInput(call.input, query.input),
-  );
-  if (calls.length === 0) return { backed: false, reason: "query not run" };
+  const calls = callsFor(ran, query);
+  if (calls.length === 0)
+    return {
+      backed: false,
+      reason: query.call === undefined ? "query not run" : "no such call",
+    };
   const answered = calls.filter((call) => call.ok);
   if (answered.length === 0) return { backed: false, reason: "query refused" };
   if (answered.some((call) => answerHolds(call.answer, match)))

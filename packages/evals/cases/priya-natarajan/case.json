@@ -108,5 +108,25 @@
     "northbay-clinical-laboratories-results.xml",
     "fernhill-family-clinic-summary-4.xml",
     "alder-street-pharmacy-patient-record.xml"
+  ],
+  "sessions": [
+    {
+      "id": "checkup",
+      "questions": [
+        {
+          "id": "checkup",
+          "asks": "I have a check-up coming. Looking at my records, what should I bring up with my doctor: anything overdue, missed, or that doesn't add up?"
+        }
+      ]
+    },
+    {
+      "id": "medicines",
+      "questions": [
+        {
+          "id": "lisinopril",
+          "asks": "Am I still supposed to be taking lisinopril? One of my apps still lists it."
+        }
+      ]
+    }
   ]
 }
