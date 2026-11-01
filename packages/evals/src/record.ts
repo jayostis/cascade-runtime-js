@@ -8,6 +8,7 @@ import {
   type Answer,
   type Asker,
   checkAnswer,
+  PINNED_QUESTIONS,
   judgeViolations,
 } from "./checks.js";
 import { callsFor } from "./citations.js";
@@ -297,7 +298,7 @@ async function askerOf(
     { runtime: prepared.runtime } as Environment,
     "ask",
     join(prepared.pods, prepared.pod),
-    ["entry/What it shows"],
+    PINNED_QUESTIONS,
   ) as Record<string, Readonly<Record<string, string>>[]>;
   return {
     ask: async (question) => rows[question] ?? [],

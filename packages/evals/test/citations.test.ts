@@ -625,7 +625,7 @@ test("a FHIR resource's dosage and instruction text can be quoted", async () => 
 
 /** The field names the vocabulary's views construct on an entry; the nodes the entry question leaves out are not fields. */
 async function viewFields(): Promise<string[]> {
-  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  const root = fileURLToPath(new URL("../../../../", import.meta.url));
   const { folder } = await resolveVocabulary(root, await readConfig(root));
   const dir = join(folder, "queries", "views");
   const apart = new Set([
@@ -649,7 +649,7 @@ async function viewFields(): Promise<string[]> {
       text.search(/^WHERE/m),
     );
     for (const [, name] of template.matchAll(
-      /(?:cascade|prov|obo):([a-z_A-Z]w*)/g,
+      /\b(?:cascade|prov|obo):([a-z_A-Z]\w*)/g,
     ))
       if (/^[a-z]|^RO_/.test(name!) && !apart.has(name!)) names.add(name!);
   }

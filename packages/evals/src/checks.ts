@@ -79,7 +79,7 @@ export interface Asker {
 export function entryRows(pod: Asker) {
   let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
   return async (entry: string) => {
-    all ??= pod.ask("entry/What it shows");
+    all ??= pod.ask(ENTRY_QUESTION);
     const rows = (await all).filter((row) => row.entry === entry);
     return rows.length === 0 ? undefined : rows;
   };
@@ -91,7 +91,14 @@ export function personRows(pod: Asker) {
   return () => (all ??= pod.ask(PERSON_QUESTION));
 }
 
+const ENTRY_QUESTION = "entry/What it shows";
 const PERSON_QUESTION = "pod/The person this pod is about";
+
+/** Every question the checks read a pod with, which a pinned runtime is asked in one process. */
+export const PINNED_QUESTIONS: readonly string[] = [
+  ENTRY_QUESTION,
+  PERSON_QUESTION,
+];
 
 /** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no one's reading. */
 const HARNESS_TOOLS = new Set([

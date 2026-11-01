@@ -228,8 +228,12 @@ function holds(
       return (
         want.length >= 3 && values.some((value) => lower(value).includes(want))
       );
-    case "text":
-      return values.some((value) => lower(value).includes(want));
+    case "text": {
+      const before = /^\w/.test(want) ? "(?<!\\w)" : "";
+      const after = /\w$/.test(want) ? "(?!\\w)" : "";
+      const whole = new RegExp(`${before}${escaped(want)}${after}`);
+      return values.some((value) => whole.test(lower(value)));
+    }
     default:
       return values.some((value) => isoDate(value) === isoDate(claimed));
   }
@@ -566,6 +570,9 @@ export function fhirFields(r: Record<string, unknown>): Fields {
     if (whole !== "") f.name.push(whole);
   }
   push(f.id, r.id);
+  push(f.value, r.gender);
+  push(f.value, r.deceasedBoolean);
+  push(f.end, r.deceasedDateTime);
   for (const identifier of asArray(r.identifier))
     push(f.id, (identifier as { value?: unknown }).value);
   for (const key of [
@@ -954,7 +961,6 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   resultValue: ["value"],
   resultUnit: ["unit"],
   clinicalStatus: ["status"],
-  verificationStatus: ["status"],
   workflowStatus: ["status"],
   lifecycle: ["status"],
   prescribedOrReported: ["status"],
@@ -992,12 +998,21 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   noteOrDocumentTitle: ["name"],
   noteOrDocumentContentStatus: ["status"],
   noteOrDocumentDate: ["when"],
-  noteOrDocumentMasterIdentifier: ["id"],
   narrativeText: ["text"],
-  notes: ["text"],
   reactionManifestationText: ["text"],
   reactionManifestationCode: ["code"],
   geneSymbol: ["name"],
+  medicationCodeInOtherSystem: ["code"],
+  userSelectedCode: ["code"],
+  dispensePreparedTime: ["when"],
+  dispenseHandedOverTime: ["when"],
+  clinvarVariationId: ["id"],
+  hgvsCodingDnaExpression: ["code", "name"],
+  interpretedDate: ["when"],
+  dateOfBirth: ["when"],
+  dateOfDeath: ["end"],
+  administrativeGender: ["value"],
+  deceased: ["value"],
 };
 
 /** Pod fields no claim can be checked against: links among records, ranges, interpretations and categories. */
@@ -1013,18 +1028,15 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
   "resultInterpretationCode",
   "reportCategory",
   "allergySeverity",
-  "allergyCategory",
+  "allergyCriticality",
+  "wasAttributedTo",
+  "authorizingPrescription",
+  "acmgClassification",
+  "variantInterpreted",
+  "RO_0002351",
 ];
 
 const MEMBER_PREFIX = /^urn:uuid:\S+ /;
-
-/** The kind of field each of the person's columns is. */
-const PERSON_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
-  dateOfBirth: ["when"],
-  dateOfDeath: ["when"],
-  administrativeGender: ["value"],
-  deceased: ["value"],
-};
 
 /**
  * A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. The
@@ -1047,11 +1059,12 @@ export function podRowsSource(
         );
         if (who === undefined) return undefined;
         const person = fresh();
-        for (const [column, kinds] of Object.entries(PERSON_FIELDS))
-          for (const part of (who[column] ?? "").split("; ")) {
+        for (const [column, text] of Object.entries(who))
+          for (const part of text.split("; ")) {
             const value = part.replace(MEMBER_PREFIX, "");
             if (value !== "")
-              for (const kind of kinds) person[kind].push(value);
+              for (const kind of POD_FIELDS[column] ?? [])
+                person[kind].push(value);
           }
         return { fields: person };
       }
