@@ -75,6 +75,14 @@ test("a reworded question reruns only the sessions that ask it", async () => {
   assert.notEqual(now[1], before[1]);
 });
 
+const valid = JSON.stringify({
+  answer: "r",
+  short: "s",
+  items: [
+    { n: 1, says: "x", why: "", confidence: "high", facts: [], absences: [] },
+  ],
+});
+
 test("the questions are handed out one at a time, in order, each once the last is answered, and logged", async () => {
   const run = join(folder, "ask");
   const job = "c.s.pod.opus-5-5.r1";
@@ -101,9 +109,9 @@ test("the questions are handed out one at a time, in order, each once the last i
   );
   assert.equal(await ask(run, job), "First, in her words.");
   assert.match(await ask(run, job), /answers.c\.s\.pod\.opus-5-5\.r1.a\.json/);
-  await writeFile(join(run, "answers", job, "a.json"), "{}");
+  await writeFile(join(run, "answers", job, "a.json"), valid);
   assert.equal(await ask(run, job), "Second, in her words.");
-  await writeFile(join(run, "answers", job, "b.json"), "{}");
+  await writeFile(join(run, "answers", job, "b.json"), valid);
   assert.match(await ask(run, job), /no more questions/i);
   const log = (await readFile(join(run, "asked.jsonl"), "utf8"))
     .trim()
