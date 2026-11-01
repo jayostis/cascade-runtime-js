@@ -878,3 +878,94 @@ test("a Patient's deceasedBoolean is a value and its deceasedDateTime an end", (
   assert.deepEqual(fields.value, ["true"]);
   assert.deepEqual(fields.end, ["2024-03-04T10:00:00Z"]);
 });
+
+test("an absence is not found in a row's provenance: the date a pod row was retrieved is not the date of what it records", () => {
+  const input = { pod: "p", question: "pod/My lab results" };
+  const lab = (performed: string) => ({
+    test: "Hemoglobin A1c",
+    code: "http://loinc.org/rdf/4548-4",
+    performed,
+    entry: "pod://p/clinical/lab-results.ttl#a1c",
+    sources:
+      "urn:uuid:91490b7d from ni:///sha-256;Uh, retrieved 2026-10-15T00:00:00Z, written by Cascade North Demo Hospital",
+  });
+  const ran = (...rows: unknown[]) => [
+    {
+      tool: "ask",
+      input,
+      ok: true,
+      answer: JSON.stringify({ total: rows.length, rows }),
+    },
+  ];
+  const absence = {
+    what: "an A1c since February",
+    coverage: "every lab result the pod holds",
+    match: { codes: ["4548-4"], after: "2026-02-17" },
+    query: { tool: "ask", input },
+  };
+  assert.deepEqual(
+    checkAbsence(absence, ran(lab("2026-02-16T16:00:00Z"))),
+    { backed: true },
+    "retrieved after the day, performed before it",
+  );
+  assert.deepEqual(
+    checkAbsence(absence, ran(lab("2026-03-01T16:00:00Z"))),
+    { backed: false, reason: "query found it" },
+    "performed after the day",
+  );
+});
+
+test("a refuted or entered-in-error record is no presence, in both arms", async () => {
+  const absence = {
+    what: "a pulmonary embolism",
+    coverage: "every record",
+    match: { codes: ["59282003"], terms: ["pulmonary embolism"] },
+  };
+  const condition = (verification: string) =>
+    JSON.stringify({
+      resourceType: "Bundle",
+      entry: [
+        {
+          resource: {
+            resourceType: "Condition",
+            id: "pe",
+            verificationStatus: { coding: [{ code: verification }] },
+            code: {
+              coding: [{ system: "http://snomed.info/sct", code: "59282003" }],
+              text: "Pulmonary embolism",
+            },
+            onsetDateTime: "2025-07-08",
+          },
+        },
+      ],
+    });
+  const records = async (verification: string) =>
+    checkRecordsAbsence(
+      absence,
+      ["b.json"],
+      async () => condition(verification),
+      ["b.json"],
+    );
+  assert.deepEqual(await records("refuted"), { backed: true });
+  assert.deepEqual(await records("entered-in-error"), { backed: true });
+  assert.deepEqual(await records("confirmed"), {
+    backed: false,
+    reason: "records hold it: b.json",
+  });
+  const input = { pod: "p", question: "pod/My medication history" };
+  const pod = (status: string) =>
+    checkAbsence({ ...absence, query: { tool: "ask", input } }, [
+      {
+        tool: "ask",
+        input,
+        ok: true,
+        answer: JSON.stringify({
+          total: 1,
+          rows: [{ medication: "Pulmonary embolism", status }],
+        }),
+      },
+    ]);
+  assert.deepEqual(pod("entered-in-error"), { backed: true });
+  assert.deepEqual(pod("refuted"), { backed: true });
+  assert.deepEqual(pod("active"), { backed: false, reason: "query found it" });
+});
