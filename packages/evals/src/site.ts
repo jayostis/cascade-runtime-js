@@ -214,7 +214,7 @@ ${t.job}
 ${t.question}`,
     ),
   );
-  return ` In the runs recorded here, ${tells.length} term${tells.length === 1 ? "" : "s"} in ${answers.size} answer${answers.size === 1 ? "" : "s"} could have given an arm away.`;
+  return ` A fixed list of words that cannot be taken out without damaging the prose is left in and recorded: in the runs recorded here, ${tells.length} term${tells.length === 1 ? "" : "s"} in ${answers.size} answer${answers.size === 1 ? "" : "s"} could have given an arm away.`;
 }
 
 function howPage(runs: readonly { results: Results }[]): string {
@@ -230,7 +230,7 @@ function howPage(runs: readonly { results: Results }[]): string {
 <li><b>Render.</b></li></ol>
 <p>Nothing infers a link the agent did not state, and nothing explains an answer after the fact. Each arm's graph is exactly as rich as its agent's own output. Were a secondary agent ever used to explain or link, its cost would be added to that arm and shown.</p>
 <h2>Judging</h2>
-<p>Models score each answer against the key without being told which arm produced it. Answers are scrubbed of what names the arm, but a fixed list of words that cannot be taken out without damaging the prose is left in and recorded.${tellsLine(runs)}</p>
+<p>Models score each answer against the key without being told which arm produced it. Answers are scrubbed of what names the arm.${tellsLine(runs)}</p>
 <h2>Costs</h2>
 <p>Each answer's cost is shown under it: time, tokens with the cache split, dollars at list prices, and the session's own start beside it (the grab bag reads its files once per session). <b>Judging</b> is the harness's own judgment and is paid by the harness: shown as the test's overhead, separately, never charged to either arm.</p>
 <h3 id="build">The pod is built once per person</h3>

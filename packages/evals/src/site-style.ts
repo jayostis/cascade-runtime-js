@@ -68,12 +68,18 @@ aside.overhead b{font-size:1.4rem;font-variant-numeric:tabular-nums}
 .arm.pod .head{border-top:4px solid var(--pod)}.arm.records .head{border-top:4px solid var(--records)}
 .arm .head b{font-size:1rem}.arm.pod .head b{color:var(--pod)}.arm.records .head b{color:var(--records)}
 .arm .head .how{font-size:.8rem;color:var(--muted);text-align:right}
-.tabset>input{position:absolute;opacity:0;pointer-events:none}
+.question>input.tab{position:absolute;opacity:0;pointer-events:none}
 .tabset>label{display:inline-block;margin:10px 0 0 12px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);font-size:.86rem;font-weight:600;color:var(--muted);cursor:pointer}
-.tabset>input:checked+label{color:var(--fg);border-color:var(--fg)}
-.tabset>input:focus-visible+label{outline:2px solid var(--link)}
-.tabset>.panel{display:none;padding:12px 16px 6px}
-.tabset:has(>input[value=answer]:checked)>.panel[data-tab=answer],.tabset:has(>input[value=reasoning]:checked)>.panel[data-tab=reasoning],.tabset:has(>input[value=doctor]:checked)>.panel[data-tab=doctor]{display:block}
+.tabset>.panel,.drills>.drill{display:none}.tabset>.panel{padding:12px 16px 6px}
+.question>input[data-arm=pod][value=answer]:checked~.arms .arm.pod .panel[data-tab=answer],.question>input[data-arm=pod][value=doctor]:checked~.arms .arm.pod .panel[data-tab=doctor]{display:block}
+.question>input[data-arm=pod][value=reasoning]:checked~.drills>.drill[data-arm=pod]{display:block}
+.question>input[data-arm=pod][value=answer]:checked~.arms .arm.pod label[data-tab-label=answer],.question>input[data-arm=pod][value=reasoning]:checked~.arms .arm.pod label[data-tab-label=reasoning],.question>input[data-arm=pod][value=doctor]:checked~.arms .arm.pod label[data-tab-label=doctor]{color:var(--fg);border-color:var(--fg)}
+.question>input[data-arm=pod][value=answer]:focus-visible~.arms .arm.pod label[data-tab-label=answer],.question>input[data-arm=pod][value=reasoning]:focus-visible~.arms .arm.pod label[data-tab-label=reasoning],.question>input[data-arm=pod][value=doctor]:focus-visible~.arms .arm.pod label[data-tab-label=doctor]{outline:2px solid var(--link)}
+.question>input[data-arm=records][value=answer]:checked~.arms .arm.records .panel[data-tab=answer],.question>input[data-arm=records][value=doctor]:checked~.arms .arm.records .panel[data-tab=doctor]{display:block}
+.question>input[data-arm=records][value=reasoning]:checked~.drills>.drill[data-arm=records]{display:block}
+.question>input[data-arm=records][value=answer]:checked~.arms .arm.records label[data-tab-label=answer],.question>input[data-arm=records][value=reasoning]:checked~.arms .arm.records label[data-tab-label=reasoning],.question>input[data-arm=records][value=doctor]:checked~.arms .arm.records label[data-tab-label=doctor]{color:var(--fg);border-color:var(--fg)}
+.question>input[data-arm=records][value=answer]:focus-visible~.arms .arm.records label[data-tab-label=answer],.question>input[data-arm=records][value=reasoning]:focus-visible~.arms .arm.records label[data-tab-label=reasoning],.question>input[data-arm=records][value=doctor]:focus-visible~.arms .arm.records label[data-tab-label=doctor]{outline:2px solid var(--link)}
+.drill{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 16px 12px;margin-top:14px}.drill h3{font-size:1rem;margin:10px 0 6px}.drill h3 b.pod{color:var(--pod)}.drill h3 b.records{color:var(--records)}
 .reply{border-radius:4px 16px 16px 16px;background:var(--soft);padding:12px 14px;font-size:.95rem}
 .reply p{margin:.3em 0}.reply ol{margin:.4em 0 .2em;padding-left:1.3em}.reply li{margin:.35em 0}
 .reply .why{display:block;color:var(--muted);font-size:.88rem}.reply .conf{font-size:.72rem;color:var(--muted);margin-left:6px}
@@ -96,7 +102,7 @@ svg.graph{max-width:none;display:block;margin:4px 0}
 .graph .node.k-document rect,.graph .node.k-passage rect{fill:var(--yes-bg);stroke:var(--yes)}
 .graph .node.k-query rect,.graph .node.k-sources rect,.graph .node.k-link rect{fill:var(--soft);stroke-dasharray:4 3}
 .graph .node .ck{font-size:13px;font-weight:800}.graph .node .ck.ok{fill:var(--yes)}.graph .node .ck.bad{fill:var(--no)}
-.drill[data-arm=pod] .graph .node.k-fact rect{stroke:var(--pod)}.drill[data-arm=records] .graph .node.k-fact rect{stroke:var(--records)}.drill>summary b.pod{color:var(--pod)}.drill>summary b.records{color:var(--records)}
+.drill[data-arm=pod] .graph .node.k-fact rect{stroke:var(--pod)}.drill[data-arm=records] .graph .node.k-fact rect{stroke:var(--records)}
 .gpanel{margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:.86rem;min-height:40px}
 .kl{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
 .gpanel pre{max-height:320px;background:var(--card)}
@@ -171,6 +177,6 @@ export const SCRIPT = `
     n.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); show(n); } });
   });
   var open=new URLSearchParams(location.search).get('open');
-  if(open){var el=document.getElementById(open); if(el){ el.open=true; var s=el.closest('.question'); if(s) s.scrollIntoView(); }}
+  if(open){var el=document.getElementById(open); if(el){ el.open=true; var dr=el.closest('.drill'); if(dr){var rd=el.closest('.question').querySelector('input.tab[data-arm='+dr.getAttribute('data-arm')+'][value=reasoning]'); if(rd) rd.checked=true;} var s=el.closest('.question'); if(s) s.scrollIntoView(); }}
 })();
 `;

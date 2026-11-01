@@ -203,8 +203,20 @@ function promptHtml(s: Sitting, q: string): string {
 
 const TABS = [
   ["answer", "Answer"],
+  ["reasoning", "Reasoning"],
   ["doctor", "Show my doctor"],
 ] as const;
+
+const groupOf = (arm: Arm, q: string) => `t-${arm}-${esc(q)}`;
+
+/** One arm's tab choice for a question: before the arms, so CSS sibling selectors reach both its tabs and the full-width Reasoning panel. */
+function tabInputs(s: Sitting, arm: Arm, q: string): string {
+  if (turnOf(s, arm, q) === undefined) return "";
+  return TABS.map(
+    ([name], at) =>
+      `<input type="radio" class="tab" name="${groupOf(arm, q)}" id="${groupOf(arm, q)}-${name}" data-arm="${arm}" value="${name}"${at === 0 ? " checked" : ""}>`,
+  ).join("");
+}
 
 function armHtml(
   s: Sitting,
@@ -217,26 +229,29 @@ function armHtml(
   const head = `<div class="head"><b>${ARM_NAME[arm]}</b><span class="how">${ARM_HOW[arm]}</span></div>`;
   if (t === undefined)
     return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="chat" style="padding:12px 16px">${notAnswered}</div></div>`;
-  const group = `t-${arm}-${esc(q)}`;
   const panels = {
     answer: replyHtml(t),
     doctor: doctorCardHtml(t, asks, day(today)),
   };
+  const group = groupOf(arm, q);
   return `<div class="arm ${arm}" data-arm="${arm}">${head}<div class="tabset">${TABS.map(
-    ([name, label], at) =>
-      `<input type="radio" name="${group}" id="${group}-${name}" value="${name}"${at === 0 ? " checked" : ""}><label for="${group}-${name}" data-tab-label="${name}">${label}</label>`,
-  ).join(
-    "",
-  )}${TABS.map(([name]) => `<div class="panel" data-tab="${name}">${panels[name]}</div>`).join("")}</div>${costHtml(t)}</div>`;
+    ([name, label]) =>
+      `<label for="${group}-${name}" data-tab-label="${name}">${label}</label>`,
+  ).join("")}${TABS.filter(([name]) => name !== "reasoning")
+    .map(
+      ([name]) =>
+        `<div class="panel" data-tab="${name}">${panels[name as "answer" | "doctor"]}</div>`,
+    )
+    .join("")}</div>${costHtml(t)}</div>`;
 }
 
-/** Each arm's reasoning and evidence for a question, full width under both arms: the graph is wider than half a page. */
+/** Each arm's Reasoning tab for a question opens here, full width under both arms: the graph is wider than half a page. */
 function drillHtml(s: Sitting, q: string): string {
   return `<div class="drills">${ARMS.map((arm) => {
     const t = turnOf(s, arm, q);
-    return t?.answer === undefined
+    return t === undefined
       ? ""
-      : `<details class="fold drill" data-arm="${arm}"><summary><b class="${arm}">${ARM_NAME[arm]}</b>: the reasoning and the evidence behind each point</summary><div class="body">${reasoningHtml(t)}</div></details>`;
+      : `<div class="drill" data-arm="${arm}"><h3><b class="${arm}">${ARM_NAME[arm]}</b>: the reasoning and the evidence behind each point</h3>${reasoningHtml(t)}</div>`;
   }).join("")}</div>`;
 }
 
@@ -352,13 +367,13 @@ export function runPages(
       (q, at) =>
         `<section class="question" id="q_${esc(q.id)}"><h2 class="qh">Question ${at + 1}</h2>
 <div class="ask"><div class="av">${esc(person.slice(0, 1))}</div><div class="bubble"><span class="from">${esc(person)} asks</span>${esc(q.asks)}</div></div>
-<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
+${ARMS.map((arm) => tabInputs(s, arm, q.id)).join("")}<div class="arms">${ARMS.map((arm) => armHtml(s, arm, q.id, q.asks, found.today)).join("")}</div>
 ${drillHtml(s, q.id)}${promptHtml(s, q.id)}${keyHtml(s, found, q.id)}</section>`,
     )
     .join("\n");
   const body = `<p class="small muted"><a href="${hrefTo(where.run, "index.html")}">All runs</a> · run ${esc(r.run.id)} · ${esc(day(r.run.finished))} · <a href="${hrefTo(where.run, personPath(instance.case))}">${esc(person)}</a>, a synthetic person · <a href="${hrefTo(where.run, "how_it_works.html")}">how the test works</a></p>
 <h1>${esc(title)}: With Cascade and the grab bag, side by side</h1>
-<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer two tabs, the answer and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor, and under both answers the reasoning and the evidence graph behind each. The exact prompt each agent was handed is one click away under each question.</p>
+<p class="lead">One model (${esc(instance.model)}), one sitting, ${esc(person)}'s records both ways. For each question: ${pronoun} words, both answers exactly as given, and under each answer three tabs: the answer, the reasoning and the evidence graph behind it (which opens full width under both answers), and the card ${subjectOf({ name: person, pronoun })} would show ${pronoun} doctor. The exact prompt each agent was handed is one click away under each question.</p>
 ${head}
 <p class="printlinks noprint">Show my doctor, on paper: <a href="${hrefTo(where.run, where.print.pod)}">every card, With Cascade</a> · <a href="${hrefTo(where.run, where.print.records)}">every card, Grab bag</a></p>
 ${sections}

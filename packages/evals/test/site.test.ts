@@ -658,7 +658,9 @@ test("what a judge could have told the arms apart by is said quietly under each 
   ) as Results;
   const quiet = renderSite([{ name: "q", results: without }]);
   assert.equal(
-    /tell the arms apart|given an arm away/.test([...quiet.values()].join(" ")),
+    /tell the arms apart|given an arm away|left in and recorded/.test(
+      [...quiet.values()].join(" "),
+    ),
     false,
   );
 });
