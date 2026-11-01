@@ -391,6 +391,13 @@ export async function finish(given: string, log: (line: string) => void) {
     }
   await savePlan(plan);
   const toolCalls = await toolCallsOf(folder);
+  for (const job of plan.jobs)
+    if (
+      job.role === "subject" &&
+      job.prompt !== undefined &&
+      existsSync(join(folder, job.prompt))
+    )
+      job.promptText = await readFile(join(folder, job.prompt), "utf8");
   const checks: Record<string, Record<string, SubjectChecks>> = {};
   const answers: Record<string, Record<string, unknown>> = {};
   const evidence: Evidence[] = [];
@@ -408,6 +415,14 @@ export async function finish(given: string, log: (line: string) => void) {
     keys.set(caseId, key.items);
     cases.push({
       id: caseId,
+      person: found.person,
+      today: found.today,
+      description: {
+        summary: found.description.summary,
+        who: found.description.who,
+        sources: found.description.sources,
+        planted: found.description.planted,
+      },
       downloadsSha256,
       keySha256,
       imports: prepared.imports,

@@ -806,19 +806,19 @@ test("a recorded session run finishes into results that hold to their schema: ea
   assert.ok(instance.arms.pod.usd > 0);
   assert.equal(instance.arms.pod.usd, job(POD).stats.cost.usd);
   const index = await readFile(join(run, "site", "index.html"), "utf8");
-  assert.match(index, /href="cases\/tamsin-vale\.html"/);
-  assert.match(index, /2 of 7 found/);
+  assert.match(index, /href="instances\/tamsin-vale\.opus-5-5\.r1\.html"/);
+  assert.match(index, /<b>4 of 13<\/b>/);
   const page = await readFile(
-    join(run, "site", "cases", "tamsin-vale.html"),
+    join(run, "site", "instances", "tamsin-vale.opus-5-5.r1.html"),
     "utf8",
   );
   for (const said of [
     "Did I ever have a blood clot in my lung?",
     "The CT angiogram of 8 July 2025 found no pulmonary embolism.",
     "A clot in the lung was looked for on 8 July 2025 and ruled out.",
-    "judge haiku-5-5",
+    "haiku-5-5",
   ])
-    assert.ok(page.includes(said), `the case page shows ${said}`);
+    assert.ok(page.includes(said), `the run page shows ${said}`);
 });
 
 test("a question an arm never answered stays in the total, counted unanswered, so both arms share it", () => {

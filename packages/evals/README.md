@@ -32,6 +32,9 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
   session's own (the grab bag's reading of every file). `src/evidence.ts`: every citation resolved mechanically, a pod
   entry to the records merged into it, their revisions and source documents, a file to its passage and download.
   `src/instances.ts`: each case, model and repeat counted for the report: both arms, and judging apart.
+  `src/site.ts` (with `site-run.ts`, `site-answer.ts`, `site-graph.ts`): the report, rendered from `results.json` alone:
+  a front page, a page per instance (each answer in tabs Answer, Reasoning and Show my doctor), a print view of the
+  doctor cards per arm, and how the test works.
 - `workflow/eval-run.js` and the skill `.claude/skills/cascade-evals/`: how Claude Code runs it.
 - `prices.json` (dated list prices) and `priors.json` (the first estimates, from the hand-run comparison of
   2026-10-30, until recorded runs replace them).

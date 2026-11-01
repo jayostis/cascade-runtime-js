@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Cite } from "./citations.js";
-import type { Component, KeyItem, Prepared, Session } from "./cases.js";
+import type { Case, Component, KeyItem, Prepared, Session } from "./cases.js";
 import type { Asked } from "./sessions.js";
 import { RUNS } from "./paths.js";
 import type { Arm } from "./prompts.js";
@@ -114,6 +114,8 @@ export interface Job {
   /** Paths in the run's folder: a session's answers are a folder, one file per question. */
   readonly answers?: string;
   readonly prompt?: string;
+  /** A subject job's opening prompt, as handed out: the report shows it, so results.json holds it. */
+  promptText?: string;
   readonly verdict?: string;
   /** A judge's letters: each the answer to one question of one subject job. */
   labels?: Readonly<Record<string, Label>>;
@@ -367,6 +369,13 @@ export interface Results {
   };
   readonly cases: readonly {
     readonly id: string;
+    readonly person: Case["person"];
+    /** The day the case is set on: what "now" means to its questions. */
+    readonly today: string;
+    readonly description: Pick<
+      Case["description"],
+      "summary" | "who" | "sources" | "planted"
+    >;
     readonly downloadsSha256: string;
     readonly keySha256: string;
     readonly imports: Prepared["imports"];
