@@ -52,14 +52,14 @@
       "usd": 0
     },
     "spent": {
-      "tokens": 315300,
-      "usd": 0.7128,
+      "tokens": 343170,
+      "usd": 0.7454,
       "basis": "exact"
     },
     "byRole": {
       "subject": {
-        "tokens": 256800,
-        "usd": 0.5592
+        "tokens": 284670,
+        "usd": 0.5918
       },
       "judge": {
         "tokens": 58500,
@@ -256,6 +256,17 @@
         "modelCalls": 0,
         "tokens": 0,
         "usd": 0
+      },
+      "person": {
+        "name": "Tamsin Vale",
+        "pronoun": "her"
+      },
+      "today": "2026-10-30",
+      "description": {
+        "summary": "The small control: one source, three FHIR pulls, 33.5 KB. Pasted records should be cheap here, and the pod should match them.",
+        "who": "Tamsin Vale, born 1957-09-30, 69 on the eval date. Type 2 diabetes since 2022: metformin from 2022-03-01, stopped 2024-04-15 with no reason given, A1c rising to 8.3; empagliflozin and atorvastatin started 2025-02-20, A1c back to 6.9 by 2026-02-16. Seen for chest pain on 2025-07-08: D-dimer high, CT angiography negative, pulmonary embolism refuted. A stool test (FIT) was positive on 2025-11-04.",
+        "sources": "Cascade North Demo Hospital, three FHIR pulls: 2024-02-01 and 2025-02-01 (the vocabulary's kit) and 2026-10-15 (made for this case).",
+        "planted": "Two gaps: no urine albumin test in a person with diabetes whose eGFR is checked every year; a positive FIT with no colonoscopy after it."
       }
     }
   ],
@@ -280,14 +291,14 @@
       "answers": "answers/tamsin-vale.checkup.pod.opus-5-5.r1",
       "prompt": "prompts/tamsin-vale.checkup.pod.opus-5-5.r1.txt",
       "stats": {
-        "calls": 8,
+        "calls": 10,
         "models": ["claude-opus-5-5"],
         "tokens": {
-          "input": 3060,
-          "cacheCreation": 6900,
-          "cacheRead": 31000,
-          "output": 2980,
-          "total": 43940
+          "input": 3080,
+          "cacheCreation": 7300,
+          "cacheRead": 40000,
+          "output": 3160,
+          "total": 53540
         },
         "contextPeak": 33000,
         "toolCalls": {
@@ -297,9 +308,9 @@
             "Write": 2
           }
         },
-        "wallSeconds": 118,
+        "wallSeconds": 130,
         "cost": {
-          "usd": 0.1459,
+          "usd": 0.1611,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -342,9 +353,124 @@
             },
             "usd": 0.0213,
             "seconds": 14
+          },
+          "last-a1c": {
+            "calls": 2,
+            "tokens": {
+              "input": 20,
+              "cacheCreation": 400,
+              "cacheRead": 9000,
+              "output": 180,
+              "total": 9600
+            },
+            "usd": 0.0152,
+            "seconds": 12
           }
         }
-      }
+      },
+      "calls": [
+        {
+          "at": "2026-10-31T17:00:08.000Z",
+          "model": "claude-opus-5-5",
+          "input": 3000,
+          "cacheCreation": 0,
+          "cacheRead": 0,
+          "output": 60,
+          "toolCalls": [],
+          "usd": 0.0141
+        },
+        {
+          "at": "2026-10-31T17:00:28.000Z",
+          "model": "claude-opus-5-5",
+          "input": 8,
+          "cacheCreation": 1200,
+          "cacheRead": 4400,
+          "output": 480,
+          "toolCalls": ["ask"],
+          "usd": 0.0221
+        },
+        {
+          "at": "2026-10-31T17:00:31.000Z",
+          "model": "claude-opus-5-5",
+          "input": 8,
+          "cacheCreation": 1200,
+          "cacheRead": 4400,
+          "output": 480,
+          "toolCalls": ["ask"],
+          "usd": 0.0221
+        },
+        {
+          "at": "2026-10-31T17:00:34.000Z",
+          "model": "claude-opus-5-5",
+          "input": 8,
+          "cacheCreation": 1200,
+          "cacheRead": 4400,
+          "output": 480,
+          "toolCalls": ["ask"],
+          "usd": 0.0221
+        },
+        {
+          "at": "2026-10-31T17:00:37.000Z",
+          "model": "claude-opus-5-5",
+          "input": 8,
+          "cacheCreation": 1200,
+          "cacheRead": 4400,
+          "output": 480,
+          "toolCalls": ["ask"],
+          "usd": 0.0221
+        },
+        {
+          "at": "2026-10-31T17:00:40.000Z",
+          "model": "claude-opus-5-5",
+          "input": 8,
+          "cacheCreation": 1200,
+          "cacheRead": 4400,
+          "output": 480,
+          "toolCalls": ["Write"],
+          "usd": 0.0221
+        },
+        {
+          "at": "2026-10-31T17:00:43.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 450,
+          "cacheRead": 4500,
+          "output": 260,
+          "toolCalls": ["ask"],
+          "usd": 0.0106
+        },
+        {
+          "at": "2026-10-31T17:00:46.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 450,
+          "cacheRead": 4500,
+          "output": 260,
+          "toolCalls": ["Write"],
+          "usd": 0.0107
+        },
+        {
+          "at": "2026-10-31T17:00:51.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 200,
+          "cacheRead": 4500,
+          "output": 90,
+          "toolCalls": ["ask"],
+          "usd": 0.0076
+        },
+        {
+          "at": "2026-10-31T17:00:54.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 200,
+          "cacheRead": 4500,
+          "output": 90,
+          "toolCalls": ["Write"],
+          "usd": 0.0076
+        }
+      ],
+      "promptText": "You are answering Tamsin Vale's questions about the health records, one at a time. Today is 2026-10-30. The records are in a pod, reached only through the ask tool. Ask for each question with the ask command; answer in the answer file."
     },
     {
       "id": "tamsin-vale.checkup.records.opus-5-5.r1",
@@ -366,14 +492,14 @@
       "answers": "answers/tamsin-vale.checkup.records.opus-5-5.r1",
       "prompt": "prompts/tamsin-vale.checkup.records.opus-5-5.r1.txt",
       "stats": {
-        "calls": 6,
+        "calls": 7,
         "models": ["claude-opus-5-5"],
         "tokens": {
-          "input": 3040,
-          "cacheCreation": 19200,
-          "cacheRead": 82000,
-          "output": 2700,
-          "total": 106940
+          "input": 3050,
+          "cacheCreation": 19500,
+          "cacheRead": 99800,
+          "output": 2860,
+          "total": 125210
         },
         "contextPeak": 62000,
         "toolCalls": {
@@ -383,9 +509,9 @@
             "Write": 2
           }
         },
-        "wallSeconds": 107,
+        "wallSeconds": 118,
         "cost": {
-          "usd": 0.2081,
+          "usd": 0.2255,
           "basis": "exact",
           "priceTable": "2026-10-06"
         },
@@ -431,9 +557,95 @@
             "usd": 0.0183,
             "seconds": 16,
             "recordsTokens": 18000
+          },
+          "last-a1c": {
+            "calls": 1,
+            "tokens": {
+              "input": 10,
+              "cacheCreation": 300,
+              "cacheRead": 17800,
+              "output": 160,
+              "total": 18270
+            },
+            "usd": 0.0174,
+            "seconds": 11,
+            "recordsTokens": 18000
           }
         }
-      }
+      },
+      "calls": [
+        {
+          "at": "2026-10-31T17:00:38.000Z",
+          "model": "claude-opus-5-5",
+          "input": 1500,
+          "cacheCreation": 9000,
+          "cacheRead": 0,
+          "output": 60,
+          "toolCalls": ["Read"],
+          "usd": 0.0468
+        },
+        {
+          "at": "2026-10-31T17:00:41.000Z",
+          "model": "claude-opus-5-5",
+          "input": 1500,
+          "cacheCreation": 9000,
+          "cacheRead": 0,
+          "output": 60,
+          "toolCalls": [],
+          "usd": 0.0469
+        },
+        {
+          "at": "2026-10-31T17:00:58.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 300,
+          "cacheRead": 20333,
+          "output": 700,
+          "toolCalls": ["Read"],
+          "usd": 0.032
+        },
+        {
+          "at": "2026-10-31T17:01:01.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 300,
+          "cacheRead": 20333,
+          "output": 700,
+          "toolCalls": ["Read"],
+          "usd": 0.032
+        },
+        {
+          "at": "2026-10-31T17:01:04.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 300,
+          "cacheRead": 20334,
+          "output": 700,
+          "toolCalls": ["Write"],
+          "usd": 0.0321
+        },
+        {
+          "at": "2026-10-31T17:01:13.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 300,
+          "cacheRead": 21000,
+          "output": 480,
+          "toolCalls": ["Write"],
+          "usd": 0.0183
+        },
+        {
+          "at": "2026-10-31T17:01:20.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 300,
+          "cacheRead": 17800,
+          "output": 160,
+          "toolCalls": ["Write"],
+          "usd": 0.0174
+        }
+      ],
+      "promptText": "You are answering Tamsin Vale's questions about the health records, one at a time. Today is 2026-10-30. Read every download file in full, once, before the first question. Ask for each question with the ask command; answer in the answer file."
     },
     {
       "id": "tamsin-vale.worries.pod.opus-5-5.r1",
@@ -519,7 +731,70 @@
             "seconds": 11
           }
         }
-      }
+      },
+      "calls": [
+        {
+          "at": "2026-10-31T17:01:08.000Z",
+          "model": "claude-opus-5-5",
+          "input": 3000,
+          "cacheCreation": 0,
+          "cacheRead": 0,
+          "output": 50,
+          "toolCalls": [],
+          "usd": 0.0138
+        },
+        {
+          "at": "2026-10-31T17:01:28.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 500,
+          "cacheRead": 3166,
+          "output": 186,
+          "toolCalls": ["ask"],
+          "usd": 0.0103
+        },
+        {
+          "at": "2026-10-31T17:01:31.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 500,
+          "cacheRead": 3166,
+          "output": 186,
+          "toolCalls": ["ask"],
+          "usd": 0.0103
+        },
+        {
+          "at": "2026-10-31T17:01:34.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 500,
+          "cacheRead": 3168,
+          "output": 188,
+          "toolCalls": ["Write"],
+          "usd": 0.0103
+        },
+        {
+          "at": "2026-10-31T17:01:43.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 250,
+          "cacheRead": 3500,
+          "output": 165,
+          "toolCalls": ["ask"],
+          "usd": 0.0073
+        },
+        {
+          "at": "2026-10-31T17:01:46.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 250,
+          "cacheRead": 3500,
+          "output": 165,
+          "toolCalls": ["Write"],
+          "usd": 0.0074
+        }
+      ],
+      "promptText": "You are answering Tamsin Vale's questions about the health records, one at a time. Today is 2026-10-30. The records are in a pod, reached only through the ask tool. Ask for each question with the ask command; answer in the answer file."
     },
     {
       "id": "tamsin-vale.worries.records.opus-5-5.r1",
@@ -608,7 +883,60 @@
             "recordsTokens": 18000
           }
         }
-      }
+      },
+      "calls": [
+        {
+          "at": "2026-10-31T17:01:38.000Z",
+          "model": "claude-opus-5-5",
+          "input": 1500,
+          "cacheCreation": 9000,
+          "cacheRead": 0,
+          "output": 55,
+          "toolCalls": ["Read"],
+          "usd": 0.0467
+        },
+        {
+          "at": "2026-10-31T17:01:41.000Z",
+          "model": "claude-opus-5-5",
+          "input": 1500,
+          "cacheCreation": 9000,
+          "cacheRead": 0,
+          "output": 55,
+          "toolCalls": [],
+          "usd": 0.0468
+        },
+        {
+          "at": "2026-10-31T17:01:58.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 200,
+          "cacheRead": 20000,
+          "output": 235,
+          "toolCalls": ["Read"],
+          "usd": 0.0185
+        },
+        {
+          "at": "2026-10-31T17:02:01.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 200,
+          "cacheRead": 20000,
+          "output": 235,
+          "toolCalls": ["Write"],
+          "usd": 0.0186
+        },
+        {
+          "at": "2026-10-31T17:02:13.000Z",
+          "model": "claude-opus-5-5",
+          "input": 10,
+          "cacheCreation": 200,
+          "cacheRead": 21000,
+          "output": 220,
+          "toolCalls": ["Write"],
+          "usd": 0.0152
+        }
+      ],
+      "promptText": "You are answering Tamsin Vale's questions about the health records, one at a time. Today is 2026-10-30. Read every download file in full, once, before the first question. Ask for each question with the ask command; answer in the answer file."
     },
     {
       "id": "tamsin-vale.opus-5-5.r1.judge.haiku-5-5.j1",
@@ -773,6 +1101,12 @@
       "message": "What medications am I on right now?"
     },
     {
+      "job": "tamsin-vale.checkup.pod.opus-5-5.r1",
+      "question": "last-a1c",
+      "at": "2026-10-31T17:00:48.000Z",
+      "message": "When was my last A1c, and what was it?"
+    },
+    {
       "job": "tamsin-vale.checkup.records.opus-5-5.r1",
       "question": "checkup",
       "at": "2026-10-31T17:00:55.000Z",
@@ -783,6 +1117,12 @@
       "question": "medications",
       "at": "2026-10-31T17:01:10.000Z",
       "message": "What medications am I on right now?"
+    },
+    {
+      "job": "tamsin-vale.checkup.records.opus-5-5.r1",
+      "question": "last-a1c",
+      "at": "2026-10-31T17:01:17.000Z",
+      "message": "When was my last A1c, and what was it?"
     },
     {
       "job": "tamsin-vale.worries.pod.opus-5-5.r1",
@@ -3202,9 +3542,9 @@
             "held": 8,
             "failed": 1
           },
-          "tokens": 66430,
-          "usd": 0.2053,
-          "seconds": 166
+          "tokens": 76030,
+          "usd": 0.2205,
+          "seconds": 178
         },
         "records": {
           "sessions": [
@@ -3240,9 +3580,9 @@
             "held": 9,
             "failed": 0
           },
-          "tokens": 190370,
-          "usd": 0.3539,
-          "seconds": 155
+          "tokens": 208640,
+          "usd": 0.3713,
+          "seconds": 166
         }
       },
       "judging": {

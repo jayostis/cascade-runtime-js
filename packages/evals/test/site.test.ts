@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
+import { instancesOf } from "../src/instances.js";
 import type { Results } from "../src/results.js";
+import { errorsOf } from "../src/schemas.js";
 import { buildSite, renderSite } from "../src/site.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-site-"));
@@ -170,10 +172,16 @@ test("a run page: each question in her words, both answers exactly as given with
     ),
   );
   assert.match(prompt, /Am I allergic to anything\?/);
-  assert.match(
-    text(run),
-    /prompts\/tamsin-vale\.checkup\.pod\.opus-5-5\.r1\.txt/,
+  const opening = text(
+    element(
+      element(run, /<section[^>]*id="q_checkup"/),
+      /<details[^>]*class="fold prompt"/,
+    ),
   );
+  for (const job of recorded.jobs.filter((it) => it.role === "subject"))
+    if (job.questions!.includes("checkup"))
+      assert.ok(opening.includes(job.promptText!), job.id);
+  assert.equal(/prompts\/tamsin-vale/.test(opening), false);
 });
 
 test("a run page states the test's overhead apart from both arms, the pod build only by link, the key as a closed reference, and what is beyond it as possibly good", () => {
@@ -419,4 +427,99 @@ test("what the judges find contradicted by the records is said plainly, on the r
     text(site.get("index.html")!),
     /1 said something the records contradict/,
   );
+});
+
+const withPerson = (person: { name: string; pronoun: string }): Results => ({
+  ...recorded,
+  cases: recorded.cases.map((it) => ({ ...it, person })),
+});
+
+test("the recorded run is what the harness writes: valid, every subject job with its calls and opening prompt, a question asked and charged but not answered, and its instances those the jobs give", () => {
+  assert.deepEqual(errorsOf("results", recorded), []);
+  assert.deepEqual(
+    instancesOf(
+      recorded.jobs,
+      recorded.grades,
+      recorded.checks,
+      recorded.answers,
+      new Map(recorded.cases.map((it) => [it.id, it.key as never])),
+    ),
+    recorded.instances,
+  );
+  for (const job of recorded.jobs.filter((it) => it.role === "subject")) {
+    assert.equal(job.calls?.length, job.stats?.calls, job.id);
+    assert.ok((job.promptText ?? "") !== "", job.id);
+  }
+  for (const job of recorded.jobs.filter(
+    (it) => it.role === "subject" && it.session === "checkup",
+  )) {
+    assert.ok(
+      recorded.asked.some(
+        (it) => it.job === job.id && it.question === "last-a1c",
+      ),
+      `${job.id} was asked it`,
+    );
+    assert.ok(
+      job.split?.questions["last-a1c"],
+      `${job.id} was charged for it`,
+    );
+    assert.equal(recorded.answers[job.id]?.["last-a1c"], undefined);
+  }
+  const [only] = recorded.cases;
+  assert.equal(only!.person.name, "Tamsin Vale");
+  assert.equal(only!.today, "2026-10-30");
+  assert.ok(only!.description.who.startsWith("Tamsin Vale, born"));
+});
+
+test("a person page from the recorded name and description, one click from the front page and from each run, listing that person's runs", () => {
+  const person = page("people/tamsin-vale.html");
+  const said = text(person);
+  assert.match(said, /Tamsin Vale/);
+  const { summary, who, sources, planted } = recorded.cases[0]!.description;
+  for (const part of [summary, who, sources, planted])
+    assert.ok(said.includes(part), part);
+  assert.match(person, new RegExp(`href="../instances/${ID}\.html"`));
+  assert.match(
+    page("index.html"),
+    /href="people\/tamsin-vale\.html"[^>]*>Who Tamsin Vale is/,
+  );
+  assert.match(run, /href="\.\.\/people\/tamsin-vale\.html"/);
+});
+
+test("the person's recorded name and pronoun are used everywhere: no slug turned into a name, no hard-coded her", () => {
+  for (const [pronoun, words] of [
+    ["their", "their words"],
+    ["his", "his words"],
+  ] as const) {
+    const site = renderSite([
+      { name: "p", results: withPerson({ name: "Sam Rivera", pronoun }) },
+    ]);
+    const html = site.get(`instances/${ID}.html`)!;
+    const lead = text(element(html, /<p class="lead"/));
+    assert.match(lead, /Sam Rivera.s records/);
+    assert.ok(lead.includes(words), lead);
+    assert.equal(/\b(her|she)\b/i.test(lead), false, lead);
+    assert.match(text(element(html, /<div class="ask"/)), /Sam Rivera asks/);
+    assert.match(element(html, /<div class="av"/), />S</);
+    assert.match(html, /<title>[^<]*Sam Rivera/);
+    const front = text(site.get("index.html")!);
+    assert.match(front, /Sam Rivera/);
+    assert.equal(/Tamsin/.test(front), false);
+    const how = text(site.get("how_it_works.html")!);
+    assert.match(how, /Sam Rivera/);
+    assert.equal(/\b(her|she)\b/i.test(how), false);
+    assert.match(
+      text(site.get("people/tamsin-vale.html")!),
+      /Sam Rivera/,
+    );
+  }
+});
+
+test("a doctor card is dated the case's day, not the day the run finished", () => {
+  assert.equal(recorded.run.finished.slice(0, 10), "2026-10-31");
+  assert.match(
+    text(tab("checkup", "pod", "doctor")),
+    /Prepared with Cascade . opus-5-5 . 2026-10-30/,
+  );
+  assert.match(text(page(`instances/${ID}.print-pod.html`)), /opus-5-5 2026-10-30/);
 });
