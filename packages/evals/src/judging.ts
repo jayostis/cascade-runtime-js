@@ -31,14 +31,17 @@ const VIEWS =
  */
 const UNAMBIGUOUS = new RegExp(
   [
-    String.raw`\b(?:${RESOURCES})\/[\w.:-]+`,
+    String.raw`\b(?:${RESOURCES})(?:\.[a-z]\w*(?:\[\d+\])?)+`,
+    String.raw`\b(?:${RESOURCES})\/(?=[\w:-]*[\d-])[\w:-]+(?:\.[\w:-]+)*`,
     String.raw`(?:[\w.-]+\/)*[\w.-]+\.(?:xml|json|ttl|pdf|csv|zip|txt)\b(?::\d+(?:-\d+)?)?`,
     String.raw`\b(?:[a-z][a-z0-9]*[-_])+(?:summary|record|results|cda)-\d+\b|\b(?:summary|record)-\d+\b`,
     String.raw`\b(?:[a-z][a-z0-9]*-)+(?:summary|patient-record)\b`,
-    String.raw`(?<![\w/])(?:pod|record|entry)\/(?:${VIEWS}|\S+)(?: --\w+ \S+)*`,
-    String.raw`\b(?:lab_series|find_changes|finding_rows|list_pods|export_cda|cascade-mcp)\b`,
+    String.raw`(?<![\w/])(?:pod|record|entry)\/(?:${VIEWS}|(?=[^\s/]*[\d-])\S+)(?: --\w+ \S+)*`,
+    String.raw`\b(?:lab_series|find_changes|finding_rows|list_pods|reference_table_checks|export_cda|cascade-mcp)\b`,
+    String.raw`\bhttps?:\/\/[^\s,;)#]+#[^\s,;)]*[^\s,;).]|\bhttps?:\/\/[\w.-]*(?:cascade|fhir|snomed|loinc)[\w.-]*(?:\/[^\s,;)]*[^\s,;).])?`,
+    String.raw`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`,
     String.raw`\b(?:urn:uuid|cascade|pod|ni):(?:\/\/\/?)?[^\s,;)]+`,
-    String.raw`\b[a-z]{3,}(?:[A-Z][a-z0-9]+)+\b|\b(?:[A-Z][a-z]+){3,}\b|\bRefutedAtSource\b`,
+    String.raw`\b[a-z]{3,}(?:[A-Z][a-z0-9]+)+\b|\bRefutedAtSource\b`,
   ].join("|"),
   "g",
 );

@@ -394,7 +394,7 @@ export async function finish(given: string, log: (line: string) => void) {
   const checks: Record<string, Record<string, SubjectChecks>> = {};
   const answers: Record<string, Record<string, unknown>> = {};
   const evidence: Evidence[] = [];
-  const tells: Results["blinding"]["tells"][number][] = [];
+  const tells: NonNullable<Results["blinding"]>["tells"][number][] = [];
   const keys = new Map<string, readonly KeyItem[]>();
   const cases: Results["cases"][number][] = [];
   for (const {

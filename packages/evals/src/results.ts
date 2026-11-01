@@ -399,7 +399,7 @@ export interface Results {
   readonly grades: readonly Grade[];
   readonly instances: readonly Instance[];
   /** What a blinded answer still carried that could not be scrubbed, by a fixed list of terms; never shown to a judge. */
-  readonly blinding: {
+  readonly blinding?: {
     readonly tells: readonly {
       readonly job: string;
       readonly arm: string;

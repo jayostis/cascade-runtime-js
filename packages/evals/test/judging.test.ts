@@ -292,19 +292,16 @@ test("the scrubber replaces an id-shaped resource reference whole and a view-or-
   const cases: readonly (readonly [string, string])[] = [
     ["Patient/123 is here", "[record] is here"],
     ["Condition/diabetes mellitus", "Condition/diabetes mellitus"],
-    ["entry/e-12 and pod/kestrel-harbor", "[record] and [record]"],
+    ["entry/e-12 then pod/kestrel-harbor", "[record] then [record]"],
     ["record/keeping and entry/exit", "record/keeping and entry/exit"],
     ["see http://example.org/ns#workflowStatus now", "see [record] now"],
     [
-      "at https://terminology.hl7.org/fhir/x and https://snomed.info/id/123.",
-      "at [record] and [record].",
+      "at https://fhir.example.org/r/x; https://snomed.info/id/123.",
+      "at [record]; [record].",
     ],
     ["id 0b1f6a52-8c3d-4e7a-9d10-5a1b2c3d4e5f ok", "id [record] ok"],
     ["ran reference_table_checks then", "ran [record] then"],
-    [
-      "Patient.birthDate and Observation.value[0].quantity",
-      "[record] and [record]",
-    ],
+    ["Patient.birthDate; Observation.value[0].quantity", "[record]; [record]"],
     ["RefutedAtSource and GlaxoSmithKline", "[record] and GlaxoSmithKline"],
   ];
   for (const [said, want] of cases) assert.equal(scrubbed(said), want, said);
