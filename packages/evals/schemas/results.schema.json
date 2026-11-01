@@ -1178,6 +1178,9 @@
               "text": {
                 "type": "string"
               },
+              "truncated": {
+                "type": "boolean"
+              },
               "download": {
                 "type": "object",
                 "properties": {
@@ -1212,14 +1215,20 @@
               }
             }
           },
+          "stated": {
+            "type": "boolean"
+          },
           "files": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["file", "bytes"],
+              "required": ["file", "read", "bytes"],
               "properties": {
                 "file": {
                   "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
                 },
                 "bytes": {
                   "$ref": "#/$defs/count"

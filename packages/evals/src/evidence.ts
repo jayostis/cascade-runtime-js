@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Cite } from "./citations.js";
-import type { EntryProvenance, Passage } from "./results.js";
+import { type EntryProvenance, PASSAGE_CAP, type Passage } from "./results.js";
 
 interface Triple {
   readonly s: string;
@@ -16,6 +16,21 @@ interface Triple {
 
 const TRIPLE = /^(\S+) <([^>]+)> (.+) \.\s*$/;
 const LITERAL = /^"((?:[^"\\]|\\.)*)"(?:\^\^<[^>]+>|@\S+)?$/;
+const ESCAPES: Record<string, string> = {
+  t: "\t",
+  n: "\n",
+  r: "\r",
+  b: "\b",
+  f: "\f",
+  '"': '"',
+  "'": "'",
+  "\\": "\\",
+};
+
+/** A Turtle string literal's text with its backslash escapes undone. */
+export const unescaped = (text: string | undefined) =>
+  text?.replace(/\\(.)/g, (whole, char: string) => ESCAPES[char] ?? whole);
+
 const local = (iri: string) => iri.replace(/^.*[#/]/, "");
 
 async function turtleFiles(folder: string): Promise<string[]> {
@@ -54,7 +69,7 @@ export async function podProvenance(
       const match = TRIPLE.exec(line);
       if (match === null) continue;
       const [, s, p, o] = match as unknown as [string, string, string, string];
-      const literal = LITERAL.exec(o)?.[1]?.replace(/\\"/g, '"');
+      const literal = unescaped(LITERAL.exec(o)?.[1]);
       const triple: Triple = {
         s: name(s),
         p: local(p),
@@ -240,6 +255,7 @@ export async function passageOf(
     return undefined;
   const text = await readFile(path, "utf8");
   const lines = text.split("\n");
+  if (lines.at(-1) === "") lines.pop();
   const pull = join(root, cite.file.split("/")[0]!, "pull.json");
   let download: Passage["download"];
   if (existsSync(pull)) {
@@ -254,6 +270,8 @@ export async function passageOf(
   ) => ({
     file: cite.file,
     ...rest,
+    text: rest.text.slice(0, PASSAGE_CAP),
+    ...(rest.text.length > PASSAGE_CAP ? { truncated: true } : {}),
     ...(download === undefined ? {} : { download }),
   });
   if ("line" in cite)

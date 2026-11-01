@@ -10,6 +10,7 @@ import {
   checkAnswer,
   judgeViolations,
 } from "./checks.js";
+import { callsFor } from "./citations.js";
 import { passageOf, podProvenance } from "./evidence.js";
 import { instancesOf } from "./instances.js";
 import { answerPath, askedIn, splitSession } from "./sessions.js";
@@ -306,15 +307,18 @@ async function askerOf(
 
 /**
  * Each citation and absence of one answer, resolved mechanically: a pod entry to its provenance, a file to its
- * passage, a pod absence to the call it names (else the same tool and input), a grab-bag absence to the files it
- * names (else every file read).
+ * passage, a pod absence to the call it names, which must be a call of its tool and input (else the first call of that
+ * tool and input when it names no number), a grab-bag absence to the files it names (else every file offered, marked
+ * as defaulted), each marked read whole or not.
  */
-async function evidenceOf(o: {
+export async function evidenceOf(o: {
   job: Job;
   question: string;
   answer: Answer;
   prepared: Prepared;
   reading: readonly string[];
+  /** The files the job read whole, as its checks found them. */
+  read?: readonly string[];
   provenance: (entry: string) => EntryProvenance | undefined;
   toolCalls: readonly ToolCallRecord[];
 }): Promise<Evidence[]> {
@@ -335,16 +339,7 @@ async function evidenceOf(o: {
     for (const [absence, { query, sources }] of item.absences.entries()) {
       if (o.job.arm === "pod") {
         const call =
-          query === undefined
-            ? undefined
-            : (calls.find(
-                (it) => query.call !== undefined && it.call === query.call,
-              ) ??
-              calls.find(
-                (it) =>
-                  it.tool === query.tool &&
-                  JSON.stringify(it.input) === JSON.stringify(query.input),
-              ));
+          query === undefined ? undefined : callsFor(calls, query)[0];
         found.push({
           ...at,
           item: item.n,
@@ -365,8 +360,10 @@ async function evidenceOf(o: {
           ...at,
           item: item.n,
           absence,
+          stated: sources !== undefined,
           files: (sources ?? o.reading).map((file) => ({
             file,
+            read: (o.read ?? []).includes(file),
             bytes:
               o.prepared.documents.find((it) => it.file === file)?.bytes ?? 0,
           })),
@@ -462,6 +459,7 @@ export async function finish(given: string, log: (line: string) => void) {
                 answer: answer as Answer,
                 prepared,
                 reading: found.reading,
+                ...(checked.read === undefined ? {} : { read: checked.read }),
                 provenance,
                 toolCalls,
               })),

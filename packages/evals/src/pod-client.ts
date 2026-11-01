@@ -179,7 +179,7 @@ export async function podServe(given: string, job: string): Promise<void> {
  * One call through the job's MCP client: the tools, or a tool's answer, logged with the entries it named and
  * numbered, the number printed after the answer so an absence can name the call that looked.
  */
-async function answer(
+export async function answer(
   client: Client,
   folder: string,
   job: string,
@@ -207,7 +207,30 @@ async function answer(
   }
   const call = ++counter.made;
   const started = performance.now();
-  const result = await client.callTool({ name: tool, arguments: input });
+  let result: Awaited<ReturnType<Client["callTool"]>>;
+  try {
+    result = await client.callTool({ name: tool, arguments: input });
+  } catch (error) {
+    const message = (error as Error).message;
+    await appendFile(
+      join(folder, "tool-calls.jsonl"),
+      `${JSON.stringify({
+        job,
+        call,
+        at: new Date().toISOString(),
+        tool,
+        input,
+        ok: false,
+        error: message,
+        rows: 0,
+        entries: [],
+        answer: message,
+        milliseconds: Math.round(performance.now() - started),
+      } satisfies ToolCallRecord)}
+`,
+    );
+    throw error;
+  }
   const [first] = result.content as { type: string; text: string }[];
   const text = first?.text ?? "";
   let value: unknown;

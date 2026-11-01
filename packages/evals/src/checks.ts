@@ -356,11 +356,6 @@ export async function checkAnswer(options: {
       ok,
       answer: text,
     }));
-  /** The call an absence names by its number, when it names one the log holds; else every call of the job. */
-  const ranFor = (call: number | undefined) => {
-    const named = ran.filter((it) => it.call === call);
-    return call === undefined || named.length === 0 ? ran : named;
-  };
   const text = (file: string) =>
     readFile(join(prepared.downloads, file), "utf8");
   // The files an absence must cover: every one that holds records (a pull's pull.json holds none).
@@ -390,7 +385,7 @@ export async function checkAnswer(options: {
       const tied = tieOf(absence, key);
       const backing =
         job.arm === "pod"
-          ? checkAbsence(absence, ranFor(absence.query?.call), tied)
+          ? checkAbsence(absence, ran, tied)
           : await checkRecordsAbsence(absence, read, text, couldHold, tied);
       absences.push({ item: point.n, absence: at, ...backing });
     }

@@ -285,6 +285,9 @@ export interface EntryProvenance {
   }[];
 }
 
+/** The most characters of a passage that results.json keeps. */
+export const PASSAGE_CAP = 20_000;
+
 /** The lines of a download a citation names, and the download it came in. */
 export interface Passage {
   readonly file: string;
@@ -294,6 +297,8 @@ export interface Passage {
   readonly to: number;
   readonly pointer?: string;
   readonly text: string;
+  /** The text was cut at `PASSAGE_CAP` characters. */
+  readonly truncated?: boolean;
   readonly download?: {
     readonly source?: string;
     readonly retrievedAt?: string;
@@ -317,7 +322,14 @@ export interface Evidence {
     readonly rows: number;
     readonly milliseconds: number;
   } | null;
-  readonly files?: readonly { readonly file: string; readonly bytes: number }[];
+  /** A grab-bag absence: whether it named its sources (else the files offered stand in for them). */
+  readonly stated?: boolean;
+  readonly files?: readonly {
+    readonly file: string;
+    /** Whether the job read the whole file, as a records absence requires. */
+    readonly read: boolean;
+    readonly bytes: number;
+  }[];
 }
 
 export interface Results {
