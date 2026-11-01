@@ -382,3 +382,41 @@ test("every page links only to pages the site holds, in one run and in the histo
     assert.ok(existsSync(join(out, ...path.split("/"))), path);
   assert.equal(dirname(index), out);
 });
+
+test("what the judges find contradicted by the records is said plainly, on the run and on the front page, and is not called possibly good", () => {
+  const grades = recorded.grades.map((g, at) =>
+    at === 0
+      ? {
+          ...g,
+          beyond: [{ item: 3, verdict: "contradicted" as const, why: "no" }],
+        }
+      : g,
+  );
+  const [first] = recorded.instances;
+  const mutated = {
+    ...recorded,
+    grades,
+    instances: [
+      {
+        ...first!,
+        arms: {
+          ...first!.arms,
+          pod: {
+            ...first!.arms.pod!,
+            beyond: { ...first!.arms.pod!.beyond, contradicted: 1 },
+          },
+        },
+      },
+    ],
+  };
+  const site = renderSite([{ name: "c", results: mutated }]);
+  const key = element(
+    element(site.get(`instances/${ID}.html`)!, /<section[^>]*id="q_checkup"/),
+    /<tr[^>]*class="beyond"/,
+  );
+  assert.match(text(key), /haiku-5-5: . contradicted by the records/);
+  assert.match(
+    text(site.get("index.html")!),
+    /1 said something the records contradict/,
+  );
+});

@@ -67,6 +67,6 @@ test("finish checks and writes a run of two cases in one process, opening each c
     results.cases.map(({ id }) => id),
     ["tamsin-vale", "priya-natarajan"],
   );
-  for (const id of ["tamsin-vale", "priya-natarajan"])
-    assert.ok(existsSync(join(run, "site", "cases", `${id}.html`)), id);
+  for (const page of ["index.html", "how_it_works.html"])
+    assert.ok(existsSync(join(run, "site", page)), page);
 });

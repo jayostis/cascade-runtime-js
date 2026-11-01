@@ -104,7 +104,7 @@ function svgOf(graph: Graph, id: string): string {
     .map((node) => {
       const p = at.get(node.id)!;
       const sub = node.sub ?? KIND[node.kind];
-      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l">${esc(cut(node.label, 30))}</text><text x="10" y="36" class="s">${esc(cut(sub, 34))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
+      return `<g class="node k-${node.kind}" tabindex="0" role="button" data-id="${esc(node.id)}" transform="translate(${p.x},${p.y})"><title>${esc(KIND[node.kind])}: ${esc(node.label)}${node.sub === undefined ? "" : ` · ${esc(node.sub)}`}</title><rect width="${BOX.w}" height="${BOX.h}" rx="9"/><text x="10" y="19" class="l">${esc(cut(node.label, node.check === undefined ? 30 : 24))}</text><text x="10" y="36" class="s">${esc(cut(sub, 34))}</text>${node.check === undefined ? "" : `<text x="${BOX.w - 10}" y="19" text-anchor="end" class="ck ${node.check}">${node.check === "ok" ? "✓" : "✗"}</text>`}</g>`;
     })
     .join("");
   return `<svg class="graph" data-graph="${esc(id)}" viewBox="0 0 ${width} ${total}" width="${width}" height="${total}" role="img" aria-label="Evidence graph">${edges}${nodes}</svg>`;

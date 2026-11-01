@@ -68,7 +68,7 @@ const dots = (t: ReturnType<typeof tally>) => {
 const extras = (t: ReturnType<typeof tally>) => {
   const parts = [
     t.partly > 0 && `${t.partly} partly`,
-    t.split > 0 && `${t.split} judges split`,
+    t.split > 0 && `judges split on ${t.split}`,
     t.ungraded > 0 && `${t.ungraded} not graded`,
     t.unanswered > 0 && `${t.unanswered} unanswered`,
   ].filter((it) => it !== false);

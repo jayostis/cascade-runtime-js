@@ -602,7 +602,7 @@ export function doctorCardHtml(
       const facts = item.facts
         .map((f, i) => {
           const source = sourceOf(t, item.n, i, f);
-          return `<li>${esc(f.says)} <span class="muted">· ${esc(f.date ?? "")} · ${esc(source)}</span></li>`;
+          return `<li>${esc(f.says)} <span class="muted">· ${f.date === undefined ? "" : `${esc(f.date)} · `}${esc(source)}</span></li>`;
         })
         .join("");
       const absences = item.absences

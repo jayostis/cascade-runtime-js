@@ -54,6 +54,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--soft);padding:12
 aside.overhead{background:var(--card);border:1px dashed var(--test);border-radius:10px;padding:10px 12px;display:grid;gap:2px}
 aside.overhead b{font-size:1.4rem;font-variant-numeric:tabular-nums}
 .printlinks{font-size:.9rem}
+.rh .badge,aside.overhead .badge{justify-self:start}
+.expect table+table{margin-top:14px}
 .question{margin-top:34px;padding-top:10px;border-top:1px solid var(--line)}
 .qh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 4px;font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .ask{display:flex;gap:12px;align-items:flex-start;margin:10px 0 6px}
@@ -83,7 +85,7 @@ details.item>.dbody{border-top:1px solid var(--line);padding:6px 12px 12px}
 .chain{font-size:.9rem}.chain ul{margin:.2em 0 .6em;padding-left:1.1em}.chain li{margin:.3em 0}
 .chain .ck{font-weight:800;margin-left:-1.1em;width:1.1em;display:inline-block}.chain h4.kn{color:var(--beyond)}
 .gwrap .svgwrap{overflow-x:auto}
-svg.graph{max-width:100%;height:auto;display:block;margin:4px 0}
+svg.graph{max-width:none;display:block;margin:4px 0}
 .graph .edge{fill:none;stroke:var(--muted);stroke-width:1.3;opacity:.55}.graph .edge.dashed{stroke-dasharray:4 4}
 .graph .node{cursor:pointer}.graph .node rect{fill:var(--card);stroke:var(--line);stroke-width:1.2}
 .graph .node:hover rect,.graph .node:focus rect,.graph .node.sel rect{stroke:var(--fg);stroke-width:1.8}
