@@ -1,21 +1,13 @@
 // The report site, generated from results.json and the case files and never edited by hand: an index of the run (or
-// of every recorded run, with the trend) and a page per case. Both arms get the same treatment on every page.
+// of every recorded run) with one row per instance, and a page per case with each question, both replies and the key.
+// Both arms get the same treatment on every page.
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import {
-  type Case,
-  type Key,
-  type KeyItem,
-  loadCase,
-  loadKey,
-} from "./cases.js";
 import type { Answer } from "./checks.js";
-import type { Claim } from "./citations.js";
 import { HISTORY } from "./paths.js";
-import type { Grade, Job, Results, Score, Slice } from "./results.js";
+import type { ArmSummary, Instance, Results } from "./results.js";
 import { runFolder } from "./results.js";
-import { uncommittedIn } from "./history.js";
 
 const esc = (text: unknown) =>
   String(text ?? "")
@@ -87,643 +79,112 @@ function page(title: string, body: string, home: string): string {
 </main><script>document.querySelectorAll("tr[data-href]").forEach(r=>r.addEventListener("click",()=>location.href=r.dataset.href))</script></body></html>`;
 }
 
-interface Loaded {
-  readonly results: Results;
-  readonly cases: Map<string, { found: Case; key: Key; keyChanged: boolean }>;
-  /** The run's cases no longer in cases/, which its pages leave out and name. */
-  readonly missing: readonly string[];
-}
-
-async function loaded(results: Results): Promise<Loaded> {
-  const cases = new Map<
-    string,
-    { found: Case; key: Key; keyChanged: boolean }
-  >();
-  const missing: string[] = [];
-  for (const { id, keySha256 } of results.cases) {
-    try {
-      const found = await loadCase(id);
-      const { key, sha256 } = await loadKey(id);
-      cases.set(id, { found, key, keyChanged: sha256 !== keySha256 });
-    } catch {
-      missing.push(id);
-    }
-  }
-  return { results, cases, missing };
-}
-
-const armName = (arm: string | undefined) =>
-  arm === "pod" ? "pod (cascade-mcp)" : "records (pasted)";
-const subjectsOf = (results: Results, caseId?: string) =>
-  results.jobs.filter(
-    (it) =>
-      it.role === "subject" &&
-      (caseId === undefined || it.case === caseId) &&
-      (it.status === "done" || it.status === "reused"),
-  );
-/** The arm and model a subject ran as: the column pages group by, both arms alike. */
-const groupOf = (job: Job) =>
-  `${job.arm} · ${job.model.replace(/^claude-/, "")}`;
-
-/** A judge as a reader knows it: its model, without the run's job id. */
-const judgeName = (r: Results, id: string) =>
-  `judge ${(r.jobs.find((it) => it.id === id)?.model ?? id).replace(/^claude-/, "")}`;
+const ARMS = ["pod", "records"] as const;
+const armName = (arm: string) =>
+  arm === "pod" ? "Cascade pod (cascade-mcp)" : "Grab bag (records pasted)";
+const model = (id: string) => id.replace(/^claude-/, "");
 
 function chip(verdict: string, text = verdict) {
   return `<span class="chip ${esc(verdict)}">${esc(text)}</span>`;
 }
 
-function scoreLine(scores: readonly Score[]): string {
-  if (scores.length === 0)
-    return chip("ungraded", "not graded (programs only)");
-  const mean = (pick: (s: Score) => number) =>
-    scores.reduce((sum, s) => sum + pick(s), 0) / scores.length;
-  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-  return [
-    chip("found", `${f(mean((s) => s.found))} found`),
-    chip("partly", `${f(mean((s) => s.partly))} partly`),
-    chip("missed", `${f(mean((s) => s.missed))} missed`),
-    chip("false", `${f(mean((s) => s.falseQuestions))} false`),
-  ].join("");
+/** An arm's counts, as counts: the key's expected items, its traps, what it said beyond the key, its citations, its cost. */
+function armCell(arm: ArmSummary | undefined): string {
+  if (arm === undefined) return `<td class="muted small">did not run</td>`;
+  const { expected: e, traps: t, beyond: b } = arm;
+  return `<td>${chip("found", `${e.found} of ${e.of} found`)}${e.partly ? chip("partly", `${e.partly} partly`) : ""}${e.split ? chip("ungraded", `${e.split} split`) : ""}${e.ungraded ? chip("ungraded", `${e.ungraded} ungraded`) : ""}
+<br>${chip(t.raised ? "raised" : "avoided", `${t.avoided} of ${t.of} traps avoided`)}
+<br><span class="small muted">beyond the key: ${b.fair} fair, ${b.trueNotPlanted} true not planted, ${b.speculative} speculative, ${b.contradicted} contradicted${b.split ? `, ${b.split} split` : ""} · citations ${arm.citations.held} held, ${arm.citations.failed} failed</span>
+<br><span class="small muted">${arm.questions} question(s) · ${thousands(arm.tokens)} tokens · ${dollars(arm.usd)} · ${seconds(arm.seconds)}</span></td>`;
 }
 
-function programLine(results: Results, jobs: readonly Job[]): string {
-  let cited = 0;
-  let held = 0;
-  let absent = 0;
-  let backed = 0;
-  let wording = 0;
-  let disciplined = 0;
-  for (const job of jobs) {
-    const checks = results.checks[job.id];
-    if (checks === undefined) continue;
-    cited += checks.citations.length;
-    held += checks.citations.filter((it) => it.ok).length;
-    absent += checks.absences.length;
-    backed += checks.absences.filter((it) => it.backed).length;
-    wording += checks.trapWording.length;
-    if (checks.discipline.ok) disciplined++;
-  }
-  return `<span class="small">citations verified <b>${held}/${cited}</b> · absences backed <b>${backed}/${absent}</b> · trap wording <b class="${wording ? "bad" : ""}">${wording}</b> · kept to its tools <b>${disciplined}/${jobs.length}</b></span>`;
-}
-
-const tokensOf = (jobs: readonly Job[]) =>
-  jobs.reduce((sum, it) => sum + (it.stats?.tokens.total ?? 0), 0);
-const usdOf = (jobs: readonly Job[]) =>
-  jobs.reduce((sum, it) => sum + (it.stats?.cost.usd ?? 0), 0);
-
-function trendSvg(
-  points: readonly { label: string; values: Record<string, number> }[],
-): string {
-  if (points.length < 2)
-    return `<p class="muted small">One run so far: the trend starts with the next recorded run.</p>`;
-  const series = [...new Set(points.flatMap((p) => Object.keys(p.values)))];
-  const max = Math.max(1, ...points.flatMap((p) => Object.values(p.values)));
-  const w = 640;
-  const h = 180;
-  const x = (i: number) => 40 + (i * (w - 60)) / (points.length - 1);
-  const y = (v: number) => h - 24 - (v / max) * (h - 44);
-  const dash = ["", "6 4", "2 3", "8 3 2 3"];
-  const lines = series
-    .map((name, s) => {
-      const pts = points
-        .map((p, i) =>
-          p.values[name] === undefined
-            ? undefined
-            : `${x(i)},${y(p.values[name]!)}`,
-        )
-        .filter(Boolean)
-        .join(" ");
-      return `<polyline fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="${dash[s % dash.length]}" points="${pts}"/>`;
-    })
-    .join("");
-  const legend = series
+function instanceRows(r: Results, prefix: string): string {
+  return r.instances
     .map(
-      (name, s) =>
-        `<span class="chip ungraded"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" stroke-width="2" stroke-dasharray="${dash[s % dash.length]}"/></svg> ${esc(name)}</span>`,
+      (it: Instance) =>
+        `<tr class="link" data-href="${prefix}cases/${esc(it.case)}.html"><td><a href="${prefix}cases/${esc(it.case)}.html">${esc(it.case)}</a><br><span class="small muted">${esc(model(it.model))} r${it.repeat}</span></td>${ARMS.map((arm) => armCell(it.arms[arm])).join("")}<td class="small">${dollars(it.judging.usd)}<br><span class="muted">${it.judging.judges.length} judge(s), charged to neither arm</span></td></tr>`,
     )
     .join("");
-  const labels = points
+}
+
+const instanceTable = (r: Results, prefix = "") =>
+  r.instances.length === 0
+    ? `<p class="muted">No session answered.</p>`
+    : `<div class="table"><table><tr><th>Instance</th>${ARMS.map((arm) => `<th>${armName(arm)}</th>`).join("")}<th>Judging</th></tr>${instanceRows(r, prefix)}</table></div>`;
+
+function runIndex(r: Results, home: string): string {
+  const build = r.cases
     .map(
-      (p, i) =>
-        `<text x="${x(i)}" y="${h - 6}" text-anchor="middle" class="muted">${esc(p.label)}</text>`,
+      (it) =>
+        `<li>${esc(it.id)}: ${it.build === null || it.build === undefined ? "not timed" : `${it.build.seconds} s, ${it.build.modelCalls} model calls`}</li>`,
     )
     .join("");
-  return `<div class="legend">${legend}</div><svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Gaps found per run, by arm">${lines}${labels}</svg>`;
-}
-
-function headToHead(l: Loaded): string {
-  const rows: string[] = [];
-  for (const [caseId, { key, found }] of l.cases)
-    for (const item of key.items.filter((it) => it.kind === "gap")) {
-      const groups = new Map<string, string[]>();
-      for (const job of subjectsOf(l.results, caseId)) {
-        const verdicts = l.results.grades
-          .filter((g) => g.subject === job.id)
-          .map(
-            (g) => g.items.find((it) => it.id === item.id)?.verdict ?? "missed",
-          );
-        const list = groups.get(groupOf(job)) ?? [];
-        list.push(...(verdicts.length > 0 ? verdicts : ["ungraded"]));
-        groups.set(groupOf(job), list);
-      }
-      rows.push(
-        `<tr><td>${esc(found.person.name)}</td><td><b>${esc(item.id)}</b> ${esc(item.lookingFor)}</td>${[
-          ...groups.entries(),
-        ]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(
-            ([group, verdicts]) =>
-              `<td><span class="muted small">${esc(group)}</span><br>${verdicts.map((v) => chip(v)).join("")}</td>`,
-          )
-          .join("")}</tr>`,
-      );
-    }
-  return rows.length === 0
-    ? ""
-    : `<h2>Head to head, per gap</h2><p class="muted small">Each planted gap, as the judges graded each arm. Where one arm finds a gap the other misses, the row says so.</p><div class="table"><table><tr><th>Person</th><th>Gap</th><th colspan="9">Arms</th></tr>${rows.join("")}</table></div>`;
-}
-
-function verdictText(l: Loaded): string {
-  const arms = new Map<string, Score[]>();
-  for (const s of l.results.scores) {
-    const job = l.results.jobs.find((it) => it.id === s.subject);
-    if (job === undefined) continue;
-    const list = arms.get(job.arm!) ?? [];
-    list.push(s);
-    arms.set(job.arm!, list);
-  }
-  if (arms.size === 0)
-    return `<p>This run was not graded: it ran the program checks only (a smoke run, or judges left out). Its verdict on pod against pasted records is in the checks and the costs below, not in gaps found.</p>`;
-  const rate = (list: Score[]) =>
-    list.reduce((s, it) => s + it.found + it.partly / 2, 0) /
-    Math.max(
-      1,
-      list.reduce((s, it) => s + it.gaps, 0),
-    );
-  const falses = (list: Score[]) =>
-    list.reduce((s, it) => s + it.falseQuestions, 0) / list.length;
-  const pod = arms.get("pod") ?? [];
-  const records = arms.get("records") ?? [];
-  if (pod.length === 0 || records.length === 0) return "";
-  const count = (list: Score[]) => {
-    const gaps = list.reduce((sum, it) => sum + it.gaps, 0);
-    const found = list.reduce((sum, it) => sum + it.found, 0);
-    const partly = list.reduce((sum, it) => sum + it.partly, 0);
-    const runs = new Set(list.map((it) => it.subject)).size;
-    const judges = new Set(list.map((it) => it.judge)).size;
-    return `${found} found and ${partly} partly of ${gaps} gap gradings (${runs} run${runs === 1 ? "" : "s"}, ${judges} judge${judges === 1 ? "" : "s"}), ${falses(list).toFixed(1)} false questions a run`;
-  };
-  const better =
-    rate(pod) > rate(records)
-      ? "the pod arm found more"
-      : rate(pod) < rate(records)
-        ? "pasted records found more"
-        : "the arms found as many";
-  return `<p><b>Overall, ${better}.</b> Pod: ${count(pod)}. Pasted records: ${count(records)}. Partly counts half; a handful of runs shows a difference, it does not measure a small one.</p>`;
-}
-
-/** What one gap found cost: the subjects' dollars over the gaps their judges found (partly counts half). */
-function costPerGap(results: Results, jobs: readonly Job[]): string {
-  const scores = results.scores.filter((s) =>
-    jobs.some((j) => j.id === s.subject),
-  );
-  if (scores.length === 0) return "";
-  const judges = new Set(scores.map((s) => s.judge)).size;
-  const gaps =
-    scores.reduce((sum, s) => sum + s.found + s.partly / 2, 0) /
-    Math.max(1, judges);
-  return gaps === 0
-    ? " · no gap found"
-    : ` · ${dollars(usdOf(jobs) / gaps)} a gap found`;
-}
-
-function runIndex(l: Loaded, home: string, trend: string): string {
-  const r = l.results;
-  const subjects = subjectsOf(r);
-  const groups = [...new Set(subjects.map(groupOf))].sort();
-  const caseRows = [...l.cases.entries()]
-    .sort(
-      ([, a], [, b]) =>
-        a.found.person.name.localeCompare(b.found.person.name) ||
-        a.found.id.localeCompare(b.found.id),
-    )
-    .map(([id, { found, key }]) => {
-      const cells = groups
-        .map((group) => {
-          const jobs = subjectsOf(r, id).filter((it) => groupOf(it) === group);
-          const scores = r.scores.filter((s) =>
-            jobs.some((j) => j.id === s.subject),
-          );
-          return `<td>${scoreLine(scores)}<br>${programLine(r, jobs)}<br><span class="small muted">${thousands(tokensOf(jobs))} tokens · ${dollars(usdOf(jobs))}${costPerGap(r, jobs)}</span></td>`;
-        })
-        .join("");
-      const looking = key.items
-        .filter((it) => it.kind === "gap")
-        .map((it) => esc(it.lookingFor))
-        .join("; ");
-      return `<tr class="link" data-href="cases/${esc(id)}.html"><td><a href="cases/${esc(id)}.html"><b>${esc(found.person.name)}</b></a><br><span class="small muted">${esc(id)}</span></td><td class="small">Looking for: ${looking}</td>${cells}</tr>`;
-    })
-    .join("");
-  const cfg = r.run.config as {
-    cases: unknown;
-    arms: string[];
-    subjects: string[];
-    repeats: number;
-    judges: string[];
-  };
-  const spent = r.budget.spent;
-  const tiles = [
-    ["tier", r.run.tier],
-    ["cases", String(l.cases.size)],
-    ["arms", cfg.arms.join(", ")],
-    ["subject models", cfg.subjects.join(", ")],
-    ["repeats", String(cfg.repeats)],
-    ["judges", cfg.judges.length === 0 ? "none" : cfg.judges.join(", ")],
-    ["tokens spent", thousands(spent.tokens)],
-    [
-      "estimate",
-      `${thousands(r.budget.estimate.tokens)} · ${dollars(r.budget.estimate.usd)}`,
-    ],
-    ["cap", `${thousands(r.budget.cap.tokens)} · ${dollars(r.budget.cap.usd)}`],
-    [`cost (${spent.basis})`, dollars(spent.usd)],
-    ["wall time", seconds(r.run.wallSeconds)],
-    ["stopped at cap", r.run.stoppedAtCap ? "yes" : "no"],
-  ]
-    .map(
-      ([k, v]) =>
-        `<div class="tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`,
-    )
-    .join("");
-  const roles = Object.entries(r.budget.byRole)
-    .map(
-      ([role, it]) =>
-        `${esc(role)}: ${thousands(it.tokens)} tokens, ${dollars(it.usd)}`,
-    )
-    .join(" · ");
-  const commits = [
-    `harness <code>${esc(r.versions.harness.commit.slice(0, 12))}</code>${r.versions.harness.uncommitted ? ` (+${r.versions.harness.uncommitted} uncommitted)` : ""}`,
-    ...r.versions.components.map(
-      (c) => `${esc(c.name)} <code>${esc(c.commit.slice(0, 12))}</code>`,
-    ),
-  ].join(" · ");
   return page(
     `Eval run ${r.run.id}`,
-    `<h1>Eval run ${esc(r.run.id)}</h1><p class="muted">The pod, through cascade-mcp, against the same records pasted in, on synthetic people with keys written before any run.</p>
-${verdictText(l)}<div class="tiles">${tiles}</div><p class="small muted">By role: ${roles || "–"}. Prices: list prices of ${esc(r.versions.priceTable)}; "exact" means every call's usage as the API reported it.</p>
-<p class="small muted">Tested: ${commits}</p>${uncommittedIn(r).length > 0 ? `<p class="bad"><b>Not reproducible:</b> planned from uncommitted work (${esc(uncommittedIn(r).join("; "))}), so it cannot be recorded into history.</p>` : ""}
-${l.missing.length > 0 ? `<p class="bad small">Cases no longer in cases/, left out of these pages: ${esc(l.missing.join(", "))}.</p>` : ""}
-<h2>Cases</h2><div class="table"><table><tr><th>Person</th><th>What the key looks for</th>${groups.map((g) => `<th>${esc(g)}</th>`).join("")}</tr>${caseRows}</table></div>
-${headToHead(l)}<h2>Trend</h2>${trend}`,
+    `<h1>Eval run ${esc(r.run.id)}</h1><p class="muted">${esc(r.run.tier)} · ${r.cases.length} case(s) · spent ${thousands(r.budget.spent.tokens)} tokens, ${dollars(r.budget.spent.usd)} (${esc(r.budget.spent.basis)})</p>
+<h2>Instances</h2>${instanceTable(r)}
+<h2>The pods' build</h2><p class="small muted">Once per person, outside every answer's cost.</p><ul class="small">${build}</ul>`,
     home,
   );
 }
 
-/** The fields a claim names, as a reader sees them. */
-function claimText(claim: Omit<Claim, "cite">): string {
-  return [
-    claim.name,
-    claim.value === undefined
-      ? undefined
-      : `${claim.value}${claim.unit ? ` ${claim.unit}` : ""}`,
-    claim.status,
-    claim.code === undefined ? undefined : `code ${claim.code}`,
-    claim.id === undefined ? undefined : `id ${claim.id}`,
-    claim.date === undefined
-      ? undefined
-      : `${claim.dateKind && claim.dateKind !== "when" ? `${claim.dateKind} ` : ""}${claim.date}`,
-    claim.quote === undefined ? undefined : `“${claim.quote}”`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-/** Where a citation points, as a reader sees it. */
-const whereOf = (cite: Claim["cite"]) =>
-  "entry" in cite
-    ? `pod entry <code>${esc(cite.entry.split("#").pop()?.slice(0, 12))}…</code>`
-    : "line" in cite
-      ? `${esc(cite.file)}:${cite.line}`
-      : `${esc(cite.file)} ${esc(cite.resource)}`;
-
-function factCard(
-  fact: Answer["questions"][number]["facts"][number],
-  check: Results["checks"][string]["citations"][number] | undefined,
-  superseded: (file: string) => boolean,
-): string {
-  const verified =
-    check === undefined
-      ? ""
-      : check.ok
-        ? `<span class="ok">✓ the record says it</span>`
-        : `<span class="bad">✗ ${esc(check.reason)}${check.missing?.length ? `: ${esc(check.missing.join(", "))}` : ""}</span>`;
-  const older =
-    "file" in fact.cite && superseded(fact.cite.file)
-      ? ` <span class="small muted">(an older download of this source)</span>`
-      : "";
-  return `<div class="card"><div class="lab">fact</div>${esc(fact.says)}<br><span class="src">${esc(fact.provider)}${fact.date ? ` · ${esc(fact.date)}` : ""}</span>
-<div class="small">claims: ${esc(claimText(fact))}</div><div class="small">${verified}</div>
-<details><summary>${whereOf(fact.cite)}${older}</summary>${check?.shows ? `<div class="small">the record says: ${esc(check.shows)}</div>` : `<span class="small muted">no record read</span>`}</details></div>`;
-}
-
-function chainOf(
-  r: Results,
-  job: Job,
-  question: Answer["questions"][number],
-  expected: KeyItem | undefined,
-  superseded: (file: string) => boolean = () => false,
-): string {
-  const checks = r.checks[job.id];
-  const facts = question.facts
-    .map((f, at) =>
-      factCard(
-        f,
-        checks?.citations.find(
-          (c) => c.question === question.n && c.fact === at,
-        ),
-        superseded,
-      ),
+function replyOf(answer: unknown): string {
+  const it = answer as Partial<Answer> | undefined;
+  if (it === undefined) return `<p class="muted">Not answered.</p>`;
+  if (typeof it.answer !== "string" || !Array.isArray(it.items))
+    return `<p class="bad">Not a valid answer.</p>`;
+  return `<p>${esc(it.answer)}</p><ol class="small">${it.items
+    .map(
+      (item) =>
+        `<li>${esc(item.says)} <span class="muted">(${esc(item.confidence)} confidence; ${item.facts.length} fact(s), ${item.absences.length} absence(s)${item.knowledge === undefined ? "" : ", the model's own knowledge"})</span></li>`,
     )
-    .join("");
-  const absences = question.absences
-    .map((a, at) => {
-      const backing = checks?.absences.find(
-        (c) => c.question === question.n && c.absence === at,
-      );
-      return `<div class="card absence"><div class="lab">absent</div>${esc(a.what)}<br><span class="small muted">looks for: ${esc([...(a.match.codes ?? []), ...(a.match.terms ?? [])].join(", "))}; looked through: ${esc(a.coverage)}</span>${a.query ? `<br><code class="small">${esc(a.query.tool)} ${esc(JSON.stringify(a.query.input))}</code>` : ""}${a.sources?.length ? `<br><span class="small muted">sources: ${esc(a.sources.join(", "))}</span>` : ""}<br><span class="small ${backing?.backed ? "ok" : "bad"}">${backing?.backed ? "✓ backed" : `✗ unbacked${backing?.reason ? `: ${esc(backing.reason)}` : ""}`}</span></div>`;
-    })
-    .join("");
-  const outline =
-    expected === undefined
-      ? ""
-      : `<div class="col"><div class="card expected"><div class="lab">the key's chain</div>${expected.evidence.map((e) => esc(e.says ?? claimText(e))).join("<br>")}${expected.links.map((link) => `<br>→ ${esc(link)}`).join("")}</div></div>`;
-  return `<div class="chain"><div class="col">${facts}${absences}</div><div class="col"><div class="card knowledge"><div class="lab">the model's own knowledge</div>${esc(question.knowledge.says)}${question.knowledge.guideline ? `<br><span class="small">names: ${esc(question.knowledge.guideline)}</span>` : ""}</div></div><div class="col"><div class="card question"><div class="lab">question ${question.n} · ${esc(question.confidence)}</div><b>${esc(question.question)}</b><br><span class="small">${esc(question.why)}</span></div></div>${outline}</div>`;
+    .join("")}</ol>`;
 }
 
-function sliceSvg(
-  slice: Slice | undefined,
-  r: Results,
-  job: Job,
-  answer: Answer | undefined,
-): string {
-  if (slice === undefined || slice.nodes.length === 0) return "";
-  const cited = new Set(
-    answer?.questions.flatMap((q) =>
-      q.facts.flatMap((f) => ("entry" in f.cite ? [f.cite.entry] : [])),
-    ) ?? [],
+function casePage(r: Results, caseId: string, home: string): string {
+  const found = r.cases.find((it) => it.id === caseId)!;
+  const jobs = r.jobs.filter(
+    (it) => it.role === "subject" && it.case === caseId,
   );
-  const returned = new Set(
-    r.toolCalls.filter((c) => c.job === job.id).flatMap((c) => c.entries),
-  );
-  const state = (id: string) =>
-    cited.has(id) ? "cited" : returned.has(id) ? "returned" : "never";
-  const said = {
-    cited: "cited",
-    returned: "a tool returned it",
-    never: "never reached",
-  };
-  const cards = slice.nodes
-    .filter((n) => n.kind !== "record")
-    .map((n) => {
-      const records = slice.edges
-        .filter((e) => e.from === n.id)
-        .map((e) => slice.nodes.find((it) => it.id === e.to))
-        .filter((it) => it !== undefined)
+  const judgeName = (id: string) =>
+    `judge ${model(r.jobs.find((it) => it.id === id)?.model ?? id)}`;
+  const sections = found.sessions
+    .flatMap((session) => session.questions)
+    .map((question) => {
+      const answering = jobs.filter((it) =>
+        (it.questions ?? []).includes(question.id),
+      );
+      const columns = ARMS.map((arm) => {
+        const own = answering.filter((it) => it.arm === arm);
+        return `<div class="arm"><h4>${armName(arm)}</h4>${own
+          .map((job) => {
+            const grades = r.grades
+              .filter(
+                (it) => it.subject === job.id && it.question === question.id,
+              )
+              .map(
+                (it) =>
+                  `<div class="small">${esc(judgeName(it.judge))}: ${it.items.map((one) => chip(one.verdict, `${one.id} ${one.verdict}`)).join("")}${it.beyond.map((one) => chip("ungraded", `item ${one.item} ${one.verdict}`)).join("")}</div>`,
+              )
+              .join("");
+            const cost = job.split?.questions[question.id];
+            return `<p class="small muted">${esc(model(job.model))} r${job.repeat ?? 1} · ${cost === undefined ? "" : `${thousands(cost.tokens.total)} tokens · ${dollars(cost.usd)} · ${seconds(cost.seconds)}`}</p>${replyOf(r.answers[job.id]?.[question.id])}${grades}`;
+          })
+          .join("")}</div>`;
+      }).join("");
+      const key = found.key
+        .filter((it) => it.question === question.id)
         .map(
           (it) =>
-            `<li>${esc(it.source ?? it.label)}${it.detail ? `: ${esc(it.detail)}` : ""}</li>`,
+            `<li><b>${esc(it.id)}</b> (${esc(it.kind)}): ${esc(it.lookingFor)}</li>`,
         )
         .join("");
-      return `<div class="node ${state(n.id)}"><b>${esc(n.label)}</b> <span class="small muted">${said[state(n.id)]}</span><div class="small">${esc(n.detail ?? "")}</div>${records ? `<ul class="small">${records}</ul>` : ""}</div>`;
-    })
-    .join("");
-  return `<details><summary>The pod around this item: each entry, its records per source, and whether this run cited it, had a tool return it, or never reached it</summary><div class="nodes">${cards}</div></details>`;
-}
-
-function timelineSvg(item: KeyItem, today: string): string {
-  const dates = item.evidence
-    .filter((e) => e.date !== undefined)
-    .map((e) => ({
-      at: Date.parse(e.date!),
-      text: (e.says ?? claimText(e)).slice(0, 24),
-      date: e.date!,
-    }));
-  if (dates.length === 0) return "";
-  const end = Date.parse(today);
-  const start = Math.min(...dates.map((d) => d.at));
-  const w = 640;
-  const x = (t: number) =>
-    80 + ((t - start) / Math.max(1, end - start)) * (w - 160);
-  const anchor = (t: number) =>
-    x(t) < 140 ? "start" : x(t) > w - 140 ? "end" : "middle";
-  const last = Math.max(...dates.map((d) => d.at));
-  const marks = dates
-    .map(
-      (d, i) =>
-        `<circle cx="${x(d.at)}" cy="40" r="4" fill="currentColor"/><text x="${x(d.at)}" y="${i % 2 ? 66 : 24}" text-anchor="${anchor(d.at)}">${esc(d.date)}</text><text x="${x(d.at)}" y="${i % 2 ? 80 : 12}" text-anchor="${anchor(d.at)}" class="muted">${esc(d.text)}</text>`,
-    )
-    .join("");
-  return `<svg viewBox="0 0 ${w} 92" width="100%" style="max-width:760px" role="img" aria-label="The item's dates up to today"><line x1="60" y1="40" x2="${w - 60}" y2="40" stroke="currentColor" opacity=".3"/><line x1="${x(last)}" y1="40" x2="${x(end)}" y2="40" stroke="currentColor" stroke-width="4" stroke-dasharray="2 4" opacity=".6"/>${marks}<circle cx="${x(end)}" cy="40" r="5" fill="none" stroke="currentColor" stroke-width="2"/><text x="${x(end)}" y="${dates.length % 2 ? 66 : 24}" text-anchor="end">today ${esc(today)}</text></svg>`;
-}
-
-/** For an ungraded run, the questions whose citations land on the item: on half its key evidence's records (or its pod
- * entries), two at most, so one shared record such as the diagnosis does not tie every question to it. */
-function citedFor(
-  item: KeyItem,
-  slice: Slice | undefined,
-  answer: Answer | undefined,
-): number[] {
-  const keys = new Set(
-    item.evidence.map((e) =>
-      "resource" in e.cite
-        ? `${e.cite.file}#${e.cite.resource}`
-        : "line" in e.cite
-          ? `${e.cite.file}:${e.cite.line}`
-          : e.cite.entry,
-    ),
-  );
-  const nodes = new Set(
-    slice?.nodes.filter((n) => n.kind !== "record").map((n) => n.id) ?? [],
-  );
-  const keyOf = (cite: Answer["questions"][number]["facts"][number]["cite"]) =>
-    "entry" in cite
-      ? cite.entry
-      : "resource" in cite
-        ? `${cite.file}#${cite.resource}`
-        : `${cite.file}:${cite.line}`;
-  return (answer?.questions ?? [])
-    .filter((q) => {
-      const hit = new Set(
-        q.facts
-          .map((f) => keyOf(f.cite))
-          .filter((k) => keys.has(k) || nodes.has(k)),
-      );
-      const of = q.facts.some((f) => "entry" in f.cite)
-        ? nodes.size
-        : keys.size;
-      return hit.size > 0 && hit.size >= Math.min(2, Math.ceil(of / 2));
-    })
-    .map((q) => q.n);
-}
-
-function recordsStrip(
-  r: Results,
-  job: Job,
-  caseId: string,
-  answer: Answer | undefined,
-): string {
-  const docs = r.cases.find((c) => c.id === caseId)?.documents ?? [];
-  const read = new Set(r.checks[job.id]?.read ?? []);
-  const total = docs.reduce((s, d) => s + d.bytes, 0);
-  const cites =
-    answer?.questions.flatMap((q) =>
-      q.facts.flatMap((f) => ("file" in f.cite ? [f.cite] : [])),
-    ) ?? [];
-  const blocks = docs
-    .map((d) => {
-      const share = Math.max(0.5, (d.bytes / Math.max(1, total)) * 100);
-      const pins = cites
-        .filter((c) => c.file === d.file)
-        .map((c) => {
-          const lines = (d as { lines?: number }).lines;
-          const at =
-            "line" in c && lines ? Math.min(98, (c.line / lines) * 100) : 50;
-          return `<span class="pin" style="left:${at.toFixed(1)}%"></span>`;
-        })
-        .join("");
-      return `<div class="doc ${read.has(d.file) ? "read" : ""}" style="flex:${share.toFixed(2)} 1 0" title="${esc(d.file)} · ${thousands(d.bytes)} bytes${pins ? " · cited here" : ""}">${pins}</div>`;
-    })
-    .join("");
-  return `<details><summary>The records it was given: ${docs.length} documents, ${thousands(total)} bytes, about ${thousands(total / 3.5)} tokens; ${read.size} read whole (green), purple marks where it cited</summary><div class="strip">${blocks}</div></details>`;
-}
-
-function statsTable(jobs: readonly Job[], r?: Results): string {
-  return `<div class="table"><table><tr><th>Job</th><th>Status</th><th>Model</th><th>Tokens (in / cache write / cache read / out)</th><th>Context peak</th><th>Tool calls</th><th>Time</th><th>Cost</th></tr>${jobs
-    .map((j) => {
-      const s = j.stats;
-      return `<tr><td class="mono">${esc(j.id)}</td><td>${esc(j.status)}${j.reusedFrom ? `<br><span class="small muted">from ${esc(j.reusedFrom)}</span>` : ""}${j.reason ? `<br><span class="small muted">${esc(j.reason)}</span>` : ""}${(r?.judgeDiscipline?.[j.id]?.violations ?? []).map((v) => `<br><span class="small bad">outside its packet: ${esc(v)}</span>`).join("")}</td><td class="small">${esc(s?.models.join(", ") ?? j.model)}</td><td class="small">${s ? `${thousands(s.tokens.input)} / ${thousands(s.tokens.cacheCreation)} / ${thousands(s.tokens.cacheRead)} / ${thousands(s.tokens.output)}<br><b>${thousands(s.tokens.total)}</b> (estimate ${thousands(j.estimate.tokens)})` : `estimate ${thousands(j.estimate.tokens)}`}</td><td>${thousands(s?.contextPeak)}</td><td class="small">${
-        s
-          ? `${s.toolCalls.total}: ${esc(
-              Object.entries(s.toolCalls.byName)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(", "),
-            )}`
-          : "–"
-      }</td><td>${seconds(s?.wallSeconds)}</td><td>${dollars(s?.cost.usd)}${s ? `<br><span class="small muted">${esc(s.cost.basis)}</span>` : ""}</td></tr>`;
-    })
-    .join("")}</table></div>`;
-}
-
-function casePage(l: Loaded, caseId: string, home: string): string {
-  const r = l.results;
-  const { found, key, keyChanged } = l.cases.get(caseId)!;
-  const d = found.description;
-  const subjects = subjectsOf(r, caseId).sort(
-    (a, b) => groupOf(a).localeCompare(groupOf(b)) || a.id.localeCompare(b.id),
-  );
-  const reading = found.reading;
-  const seriesOf = (file: string) =>
-    file
-      .split("/")[0]!
-      .replace(/.(xml|json)$/, "")
-      .replace(/(-d+)+$/, "");
-  /** Whether a later file of the same source is in the reading order: a citation of this one is of an older download. */
-  const superseded = (file: string) => {
-    const at = reading.indexOf(file);
-    return (
-      at >= 0 &&
-      reading
-        .slice(at + 1)
-        .some(
-          (later) =>
-            seriesOf(later) === seriesOf(file) &&
-            later.split("/")[0] !== file.split("/")[0],
-        )
-    );
-  };
-  const answerOf = (job: Job) => {
-    const a = r.answers[job.id] as Answer | undefined;
-    return a !== undefined && Array.isArray(a.questions) ? a : undefined;
-  };
-  const gradesOf = (job: Job): Grade[] =>
-    r.grades.filter((g) => g.subject === job.id);
-  const items = key.items
-    .map((item) => {
-      const slice = r.slices.find(
-        (s) => s.case === caseId && s.item === item.id,
-      );
-      const arms = subjects
-        .map((job) => {
-          const answer = answerOf(job);
-          const grades = gradesOf(job);
-          const verdicts = grades
-            .map((g) => g.items.find((it) => it.id === item.id))
-            .filter(Boolean);
-          const questions = new Set(
-            grades.length > 0
-              ? verdicts.flatMap((v) => v!.questions)
-              : citedFor(item, slice, answer),
-          );
-          const shown =
-            answer?.questions.filter((q) => questions.has(q.n)) ?? [];
-          const grade =
-            grades.length === 0
-              ? `${chip("ungraded", "not graded")}${questions.size > 0 ? ` <span class="small muted">questions its citations tie to this item: ${[...questions].map((n) => `Q${n}`).join(", ")}</span>` : ""}`
-              : grades
-                  .map((g) => {
-                    const v = g.items.find((it) => it.id === item.id);
-                    return `<span class="small muted">${esc(judgeName(r, g.judge))}:</span> ${v === undefined ? chip("missed", "not graded on it") : `${chip(v.verdict)} <span class="small">${esc(v.reason)}</span>`}`;
-                  })
-                  .join("<br>");
-          const wording = (r.checks[job.id]?.trapWording ?? [])
-            .filter((w) => w.item === item.id)
-            .map(
-              (w) =>
-                `<br><span class="small bad">trap wording in Q${w.question}: “${esc(w.text)}” (${esc(w.means)})</span>`,
-            )
-            .join("");
-          return `<div class="arm"><h4>${esc(armName(job.arm))} <span class="muted small">${esc(job.model)} · run ${job.repeat}</span></h4>${grade}${wording}
-${shown.map((q) => chainOf(r, job, q, item, superseded)).join("") || (grades.length === 0 ? "" : `<p class="small muted">No question of this answer is about it.</p>`)}
-${job.arm === "pod" ? sliceSvg(slice, r, job, answer) : recordsStrip(r, job, caseId, answer)}</div>`;
-        })
-        .join("");
-      return `<h3>${esc(item.id)} · ${esc(item.title)} ${chip("ungraded", item.kind)}</h3>
-<p class="small">Looking for: ${esc(item.lookingFor)}. <span class="muted">Found means ${esc(item.found)}${item.partly ? `; partly: ${esc(item.partly)}` : ""}. Wrong: ${esc(item.wrong.join("; "))}. The pod holds it: ${esc(item.pod)}. The records hold it at: ${item.evidence.map((e) => whereOf(e.cite)).join(", ") || "no record"}.${item.guideline ? ` Guideline: ${esc(item.guideline)}.` : ""}</span></p>
-${timelineSvg(item, found.today)}<div class="arms">${arms}</div>`;
-    })
-    .join("");
-  const falseOnes = subjects
-    .flatMap((job) =>
-      gradesOf(job).flatMap((g) =>
-        g.falseQuestions.map((fq) => {
-          const q = answerOf(job)?.questions.find((it) => it.n === fq.question);
-          return `<div class="arm"><h4>${esc(armName(job.arm))} <span class="muted small">${esc(job.model)} · run ${job.repeat}</span> ${chip("false")}</h4><p class="small">${esc(fq.why)}${fq.item ? ` (${esc(fq.item)})` : ""}</p>${q ? chainOf(r, job, q, undefined, superseded) : ""}</div>`;
-        }),
-      ),
-    )
-    .join("");
-  const answers = subjects
-    .map((job) => {
-      const answer = answerOf(job);
-      return `<div class="arm"><h4>${esc(armName(job.arm))} <span class="muted small">${esc(job.model)} · run ${job.repeat}</span></h4>${programLine(r, [job])}
-${(r.checks[job.id]?.discipline.violations ?? []).map((v) => `<br><span class="small bad">outside its tools: ${esc(v)}</span>`).join("")}
-${answer === undefined ? `<p class="bad">No valid answer: ${esc((r.checks[job.id]?.answerErrors ?? []).join("; "))}</p>` : answer.questions.map((q) => chainOf(r, job, q, undefined, superseded)).join("")}</div>`;
+      return `<h2>${esc(question.asks)}</h2><div class="arms">${columns}</div><details><summary>The key, a reference</summary><ul class="small">${key}</ul></details>`;
     })
     .join("");
   return page(
-    `${found.person.name}: eval case`,
-    `<h1>${esc(found.person.name)}</h1><p class="muted">${esc(caseId)} · synthetic · as of ${esc(found.today)} · run ${esc(r.run.id)}</p>
-${keyChanged ? `<p class="bad small">The key has changed since this run; the page shows the current key.</p>` : ""}
-<p>${esc(d.summary)}</p><div class="arms"><div class="arm"><h4>Who</h4><p class="small">${esc(d.who)}</p><h4>Sources</h4><p class="small">${esc(d.sources)}</p></div>
-<div class="arm"><h4>Planted</h4><p class="small">${esc(d.planted)}</p><h4>Traps</h4><p class="small">${esc(d.traps)}</p></div>
-<div class="arm"><h4>Guidelines the key cites</h4><ul class="small">${d.guidelines.map((g) => `<li>${esc(g)}</li>`).join("")}</ul><p class="small muted">${esc(d.from)}</p></div></div>
-<h2>Each key item, both arms side by side</h2>${items}
-<h2>False questions</h2>${falseOnes || `<p class="muted small">${r.grades.length === 0 ? "Not graded in this run." : "None."}</p>`}
-<h2>The answers in full</h2><p class="small muted">Every question each arm asked, as a chain: facts (each checked by the program), what it says is absent (and what backs that), the model's own knowledge, and the question.</p><div class="stack">${answers}</div>
-<h2>Statistics</h2>${statsTable(
-      r.jobs.filter((j) => j.case === caseId),
-      r,
-    )}`,
+    caseId,
+    `<h1>${esc(caseId)}</h1><p class="muted">Her questions, both arms' replies, and the key. <a href="${esc(found.keyUrl)}">The key's rationale</a>.</p>${sections}`,
     home,
   );
 }
@@ -732,39 +193,18 @@ async function writeRun(
   results: Results,
   out: string,
   home: string,
-  trend: string,
 ): Promise<string> {
-  const l = await loaded(results);
   await mkdir(join(out, "cases"), { recursive: true });
-  await writeFile(join(out, "index.html"), runIndex(l, home, trend));
-  for (const id of l.cases.keys())
+  await writeFile(join(out, "index.html"), runIndex(results, home));
+  for (const { id } of results.cases)
     await writeFile(
       join(out, "cases", `${id}.html`),
-      casePage(l, id, `../${home}`),
+      casePage(results, id, `../${home}`),
     );
   return join(out, "index.html");
 }
 
-function trendPoints(all: readonly Results[]) {
-  return all.map((r) => {
-    const values: Record<string, number> = {};
-    for (const arm of ["pod", "records"]) {
-      const scores = r.scores.filter(
-        (s) => r.jobs.find((j) => j.id === s.subject)?.arm === arm,
-      );
-      if (scores.length > 0)
-        values[`${arm}: share of gaps found`] =
-          scores.reduce((sum, s) => sum + s.found + s.partly / 2, 0) /
-          Math.max(
-            1,
-            scores.reduce((sum, s) => sum + s.gaps, 0),
-          );
-    }
-    return { label: r.run.id.slice(0, 13), values };
-  });
-}
-
-/** Builds the site of one run's folder, or of every run in history/ with the trend across them. Returns the index. */
+/** Builds the site of one run's folder, or of every run in history/. Returns the index. */
 export async function buildSite(
   from: { run?: string; history?: boolean },
   out?: string,
@@ -778,7 +218,6 @@ export async function buildSite(
       results,
       resolve(out ?? join(folder, "site")),
       "index.html",
-      trendSvg(trendPoints([results])),
     );
   }
   const target = resolve(out ?? join(HISTORY, "..", "site"));
@@ -792,35 +231,22 @@ export async function buildSite(
           results: JSON.parse(await readFile(path, "utf8")) as Results,
         });
     }
-  const trend = trendSvg(trendPoints(runs.map((it) => it.results)));
   for (const { name, results } of runs)
-    await writeRun(
-      results,
-      join(target, "runs", name),
-      "../../index.html",
-      trend,
-    );
+    await writeRun(results, join(target, "runs", name), "../../index.html");
   await mkdir(target, { recursive: true });
-  const rows = runs
+  const listed = runs
     .slice()
     .reverse()
-    .map(({ name, results: r }) => {
-      const subjects = subjectsOf(r);
-      const byArm = ["pod", "records"]
-        .map(
-          (arm) =>
-            `<td>${scoreLine(r.scores.filter((s) => subjects.find((j) => j.id === s.subject)?.arm === arm))}</td>`,
-        )
-        .join("");
-      return `<tr class="link" data-href="runs/${esc(name)}/index.html"><td><a href="runs/${esc(name)}/index.html">${esc(r.run.id)}</a><br><span class="small muted">${esc(r.run.tier)} · ${r.cases.length} case(s)</span></td>${byArm}<td class="small">${thousands(r.budget.spent.tokens)} tokens<br>${dollars(r.budget.spent.usd)} (${esc(r.budget.spent.basis)})</td></tr>`;
-    })
+    .map(
+      ({ name, results: r }) =>
+        `<h2><a href="runs/${esc(name)}/index.html">${esc(r.run.id)}</a></h2>${instanceTable(r, `runs/${esc(name)}/`)}`,
+    )
     .join("");
   await writeFile(
     join(target, "index.html"),
     page(
       "Cascade eval runs",
-      `<h1>Eval runs</h1><p class="muted">Every recorded run of the eval harness: the pod, through cascade-mcp, against the same records pasted in, on synthetic people. Each run's page has its cases, both arms side by side, every citation checked and every cost.</p>
-<h2>Trend</h2>${trend}<h2>Runs</h2>${runs.length === 0 ? `<p class="muted">No run is recorded yet: <code>npm run evals:record &lt;run&gt;</code> records one.</p>` : `<div class="table"><table><tr><th>Run</th><th>pod (cascade-mcp)</th><th>records (pasted)</th><th>Spent</th></tr>${rows}</table></div>`}`,
+      `<h1>Eval runs</h1><p class="muted">Every recorded run of the eval harness: a person's own questions answered through her Cascade pod and from the grab bag of her downloads, on synthetic people.</p>${runs.length === 0 ? `<p class="muted">No run is recorded yet: <code>npm run evals:record &lt;run&gt;</code> records one.</p>` : listed}`,
       "index.html",
     ),
   );

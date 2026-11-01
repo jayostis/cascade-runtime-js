@@ -26,7 +26,13 @@ import {
 } from "./cases.js";
 import { CONFIGS, HISTORY, PACKAGE, PRIORS, RUNS } from "./paths.js";
 import { callCost } from "./prices.js";
-import { type Arm, PROMPT_VERSIONS, subjectPrompt } from "./prompts.js";
+import {
+  type Arm,
+  PROMPT_VERSIONS,
+  questionMessage,
+  sessionPrompt,
+} from "./prompts.js";
+import { sessionInputsHash } from "./sessions.js";
 import type { Job, Results } from "./results.js";
 import { valid } from "./schemas.js";
 import { environment } from "./pinned.js";
@@ -238,6 +244,7 @@ export async function planRun(
   if (existsSync(join(folder, "plan.json")))
     throw new Error(`${folder} already holds a plan`);
   await mkdir(join(folder, "answers"), { recursive: true });
+  await mkdir(join(folder, "prompts"), { recursive: true });
   const ids = config.cases === "all" ? await caseIds() : [...config.cases];
   const priors = JSON.parse(await readFile(PRIORS, "utf8")) as Priors;
   const past = await pastJobs();
@@ -289,100 +296,121 @@ export async function planRun(
       keySha256,
       prepared,
     });
-    const caseSha = sha256(JSON.stringify(found));
     const bytes = prepared.documents.reduce((sum, it) => sum + it.bytes, 0);
     for (const model of config.subjects)
-      for (const arm of config.arms)
-        for (let repeat = 1; repeat <= config.repeats; repeat++) {
-          const jobId = `${caseId}.${arm}.${short(model)}.r${repeat}`;
-          const inputsHash = sha256(
-            JSON.stringify({
-              role: "subject",
-              case: caseSha,
+      for (const session of found.sessions)
+        for (const arm of config.arms)
+          for (let repeat = 1; repeat <= config.repeats; repeat++) {
+            const jobId = `${caseId}.${session.id}.${arm}.${short(model)}.r${repeat}`;
+            const inputsHash = sessionInputsHash({
+              found,
+              session,
               downloads: prepared.downloadsSha256,
               arm,
               model,
-              effort: config.effort ?? null,
-              prompt: PROMPT_VERSIONS[arm],
+              effort: config.effort,
               repeat,
-              ...(arm === "pod" ? { pod: podCommits } : {}),
-            }),
-          );
-          const answer = join(folder, "answers", `${jobId}.json`);
-          const tag = `${id}/${jobId}`;
-          const prompt = subjectPrompt({
-            arm,
-            tag,
-            name: found.person.name,
-            pronoun: found.person.pronoun,
-            today: found.today,
-            answer,
-            ...(arm === "records"
-              ? { folder: prepared.downloads, files: found.reading }
-              : {
-                  command: `node "${cli}" pod --run "${folder}" --job ${jobId}`,
-                  pod: prepared.pod,
-                }),
-          });
-          const job: Job = {
-            id: jobId,
-            role: "subject",
-            case: caseId,
-            arm,
-            model,
-            alias: aliasOf(model),
-            ...(config.effort === undefined ? {} : { effort: config.effort }),
-            repeat,
-            tag,
-            inputsHash,
-            status: "pending",
-            estimate: estimateOf(
-              { role: "subject", case: caseId, arm, model },
-              past,
-              priors,
-              found,
-              bytes,
-            ),
-            answer: `answers/${jobId}.json`,
-            prompt: `prompts/${jobId}.txt`,
-          };
-          const earlier = dirty
-            ? undefined
-            : past.find(
-                (it) =>
-                  it.job.inputsHash === inputsHash &&
-                  it.job.answer !== undefined,
-              );
-          if (
-            earlier !== undefined &&
-            existsSync(join(earlier.folder, earlier.job.answer!))
-          ) {
-            await copyFile(join(earlier.folder, earlier.job.answer!), answer);
-            Object.assign(job, {
-              status: "reused",
-              reusedFrom: `${earlier.run}/${earlier.job.id}`,
-              stats: earlier.job.stats,
-              calls: earlier.job.calls,
-              toolUses: earlier.job.toolUses,
+              pod: podCommits,
             });
-            const kept = JSON.parse(
-              await readFile(join(earlier.folder, "results.json"), "utf8"),
-            ) as Results;
-            const calls = kept.toolCalls.filter(
-              (it) => it.job === earlier.job.id,
-            );
-            if (calls.length > 0)
+            const answers = `answers/${jobId}`;
+            const tag = `${id}/${jobId}`;
+            const prompt = sessionPrompt({
+              arm,
+              tag,
+              name: found.person.name,
+              pronoun: found.person.pronoun,
+              today: found.today,
+              ask: `node "${cli}" ask --run "${folder}" --job ${jobId}`,
+              ...(arm === "records"
+                ? { folder: prepared.downloads, files: found.reading }
+                : {
+                    command: `node "${cli}" pod --run "${folder}" --job ${jobId}`,
+                    pod: prepared.pod,
+                  }),
+            });
+            const job: Job = {
+              id: jobId,
+              role: "subject",
+              case: caseId,
+              session: session.id,
+              questions: session.questions.map((it) => it.id),
+              arm,
+              model,
+              alias: aliasOf(model),
+              ...(config.effort === undefined ? {} : { effort: config.effort }),
+              repeat,
+              tag,
+              inputsHash,
+              status: "pending",
+              estimate: estimateOf(
+                { role: "subject", case: caseId, arm, model },
+                past,
+                priors,
+                found,
+                bytes,
+              ),
+              answers,
+              prompt: `prompts/${jobId}.txt`,
+            };
+            await mkdir(join(folder, answers), { recursive: true });
+            await mkdir(join(folder, "prompts", jobId), { recursive: true });
+            for (const question of session.questions)
+              await writeFile(
+                join(folder, "prompts", jobId, `${question.id}.txt`),
+                questionMessage(
+                  question.asks,
+                  join(folder, answers, `${question.id}.json`),
+                ),
+              );
+            const earlier = dirty
+              ? undefined
+              : past.find(
+                  (it) =>
+                    it.job.inputsHash === inputsHash &&
+                    it.job.answers !== undefined &&
+                    existsSync(join(it.folder, it.job.answers)),
+                );
+            if (earlier !== undefined) {
+              for (const question of session.questions) {
+                const kept = join(
+                  earlier.folder,
+                  earlier.job.answers!,
+                  `${question.id}.json`,
+                );
+                if (existsSync(kept))
+                  await copyFile(
+                    kept,
+                    join(folder, answers, `${question.id}.json`),
+                  );
+              }
+              Object.assign(job, {
+                status: "reused",
+                reusedFrom: `${earlier.run}/${earlier.job.id}`,
+                stats: earlier.job.stats,
+                calls: earlier.job.calls,
+                split: earlier.job.split,
+                toolUses: earlier.job.toolUses,
+              });
+              const kept = JSON.parse(
+                await readFile(join(earlier.folder, "results.json"), "utf8"),
+              ) as Results;
+              const carried = (lines: readonly { job: string }[]) =>
+                lines
+                  .filter((it) => it.job === earlier.job.id)
+                  .map((it) => `${JSON.stringify({ ...it, job: jobId })}\n`)
+                  .join("");
               await appendFile(
                 join(folder, "tool-calls.jsonl"),
-                calls
-                  .map((it) => `${JSON.stringify({ ...it, job: jobId })}\n`)
-                  .join(""),
+                carried(kept.toolCalls),
               );
+              await appendFile(
+                join(folder, "asked.jsonl"),
+                carried(kept.asked),
+              );
+            }
+            await writeFile(join(folder, job.prompt!), prompt);
+            jobs.push(job);
           }
-          await mkdir(join(folder, "prompts"), { recursive: true });
-          await writeFile(join(folder, job.prompt!), prompt);
-          jobs.push(job);
-        }
   }
   const pending = jobs.filter((it) => it.status === "pending");
   const estimate = {

@@ -16,11 +16,13 @@ after(async () => {
   await rm(earlier, { recursive: true, force: true, maxRetries: 5 });
 });
 
-const answer = (question: string): Answer => ({
-  questions: [
+const answer = (says: string): Answer => ({
+  answer: `${says} A positive stool test needs a colonoscopy.`,
+  short: says,
+  items: [
     {
       n: 1,
-      question,
+      says,
       why: "It is due.",
       confidence: "high",
       facts: [
@@ -45,8 +47,8 @@ const answer = (question: string): Answer => ({
   ],
 });
 
-const POD = "tamsin-vale.pod.opus-5-5.r1";
-const RECORDS = "tamsin-vale.records.opus-5-5.r1";
+const POD = "tamsin-vale.checkup.pod.opus-5-5.r1";
+const RECORDS = "tamsin-vale.checkup.records.opus-5-5.r1";
 
 /** A run of the two subjects' answers, planned for the given judges. */
 async function runOf(name: string, judges: string[]) {
@@ -56,21 +58,26 @@ async function runOf(name: string, judges: string[]) {
   for (const [id, text] of [
     [POD, "Has a colonoscopy been booked?"],
     [RECORDS, "Should I have a colonoscopy now?"],
-  ] as const)
+  ] as const) {
+    await mkdir(join(folder, "answers", id), { recursive: true });
     await writeFile(
-      join(folder, "answers", `${id}.json`),
+      join(folder, "answers", id, "checkup.json"),
       JSON.stringify(answer(text)),
     );
+  }
   const subject = (id: string, arm: string) => ({
     id,
     role: "subject",
     case: "tamsin-vale",
     arm,
     model: "claude-opus-5-5",
+    repeat: 1,
+    session: "checkup",
+    questions: ["checkup"],
     tag: `${name}/${id}`,
     status: "done",
     estimate: { tokens: 0, usd: 0 },
-    answer: `answers/${id}.json`,
+    answers: `answers/${id}`,
   });
   await writeFile(
     join(folder, "plan.json"),
@@ -101,7 +108,7 @@ test("a judge reads its packet alone, in its own folder, with neither arm's cita
   assert.ok(relative(folder, judge.workdir).startsWith(".."));
   const packet = await readFile(judge.packet, "utf8");
   assert.doesNotMatch(
-    packet.slice(packet.indexOf("## The answers")),
+    packet.slice(packet.indexOf("## The questions and their answers")),
     /pod:\/\/|\bpod\b|21 rows|retriev|\[…\]/i,
   );
   assert.match(blinded(answer("Q")), /- Absent: No colonoscopy$/m);
@@ -117,7 +124,10 @@ test("a judge sees the answers in an order of its run, and a reused verdict keep
   const { judges } = await runOf("two", ["claude-haiku-5-5"]);
   const [planned] = judges;
   // Letters no run of this harness hands out, so only the earlier verdict's own can be what the reuse keeps.
-  const swapped = { Y: POD, Z: RECORDS };
+  const swapped = {
+    Y: { job: POD, question: "checkup" },
+    Z: { job: RECORDS, question: "checkup" },
+  };
   await mkdir(join(earlier, "judges"), { recursive: true });
   await writeFile(join(earlier, "judges", "verdict.json"), "{}");
   const stats = {

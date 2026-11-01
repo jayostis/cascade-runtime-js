@@ -4,6 +4,7 @@
 // idle.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -130,6 +131,15 @@ export async function podServe(given: string, job: string): Promise<void> {
     await import("@modelcontextprotocol/client/stdio");
   const client = new Client({ name: "cascade-evals", version: "0.0.0" });
   await client.connect(new StdioClientTransport(mcpServer(prepared)));
+  const log = join(folder, "tool-calls.jsonl");
+  const counter = {
+    made: existsSync(log)
+      ? (await readFile(log, "utf8"))
+          .split("\n")
+          .filter((line) => line.includes(`"job":${JSON.stringify(job)}`))
+          .length
+      : 0,
+  };
   let idle: NodeJS.Timeout;
   const server = createServer((connection: Socket) => {
     clearTimeout(idle);
@@ -143,7 +153,7 @@ export async function podServe(given: string, job: string): Promise<void> {
       answered = true;
       try {
         const call = JSON.parse(text.slice(0, end)) as string[];
-        connection.end(await answer(client, folder, job, call));
+        connection.end(await answer(client, folder, job, call, counter));
       } catch (error) {
         connection.end(`the pod server failed: ${(error as Error).message}\n`);
       }
@@ -165,12 +175,16 @@ export async function podServe(given: string, job: string): Promise<void> {
   idle = setTimeout(stop, IDLE_MS);
 }
 
-/** One call through the job's MCP client: the tools, or a tool's answer, logged with the entries it named. */
+/**
+ * One call through the job's MCP client: the tools, or a tool's answer, logged with the entries it named and
+ * numbered, the number printed after the answer so an absence can name the call that looked.
+ */
 async function answer(
   client: Client,
   folder: string,
   job: string,
   args: string[],
+  counter: { made: number },
 ): Promise<string> {
   if (args[0] === "--list" || args.length === 0) {
     const { tools } = await client.listTools();
@@ -191,6 +205,7 @@ async function answer(
   } catch {
     return `the input is not JSON: ${json}\n`;
   }
+  const call = ++counter.made;
   const started = performance.now();
   const result = await client.callTool({ name: tool, arguments: input });
   const [first] = result.content as { type: string; text: string }[];
@@ -203,6 +218,7 @@ async function answer(
   }
   const record: ToolCallRecord = {
     job,
+    call,
     at: new Date().toISOString(),
     tool,
     input,
@@ -217,5 +233,5 @@ async function answer(
     join(folder, "tool-calls.jsonl"),
     `${JSON.stringify(record)}\n`,
   );
-  return `${text}\n`;
+  return `${text}\n(call ${call})\n`;
 }

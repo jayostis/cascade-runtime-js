@@ -148,11 +148,60 @@ id) unless named.
 atorvastatin"; "ask about diet and exercise"; "ask about the chest pain you had in July 2025" (as a check-in, not as a
 PE).
 
+## Her other questions
+
+Written 2026-10-31 from her records, before any arm answered them. The scoring rules above score the check-up
+question; each of these is scored by its items alone: a fact, absence or negation is **found**, **partly** or
+**missed** by its "found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer
+says is beyond the key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the
+records.
+
+### "What medications am I on right now?" (medications)
+
+- **TF1.** Two active prescriptions, both written 2025-02-20 (`north-2026-10/bundle.json`, MedicationRequest
+  story-stopped-medrx-2 and -3): Jardiance (empagliflozin) 10 mg, one tablet each morning, and atorvastatin 20 mg, one
+  tablet daily.
+- **TF2.** Metformin 500 mg, from 2022-03-01, completed 2024-04-15 in the 2025 and 2026 downloads
+  (MedicationStatement story-stopped-med-1). Saying it was stopped, or leaving it out of the current list, is right.
+- **TT3.** The 2024-02 download, read alone, lists the same metformin record as active. Giving metformin as a current
+  medicine is the trap: a newer copy of the same record closes it.
+
+### "When was my last A1c, and what was it?" (last-a1c)
+
+- **TF3.** 6.9% on 2026-02-16 (Observation story-stopped-a1c-9), the latest of nine results.
+- **TT4.** Any older value given as the last: the 2025-02 download ends at 8.3% (2025-01-13); 7.6% and 7.1% came
+  after it. Giving the trend from 8.3% down to 6.9% is not the trap.
+
+### "Did I ever have a blood clot in my lung?" (blood-clot)
+
+- **TN1.** No. On 2025-07-08 she was seen for chest pain; her D-dimer was high (0.92 mg/L FEU), a CT angiogram was done
+  the same day, and its report concludes "No pulmonary embolism" (DiagnosticReport story-stopped-dr-1). The pulmonary
+  embolism condition is marked refuted (Condition story-stopped-cond-2); chest wall pain is the diagnosis that stands
+  (story-stopped-cond-3). "None recorded" without the July 2025 work-up is partly: true, but it leaves out the scan she
+  remembers.
+- **TT5.** "Yes, in July 2025", read from the condition's name without its status, or advice about blood thinners.
+
+### "Am I allergic to anything?" (allergies)
+
+- **TA1.** No allergy or intolerance is recorded: the three downloads hold no AllergyIntolerance at all. "None recorded
+  in these records" with what was looked through (one hospital, Cascade North, three downloads) is found; "you have no
+  allergies" is partly, since an empty list from one source is not a fact about her.
+- **TT6.** An intolerance read into metformin's stop: no reason for the stop is recorded (PT1).
+
 ## Summary
 
-| id  | person | kind | one line                                                        | pod feature    |
-| --- | ------ | ---- | --------------------------------------------------------------- | -------------- |
-| TG1 | Tamsin | gap  | no uACR in diabetes; eGFR 2025, 2026                            | absence        |
-| TG2 | Tamsin | gap  | positive FIT 2025-11-04, no colonoscopy                         | dates, absence |
-| TT1 | Tamsin | trap | "untreated rising A1c": empagliflozin since 2025-02-20, A1c 6.9 | dates          |
-| TT2 | Tamsin | trap | PE refuted 2025-07-08                                           | code semantics |
+| id  | person | kind     | one line                                                        | pod feature    |
+| --- | ------ | -------- | --------------------------------------------------------------- | -------------- |
+| TG1 | Tamsin | gap      | no uACR in diabetes; eGFR 2025, 2026                            | absence        |
+| TG2 | Tamsin | gap      | positive FIT 2025-11-04, no colonoscopy                         | dates, absence |
+| TT1 | Tamsin | trap     | "untreated rising A1c": empagliflozin since 2025-02-20, A1c 6.9 | dates          |
+| TT2 | Tamsin | trap     | PE refuted 2025-07-08                                           | code semantics |
+| TF1 | Tamsin | fact     | Jardiance 10 mg, atorvastatin 20 mg, since 2025-02-20           | merged copies  |
+| TF2 | Tamsin | fact     | metformin stopped 2024-04-15                                    | merged copies  |
+| TT3 | Tamsin | trap     | metformin current, from the 2024 copy                           | merged copies  |
+| TF3 | Tamsin | fact     | last A1c 6.9% on 2026-02-16                                     | dates          |
+| TT4 | Tamsin | trap     | an older A1c given as the last                                  | dates          |
+| TN1 | Tamsin | negation | no PE: refuted, CT clear, 2025-07-08                            | code semantics |
+| TT5 | Tamsin | trap     | "yes, July 2025" from the name alone                            | code semantics |
+| TA1 | Tamsin | absence  | no allergy recorded, with coverage                              | absence        |
+| TT6 | Tamsin | trap     | metformin intolerance invented                                  | none           |

@@ -18,6 +18,7 @@ import {
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { errorsOf } from "./schemas.js";
+import { answerPath } from "./sessions.js";
 
 export type Fact = Omit<Claim, "cite"> & {
   readonly cite: Claim["cite"];
@@ -25,15 +26,25 @@ export type Fact = Omit<Claim, "cite"> & {
   readonly provider: string;
 };
 
+/** A subject's answer to one question: the reply, its short form, and each point with its chain. */
 export interface Answer {
-  readonly questions: readonly {
+  readonly answer: string;
+  readonly short: string;
+  readonly items: readonly {
     readonly n: number;
-    readonly question: string;
+    readonly says: string;
     readonly why: string;
     readonly confidence: string;
     readonly facts: readonly Fact[];
-    readonly absences: readonly Absence[];
-    readonly knowledge: { readonly says: string; readonly guideline?: string };
+    readonly absences: readonly (Absence & {
+      readonly query?: Absence["query"] & { readonly call?: number };
+    })[];
+    readonly knowledge?: { readonly says: string; readonly guideline?: string };
+    readonly links?: readonly {
+      readonly from: number;
+      readonly to: number;
+      readonly says: string;
+    }[];
   }[];
 }
 
@@ -124,6 +135,26 @@ export function words(command: string): string[] | undefined {
   return found;
 }
 
+/** Whether a command is the job's `ask` command, for this job and run, and nothing else. */
+export function isAskCommand(
+  command: string,
+  job: string,
+  run: string,
+): boolean {
+  const said = words(command);
+  if (said === undefined || said.length !== 7) return false;
+  const [node, cli, ask, runFlag, folder, jobFlag, id] = said;
+  return (
+    /^node(.exe)?$/.test(node!) &&
+    samePath(cli!, CLI) &&
+    ask === "ask" &&
+    runFlag === "--run" &&
+    samePath(folder!, run) &&
+    jobFlag === "--job" &&
+    id === job
+  );
+}
+
 /** Whether a command is the pod arm's one command, for this job and run, and nothing else. */
 export function isPodCommand(
   command: string,
@@ -174,7 +205,7 @@ async function readWhole(
   return whole;
 }
 
-/** Each tool a subject used that its arm does not allow: the pod arm only its one command, the records arm reading. */
+/** Each tool a subject used that its arm does not allow: the pod arm only its one command, the records arm reading; both the ask command and writing each answer. */
 function subjectViolations(
   job: Job,
   uses: readonly ToolUse[],
@@ -187,7 +218,14 @@ function subjectViolations(
     if (HARNESS_TOOLS.has(use.name)) continue;
     if (
       (use.name === "Write" || use.name === "Edit") &&
-      samePath(pathOf(use), join(folder, job.answer ?? ""))
+      (job.questions ?? []).some((question) =>
+        samePath(pathOf(use), join(folder, answerPath(job, question))),
+      )
+    )
+      continue;
+    if (
+      use.name === "Bash" &&
+      isAskCommand(String(use.input.command ?? ""), job.id, folder)
     )
       continue;
     if (
@@ -260,9 +298,10 @@ export function tieOf(absence: Absence, key: Key): Tie | undefined {
 const claimOf = ({ says: _says, provider: _provider, ...claim }: Fact): Claim =>
   claim;
 
-/** The program checks of one subject's answer, from its tool uses and the run's tool calls; nothing is copied. */
+/** The program checks of one subject's answer to one question, from its tool uses and the run's tool calls; nothing is copied. */
 export async function checkAnswer(options: {
   job: Job;
+  question: string;
   answer: unknown;
   folder: string;
   prepared: Prepared;
@@ -271,7 +310,11 @@ export async function checkAnswer(options: {
   toolCalls: readonly ToolCallRecord[];
   pod: Asker | undefined;
 }): Promise<SubjectChecks> {
-  const { job, prepared, key, folder } = options;
+  const { job, prepared, folder } = options;
+  const items = options.key.items.filter(
+    (it) => it.question === options.question,
+  );
+  const key = { ...options.key, items };
   const uses = job.toolUses ?? [];
   const violations = subjectViolations(
     job,
@@ -304,14 +347,20 @@ export async function checkAnswer(options: {
       : podRowsSource(entryRows(options.pod));
   const citations: SubjectChecks["citations"][number][] = [];
   const absences: SubjectChecks["absences"][number][] = [];
-  const ran: Ran[] = options.toolCalls
+  const ran: (Ran & { call?: number })[] = options.toolCalls
     .filter((it) => it.job === job.id)
-    .map(({ tool, input, ok, answer: text = "" }) => ({
+    .map(({ call, tool, input, ok, answer: text = "" }) => ({
+      ...(call === undefined ? {} : { call }),
       tool,
       input,
       ok,
       answer: text,
     }));
+  /** The call an absence names by its number, when it names one the log holds; else every call of the job. */
+  const ranFor = (call: number | undefined) => {
+    const named = ran.filter((it) => it.call === call);
+    return call === undefined || named.length === 0 ? ran : named;
+  };
   const text = (file: string) =>
     readFile(join(prepared.downloads, file), "utf8");
   // The files an absence must cover: every one that holds records (a pull's pull.json holds none).
@@ -319,8 +368,8 @@ export async function checkAnswer(options: {
   if (job.arm === "records")
     for (const file of options.reading)
       if (holdsRecords(await text(file))) couldHold.push(file);
-  for (const question of answer.questions) {
-    for (const [at, fact] of question.facts.entries()) {
+  for (const point of answer.items) {
+    for (const [at, fact] of point.facts.entries()) {
       const source = "entry" in fact.cite ? entries : files;
       const verdict =
         source === undefined
@@ -331,37 +380,40 @@ export async function checkAnswer(options: {
             }
           : await checkCitation(claimOf(fact), source);
       citations.push({
-        question: question.n,
+        item: point.n,
         fact: at,
         cite: fact.cite,
         ...verdict,
       });
     }
-    for (const [at, absence] of question.absences.entries()) {
+    for (const [at, absence] of point.absences.entries()) {
       const tied = tieOf(absence, key);
       const backing =
         job.arm === "pod"
-          ? checkAbsence(absence, ran, tied)
+          ? checkAbsence(absence, ranFor(absence.query?.call), tied)
           : await checkRecordsAbsence(absence, read, text, couldHold, tied);
-      absences.push({ question: question.n, absence: at, ...backing });
+      absences.push({ item: point.n, absence: at, ...backing });
     }
   }
   const trapWording: SubjectChecks["trapWording"][number][] = [];
   for (const item of key.items)
     for (const { pattern, means } of item.wording ?? []) {
       const expression = new RegExp(pattern, "i");
-      for (const question of answer.questions) {
+      for (const point of answer.items) {
         const said = [
-          question.question,
-          question.why,
-          question.knowledge.says,
-          ...question.facts.map((it) => it.says),
+          ...(point.n === answer.items[0]?.n
+            ? [answer.answer, answer.short]
+            : []),
+          point.says,
+          point.why,
+          point.knowledge?.says ?? "",
+          ...point.facts.map((it) => it.says),
         ].join(" ");
         const match = expression.exec(said);
         if (match !== null)
           trapWording.push({
-            item: item.id,
-            question: question.n,
+            id: item.id,
+            item: point.n,
             pattern,
             means,
             text: match[0],
@@ -378,6 +430,3 @@ export async function checkAnswer(options: {
     ...(job.arm === "records" ? { read } : {}),
   };
 }
-
-export const answerFile = (folder: string, job: Job) =>
-  join(folder, job.answer ?? "");

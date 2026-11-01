@@ -5,6 +5,7 @@
   "items": [
     {
       "id": "TG1",
+      "question": "checkup",
       "kind": "gap",
       "title": "Urine albumin-to-creatinine ratio never done, eGFR yearly",
       "lookingFor": "the missing urine albumin test (uACR) for her diabetes",
@@ -51,16 +52,6 @@
       "wrong": ["saying it was done"],
       "pod": "visible",
       "guideline": "ADA Standards of Care: uACR at diagnosis and at least yearly",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["98979-8"]
-        },
-        {
-          "question": "pod/My active conditions",
-          "where": ["44054006"]
-        }
-      ],
       "absentMatch": {
         "codes": ["9318-7", "14959-1", "32294-1", "14958-3", "13705-9"],
         "terms": ["albumin", "microalbumin", "uACR"],
@@ -69,6 +60,7 @@
     },
     {
       "id": "TG2",
+      "question": "checkup",
       "kind": "gap",
       "title": "Positive stool test (FIT) with no colonoscopy",
       "lookingFor": "a colonoscopy after the positive stool test of 2025-11-04",
@@ -111,15 +103,6 @@
       ],
       "pod": "visible",
       "guideline": "USPSTF 2021; US Multi-Society Task Force: colonoscopy after an abnormal stool test",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["29771-3"]
-        },
-        {
-          "question": "pod/My procedures"
-        }
-      ],
       "absentMatch": {
         "codes": ["73761001", "45378"],
         "terms": ["colonoscopy"],
@@ -129,6 +112,7 @@
     },
     {
       "id": "TT1",
+      "question": "checkup",
       "kind": "trap",
       "title": "Untreated rising A1c: out of date",
       "lookingFor": "no claim that her diabetes is untreated or her A1c is 8.3 now",
@@ -191,19 +175,11 @@
           "means": "8.3 given as the current A1c"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My medication history"
-        },
-        {
-          "question": "pod/My lab results",
-          "where": ["4548-4"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "TT2",
+      "question": "checkup",
       "kind": "trap",
       "title": "A pulmonary embolism that was ruled out",
       "lookingFor": "no question treating the refuted pulmonary embolism as real",
@@ -254,16 +230,271 @@
           "means": "the D-dimer called unfollowed"
         }
       ],
-      "pod": "visible",
-      "find": [
+      "pod": "visible"
+    },
+    {
+      "id": "TF1",
+      "question": "medications",
+      "kind": "fact",
+      "title": "Her current medicines: Jardiance and atorvastatin",
+      "lookingFor": "Jardiance (empagliflozin) 10 mg and atorvastatin 20 mg, both once daily, both active since 2025-02-20",
+      "evidence": [
         {
-          "question": "pod/My lab results",
-          "where": ["48065-7"]
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationRequest/story-stopped-medrx-2"
+          },
+          "name": "Jardiance 10 mg tablet",
+          "status": "active",
+          "date": "2025-02-20",
+          "dateKind": "recorded"
         },
         {
-          "question": "pod/My procedures"
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationRequest/story-stopped-medrx-3"
+          },
+          "name": "Atorvastatin 20 mg tablet",
+          "status": "active",
+          "date": "2025-02-20",
+          "dateKind": "recorded"
         }
-      ]
+      ],
+      "links": ["the latest download holds two active prescriptions"],
+      "found": "names both, as current",
+      "partly": "names one of the two",
+      "wrong": ["a medicine missing from the list", "a third current medicine"],
+      "pod": "visible"
+    },
+    {
+      "id": "TF2",
+      "question": "medications",
+      "kind": "fact",
+      "title": "Metformin is stopped",
+      "lookingFor": "metformin stopped on 2024-04-15, not current",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationStatement/story-stopped-med-1"
+          },
+          "name": "Metformin 500 mg tablet",
+          "status": "completed",
+          "date": "2024-04-15",
+          "dateKind": "end"
+        },
+        {
+          "cite": {
+            "file": "north-2024-02/bundle.json",
+            "resource": "MedicationStatement/story-stopped-med-1"
+          },
+          "status": "active",
+          "date": "2022-03-01",
+          "dateKind": "start"
+        }
+      ],
+      "links": [
+        "the 2024 download lists metformin as active; the later downloads close it on 2024-04-15"
+      ],
+      "found": "says metformin was stopped (2024-04-15), or leaves it out of the current list",
+      "partly": "leaves it out without saying it was stopped",
+      "wrong": ["metformin is a current medicine"],
+      "pod": "visible"
+    },
+    {
+      "id": "TT3",
+      "question": "medications",
+      "kind": "trap",
+      "title": "Metformin listed as current",
+      "lookingFor": "no claim that she takes metformin now",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2024-02/bundle.json",
+            "resource": "MedicationStatement/story-stopped-med-1"
+          },
+          "status": "active"
+        }
+      ],
+      "links": [
+        "only the oldest download says active; a newer copy of the same record says completed"
+      ],
+      "found": "metformin not given as current",
+      "wrong": ["you take metformin 500 mg"],
+      "pod": "visible"
+    },
+    {
+      "id": "TF3",
+      "question": "last-a1c",
+      "kind": "fact",
+      "title": "Last A1c: 6.9% on 2026-02-16",
+      "lookingFor": "6.9% on 2026-02-16",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-9"
+          },
+          "name": "Hemoglobin A1c",
+          "value": "6.9",
+          "unit": "%",
+          "date": "2026-02-16",
+          "dateKind": "when"
+        }
+      ],
+      "links": ["the latest of nine A1c results"],
+      "found": "6.9% and its date",
+      "partly": "the value without the date, or the date without the value",
+      "wrong": ["any other value given as the last"],
+      "pod": "visible"
+    },
+    {
+      "id": "TT4",
+      "question": "last-a1c",
+      "kind": "trap",
+      "title": "An older A1c given as the last",
+      "lookingFor": "no older value (8.3% in January 2025, the last one in the 2025 download) given as the latest",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-a1c-6"
+          },
+          "value": "8.3",
+          "date": "2025-01-13",
+          "dateKind": "when"
+        }
+      ],
+      "links": [
+        "the 2025-02 download ends at 8.3; the 2026-10 download holds three later results"
+      ],
+      "found": "no older value given as the last",
+      "wrong": ["your last A1c was 8.3%"],
+      "wording": [
+        {
+          "pattern": "(last|latest|most recent)[^.]{0,40}\b(8.3|7.6|7.1)\b",
+          "means": "an older A1c given as the latest"
+        }
+      ],
+      "pod": "visible"
+    },
+    {
+      "id": "TN1",
+      "question": "blood-clot",
+      "kind": "negation",
+      "title": "No: a pulmonary embolism was suspected and ruled out",
+      "lookingFor": "no blood clot in the lung: suspected on 2025-07-08 and ruled out by CT the same day",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Condition/story-stopped-cond-2"
+          },
+          "name": "Pulmonary embolism",
+          "status": "refuted"
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "DiagnosticReport/story-stopped-dr-1"
+          },
+          "quote": "No pulmonary embolism",
+          "date": "2025-07-08",
+          "dateKind": "when"
+        },
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Observation/story-stopped-ddimer-1"
+          },
+          "value": "0.92",
+          "date": "2025-07-08",
+          "dateKind": "when"
+        }
+      ],
+      "links": [
+        "the condition's verification status is refuted",
+        "the CT angiogram found no embolism"
+      ],
+      "found": "says no, it was ruled out",
+      "partly": "says none is recorded, without the July 2025 work-up",
+      "wrong": ["yes, in July 2025"],
+      "pod": "visible"
+    },
+    {
+      "id": "TT5",
+      "question": "blood-clot",
+      "kind": "trap",
+      "title": "\"Yes, in July 2025\" from the condition's name",
+      "lookingFor": "no claim that she had a pulmonary embolism",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "Condition/story-stopped-cond-2"
+          },
+          "name": "Pulmonary embolism",
+          "status": "refuted"
+        }
+      ],
+      "links": ["a condition list read without its verification status"],
+      "found": "not said",
+      "wrong": ["you had a pulmonary embolism in July 2025"],
+      "wording": [
+        {
+          "pattern": "blood thinner|anticoagula",
+          "means": "treatment for an embolism she never had"
+        }
+      ],
+      "pod": "visible"
+    },
+    {
+      "id": "TA1",
+      "question": "allergies",
+      "kind": "absence",
+      "title": "No allergy recorded, and what was looked through",
+      "lookingFor": "none recorded, with what was looked through: one hospital, three downloads",
+      "evidence": [],
+      "absent": ["any AllergyIntolerance in the three pulls"],
+      "links": [
+        "an empty list is what these records say, not a fact about her"
+      ],
+      "found": "none recorded, naming what was looked through",
+      "partly": "\"you have no allergies\" with no limit stated",
+      "wrong": ["an allergy or intolerance named"],
+      "pod": "visible",
+      "absentMatch": {
+        "terms": ["allergy", "allergic", "intolerance", "AllergyIntolerance"]
+      },
+      "coverage": "Cascade North Demo Hospital, the three downloads of 2024-02, 2025-02 and 2026-10"
+    },
+    {
+      "id": "TT6",
+      "question": "allergies",
+      "kind": "trap",
+      "title": "An intolerance read into metformin's stop",
+      "lookingFor": "no allergy or intolerance invented from metformin's unexplained stop",
+      "evidence": [
+        {
+          "cite": {
+            "file": "north-2026-10/bundle.json",
+            "resource": "MedicationStatement/story-stopped-med-1"
+          },
+          "status": "completed",
+          "date": "2024-04-15",
+          "dateKind": "end"
+        }
+      ],
+      "links": ["no reason for the stop is recorded"],
+      "found": "not said",
+      "wrong": ["you may be intolerant of metformin"],
+      "wording": [
+        {
+          "pattern": "metformin[^.]{0,60}(intoleran|allerg)",
+          "means": "an intolerance read into the stop"
+        }
+      ],
+      "pod": "visible"
     }
   ],
   "preExisting": [

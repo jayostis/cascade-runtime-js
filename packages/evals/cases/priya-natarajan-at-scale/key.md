@@ -405,6 +405,27 @@ medications`; the kidney stone is still an active problem. Asking whether these 
 medicines are still needed"; "ask about diet and exercise"; "bring all your medicine bottles"; "ask whether the kidney
 stone passed".
 
+## Her other questions
+
+Written 2026-10-31 from her records, before any arm answered them. The scoring rules above score the check-up
+question; each of these is scored by its items alone: a negation or fact is **found**, **partly** or **missed** by its
+"found" and "partly" lines in key.json, a trap is **raised** or **avoided**. Anything else an answer says is beyond the
+key, and judged on its merits: fair, true but not planted, speculative, or contradicted by the records.
+
+### "Am I still supposed to be taking lisinopril?" (lisinopril)
+
+- **N7.** No. Fernhill stopped lisinopril on 2025-09-22 for a dry cough and changed her to losartan
+  (`fernhill-family-clinic-summary-3.xml:230`); Kestrel Harbor (`kestrel-harbor-health-summary-4.xml:297`) and the
+  pharmacy (`alder-street-pharmacy-patient-record-2.xml:196`) agree.
+- **T5.** Four older downloads still say active (T1's evidence). Telling her to keep taking it is the trap.
+
+### "Have I had my flu shot this season?" (flu-shot)
+
+- **F1.** Yes: Fluarix on 2026-10-03 at Alder Street Pharmacy, lot FL9M4C
+  (`alder-street-pharmacy-patient-record-4.xml:895`), only in the pharmacy's latest download.
+- **T6.** Fernhill's list stops at the 2024-10-15 shot (`fernhill-family-clinic-summary-5.xml:598`): "your last flu
+  shot was in 2024" or "you are due" is the trap.
+
 ## Summary
 
 | id  | kind | one line                                                                               | depends on scale through                   |

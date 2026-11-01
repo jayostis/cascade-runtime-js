@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jayostis/cascade-runtime-js/packages/evals/schemas/key.schema.json",
   "title": "A case's key, machine-readable half",
-  "description": "One item per planted gap, trap or near-trap: the evidence it rests on (each a claim the citation checker verifies against the case's downloads), the links the reasoning must state, and what counts as found, partly found or wrong. Written before any run; the prose half (key.md) gives the rationale and the guidelines.",
+  "description": "One item per thing an answer to one of the case's questions is looked at for: an expected fact, absence or negation, a planted gap, or a trap or near-trap; the evidence it rests on (each a claim the citation checker verifies against the case's downloads), the links the reasoning must state, and what counts as found, partly found or wrong. Written before any run; the prose half (key.md) gives the rationale and the guidelines.",
   "type": "object",
   "required": ["case", "written", "items"],
   "additionalProperties": false,
@@ -128,24 +128,6 @@
           "pattern": "\\S+\\s+\\S+"
         }
       }
-    },
-    "find": {
-      "type": "object",
-      "description": "Rows of a pod question that hold the item's entries, for its graph slice: every row whose values contain each `where` text.",
-      "required": ["question"],
-      "additionalProperties": false,
-      "properties": {
-        "question": {
-          "type": "string"
-        },
-        "where": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      }
     }
   },
   "properties": {
@@ -166,6 +148,7 @@
         "type": "object",
         "required": [
           "id",
+          "question",
           "kind",
           "title",
           "lookingFor",
@@ -181,8 +164,13 @@
             "type": "string",
             "pattern": "^[A-Z]+[0-9]+$"
           },
+          "question": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "description": "The id of the case's question this item is the key for."
+          },
           "kind": {
-            "enum": ["gap", "trap", "near-trap"]
+            "enum": ["fact", "absence", "negation", "gap", "trap", "near-trap"]
           },
           "title": {
             "type": "string"
@@ -253,12 +241,6 @@
           "guideline": {
             "type": "string"
           },
-          "find": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/find"
-            }
-          },
           "absentMatch": {
             "type": "object",
             "description": "What must be absent for the item to hold: the codes and words a record of it would carry, its kind, and the day after which one would count. An answer's absence that names any of them is held to all of them.",
@@ -290,8 +272,26 @@
                 ]
               }
             }
+          },
+          "coverage": {
+            "type": "string",
+            "description": "An absence: what a sound statement of what was looked through names."
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "absence"
+                }
+              }
+            },
+            "then": {
+              "required": ["absentMatch", "coverage"]
+            }
+          }
+        ]
       }
     },
     "preExisting": {

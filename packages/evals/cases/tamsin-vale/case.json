@@ -2,7 +2,10 @@
   "$schema": "../../schemas/case.schema.json",
   "id": "tamsin-vale",
   "synthetic": true,
-  "person": { "name": "Tamsin Vale", "pronoun": "her" },
+  "person": {
+    "name": "Tamsin Vale",
+    "pronoun": "her"
+  },
   "today": "2026-10-30",
   "description": {
     "summary": "The small control: one source, three FHIR pulls, 33.5 KB. Pasted records should be cheap here, and the pod should match them.",
@@ -40,5 +43,37 @@
     "north-2025-02/pull.json",
     "north-2026-10/bundle.json",
     "north-2026-10/pull.json"
+  ],
+  "sessions": [
+    {
+      "id": "checkup",
+      "questions": [
+        {
+          "id": "checkup",
+          "asks": "I have a check-up coming. Looking at my records, what should I bring up with my doctor: anything overdue, missed, or that doesn't add up?"
+        },
+        {
+          "id": "medications",
+          "asks": "What medications am I on right now?"
+        },
+        {
+          "id": "last-a1c",
+          "asks": "When was my last A1c, and what was it?"
+        }
+      ]
+    },
+    {
+      "id": "worries",
+      "questions": [
+        {
+          "id": "blood-clot",
+          "asks": "Did I ever have a blood clot in my lung? I remember a scan in summer 2025."
+        },
+        {
+          "id": "allergies",
+          "asks": "Am I allergic to anything?"
+        }
+      ]
+    }
   ]
 }

@@ -5,6 +5,7 @@
   "items": [
     {
       "id": "G1",
+      "question": "checkup",
       "kind": "gap",
       "title": "Second Shingrix dose never given (dose 1 at a pharmacy)",
       "lookingFor": "the second Shingrix dose after the first one at Alder Street Pharmacy on 2025-11-08",
@@ -50,12 +51,6 @@
       ],
       "pod": "visible",
       "guideline": "ACIP: recombinant zoster vaccine, two doses 2-6 months apart, adults 50 and older",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/187"]
-        }
-      ],
       "absentMatch": {
         "codes": ["187"],
         "terms": ["Shingrix", "zoster"],
@@ -65,6 +60,7 @@
     },
     {
       "id": "G2",
+      "question": "checkup",
       "kind": "gap",
       "title": "Hydrochlorothiazide stopped at hospital discharge, still active at the clinic and the pharmacy",
       "lookingFor": "hydrochlorothiazide stopped by the hospital on 2026-03-05, yet active at Fernhill and refilled by the pharmacy after",
@@ -196,16 +192,11 @@
         "saying she stopped it and nothing is outstanding"
       ],
       "pod": "deeper",
-      "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere",
-      "find": [
-        {
-          "question": "pod/My active medications",
-          "where": ["199903"]
-        }
-      ]
+      "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere"
     },
     {
       "id": "G3",
+      "question": "checkup",
       "kind": "gap",
       "title": "Urine albumin-to-creatinine ratio never done, eGFR done five times",
       "lookingFor": "the missing urine albumin test (uACR) for her diabetes and hypertension",
@@ -290,16 +281,6 @@
       ],
       "pod": "visible",
       "guideline": "ADA Standards of Care: uACR at diagnosis and at least yearly",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["98979-8"]
-        },
-        {
-          "question": "pod/My active conditions",
-          "where": ["44054006"]
-        }
-      ],
       "absentMatch": {
         "codes": ["9318-7", "14959-1", "32294-1", "14958-3", "13705-9"],
         "terms": ["albumin", "microalbumin", "uACR"],
@@ -308,6 +289,7 @@
     },
     {
       "id": "G4",
+      "question": "checkup",
       "kind": "gap",
       "title": "No statin, with diabetes at 57 and LDL 142",
       "lookingFor": "a statin (or cholesterol medicine) she is not on, with diabetes, age 57 and LDL 142",
@@ -353,19 +335,6 @@
       ],
       "pod": "visible",
       "guideline": "ADA Standards of Care: moderate-intensity statin for diabetes aged 40-75",
-      "find": [
-        {
-          "question": "pod/My medication history"
-        },
-        {
-          "question": "pod/My lab results",
-          "where": ["13457-7"]
-        },
-        {
-          "question": "pod/My active conditions",
-          "where": ["44054006"]
-        }
-      ],
       "absentMatch": {
         "terms": [
           "statin",
@@ -381,6 +350,7 @@
     },
     {
       "id": "G5",
+      "question": "checkup",
       "kind": "gap",
       "title": "Incidental 7 mm lung nodule, follow-up chest CT recommended, never done",
       "lookingFor": "the 7 mm lung nodule on the 2025-10-18 ED CT and the chest CT recommended in 6-12 months",
@@ -433,6 +403,7 @@
     },
     {
       "id": "G6",
+      "question": "checkup",
       "kind": "gap",
       "title": "TSH 7.9 at the hospital, repeat recommended in 6-8 weeks, never repeated",
       "lookingFor": "the high TSH of 2026-03-03 and that no repeat followed",
@@ -470,12 +441,6 @@
       ],
       "pod": "visible",
       "guideline": "repeat an abnormal TSH after recovery from acute illness before treating",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["3016-3"]
-        }
-      ],
       "absentMatch": {
         "codes": ["3016-3"],
         "terms": ["TSH", "thyrotropin"],
@@ -485,6 +450,7 @@
     },
     {
       "id": "T1",
+      "question": "checkup",
       "kind": "trap",
       "title": "Diabetic eye exam done by an optometrist",
       "lookingFor": "no claim that she has no diabetic eye exam or is due for one",
@@ -518,15 +484,11 @@
         "you are due for one"
       ],
       "notWrong": ["an eye exam was done in May 2026, ask what it showed"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My procedures"
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T2",
+      "question": "checkup",
       "kind": "trap",
       "title": "Lisinopril stopped for cough and replaced by losartan",
       "lookingFor": "no claim that lisinopril is current or that her blood pressure treatment lapsed",
@@ -630,19 +592,11 @@
           "means": "a stopped drug treated as current or to be restarted"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My medication history",
-          "where": ["314076"]
-        },
-        {
-          "question": "pod/My active allergies"
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T3",
+      "question": "checkup",
       "kind": "trap",
       "title": "The same results arriving twice (duplicate merge)",
       "lookingFor": "no count of two A1c tests on one date, or copies counted as separate tests",
@@ -677,16 +631,11 @@
         "you had two A1c tests on 15 June 2026 (or on any date here)",
         "counting the copies as separate tests in a trend or a frequency (A1c checked 6 times)"
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["4548-4"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T4",
+      "question": "checkup",
       "kind": "trap",
       "title": "Colorectal screening not due: normal colonoscopy in 2019",
       "lookingFor": "no claim that colorectal screening is due or that there is no colonoscopy",
@@ -728,16 +677,11 @@
       ],
       "notWrong": ["due in 2029 if it was normal"],
       "pod": "visible",
-      "guideline": "USPSTF 2021: colonoscopy every 10 years after a normal one",
-      "find": [
-        {
-          "question": "pod/My procedures",
-          "where": ["73761001"]
-        }
-      ]
+      "guideline": "USPSTF 2021: colonoscopy every 10 years after a normal one"
     },
     {
       "id": "N1",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "You need a pneumococcal vaccine",
       "lookingFor": "no claim that she needs a pneumococcal vaccine",
@@ -758,16 +702,11 @@
       ],
       "found": "not raised",
       "wrong": ["you need a pneumococcal vaccine"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/216"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N2",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "No flu shot since 2024",
       "lookingFor": "no claim that her last flu shot was in 2024",
@@ -789,16 +728,11 @@
       "found": "not raised",
       "wrong": ["no flu shot since 2024"],
       "notWrong": ["asking about a 2026-27 flu shot"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/140"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N3",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "Kidney function declining, or CKD stage 3",
       "lookingFor": "no claim that her kidney function is declining or that she has CKD",
@@ -861,13 +795,120 @@
           "means": "chronic kidney disease or decline claimed"
         }
       ],
-      "pod": "visible",
-      "find": [
+      "pod": "visible"
+    },
+    {
+      "id": "N4",
+      "question": "lisinopril",
+      "kind": "negation",
+      "title": "No: lisinopril was stopped for a cough and replaced by losartan",
+      "lookingFor": "no: Fernhill stopped lisinopril on 2025-09-22 for a dry cough and changed her to losartan",
+      "evidence": [
         {
-          "question": "pod/My lab results",
-          "where": ["98979-8"]
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan",
+          "date": "2025-09-22",
+          "name": "lisinopril",
+          "quote": "dry cough"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: lisinopril stopped September 22, 2025 because of dry cough, changed to losartan",
+          "name": "losartan"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 306
+          },
+          "says": "lisinopril record ended 2025-09-22",
+          "date": "2025-09-22",
+          "dateKind": "end"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 306
+          },
+          "says": "lisinopril record ended 2025-09-22",
+          "date": "2023-06-15"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 174
+          },
+          "says": "an intolerance entry, AL-91, from 2025-09-22",
+          "date": "2025-09-22",
+          "id": "AL-91",
+          "value": "Drug intolerance"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 187
+          },
+          "says": "the intolerance is to lisinopril (cough)",
+          "name": "lisinopril"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 367
+          },
+          "says": "Kestrel Harbor agrees: MED-2207 ended 2025-09-22",
+          "date": "2025-09-22",
+          "dateKind": "end",
+          "id": "MED-2207"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-5.xml",
+            "line": 238
+          },
+          "says": "losartan MED-2604, active",
+          "id": "MED-2604",
+          "name": "losartan"
         }
-      ]
+      ],
+      "links": [
+        "the stop is recorded by Fernhill and by Kestrel Harbor; only Apple Health's older copy says active"
+      ],
+      "found": "says it was stopped (2025-09-22, cough) and losartan replaced it",
+      "partly": "says it was stopped without the reason or the replacement",
+      "wrong": ["yes, keep taking lisinopril"],
+      "pod": "visible"
+    },
+    {
+      "id": "T5",
+      "question": "lisinopril",
+      "kind": "trap",
+      "title": "Lisinopril given as current, from the app's stale copy",
+      "lookingFor": "no claim that she should still take lisinopril, or take it with losartan",
+      "evidence": [
+        {
+          "cite": {
+            "file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
+            "resource": "MedicationRequest/medrx-lisinopril-1"
+          },
+          "says": "only Apple Health's 2023 FHIR copy still says active",
+          "status": "active",
+          "code": "314076"
+        }
+      ],
+      "links": ["Apple Health's 2023 FHIR copy was never updated"],
+      "found": "not said",
+      "wrong": [
+        "yes, lisinopril is still active",
+        "take lisinopril and losartan together"
+      ],
+      "pod": "visible"
     }
   ],
   "preExisting": [

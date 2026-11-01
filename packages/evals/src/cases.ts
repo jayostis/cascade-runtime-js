@@ -1,6 +1,7 @@
 // A case: a synthetic person's downloads (the vocabulary kit's copies plus a generator's), its key, and the pod made
 // from the downloads. `prepare` makes the downloads and the pod once per input and checks the downloads are the
 // bytes the key was written against.
+import { performance } from "node:perf_hooks";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -36,11 +37,20 @@ export interface Case {
   };
   readonly imports: readonly string[];
   readonly reading: readonly string[];
+  readonly sessions: readonly Session[];
+}
+
+/** One chat: its questions, asked in order, one at a time, in the person's own words. */
+export interface Session {
+  readonly id: string;
+  readonly questions: readonly { readonly id: string; readonly asks: string }[];
 }
 
 export interface KeyItem {
   readonly id: string;
-  readonly kind: "gap" | "trap" | "near-trap";
+  /** The case's question this item is the key for. */
+  readonly question: string;
+  readonly kind: "fact" | "absence" | "negation" | "gap" | "trap" | "near-trap";
   readonly title: string;
   readonly lookingFor: string;
   readonly evidence: readonly (Claim & { readonly says?: string })[];
@@ -58,10 +68,8 @@ export interface KeyItem {
   readonly guideline?: string;
   /** What must be absent for the item to hold, its kind and since when: an absence that ties to it is held to this. */
   readonly absentMatch?: Tie;
-  readonly find?: readonly {
-    readonly question: string;
-    readonly where?: readonly string[];
-  }[];
+  /** An absence: what a sound statement of what was looked through names. */
+  readonly coverage?: string;
 }
 
 export interface Key {
@@ -213,6 +221,13 @@ export interface Prepared {
     readonly file: string;
     readonly bytes: number;
   }[];
+  /** The pod's build, once per person and outside every answer's cost; absent from a pod prepared before it was timed. */
+  readonly build?: {
+    readonly seconds: number;
+    readonly modelCalls: number;
+    readonly tokens: number;
+    readonly usd: number;
+  };
 }
 
 const sameComponents = (a: readonly Component[], b: readonly Component[]) =>
@@ -272,6 +287,7 @@ export async function prepare(
   const pods = join(folder, "pods");
   log(`${id}: importing ${found.imports.length} downloads into a new pod`);
   const imports: Prepared["imports"][number][] = [];
+  const started = performance.now();
   if (env !== undefined)
     for (const { path, ...it } of pinnedPod(env, "build", join(pods, id), [
       found.person.name,
@@ -314,6 +330,12 @@ export async function prepare(
     } finally {
       await pod.close();
     }
+  const build = {
+    seconds: Math.round((performance.now() - started) / 100) / 10,
+    modelCalls: 0,
+    tokens: 0,
+    usd: 0,
+  };
   const documents: { file: string; bytes: number }[] = [];
   for (const file of found.reading)
     documents.push({
@@ -329,6 +351,7 @@ export async function prepare(
     components: resolved,
     imports,
     documents,
+    build,
     ...(env === undefined
       ? {}
       : { runtime: env.runtime, mcp: env.mcp, environment: env.key }),

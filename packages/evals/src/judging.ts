@@ -1,16 +1,19 @@
-// Blind judging: each case's answers stripped of what would say how they reached the records, in an order of each
-// judge's own, given with the key to each judge in a folder of its own that holds nothing else; the verdicts turned
-// back into grades per answer through the letters that judge saw, scores, and the judges' agreement.
+// Blind judging: each sitting's answers (one case, model and repeat, both arms) stripped of what would say how they
+// reached the records, each question's in an order of each judge's own, given with the key to each judge in a folder
+// of its own that holds nothing else; the verdicts turned back into grades per answer through the letters that judge
+// saw, and the judges' agreement.
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
+import { instanceOf } from "./instances.js";
+import { answerPath } from "./sessions.js";
 import type { Answer } from "./checks.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
 import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
 import { callCost } from "./prices.js";
-import type { Grade, Job, Score } from "./results.js";
+import type { Grade, Job, Label } from "./results.js";
 import { runFolder } from "./results.js";
 import { errorsOf } from "./schemas.js";
 
@@ -47,25 +50,35 @@ export const scrubbed = (text: string) =>
     .trim();
 
 /**
- * An answer as a judge reads it: the questions, their facts as provider, date and words, what each says is absent
- * (never what it looked through, which differs by arm), and the knowledge; no citations.
+ * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
+ * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
  */
 export function blinded(answer: Answer): string {
-  return answer.questions
-    .map((q) =>
+  return [
+    `Reply: ${scrubbed(answer.answer)}`,
+    `Short answer: ${scrubbed(answer.short)}`,
+    ...answer.items.map((item) =>
       [
-        `### Q${q.n}. ${scrubbed(q.question)}`,
-        `- Why: ${scrubbed(q.why)}`,
-        ...q.facts.map(
-          (f) =>
-            `- Fact: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`,
+        `### Item ${item.n}. ${scrubbed(item.says)}`,
+        `- Why: ${scrubbed(item.why)}`,
+        ...item.facts.map(
+          (f, at) =>
+            `- Fact ${at}: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`,
         ),
-        ...q.absences.map((a) => `- Absent: ${scrubbed(a.what)}`),
-        `- Knowledge: ${scrubbed(q.knowledge.says)}${q.knowledge.guideline === undefined ? "" : ` (${scrubbed(q.knowledge.guideline)})`}`,
-        `- Confidence: ${q.confidence}`,
+        ...item.absences.map((a) => `- Absent: ${scrubbed(a.what)}`),
+        ...(item.knowledge === undefined
+          ? []
+          : [
+              `- Knowledge: ${scrubbed(item.knowledge.says)}${item.knowledge.guideline === undefined ? "" : ` (${scrubbed(item.knowledge.guideline)})`}`,
+            ]),
+        ...(item.links ?? []).map(
+          (link) =>
+            `- Link: fact ${link.from} to fact ${link.to}: ${scrubbed(link.says)}`,
+        ),
+        `- Confidence: ${item.confidence}`,
       ].join("\n"),
-    )
-    .join("\n\n");
+    ),
+  ].join("\n\n");
 }
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -77,16 +90,17 @@ const labelAt = (at: number) =>
 const answered = (job: Job) =>
   job.role === "subject" && (job.status === "done" || job.status === "reused");
 
-/** The key as a judge reads it: without where the pod holds each item or how to find it there. */
+/** The key as a judge reads it: without where the pod holds each item. */
 const judgesKey = (key: Key) => ({
   ...key,
-  items: key.items.map(({ pod: _pod, find: _find, ...item }) => item),
+  items: key.items.map(({ pod: _pod, ...item }) => item),
 });
 
 /**
- * Writes a blind packet for each judge, in an order of its own, in a folder of its own outside the run, and plans the
- * judge. A judge's inputs are its packet (the answers, their order and the key), its model and its prompt; a judge with
- * the same inputs in an earlier run is reused with that run's verdict and the letters that verdict was written to.
+ * Writes a blind packet for each judge of each sitting (a case, model and repeat: its arms' sessions), with each
+ * question's answers under letters in an order of its own, in a folder of its own outside the run, and plans the judge.
+ * A judge's inputs are its packet's content, its model and its prompt; a judge with the same inputs in an earlier run
+ * is reused with that run's verdict and the letters that verdict was written to.
  */
 export async function judgePackets(given: string) {
   const folder = runFolder(given);
@@ -95,41 +109,65 @@ export async function judgePackets(given: string) {
   await mkdir(join(folder, "judges"), { recursive: true });
   const past = await pastJobs();
   const planned: Job[] = [];
-  for (const { id: caseId } of plan.cases) {
-    const subjects = plan.jobs.filter(
-      (it) =>
-        it.case === caseId &&
-        answered(it) &&
-        existsSync(join(folder, it.answer!)),
-    );
-    if (subjects.length === 0) continue;
-    const bodies = new Map<string, string>();
-    for (const job of subjects) {
-      let body: string;
-      try {
-        body = blinded(
-          JSON.parse(
-            await readFile(join(folder, job.answer!), "utf8"),
-          ) as Answer,
-        );
-      } catch {
-        body = "(the answer is not valid JSON)";
-      }
-      bodies.set(job.id, body);
-    }
-    const { key, prose } = await loadKey(caseId);
+  const sittings = new Map<string, Job[]>();
+  for (const job of plan.jobs.filter(answered)) {
+    const id = instanceOf(job);
+    (sittings.get(id) ?? sittings.set(id, []).get(id)!).push(job);
+  }
+  for (const [instance, subjects] of sittings) {
+    const caseId = subjects[0]!.case!;
     const found = await loadCase(caseId);
+    const { key, prose } = await loadKey(caseId);
+    const bodies = new Map<string, string>();
+    for (const job of subjects)
+      for (const question of job.questions ?? []) {
+        const path = join(folder, answerPath(job, question));
+        if (!existsSync(path)) continue;
+        let body: string;
+        try {
+          body = blinded(JSON.parse(await readFile(path, "utf8")) as Answer);
+        } catch {
+          body = "(the answer is not valid JSON, or not an answer)";
+        }
+        bodies.set(`${job.id}\n${question}`, body);
+      }
+    if (bodies.size === 0) continue;
     for (const [at, model] of plan.config.judges.entries()) {
-      const id = `${caseId}.judge.${model.replace(/^claude-/, "")}.j${at + 1}`;
+      const id = `${instance}.judge.${model.replace(/^claude-/, "")}.j${at + 1}`;
       if (plan.jobs.some((it) => it.id === id)) continue;
-      // The order is the run's own, so a judge does not see the arms in the same places in every run; a reused
-      // verdict brings the letters it was written to.
-      const seed = `${plan.run}/${caseId}/${model}/${at}`;
-      const order = [...subjects].sort((a, b) =>
-        sha256(`${seed}/${a.id}`).localeCompare(sha256(`${seed}/${b.id}`)),
-      );
-      const labels: Record<string, string> = {};
-      order.forEach((job, place) => (labels[labelAt(place)] = job.id));
+      // Each question's order is the run's own, so a judge does not see the arms in the same places; a reused verdict
+      // brings the letters it was written to.
+      const seed = `${plan.run}/${instance}/${model}/${at}`;
+      const labels: Record<string, Label> = {};
+      const sections: string[] = [];
+      for (const session of found.sessions)
+        for (const question of session.questions) {
+          const answers = subjects
+            .filter((job) => bodies.has(`${job.id}\n${question.id}`))
+            .sort((a, b) =>
+              sha256(`${seed}/${question.id}/${a.id}`).localeCompare(
+                sha256(`${seed}/${question.id}/${b.id}`),
+              ),
+            );
+          if (answers.length === 0) continue;
+          const lettered = answers.map((job) => {
+            const label = labelAt(Object.keys(labels).length);
+            labels[label] = { job: job.id, question: question.id };
+            return `### Answer ${label}\n\n${bodies.get(`${job.id}\n${question.id}`)}`;
+          });
+          sections.push(
+            [
+              `## Question ${question.id}: "${question.asks}"`,
+              `Key items: ${
+                key.items
+                  .filter((it) => it.question === question.id)
+                  .map((it) => it.id)
+                  .join(", ") || "none"
+              }`,
+              ...lettered,
+            ].join("\n\n"),
+          );
+        }
       const packet = [
         `# Blind packet: ${found.person.name}, as of ${found.today}`,
         "## The key, prose half",
@@ -138,10 +176,8 @@ export async function judgePackets(given: string) {
         "```json",
         JSON.stringify(judgesKey(key), null, 2),
         "```",
-        "## The answers",
-        ...Object.entries(labels).map(
-          ([label, job]) => `## Answer ${label}\n\n${bodies.get(job)}`,
-        ),
+        "## The questions and their answers",
+        ...sections,
       ].join("\n\n");
       const packetSha256 = sha256(packet);
       const workdir = join(WORK, "judging", plan.run, id);
@@ -171,6 +207,7 @@ export async function judgePackets(given: string) {
         id,
         role: "judge",
         case: caseId,
+        instance,
         model,
         alias: aliasOf(model),
         tag,
@@ -280,7 +317,7 @@ function judgeEstimate(
   };
 }
 
-/** Each judge's verdict turned into a grade per answer it labelled. */
+/** Each judge's verdict turned into a grade per answer it labelled: one subject job's answer to one question. */
 export async function gradesOf(plan: Plan): Promise<Grade[]> {
   const grades: Grade[] = [];
   for (const job of plan.jobs) {
@@ -288,7 +325,9 @@ export async function gradesOf(plan: Plan): Promise<Grade[]> {
     const path = join(plan.folder, job.verdict);
     if (!existsSync(path)) continue;
     let verdict: {
-      outputs: (Omit<Grade, "subject" | "judge"> & { label: string })[];
+      outputs: (Omit<Grade, "subject" | "question" | "judge"> & {
+        label: string;
+      })[];
     };
     try {
       verdict = JSON.parse(await readFile(path, "utf8"));
@@ -297,70 +336,45 @@ export async function gradesOf(plan: Plan): Promise<Grade[]> {
     }
     if (errorsOf("verdict", verdict).length > 0) continue;
     for (const { label, ...grade } of verdict.outputs) {
-      const subject = job.labels?.[label];
-      if (subject !== undefined)
-        grades.push({ subject, judge: job.id, ...grade });
+      const answer = job.labels?.[label];
+      if (answer !== undefined)
+        grades.push({
+          subject: answer.job,
+          question: answer.question,
+          judge: job.id,
+          ...grade,
+        });
     }
   }
   return grades;
 }
 
-export async function scoresOf(
-  plan: Plan,
-  grades: readonly Grade[],
-  answers: Readonly<Record<string, unknown>>,
-): Promise<Score[]> {
-  const keys = new Map<string, Key>();
-  const scores: Score[] = [];
-  for (const grade of grades) {
-    const subject = plan.jobs.find((it) => it.id === grade.subject)!;
-    if (!keys.has(subject.case!))
-      keys.set(subject.case!, (await loadKey(subject.case!)).key);
-    const key = keys.get(subject.case!)!;
-    const kinds = new Map(key.items.map((it) => [it.id, it.kind]));
-    const verdict = (id: string) =>
-      grade.items.find((it) => it.id === id)?.verdict ?? "missed";
-    const gaps = key.items.filter((it) => it.kind === "gap");
-    const answer = answers[grade.subject] as Answer | undefined;
-    scores.push({
-      subject: grade.subject,
-      judge: grade.judge,
-      found: gaps.filter((it) => verdict(it.id) === "found").length,
-      partly: gaps.filter((it) => verdict(it.id) === "partly").length,
-      missed: gaps.filter((it) => verdict(it.id) === "missed").length,
-      gaps: gaps.length,
-      trapsRaised: grade.items.filter(
-        (it) => kinds.get(it.id) !== "gap" && it.verdict === "raised",
-      ).length,
-      falseQuestions: grade.falseQuestions.length,
-      extraFinds: grade.extraFinds.length,
-      chainsComplete: grade.chains.filter((it) => it.complete).length,
-      chainsFaithful: grade.chains.filter((it) => it.faithful).length,
-      questions: answer?.questions?.length ?? grade.chains.length,
-    });
-  }
-  return scores;
-}
-
-/** How often two judges of a case gave an item the same verdict, and Cohen's kappa over those verdicts. */
-export async function agreementOf(plan: Plan, grades: readonly Grade[]) {
+/** How often two judges of a sitting gave a key item the same verdict, and Cohen's kappa over those verdicts. */
+export function agreementOf(plan: Plan, grades: readonly Grade[]) {
   const out: {
-    case: string;
+    instance: string;
     judges: string[];
     items: number;
     agreed: number;
     kappa: number | null;
   }[] = [];
-  for (const { id: caseId } of plan.cases) {
-    const judges = plan.jobs
-      .filter((it) => it.role === "judge" && it.case === caseId)
-      .map((it) => it.id);
+  const sittings = new Map<string, string[]>();
+  for (const job of plan.jobs)
+    if (job.role === "judge" && job.instance !== undefined)
+      (
+        sittings.get(job.instance) ??
+        sittings.set(job.instance, []).get(job.instance)!
+      ).push(job.id);
+  for (const [instance, judges] of sittings)
     for (let a = 0; a < judges.length; a++)
       for (let b = a + 1; b < judges.length; b++) {
         const pairs: [string, string][] = [];
         for (const one of grades.filter((it) => it.judge === judges[a]))
           for (const other of grades.filter(
-            (it) => it.judge === judges[b] && it.subject === one.subject,
+            (it) =>
+              it.judge === judges[b] &&
+              it.subject === one.subject &&
+              it.question === one.question,
           ))
             for (const item of one.items) {
               const same = other.items.find((it) => it.id === item.id);
@@ -378,13 +392,12 @@ export async function agreementOf(plan: Plan, grades: readonly Grade[]) {
           0,
         );
         out.push({
-          case: caseId,
+          instance,
           judges: [judges[a]!, judges[b]!],
           items: pairs.length,
           agreed,
           kappa: expected === 1 ? null : (observed - expected) / (1 - expected),
         });
       }
-  }
   return out;
 }

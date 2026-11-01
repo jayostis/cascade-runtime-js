@@ -5,6 +5,7 @@
   "items": [
     {
       "id": "G1",
+      "question": "checkup",
       "kind": "gap",
       "title": "Urine albumin-to-creatinine ratio done once, in 2023, never since the diabetes diagnosis",
       "lookingFor": "no urine albumin test (uACR) since the diabetes diagnosis of 2025-09-22; the only one is from 2023-06-15",
@@ -84,12 +85,6 @@
       ],
       "pod": "visible",
       "guideline": "ADA Standards of Care: uACR at diagnosis and at least yearly",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["14959-1"]
-        }
-      ],
       "absentMatch": {
         "codes": ["9318-7", "14959-1", "32294-1", "14958-3", "13705-9"],
         "terms": ["albumin", "microalbumin", "uACR"],
@@ -99,6 +94,7 @@
     },
     {
       "id": "G2",
+      "question": "checkup",
       "kind": "gap",
       "title": "Statin stopped in 2023 for muscle aches, never restarted, now indicated",
       "lookingFor": "no current statin, with diabetes at 57 and LDL 142 and 147; atorvastatin stopped 2023-11-14 for muscle aches",
@@ -262,18 +258,6 @@
       ],
       "pod": "visible",
       "guideline": "ADA Section 10; ACC/AHA 2018: moderate-intensity statin for diabetes aged 40-75; rechallenge after statin muscle symptoms",
-      "find": [
-        {
-          "question": "pod/My medication history"
-        },
-        {
-          "question": "pod/My active allergies"
-        },
-        {
-          "question": "pod/My lab results",
-          "where": ["13457-7"]
-        }
-      ],
       "absentMatch": {
         "terms": [
           "statin",
@@ -290,6 +274,7 @@
     },
     {
       "id": "G3",
+      "question": "checkup",
       "kind": "gap",
       "title": "Hydrochlorothiazide stopped at the 2026-03 discharge, still active and refilled everywhere else",
       "lookingFor": "hydrochlorothiazide stopped by the hospital on 2026-03-05, yet active at Fernhill and refilled by the pharmacy to 2026-09-30",
@@ -407,16 +392,11 @@
         "saying it was stopped everywhere"
       ],
       "pod": "deeper",
-      "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere",
-      "find": [
-        {
-          "question": "pod/My active medications",
-          "where": ["199903"]
-        }
-      ]
+      "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere"
     },
     {
       "id": "G4",
+      "question": "checkup",
       "kind": "gap",
       "title": "Potassium rising into the high range on losartan plus spironolactone, last 5.6, no recorded action",
       "lookingFor": "potassium 5.2 and 5.6 (high) after spironolactone was added on top of losartan, with no recorded action on the 2026-10-13 result",
@@ -566,20 +546,11 @@
         }
       ],
       "pod": "visible",
-      "guideline": "ACC/AHA and KDIGO: with an ARB plus an MRA, check potassium and creatinine early and reduce or stop the MRA when potassium exceeds 5.0-5.5",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["2823-3"]
-        },
-        {
-          "question": "pod/My active medications",
-          "where": ["313096"]
-        }
-      ]
+      "guideline": "ACC/AHA and KDIGO: with an ARB plus an MRA, check potassium and creatinine early and reduce or stop the MRA when potassium exceeds 5.0-5.5"
     },
     {
       "id": "G5",
+      "question": "checkup",
       "kind": "gap",
       "title": "Second Shingrix dose never given (dose 1 at the pharmacy, repeated in three downloads)",
       "lookingFor": "the second Shingrix dose after the first on 2025-11-08; the three pharmacy copies are one dose",
@@ -638,12 +609,6 @@
       ],
       "pod": "visible",
       "guideline": "ACIP: recombinant zoster vaccine, two doses 2-6 months apart, adults 50 and older",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/187"]
-        }
-      ],
       "absentMatch": {
         "codes": ["187"],
         "terms": ["Shingrix", "zoster"],
@@ -653,6 +618,7 @@
     },
     {
       "id": "G6",
+      "question": "checkup",
       "kind": "gap",
       "title": "TSH rising for six years, 7.90 at the hospital, coded repeat for April 2026 never done",
       "lookingFor": "the high TSH of 2026-03-03 and that no repeat followed the order for 2026-04-14 to 04-28",
@@ -745,12 +711,6 @@
       ],
       "pod": "visible",
       "guideline": "repeat an abnormal TSH after recovery from acute illness before treating",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["3016-3"]
-        }
-      ],
       "absentMatch": {
         "codes": ["3016-3"],
         "terms": ["TSH", "thyrotropin"],
@@ -760,6 +720,7 @@
     },
     {
       "id": "G7",
+      "question": "checkup",
       "kind": "gap",
       "title": "Incidental 7 mm lung nodule, follow-up chest CT recommended, never done",
       "lookingFor": "the 7 mm lung nodule on the 2025-10-18 ED CT and the chest CT recommended in 6-12 months",
@@ -811,6 +772,7 @@
     },
     {
       "id": "T1",
+      "question": "checkup",
       "kind": "trap",
       "title": "Lisinopril active in four older downloads, properly stopped for cough with a replacement",
       "lookingFor": "no claim that lisinopril is current, may be taken with losartan, or should be restarted",
@@ -901,18 +863,11 @@
           "means": "a stopped drug treated as current or to be restarted"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My medication history"
-        },
-        {
-          "question": "pod/My active allergies"
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T2",
+      "question": "checkup",
       "kind": "trap",
       "title": "The same A1c in five downloads (and every result in many)",
       "lookingFor": "no count of more than 11 distinct A1c tests, or more than 4 since the diagnosis, and no two tests on one date",
@@ -999,16 +954,11 @@
           "means": "A1c called over-tested"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["4548-4"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T3",
+      "question": "checkup",
       "kind": "trap",
       "title": "2026-27 flu shot given, only in the pharmacy's latest download",
       "lookingFor": "no claim that she is due for or has missed this season's flu shot",
@@ -1068,16 +1018,11 @@
           "means": "flu shot called due or missing"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/140"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "T4",
+      "question": "checkup",
       "kind": "trap",
       "title": "A TSH in September 2025 that is the 2024 result keyed into the new clinic's chart",
       "lookingFor": "no TSH of 4.6 in September 2025, no 4.6 to 7.9 rise in six months, no three high TSH values",
@@ -1191,16 +1136,11 @@
           "means": "the keyed-in 2024 result counted as a 2025 TSH"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["3016-3"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N1",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "You need a pneumococcal vaccine",
       "lookingFor": "no claim that she needs a pneumococcal vaccine",
@@ -1220,16 +1160,11 @@
       ],
       "found": "not raised",
       "wrong": ["you need a pneumococcal vaccine"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My immunizations",
-          "where": ["codes/cvx/216"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N2",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "Colorectal screening is due, or no colonoscopy",
       "lookingFor": "no claim that colorectal screening is due or that there is no colonoscopy",
@@ -1249,16 +1184,11 @@
       ],
       "found": "not raised as due",
       "wrong": ["colorectal screening is due", "no colonoscopy on record"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My procedures",
-          "where": ["73761001"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N3",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "No diabetic eye exam, or one is due",
       "lookingFor": "no claim that she has no diabetic eye exam or that one is due",
@@ -1277,15 +1207,11 @@
       "found": "not raised as missing or due",
       "wrong": ["no diabetic eye exam on record", "one is due"],
       "notWrong": ["asking what the eye exam showed (fine for the pod arm)"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My procedures"
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N4",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "Tdap is due",
       "lookingFor": "no claim that a Tdap is due",
@@ -1303,15 +1229,11 @@
       "links": ["Tdap or Td every 10 years, so the next is due 2030"],
       "found": "not raised as due",
       "wrong": ["Tdap is due"],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My immunizations"
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N5",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "CKD stage 3, or eGFR below 60",
       "lookingFor": "no claim that she has CKD stage 3 or an eGFR below 60",
@@ -1342,16 +1264,11 @@
           "means": "chronic kidney disease claimed"
         }
       ],
-      "pod": "visible",
-      "find": [
-        {
-          "question": "pod/My lab results",
-          "where": ["98979-8"]
-        }
-      ]
+      "pod": "visible"
     },
     {
       "id": "N6",
+      "question": "checkup",
       "kind": "near-trap",
       "title": "A causal claim from a before/after association",
       "lookingFor": "no claim that fluticasone, amlodipine, or stopping atorvastatin raised her blood sugar or A1c",
@@ -1397,13 +1314,172 @@
           "means": "a causal claim from a before/after association"
         }
       ],
-      "pod": "visible",
-      "find": [
+      "pod": "visible"
+    },
+    {
+      "id": "N7",
+      "question": "lisinopril",
+      "kind": "negation",
+      "title": "No: lisinopril was stopped for a cough and replaced by losartan",
+      "lookingFor": "no: stopped 2025-09-22 for a dry cough, changed to losartan",
+      "evidence": [
         {
-          "question": "pod/My lab results",
-          "where": ["4548-4"]
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: stopped 2025-09-22 because of dry cough, changed to losartan",
+          "date": "2025-09-22",
+          "name": "lisinopril",
+          "quote": "dry cough"
+        },
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-3.xml",
+            "line": 230
+          },
+          "says": "Fernhill: stopped 2025-09-22 because of dry cough, changed to losartan",
+          "name": "losartan"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-4.xml",
+            "line": 297
+          },
+          "says": "Kestrel Harbor: discontinued 2025-09-22 (cough), replaced by losartan",
+          "date": "2025-09-22",
+          "value": "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record-2.xml",
+            "line": 196
+          },
+          "says": "pharmacy: discontinued by prescriber 2025-09-22",
+          "date": "2025-09-22",
+          "value": "Discontinued by prescriber September 22, 2025"
         }
-      ]
+      ],
+      "links": [
+        "three sources record the stop; four older downloads still say active"
+      ],
+      "found": "says it was stopped (2025-09-22, cough) and losartan replaced it",
+      "partly": "says it was stopped without the reason or the replacement",
+      "wrong": ["yes, keep taking lisinopril"],
+      "pod": "visible"
+    },
+    {
+      "id": "T5",
+      "question": "lisinopril",
+      "kind": "trap",
+      "title": "Lisinopril given as current, from a stale copy",
+      "lookingFor": "no claim that she should still take lisinopril, or take it with losartan",
+      "evidence": [
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-2.xml",
+            "line": 270
+          },
+          "says": "Kestrel Harbor 2024 download: lisinopril Active (stale)",
+          "value": "lisinopril 10 MG Oral Tablet"
+        },
+        {
+          "cite": {
+            "file": "kestrel-harbor-health-summary-3.xml",
+            "line": 276
+          },
+          "says": "Kestrel Harbor 2025 download: lisinopril Active (stale)",
+          "value": "lisinopril 10 MG Oral Tablet"
+        },
+        {
+          "cite": {
+            "file": "export-2025-06-15/apple_health_export/clinical-records/MedicationRequest-eQgPPfguqDY5KO38qAH6c9hsjAZ.json",
+            "resource": "MedicationRequest/eQgPPfguqDY5KO38qAH6c9hsjAZ"
+          },
+          "says": "the 2025 Apple Health FHIR copy says active (stale)",
+          "status": "active"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record.xml",
+            "line": 196
+          },
+          "says": "the 2024 pharmacy record: Active, 3 refills remaining (stale)",
+          "value": "Active, 3 refills remaining"
+        }
+      ],
+      "links": ["the older downloads were never updated"],
+      "found": "not said",
+      "wrong": [
+        "yes, lisinopril is still active",
+        "take lisinopril and losartan together"
+      ],
+      "pod": "visible"
+    },
+    {
+      "id": "F1",
+      "question": "flu-shot",
+      "kind": "fact",
+      "title": "Yes: Fluarix on 2026-10-03 at the pharmacy",
+      "lookingFor": "yes: an influenza vaccine (Fluarix) on 2026-10-03 at Alder Street Pharmacy",
+      "evidence": [
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record-4.xml",
+            "line": 895
+          },
+          "says": "influenza vaccine (Fluarix) given 2026-10-03 at the pharmacy",
+          "date": "2026-10-03",
+          "name": "Fluarix"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record-4.xml",
+            "line": 896
+          },
+          "says": "lot FL9M4C",
+          "date": "2026-10-03",
+          "value": "FL9M4C"
+        },
+        {
+          "cite": {
+            "file": "alder-street-pharmacy-patient-record-4.xml",
+            "line": 929
+          },
+          "says": "immunization entry VX-261003-1",
+          "id": "VX-261003-1"
+        }
+      ],
+      "links": ["only the pharmacy's latest download holds it"],
+      "found": "yes, with the date",
+      "partly": "yes, without the date or place",
+      "wrong": ["no flu shot this season"],
+      "pod": "visible"
+    },
+    {
+      "id": "T6",
+      "question": "flu-shot",
+      "kind": "trap",
+      "title": "Last flu shot read from the clinic's list",
+      "lookingFor": "no claim that her last flu shot was in 2024 or that she is due",
+      "evidence": [
+        {
+          "cite": {
+            "file": "fernhill-family-clinic-summary-5.xml",
+            "line": 598
+          },
+          "says": "Fernhill's list shows only the 2024-10-15 flu shot",
+          "date": "2024-10-15",
+          "quote": "Influenza vaccine"
+        }
+      ],
+      "links": ["Fernhill's list stops at the 2024-10-15 shot"],
+      "found": "not said",
+      "wrong": [
+        "your last flu shot was in October 2024",
+        "you are due for a flu shot"
+      ],
+      "pod": "visible"
     }
   ],
   "preExisting": [

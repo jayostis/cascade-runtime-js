@@ -11,14 +11,15 @@
     "budget",
     "cases",
     "jobs",
+    "asked",
     "toolCalls",
     "checks",
     "judgeDiscipline",
     "answers",
+    "evidence",
     "grades",
-    "scores",
-    "agreement",
-    "slices"
+    "instances",
+    "agreement"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -223,11 +224,59 @@
           "type": "string"
         }
       }
+    },
+    "part": {
+      "type": "object",
+      "required": ["calls", "tokens", "usd", "seconds"],
+      "additionalProperties": false,
+      "description": "A share of a session: its calls, their tokens and price, and its wall time.",
+      "properties": {
+        "calls": {
+          "$ref": "#/$defs/count"
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recordsContext": {
+          "$ref": "#/$defs/count",
+          "description": "The grab bag's shared part: the context its files added."
+        },
+        "recordsTokens": {
+          "$ref": "#/$defs/count",
+          "description": "The grab bag's question: its files re-read as cache, the records context times its calls."
+        }
+      }
+    },
+    "verdicts": {
+      "type": "object",
+      "required": ["of", "split", "ungraded"],
+      "additionalProperties": {
+        "$ref": "#/$defs/count"
+      },
+      "properties": {
+        "of": {
+          "$ref": "#/$defs/count"
+        },
+        "split": {
+          "$ref": "#/$defs/count"
+        },
+        "ungraded": {
+          "$ref": "#/$defs/count"
+        }
+      }
     }
   },
   "properties": {
     "schema": {
-      "const": "cascade-evals/results/1"
+      "const": "cascade-evals/results/2"
     },
     "run": {
       "type": "object",
@@ -398,7 +447,11 @@
           "downloadsSha256",
           "keySha256",
           "imports",
-          "documents"
+          "documents",
+          "sessions",
+          "key",
+          "keyUrl",
+          "build"
         ],
         "additionalProperties": false,
         "properties": {
@@ -442,6 +495,91 @@
                 "bytes": {
                   "$ref": "#/$defs/count"
                 }
+              }
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "questions"],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "questions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "asks"],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "asks": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "key": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "question",
+                "kind",
+                "title",
+                "lookingFor",
+                "pod"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "lookingFor": {
+                  "type": "string"
+                },
+                "pod": {
+                  "enum": ["visible", "deeper", "narrative-only"]
+                }
+              }
+            }
+          },
+          "keyUrl": {
+            "type": "string"
+          },
+          "build": {
+            "type": ["object", "null"],
+            "description": "The pod's build: once per person, outside every answer's cost.",
+            "required": ["seconds", "modelCalls", "tokens", "usd"],
+            "additionalProperties": false,
+            "properties": {
+              "seconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "modelCalls": {
+                "$ref": "#/$defs/count"
+              },
+              "tokens": {
+                "$ref": "#/$defs/count"
+              },
+              "usd": {
+                "$ref": "#/$defs/money"
               }
             }
           }
@@ -515,9 +653,6 @@
               "$ref": "#/$defs/call"
             }
           },
-          "answer": {
-            "type": "string"
-          },
           "prompt": {
             "type": "string"
           },
@@ -526,8 +661,19 @@
           },
           "labels": {
             "type": "object",
+            "description": "A judge's letters: each the answer to one question of one subject job.",
             "additionalProperties": {
-              "type": "string"
+              "type": "object",
+              "required": ["job", "question"],
+              "additionalProperties": false,
+              "properties": {
+                "job": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                }
+              }
             }
           },
           "dispatched": {
@@ -557,6 +703,39 @@
           },
           "packetSha256": {
             "type": "string"
+          },
+          "session": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "answers": {
+            "type": "string",
+            "description": "The folder of a session's answers, one file per question."
+          },
+          "split": {
+            "type": "object",
+            "required": ["shared", "questions"],
+            "additionalProperties": false,
+            "description": "A session's cost: the part before its first question (the prompt; for the grab bag, reading its files), then each question's.",
+            "properties": {
+              "shared": {
+                "$ref": "#/$defs/part"
+              },
+              "questions": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/part"
+                }
+              }
+            }
           }
         }
       }
@@ -611,140 +790,147 @@
           "answer": {
             "type": "string",
             "description": "The answer's text, which absences are checked against."
+          },
+          "call": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       }
     },
     "checks": {
       "type": "object",
-      "description": "The program checks of each subject's answer, by job id.",
+      "description": "By subject job, then question.",
       "additionalProperties": {
         "type": "object",
-        "required": [
-          "answerValid",
-          "answerErrors",
-          "citations",
-          "absences",
-          "trapWording",
-          "discipline"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "answerValid": {
-            "type": "boolean"
-          },
-          "answerErrors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "citations": {
-            "type": "array",
-            "items": {
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "answerValid",
+            "answerErrors",
+            "citations",
+            "absences",
+            "trapWording",
+            "discipline"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "answerValid": {
+              "type": "boolean"
+            },
+            "answerErrors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "citations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["item", "fact", "cite", "ok"],
+                "properties": {
+                  "fact": {
+                    "type": "integer"
+                  },
+                  "cite": {
+                    "$ref": "#/$defs/cite"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "missing": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "foundAt": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "excerpt": {
+                    "type": "string"
+                  },
+                  "shows": {
+                    "type": "string"
+                  },
+                  "item": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "absences": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["item", "absence", "backed"],
+                "properties": {
+                  "absence": {
+                    "type": "integer"
+                  },
+                  "backed": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "item": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "trapWording": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "item", "pattern", "means", "text"],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "item": {
+                    "type": "integer"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "means": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "discipline": {
               "type": "object",
-              "required": ["question", "fact", "cite", "ok"],
+              "required": ["ok", "violations"],
               "properties": {
-                "question": {
-                  "type": "integer"
-                },
-                "fact": {
-                  "type": "integer"
-                },
-                "cite": {
-                  "$ref": "#/$defs/cite"
-                },
                 "ok": {
                   "type": "boolean"
                 },
-                "reason": {
-                  "type": "string"
-                },
-                "missing": {
+                "violations": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
-                },
-                "foundAt": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer"
-                  }
-                },
-                "excerpt": {
-                  "type": "string"
-                },
-                "shows": {
-                  "type": "string"
                 }
               }
-            }
-          },
-          "absences": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["question", "absence", "backed"],
-              "properties": {
-                "question": {
-                  "type": "integer"
-                },
-                "absence": {
-                  "type": "integer"
-                },
-                "backed": {
-                  "type": "boolean"
-                },
-                "reason": {
-                  "type": "string"
-                }
+            },
+            "read": {
+              "type": "array",
+              "items": {
+                "type": "string"
               }
-            }
-          },
-          "trapWording": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["item", "question", "pattern", "means", "text"],
-              "properties": {
-                "item": {
-                  "type": "string"
-                },
-                "question": {
-                  "type": "integer"
-                },
-                "pattern": {
-                  "type": "string"
-                },
-                "means": {
-                  "type": "string"
-                },
-                "text": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "discipline": {
-            "type": "object",
-            "required": ["ok", "violations"],
-            "properties": {
-              "ok": {
-                "type": "boolean"
-              },
-              "violations": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "read": {
-            "type": "array",
-            "items": {
-              "type": "string"
             }
           }
         }
@@ -752,7 +938,10 @@
     },
     "answers": {
       "type": "object",
-      "description": "Each subject's final answer, by job id, as it wrote it (schemas/answer.schema.json when valid)."
+      "description": "By subject job, then question.",
+      "additionalProperties": {
+        "type": "object"
+      }
     },
     "grades": {
       "type": "array",
@@ -760,14 +949,17 @@
         "type": "object",
         "required": [
           "subject",
+          "question",
           "judge",
           "items",
-          "falseQuestions",
-          "extraFinds",
+          "beyond",
           "chains"
         ],
         "properties": {
           "subject": {
+            "type": "string"
+          },
+          "question": {
             "type": "string"
           },
           "judge": {
@@ -776,10 +968,7 @@
           "items": {
             "type": "array"
           },
-          "falseQuestions": {
-            "type": "array"
-          },
-          "extraFinds": {
+          "beyond": {
             "type": "array"
           },
           "chains": {
@@ -788,74 +977,12 @@
         }
       }
     },
-    "scores": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "subject",
-          "judge",
-          "found",
-          "partly",
-          "missed",
-          "gaps",
-          "trapsRaised",
-          "falseQuestions",
-          "extraFinds",
-          "chainsComplete",
-          "chainsFaithful",
-          "questions"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "subject": {
-            "type": "string"
-          },
-          "judge": {
-            "type": "string"
-          },
-          "found": {
-            "$ref": "#/$defs/count"
-          },
-          "partly": {
-            "$ref": "#/$defs/count"
-          },
-          "missed": {
-            "$ref": "#/$defs/count"
-          },
-          "gaps": {
-            "$ref": "#/$defs/count"
-          },
-          "trapsRaised": {
-            "$ref": "#/$defs/count"
-          },
-          "falseQuestions": {
-            "$ref": "#/$defs/count"
-          },
-          "extraFinds": {
-            "$ref": "#/$defs/count"
-          },
-          "chainsComplete": {
-            "$ref": "#/$defs/count"
-          },
-          "chainsFaithful": {
-            "$ref": "#/$defs/count"
-          },
-          "questions": {
-            "$ref": "#/$defs/count"
-          }
-        }
-      }
-    },
     "agreement": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["case", "judges", "items", "agreed", "kappa"],
+        "required": ["instance", "judges", "items", "agreed", "kappa"],
         "properties": {
-          "case": {
-            "type": "string"
-          },
           "judges": {
             "type": "array",
             "items": {
@@ -870,62 +997,9 @@
           },
           "kappa": {
             "type": ["number", "null"]
-          }
-        }
-      }
-    },
-    "slices": {
-      "type": "array",
-      "description": "Each key item's pod graph slice, taken from the case's pod at run time: its entries, their records per source and each record's state.",
-      "items": {
-        "type": "object",
-        "required": ["case", "item", "nodes", "edges"],
-        "properties": {
-          "case": {
+          },
+          "instance": {
             "type": "string"
-          },
-          "item": {
-            "type": "string"
-          },
-          "nodes": {
-            "type": "array",
-            "maxItems": 12,
-            "items": {
-              "type": "object",
-              "required": ["id", "kind", "label"],
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": ["entry", "record", "lab", "condition"]
-                },
-                "label": {
-                  "type": "string"
-                },
-                "detail": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["from", "to"],
-              "properties": {
-                "from": {
-                  "type": "string"
-                },
-                "to": {
-                  "type": "string"
-                }
-              }
-            }
           }
         }
       }
@@ -944,6 +1018,320 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "asked": {
+      "type": "array",
+      "description": "Each question as it was handed out in its session, in the person's words.",
+      "items": {
+        "type": "object",
+        "required": ["job", "question", "at", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "job": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Each citation and absence resolved mechanically: a pod entry to its member records, revisions and source documents; a file to its passage and download; an absence to the call or files behind it.",
+      "items": {
+        "type": "object",
+        "required": ["job", "question", "item"],
+        "additionalProperties": false,
+        "properties": {
+          "job": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "item": {
+            "type": "integer"
+          },
+          "fact": {
+            "type": "integer"
+          },
+          "absence": {
+            "type": "integer"
+          },
+          "cite": {
+            "$ref": "#/$defs/cite"
+          },
+          "entry": {
+            "type": ["object", "null"],
+            "required": ["entry", "type", "fields", "members"],
+            "properties": {
+              "entry": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["record", "revisions"],
+                  "properties": {
+                    "record": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "sourceUrl": {
+                      "type": "string"
+                    },
+                    "revisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["revision"],
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "observedAsOf": {
+                            "type": "string"
+                          },
+                          "selector": {
+                            "type": "string"
+                          },
+                          "document": {
+                            "type": "object",
+                            "required": ["iri"],
+                            "properties": {
+                              "iri": {
+                                "type": "string"
+                              },
+                              "retrievedOn": {
+                                "type": "string"
+                              },
+                              "author": {
+                                "type": "string"
+                              },
+                              "server": {
+                                "type": "string"
+                              },
+                              "answeredAsOf": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "passage": {
+            "type": ["object", "null"],
+            "required": ["file", "from", "to", "text"],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "from": {
+                "type": "integer"
+              },
+              "to": {
+                "type": "integer"
+              },
+              "pointer": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "download": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "retrievedAt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "call": {
+            "type": ["object", "null"],
+            "required": ["at", "ok", "rows", "milliseconds"],
+            "properties": {
+              "call": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "rows": {
+                "$ref": "#/$defs/count"
+              },
+              "milliseconds": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file", "bytes"],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "bytes": {
+                  "$ref": "#/$defs/count"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "instances": {
+      "type": "array",
+      "description": "One per case, model and repeat: both arms' counts and costs, and what judging that sitting cost, for the front page to read as it stands.",
+      "items": {
+        "type": "object",
+        "required": ["id", "case", "model", "repeat", "arms", "judging"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "case": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "arms": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "sessions",
+                "questions",
+                "expected",
+                "traps",
+                "beyond",
+                "citations",
+                "tokens",
+                "usd",
+                "seconds"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "sessions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questions": {
+                  "$ref": "#/$defs/count"
+                },
+                "expected": {
+                  "$ref": "#/$defs/verdicts"
+                },
+                "traps": {
+                  "$ref": "#/$defs/verdicts"
+                },
+                "beyond": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/count"
+                  }
+                },
+                "citations": {
+                  "type": "object",
+                  "required": ["held", "failed"],
+                  "properties": {
+                    "held": {
+                      "$ref": "#/$defs/count"
+                    },
+                    "failed": {
+                      "$ref": "#/$defs/count"
+                    }
+                  }
+                },
+                "tokens": {
+                  "$ref": "#/$defs/count"
+                },
+                "usd": {
+                  "type": ["number", "null"],
+                  "minimum": 0
+                },
+                "seconds": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "judging": {
+            "type": "object",
+            "required": ["judges", "tokens", "usd"],
+            "additionalProperties": false,
+            "properties": {
+              "judges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tokens": {
+                "$ref": "#/$defs/count"
+              },
+              "usd": {
+                "$ref": "#/$defs/money"
+              }
             }
           }
         }
