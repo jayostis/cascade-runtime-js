@@ -22,7 +22,7 @@ import {
   openPrepared,
   type Prepared,
 } from "./cases.js";
-import { agreementOf, gradesOf } from "./judging.js";
+import { agreementOf, gradesOf, tellsIn } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
 import { callCost, PRICE_TABLE, priced } from "./prices.js";
 import {
@@ -401,6 +401,7 @@ export async function finish(given: string, log: (line: string) => void) {
   const checks: Record<string, Record<string, SubjectChecks>> = {};
   const answers: Record<string, Record<string, unknown>> = {};
   const evidence: Evidence[] = [];
+  const tells: NonNullable<Results["blinding"]>["tells"][number][] = [];
   const keys = new Map<string, readonly KeyItem[]>();
   const cases: Results["cases"][number][] = [];
   for (const {
@@ -466,6 +467,13 @@ export async function finish(given: string, log: (line: string) => void) {
             pod: job.arm === "pod" ? pod : undefined,
           });
           (checks[job.id] ??= {})[question] = checked;
+          if (checked.answerValid && job.arm !== undefined)
+            tells.push(
+              ...tellsIn(
+                { job: job.id, arm: job.arm, question },
+                answer as Answer,
+              ),
+            );
           if (checked.answerValid)
             evidence.push(
               ...(await evidenceOf({
@@ -551,6 +559,7 @@ export async function finish(given: string, log: (line: string) => void) {
     grades,
     instances: instancesOf(plan.jobs, grades, checks, answers, keys),
     agreement,
+    blinding: { tells },
   };
   valid(
     "results",

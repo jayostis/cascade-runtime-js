@@ -79,6 +79,8 @@ export interface Key {
   readonly preExisting?: readonly {
     readonly id: string;
     readonly says: string;
+    /** What only the pod arm has to say about the item: kept from the judge, who is not told an arm. */
+    readonly podNote?: string;
     readonly legitimateFind?: boolean;
   }[];
   readonly generic?: readonly string[];

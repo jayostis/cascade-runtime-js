@@ -1070,6 +1070,28 @@
         }
       }
     },
+    "blinding": {
+      "type": "object",
+      "description": "What the blinded answers still carried that could not be scrubbed without damaging their prose, found by a fixed list of terms, by answer; judges never see it.",
+      "required": ["tells"],
+      "additionalProperties": false,
+      "properties": {
+        "tells": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["job", "arm", "question", "term"],
+            "additionalProperties": false,
+            "properties": {
+              "job": { "type": "string" },
+              "arm": { "type": "string" },
+              "question": { "type": "string" },
+              "term": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "agreement": {
       "type": "array",
       "items": {

@@ -407,6 +407,15 @@ export interface Results {
   readonly evidence: readonly Evidence[];
   readonly grades: readonly Grade[];
   readonly instances: readonly Instance[];
+  /** What a blinded answer still carried that could not be scrubbed, by a fixed list of terms; never shown to a judge. */
+  readonly blinding?: {
+    readonly tells: readonly {
+      readonly job: string;
+      readonly arm: string;
+      readonly question: string;
+      readonly term: string;
+    }[];
+  };
   readonly agreement: readonly {
     readonly instance: string;
     readonly judges: readonly string[];
