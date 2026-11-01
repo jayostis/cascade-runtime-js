@@ -36,7 +36,7 @@ import {
   type SubjectChecks,
   type ToolCallRecord,
 } from "./results.js";
-import { valid } from "./schemas.js";
+import { numbered, valid } from "./schemas.js";
 import { buildSite } from "./site.js";
 import { type Transcript, transcriptsSince } from "./transcripts.js";
 
@@ -326,7 +326,7 @@ export async function evidenceOf(o: {
   const at = { job: o.job.id, question: o.question };
   const calls = o.toolCalls.filter((it) => it.job === o.job.id);
   for (const item of o.answer.items) {
-    for (const [fact, { cite }] of item.facts.entries())
+    for (const [fact, { cite }] of (item.facts ?? []).entries())
       found.push({
         ...at,
         item: item.n,
@@ -336,7 +336,9 @@ export async function evidenceOf(o: {
           ? { entry: o.provenance(cite.entry) ?? null }
           : { passage: (await passageOf(o.prepared.downloads, cite)) ?? null }),
       });
-    for (const [absence, { query, sources }] of item.absences.entries()) {
+    for (const [absence, { query, sources }] of (
+      item.absences ?? []
+    ).entries()) {
       if (o.job.arm === "pod") {
         const named = query === undefined ? [] : callsFor(calls, query);
         const call = named.find((it) => it.ok) ?? named[0];
@@ -450,7 +452,7 @@ export async function finish(given: string, log: (line: string) => void) {
           if (!existsSync(path)) continue;
           let answer: unknown;
           try {
-            answer = JSON.parse(await readFile(path, "utf8"));
+            answer = numbered(JSON.parse(await readFile(path, "utf8")));
           } catch (error) {
             answer = { unparsed: String(error) };
           }

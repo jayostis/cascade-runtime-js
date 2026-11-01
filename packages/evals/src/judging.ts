@@ -9,13 +9,13 @@ import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
 import { instanceOf } from "./instances.js";
 import { answerPath } from "./sessions.js";
 import type { Answer } from "./checks.js";
+import { errorsOf, numbered } from "./schemas.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
 import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
 import { callCost } from "./prices.js";
 import type { Grade, Job, Label } from "./results.js";
 import { runFolder } from "./results.js";
-import { errorsOf } from "./schemas.js";
 
 const PLACEHOLDER = "[record]";
 
@@ -95,6 +95,23 @@ export const tellsIn = (
 ) => tellsOf(blinded(answer)).map((term) => ({ ...at, term }));
 
 /**
+ * An answer file as a packet shows it: blinded, or when the file is no answer, the reason. Only that failure of the file
+ * itself is turned into text; a throw from the blinding of a valid answer is the harness's own and stops the judges.
+ */
+function packetBody(text: string): string {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    return `(the answer is not valid JSON: ${error instanceof Error ? error.message : String(error)})`;
+  }
+  const errors = errorsOf("answer", value);
+  return errors.length > 0
+    ? `(the answer is not a valid answer: ${errors.join("; ")})`
+    : blinded(numbered(value) as Answer);
+}
+
+/**
  * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
  * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
  */
@@ -106,11 +123,11 @@ export function blinded(answer: Answer): string {
       [
         `### Item ${item.n}. ${scrubbed(item.says)}`,
         `- Why: ${scrubbed(item.why)}`,
-        ...item.facts.map(
+        ...(item.facts ?? []).map(
           (f, at) =>
             `- Fact ${at}: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`,
         ),
-        ...item.absences.map((a) => `- Absent: ${scrubbed(a.what)}`),
+        ...(item.absences ?? []).map((a) => `- Absent: ${scrubbed(a.what)}`),
         ...(item.knowledge === undefined
           ? []
           : [
@@ -187,13 +204,10 @@ export async function judgePackets(given: string) {
       for (const question of job.questions ?? []) {
         const path = join(folder, answerPath(job, question));
         if (!existsSync(path)) continue;
-        let body: string;
-        try {
-          body = blinded(JSON.parse(await readFile(path, "utf8")) as Answer);
-        } catch {
-          body = "(the answer is not valid JSON, or not an answer)";
-        }
-        bodies.set(`${job.id}\n${question}`, body);
+        bodies.set(
+          `${job.id}\n${question}`,
+          packetBody(await readFile(path, "utf8")),
+        );
       }
     if (bodies.size === 0) continue;
     for (const [at, model] of plan.config.judges.entries()) {

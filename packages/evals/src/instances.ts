@@ -115,8 +115,11 @@ export function instancesOf(
     for (const arm of new Set(subjects.map((it) => it.arm!))) {
       const sessions = subjects.filter((it) => it.arm === arm);
       const ids = new Set(sessions.map((it) => it.id));
+      // A malformed answer never answered its question: its items are unanswered, as if no file had been written.
       const questions = sessions.flatMap((it) =>
-        Object.keys(answered[it.id] ?? {}),
+        Object.keys(answered[it.id] ?? {}).filter(
+          (question) => checks[it.id]?.[question]?.answerValid !== false,
+        ),
       );
       const citations = sessions.flatMap((it) =>
         Object.values(checks[it.id] ?? {}).flatMap((one) => one.citations),

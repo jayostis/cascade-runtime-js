@@ -1,5 +1,5 @@
 // A subject job is one chat session: its questions handed out one at a time by the job's `ask` command, each only
-// once the last is answered, and its calls split at each hand-out into the session's own part and each question's.
+// once the last is answered with a valid answer, and its calls split at each hand-out into the session's own part and each question's.
 import { existsSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { type Case, type Session, sha256 } from "./cases.js";
 import { PROMPT_VERSIONS, type Arm } from "./prompts.js";
 import type { CallRecord, Job, Part, Split, TokenCounts } from "./results.js";
 import { runFolder } from "./results.js";
+import { errorsOf } from "./schemas.js";
 
 /**
  * What a session's answers depend on: the case without its sessions, this session's own questions, the downloads, the
@@ -59,6 +60,17 @@ export async function askedIn(folder: string): Promise<Asked[]> {
     .map((line) => JSON.parse(line) as Asked);
 }
 
+/** What is wrong with an answer file as an answer, in the schema's words; empty when it holds to the schema. */
+async function answerErrors(path: string): Promise<string[]> {
+  try {
+    return errorsOf("answer", JSON.parse(await readFile(path, "utf8")));
+  } catch (error) {
+    return [
+      `the file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+}
+
 /**
  * The job's `ask` command: the next question's message, in her words, as written at planning; a reminder to write
  * the last answer first; or that there are no more questions. Each question handed out is logged once.
@@ -80,7 +92,11 @@ export async function ask(given: string, id: string): Promise<string> {
   );
   for (const question of job.questions) {
     const answer = answerPath(job, question);
-    if (existsSync(join(folder, answer))) continue;
+    if (existsSync(join(folder, answer))) {
+      const errors = await answerErrors(join(folder, answer));
+      if (errors.length === 0) continue;
+      return `Your answer to the last question, ${join(folder, answer)}, is not a valid answer:\n  ${errors.join("\n  ")}\nRewrite the file so it is JSON that holds to the form above, then run this command again.`;
+    }
     if (handed.has(question))
       return `Write your answer to the last question to ${join(folder, answer)} first, then run this command again.`;
     const message = await readFile(

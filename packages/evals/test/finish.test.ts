@@ -111,3 +111,92 @@ test("finish checks and writes a run of two cases in one process, opening each c
   for (const page of ["index.html", "how_it_works.html"])
     assert.ok(existsSync(join(run, "site", page)), page);
 });
+
+test("finish numbers an answer's items by their place before it stores the answer and its evidence", async () => {
+  const run = join(folder, "numbers");
+  const id = "tamsin-vale";
+  const job = "tamsin-vale.checkup.pod";
+  const pods = join(folder, "numbers-pods");
+  await (await openPod(join(pods, id), { title: id })).close();
+  await mkdir(join(run, "answers", job), { recursive: true });
+  await mkdir(join(run, "prompts"), { recursive: true });
+  await writeFile(join(run, "prompts", `${job}.txt`), "Ask.\n");
+  await writeFile(
+    join(run, "answers", job, "checkup.json"),
+    await readFile(
+      new URL(
+        "../../test/fixtures/smoke-answers/pod-blood-clot.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await writeFile(
+    join(run, "plan.json"),
+    JSON.stringify({
+      run: "numbers",
+      folder: run,
+      created: new Date().toISOString(),
+      config: {
+        tier: "custom",
+        cases: [id],
+        arms: ["pod"],
+        subjects: ["claude-opus-5-5"],
+        repeats: 1,
+        judges: [],
+        cap: { usd: 1 },
+      },
+      configSha256: "",
+      harness: { commit: "0000000", uncommitted: 0 },
+      podCommits: { packages: {}, components: [] },
+      prompts: {},
+      cases: [
+        {
+          id,
+          downloadsSha256: "",
+          keySha256: "",
+          prepared: {
+            case: id,
+            downloads: join(folder, "downloads"),
+            downloadsSha256: "",
+            pods,
+            pod: id,
+            components: [],
+            imports: [],
+            documents: [],
+          },
+        },
+      ],
+      jobs: [
+        {
+          id: job,
+          role: "subject",
+          case: id,
+          arm: "pod",
+          model: "claude-opus-5-5",
+          tag: `numbers/${job}`,
+          status: "done",
+          estimate: { tokens: 0, usd: 0 },
+          session: "checkup",
+          questions: ["checkup"],
+          answers: `answers/${job}`,
+          prompt: `prompts/${job}.txt`,
+        },
+      ],
+      estimate: { tokens: 0, usd: 0 },
+      fitsCap: true,
+    }),
+  );
+  await finish(run, () => undefined);
+  const results = JSON.parse(
+    await readFile(join(run, "results.json"), "utf8"),
+  ) as {
+    answers: Record<string, Record<string, { items: { n: number }[] }>>;
+    evidence: { item: number }[];
+  };
+  assert.deepEqual(
+    results.answers[job]!.checkup!.items.map((it) => it.n),
+    [1, 2, 3, 4, 5],
+  );
+  assert.ok(results.evidence.some((it) => it.item === 2));
+});

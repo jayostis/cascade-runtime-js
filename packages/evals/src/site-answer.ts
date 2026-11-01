@@ -24,7 +24,7 @@ import {
 } from "./site-text.js";
 
 type Item = Answer["items"][number];
-type Fact = Item["facts"][number];
+type Fact = NonNullable<Item["facts"]>[number];
 
 /** One instance of the run, with the jobs that answered it and the evidence recorded for them. */
 export interface Sitting {
@@ -161,20 +161,20 @@ const tick = (ok: boolean | undefined) =>
 const tone = (ok: boolean | undefined) =>
   ok === undefined ? "" : ok ? "ok" : "bad";
 
-const matchOf = (a: Item["absences"][number]) =>
+const matchOf = (a: NonNullable<Item["absences"]>[number]) =>
   [
     ...(a.match.codes ?? []).map((it) => `code ${it}`),
     ...(a.match.terms ?? []),
   ].join(", ");
 
 function chainHtml(t: Turn, item: Item): string {
-  const facts = item.facts
+  const facts = (item.facts ?? [])
     .map((f, i) => {
       const c = citationOf(t, item.n, i);
       return `<li><span class="ck ${tone(c?.ok)}">${tick(c?.ok)}</span> ${esc(f.says)} <span class="muted small">${esc([f.date, f.provider].filter(Boolean).join(" · "))}</span></li>`;
     })
     .join("");
-  const absences = item.absences
+  const absences = (item.absences ?? [])
     .map((a, i) => {
       const c = absenceCheckOf(t, item.n, i);
       return `<li><span class="ck ${tone(c?.backed)}">${tick(c?.backed)}</span> ${esc(a.what)} <span class="muted small">searched: ${esc(matchOf(a))}${a.match.after === undefined ? "" : `, after ${esc(a.match.after)}`} · ${esc(a.coverage)}</span>${c !== undefined && !c.backed ? `<span class="muted small"> · checker: ${esc(c.reason ?? "not backed")}</span>` : ""}</li>`;
@@ -195,7 +195,7 @@ function chainHtml(t: Turn, item: Item): string {
     })
     .join("");
   return `<div class="chain">
-<h4>Facts it relied on <span class="muted">· each checked against the record it cites</span></h4><ul>${facts || `<li class="muted">none</li>`}</ul>
+<h4>Facts it relied on <span class="muted">· each checked against the record it cites</span></h4><ul>${facts || `<li class="muted">${item.knowledge === undefined ? "none" : "none: this point rests on the agent's own knowledge"}</li>`}</ul>
 <h4>Absences it stated <span class="muted">· what it searched for, and where</span></h4><ul>${absences || `<li class="muted">none stated</li>`}</ul>
 ${links === "" ? "" : `<h4>Links it stated between its facts</h4><ul>${links}</ul>`}
 ${item.knowledge === undefined ? "" : `<h4 class="kn">The model's own knowledge <span class="muted">· not from the records</span></h4><p class="small">${esc(item.knowledge.says)} <span class="muted">(${esc(item.knowledge.guideline ?? "no guideline named")})</span></p>`}
@@ -227,7 +227,7 @@ const factNode = (t: Turn, item: Item, f: Fact, i: number): GNode => {
 const absenceNode = (
   t: Turn,
   item: Item,
-  a: Item["absences"][number],
+  a: NonNullable<Item["absences"]>[number],
   i: number,
   how: string,
 ): GNode => {
@@ -287,7 +287,10 @@ function sharedNodes(
     edges.push({ from: "q", to: "k", dashed: true });
   }
   (item.links ?? []).forEach((l, i) => {
-    if (item.facts[l.from] === undefined || item.facts[l.to] === undefined)
+    if (
+      (item.facts ?? [])[l.from] === undefined ||
+      (item.facts ?? [])[l.to] === undefined
+    )
       return;
     nodes.push({
       id: `l${i}`,
@@ -312,7 +315,7 @@ function podGraph(t: Turn, item: Item): Graph {
   const edges: Graph["edges"][number][] = [];
   const entries = new Map<string, string>();
   const documents = new Map<string, string>();
-  item.facts.forEach((f, i) => {
+  (item.facts ?? []).forEach((f, i) => {
     nodes.push(factNode(t, item, f, i));
     edges.push({ from: "q", to: `f${i}` });
     if (!("entry" in f.cite)) return;
@@ -402,7 +405,7 @@ function podGraph(t: Turn, item: Item): Graph {
     }
     edges.push({ from: `f${i}`, to: id });
   });
-  item.absences.forEach((a, i) => {
+  (item.absences ?? []).forEach((a, i) => {
     nodes.push(
       absenceNode(
         t,
@@ -455,7 +458,7 @@ function recordsGraph(t: Turn, item: Item): Graph {
   const nodes: GNode[] = [rootNode(item)];
   const edges: Graph["edges"][number][] = [];
   const seen = new Map<string, string>();
-  item.facts.forEach((f, i) => {
+  (item.facts ?? []).forEach((f, i) => {
     nodes.push(factNode(t, item, f, i));
     edges.push({ from: "q", to: `f${i}` });
     if (!("file" in f.cite)) return;
@@ -503,7 +506,7 @@ function recordsGraph(t: Turn, item: Item): Graph {
     }
     edges.push({ from: `f${i}`, to: id });
   });
-  item.absences.forEach((a, i) => {
+  (item.absences ?? []).forEach((a, i) => {
     nodes.push(
       absenceNode(
         t,
@@ -599,13 +602,13 @@ export function doctorCardHtml(
 <p><b>In short:</b> ${esc(a.short)}</p>
 <ol>${a.items
     .map((item) => {
-      const facts = item.facts
+      const facts = (item.facts ?? [])
         .map((f, i) => {
           const source = sourceOf(t, item.n, i, f);
           return `<li>${esc(f.says)} <span class="muted">· ${f.date === undefined ? "" : `${esc(f.date)} · `}${esc(source)}</span></li>`;
         })
         .join("");
-      const absences = item.absences
+      const absences = (item.absences ?? [])
         .map(
           (ab) =>
             `<li class="absence">Looked for and not found: ${esc(ab.what)}. <span>${esc(ab.coverage)}</span></li>`,
