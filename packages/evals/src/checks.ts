@@ -35,8 +35,8 @@ export interface Answer {
     readonly says: string;
     readonly why: string;
     readonly confidence: string;
-    readonly facts: readonly Fact[];
-    readonly absences: readonly (Absence & {
+    readonly facts?: readonly Fact[];
+    readonly absences?: readonly (Absence & {
       readonly query?: Absence["query"] & { readonly call?: number };
     })[];
     readonly knowledge?: { readonly says: string; readonly guideline?: string };
@@ -370,7 +370,7 @@ export async function checkAnswer(options: {
     for (const file of options.reading)
       if (holdsRecords(await text(file))) couldHold.push(file);
   for (const point of answer.items) {
-    for (const [at, fact] of point.facts.entries()) {
+    for (const [at, fact] of (point.facts ?? []).entries()) {
       const source = "entry" in fact.cite ? entries : files;
       const verdict =
         source === undefined
@@ -387,7 +387,7 @@ export async function checkAnswer(options: {
         ...verdict,
       });
     }
-    for (const [at, absence] of point.absences.entries()) {
+    for (const [at, absence] of (point.absences ?? []).entries()) {
       const tied = tieOf(absence, key);
       const backing =
         job.arm === "pod"
@@ -408,7 +408,7 @@ export async function checkAnswer(options: {
           point.says,
           point.why,
           point.knowledge?.says ?? "",
-          ...point.facts.map((it) => it.says),
+          ...(point.facts ?? []).map((it) => it.says),
         ].join(" ");
         const match = expression.exec(said);
         if (match !== null)

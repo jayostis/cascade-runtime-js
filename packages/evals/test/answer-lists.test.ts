@@ -36,7 +36,7 @@ test("a point with no facts, no absences, or neither is a valid answer, and a ju
     assert.deepEqual(errorsOf("answer", answer), [], name);
     const packet = blinded(answer);
     for (const item of answer.items)
-      assert.match(packet, new RegExp(`### Item ${item.n}\. `), name);
+      assert.match(packet, new RegExp(`### Item ${item.n}. `), name);
   }
   const knowledgeOnly = smoke("pod-allergies").items.find(
     (it) => it.facts === undefined && it.absences === undefined,
