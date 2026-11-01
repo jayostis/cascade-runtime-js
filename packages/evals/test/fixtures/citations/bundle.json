@@ -118,7 +118,12 @@
         "effectivePeriod": {
           "start": "2022-03-01",
           "end": "2024-04-15"
-        }
+        },
+        "dosage": [
+          {
+            "text": "500 mg twice daily with meals"
+          }
+        ]
       }
     },
     {
@@ -145,7 +150,9 @@
             "given": ["Tamsin"]
           }
         ],
-        "birthDate": "1957-09-30"
+        "birthDate": "1957-09-30",
+        "gender": "female",
+        "deceasedDateTime": "2024-03-04T10:00:00Z"
       }
     },
     {
@@ -181,7 +188,13 @@
         "intent": "order",
         "medicationCodeableConcept": {
           "text": "Jardiance 10 mg tablet"
-        }
+        },
+        "dosageInstruction": [
+          {
+            "text": "Take 1 tablet by mouth once daily in the morning.",
+            "patientInstruction": "Take with food."
+          }
+        ]
       }
     }
   ]

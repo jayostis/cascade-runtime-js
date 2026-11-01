@@ -8,6 +8,7 @@ import {
   type Answer,
   type Asker,
   checkAnswer,
+  PINNED_QUESTIONS,
   judgeViolations,
 } from "./checks.js";
 import { callsFor } from "./citations.js";
@@ -289,15 +290,16 @@ async function toolCallsOf(folder: string): Promise<ToolCallRecord[]> {
  * What reads a case's pod for the checks: the pod itself, or for a pinned run its own build of the runtime, asked
  * every question the checks need in one process, since another build may not read the pod the same way.
  */
-async function askerOf(
+export async function askerOf(
   prepared: Prepared,
+  pinned: typeof pinnedPod = pinnedPod,
 ): Promise<Asker & { close(): Promise<void> }> {
   if (prepared.runtime === undefined) return openPrepared(prepared);
-  const rows = pinnedPod(
+  const rows = pinned(
     { runtime: prepared.runtime } as Environment,
     "ask",
     join(prepared.pods, prepared.pod),
-    ["entry/What it shows"],
+    PINNED_QUESTIONS,
   ) as Record<string, Readonly<Record<string, string>>[]>;
   return {
     ask: async (question) => rows[question] ?? [],

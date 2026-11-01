@@ -79,11 +79,26 @@ export interface Asker {
 export function entryRows(pod: Asker) {
   let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
   return async (entry: string) => {
-    all ??= pod.ask("entry/What it shows");
+    all ??= pod.ask(ENTRY_QUESTION);
     const rows = (await all).filter((row) => row.entry === entry);
     return rows.length === 0 ? undefined : rows;
   };
 }
+
+/** The row `pod/The person this pod is about` gives, which names no entry: the person is cited by its subject IRI. */
+export function personRows(pod: Asker) {
+  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+  return () => (all ??= pod.ask(PERSON_QUESTION));
+}
+
+const ENTRY_QUESTION = "entry/What it shows";
+const PERSON_QUESTION = "pod/The person this pod is about";
+
+/** Every question the checks read a pod with, which a pinned runtime is asked in one process. */
+export const PINNED_QUESTIONS: readonly string[] = [
+  ENTRY_QUESTION,
+  PERSON_QUESTION,
+];
 
 /** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no one's reading. */
 const HARNESS_TOOLS = new Set([
@@ -350,7 +365,7 @@ export async function checkAnswer(options: {
   const entries =
     options.pod === undefined
       ? undefined
-      : podRowsSource(entryRows(options.pod));
+      : podRowsSource(entryRows(options.pod), personRows(options.pod));
   const citations: SubjectChecks["citations"][number][] = [];
   const absences: SubjectChecks["absences"][number][] = [];
   const ran: (Ran & { call?: number })[] = options.toolCalls

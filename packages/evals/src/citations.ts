@@ -201,6 +201,14 @@ const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const codeOf = (written: string) => lower(written).split(/[/#]/).pop() ?? "";
 
+/** Whether a value holds `want` as whole words, not as a fragment of a word. */
+function wholeWords(want: string): (value: string) => boolean {
+  const before = /^\w/.test(want) ? "(?<!\\w)" : "";
+  const after = /\w$/.test(want) ? "(?!\\w)" : "";
+  const whole = new RegExp(`${before}${escaped(want)}${after}`);
+  return (value) => whole.test(lower(value));
+}
+
 /** Whether the record's values of one kind of field hold the claimed one, compared as that kind. */
 function holds(
   kind: keyof Fields,
@@ -225,11 +233,9 @@ function holds(
     case "code":
       return values.some((value) => codeOf(value) === codeOf(want));
     case "name":
-      return (
-        want.length >= 3 && values.some((value) => lower(value).includes(want))
-      );
+      return want.length >= 3 && values.some(wholeWords(want));
     case "text":
-      return values.some((value) => lower(value).includes(want));
+      return values.some(wholeWords(want));
     default:
       return values.some((value) => isoDate(value) === isoDate(claimed));
   }
@@ -566,6 +572,9 @@ export function fhirFields(r: Record<string, unknown>): Fields {
     if (whole !== "") f.name.push(whole);
   }
   push(f.id, r.id);
+  push(f.value, r.gender);
+  push(f.value, r.deceasedBoolean);
+  push(f.end, r.deceasedDateTime);
   for (const identifier of asArray(r.identifier))
     push(f.id, (identifier as { value?: unknown }).value);
   for (const key of [
@@ -598,6 +607,23 @@ export function fhirFields(r: Record<string, unknown>): Fields {
     push(f.recorded, r[key]);
   push(f.text, r.conclusion);
   push(f.text, r.valueString);
+  push(f.text, r.description);
+  push(f.text, r.patientInstruction);
+  for (const key of ["dosageInstruction", "dosage"])
+    for (const dose of asArray(r[key])) {
+      const { text, patientInstruction } = (dose ?? {}) as Record<
+        string,
+        unknown
+      >;
+      push(f.text, text);
+      push(f.text, patientInstruction);
+    }
+  for (const reaction of asArray(r.reaction)) {
+    const { description, note } = (reaction ?? {}) as Record<string, unknown>;
+    push(f.text, description);
+    for (const one of asArray(note))
+      push(f.text, (one as { text?: unknown }).text);
+  }
   for (const note of asArray(r.note))
     push(f.text, (note as { text?: unknown }).text);
   const div = str((r.text as { div?: unknown } | undefined)?.div);
@@ -933,11 +959,10 @@ export function downloadsSource(folder: string): Source {
 }
 
 /** The kind of field each pod field is, by its local name. */
-const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
+export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   resultValue: ["value"],
   resultUnit: ["unit"],
   clinicalStatus: ["status"],
-  verificationStatus: ["status"],
   workflowStatus: ["status"],
   lifecycle: ["status"],
   prescribedOrReported: ["status"],
@@ -962,19 +987,89 @@ const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   medicationUseStartDate: ["when", "start"],
   medicationUseEndDate: ["end"],
   abatementDate: ["end"],
+  reportName: ["name"],
+  reportCode: ["code"],
+  reportCodeInOtherSystem: ["code"],
+  reportConclusionCode: ["code"],
+  reportEffectiveTime: ["when"],
+  reportIssuedTime: ["recorded"],
+  reportConclusion: ["text"],
+  noteOrDocumentType: ["code"],
+  noteOrDocumentTypeInOtherSystem: ["code"],
+  noteOrDocumentTypeName: ["name"],
+  noteOrDocumentTitle: ["name"],
+  noteOrDocumentContentStatus: ["status"],
+  noteOrDocumentDate: ["when"],
+  narrativeText: ["text"],
+  reactionManifestationText: ["text"],
+  reactionManifestationCode: ["code"],
+  geneSymbol: ["name"],
+  medicationCodeInOtherSystem: ["code"],
+  userSelectedCode: ["code"],
+  dispensePreparedTime: ["when"],
+  dispenseHandedOverTime: ["when"],
+  clinvarVariationId: ["id"],
+  hgvsCodingDnaExpression: ["code"],
+  interpretedDate: ["when"],
+  dateOfBirth: ["when"],
+  dateOfDeath: ["end"],
+  administrativeGender: ["value"],
+  deceased: ["value"],
 };
 
-/** A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. */
+/** Pod fields no claim can be checked against: links among records, ranges, interpretations and categories. */
+export const POD_NOT_CHECKABLE: readonly string[] = [
+  "type",
+  "leadMember",
+  "mergedFrom",
+  "statusFrom",
+  "dateFrom",
+  "medicationUseStartDateFrom",
+  "prescriptionWrittenDateFrom",
+  "referenceRange",
+  "resultInterpretationCode",
+  "reportCategory",
+  "allergySeverity",
+  "allergyCriticality",
+  "wasAttributedTo",
+  "authorizingPrescription",
+  "acmgClassification",
+  "variantInterpreted",
+  "RO_0002351",
+];
+
+const MEMBER_PREFIX = /^urn:uuid:\S+ /;
+
+/**
+ * A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. The
+ * person has no entry: `personRows` gives the person's row, and a cite of its subject IRI is checked against its
+ * own columns, each value being "<source record> <value>" joined by "; ".
+ */
 export function podRowsSource(
   rowsOf: (
     entry: string,
   ) => Promise<readonly Readonly<Record<string, string>>[] | undefined>,
+  personRows?: () => Promise<readonly Readonly<Record<string, string>>[]>,
 ): Source {
   return {
     async at(cite) {
       if (!("entry" in cite)) return undefined;
       const rows = await rowsOf(cite.entry);
-      if (rows === undefined || rows.length === 0) return undefined;
+      if (rows === undefined || rows.length === 0) {
+        const who = (await personRows?.())?.find(
+          (row) => row.subject === cite.entry,
+        );
+        if (who === undefined) return undefined;
+        const person = fresh();
+        for (const [column, text] of Object.entries(who))
+          for (const part of text.split("; ")) {
+            const value = part.replace(MEMBER_PREFIX, "");
+            if (value !== "")
+              for (const kind of POD_FIELDS[column] ?? [])
+                person[kind].push(value);
+          }
+        return { fields: person };
+      }
       const fields = fresh();
       for (const row of rows) {
         const name = (row.field ?? "").split(/[#/:]/).pop() ?? "";
