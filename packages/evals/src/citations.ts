@@ -368,26 +368,55 @@ const countsAgainst = (text: string, match: Absence["match"]) => {
   return latest === undefined || latest >= match.after;
 };
 
+/** A status that withdraws a record: what it says was not so, so it is no presence. */
+const RETRACTED = /^(refuted|entered-in-error)$/i;
+
+/** The fields of a pod row that say where it came from, not what it records: a retrieval date is not the record's. */
+const PROVENANCE = new Set(["entry", "sources"]);
+
 /** Whether a tool's answer holds what an absence says is not there: any of its rows, or the whole answer. */
 function answerHolds(answer: string, match: Absence["match"]): boolean {
   try {
     const { rows } = JSON.parse(answer) as { rows?: unknown };
     if (Array.isArray(rows))
-      return rows.some((row) => countsAgainst(JSON.stringify(row), match));
+      return rows.some((row) => {
+        const own = Object.fromEntries(
+          Object.entries((row ?? {}) as Record<string, unknown>).filter(
+            ([name]) => !PROVENANCE.has(name),
+          ),
+        );
+        return (
+          !RETRACTED.test(String(own.status ?? "")) &&
+          countsAgainst(JSON.stringify(own), match)
+        );
+      });
   } catch {
     // not rows
   }
   return countsAgainst(answer, match);
 }
 
-/** Whether a document holds what an absence says is not there: any of its records, or, with no date bound, its text. */
+/** Whether a document holds what an absence says is not there: any of its records, or, with no date bound, its text; a withdrawn record holds nothing. */
 function documentHolds(text: string, match: Absence["match"]): boolean {
-  if (match.after === undefined) return mentions(text, match);
-  const json = /^\s*[{[]/.test(text);
+  const json = /^s*[{[]/.test(text);
   const records = json ? jsonRecords(text) : ccdaRecords(text);
+  const withdrawn = records.filter((it) =>
+    it.fields.status.some((status) => RETRACTED.test(status)),
+  );
+  if (match.after === undefined) {
+    let kept = "";
+    let at = 0;
+    for (const { from, to } of withdrawn.sort((x, y) => x.from - y.from)) {
+      if (from < at) continue;
+      kept += text.slice(at, from);
+      at = to;
+    }
+    return mentions(kept + text.slice(at), match);
+  }
+  const live = records.filter((it) => !withdrawn.includes(it));
   return records.length === 0
     ? countsAgainst(text, match)
-    : records.some((it) => countsAgainst(text.slice(it.from, it.to), match));
+    : live.some((it) => countsAgainst(text.slice(it.from, it.to), match));
 }
 
 const lookedFor = (absence: Absence) =>
