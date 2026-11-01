@@ -95,7 +95,7 @@ export async function ask(given: string, id: string): Promise<string> {
     if (existsSync(join(folder, answer))) {
       const errors = await answerErrors(join(folder, answer));
       if (errors.length === 0) continue;
-      return `Your answer to the last question, ${join(folder, answer)}, is not a valid answer:\n  ${errors.join("\n  ")}\nRewrite the file so it is JSON that holds to the answer schema, then run this command again.`;
+      return `Your answer to the last question, ${join(folder, answer)}, is not a valid answer:\n  ${errors.join("\n  ")}\nRewrite the file so it is JSON that holds to the form above, then run this command again.`;
     }
     if (handed.has(question))
       return `Write your answer to the last question to ${join(folder, answer)} first, then run this command again.`;

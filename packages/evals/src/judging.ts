@@ -95,10 +95,6 @@ export const tellsIn = (
 ) => tellsOf(blinded(answer)).map((term) => ({ ...at, term }));
 
 /**
- * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
- * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
- */
-/**
  * An answer file as a packet shows it: blinded, or when the file is no answer, the reason. Only that failure of the file
  * itself is turned into text; a throw from the blinding of a valid answer is the harness's own and stops the judges.
  */
@@ -115,6 +111,10 @@ function packetBody(text: string): string {
     : blinded(numbered(value) as Answer);
 }
 
+/**
+ * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
+ * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
+ */
 export function blinded(answer: Answer): string {
   return [
     `Reply: ${scrubbed(answer.answer)}`,
