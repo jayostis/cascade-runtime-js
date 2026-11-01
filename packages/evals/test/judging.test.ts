@@ -211,6 +211,12 @@ const INNOCENT = [
   "Type 2 diabetes is an active condition.",
   "Every lab result (21 rows) through the records.",
   "Your iPhone and an mRNA shot; mmHg and hbA1c.",
+  "Condition/diabetes mellitus, Medication/dose changes, Procedure/Immunization schedule",
+  "amlodipine/benazepril at 148/92, 1/2 tablet, 2/day",
+  "record/keeping matters and entry/exit counts, pod/names",
+  "GlaxoSmithKline made it",
+  "Patient. The Bundle. Done",
+  "See https://example.org/page for it",
 ];
 
 /** Lines of a pod-style answer and of a file-citing one, as the reviewer's probes found them. */
@@ -275,10 +281,33 @@ test("the scrubber puts one placeholder where an unambiguous token was and chang
     "[record] says no.",
   );
   assert.equal(
-    scrubbed("see Observation/a, Condition/b and summary-5 for it"),
+    scrubbed("see Observation/a-1, Condition/b-2 and summary-5 for it"),
     "see [record] for it",
   );
   for (const said of INNOCENT) assert.equal(scrubbed(said), said, said);
+});
+
+test("the scrubber replaces an id-shaped resource reference whole and a view-or-id path, and the new tokens", async () => {
+  const { scrubbed } = await import("../src/judging.js");
+  const cases: readonly (readonly [string, string])[] = [
+    ["Patient/123 is here", "[record] is here"],
+    ["Condition/diabetes mellitus", "Condition/diabetes mellitus"],
+    ["entry/e-12 and pod/kestrel-harbor", "[record] and [record]"],
+    ["record/keeping and entry/exit", "record/keeping and entry/exit"],
+    ["see http://example.org/ns#workflowStatus now", "see [record] now"],
+    [
+      "at https://terminology.hl7.org/fhir/x and https://snomed.info/id/123.",
+      "at [record] and [record].",
+    ],
+    ["id 0b1f6a52-8c3d-4e7a-9d10-5a1b2c3d4e5f ok", "id [record] ok"],
+    ["ran reference_table_checks then", "ran [record] then"],
+    [
+      "Patient.birthDate and Observation.value[0].quantity",
+      "[record] and [record]",
+    ],
+    ["RefutedAtSource and GlaxoSmithKline", "[record] and GlaxoSmithKline"],
+  ];
+  for (const [said, want] of cases) assert.equal(scrubbed(said), want, said);
 });
 
 test("a blinded answer for either arm has no unambiguous token and keeps its innocent sentences byte-identical", () => {
