@@ -192,3 +192,49 @@ test("an item without n is numbered by its place, an n given is kept, and two it
   await writeFile(join(run, "answers", job, "a.json"), JSON.stringify(answer));
   assert.equal(await ask(run, job), "Second.");
 });
+
+test("a packet built from an answer with no n on its items shows each item by its place", async () => {
+  const folder = join(temporary, "packet-numbers");
+  const job = "tamsin-vale.checkup.pod.opus-5-5.r1";
+  await mkdir(join(folder, "answers", job), { recursive: true });
+  await mkdir(join(folder, "prompts"), { recursive: true });
+  await writeFile(
+    join(folder, "answers", job, "checkup.json"),
+    JSON.stringify(smoke("pod-blood-clot")),
+  );
+  await writeFile(
+    join(folder, "plan.json"),
+    JSON.stringify({
+      run: "packet-numbers",
+      folder,
+      config: { judges: ["claude-haiku-5-5"] },
+      cases: [{ id: "tamsin-vale" }],
+      jobs: [
+        {
+          id: job,
+          role: "subject",
+          case: "tamsin-vale",
+          arm: "pod",
+          model: "claude-opus-5-5",
+          repeat: 1,
+          session: "checkup",
+          questions: ["checkup"],
+          tag: `packet-numbers/${job}`,
+          status: "done",
+          estimate: { tokens: 0, usd: 0 },
+          answers: `answers/${job}`,
+        },
+      ],
+      estimate: { tokens: 0, usd: 0 },
+    }),
+  );
+  await judgePackets(folder);
+  const plan = JSON.parse(
+    await readFile(join(folder, "plan.json"), "utf8"),
+  ) as { jobs: { role: string; packet?: string }[] };
+  const packet = await readFile(
+    plan.jobs.find((it) => it.role === "judge")!.packet!,
+    "utf8",
+  );
+  assert.match(packet, /### Item 2. /);
+});
