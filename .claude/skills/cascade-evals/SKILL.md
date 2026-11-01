@@ -18,7 +18,10 @@ per input), reuses every job whose inputs are unchanged, and prints the estimate
 run is planned and its estimate shown to the maintainer before anything runs; run it only once they say so. A smoke
 run (one case, one run per arm, no judges) needs no approval.
 
-The plan's folder is `packages/evals/runs/<run>/` (gitignored): `plan.json`, `prompts/`, `answers/`, `judges/`.
+The plan's folder is `packages/evals/runs/<run>/` (gitignored): `plan.json`, `prompts/` (each session's prompt, and
+each question's message in `prompts/<job>/`), `answers/<job>/<question>.json`, `asked.jsonl` (each question as it was
+handed out), `tool-calls.jsonl`, `judges/`. A subject job is one chat session: it asks for its questions one at a
+time with `CLI ask --run <run> --job <id>`.
 
 ## 2. Run
 
@@ -48,7 +51,7 @@ finishes.
 3. When every agent of the wave has finished (the meter runs between waves: a job it handed out that left no
    transcript then fails), repeat from 1 until `next` is empty.
 4. `CLI judges --run <run>` writes the blind packets and plans the judges (none in a smoke run); repeat 1 to 3 for them.
-5. `CLI finish --run <run>`: the program checks, grades, scores, `results.json` (validated against
+5. `CLI finish --run <run>`: the program checks, grades, the evidence resolved, each instance counted, `results.json` (validated against
    `schemas/results.schema.json`) and the site in `runs/<run>/site/`.
 
 Never give an agent anything but its prompt: no hints about the case, the key or the other arm.

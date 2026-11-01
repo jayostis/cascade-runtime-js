@@ -1,19 +1,21 @@
 # cascade-evals
 
-An eval harness for the pod against pasted records. On synthetic people with keys written before any run, the same
-model answers the same task twice: once reaching the pod only through `cascade-mcp` (the **pod** arm), once reading
-every download in full (the **records** arm, the records pasted into a chat). Program checks come first; blind judges
-score the rest. Runs happen on demand, never in CI, and never on a real person's records.
+An eval harness for the pod against pasted records, on a person's own questions. On synthetic people with keys
+written before any run, a person asks her questions in her own words, in chat sessions, one at a time, and the same
+model answers each twice: once reaching her Cascade pod only through `cascade-mcp` (the **pod** arm), once reading
+every download in full (the **records** arm, the grab bag pasted into a chat). "What should I bring up at my check-up"
+is one question among several. Program checks come first; blind judges grade the rest. Runs happen on demand, never in
+CI, and never on a real person's records.
 
 Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis.github.io/cascade-runtime-js/evals/)**.
 
 ## What is here
 
 - `cases/<case>/`: a synthetic person. `case.json` (who, today, the description a report shows, the downloads and the
-  order the pod imports and the records arm reads them), `generate.mjs` (writes the downloads beside the vocabulary
-  kit's copies), `key.json` (the machine-readable key: one item per gap, trap or near-trap, with its evidence, the
-  links the reasoning must state, and what counts as found, partly found or wrong) and `key.md` (the rationale and its
-  guideline citations). A case must say `"synthetic": true`, and its downloads must hash to the digest its key was
+  order the pod imports and the records arm reads them, and her questions in sessions), `generate.mjs` (writes the
+  downloads beside the vocabulary kit's copies), `key.json` (the machine-readable key: for each question, one item per
+  expected fact, absence or negation, planted gap, trap or near-trap, with its evidence, the links the reasoning must
+  state, and what counts as found, partly found or wrong) and `key.md` (the rationale and its guideline citations). A case must say `"synthetic": true`, and its downloads must hash to the digest its key was
   written against.
 - `configs/`: the tiers. **smoke**: one case, one run per arm, programs only. **standard**: every case, one run, one
   judge. **full**: three runs, two judges and their agreement. Each config names the subject and judge models (judges
@@ -22,6 +24,11 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
 - `src/citations.ts`: the citation checker, exported as `cascade-evals/citations` for an app to check a model's answer:
   a cited line, FHIR resource or pod entry exists and holds the date and values claimed; an absence counts only when
   its query ran and its coverage is stated.
+- `src/sessions.ts`: a subject job is one session; its `ask` command hands out the questions one at a time, each once
+  the last is answered, and its calls are split at each hand-out, so each question's cost and time stand apart from the
+  session's own (the grab bag's reading of every file). `src/evidence.ts`: every citation resolved mechanically, a pod
+  entry to the records merged into it, their revisions and source documents, a file to its passage and download.
+  `src/instances.ts`: each case, model and repeat counted for the report: both arms, and judging apart.
 - `workflow/eval-run.js` and the skill `.claude/skills/cascade-evals/`: how Claude Code runs it.
 - `prices.json` (dated list prices) and `priors.json` (the first estimates, from the hand-run comparison of
   2026-10-30, until recorded runs replace them).
@@ -47,11 +54,15 @@ then the skill's loop, or the workflow, runs the jobs the cap allows and `finish
   entry or narrative row, or a pod entry. An absence names what it looks for; a pod's is backed only by a query that ran,
   answered whole and returned nothing matching, a records one only by the files it names, each read whole, none holding
   it. Every check is recomputed at `finish`, a reused job's too.
-- **Judges.** Each judge reads one packet, in an order of its own, in a folder outside the run that holds only its
-  packet and prompt; a reused verdict keeps the letters it was written to.
-- **Reuse.** A job whose inputs are unchanged is not run again: the case, its downloads, the model, the prompt, and for
-  the pod arm the runtime's packages and the components it resolves; for a judge, the answers and the key. The records
-  arm reruns only when its case, model or prompt changes. Reuse reads `runs/` and `history/`.
+- **Judges.** Each judge reads one packet per sitting (a case, model and repeat: both arms' answers to each question,
+  under letters in an order of its own), in a folder outside the run that holds only its packet and prompt. It grades
+  every key item of each question and gives a verdict on everything an answer says beyond the key (fair, true but not
+  planted, speculative, contradicted). Its cost is the test's own, charged to neither arm. A reused verdict keeps the
+  letters it was written to.
+- **Reuse.** A session whose inputs are unchanged is not run again: the case, its downloads, the session's own
+  questions, the model, the prompts, and for the pod arm the runtime's packages and the components it resolves; for a
+  judge, the answers and the key. A reworded question reruns only the sessions that ask it; the records arm reruns only
+  when its case, model or prompts change. Reuse reads `runs/` and `history/`.
 - **Stats.** Every model call is recorded with its role, model, input, cache and output tokens, time and tool calls,
   and priced from `prices.json`. Run from Claude Code, the calls come from each agent's transcript, so the usage is the
   API's own (`usageSource: transcript`, cost `exact`). A runner on the Claude API with MCP tool use, when there is a
