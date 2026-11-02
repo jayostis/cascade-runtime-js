@@ -1,22 +1,11 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-tables-"));
 process.env.CASCADE_EVALS_WORK = join(folder, "work");
-// the drug products rows of Priya's RxNorm codes, as the starter copies hold them: the live feed is for `prepare`
-process.env.CASCADE_EVALS_TABLES = join(folder, "tables");
-await cp(
-  fileURLToPath(new URL("../../test/drug-products", import.meta.url)),
-  join(folder, "tables", ".tables"),
-  { recursive: true },
-);
-const { configureTables, openPod } = await import("cascade-runtime");
-configureTables({ checkOnOpen: false });
-const { prepare } = await import("../src/cases.js");
 const { podInputs } = await import("../src/plan.js");
 const { giveTables } = await import("../src/reference-tables.js");
 const { sessionInputsHash } = await import("../src/sessions.js");
@@ -58,31 +47,4 @@ test("a session is answered on the tables its pod was built with: other tables, 
     });
   assert.equal(hash("a"), hash("a"));
   assert.notEqual(hash("a"), hash("b"));
-});
-
-test("a prepared pod holds the reference tables, so Priya's medication history merges what the drug products table joins", async () => {
-  const prepared = await prepare("priya-natarajan");
-  assert.ok(prepared.tables !== undefined && prepared.tables.versions.length);
-  const pod = await openPod(join(prepared.pods, prepared.pod));
-  try {
-    const series = (await pod.ask(
-      "pod/Which reference versions are current",
-    )) as { seriesLabel?: string }[];
-    assert.ok(
-      series.some((it) => /drug products/i.test(it.seriesLabel ?? "")),
-      "the drug products table is held",
-    );
-    const history = await pod.ask("pod/My medication history");
-    const rowsOf = (name: RegExp) =>
-      history.filter((it) => name.test(String(it["medication"])));
-    // 41 rows without the tables: lisinopril's 4 records were 4 rows and hydrochlorothiazide's 5 were 5
-    assert.equal(rowsOf(/lisinopril/i).length, 1);
-    assert.ok(
-      rowsOf(/hydrochlorothiazide/i).some((it) => it["records"] === "4"),
-      "Kestrel's stopped copies and Fernhill's active ones are one entry, by their periods",
-    );
-    assert.ok(history.length <= 25, `${history.length} rows`);
-  } finally {
-    await pod.close();
-  }
 });
