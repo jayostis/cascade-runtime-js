@@ -384,12 +384,16 @@ function latestDate(text: string): string | undefined {
 /** The last day of each partial date a text writes (a C-CDA value of YYYY or YYYYMM, an ISO YYYY-MM): it is the whole period, so it may be any day of it. */
 function partialDates(text: string): string[] {
   const periods = [
-    ...[...text.matchAll(/\bvalue="(\d{4})(\d{2})?"/g)].map(
-      ([, year, month]) => [year!, month] as const,
-    ),
-    ...[...text.matchAll(/\b(\d{4})-(\d{2})\b(?!-\d)/g)].map(
-      ([, year, month]) => [year!, month] as const,
-    ),
+    ...[
+      ...text.matchAll(
+        /<(?:\w+:)?(?:effectiveTime|time|low|high|center)\b[^>]*?\bvalue="(\d{4})(\d{2})?"/g,
+      ),
+    ].map(([, year, month]) => [year!, month] as const),
+    ...[
+      ...text.matchAll(
+        /(?<![\d-])(19\d\d|20\d\d|2100)-(0[1-9]|1[0-2])(?![\d-])/g,
+      ),
+    ].map(([, year, month]) => [year!, month] as const),
   ];
   return periods.flatMap(([year, month]) => {
     if (Number(year) < 1900 || Number(year) > 2100) return [];
@@ -854,16 +858,17 @@ export function narrativeFields(xml: string): Fields {
     )
       f.end.push(match[0]);
   }
-  for (const match of text.matchAll(STATUS_WORDS)) {
-    const before = text.slice(Math.max(0, match.index - 12), match.index);
-    const after = text.slice(match.index + match[0].length);
-    if (
-      /\b(not|no|never|without)\s*$/i.test(before) ||
-      /^\s*[:=]\s*(none|no|nil|n\/a|false)\b/i.test(after)
-    )
-      continue;
-    f.status.push(match[0].toLowerCase().replace(/[- ]/g, "-"));
-  }
+  for (const segment of cells.length > 0 ? cells : [text])
+    for (const match of segment.matchAll(STATUS_WORDS)) {
+      const before = segment.slice(0, match.index).split(/[;.]/).pop()!;
+      const after = segment.slice(match.index + match[0].length);
+      if (
+        /\b(not|no|never|without)\b/i.test(before) ||
+        /^[\s:?\-(=]*(none|no|not|nil|n\/a|false)(?!\w)/i.test(after)
+      )
+        continue;
+      f.status.push(match[0].toLowerCase().replace(/[- ]/g, "-"));
+    }
   const id = /\sID="([^"]+)"/.exec(xml)?.[1];
   if (id !== undefined) f.id.push(id);
   return f;
