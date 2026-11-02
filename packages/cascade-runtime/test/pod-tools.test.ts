@@ -548,8 +548,11 @@ test("ask's compact read of Tamsin's pod is one answer under the page budget, wi
   await reads.close();
 });
 
-/** A pod of `labs` lab results, each its own entry of one record, all from one document of one pull. */
-function labPod(labs: number) {
+/**
+ * A pod of `labs` lab results, each its own entry of one record, all from one document of one pull; the nth row's record
+ * has the nth of `texts` as the text its source wrote for it.
+ */
+function labPod(labs: number, texts: readonly string[] = []) {
   const rows: Row[] = Array.from({ length: labs }, (_, n) => ({
     performed: `2024-${String(1 + (n % 12)).padStart(2, "0")}-01T16:00:00Z`,
     test: `Test ${n}, named at the length a panel's tests are`,
@@ -557,6 +560,9 @@ function labPod(labs: number) {
     value: String(n),
     unit: "mg/dL",
     records: "1",
+    ...(texts[n] === undefined
+      ? {}
+      : { narrativeTexts: `${record(n)} ${texts[n]}` }),
     entry: `pod://p/clinical/lab-results.ttl#${sha(record(n))}`,
     sources: `${record(n)} from ${DOCUMENT}, retrieved 2024-02-01T00:00:00Z, written by Lab`,
   }));
@@ -583,6 +589,28 @@ function labPod(labs: number) {
       }) as unknown as Pod,
   });
 }
+
+test("a source's text for an entry is shown only where it adds words its row does not already say, a date written in words being the row's date", async () => {
+  const reads = labPod(2, [
+    "Test 0, named at the length a panel's tests are\n0 mg/dL\nJanuary 1, 2024 16:00 UTC",
+    "Test 1, named at the length a panel's tests are\n1 mg/dL\nhistorical result",
+  ]);
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "pod/My lab results",
+  })) as Compact;
+  const [header, ...lines] = views[0]!.text.split("\n");
+  const at = header!.split("\t").indexOf("narrativeTexts");
+  assert.deepEqual(
+    lines.map((line) => line.split("\t")[at]),
+    [
+      "S1 Test 1, named at the length a panel's tests are\\n1 mg/dL\\nhistorical result",
+      "",
+    ],
+  );
+  await reads.close();
+});
 
 test("a read longer than a page goes on from the offset its answer names: every page under the budget, every row on exactly one", async () => {
   const reads = labPod(400);
