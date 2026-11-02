@@ -717,7 +717,36 @@ test("a status, a conclusion and the prose of a source's text are never left out
   await reads.close();
 });
 
-test("what needs review gives each record by its source and its own label, less when it was received, so two records of one source are told apart", async () => {
+test("a source's text is compared only with the values that source gave, so a text that contradicts its own status is kept", async () => {
+  const entry = entryOf("conditions", 1);
+  const reads = podOf(
+    {
+      "pod/My condition history": [
+        {
+          condition: "Pulmonary embolism",
+          status: "ruled out",
+          statuses: `${record(1)} active; ${record(2)} ruled out`,
+          narrativeTexts: `${record(1)} Pulmonary embolism ruled out; ${record(2)} Embolism, pulmonary: active`,
+          entry,
+          sources: `${sourced(1, 1)}; ${sourced(2, 2)}`,
+        },
+      ],
+    },
+    [recordOf(entry, 1, 1), recordOf(entry, 2, 2)],
+  );
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "pod/My condition history",
+  })) as Compact;
+  assert.equal(
+    linesOf(views[0]!.text)[0]!.narrativeTexts,
+    "S1 Pulmonary embolism ruled out; S2 Embolism, pulmonary: active",
+  );
+  await reads.close();
+});
+
+test("what needs review gives each record by its source and its own label, less its kind, its source's name and when it was received, so two records of one source are told apart", async () => {
   const [one, other] = [
     entryOf("medications", 1),
     entryOf("medications", 2),
@@ -748,11 +777,11 @@ test("what needs review gives each record by its source and its own label, less 
   const [line] = linesOf(views[0]!.text);
   assert.equal(
     line!.record,
-    "S1 Medication · losartan 50 mg tablet · Clearwater",
+    "S1 losartan 50 mg tablet",
   );
   assert.match(
     line!.otherRecord!,
-    /^S2 in M[0-9a-f]{8,} Medication · losartan potassium 50 MG Oral Tablet · Fernhill$/,
+    /^S2 in M[0-9a-f]{8,} losartan potassium 50 MG Oral Tablet$/,
   );
   await reads.close();
 });
