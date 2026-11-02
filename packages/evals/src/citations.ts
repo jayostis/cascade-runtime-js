@@ -219,6 +219,8 @@ function calendar(
 const lower = (text: string) => text.trim().toLowerCase().replace(/\s+/g, " ");
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The statuses of a record its source withdrew, as a citation may word them. */
+const REFUTED = /^(?:refuted|ruled[- ]out)$/;
 const codeOf = (written: string) => lower(written).split(/[/#]/).pop() ?? "";
 
 /** Whether a value holds `want` as whole words, not as a fragment of a word. */
@@ -248,8 +250,14 @@ function holds(
     case "unit":
     case "id":
       return values.some((value) => lower(value) === want);
-    case "status":
-      return values.some((value) => codeOf(value) === codeOf(want));
+    case "status": {
+      const refuted = values.some((value) => REFUTED.test(codeOf(value)));
+      const said = (value: string) =>
+        REFUTED.test(codeOf(value)) ? "refuted" : codeOf(value);
+      return refuted
+        ? REFUTED.test(codeOf(want))
+        : values.some((value) => said(value) === said(want));
+    }
     case "code":
       return values.some((value) => codeOf(value) === codeOf(want));
     case "name":
@@ -417,7 +425,8 @@ const countsAgainst = (
 };
 
 /** A status that withdraws a record: what it says was not so, so it is no presence. */
-const RETRACTED = /^(refuted|entered-in-error|nullified|negated)$/i;
+const RETRACTED =
+  /^(refuted|ruled[- ]out|entered-in-error|nullified|negated)$/i;
 
 /** A record without what says when it was written or retrieved, not when the clinical thing happened: FHIR meta, a C-CDA author, informant or authenticator. */
 function clinicalText(fragment: string, json: boolean): string {
@@ -796,8 +805,14 @@ const plain = (xml: string) =>
 
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
+/**
+ * What ends the words before "ruled out" when the clause does not say it was: a negator or a modal, then at most
+ * "not", "yet", "have", "has", "had", "be", "been" or "to".
+ */
+const NOT_RULED_OUT =
+  /(?:\b(?:not|never|yet|cannot|unable to|should|must|needs? to|to|could|can|may|might|will|would)|n't)(?:\s+(?:not|yet|have|has|had|be|been|to))*\s*$/i;
 const STATUS_WORDS =
-  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
+  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|ruled out|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
 /**
  * A line of a document's narrative, a table row or a list item: its cells (a cell holding one number, with or without
@@ -863,7 +878,9 @@ export function narrativeFields(xml: string): Fields {
       const before = segment.slice(0, match.index).split(/[;.]/).pop()!;
       const after = segment.slice(match.index + match[0].length);
       if (
-        /\b(not|no|never|without)\b/i.test(before) ||
+        (/^ruled out$/i.test(match[0])
+          ? NOT_RULED_OUT.test(before)
+          : /\b(not|no|never|without)\b/i.test(before)) ||
         /^[\s:?\-(=]*(none|no|not|nil|n\/a|false)(?!\w)/i.test(after)
       )
         continue;
@@ -1072,6 +1089,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   resultValue: ["value"],
   resultUnit: ["unit"],
   clinicalStatus: ["status"],
+  verificationStatus: ["status"],
   workflowStatus: ["status"],
   lifecycle: ["status"],
   prescribedOrReported: ["status"],

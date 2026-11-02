@@ -28,8 +28,8 @@ history to whoever answers.
 4. **Citation check:** for every record an arm cites, check that it exists in the inputs and says what the arm claims.
    Report the number cited, the number correct, and the wrong ones.
 5. **Totals:** report each arm's gap score twice, with and without G5. G5 is narrative-only, so its ceiling for the pod
-   arm is zero. Also note that TT2, TN1 and TT5 are hard for the pod arm to fail. The refuted PE is in no `pod/My …` view; it appears
-   only in `record/Why it is in no view` as `RefutedAtSource`. So they are not symmetric tests of judgment.
+   arm is zero. Also note that TT2, TN1 and TT5 are hard for the pod arm to fail. The refuted PE is in `pod/My condition history` with
+   status "ruled out", never resolved or active, and in no other `pod/My …` view. So they are not symmetric tests of judgment.
 6. **Narrative-only facts:** the pod arm cannot see them. It sees none of these:
    - the HCTZ stop reason and the April refill (G2);
    - the TSH repeat advice (G6);
@@ -120,7 +120,7 @@ id) unless named.
 - **Wrong:** "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up for it"; "your high
   D-dimer was not followed up". Not wrong: "a CT angiogram was done the same day and its result isn't in my records"
   (scoring rule 3).
-- **Pod:** feature: code semantics (verification status). The DiagnosticReport is in the dump arm only: the importer drops it. Absent from `pod/My active conditions`; `record/Why it is in no view` gives it with `RefutedAtSource`.
+- **Pod:** feature: code semantics (verification status). The DiagnosticReport is in the dump arm only: the importer drops it. Absent from `pod/My active conditions`; `pod/My condition history` gives it with status "ruled out".
 
 ### Pre-existing items (true, neither credit nor penalty)
 

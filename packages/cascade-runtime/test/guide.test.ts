@@ -411,6 +411,7 @@ test("each template does what the guide says, read through the vocabulary's ques
   for (const [title, question] of [
     ["Allergies", "pod/My active allergies"],
     ["Conditions", "pod/My active conditions"],
+    ["Conditions", "pod/My condition history"],
     ["Immunizations", "pod/My immunizations"],
     ["Procedures", "pod/My procedures"],
   ] as const)

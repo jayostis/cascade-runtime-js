@@ -11,6 +11,7 @@ import {
   downloadsSource,
   fhirFields,
   isoDate,
+  narrativeFields,
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
@@ -995,6 +996,103 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
   assert.deepEqual(pod("entered-in-error"), { backed: true });
   assert.deepEqual(pod("refuted"), { backed: true });
   assert.deepEqual(pod("active"), { backed: false, reason: "query found it" });
+  assert.deepEqual(pod("ruled out"), { backed: true });
+
+  const history = { pod: "p", question: "pod/My condition history" };
+  const tamsin = (row: Record<string, string>) =>
+    checkAbsence({ ...absence, query: { tool: "ask", input: history } }, [
+      {
+        tool: "ask",
+        input: history,
+        ok: true,
+        answer: JSON.stringify({
+          total: 1,
+          rows: [
+            {
+              condition: "Pulmonary embolism",
+              snomed: "http://snomed.info/id/59282003",
+              onset: "2025-07-08",
+              abated: "2025-07-08",
+              ...row,
+            },
+          ],
+        }),
+      },
+    ]);
+  assert.deepEqual(
+    tamsin({ status: "ruled out", verificationStatus: "refuted" }),
+    { backed: true },
+    "resolved and refuted at its source: ruled out, no presence",
+  );
+  assert.deepEqual(tamsin({ status: "resolved" }), {
+    backed: false,
+    reason: "query found it",
+  });
+  assert.deepEqual(
+    narrativeFields("<paragraph>Pulmonary embolism ruled out by CT</paragraph>")
+      .status,
+    ["ruled-out"],
+  );
+  assert.deepEqual(
+    narrativeFields(
+      "<paragraph>Pulmonary embolism not ruled out; to be ruled out</paragraph>",
+    ).status,
+    [],
+    "a ruling out that has not happened withdraws nothing",
+  );
+});
+
+test("a citation of a condition its source refutes holds as ruled out, never as resolved", async () => {
+  const PE = "pod://p/clinical/conditions.ttl#pe";
+  const refuted = podRowsSource(async (entry) =>
+    entry === PE
+      ? [
+          { field: `${NS}conditionName`, value: "Pulmonary embolism" },
+          { field: `${NS}clinicalStatus`, value: "resolved" },
+          { field: `${NS}verificationStatus`, value: "refuted" },
+        ]
+      : undefined,
+  );
+  for (const [status, held] of [
+    ["ruled out", true],
+    ["ruled-out", true],
+    ["refuted", true],
+    ["resolved", false],
+    ["active", false],
+  ] as const)
+    assert.equal(
+      (await checkCitation({ cite: { entry: PE }, status }, refuted)).ok,
+      held,
+      status,
+    );
+});
+
+test("only a ruling out that was made withdraws a narrative line", () => {
+  const status = (line: string) =>
+    narrativeFields(`<paragraph>${line}</paragraph>`).status;
+  for (const line of [
+    "Pulmonary embolism was ruled out by CT",
+    "Pulmonary embolism ruled out",
+    "Pulmonary embolism has been ruled out",
+    "On May 3, 2025, PE was ruled out by CTA",
+    "May 2025: pulmonary embolism ruled out",
+    "CTA obtained to rule out PE, PE ruled out",
+    "Chest pain thought to be musculoskeletal, PE ruled out",
+    "Patient unable to walk far, PE ruled out by CTA",
+    "No acute distress, PE ruled out",
+  ])
+    assert.deepEqual(status(line), ["ruled-out"], line);
+  for (const line of [
+    "Pulmonary embolism could not be ruled out",
+    "Pulmonary embolism not yet ruled out",
+    "Pulmonary embolism hasn't been ruled out",
+    "Pulmonary embolism has not been ruled out",
+    "Pulmonary embolism should be ruled out",
+    "Pulmonary embolism must be ruled out",
+    "Pulmonary embolism needs to be ruled out",
+    "Pulmonary embolism: to rule out",
+  ])
+    assert.deepEqual(status(line), [], line);
 });
 
 const held = (file: string) => ({
