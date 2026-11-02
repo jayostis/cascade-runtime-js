@@ -417,7 +417,8 @@ const countsAgainst = (
 };
 
 /** A status that withdraws a record: what it says was not so, so it is no presence. */
-const RETRACTED = /^(refuted|entered-in-error|nullified|negated)$/i;
+const RETRACTED =
+  /^(refuted|ruled[- ]out|entered-in-error|nullified|negated)$/i;
 
 /** A record without what says when it was written or retrieved, not when the clinical thing happened: FHIR meta, a C-CDA author, informant or authenticator. */
 function clinicalText(fragment: string, json: boolean): string {
@@ -797,7 +798,7 @@ const plain = (xml: string) =>
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
 const STATUS_WORDS =
-  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
+  /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|ruled out|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
 /**
  * A line of a document's narrative, a table row or a list item: its cells (a cell holding one number, with or without
@@ -1072,6 +1073,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   resultValue: ["value"],
   resultUnit: ["unit"],
   clinicalStatus: ["status"],
+  verificationStatus: ["status"],
   workflowStatus: ["status"],
   lifecycle: ["status"],
   prescribedOrReported: ["status"],

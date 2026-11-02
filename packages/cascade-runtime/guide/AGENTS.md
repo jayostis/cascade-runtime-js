@@ -471,8 +471,16 @@ async function search(word) {
   record, its reaction texts, their codes in parentheses, and its severity, so a
   record other than the lead is read as much as the lead), how many records its
   `?entry` joins (`?records`), and `?sources`.
-- `pod/My active conditions`: conditions whose status is active, with the
-  sources of each.
+- `pod/My active conditions`: conditions whose status is active and not ruled out,
+  with the sources of each.
+- `pod/My condition history`: every condition whatever its status (`?condition`,
+  `?snomed`, `?icd10`, `?status`, `?verificationStatus`, `?onset`, `?abated`).
+  `?status` is `ruled out` when its source refuted it, whatever its clinical
+  status, so a condition considered and refuted is never read as resolved;
+  otherwise it is the clinical status. `?verificationStatus` is as the source
+  writes it. `?statuses` gives each record's own status, so a later record that
+  rules out what an earlier one confirmed, or confirms what one ruled out, says
+  both; `?records` is how many records its `?entry` joins, and `?sources`.
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
