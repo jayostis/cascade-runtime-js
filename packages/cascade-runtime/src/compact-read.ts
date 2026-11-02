@@ -116,10 +116,19 @@ class Said {
 const sourcesOf = (part: string) =>
   SAID_BY.exec(part)?.[0].trim().split(",") ?? [];
 
-/** A record's label without its kind, the name of its source and when it was received, which its handle and the sources give. */
+/**
+ * A record's label without its kind, the name of its author and when it was received or the document it came from,
+ * which its handle and the sources give: `kind · name · author · document` or `kind · name · author` once received is cut.
+ */
 function plainLabel(label: string): string {
   const segments = label.replace(RECEIVED, "").split(" · ");
-  return (segments.length >= 3 ? segments.slice(1, -1) : segments).join(" · ");
+  return (
+    segments.length >= 4
+      ? segments.slice(1, -2)
+      : segments.length >= 3
+        ? segments.slice(1, -1)
+        : segments
+  ).join(" · ");
 }
 
 interface Document {
@@ -316,9 +325,12 @@ function rendered(
       const shown = narrative
         ? parts.filter((part) => !said.restated(part))
         : parts;
-      // A value the row gives for all its sources and each source gives for itself is a merge of theirs.
+      // A value the row gives for all its sources and each source gives for itself is a merge of theirs, and a
+      // status is one no source can be assumed to share: it counts only for the source that states it.
       const merged =
-        row[`${column}es`] !== undefined || row[`${column}s`] !== undefined;
+        row[`${column}es`] !== undefined ||
+        row[`${column}s`] !== undefined ||
+        /status/i.test(column);
       for (const part of shown) said.add(part, !merged);
       if (shown.length > 0) own.set(column, oneLine(shown.join("; ")));
     }
