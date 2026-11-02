@@ -15,7 +15,8 @@ import type { BeyondVerdict, ItemVerdict } from "../src/results.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-sessions-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
-const { openPod } = await import("cascade-runtime");
+const { configureTables, openPod } = await import("cascade-runtime");
+configureTables({ checkOnOpen: false });
 const { caseIds, loadCase, loadKey } = await import("../src/cases.js");
 const { errorsOf } = await import("../src/schemas.js");
 const { ask, sessionInputsHash, splitSession } =

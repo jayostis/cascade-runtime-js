@@ -1,7 +1,7 @@
 // The reference tables an app holds beside its pods, held once for every case's pod: a case's pod folder is given a
 // copy, so the cases differ by their downloads and not by the history of the machine that built them.
 import { createHash } from "node:crypto";
-import { access, cp, rename, rm } from "node:fs/promises";
+import { access, cp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tablesBeside } from "cascade-runtime";
 import { REFERENCE_TABLES, TABLES_GIVEN } from "./paths.js";
@@ -34,7 +34,12 @@ export function referenceTables(
 }
 
 async function hold(log: (line: string) => void): Promise<ReferenceTables> {
-  if (!TABLES_GIVEN && !(await exists(join(REFERENCE_TABLES, ".tables"))))
+  if (TABLES_GIVEN) {
+    if (!(await exists(join(REFERENCE_TABLES, ".tables"))))
+      throw new Error(
+        `CASCADE_EVALS_TABLES names ${REFERENCE_TABLES}, which holds no .tables folder: it names tables already held, so it is not filled`,
+      );
+  } else if (!(await holdsWholeTables(REFERENCE_TABLES)))
     await fetchInto(REFERENCE_TABLES, log);
   const versions = [
     ...(await (await tablesBeside(REFERENCE_TABLES)).current()),
@@ -60,9 +65,17 @@ async function fetchInto(
   await tables.start();
   const checked = await tables.check();
   refuseIncomplete(checked, (await tables.current()).length);
+  await markWhole(partial);
   await rm(folder, { recursive: true, force: true, maxRetries: 5 });
   await rename(partial, folder);
 }
+
+const WHOLE = ".whole";
+
+/** Marks a folder of tables as fetched whole; a folder without the mark, from an earlier build, is fetched again. */
+export const markWhole = (folder: string) => writeFile(join(folder, WHOLE), "");
+
+export const holdsWholeTables = (folder: string) => exists(join(folder, WHOLE));
 
 /** Throws unless every feed checked came whole: nothing refused, nothing put off, and some table held. */
 export function refuseIncomplete(
