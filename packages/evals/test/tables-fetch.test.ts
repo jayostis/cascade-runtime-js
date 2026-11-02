@@ -34,3 +34,15 @@ test("tables are taken for complete only when every feed came whole: a version p
   );
   assert.throws(() => refuseIncomplete([{ feed, refused: [] }], 0));
 });
+
+test("a folder is fetched again unless it carries the mark written as the fetch finished: an old .tables is not taken for complete", async () => {
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { holdsWholeTables, markWhole } =
+    await import("../src/reference-tables.js");
+  const old = join(folder, "old");
+  await mkdir(join(old, ".tables"), { recursive: true });
+  await writeFile(join(old, ".tables", "starter.ttl"), "rows");
+  assert.equal(await holdsWholeTables(old), false);
+  await markWhole(old);
+  assert.equal(await holdsWholeTables(old), true);
+});
