@@ -532,6 +532,158 @@ test("a compact read backs an absence by its whole views of the absence's kind, 
   assert.equal(kindOfCall({ tool: "ask", input: read }), undefined);
 });
 
+test("a view split across the pages of one compact read backs an absence when the pages that read gave cover it from its first row to its last, and not when one is missing, one gives the match, or the pages are of another read", () => {
+  const LABS = "id\tperformed\ttest\tcode\tvalue\tunit\tstatus\tfrom";
+  const line = (n: number, test = "eGFR", code = "98979-8") =>
+    `L0000000${n}\t2026-02-1${n}\t${test}\tloinc:${code}\t6${n}\tmL/min\tfinal\tS1`;
+  const page = (
+    offset: number,
+    lines: readonly string[],
+    total: number,
+    next?: number,
+  ) => ({
+    input: {
+      pod: "p",
+      format: "compact",
+      ...(offset === 0 ? {} : { offset }),
+    },
+    ok: true,
+    tool: "ask",
+    answer: JSON.stringify({
+      format: "compact",
+      views: [
+        {
+          question: "pod/My lab results",
+          total,
+          offset,
+          shown: lines.length,
+          text: [LABS, ...lines].join("\n"),
+        },
+      ],
+      ...(next === undefined
+        ? {}
+        : { next: { pod: "p", format: "compact", offset: next } }),
+    }),
+  });
+  const first = page(0, [line(1), line(2)], 5, 2);
+  const second = page(2, [line(3), line(4)], 5, 4);
+  const last = page(4, [line(5)], 5);
+  const query = { tool: "ask", input: first.input };
+  const ofLabs = {
+    what: "an A1c",
+    coverage: "every lab result",
+    match: { codes: ["4548-4"], terms: ["A1c"] },
+    query,
+  };
+  const anywhere = {
+    what: "an A1c",
+    coverage: "every view",
+    match: { terms: ["A1c"] },
+    query,
+  };
+  const cut = { backed: false, reason: "query cut short" } as const;
+  for (const [what, absence, tied, calls, backing] of [
+    [
+      "every page",
+      ofLabs,
+      { kind: "lab" },
+      [first, second, last],
+      { backed: true },
+    ],
+    [
+      "the pages out of order",
+      ofLabs,
+      { kind: "lab" },
+      [last, first, second],
+      { backed: true },
+    ],
+    [
+      "every page, of no kind",
+      anywhere,
+      undefined,
+      [first, second, last],
+      { backed: true },
+    ],
+    ["the first page only", ofLabs, { kind: "lab" }, [first], cut],
+    ["a gap in the middle", ofLabs, { kind: "lab" }, [first, last], cut],
+    ["no last page", ofLabs, { kind: "lab" }, [first, second], cut],
+    ["a gap, of no kind", anywhere, undefined, [first, last], cut],
+    ["no last page, of no kind", anywhere, undefined, [first, second], cut],
+    [
+      "the match on the last page",
+      ofLabs,
+      { kind: "lab" },
+      [first, second, page(4, [line(5, "Hemoglobin A1c", "4548-4")], 5)],
+      { backed: false, reason: "query found it" },
+    ],
+    [
+      "a last page of another read",
+      ofLabs,
+      { kind: "lab" },
+      [first, second, { ...last, input: { ...last.input, entries: ["L1"] } }],
+      cut,
+    ],
+  ] as const)
+    assert.deepEqual(checkAbsence(absence, calls, tied), backing, what);
+});
+
+test("a handle is struck out of a compact line only where a handle stands: a real S1 or S2 in a text counts against an absence", () => {
+  const read = { pod: "p", format: "compact" };
+  const ran = (conclusion: string, statuses: string) => [
+    {
+      tool: "ask",
+      input: read,
+      ok: true,
+      answer: JSON.stringify({
+        format: "compact",
+        views: [
+          {
+            question: "pod/My reports, notes and documents",
+            total: 1,
+            offset: 0,
+            shown: 1,
+            text: `id\tname\tconclusion\tstatuses\nR0000cafe1\tCardiac exam\t${conclusion}\t${statuses}`,
+          },
+        ],
+      }),
+    },
+  ];
+  const absence = (term: string) => ({
+    what: term,
+    coverage: "every report",
+    match: { terms: [term] },
+    query: { tool: "ask", input: read },
+  });
+  for (const [what, term, conclusion, statuses, backing] of [
+    [
+      "S1 and S2 in a conclusion",
+      "S1 and S2",
+      "Normal S1 and S2, no murmur",
+      "S1 final",
+      { backed: false, reason: "query found it" },
+    ],
+    [
+      "S2 after a semicolon in a conclusion",
+      "S2 is loud",
+      "Normal S1; S2 is loud",
+      "S1 final",
+      { backed: false, reason: "query found it" },
+    ],
+    [
+      "S2 only as the source a status is from",
+      "S2",
+      "No murmur",
+      "S2 final",
+      { backed: true },
+    ],
+  ] as const)
+    assert.deepEqual(
+      checkAbsence(absence(term), ran(conclusion, statuses)),
+      backing,
+      what,
+    );
+});
+
 test("a pod citation by handle is checked against the entry it names: by the start of its fragment, or a stale one by a record merged into it", async () => {
   const sha = (text: string) => createHash("sha256").update(text).digest("hex");
   const [first, later] = [1, 2].map(
