@@ -374,10 +374,34 @@ export function mentions(text: string, match: Absence["match"]): boolean {
 function latestDate(text: string): string | undefined {
   const days = [
     ...text.matchAll(/\b\d{4}-\d{2}-\d{2}|\b\d{8}(?:\d{4}(?:\d{2})?)?(?!\d)/g),
+    ...text.matchAll(WORDED_DATE),
   ]
     .map(([whole]) => isoDate(whole))
     .filter((day): day is string => day !== undefined);
-  return days.sort().pop();
+  return [...days, ...partialDates(text)].sort().pop();
+}
+
+/** The last day of each partial date a text writes (a C-CDA value of YYYY or YYYYMM, an ISO YYYY-MM): it is the whole period, so it may be any day of it. */
+function partialDates(text: string): string[] {
+  const periods = [
+    ...[
+      ...text.matchAll(
+        /<(?:\w+:)?(?:effectiveTime|time|low|high|center)\b[^>]*?\bvalue="(\d{4})(\d{2})?"/g,
+      ),
+    ].map(([, year, month]) => [year!, month] as const),
+    ...[
+      ...text.matchAll(
+        /(?<![\d-])(19\d\d|20\d\d|2100)-(0[1-9]|1[0-2])(?![\d-])/g,
+      ),
+    ].map(([, year, month]) => [year!, month] as const),
+  ];
+  return periods.flatMap(([year, month]) => {
+    if (Number(year) < 1900 || Number(year) > 2100) return [];
+    if (month === undefined) return [`${year}-12-31`];
+    if (Number(month) < 1 || Number(month) > 12) return [];
+    const last = new Date(Date.UTC(Number(year), Number(month), 0));
+    return [`${year}-${month}-${String(last.getUTCDate()).padStart(2, "0")}`];
+  });
 }
 
 /** Whether something mentioning the absence counts against it: it is dated on or after its day, or has no date. */
@@ -834,8 +858,17 @@ export function narrativeFields(xml: string): Fields {
     )
       f.end.push(match[0]);
   }
-  for (const [word] of text.matchAll(STATUS_WORDS))
-    f.status.push(word.toLowerCase().replace(/ /g, "-"));
+  for (const segment of cells.length > 0 ? cells : [text])
+    for (const match of segment.matchAll(STATUS_WORDS)) {
+      const before = segment.slice(0, match.index).split(/[;.]/).pop()!;
+      const after = segment.slice(match.index + match[0].length);
+      if (
+        /\b(not|no|never|without)\b/i.test(before) ||
+        /^[\s:?\-(=]*(none|no|not|nil|n\/a|false)(?!\w)/i.test(after)
+      )
+        continue;
+      f.status.push(match[0].toLowerCase().replace(/[- ]/g, "-"));
+    }
   const id = /\sID="([^"]+)"/.exec(xml)?.[1];
   if (id !== undefined) f.id.push(id);
   return f;

@@ -1187,3 +1187,142 @@ test("a withdrawn record with an after date holds nothing", async () => {
     { backed: true },
   );
 });
+
+const narrativeRow = (cells: string) =>
+  `<ClinicalDocument><component><structuredBody><component><section><text><table><tbody><tr>${cells}</tr></tbody></table></text></section></component></structuredBody></component></ClinicalDocument>`;
+
+test("a narrative row that says it was not entered in error, or lists none, is a live row", async () => {
+  for (const status of [
+    "Not entered in error",
+    "Entered in error: none",
+    "Entered in error: no",
+  ])
+    for (const after of [undefined, "2025-01-01"])
+      assert.deepEqual(
+        await inRecords(
+          after,
+          ["pulmonary embolism"],
+          narrativeRow(
+            `<td>Pulmonary embolism</td><td>${status}</td><td>July 8, 2025</td>`,
+          ),
+        ),
+        held("b"),
+        status,
+      );
+});
+
+test("a narrative row dated in words is dated: it backs an absence after a later day and not after an earlier one", async () => {
+  const row = narrativeRow(
+    "<td>Hemoglobin A1c 4548-4</td><td>February 16, 2026</td>",
+  );
+  assert.deepEqual(await inRecords("2026-02-17", [], row, ["4548-4"]), {
+    backed: true,
+  });
+  assert.deepEqual(
+    await inRecords("2026-02-16", [], row, ["4548-4"]),
+    held("b"),
+  );
+  assert.deepEqual(
+    await inRecords("2026-02-01", [], row, ["4548-4"]),
+    held("b"),
+  );
+});
+
+test("a partial date is the whole period it names: it backs an absence after a day only if the period ends before it", async () => {
+  const ccda = (value: string) =>
+    `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"><code code="4548-4"/><effectiveTime value="${value}"/></observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  for (const [value, after, backed] of [
+    ["2025", "2026-01-01", true],
+    ["2025", "2025-12-31", false],
+    ["2025", "2025-06-01", false],
+    ["202507", "2025-08-01", true],
+    ["202507", "2025-07-31", false],
+    ["202507", "2025-07-15", false],
+  ] as const)
+    assert.deepEqual(
+      await inRecords(after, [], ccda(value), ["4548-4"]),
+      backed ? { backed: true } : held("b"),
+      `${value} after ${after}`,
+    );
+  assert.deepEqual(
+    await inRecords(
+      "2025-08-01",
+      [],
+      bundle(observation({ effectiveDateTime: "2025-07" })),
+      ["4548-4"],
+    ),
+    { backed: true },
+  );
+  assert.deepEqual(
+    await inRecords(
+      "2025-07-15",
+      [],
+      bundle(observation({ effectiveDateTime: "2025-07" })),
+      ["4548-4"],
+    ),
+    held("b"),
+  );
+});
+
+test("a negation in one cell does not negate the next cell's entered in error", async () => {
+  assert.deepEqual(
+    await inRecords(
+      undefined,
+      ["hives"],
+      narrativeRow(
+        "<td>Hives</td><td>No</td><td>Entered in error</td><td>July 8, 2025</td>",
+      ),
+    ),
+    { backed: true },
+  );
+});
+
+test("a cell that denies being entered in error, however it is worded, is a live row; one that names an earlier clause's negation still withdraws", async () => {
+  const row = (status: string) =>
+    narrativeRow(`<td>Hives</td><td>${status}</td><td>July 8, 2025</td>`);
+  for (const status of [
+    "Has not been entered in error",
+    "Not marked as entered in error",
+    "No longer entered in error",
+    "Entered in error? No",
+    "Entered in error - no",
+    "Entered in error (none)",
+    "Entered in error: not",
+  ])
+    assert.deepEqual(
+      await inRecords(undefined, ["hives"], row(status)),
+      held("b"),
+      status,
+    );
+  for (const status of [
+    "Not applicable; entered in error",
+    "No known allergy. Entered in error",
+    "Entered in error: Yes",
+  ])
+    assert.deepEqual(
+      await inRecords(undefined, ["hives"], row(status)),
+      { backed: true },
+      status,
+    );
+});
+
+test("a partial date is read from a time element only, not from a quantity's value", async () => {
+  const doc = `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"><code code="4548-4"/><effectiveTime value="20200101"/><value xsi:type="PQ" value="2050" unit="mg"/></observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  assert.deepEqual(await inRecords("2026-01-01", [], doc, ["4548-4"]), {
+    backed: true,
+  });
+});
+
+test("a year and month inside a longer number or range is no partial date", async () => {
+  assert.deepEqual(
+    await inRecords(
+      "2026-01-01",
+      [],
+      narrativeRow(
+        "<td>Hemoglobin A1c 4548-4 lot 1000-2050-12</td><td>January 5, 2025</td>",
+      ),
+      ["4548-4"],
+    ),
+    { backed: true },
+  );
+});
