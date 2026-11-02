@@ -1,110 +1,16 @@
 // The compact read: views `ask` offers, in one answer a page at a time, as tab-separated rows. It composes the questions
 // `ask` already asks, rewriting their rows only, and mints no query: each question is still asked once, in the
 // vocabulary. Every column a view gives is rendered by the same rules, so a column a view gains needs no change here.
-import { Refusal } from "@cascade-runtime/runtime/refusal";
 import type { Row } from "./pod.js";
-
-/** The question whose rows name each entry's records and the documents they came from. */
-export const PROVENANCE_QUESTION = "entry/Where it came from";
-
-/** The most characters one answer of the compact read holds as JSON: under the 30,000 a shell's output is cut at. */
-export const PAGE_CHARACTERS = 24_000;
-
-/** A handle: a letter of the entry's view, then the start of the entry's fragment, at least 8 of its 64 hex digits. */
-export const HANDLE = /^([A-Z])([0-9a-f]{8,64})$/;
-const SHORTEST = 8;
-const ENTRY = /^[^#\s]+#([0-9a-f]{64})$/;
-
-/** The letter of the view an entry is named in: the first of its view file's name (`lab-results.ttl#…`, L). */
-function letterOf(entry: string): string {
-  const file = entry.split("#")[0]!.split("/").pop() ?? "";
-  return /[a-z]/i.test(file[0] ?? "") ? file[0]!.toUpperCase() : "E";
-}
-
-async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text),
-  );
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * The entry `handle` names among `members`, each an entry with a record merged into it: the one entry whose fragment
- * starts with the handle's digits and whose view has its letter; failing that, a handle minted before a record that
- * sorts first joined the entry, so the entry holding the one record whose name's SHA-256 starts with them (an entry's
- * fragment is the SHA-256 of its least member's name). Undefined when it names none, or more than one.
- */
-export async function entryOfHandle(
-  handle: string,
-  members: readonly { readonly entry: string; readonly record?: string }[],
-): Promise<string | undefined> {
-  const parts = HANDLE.exec(handle);
-  if (parts === null) return undefined;
-  const [, letter, digits] = parts as unknown as [string, string, string];
-  const only = (found: Iterable<string>) => {
-    const one = [...new Set(found)].filter((it) => letterOf(it) === letter);
-    return one.length === 1 ? one[0] : undefined;
-  };
-  const named = only(
-    members
-      .map(({ entry }) => entry)
-      .filter((entry) => ENTRY.exec(entry)?.[1]!.startsWith(digits)),
-  );
-  if (named !== undefined) return named;
-  const holding: string[] = [];
-  for (const { entry, record } of members)
-    if (record !== undefined && (await sha256(record)).startsWith(digits))
-      holding.push(entry);
-  return only(holding);
-}
-
-/** Each entry's handle: its view's letter and the shortest start of its fragment, at least 8, that no other entry's has. */
-function handlesOf(entries: Iterable<string>): Map<string, string> {
-  const named = [...new Set(entries)]
-    .map((entry) => [entry, ENTRY.exec(entry)?.[1]] as const)
-    .filter((it): it is readonly [string, string] => it[1] !== undefined)
-    .sort(([, a], [, b]) => a.localeCompare(b));
-  const shared = (a = "", b = "") => {
-    let at = 0;
-    while (at < a.length && a[at] === b[at]) at += 1;
-    return at;
-  };
-  return new Map(
-    named.map(([entry, digits], at) => [
-      entry,
-      `${letterOf(entry)}${digits.slice(
-        0,
-        Math.max(
-          SHORTEST,
-          shared(digits, named[at - 1]?.[1]) + 1,
-          shared(digits, named[at + 1]?.[1]) + 1,
-        ),
-      )}`,
-    ]),
-  );
-}
-
-/** One view's part of a page: its question, how many rows it has, where this part starts, how many it shows, and them. */
-export interface CompactView {
-  readonly question: string;
-  readonly total: number;
-  readonly offset: number;
-  readonly shown: number;
-  readonly text: string;
-}
-
-/** A page of the compact read; `next`, when the read goes on, is the input that asks for the next page. */
-export interface CompactAnswer {
-  readonly format: "compact";
-  readonly about: string;
-  readonly sources: string;
-  readonly leftOut?: string;
-  readonly views: readonly CompactView[];
-  readonly next?: Readonly<Record<string, unknown>>;
-}
+import {
+  type CompactAnswer,
+  type CompactInput,
+  type CompactView,
+  entriesNamed,
+  handlesOf,
+  PAGE_CHARACTERS,
+  PROVENANCE_QUESTION,
+} from "./pod-tools.js";
 
 const ABOUT = `Each view's rows are tab-separated, under a header row: one line per entry, newest first by its first date, undated last. A column no row of the view fills is left out; a row's empty cell is a field it lacks, or a text that says only what the row's earlier cells already say (a source's text restating its values). id is the entry's handle: its view's letter and the start of its entry's name. Cite it as the entry ({"entry": "<handle>"}); give handles to ${PROVENANCE_QUESTION} as entries for each one's records and documents. from names the sources the entry's records came from, as sources lists them; a value given per source starts with the sources that gave it ("S1,S3 active"); "in <handle>" names another entry a record is merged into. A report's results are the handles of their entries. Codes are system:code beside their names. A line break in a text is written \\n. total is how many rows a view has, offset where this page's start, shown how many are here; when next is given the read goes on: ask again with it.`;
 
@@ -156,6 +62,26 @@ function wordsOf(text: string): string[] {
       ? [String(month + 1)]
       : [word];
   });
+}
+
+/** The column of each record's own text; the one column whose parts are left out when they say no more than the row. */
+const NARRATIVE_TEXTS = "narrativeTexts";
+/** Where one record's part of a cell ends: the next part starts with a record, so a "; " inside a text does not end it. */
+const RECORD = /; (?=urn:)/;
+/** The tail of a record's label that says when it was received, which a source's text does not. */
+const RECEIVED = / · received .*$/;
+
+/** The words of a part without the sources that said it and the handles it names. */
+const wordsIn = (part: string) =>
+  wordsOf(part.replace(SAID_BY, "").replace(HANDLES, " "));
+
+/** Whether a part has two or more words of letters, and every word of it is one `said` already. */
+function onlyRestates(part: string, said: ReadonlySet<string>): boolean {
+  const words = wordsIn(part);
+  return (
+    words.filter((word) => /\p{L}/u.test(word)).length >= 2 &&
+    words.every((word) => said.has(word))
+  );
 }
 
 interface Document {
@@ -258,10 +184,17 @@ class Rewriter {
     ).replace(IRI, (iri) => this.handles.get(iri) ?? this.#source(iri) ?? iri);
   }
 
-  /** A cell: each part a value names an entry, record or document by is rewritten, parts of one value from several sources made one. */
-  cell(value: string, entry: string | undefined): string {
+  /**
+   * A cell's parts: each part a value names an entry, record or document by is rewritten, parts of one value from
+   * several sources made one. The value is cut where `apart` says, which is "; " unless a part may hold one.
+   */
+  cell(
+    value: string,
+    entry: string | undefined,
+    apart: string | RegExp = "; ",
+  ): string[] {
     const bySaid = new Map<string, string[]>();
-    value.split("; ").forEach((part, at) => {
+    value.split(apart).forEach((part, at) => {
       const [first = "", rest = ""] = part.split(/ (.*)/s);
       const handle = this.handles.get(first);
       const source = first.startsWith("urn:") ? this.#source(first) : undefined;
@@ -285,13 +218,11 @@ class Rewriter {
       const sources = bySaid.get(said) ?? bySaid.set(said, []).get(said)!;
       if (!sources.includes(source)) sources.push(source);
     });
-    return [...bySaid]
-      .map(([said, it]) =>
-        said.startsWith("\u0000")
-          ? it[0]!
-          : `${inOrder(it)}${said === "" ? "" : ` ${said}`}`,
-      )
-      .join("; ");
+    return [...bySaid].map(([said, it]) =>
+      said.startsWith("\u0000")
+        ? it[0]!
+        : `${inOrder(it)}${said === "" ? "" : ` ${said}`}`,
+    );
   }
 
   /** The sources of a row's records, as `sources` names them. */
@@ -332,23 +263,24 @@ function rendered(
         continue;
       if (/(Low|High)$/.test(column) && row[column.replace(/(Low|High)$/, "")])
         continue;
-      let text = rewrite.cell(value, row.entry);
       const label = row[`${column}Label`];
-      if (label !== undefined && /\b(urn|pod|ni|https?):/.test(text))
-        text = label;
-      const parts = text.split("; ").filter((part) => {
-        const words = wordsOf(part.replace(SAID_BY, "").replace(HANDLES, " "));
-        return !(
-          words.filter((word) => /\p{L}/u.test(word)).length >= 2 &&
-          words.every((word) => said.has(word))
-        );
-      });
-      for (const part of parts)
-        for (const word of wordsOf(
-          part.replace(SAID_BY, "").replace(HANDLES, " "),
-        ))
-          said.add(word);
-      if (parts.length > 0) own.set(column, oneLine(parts.join("; ")));
+      // A record is told by its source and its own label, which says what that source wrote of it.
+      const named =
+        label !== undefined && /^urn:\S+$/.test(value)
+          ? `${value} ${label.replace(RECEIVED, "")}`
+          : value;
+      const narrative = column === NARRATIVE_TEXTS;
+      const written = rewrite.cell(named, row.entry, narrative ? RECORD : "; ");
+      const parts =
+        label !== undefined && /\b(urn|pod|ni|https?):/.test(written.join(" "))
+          ? [label]
+          : written;
+      const shown = narrative
+        ? parts.filter((part) => !onlyRestates(part, said))
+        : parts;
+      for (const part of shown)
+        for (const word of wordsIn(part)) said.add(word);
+      if (shown.length > 0) own.set(column, oneLine(shown.join("; ")));
     }
     own.set(
       "id",
@@ -401,37 +333,6 @@ function rendered(
       entry === undefined ? { line } : { line, entry },
     ),
   };
-}
-
-/** What the compact read is asked: its questions in order, where a page starts and the entries it is cut to. */
-export interface CompactInput {
-  readonly questions: readonly string[];
-  /** The views it leaves out, each beside the view that holds every one of its entries. */
-  readonly leftOut?: Readonly<Record<string, string>>;
-  readonly offset?: number;
-  readonly entries?: readonly string[];
-  /** The input a page's `next` repeats, beside its offset. */
-  readonly again: Readonly<Record<string, unknown>>;
-}
-
-/** The entries `wanted` names, each by its IRI or its handle among `members`. @throws Refusal for one that names none. */
-export async function entriesNamed(
-  wanted: readonly string[],
-  members: readonly Row[],
-): Promise<Set<string>> {
-  const pairs = members.flatMap(({ entry, record }) =>
-    entry === undefined
-      ? []
-      : [{ entry, ...(record === undefined ? {} : { record }) }],
-  );
-  const found = new Set<string>();
-  for (const each of wanted) {
-    const entry = HANDLE.test(each) ? await entryOfHandle(each, pairs) : each;
-    if (entry === undefined)
-      throw new Refusal(`no entry of the pod has the handle ${each}`);
-    found.add(entry);
-  }
-  return found;
 }
 
 /**
