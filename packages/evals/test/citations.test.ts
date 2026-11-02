@@ -1042,6 +1042,53 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
   );
 });
 
+test("a citation of a condition its source refutes holds as ruled out, never as resolved", async () => {
+  const PE = "pod://p/clinical/conditions.ttl#pe";
+  const refuted = podRowsSource(async (entry) =>
+    entry === PE
+      ? [
+          { field: `${NS}conditionName`, value: "Pulmonary embolism" },
+          { field: `${NS}clinicalStatus`, value: "resolved" },
+          { field: `${NS}verificationStatus`, value: "refuted" },
+        ]
+      : undefined,
+  );
+  for (const [status, held] of [
+    ["ruled out", true],
+    ["ruled-out", true],
+    ["refuted", true],
+    ["resolved", false],
+    ["active", false],
+  ] as const)
+    assert.equal(
+      (await checkCitation({ cite: { entry: PE }, status }, refuted)).ok,
+      held,
+      status,
+    );
+});
+
+test("only a ruling out that was made withdraws a narrative line", () => {
+  const status = (line: string) =>
+    narrativeFields(`<paragraph>${line}</paragraph>`).status;
+  for (const line of [
+    "Pulmonary embolism was ruled out by CT",
+    "Pulmonary embolism ruled out",
+    "Pulmonary embolism has been ruled out",
+  ])
+    assert.deepEqual(status(line), ["ruled-out"], line);
+  for (const line of [
+    "Pulmonary embolism could not be ruled out",
+    "Pulmonary embolism not yet ruled out",
+    "Pulmonary embolism hasn't been ruled out",
+    "Pulmonary embolism has not been ruled out",
+    "Pulmonary embolism should be ruled out",
+    "Pulmonary embolism must be ruled out",
+    "Pulmonary embolism needs to be ruled out",
+    "Pulmonary embolism: to rule out",
+  ])
+    assert.deepEqual(status(line), [], line);
+});
+
 const held = (file: string) => ({
   backed: false,
   reason: `records hold it: ${file}`,
