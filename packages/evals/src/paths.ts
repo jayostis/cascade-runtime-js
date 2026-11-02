@@ -16,8 +16,10 @@ export const CONFIGS = at("configs");
 export const RUNS = at("runs");
 /** The recorded runs, committed: each one's results and the models' final answers. */
 export const HISTORY = at("history");
-/** Prepared cases (downloads and pods), rebuilt when their inputs change; gitignored. */
-export const WORK = at("work");
+/** Prepared cases (downloads and pods), rebuilt when their inputs change; gitignored. `CASCADE_EVALS_WORK` names another. */
+export const WORK = process.env.CASCADE_EVALS_WORK ?? at("work");
+/** The reference tables every case's pod is given, held once; gitignored. */
+export const REFERENCE_TABLES = at("work/reference-tables");
 export const PRICES = at("prices.json");
 export const PRIORS = at("priors.json");
 

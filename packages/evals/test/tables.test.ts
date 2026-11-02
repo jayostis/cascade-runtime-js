@@ -6,7 +6,8 @@ import { after, test } from "node:test";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-tables-"));
 process.env.CASCADE_EVALS_WORK = join(folder, "work");
-const { openPod } = await import("cascade-runtime");
+const { configureTables, openPod } = await import("cascade-runtime");
+configureTables({ checkOnOpen: false });
 const { prepare } = await import("../src/cases.js");
 const { podInputs } = await import("../src/plan.js");
 const { giveTables } = await import("../src/reference-tables.js");
@@ -24,7 +25,7 @@ test("a pod folder is given the reference tables as a copy: its own record of th
   const pods = join(folder, "pods");
   await mkdir(join(pods, ".tables"), { recursive: true });
   await writeFile(join(pods, ".tables", "stale.ttl"), "from an earlier build");
-  await giveTables(pods, { folder: source, id: "a", versions: ["v1"] });
+  await giveTables(pods, { folder: source });
   assert.equal(await readFile(join(pods, ".tables", "v1.ttl"), "utf8"), "rows");
   await assert.rejects(readFile(join(pods, ".tables", "stale.ttl")));
   await writeFile(join(pods, ".tables", "tables.json"), "changed by a pod");
@@ -64,7 +65,15 @@ test("a prepared pod holds the reference tables, so Priya's medication history m
       "the drug products table is held",
     );
     const history = await pod.ask("pod/My medication history");
-    assert.ok(history.length <= 20, `${history.length} rows`);
+    const rowsOf = (name: RegExp) =>
+      history.filter((it) => name.test(String(it["medication"])));
+    // 41 rows without the tables: lisinopril's 4 records were 4 rows and hydrochlorothiazide's 5 were 5
+    assert.equal(rowsOf(/lisinopril/i).length, 1);
+    assert.ok(
+      rowsOf(/hydrochlorothiazide/i).some((it) => it["records"] === "4"),
+      "Kestrel's stopped copies and Fernhill's active ones are one entry, by their periods",
+    );
+    assert.ok(history.length <= 25, `${history.length} rows`);
   } finally {
     await pod.close();
   }

@@ -13,6 +13,7 @@ import { openPod, type Pod } from "cascade-runtime";
 import type { Claim, Tie } from "./citations.js";
 import { type Environment, pinnedPod } from "./pinned.js";
 import { CASES, WORK } from "./paths.js";
+import { giveTables, referenceTables } from "./reference-tables.js";
 import { valid } from "./schemas.js";
 
 export interface Case {
@@ -223,6 +224,11 @@ export interface Prepared {
     readonly file: string;
     readonly bytes: number;
   }[];
+  /** The reference tables the pod was given, which an app holds beside its pods; absent from a pod prepared without them. */
+  readonly tables?: {
+    readonly id: string;
+    readonly versions: readonly string[];
+  };
   /** The pod's build, once per person and outside every answer's cost; absent from a pod prepared before it was timed. */
   readonly build?: {
     readonly seconds: number;
@@ -236,19 +242,25 @@ const sameComponents = (a: readonly Component[], b: readonly Component[]) =>
   JSON.stringify(a.map((it) => [it.repository, it.commit])) ===
   JSON.stringify(b.map((it) => [it.repository, it.commit]));
 
-/** A prepared record is kept for these downloads and components only if it carries its build time: older ones do not. */
+/**
+ * A prepared record is kept for these downloads, components and reference tables only if it carries its build time and
+ * its tables: older ones do not.
+ */
 export const keeps = (
-  kept: Pick<Prepared, "downloadsSha256" | "components" | "build">,
+  kept: Pick<Prepared, "downloadsSha256" | "components" | "build" | "tables">,
   downloadsSha256: string,
   components: readonly Component[],
+  tables: string,
 ) =>
   kept.build !== undefined &&
+  kept.tables?.id === tables &&
   kept.downloadsSha256 === downloadsSha256 &&
   sameComponents(kept.components, components);
 
 /**
- * The case's downloads and its pod in `work/<case>/`, made once per downloads and components: the kit's copies from
- * the vocabulary, the generator's files beside them, the digest checked against the case's, then each import in order.
+ * The case's downloads and its pod in `work/<case>/`, made once per downloads, components and reference tables: the
+ * kit's copies from the vocabulary, the generator's files beside them, the digest checked against the case's, the
+ * pods folder given the reference tables as an app holds them, then each import in order.
  */
 export async function prepare(
   id: string,
@@ -269,10 +281,11 @@ export async function prepare(
     throw new Error(
       "a pinned run pins cascade-vocabulary, which holds the kits' downloads",
     );
+  const tables = await referenceTables(log);
   if (existsSync(record)) {
     const kept = JSON.parse(await readFile(record, "utf8")) as Prepared;
     if (
-      keeps(kept, found.downloads.sha256, resolved) &&
+      keeps(kept, found.downloads.sha256, resolved, tables.id) &&
       existsSync(join(kept.pods, kept.pod))
     )
       return kept;
@@ -296,6 +309,7 @@ export async function prepare(
       `${id}'s downloads are not the ones its key was written against: digest ${digest}, the case says ${found.downloads.sha256}. A kit download or the generator changed; check the key against the new downloads before updating the digest.`,
     );
   const pods = join(folder, "pods");
+  await giveTables(pods, tables);
   log(`${id}: importing ${found.imports.length} downloads into a new pod`);
   const imports: Prepared["imports"][number][] = [];
   const started = performance.now();
@@ -360,6 +374,7 @@ export async function prepare(
     pods,
     pod: id,
     components: resolved,
+    tables: { id: tables.id, versions: tables.versions },
     imports,
     documents,
     build,
