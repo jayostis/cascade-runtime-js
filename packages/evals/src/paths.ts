@@ -18,8 +18,14 @@ export const RUNS = at("runs");
 export const HISTORY = at("history");
 /** Prepared cases (downloads and pods), rebuilt when their inputs change; gitignored. `CASCADE_EVALS_WORK` names another. */
 export const WORK = process.env.CASCADE_EVALS_WORK ?? at("work");
-/** The reference tables every case's pod is given, held once; gitignored. */
-export const REFERENCE_TABLES = at("work/reference-tables");
+/**
+ * The folder whose `.tables/` is the reference tables every case's pod is given, held once; gitignored. In `WORK`, so
+ * one `CASCADE_EVALS_WORK` moves everything. `CASCADE_EVALS_TABLES` names tables already held, which are used as they
+ * stand and never fetched.
+ */
+export const TABLES_GIVEN = process.env.CASCADE_EVALS_TABLES !== undefined;
+export const REFERENCE_TABLES =
+  process.env.CASCADE_EVALS_TABLES ?? join(WORK, "reference-tables");
 export const PRICES = at("prices.json");
 export const PRIORS = at("priors.json");
 

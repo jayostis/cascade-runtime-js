@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-tables-"));
 process.env.CASCADE_EVALS_WORK = join(folder, "work");
+// the drug products rows of Priya's RxNorm codes, as the starter copies hold them: the live feed is for `prepare`
+process.env.CASCADE_EVALS_TABLES = join(folder, "tables");
+await cp(
+  fileURLToPath(new URL("../../test/drug-products", import.meta.url)),
+  join(folder, "tables", ".tables"),
+  { recursive: true },
+);
 const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
 const { prepare } = await import("../src/cases.js");
