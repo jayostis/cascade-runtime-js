@@ -11,6 +11,7 @@ import {
   downloadsSource,
   fhirFields,
   isoDate,
+  narrativeFields,
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
@@ -995,6 +996,43 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
   assert.deepEqual(pod("entered-in-error"), { backed: true });
   assert.deepEqual(pod("refuted"), { backed: true });
   assert.deepEqual(pod("active"), { backed: false, reason: "query found it" });
+  assert.deepEqual(pod("ruled out"), { backed: true });
+
+  const history = { pod: "p", question: "pod/My condition history" };
+  const tamsin = (row: Record<string, string>) =>
+    checkAbsence({ ...absence, query: { tool: "ask", input: history } }, [
+      {
+        tool: "ask",
+        input: history,
+        ok: true,
+        answer: JSON.stringify({
+          total: 1,
+          rows: [
+            {
+              condition: "Pulmonary embolism",
+              snomed: "http://snomed.info/id/59282003",
+              onset: "2025-07-08",
+              abated: "2025-07-08",
+              ...row,
+            },
+          ],
+        }),
+      },
+    ]);
+  assert.deepEqual(
+    tamsin({ status: "ruled out", verificationStatus: "refuted" }),
+    { backed: true },
+    "resolved and refuted at its source: ruled out, no presence",
+  );
+  assert.deepEqual(tamsin({ status: "resolved" }), {
+    backed: false,
+    reason: "query found it",
+  });
+  assert.deepEqual(
+    narrativeFields("<paragraph>Pulmonary embolism ruled out by CT</paragraph>")
+      .status,
+    ["ruled-out"],
+  );
 });
 
 const held = (file: string) => ({
