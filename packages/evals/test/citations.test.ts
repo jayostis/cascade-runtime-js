@@ -1187,3 +1187,79 @@ test("a withdrawn record with an after date holds nothing", async () => {
     { backed: true },
   );
 });
+
+const narrativeRow = (cells: string) =>
+  `<ClinicalDocument><component><structuredBody><component><section><text><table><tbody><tr>${cells}</tr></tbody></table></text></section></component></structuredBody></component></ClinicalDocument>`;
+
+test("a narrative row that says it was not entered in error, or lists none, is a live row", async () => {
+  for (const status of [
+    "Not entered in error",
+    "Entered in error: none",
+    "Entered in error: no",
+  ])
+    for (const after of [undefined, "2025-01-01"])
+      assert.deepEqual(
+        await inRecords(
+          after,
+          ["pulmonary embolism"],
+          narrativeRow(
+            `<td>Pulmonary embolism</td><td>${status}</td><td>July 8, 2025</td>`,
+          ),
+        ),
+        held("b"),
+        status,
+      );
+});
+
+test("a narrative row dated in words is dated: it backs an absence after a later day and not after an earlier one", async () => {
+  const row = narrativeRow(
+    "<td>Hemoglobin A1c 4548-4</td><td>February 16, 2026</td>",
+  );
+  assert.deepEqual(await inRecords("2026-02-17", [], row, ["4548-4"]), {
+    backed: true,
+  });
+  assert.deepEqual(
+    await inRecords("2026-02-16", [], row, ["4548-4"]),
+    held("b"),
+  );
+  assert.deepEqual(
+    await inRecords("2026-02-01", [], row, ["4548-4"]),
+    held("b"),
+  );
+});
+
+test("a partial date is the whole period it names: it backs an absence after a day only if the period ends before it", async () => {
+  const ccda = (value: string) =>
+    `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"><code code="4548-4"/><effectiveTime value="${value}"/></observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  for (const [value, after, backed] of [
+    ["2025", "2026-01-01", true],
+    ["2025", "2025-12-31", false],
+    ["2025", "2025-06-01", false],
+    ["202507", "2025-08-01", true],
+    ["202507", "2025-07-31", false],
+    ["202507", "2025-07-15", false],
+  ] as const)
+    assert.deepEqual(
+      await inRecords(after, [], ccda(value), ["4548-4"]),
+      backed ? { backed: true } : held("b"),
+      `${value} after ${after}`,
+    );
+  assert.deepEqual(
+    await inRecords(
+      "2025-08-01",
+      [],
+      bundle(observation({ effectiveDateTime: "2025-07" })),
+      ["4548-4"],
+    ),
+    { backed: true },
+  );
+  assert.deepEqual(
+    await inRecords(
+      "2025-07-15",
+      [],
+      bundle(observation({ effectiveDateTime: "2025-07" })),
+      ["4548-4"],
+    ),
+    held("b"),
+  );
+});
