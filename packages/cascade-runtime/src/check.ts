@@ -2,8 +2,9 @@ import { Refusal } from "@cascade-runtime/runtime/refusal";
 
 /** The keywords of JSON Schema that `checkInput` knows, and no others. */
 export interface InputSchema {
-  readonly type: "object" | "string" | "integer";
+  readonly type: "object" | "array" | "string" | "integer";
   readonly description?: string;
+  readonly items?: InputSchema;
   readonly properties?: Readonly<Record<string, InputSchema>>;
   readonly required?: readonly string[];
   readonly additionalProperties?: false;
@@ -44,6 +45,14 @@ export function checkInput(schema: Schema, input: unknown, at = "input"): void {
       }
       if (value !== undefined) checkInput(property, value, `${at}.${name}`);
     }
+    return;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(input)) throw new Refusal(`${at} must be an array`);
+    if (schema.items !== undefined)
+      input.forEach((item, n) =>
+        checkInput(schema.items!, item, `${at}[${n}]`),
+      );
     return;
   }
   if (schema.type === "string") {

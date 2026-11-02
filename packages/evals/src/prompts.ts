@@ -64,10 +64,11 @@ const POD = `Your access: {PRONOUN_POSSESSIVE} records are in a pod, which you r
   {COMMAND} <tool> '<JSON input>'
 
 It calls the pod's MCP server (cascade-mcp) and prints the tool's answer, then the call's number. \`{COMMAND} --list\`
-prints the tools and their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}". Run it once per Bash call,
-exactly as written, with one tool and its input: no loops, variables, pipes or chained commands (several Bash calls in
-one turn run together). Use no other command and read no file; use no tool except Bash for these two commands and
-Write for each answer.`;
+prints the tools and their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}". \`ask\` with {"format": "compact"}
+and no question reads the whole pod in one compact answer, a page at a time: every view's entries as tab-separated
+rows, each entry by a short handle. Run the command once per Bash call, exactly as written, with one tool and its input: no
+loops, variables, pipes or chained commands (several Bash calls in one turn run together). Use no other command and
+read no file; use no tool except Bash for these two commands and Write for each answer.`;
 
 const QUESTION = `{ASKS}
 
@@ -83,7 +84,7 @@ const EXAMPLE = (cite: string, query: string) =>
 
 const FILE_CITE = `    {"file": "<path as listed>", "line": <line number>}, or for a FHIR JSON file {"file": "<path>", "resource":
     "<resourceType>/<id>"}`;
-const ENTRY_CITE = `    {"entry": "<the entry IRI the row names>"}`;
+const ENTRY_CITE = `    {"entry": "<the entry IRI the row names, or the entry's handle in a compact answer>"}`;
 const POD_ABSENCE = `, and "query": the tool call that looked, {"tool": "<name>", "input": <its JSON input, exactly as you ran it>, "call": <the number the command printed after its answer>}`;
 
 export interface SessionPrompt {

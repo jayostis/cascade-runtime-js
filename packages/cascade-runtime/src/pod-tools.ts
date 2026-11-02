@@ -28,6 +28,141 @@ import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
 
 export * from "./table-checks.js";
 
+// ---- The compact read's names: its handles and its shapes. The read itself is Node's (`compact-read.ts`, behind `podReads`). ----
+
+/** The question whose rows name each entry's records and the documents they came from. */
+export const PROVENANCE_QUESTION = "entry/Where it came from";
+
+/** The most characters one answer of the compact read holds as JSON: under the 30,000 a shell's output is cut at. */
+export const PAGE_CHARACTERS = 24_000;
+
+/** A handle: a letter of the entry's view, then the start of the entry's fragment, at least 8 of its 64 hex digits. */
+export const HANDLE = /^([A-Z])([0-9a-f]{8,64})$/;
+const SHORTEST = 8;
+const ENTRY = /^[^#\s]+#([0-9a-f]{64})$/;
+
+/** The letter of the view an entry is named in: the first of its view file's name (`lab-results.ttl#…`, L). */
+function letterOf(entry: string): string {
+  const file = entry.split("#")[0]!.split("/").pop() ?? "";
+  return /[a-z]/i.test(file[0] ?? "") ? file[0]!.toUpperCase() : "E";
+}
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * The entry `handle` names among `members`, each an entry with a record merged into it: the one entry whose fragment
+ * starts with the handle's digits and whose view has its letter; failing that, a handle minted before a record that
+ * sorts first joined the entry, so the entry holding the one record whose name's SHA-256 starts with them (an entry's
+ * fragment is the SHA-256 of its least member's name). Undefined when it names none, or more than one.
+ */
+export async function entryOfHandle(
+  handle: string,
+  members: readonly { readonly entry: string; readonly record?: string }[],
+): Promise<string | undefined> {
+  const parts = HANDLE.exec(handle);
+  if (parts === null) return undefined;
+  const [, letter, digits] = parts as unknown as [string, string, string];
+  const only = (found: Iterable<string>) => {
+    const one = [...new Set(found)].filter((it) => letterOf(it) === letter);
+    return one.length === 1 ? one[0] : undefined;
+  };
+  const named = only(
+    members
+      .map(({ entry }) => entry)
+      .filter((entry) => ENTRY.exec(entry)?.[1]!.startsWith(digits)),
+  );
+  if (named !== undefined) return named;
+  const holding: string[] = [];
+  for (const { entry, record } of members)
+    if (record !== undefined && (await sha256(record)).startsWith(digits))
+      holding.push(entry);
+  return only(holding);
+}
+
+/** Each entry's handle: its view's letter and the shortest start of its fragment, at least 8, that no other entry's has. */
+export function handlesOf(entries: Iterable<string>): Map<string, string> {
+  const named = [...new Set(entries)]
+    .map((entry) => [entry, ENTRY.exec(entry)?.[1]] as const)
+    .filter((it): it is readonly [string, string] => it[1] !== undefined)
+    .sort(([, a], [, b]) => a.localeCompare(b));
+  const shared = (a = "", b = "") => {
+    let at = 0;
+    while (at < a.length && a[at] === b[at]) at += 1;
+    return at;
+  };
+  return new Map(
+    named.map(([entry, digits], at) => [
+      entry,
+      `${letterOf(entry)}${digits.slice(
+        0,
+        Math.max(
+          SHORTEST,
+          shared(digits, named[at - 1]?.[1]) + 1,
+          shared(digits, named[at + 1]?.[1]) + 1,
+        ),
+      )}`,
+    ]),
+  );
+}
+
+/** One view's part of a page: its question, how many rows it has, where this part starts, how many it shows, and them. */
+export interface CompactView {
+  readonly question: string;
+  readonly total: number;
+  readonly offset: number;
+  readonly shown: number;
+  readonly text: string;
+}
+
+/** A page of the compact read; `next`, when the read goes on, is the input that asks for the next page. */
+export interface CompactAnswer {
+  readonly format: "compact";
+  readonly about: string;
+  readonly sources: string;
+  readonly leftOut?: string;
+  readonly views: readonly CompactView[];
+  readonly next?: Readonly<Record<string, unknown>>;
+}
+
+/** What the compact read is asked: its questions in order, where a page starts and the entries it is cut to. */
+export interface CompactInput {
+  readonly questions: readonly string[];
+  /** The views it leaves out, each beside the view that holds every one of its entries. */
+  readonly leftOut?: Readonly<Record<string, string>>;
+  readonly offset?: number;
+  readonly entries?: readonly string[];
+  /** The input a page's `next` repeats, beside its offset. */
+  readonly again: Readonly<Record<string, unknown>>;
+}
+
+/** The entries `wanted` names, each by its IRI or its handle among `members`. @throws Refusal for one that names none. */
+export async function entriesNamed(
+  wanted: readonly string[],
+  members: readonly Row[],
+): Promise<Set<string>> {
+  const pairs = members.flatMap(({ entry, record }) =>
+    entry === undefined
+      ? []
+      : [{ entry, ...(record === undefined ? {} : { record }) }],
+  );
+  const found = new Set<string>();
+  for (const each of wanted) {
+    const entry = HANDLE.test(each) ? await entryOfHandle(each, pairs) : each;
+    if (entry === undefined)
+      throw new Refusal(`no entry of the pod has the handle ${each}`);
+    found.add(entry);
+  }
+  return found;
+}
+
 /** The questions `ask` offers: the person's own records, what their reports and notes say, who they are, where an entry came from and what needs review. Never free SPARQL. */
 export const QUESTIONS = [
   "pod/My active allergies",
@@ -44,6 +179,18 @@ export const QUESTIONS = [
   "entry/Where it came from",
   "entry/What needs review",
 ];
+/** The views the compact read leaves out, each beside the view that holds every one of its entries with its status. */
+export const LEFT_OUT_OF_THE_COMPACT_READ: Readonly<Record<string, string>> = {
+  "pod/My active conditions": "pod/My condition history",
+  "pod/My active medications": HISTORY_QUESTION,
+};
+/** What the compact read holds, in order: the person's own records and who they are, then what needs review. */
+export const COMPACT_QUESTIONS: readonly string[] = QUESTIONS.filter(
+  (question) =>
+    (question.startsWith("pod/") &&
+      !Object.hasOwn(LEFT_OUT_OF_THE_COMPACT_READ, question)) ||
+    question === "entry/What needs review",
+);
 /** How many rows `ask` gives unless asked for more: a pod's lab results run to thousands of tokens. */
 export const DEFAULT_ROWS = 50;
 export const MAXIMUM_ROWS = 500;
@@ -65,11 +212,20 @@ export function citedFinding(finding: Finding): CitedFinding {
 /** What the tools read: the pods there are, a question's rows, and a change tool's answer. */
 export interface PodReads {
   pods(input?: object): Promise<{ pods: readonly { name: string }[] }>;
+  /** A question's rows: all of them, or `limit` from `offset`, beside how many there are and, when not 0, the offset. */
   ask(input: {
     pod: string;
     question: string;
     limit?: number;
-  }): Promise<{ question: string; total: number; rows: readonly Row[] }>;
+    offset?: number;
+  }): Promise<{
+    question: string;
+    total: number;
+    offset?: number;
+    rows: readonly Row[];
+  }>;
+  /** A page of the compact read of a pod; absent when the host does not make it (it is made where the pod is read). */
+  compact?(input: CompactInput & { pod: string }): Promise<CompactAnswer>;
   tool(input: {
     pod: string;
     tool: string;
@@ -372,34 +528,106 @@ export const TOOLS: readonly PodTool[] = (
     ),
     {
       name: "ask",
-      description:
-        "A pod's records by the name of a question, as rows, each naming its entry and the records, documents and hospitals it came from: its allergies with their reactions and severity, conditions (active, or all with each ruled out or resolved one and when it ended), medications (active, or all with when each started and stopped) with each source's own status, lab results with their flags and reference ranges, immunizations, procedures, genetic variants, the person it is about with each source's date of birth, gender and death, where an entry came from, or which entries need review and why.",
+      description: `A pod's records by the name of a question, as rows, each naming its entry and the records, documents and hospitals it came from: its allergies with their reactions and severity, conditions (active, or all with each ruled out or resolved one and when it ended), medications (active, or all with when each started and stopped) with each source's own status, lab results with their flags and reference ranges, immunizations, procedures, genetic variants, the person it is about with each source's date of birth, gender and death, where an entry came from, or which entries need review and why. With format compact and no question, the whole pod in one read, a page of at most ${PAGE_CHARACTERS} characters at a time: ${COMPACT_QUESTIONS.join(", ")}, each view's rows tab-separated with its count, each entry by a short handle that can be cited as its entry, each source by a short name its legend explains. It leaves out ${Object.keys(LEFT_OUT_OF_THE_COMPACT_READ).join(" and ")}, whose entries are all in the history beside them, and when each record arrived; ${PROVENANCE_QUESTION} with entries gives an entry's records and documents. A record the pod leaves out of every view (entered in error at its source, an allergy its source refutes, a record about no one known to be the person, or one a judgment sets aside) is in no question's answer.`,
       inputSchema: {
         type: "object",
         properties: {
           question: {
             type: "string",
-            description: "The question's name.",
+            description:
+              "The question's name; with format compact, left out for every view at once.",
             enum: QUESTIONS,
+          },
+          format: {
+            type: "string",
+            description:
+              "rows (the default): the question's rows as JSON; compact: its views' rows as tab-separated text, a page at a time.",
+            enum: ["rows", "compact"],
           },
           limit: {
             type: "integer",
-            description: `At most this many rows; ${DEFAULT_ROWS} if left out. The answer says how many there are.`,
+            description: `For rows, at most this many; ${DEFAULT_ROWS} if left out. The answer says how many there are.`,
             minimum: 1,
             maximum: MAXIMUM_ROWS,
           },
+          offset: {
+            type: "integer",
+            description:
+              "Where the answer starts: for rows, the row; for compact, the row over every view in order, as the last page's next gives it.",
+            minimum: 0,
+          },
+          entries: {
+            type: "array",
+            description:
+              "Only these entries' rows: each an entry's IRI or its handle.",
+            items: { type: "string" },
+          },
         },
-        required: ["question"],
         additionalProperties: false,
       },
       tier: "free",
       ofPod: true,
-      run: (reads, { pod, question, limit }) =>
-        reads.ask({
-          pod: pod as string,
-          question: question as string,
-          limit: (limit as number | undefined) ?? DEFAULT_ROWS,
-        }),
+      run: async (reads, input) => {
+        const { pod, question, limit, offset, entries } = input as {
+          pod: string;
+          question?: string;
+          limit?: number;
+          offset?: number;
+          entries?: string[];
+        };
+        if (input.format === "compact") {
+          if (limit !== undefined)
+            throw new Refusal(
+              "limit is for rows; the compact read comes a page at a time, from offset",
+            );
+          if (reads.compact === undefined)
+            throw new Refusal(
+              "this host does not offer the compact read; ask a question for its rows",
+            );
+          return reads.compact({
+            pod,
+            questions: question === undefined ? COMPACT_QUESTIONS : [question],
+            ...(question === undefined
+              ? { leftOut: LEFT_OUT_OF_THE_COMPACT_READ }
+              : {}),
+            ...(offset === undefined ? {} : { offset }),
+            ...(entries === undefined ? {} : { entries }),
+            again: {
+              pod,
+              format: "compact",
+              ...(question === undefined ? {} : { question }),
+              ...(entries === undefined ? {} : { entries }),
+            },
+          });
+        }
+        if (question === undefined)
+          throw new Refusal(
+            "rows answer one question; the compact read (format compact) reads every view",
+          );
+        const page = { limit: limit ?? DEFAULT_ROWS, offset: offset ?? 0 };
+        if (entries === undefined)
+          return reads.ask({
+            pod,
+            question,
+            limit: page.limit,
+            ...(offset === undefined ? {} : { offset }),
+          });
+        const [all, provenance] = await Promise.all(
+          [question, PROVENANCE_QUESTION].map((asked) =>
+            reads.ask({ pod, question: asked }),
+          ),
+        );
+        const wanted = await entriesNamed(entries, provenance!.rows);
+        const rows = all!.rows.filter(
+          ({ entry }) => entry !== undefined && wanted.has(entry),
+        );
+        return {
+          question,
+          total: rows.length,
+          ...(page.offset === 0 ? {} : { offset: page.offset }),
+          rows: rows.slice(page.offset, page.offset + page.limit),
+        };
+      },
     },
     {
       name: "reference_table_checks",

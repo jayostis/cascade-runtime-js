@@ -15,6 +15,7 @@ import {
   type Ran,
   type Tie,
 } from "./citations.js";
+import { entryOfHandle, HANDLE } from "cascade-runtime/tools";
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { errorsOf } from "./schemas.js";
@@ -70,16 +71,38 @@ export async function checkKey(id: string, log: (line: string) => void) {
   return { case: id, claims, failed };
 }
 
-/** The rows `entry/What it shows` gives of one entry: each field, its value and the record it is from. */
 /** What reads a pod's questions: the pod itself, or a pinned build of the runtime asked in its own process. */
 export interface Asker {
   ask(question: string): Promise<readonly Readonly<Record<string, string>>[]>;
 }
 
+/**
+ * The entry a cite names: its IRI as given, or the entry a compact read's handle names, looked up among the entries
+ * `entry/What it shows` gives and the records merged into each (`entryOfHandle`).
+ */
+export function entryNamed(pod: Asker) {
+  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+  return async (cited: string) => {
+    if (!HANDLE.test(cited)) return cited;
+    all ??= pod.ask(ENTRY_QUESTION);
+    return entryOfHandle(
+      cited,
+      (await all).flatMap(({ entry, from }) =>
+        entry === undefined
+          ? []
+          : [{ entry, ...(from === undefined ? {} : { record: from }) }],
+      ),
+    );
+  };
+}
+
+/** The rows `entry/What it shows` gives of the entry a cite names: each field, its value and the record it is from. */
 export function entryRows(pod: Asker) {
   let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  return async (entry: string) => {
+  const named = entryNamed(pod);
+  return async (cited: string) => {
     all ??= pod.ask(ENTRY_QUESTION);
+    const entry = await named(cited);
     const rows = (await all).filter((row) => row.entry === entry);
     return rows.length === 0 ? undefined : rows;
   };

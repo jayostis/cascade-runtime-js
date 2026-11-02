@@ -8,6 +8,7 @@ import {
   type Answer,
   type Asker,
   checkAnswer,
+  entryNamed,
   PINNED_QUESTIONS,
   judgeViolations,
 } from "./checks.js";
@@ -321,7 +322,10 @@ export async function evidenceOf(o: {
   reading: readonly string[];
   /** The files the job read whole, as its checks found them. */
   read?: readonly string[];
-  provenance: (entry: string) => EntryProvenance | undefined;
+  /** The provenance of the entry a cite names, by its IRI or its handle. */
+  provenance: (
+    entry: string,
+  ) => EntryProvenance | undefined | Promise<EntryProvenance | undefined>;
   toolCalls: readonly ToolCallRecord[];
 }): Promise<Evidence[]> {
   const found: Evidence[] = [];
@@ -335,7 +339,7 @@ export async function evidenceOf(o: {
         fact,
         cite,
         ...("entry" in cite
-          ? { entry: o.provenance(cite.entry) ?? null }
+          ? { entry: (await o.provenance(cite.entry)) ?? null }
           : { passage: (await passageOf(o.prepared.downloads, cite)) ?? null }),
       });
     for (const [absence, { query, sources }] of (
@@ -443,8 +447,13 @@ export async function finish(given: string, log: (line: string) => void) {
       keyUrl: `https://github.com/jayostis/cascade-runtime-js/blob/${plan.harness.commit}/packages/evals/cases/${caseId}/key.md`,
       build: prepared.build ?? null,
     });
-    const provenance = await podProvenance(join(prepared.pods, prepared.pod));
+    const provenanceOf = await podProvenance(join(prepared.pods, prepared.pod));
     const pod = await askerOf(prepared);
+    const named = entryNamed(pod);
+    const provenance = async (cited: string) => {
+      const entry = await named(cited);
+      return entry === undefined ? undefined : provenanceOf(entry);
+    };
     try {
       for (const job of plan.jobs.filter(
         (it) => it.role === "subject" && it.case === caseId,

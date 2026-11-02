@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Refusal, Unopened } from "@cascade-runtime/runtime";
 import { changeTools, findChanges } from "../changes.js";
 import { checkInput } from "../check.js";
+import { compactRead } from "../compact-read.js";
 import { openPod, tablesBeside } from "../index.js";
 import type { Pod } from "../pod.js";
 import type { Tables } from "../tables.js";
@@ -90,13 +91,21 @@ export function podReads(
     async pods() {
       return { pods: (await host.names()).map((name) => ({ name })) };
     },
-    async ask({ pod, question, limit }) {
+    async ask({ pod, question, limit, offset = 0 }) {
       const rows = await (await podNamed(pod)).ask(question);
       return {
         question,
         total: rows.length,
-        rows: limit === undefined ? rows : rows.slice(0, limit),
+        ...(offset === 0 ? {} : { offset }),
+        rows: rows.slice(
+          offset,
+          limit === undefined ? undefined : offset + limit,
+        ),
       };
+    },
+    async compact({ pod, ...input }) {
+      const asked = await podNamed(pod);
+      return compactRead((question) => asked.ask(question), input);
     },
     async tool({ pod: name, tool: called, input = {} }) {
       unknownChangeTool(called);

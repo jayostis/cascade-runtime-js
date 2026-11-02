@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import type { Pod, Row } from "cascade-runtime";
-import { TOOLS } from "cascade-runtime/tools";
-import { podReads } from "cascade-runtime/tools/node";
+import { replayKit } from "cascade-runtime/fixtures";
+import {
+  COMPACT_QUESTIONS,
+  LEFT_OUT_OF_THE_COMPACT_READ,
+  PAGE_CHARACTERS,
+  TOOLS,
+} from "cascade-runtime/tools";
+import { podReads, podsIn } from "cascade-runtime/tools/node";
 
 const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
 const LOINC = "http://loinc.org/";
@@ -452,4 +462,408 @@ test("ask offers the question a model reads every report's and note's text by, a
   });
   await reads.close();
   assert.deepEqual(asked, ["pod/My reports, notes and documents"]);
+});
+
+const ask = TOOLS.find((tool) => tool.name === "ask")!;
+const PROVENANCE = "entry/Where it came from";
+const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+const record = (n: number) =>
+  `urn:uuid:00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const DOCUMENT = `ni:///sha-256;${"d".repeat(43)}`;
+
+interface Compact {
+  readonly views: readonly {
+    readonly question: string;
+    readonly total: number;
+    readonly offset: number;
+    readonly shown: number;
+    readonly text: string;
+  }[];
+  readonly leftOut?: string;
+  readonly next?: Record<string, unknown>;
+}
+const idsOf = (text: string) =>
+  text
+    .split("\n")
+    .slice(1)
+    .filter(Boolean)
+    .map((line) => line.split("\t")[0]!);
+
+let kits: string;
+before(
+  async () => {
+    kits = await mkdtemp(join(tmpdir(), "compact-"));
+    await replayKit("tamsin-vale", join(kits, "tamsin-vale"));
+  },
+  { timeout: 120_000 },
+);
+after(() => rm(kits, { recursive: true, force: true, maxRetries: 5 }));
+
+test("ask's compact read of Tamsin's pod is one answer under the page budget, with every entry of every view it covers, each view's count, handles that name their entries, and no IRI but the person's", async () => {
+  const reads = podReads(podsIn(kits));
+  const pod = "tamsin-vale";
+  const answer = (await ask.run(reads, { pod, format: "compact" })) as Compact;
+  const text = JSON.stringify(answer);
+  assert.ok(text.length <= PAGE_CHARACTERS, `${text.length} characters`);
+  assert.equal(answer.next, undefined);
+  assert.deepEqual(
+    answer.views.map(({ question }) => question),
+    COMPACT_QUESTIONS,
+  );
+  for (const view of answer.views) {
+    const { total, rows } = await reads.ask({ pod, question: view.question });
+    assert.deepEqual(
+      [view.total, view.offset, view.shown, idsOf(view.text).length],
+      [total, 0, total, total],
+      view.question,
+    );
+    const entries = new Set(rows.flatMap(({ entry }) => entry ?? []));
+    if (entries.size === 0) continue;
+    const named = (await ask.run(reads, {
+      pod,
+      question: PROVENANCE,
+      entries: [...new Set(idsOf(view.text))],
+    })) as { rows: Row[] };
+    assert.deepEqual(
+      new Set(named.rows.map(({ entry }) => entry)),
+      entries,
+      view.question,
+    );
+  }
+  const [person] = (
+    await reads.ask({ pod, question: "pod/The person this pod is about" })
+  ).rows;
+  assert.deepEqual(
+    [...new Set(text.match(/pod:\/\/|urn:uuid:[0-9a-f-]+|ni:\/\/\//g))],
+    [person!.subject],
+  );
+  const of = async (question: string) =>
+    new Set((await reads.ask({ pod, question })).rows.map((it) => it.entry));
+  for (const [subset, whole] of Object.entries(LEFT_OUT_OF_THE_COMPACT_READ)) {
+    const parent = await of(whole);
+    for (const entry of await of(subset))
+      assert.ok(parent.has(entry), `${subset}: ${entry} is in ${whole}`);
+    assert.ok(answer.leftOut?.includes(subset), subset);
+  }
+  await reads.close();
+});
+
+/**
+ * A pod of `labs` lab results, each its own entry of one record, all from one document of one pull; the nth row's record
+ * has the nth of `texts` as the text its source wrote for it.
+ */
+function labPod(labs: number, texts: readonly string[] = []) {
+  const rows: Row[] = Array.from({ length: labs }, (_, n) => ({
+    performed: `2024-${String(1 + (n % 12)).padStart(2, "0")}-01T16:00:00Z`,
+    test: `Test ${n}, named at the length a panel's tests are`,
+    code: `${LOINC}rdf/${n}-0`,
+    value: String(n),
+    unit: "mg/dL",
+    records: "1",
+    ...(texts[n] === undefined
+      ? {}
+      : { narrativeTexts: `${record(n)} ${texts[n]}` }),
+    entry: `pod://p/clinical/lab-results.ttl#${sha(record(n))}`,
+    sources: `${record(n)} from ${DOCUMENT}, retrieved 2024-02-01T00:00:00Z, written by Lab`,
+  }));
+  const provenance: Row[] = rows.map(({ entry }, n) => ({
+    entry: entry!,
+    record: record(n),
+    import: record(1_000_000),
+    importLabel: "FHIR pull",
+    document: DOCUMENT,
+    hospital: "Lab",
+    retrieved: "2024-02-01T00:00:00Z",
+  }));
+  return podReads({
+    names: async () => ["p"],
+    open: async () =>
+      ({
+        ask: async (question: string) =>
+          question === "pod/My lab results"
+            ? rows
+            : question === PROVENANCE
+              ? provenance
+              : [],
+        close: async () => undefined,
+      }) as unknown as Pod,
+  });
+}
+
+test("a source's text for an entry is shown only where it adds words its row does not already say, a date written in words being the row's date", async () => {
+  const reads = labPod(2, [
+    "Test 0, named at the length a panel's tests are\n0 mg/dL\nJanuary 1, 2024 16:00 UTC",
+    "Test 1, named at the length a panel's tests are\n1 mg/dL\nhistorical result",
+  ]);
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "pod/My lab results",
+  })) as Compact;
+  const [header, ...lines] = views[0]!.text.split("\n");
+  const at = header!.split("\t").indexOf("narrativeTexts");
+  assert.deepEqual(
+    lines.map((line) => line.split("\t")[at]),
+    [
+      "S1 Test 1, named at the length a panel's tests are\\n1 mg/dL\\nhistorical result",
+      "",
+    ],
+  );
+  await reads.close();
+});
+
+const documentOf = (n: number) => `ni:///sha-256;${String(n).repeat(43)}`;
+const entryOf = (view: string, n: number) =>
+  `pod://p/${view}.ttl#${sha(`entry ${n}`)}`;
+/** A record of an entry, from the document of the hospital `n` names (1 Alpha Clinic, 2 Beta Hospital). */
+const recordOf = (entry: string, n: number, from: 1 | 2): Row => ({
+  entry,
+  record: record(n),
+  import: record(900 + from),
+  importLabel: "C-CDA download",
+  document: documentOf(from),
+  hospital: from === 1 ? "Alpha Clinic" : "Beta Hospital",
+  retrieved: "2025-08-01T00:00:00Z",
+});
+const sourced = (n: number, from: 1 | 2) =>
+  `${record(n)} from ${documentOf(from)}`;
+/** The pod whose questions answer `views`, and whose records are `provenance`. */
+function podOf(views: Record<string, Row[]>, provenance: Row[]) {
+  return podReads({
+    names: async () => ["p"],
+    open: async () =>
+      ({
+        ask: async (question: string) =>
+          question === PROVENANCE ? provenance : (views[question] ?? []),
+        close: async () => undefined,
+      }) as unknown as Pod,
+  });
+}
+/** A compact view's lines, each as its cells by the header's names. */
+const linesOf = (text: string) => {
+  const [header = "", ...lines] = text.split("\n");
+  const names = header.split("\t");
+  return lines.map((line) =>
+    Object.fromEntries(line.split("\t").map((cell, at) => [names[at], cell])),
+  );
+};
+
+test("a status, a conclusion and the prose of a source's text are never left out for words the row says: only a source's text that says no more than its row is", async () => {
+  const [condition, medication, report] = [
+    entryOf("conditions", 1),
+    entryOf("medications", 2),
+    entryOf("reports", 3),
+  ] as [string, string, string];
+  const reads = podOf(
+    {
+      "pod/My condition history": [
+        {
+          condition: "Pulmonary embolism",
+          status: "ruled out",
+          statuses: `${record(1)} ruled out; ${record(2)} active`,
+          entry: condition,
+          sources: `${sourced(1, 1)}; ${sourced(2, 2)}`,
+        },
+      ],
+      "pod/My medication history": [
+        {
+          medication: "Progress note on warfarin plan",
+          status: "on-hold",
+          statuses: `${record(3)} on-hold; ${record(4)} active`,
+          narrativeTexts: `${record(3)} hold warfarin; warfarin plan reviewed; progress note`,
+          entry: medication,
+          sources: `${sourced(3, 1)}; ${sourced(4, 2)}`,
+        },
+      ],
+      "pod/My reports, notes and documents": [
+        {
+          kind: "Report",
+          name: "CT angiography chest (pulmonary embolism protocol)",
+          conclusion: "Pulmonary embolism.",
+          entry: report,
+          sources: sourced(5, 1),
+        },
+      ],
+    },
+    [
+      recordOf(condition, 1, 1),
+      recordOf(condition, 2, 2),
+      recordOf(medication, 3, 1),
+      recordOf(medication, 4, 2),
+      recordOf(report, 5, 1),
+    ],
+  );
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+  })) as Compact;
+  const lines = (question: string) =>
+    linesOf(views.find((it) => it.question === question)!.text)[0]!;
+  const drug = lines("pod/My medication history");
+  assert.deepEqual(
+    [
+      lines("pod/My condition history").statuses,
+      drug.statuses,
+      drug.narrativeTexts,
+      lines("pod/My reports, notes and documents").conclusion,
+    ],
+    [
+      "S1 ruled out; S2 active",
+      "S1 on-hold; S2 active",
+      "S1 hold warfarin; warfarin plan reviewed; progress note",
+      "Pulmonary embolism.",
+    ],
+  );
+  await reads.close();
+});
+
+test("what needs review gives each record by its source and its own label, less when it was received, so two records of one source are told apart", async () => {
+  const [one, other] = [
+    entryOf("medications", 1),
+    entryOf("medications", 2),
+  ] as [string, string];
+  const reads = podOf(
+    {
+      "entry/What needs review": [
+        {
+          entry: one,
+          entryLabel: "Medication entry · losartan 50 mg tablet",
+          needs: "possibly the same medication",
+          record: record(1),
+          recordLabel:
+            "Medication · losartan 50 mg tablet · Clearwater · received 2026-11-02",
+          otherRecord: record(2),
+          otherRecordLabel:
+            "Medication · losartan potassium 50 MG Oral Tablet · Fernhill · received 2026-11-02",
+        },
+      ],
+    },
+    [recordOf(one, 1, 1), recordOf(other, 2, 2)],
+  );
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "entry/What needs review",
+  })) as Compact;
+  const [line] = linesOf(views[0]!.text);
+  assert.equal(
+    line!.record,
+    "S1 Medication · losartan 50 mg tablet · Clearwater",
+  );
+  assert.match(
+    line!.otherRecord!,
+    /^S2 in M[0-9a-f]{8,} Medication · losartan potassium 50 MG Oral Tablet · Fernhill$/,
+  );
+  await reads.close();
+});
+
+test("the tools bundle for a page holds no compact read: it is made in Node, by the reads, and a host that cannot says so", async () => {
+  const { metafile } = await build({
+    entryPoints: [fileURLToPath(import.meta.resolve("cascade-runtime/tools"))],
+    bundle: true,
+    platform: "browser",
+    format: "esm",
+    write: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  assert.deepEqual(
+    Object.keys(metafile.inputs).filter((it) => /compact-read/.test(it)),
+    [],
+  );
+  await assert.rejects(
+    ask.run({ ask: async () => ({}) } as never, {
+      pod: "p",
+      format: "compact",
+    }),
+    (error: Error) =>
+      error.name === "Refusal" &&
+      /does not offer the compact read/.test(error.message),
+  );
+});
+
+test("a read longer than a page goes on from the offset its answer names: every page under the budget, every row on exactly one", async () => {
+  const reads = labPod(400);
+  const shown = new Map<string, string[]>();
+  let input: Record<string, unknown> = { pod: "p", format: "compact" };
+  let pages = 0;
+  for (;;) {
+    const page = (await ask.run(reads, input)) as Compact;
+    pages += 1;
+    assert.ok(JSON.stringify(page).length <= PAGE_CHARACTERS, `page ${pages}`);
+    for (const view of page.views) {
+      const ids = idsOf(view.text);
+      assert.equal(ids.length, view.shown, view.question);
+      assert.equal(view.offset, shown.get(view.question)?.length ?? 0);
+      shown.set(view.question, [...(shown.get(view.question) ?? []), ...ids]);
+    }
+    if (page.next === undefined) break;
+    input = { pod: "p", ...page.next };
+  }
+  assert.ok(pages > 1, `${pages} page`);
+  assert.deepEqual([...shown.keys()], COMPACT_QUESTIONS);
+  assert.equal(new Set(shown.get("pod/My lab results")).size, 400);
+  const tail = (await ask.run(reads, {
+    pod: "p",
+    question: "pod/My lab results",
+    offset: 390,
+    limit: 50,
+  })) as { total: number; offset: number; rows: Row[] };
+  assert.deepEqual([tail.total, tail.offset, tail.rows.length], [400, 390, 10]);
+  await reads.close();
+});
+
+test("a handle names its entry by a view letter and the start of the entry's fragment, a stale one the entry its record is merged into now; a handle that names none, entries not a list of strings, rows with no question and a compact read with a limit are refused", async () => {
+  const entry = `pod://p/clinical/conditions.ttl#${sha(record(1))}`;
+  const reads = podReads({
+    names: async () => ["p"],
+    open: async () =>
+      ({
+        ask: async (question: string) =>
+          question === PROVENANCE
+            ? [1, 2].map((n) => ({ entry, record: record(n) }))
+            : [],
+        close: async () => undefined,
+      }) as unknown as Pod,
+  });
+  const named = async (handle: string) =>
+    (
+      (await ask.run(reads, {
+        pod: "p",
+        question: PROVENANCE,
+        entries: [handle],
+      })) as { rows: Row[] }
+    ).rows.map((it) => it.entry);
+  assert.deepEqual(await named(`C${sha(record(1)).slice(0, 8)}`), [
+    entry,
+    entry,
+  ]);
+  assert.deepEqual(
+    await named(`C${sha(record(2)).slice(0, 10)}`),
+    [entry, entry],
+    "the entry was named by record 2 before record 1 joined it",
+  );
+  for (const [input, why] of [
+    [
+      { question: PROVENANCE, entries: [`L${sha(record(1)).slice(0, 8)}`] },
+      /no entry .* has the handle/,
+    ],
+    [
+      { question: PROVENANCE, entries: [`C${sha(record(3)).slice(0, 8)}`] },
+      /no entry .* has the handle/,
+    ],
+    [{ format: "rows" }, /rows answer one question/],
+    [{ format: "compact", limit: 10 }, /limit is for rows/],
+    [
+      { question: PROVENANCE, entries: `C${sha(record(1)).slice(0, 8)}` },
+      /entries must be an array/,
+    ],
+    [{ question: PROVENANCE, entries: [1] }, /entries\[0\] must be a string/],
+  ] as const)
+    await assert.rejects(
+      async () => ask.run(reads, { pod: "p", ...input }),
+      (error: Error) => error.name === "Refusal" && why.test(error.message),
+      JSON.stringify(input),
+    );
+  await reads.close();
 });
