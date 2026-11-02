@@ -491,13 +491,22 @@ const HANDLES = /\b[A-Z][0-9a-f]{8,64}\b/g;
 /** The sources a part of a cell starts with. */
 const SAID_BY = /^S\d+(?:,S\d+)*(?: |$)/;
 
+/** The columns whose cells are given per source, which the sources that said a part start. */
+const PER_SOURCE = new Set([
+  "statuses",
+  "narrativeTexts",
+  "record",
+  "otherRecord",
+]);
+
 /**
- * A cell without the handles it names and the sources that said it. A cell is said by sources only when every part of
- * it starts with them; a text of its own that starts "S1" is no source.
+ * A cell without the handles it names and, in a column given per source, the sources that said it. A cell is said by
+ * sources only when every part of it starts with them; a text of its own that starts "S1" is no source.
  */
-function withoutHandles(cell: string): string {
+function withoutHandles(cell: string, column: string): string {
   const parts = cell.split("; ");
-  const said = parts.every((part) => SAID_BY.test(part));
+  const said =
+    PER_SOURCE.has(column) && parts.every((part) => SAID_BY.test(part));
   return (said ? parts.map((part) => part.replace(SAID_BY, "")) : parts)
     .join("; ")
     .replace(HANDLES, " ");
@@ -533,7 +542,9 @@ function answerHolds(
         (line) =>
           !RETRACTED.test(line.status ?? "") &&
           countsAgainst(
-            Object.values(line).map(withoutHandles).join("\t"),
+            Object.entries(line)
+              .map(([column, cell]) => withoutHandles(cell, column))
+              .join("\t"),
             match,
           ),
       ),

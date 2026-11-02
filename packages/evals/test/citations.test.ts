@@ -670,6 +670,13 @@ test("a handle is struck out of a compact line only where a handle stands: a rea
       { backed: false, reason: "query found it" },
     ],
     [
+      "S2 alone at the start of a conclusion",
+      "S2",
+      "S2 split.",
+      "S1 final",
+      { backed: false, reason: "query found it" },
+    ],
+    [
       "S2 only as the source a status is from",
       "S2",
       "No murmur",
