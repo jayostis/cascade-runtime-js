@@ -1033,6 +1033,13 @@ test("a refuted or entered-in-error record is no presence, in both arms", async 
       .status,
     ["ruled-out"],
   );
+  assert.deepEqual(
+    narrativeFields(
+      "<paragraph>Pulmonary embolism not ruled out; to be ruled out</paragraph>",
+    ).status,
+    [],
+    "a ruling out that has not happened withdraws nothing",
+  );
 });
 
 const held = (file: string) => ({

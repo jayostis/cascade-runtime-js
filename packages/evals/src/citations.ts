@@ -797,6 +797,9 @@ const plain = (xml: string) =>
 
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
+/** What precedes "ruled out" in a line that says it has not been: no withdrawal. */
+const NOT_RULED_OUT =
+  /\b(?:not|never|cannot be|can't be|to be)\s+(?:been\s+)?$/i;
 const STATUS_WORDS =
   /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|ruled out|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
