@@ -588,7 +588,10 @@ function whole(call: Ran, kind: RecordKind | undefined): boolean {
     return (
       held.length > 0 &&
       held.every(
-        ({ offset, shown, total }) => offset === 0 && shown === total,
+        ({ offset, shown, total, text }) =>
+          offset === 0 &&
+          shown === total &&
+          compactLines(text).length === total,
       ) &&
       (kind !== undefined || (page.next === undefined && !call.input.offset))
     );

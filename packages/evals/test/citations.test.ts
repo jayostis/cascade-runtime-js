@@ -476,6 +476,13 @@ test("a compact read backs an absence by its whole views of the absence's kind, 
       { backed: false, reason: "query cut short" },
     ],
     [
+      "a view with fewer lines than it says it shows",
+      a1c,
+      ran([{ ...labs([a1c2023]), total: 2, shown: 2 }]),
+      lab,
+      { backed: false, reason: "query cut short" },
+    ],
+    [
       "a page with no lab results on it",
       a1c,
       ran([conditions], read, { next: { format: "compact", offset: 2 } }),
