@@ -106,7 +106,7 @@ export interface CompactAnswer {
   readonly next?: Readonly<Record<string, unknown>>;
 }
 
-const ABOUT = `Each view's rows are tab-separated, under a header row: one line per entry, newest first by its first date, undated last. A column no row of the view fills is left out; a row's empty cell is a field it lacks. id is the entry's handle: its view's letter and the start of its entry's name. Cite it as the entry ({"entry": "<handle>"}); give handles to ${PROVENANCE_QUESTION} as entries for each one's records and documents. from names the sources the entry's records came from, as sources lists them; a value given per source starts with the sources that gave it ("S1,S3 active"); "in <handle>" names another entry a record is merged into. A report's results are the handles of their entries. Codes are system:code beside their names. A line break in a text is written \\n. total is how many rows a view has, offset where this page's start, shown how many are here; when next is given the read goes on: ask again with it.`;
+const ABOUT = `Each view's rows are tab-separated, under a header row: one line per entry, newest first by its first date, undated last. A column no row of the view fills is left out; a row's empty cell is a field it lacks, or a text that says only what the row's earlier cells already say (a source's text restating its values). id is the entry's handle: its view's letter and the start of its entry's name. Cite it as the entry ({"entry": "<handle>"}); give handles to ${PROVENANCE_QUESTION} as entries for each one's records and documents. from names the sources the entry's records came from, as sources lists them; a value given per source starts with the sources that gave it ("S1,S3 active"); "in <handle>" names another entry a record is merged into. A report's results are the handles of their entries. Codes are system:code beside their names. A line break in a text is written \\n. total is how many rows a view has, offset where this page's start, shown how many are here; when next is given the read goes on: ask again with it.`;
 
 const SOURCE =
   /^(\S+)(?: from (\S+?))?(?:, (kept by [^,]+|retrieved \S+))?(?:, written by (.+))?$/;
@@ -119,7 +119,44 @@ const CODES: readonly (readonly [RegExp, string])[] = [
   [/https:\/\/ns\.cascadeprotocol\.org\/cascade#(\w+)/g, "$1"],
 ];
 const DATE = /^\d{4}-\d{2}/;
-const WORDS = /[\p{L}\p{N}]+/gu;
+/** The sources a part of a cell starts with, when one or more of them said it. */
+const SAID_BY = /^S\d+(?:,S\d+)* /;
+/** An entry's handle within a cell, whose letters and digits are no words. */
+const HANDLES = /\b[A-Z][0-9a-f]{8,64}\b/g;
+const MONTHS = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
+
+/**
+ * The words a text says, each as a row's cells and a source's prose would both write it: a number without its leading
+ * zeros, a month's name as its number, and the T, Z and UTC of a time left out, so "March 27, 2025 12:00 UTC" says
+ * what 2025-03-27T12:00:00Z does.
+ */
+function wordsOf(text: string): string[] {
+  return (text.toLowerCase().match(/\p{L}+|\p{N}+/gu) ?? []).flatMap((word) => {
+    if (/^\p{N}+$/u.test(word)) return [word.replace(/^0+(?=\d)/, "")];
+    if (["t", "z", "utc"].includes(word)) return [];
+    const month = MONTHS.indexOf(word.slice(0, 3));
+    return month !== -1 &&
+      (word.length === 3 ||
+        /^(january|february|march|april|june|july|august|september|sept|october|november|december)$/.test(
+          word,
+        ))
+      ? [String(month + 1)]
+      : [word];
+  });
+}
 
 interface Document {
   author?: string;
@@ -295,14 +332,23 @@ function rendered(
         continue;
       if (/(Low|High)$/.test(column) && row[column.replace(/(Low|High)$/, "")])
         continue;
-      let text = oneLine(rewrite.cell(value, row.entry));
+      let text = rewrite.cell(value, row.entry);
       const label = row[`${column}Label`];
       if (label !== undefined && /\b(urn|pod|ni|https?):/.test(text))
-        text = oneLine(label);
-      const words = text.toLowerCase().match(WORDS) ?? [];
-      if (words.length >= 3 && words.every((word) => said.has(word))) continue;
-      for (const word of words) said.add(word);
-      own.set(column, text);
+        text = label;
+      const parts = text.split("; ").filter((part) => {
+        const words = wordsOf(part.replace(SAID_BY, "").replace(HANDLES, " "));
+        return !(
+          words.filter((word) => /\p{L}/u.test(word)).length >= 2 &&
+          words.every((word) => said.has(word))
+        );
+      });
+      for (const part of parts)
+        for (const word of wordsOf(
+          part.replace(SAID_BY, "").replace(HANDLES, " "),
+        ))
+          said.add(word);
+      if (parts.length > 0) own.set(column, oneLine(parts.join("; ")));
     }
     own.set(
       "id",
