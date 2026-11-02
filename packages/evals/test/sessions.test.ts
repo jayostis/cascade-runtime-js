@@ -15,7 +15,8 @@ import type { BeyondVerdict, ItemVerdict } from "../src/results.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-sessions-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
-const { openPod } = await import("cascade-runtime");
+const { configureTables, openPod } = await import("cascade-runtime");
+configureTables({ checkOnOpen: false });
 const { caseIds, loadCase, loadKey } = await import("../src/cases.js");
 const { errorsOf } = await import("../src/schemas.js");
 const { ask, sessionInputsHash, splitSession } =
@@ -910,23 +911,36 @@ test("an instance totals every key item for both arms, and its judging cost is n
   assert.equal(instance!.judging.usd, null);
 });
 
-test("a download is reused only with its build time: a prepared record without one is stale", () => {
+test("a prepared pod is reused only with its build time and the reference tables it was built with", () => {
   const components = [{ repository: "r", commit: "c" }];
   const kept = {
     downloadsSha256: "d",
     components,
     build: { seconds: 1, modelCalls: 0, tokens: 0, usd: 0 },
+    tables: { id: "t", versions: ["v"] },
   } as never;
-  assert.equal(keeps(kept, "d", components as never), true);
+  assert.equal(keeps(kept, "d", components as never, "t"), true);
   assert.equal(
     keeps(
       { ...(kept as object), build: undefined } as never,
       "d",
       components as never,
+      "t",
     ),
     false,
   );
-  assert.equal(keeps(kept, "other", components as never), false);
+  assert.equal(keeps(kept, "other", components as never, "t"), false);
+  assert.equal(keeps(kept, "d", components as never, "newer"), false);
+  assert.equal(
+    keeps(
+      { ...(kept as object), tables: undefined } as never,
+      "d",
+      components as never,
+      "t",
+    ),
+    false,
+    "a pod built before it had tables is stale",
+  );
 });
 
 test("an arm's prompt version covers everything that reaches its prompt: changing its example changes its version alone", () => {

@@ -107,6 +107,12 @@ function packageTrees(): Record<string, string> {
   return trees;
 }
 
+/** What a pod-arm answer depends on beyond the case: the packages and components, and the reference tables its pod holds. */
+export const podInputs = (
+  commits: Plan["podCommits"],
+  tables: { readonly id: string } | undefined,
+) => ({ ...commits, tables: tables?.id ?? null });
+
 export async function loadConfig(nameOrPath: string): Promise<Config> {
   const path = existsSync(nameOrPath)
     ? nameOrPath
@@ -310,7 +316,7 @@ export async function planRun(
               model,
               effort: config.effort,
               repeat,
-              pod: podCommits,
+              pod: podInputs(podCommits, prepared.tables),
             });
             const answers = `answers/${jobId}`;
             const tag = `${id}/${jobId}`;

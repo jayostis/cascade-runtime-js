@@ -49,6 +49,10 @@ node packages/evals/dist/src/cli.js plan --config smoke      # prepares the case
 then the skill's loop, or the workflow, runs the jobs the cap allows and `finish` writes `runs/<run>/results.json` and
 `runs/<run>/site/`. `node packages/evals/dist/src/cli.js` with no command lists every command.
 
+- **Reference tables.** Every case's pod is given the reference tables, as an app holds them beside its pods: held once in
+  `work/reference-tables/` (the package's starter copies, else the feeds `cascade-runtime.json` names, read once) and
+  copied into each case's `pods/.tables/`. A pod prepared without them, or on other tables, is rebuilt, and a pod-arm
+  session answered on other tables is not reused. To take newer tables, remove `work/reference-tables/`.
 - **Budgets.** Every job has an estimate before it runs: the mean of recorded runs of the same case, arm and model,
   else the prior. The meter runs between waves and hands out only jobs that fit under the cap, counting each job in
   flight at its estimate until its transcript is found. It cannot stop a job already running, so the cap holds back new

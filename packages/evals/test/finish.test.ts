@@ -9,7 +9,8 @@ import type { pinnedPod } from "../src/pinned.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-finish-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
-const { openPod } = await import("cascade-runtime");
+const { configureTables, openPod } = await import("cascade-runtime");
+configureTables({ checkOnOpen: false });
 const { askerOf, finish } = await import("../src/record.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
