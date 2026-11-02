@@ -1,7 +1,7 @@
 // The program checks: what is decided without a model. A key's evidence holds against its downloads; an answer is
 // valid, each citation holds, each absence is backed, trap wording is flagged, and each job kept to its tools.
 import { readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type Absence,
@@ -235,6 +235,12 @@ function subjectViolations(
   reading: readonly string[],
 ): string[] {
   const violations: string[] = [];
+  // A reused job's commands and files name the run it was answered in, not this one.
+  const [reusedRun, reusedId] = (job.reusedFrom ?? "").split("/");
+  if (reusedRun !== undefined && reusedRun !== "" && reusedId !== undefined) {
+    folder = join(dirname(folder), reusedRun);
+    job = { ...job, id: reusedId };
+  }
   for (const use of uses) {
     if (HARNESS_TOOLS.has(use.name)) continue;
     if (
