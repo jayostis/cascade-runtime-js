@@ -217,9 +217,6 @@
         "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up",
         "your high D-dimer was not followed up"
       ],
-      "notWrong": [
-        "a CT angiogram was done the same day and its result isn't in my records"
-      ],
       "wording": [
         {
           "pattern": "blood thinner|anticoagula",

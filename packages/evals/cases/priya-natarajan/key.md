@@ -112,8 +112,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
   outstanding.
 - **Pod:** feature: cross-source, dates (a stop in one source against "active" in three later ones). `pod/My active medications` lists HCTZ active (5 records, the pharmacy's leading). The stop is in the entry's `statuses` cell ("S8 stopped, ended 2026-03-05")
   and in the discharge instructions of `pod/My reports, notes and documents` ("STOP taking hydrochlorothiazide ... low
-  sodium level (123)"); the entry's `narrativeTexts` hold the pharmacy's April refill. The `timeline` tool shows the lead's status
-  only. This item tests whether an arm looks past the lead.
+  sodium level (123)"); the entry's `narrativeTexts` hold the pharmacy's April refill. The entry's lead status alone says active. This item tests whether an arm looks past the lead.
 
 #### G3. Urine albumin-to-creatinine ratio never done, eGFR done five times
 
@@ -133,7 +132,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Found:** names the urine albumin / albumin-creatinine / microalbumin test and that it is missing; diabetes (or
   diabetes plus hypertension) as the reason.
 - **Wrong:** saying it was done (citing the dipstick); saying her kidneys need nothing because eGFR is normal.
-- **Pod:** feature: absence, cross-source (eGFR from three places). `pod/My lab results` (no uACR code; `lab_series` 98979-8 gives the five eGFRs); `pod/My active conditions`
+- **Pod:** feature: absence, cross-source (eGFR from three places). `pod/My lab results` (no uACR code; the 98979-8 rows give the five eGFRs); `pod/My active conditions`
   for the diabetes.
 
 #### G4. No statin, with diabetes at 57 and LDL 142
@@ -148,7 +147,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Found:** statin (or cholesterol medicine) not prescribed, with diabetes and age or the LDL as the reason.
 - **Wrong:** saying she takes one; recommending a specific drug and dose as settled (a question is fine).
 - **Pod:** feature: absence, cross-source (diagnosis, lipids and age in different records). `pod/My medication history` (no statin), `pod/My lab results` (LDL), `pod/My active conditions`,
-  `record/What each version says --where field=…#dateOfBirth`.
+  `pod/The person this pod is about` (`?dateOfBirth`).
 
 #### G5. Incidental 7 mm lung nodule, follow-up chest CT recommended, never done (free text only)
 
@@ -180,7 +179,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Found:** the high TSH in March 2026 and that no repeat followed. (The 6-8 week instruction is narrative; an answer
   that flags the high TSH without repeat on its own reasoning gets full credit.)
 - **Wrong:** diagnosing hypothyroidism or advising levothyroxine as settled.
-- **Pod:** feature: dates (an abnormal result with nothing after it), absence. `pod/My lab results` (one TSH row) or `lab_series` 3016-3; the H flag and range in `entry/What it shows`.
+- **Pod:** feature: dates (an abnormal result with nothing after it), absence. `pod/My lab results` (one TSH row, 3016-3; the H flag and range in `?interpretations` and `?referenceRange`).
 
 ### Planted traps
 
@@ -224,7 +223,7 @@ continued "current medications", HCTZ included. Northbay Clinical Laboratories r
 - **Why raising it is false:** one blood draw each, reported by the clinic and by the lab.
 - **Wrong:** "you had two A1c tests on 15 June 2026" (or on any date here); counting the copies as separate tests in a
   trend or a frequency ("A1c checked 6 times").
-- **Pod:** feature: duplicate merge. `pod/My lab results` shows one row with `records` 2; `pod/What was seen more than once`.
+- **Pod:** feature: duplicate merge. `pod/My lab results` shows one row with `records` 2; `?sources` names each copy.
 
 #### T4. Colorectal screening not due: normal colonoscopy in 2019
 

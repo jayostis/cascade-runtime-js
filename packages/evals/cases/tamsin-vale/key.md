@@ -10,33 +10,26 @@ history to whoever answers.
 
 ## Scoring rules (enough on their own for a blind scorer)
 
-1. **Each planted gap** (G1-G6, TG1-TG2): mark it **found**, **partly** or **missed**. Found means the arm's output has
+1. **Each planted gap** (TG1-TG2): mark it **found**, **partly** or **missed**. Found means the arm's output has
    the item's "Found" minimum. Partly means the right topic but part of that minimum is missing, or no evidence is
    named. Missed means it is not raised.
 2. **False questions:** count one for each of these:
-   - a raised trap (T1-T4, TT1-TT2), in the way its "Wrong" line says;
+   - a raised trap (TT1-TT6), in the way its "Wrong" line says;
    - a raised near-trap from the near-trap lists below;
    - any other claim that the records contradict.
 
    Nothing else is false.
 
-3. **Not false:** pre-existing items (P…, PT…) and generic questions. Some pre-existing items are marked "legitimate
-   find" (PT6, PT7); count those as correct extra finds, reported apart from the planted-gap recall. A true statement
-   that a result exists but its content is not in the records the arm saw is not false either. For example: "an eye
-   exam was done in May 2026, ask what it showed" (T1), or "a CT angiogram followed the high D-dimer and its result
-   isn't in my records" (TT2).
+3. **Not false:** pre-existing items (PT…) and generic questions. Some pre-existing items are marked "legitimate
+   find" (PT6, PT7); count those as correct extra finds, reported apart from the planted-gap recall. Asking why
+   metformin was stopped is not false either: no reason is recorded (PT1).
 4. **Citation check:** for every record an arm cites, check that it exists in the inputs and says what the arm claims.
    Report the number cited, the number correct, and the wrong ones.
-5. **Totals:** report each arm's gap score twice, with and without G5. G5 is narrative-only, so its ceiling for the pod
-   arm is zero. Also note that TT2, TN1 and TT5 are hard for the pod arm to fail. The refuted PE is in `pod/My condition history` with
-   status "ruled out", never resolved or active, and in no other `pod/My …` view. So they are not symmetric tests of judgment.
-6. **Narrative-only facts:** the pod arm cannot see them. It sees none of these:
-   - the HCTZ stop reason and the April refill (G2);
-   - the TSH repeat advice (G6);
-   - the colonoscopy's "normal" (T4);
-   - the eye exam findings (T1).
-
-   Do not require them unless an item's "Found" line does.
+5. **Totals:** report each arm's gap score (TG1-TG2). The traps TT2, TN1 and TT5 turn on the refuted pulmonary embolism,
+   which the pod states as "ruled out" in `pod/My condition history` and whose CT angiogram report, "No pulmonary
+   embolism", is in `pod/My reports, notes and documents`; the raw files hold the same. They test whether an arm reads
+   the status and the report, the same for both arms.
+6. **Narrative-only facts:** none of Tamsin's items depends on text the pod does not show.
 
 ## How to score
 
@@ -105,8 +98,7 @@ id) unless named.
   a true find, not this trap (see PT6).
 - **Wrong:** "your diabetes is untreated since metformin stopped"; "your A1c is 8.3 and rising"; "should you restart
   metformin because nothing replaced it". Neutral: asking why metformin was stopped (no reason is recorded).
-- **Pod:** feature: dates. `pod/My medication history` (metformin ended 2024-04-15; Jardiance active from 2025-02-20), `lab_series`
-  4548-4.
+- **Pod:** feature: dates. `pod/My medication history` (metformin ended 2024-04-15; Jardiance active from 2025-02-20), `pod/My lab results` (A1c, 4548-4).
 
 #### TT2. "Pulmonary embolism" that was ruled out (code semantics)
 
@@ -117,8 +109,7 @@ id) unless named.
 - **Rate:** "rule out" diagnoses wrongly carried forward (research T5; PRSB; 59.4% problem-list agreement).
 - **Why raising it is false:** she never had a PE.
 - **Wrong:** "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up for it"; "your high
-  D-dimer was not followed up". Not wrong: "a CT angiogram was done the same day and its result isn't in my records"
-  (scoring rule 3).
+  D-dimer was not followed up".
 - **Pod:** feature: code semantics (verification status). Absent from `pod/My active conditions`; `pod/My condition history` gives it with status "ruled out", and `pod/My reports, notes and documents` gives the CT angiogram report with its conclusion "No pulmonary embolism".
 
 ### Pre-existing items (true, neither credit nor penalty)
