@@ -45,6 +45,7 @@
           "additionalProperties": false,
           "properties": {
             "entry": {
+              "description": "The entry's IRI, which has a scheme (pod://…#…), or its handle in a compact read, which has none: a capital letter and 8 to 64 lower-case hex digits.",
               "type": "string",
               "minLength": 1
             }

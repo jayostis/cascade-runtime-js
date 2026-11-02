@@ -90,12 +90,16 @@ export function podReads(
     async pods() {
       return { pods: (await host.names()).map((name) => ({ name })) };
     },
-    async ask({ pod, question, limit }) {
+    async ask({ pod, question, limit, offset = 0 }) {
       const rows = await (await podNamed(pod)).ask(question);
       return {
         question,
         total: rows.length,
-        rows: limit === undefined ? rows : rows.slice(0, limit),
+        ...(offset === 0 ? {} : { offset }),
+        rows: rows.slice(
+          offset,
+          limit === undefined ? undefined : offset + limit,
+        ),
       };
     },
     async tool({ pod: name, tool: called, input = {} }) {

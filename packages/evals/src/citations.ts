@@ -120,17 +120,24 @@ export interface Tie {
 export type RecordKind =
   "lab" | "immunization" | "procedure" | "condition" | "medication";
 
-/** The kind of record a pod tool call answers with; undefined for one that answers of several kinds. */
-export function kindOfCall(call: Call): RecordKind | undefined {
-  if (call.tool === "lab_series" || call.tool === "find_changes") return "lab";
-  if (call.tool === "timeline") return "medication";
-  const question = String(call.input.question ?? "");
+/** The kind of record a pod question answers with; undefined for one that answers of several kinds. */
+export function kindOfQuestion(question: string): RecordKind | undefined {
   if (/lab results/.test(question)) return "lab";
   if (/immunizations/.test(question)) return "immunization";
   if (/procedures/.test(question)) return "procedure";
-  if (/conditions/.test(question)) return "condition";
+  if (/condition/.test(question)) return "condition";
   if (/medication/.test(question)) return "medication";
   return undefined;
+}
+
+/**
+ * The kind of record a pod tool call answers with; undefined for one that answers of several kinds, as a compact read
+ * of every view does: its views each have their own (`kindOfQuestion`), and an absence is held to those of its kind.
+ */
+export function kindOfCall(call: Call): RecordKind | undefined {
+  if (call.tool === "lab_series" || call.tool === "find_changes") return "lab";
+  if (call.tool === "timeline") return "medication";
+  return kindOfQuestion(String(call.input.question ?? ""));
 }
 
 /** The match an absence is held to: its own codes and words, and those of the key item it ties to. */
@@ -449,8 +456,74 @@ function clinicalText(fragment: string, json: boolean): string {
 /** The fields of a pod row that say where it came from, not what it records: a retrieval date is not the record's. */
 const PROVENANCE = new Set(["entry", "sources"]);
 
-/** Whether a tool's answer holds what an absence says is not there: any of its rows, or the whole answer. */
-function answerHolds(answer: string, match: Absence["match"]): boolean {
+/** A compact read's views, each with its count, where its part starts and how many rows it shows. */
+interface CompactPage {
+  readonly views: readonly {
+    readonly question: string;
+    readonly total: number;
+    readonly offset: number;
+    readonly shown: number;
+    readonly text: string;
+  }[];
+  readonly next?: unknown;
+}
+
+/** The page an answer is, when it is one of a compact read. */
+function compactPage(answer: string): CompactPage | undefined {
+  try {
+    const value = JSON.parse(answer) as { views?: unknown };
+    return Array.isArray(value.views) ? (value as CompactPage) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The views of a page an absence is held to: those of its kind, or every one when it is of none. */
+const viewsOf = (page: CompactPage, kind: RecordKind | undefined) =>
+  page.views.filter(
+    ({ question }) => kind === undefined || kindOfQuestion(question) === kind,
+  );
+
+/** The cells of a compact view that say where a line came from, not what it records: its handle and its sources. */
+const COMPACT_PROVENANCE = new Set(["id", "from"]);
+/** An entry's or a source's handle, which may spell a word or a number by chance. */
+const HANDLES = /\b(?:[A-Z][0-9a-f]{8,64}|S\d+)\b/g;
+
+/** A compact view's lines, each as its cells by the header's names, its handle and sources left out. */
+function compactLines(text: string): Record<string, string>[] {
+  const [header = "", ...lines] = text.split("\n");
+  const names = header.split("\t");
+  return lines.filter(Boolean).map((line) =>
+    Object.fromEntries(
+      line
+        .split("\t")
+        .map((cell, at) => [names[at] ?? "", cell] as const)
+        .filter(([name, cell]) => cell !== "" && !COMPACT_PROVENANCE.has(name)),
+    ),
+  );
+}
+
+/**
+ * Whether a tool's answer holds what an absence says is not there: any of its rows, any line of a compact read's views of
+ * the absence's kind (each line read alone, so a date on another line counts for nothing), or the whole answer.
+ */
+function answerHolds(
+  answer: string,
+  match: Absence["match"],
+  kind: RecordKind | undefined,
+): boolean {
+  const page = compactPage(answer);
+  if (page !== undefined)
+    return viewsOf(page, kind).some(({ text }) =>
+      compactLines(text).some(
+        (line) =>
+          !RETRACTED.test(line.status ?? "") &&
+          countsAgainst(
+            Object.values(line).join("\t").replace(HANDLES, " "),
+            match,
+          ),
+      ),
+    );
   try {
     const { rows } = JSON.parse(answer) as { rows?: unknown };
     if (Array.isArray(rows))
@@ -502,10 +575,29 @@ const lookedFor = (absence: Absence) =>
     (absence.match.terms ?? []).filter((it) => it.trim() !== "").length >
   0;
 
-/** Whether an answer holds every row there is: not cut at a row limit. */
-function whole(answer: string): boolean {
+/**
+ * Whether an answer holds every row there is: not cut at a row limit, nor to the entries it asked for; of a compact
+ * read, every view of the absence's kind there whole on the page, and for an absence of no kind, the read from its
+ * start with no page after.
+ */
+function whole(call: Ran, kind: RecordKind | undefined): boolean {
+  if (call.input.entries !== undefined) return false;
+  const page = compactPage(call.answer);
+  if (page !== undefined) {
+    const held = viewsOf(page, kind);
+    return (
+      held.length > 0 &&
+      held.every(
+        ({ offset, shown, total }) => offset === 0 && shown === total,
+      ) &&
+      (kind !== undefined || (page.next === undefined && !call.input.offset))
+    );
+  }
   try {
-    const value = JSON.parse(answer) as { total?: unknown; rows?: unknown };
+    const value = JSON.parse(call.answer) as {
+      total?: unknown;
+      rows?: unknown;
+    };
     return !(
       typeof value.total === "number" &&
       Array.isArray(value.rows) &&
@@ -566,9 +658,9 @@ export function checkAbsence(
     };
   const answered = calls.filter((call) => call.ok);
   if (answered.length === 0) return { backed: false, reason: "query refused" };
-  if (answered.some((call) => answerHolds(call.answer, match)))
+  if (answered.some((call) => answerHolds(call.answer, match, kind)))
     return { backed: false, reason: "query found it" };
-  return answered.some((call) => whole(call.answer))
+  return answered.some((call) => whole(call, kind))
     ? { backed: true }
     : { backed: false, reason: "query cut short" };
 }

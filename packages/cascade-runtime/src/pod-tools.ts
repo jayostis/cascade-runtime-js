@@ -25,8 +25,21 @@ import {
   type VariantNotChecked,
 } from "./table-checks.js";
 import type { About, VariantAsked, WhatClinVarSays } from "./tables/types.js";
+import {
+  compactRead,
+  entriesNamed,
+  PAGE_CHARACTERS,
+  PROVENANCE_QUESTION,
+} from "./compact-read.js";
 
 export * from "./table-checks.js";
+export {
+  type CompactAnswer,
+  type CompactView,
+  entryOfHandle,
+  HANDLE,
+  PAGE_CHARACTERS,
+} from "./compact-read.js";
 
 /** The questions `ask` offers: the person's own records, what their reports and notes say, who they are, where an entry came from and what needs review. Never free SPARQL. */
 export const QUESTIONS = [
@@ -44,10 +57,18 @@ export const QUESTIONS = [
   "entry/Where it came from",
   "entry/What needs review",
 ];
-export const COMPACT_QUESTIONS: readonly string[] = [];
-export const LEFT_OUT_OF_THE_COMPACT_READ: Readonly<Record<string, string>> =
-  {};
-export const PAGE_CHARACTERS = 24_000;
+/** The views the compact read leaves out, each beside the view that holds every one of its entries with its status. */
+export const LEFT_OUT_OF_THE_COMPACT_READ: Readonly<Record<string, string>> = {
+  "pod/My active conditions": "pod/My condition history",
+  "pod/My active medications": HISTORY_QUESTION,
+};
+/** What the compact read holds, in order: the person's own records and who they are, then what needs review. */
+export const COMPACT_QUESTIONS: readonly string[] = QUESTIONS.filter(
+  (question) =>
+    (question.startsWith("pod/") &&
+      !Object.hasOwn(LEFT_OUT_OF_THE_COMPACT_READ, question)) ||
+    question === "entry/What needs review",
+);
 /** How many rows `ask` gives unless asked for more: a pod's lab results run to thousands of tokens. */
 export const DEFAULT_ROWS = 50;
 export const MAXIMUM_ROWS = 500;
@@ -69,11 +90,18 @@ export function citedFinding(finding: Finding): CitedFinding {
 /** What the tools read: the pods there are, a question's rows, and a change tool's answer. */
 export interface PodReads {
   pods(input?: object): Promise<{ pods: readonly { name: string }[] }>;
+  /** A question's rows: all of them, or `limit` from `offset`, beside how many there are and, when not 0, the offset. */
   ask(input: {
     pod: string;
     question: string;
     limit?: number;
-  }): Promise<{ question: string; total: number; rows: readonly Row[] }>;
+    offset?: number;
+  }): Promise<{
+    question: string;
+    total: number;
+    offset?: number;
+    rows: readonly Row[];
+  }>;
   tool(input: {
     pod: string;
     tool: string;
@@ -376,34 +404,105 @@ export const TOOLS: readonly PodTool[] = (
     ),
     {
       name: "ask",
-      description:
-        "A pod's records by the name of a question, as rows, each naming its entry and the records, documents and hospitals it came from: its allergies with their reactions and severity, conditions (active, or all with each ruled out or resolved one and when it ended), medications (active, or all with when each started and stopped) with each source's own status, lab results with their flags and reference ranges, immunizations, procedures, genetic variants, the person it is about with each source's date of birth, gender and death, where an entry came from, or which entries need review and why.",
+      description: `A pod's records by the name of a question, as rows, each naming its entry and the records, documents and hospitals it came from: its allergies with their reactions and severity, conditions (active, or all with each ruled out or resolved one and when it ended), medications (active, or all with when each started and stopped) with each source's own status, lab results with their flags and reference ranges, immunizations, procedures, genetic variants, the person it is about with each source's date of birth, gender and death, where an entry came from, or which entries need review and why. With format compact and no question, the whole pod in one read, a page of at most ${PAGE_CHARACTERS} characters at a time: ${COMPACT_QUESTIONS.join(", ")}, each view's rows tab-separated with its count, each entry by a short handle that can be cited as its entry, each source by a short name its legend explains. It leaves out ${Object.keys(LEFT_OUT_OF_THE_COMPACT_READ).join(" and ")}, whose entries are all in the history beside them, and when each record arrived; ${PROVENANCE_QUESTION} with entries gives an entry's records and documents. A record the pod leaves out of every view (entered in error at its source, an allergy its source refutes, a record about no one known to be the person, or one a judgment sets aside) is in no question's answer.`,
       inputSchema: {
         type: "object",
         properties: {
           question: {
             type: "string",
-            description: "The question's name.",
+            description:
+              "The question's name; with format compact, left out for every view at once.",
             enum: QUESTIONS,
+          },
+          format: {
+            type: "string",
+            description:
+              "rows (the default): the question's rows as JSON; compact: its views' rows as tab-separated text, a page at a time.",
+            enum: ["rows", "compact"],
           },
           limit: {
             type: "integer",
-            description: `At most this many rows; ${DEFAULT_ROWS} if left out. The answer says how many there are.`,
+            description: `For rows, at most this many; ${DEFAULT_ROWS} if left out. The answer says how many there are.`,
             minimum: 1,
             maximum: MAXIMUM_ROWS,
           },
+          offset: {
+            type: "integer",
+            description:
+              "Where the answer starts: for rows, the row; for compact, the row over every view in order, as the last page's next gives it.",
+            minimum: 0,
+          },
+          entries: {
+            type: "array",
+            description:
+              "Only these entries' rows: each an entry's IRI or its handle.",
+            items: { type: "string" },
+          },
         },
-        required: ["question"],
         additionalProperties: false,
       },
       tier: "free",
       ofPod: true,
-      run: (reads, { pod, question, limit }) =>
-        reads.ask({
-          pod: pod as string,
-          question: question as string,
-          limit: (limit as number | undefined) ?? DEFAULT_ROWS,
-        }),
+      run: async (reads, input) => {
+        const { pod, question, limit, offset, entries } = input as {
+          pod: string;
+          question?: string;
+          limit?: number;
+          offset?: number;
+          entries?: string[];
+        };
+        if (input.format === "compact") {
+          if (limit !== undefined)
+            throw new Refusal(
+              "limit is for rows; the compact read comes a page at a time, from offset",
+            );
+          return compactRead(
+            async (asked) => (await reads.ask({ pod, question: asked })).rows,
+            {
+              questions:
+                question === undefined ? COMPACT_QUESTIONS : [question],
+              ...(question === undefined
+                ? { leftOut: LEFT_OUT_OF_THE_COMPACT_READ }
+                : {}),
+              ...(offset === undefined ? {} : { offset }),
+              ...(entries === undefined ? {} : { entries }),
+              again: {
+                pod,
+                format: "compact",
+                ...(question === undefined ? {} : { question }),
+                ...(entries === undefined ? {} : { entries }),
+              },
+            },
+          );
+        }
+        if (question === undefined)
+          throw new Refusal(
+            "rows answer one question; the compact read (format compact) reads every view",
+          );
+        const page = { limit: limit ?? DEFAULT_ROWS, offset: offset ?? 0 };
+        if (entries === undefined)
+          return reads.ask({
+            pod,
+            question,
+            limit: page.limit,
+            ...(offset === undefined ? {} : { offset }),
+          });
+        const [all, provenance] = await Promise.all(
+          [question, PROVENANCE_QUESTION].map((asked) =>
+            reads.ask({ pod, question: asked }),
+          ),
+        );
+        const wanted = await entriesNamed(entries, provenance!.rows);
+        const rows = all!.rows.filter(
+          ({ entry }) => entry !== undefined && wanted.has(entry),
+        );
+        return {
+          question,
+          total: rows.length,
+          ...(page.offset === 0 ? {} : { offset: page.offset }),
+          rows: rows.slice(page.offset, page.offset + page.limit),
+        };
+      },
     },
     {
       name: "reference_table_checks",

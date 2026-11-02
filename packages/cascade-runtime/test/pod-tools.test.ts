@@ -615,7 +615,7 @@ test("a read longer than a page goes on from the offset its answer names: every 
   await reads.close();
 });
 
-test("a handle names its entry by a view letter and the start of the entry's fragment, a stale one the entry its record is merged into now; a handle that names none, rows with no question and a compact read with a limit are refused", async () => {
+test("a handle names its entry by a view letter and the start of the entry's fragment, a stale one the entry its record is merged into now; a handle that names none, entries not a list of strings, rows with no question and a compact read with a limit are refused", async () => {
   const entry = `pod://p/clinical/conditions.ttl#${sha(record(1))}`;
   const reads = podReads({
     names: async () => ["p"],
@@ -645,15 +645,26 @@ test("a handle names its entry by a view letter and the start of the entry's fra
     [entry, entry],
     "the entry was named by record 2 before record 1 joined it",
   );
-  for (const input of [
-    { question: PROVENANCE, entries: [`L${sha(record(1)).slice(0, 8)}`] },
-    { question: PROVENANCE, entries: [`C${sha(record(3)).slice(0, 8)}`] },
-    { format: "rows" },
-    { format: "compact", limit: 10 },
-  ])
+  for (const [input, why] of [
+    [
+      { question: PROVENANCE, entries: [`L${sha(record(1)).slice(0, 8)}`] },
+      /no entry .* has the handle/,
+    ],
+    [
+      { question: PROVENANCE, entries: [`C${sha(record(3)).slice(0, 8)}`] },
+      /no entry .* has the handle/,
+    ],
+    [{ format: "rows" }, /rows answer one question/],
+    [{ format: "compact", limit: 10 }, /limit is for rows/],
+    [
+      { question: PROVENANCE, entries: `C${sha(record(1)).slice(0, 8)}` },
+      /entries must be an array/,
+    ],
+    [{ question: PROVENANCE, entries: [1] }, /entries\[0\] must be a string/],
+  ] as const)
     await assert.rejects(
-      ask.run(reads, { pod: "p", ...input }),
-      (error: Error) => error.name === "Refusal",
+      async () => ask.run(reads, { pod: "p", ...input }),
+      (error: Error) => error.name === "Refusal" && why.test(error.message),
       JSON.stringify(input),
     );
   await reads.close();

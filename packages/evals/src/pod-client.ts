@@ -41,9 +41,19 @@ export function entriesIn(value: unknown, found = new Set<string>()): string[] {
 function rowsIn(value: unknown): number {
   if (Array.isArray(value)) return value.length;
   if (typeof value === "object" && value !== null) {
-    const { total, rows } = value as { total?: unknown; rows?: unknown };
+    const { total, rows, views } = value as {
+      total?: unknown;
+      rows?: unknown;
+      views?: unknown;
+    };
     if (typeof total === "number") return total;
     if (Array.isArray(rows)) return rows.length;
+    if (Array.isArray(views))
+      return views.reduce(
+        (sum: number, { shown }: { shown?: unknown }) =>
+          sum + (typeof shown === "number" ? shown : 0),
+        0,
+      );
   }
   return 1;
 }

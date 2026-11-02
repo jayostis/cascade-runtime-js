@@ -416,7 +416,11 @@ test("a compact read backs an absence by its whole views of the absence's kind, 
     ],
   );
   const read = { pod: "p", format: "compact" };
-  const ran = (views: readonly object[], input: object = read, more = {}) => [
+  const ran = (
+    views: readonly object[],
+    input: Readonly<Record<string, unknown>> = read,
+    more = {},
+  ) => [
     {
       tool: "ask",
       input,
