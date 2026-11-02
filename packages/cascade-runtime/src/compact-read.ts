@@ -75,13 +75,51 @@ const RECEIVED = / · received .*$/;
 const wordsIn = (part: string) =>
   wordsOf(part.replace(SAID_BY, "").replace(HANDLES, " "));
 
-/** Whether a part has two or more words of letters, and every word of it is one `said` already. */
-function onlyRestates(part: string, said: ReadonlySet<string>): boolean {
-  const words = wordsIn(part);
-  return (
-    words.filter((word) => /\p{L}/u.test(word)).length >= 2 &&
-    words.every((word) => said.has(word))
-  );
+/** The words a row's cells say: those of a row as a whole, and those each source gave. */
+class Said {
+  readonly #whole = new Set<string>();
+  readonly #by = new Map<string, Set<string>>();
+
+  /** Add the words of `part` to its sources, or to the row as a whole when no source said it. */
+  add(part: string, wholeRow = true): void {
+    const sources = sourcesOf(part);
+    if (sources.length === 0 && !wholeRow) return;
+    for (const word of wordsIn(part)) {
+      if (sources.length === 0) this.#whole.add(word);
+      for (const source of sources) {
+        const own =
+          this.#by.get(source) ?? this.#by.set(source, new Set()).get(source)!;
+        own.add(word);
+      }
+    }
+  }
+
+  /** Whether a part has two or more words of letters, and every word of it is one its own sources said or the row says. */
+  restated(part: string): boolean {
+    const words = wordsIn(part);
+    const sources = sourcesOf(part);
+    return (
+      words.filter((word) => /\p{L}/u.test(word)).length >= 2 &&
+      words.every((word) =>
+        sources.length === 0
+          ? this.#whole.has(word)
+          : sources.every(
+              (source) =>
+                this.#whole.has(word) || this.#by.get(source)?.has(word),
+            ),
+      )
+    );
+  }
+}
+
+/** The sources a part of a cell starts with. */
+const sourcesOf = (part: string) =>
+  SAID_BY.exec(part)?.[0].trim().split(",") ?? [];
+
+/** A record's label without its kind, the name of its source and when it was received, which its handle and the sources give. */
+function plainLabel(label: string): string {
+  const segments = label.replace(RECEIVED, "").split(" · ");
+  return (segments.length >= 3 ? segments.slice(1, -1) : segments).join(" · ");
 }
 
 interface Document {
@@ -251,7 +289,7 @@ function rendered(
   const order: string[] = [];
   const cells = rows.map((row) => {
     const own = new Map<string, string>();
-    const said = new Set<string>();
+    const said = new Said();
     let previous = -1;
     for (const [column, value] of Object.entries(row)) {
       const at = order.indexOf(column);
@@ -267,7 +305,7 @@ function rendered(
       // A record is told by its source and its own label, which says what that source wrote of it.
       const named =
         label !== undefined && /^urn:\S+$/.test(value)
-          ? `${value} ${label.replace(RECEIVED, "")}`
+          ? `${value} ${plainLabel(label)}`
           : value;
       const narrative = column === NARRATIVE_TEXTS;
       const written = rewrite.cell(named, row.entry, narrative ? RECORD : "; ");
@@ -276,10 +314,12 @@ function rendered(
           ? [label]
           : written;
       const shown = narrative
-        ? parts.filter((part) => !onlyRestates(part, said))
+        ? parts.filter((part) => !said.restated(part))
         : parts;
-      for (const part of shown)
-        for (const word of wordsIn(part)) said.add(word);
+      // A value the row gives for all its sources and each source gives for itself is a merge of theirs.
+      const merged =
+        row[`${column}es`] !== undefined || row[`${column}s`] !== undefined;
+      for (const part of shown) said.add(part, !merged);
       if (shown.length > 0) own.set(column, oneLine(shown.join("; ")));
     }
     own.set(

@@ -775,10 +775,7 @@ test("what needs review gives each record by its source and its own label, less 
     question: "entry/What needs review",
   })) as Compact;
   const [line] = linesOf(views[0]!.text);
-  assert.equal(
-    line!.record,
-    "S1 losartan 50 mg tablet",
-  );
+  assert.equal(line!.record, "S1 losartan 50 mg tablet");
   assert.match(
     line!.otherRecord!,
     /^S2 in M[0-9a-f]{8,} losartan potassium 50 MG Oral Tablet$/,
