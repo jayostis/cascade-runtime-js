@@ -805,9 +805,12 @@ const plain = (xml: string) =>
 
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
-/** What precedes "ruled out" in a clause that does not say it was: a negation, or a ruling out yet to be made. */
+/**
+ * What ends the words before "ruled out" when the clause does not say it was: a negator or a modal, then at most
+ * "not", "yet", "have", "has", "had", "be", "been" or "to".
+ */
 const NOT_RULED_OUT =
-  /\b(?:not|never|yet|cannot|unable|should|must|needs? to|to be|to rule|could|can|may|might|will|would|if)\b|n't\b/i;
+  /(?:\b(?:not|never|yet|cannot|unable to|should|must|needs? to|to|could|can|may|might|will|would)|n't)(?:\s+(?:not|yet|have|has|had|be|been|to))*\s*$/i;
 const STATUS_WORDS =
   /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|ruled out|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
@@ -875,8 +878,9 @@ export function narrativeFields(xml: string): Fields {
       const before = segment.slice(0, match.index).split(/[;.]/).pop()!;
       const after = segment.slice(match.index + match[0].length);
       if (
-        /\b(not|no|never|without)\b/i.test(before) ||
-        (/^ruled out$/i.test(match[0]) && NOT_RULED_OUT.test(before)) ||
+        (/^ruled out$/i.test(match[0])
+          ? NOT_RULED_OUT.test(before)
+          : /\b(not|no|never|without)\b/i.test(before)) ||
         /^[\s:?\-(=]*(none|no|not|nil|n\/a|false)(?!\w)/i.test(after)
       )
         continue;

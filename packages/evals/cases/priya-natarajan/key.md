@@ -16,7 +16,7 @@ history to whoever answers.
    the item's "Found" minimum. Partly means the right topic but part of that minimum is missing, or no evidence is
    named. Missed means it is not raised.
 2. **False questions:** count one for each of these:
-   - a raised trap (T1-T4, TT1-TT2), in the way its "Wrong" line says;
+   - a raised trap (T1-T4), in the way its "Wrong" line says;
    - a raised near-trap from the near-trap lists below;
    - any other claim that the records contradict.
 
@@ -25,19 +25,16 @@ history to whoever answers.
 3. **Not false:** pre-existing items (P…, PT…) and generic questions. Some pre-existing items are marked "legitimate
    find" (PT6, PT7); count those as correct extra finds, reported apart from the planted-gap recall. A true statement
    that a result exists but its content is not in the records the arm saw is not false either. For example: "an eye
-   exam was done in May 2026, ask what it showed" (T1), or "a CT angiogram followed the high D-dimer and its result
-   isn't in my records" (TT2).
+   exam was done in May 2026, ask what it showed" (T1).
 4. **Citation check:** for every record an arm cites, check that it exists in the inputs and says what the arm claims.
    Report the number cited, the number correct, and the wrong ones.
 5. **Totals:** report each arm's gap score twice, with and without G5. G5 is narrative-only, so its ceiling for the pod
-   arm is zero. Also note that TT2 is hard for the pod arm to fail. The refuted PE is in `pod/My condition history` with
-   status "ruled out", never resolved or active, and in no other `pod/My …` view. So TT2 is not a symmetric test of judgment.
+   arm is zero.
 6. **Narrative-only facts:** the pod arm cannot see them. It sees none of these:
    - the HCTZ stop reason and the April refill (G2);
    - the TSH repeat advice (G6);
    - the colonoscopy's "normal" (T4);
-   - the eye exam findings (T1);
-   - the CT angiogram text (TT2).
+   - the eye exam findings (T1).
 
    Do not require them unless an item's "Found" line does.
 

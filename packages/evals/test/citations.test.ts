@@ -1074,6 +1074,12 @@ test("only a ruling out that was made withdraws a narrative line", () => {
     "Pulmonary embolism was ruled out by CT",
     "Pulmonary embolism ruled out",
     "Pulmonary embolism has been ruled out",
+    "On May 3, 2025, PE was ruled out by CTA",
+    "May 2025: pulmonary embolism ruled out",
+    "CTA obtained to rule out PE, PE ruled out",
+    "Chest pain thought to be musculoskeletal, PE ruled out",
+    "Patient unable to walk far, PE ruled out by CTA",
+    "No acute distress, PE ruled out",
   ])
     assert.deepEqual(status(line), ["ruled-out"], line);
   for (const line of [
