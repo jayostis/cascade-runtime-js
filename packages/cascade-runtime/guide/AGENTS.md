@@ -476,7 +476,7 @@ async function search(word) {
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
-  one hospital stopped and another still lists says both, and `?sources`. One
+  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", joined by "; " (none when no record states one), and `?sources`. One
   whose status was taken from a record that stopped it is only in
   `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
@@ -495,7 +495,7 @@ async function search(word) {
   stopped, paused, unknown or entered in error), which says whether the
   medication is still taken; `?records` is how many records its `?entry` joins;
   `?statuses` gives each record's own status and end, as in
-  `pod/My active medications`, and `?sources` each record's source.
+  `pod/My active medications`, `?dosages` the dosage each record states, and `?sources` each record's source.
 - `pod/My procedures`: procedures, newest first, with the sources of each.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
