@@ -746,6 +746,73 @@ test("a source's text is compared only with the values that source gave, so a te
   await reads.close();
 });
 
+test("a source's text is kept when its words come from the row's name and a status that no source states for itself", async () => {
+  const entry = entryOf("conditions", 1);
+  const reads = podOf(
+    {
+      "pod/My condition history": [
+        {
+          condition: "Pulmonary embolism",
+          verificationStatus: "refuted",
+          status: "active",
+          statuses: `${record(1)} active; ${record(2)} active`,
+          narrativeTexts: `${record(1)} Pulmonary embolism refuted; ${record(2)} Embolism, pulmonary: active`,
+          entry,
+          sources: `${sourced(1, 1)}; ${sourced(2, 2)}`,
+        },
+      ],
+    },
+    [recordOf(entry, 1, 1), recordOf(entry, 2, 2)],
+  );
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "pod/My condition history",
+  })) as Compact;
+  assert.equal(
+    linesOf(views[0]!.text)[0]!.narrativeTexts,
+    "S1 Pulmonary embolism refuted",
+  );
+  await reads.close();
+});
+
+test("a record retrieved from a document is given less its kind, its author and the document, as its source gives them", async () => {
+  const [one, other] = [
+    entryOf("medications", 1),
+    entryOf("medications", 2),
+  ] as [string, string];
+  const reads = podOf(
+    {
+      "entry/What needs review": [
+        {
+          entry: one,
+          entryLabel: "Medication entry · losartan 50 mg tablet",
+          needs: "possibly the same medication",
+          record: record(1),
+          recordLabel:
+            "Medication · losartan 50 mg tablet · Clearwater · ccda_2026.xml",
+          otherRecord: record(2),
+          otherRecordLabel:
+            "Medication · losartan potassium 50 MG Oral Tablet · Fernhill",
+        },
+      ],
+    },
+    [recordOf(one, 1, 1), recordOf(other, 2, 2)],
+  );
+  const { views } = (await ask.run(reads, {
+    pod: "p",
+    format: "compact",
+    question: "entry/What needs review",
+  })) as Compact;
+  const [line] = linesOf(views[0]!.text);
+  assert.equal(line!.record, "S1 losartan 50 mg tablet");
+  assert.match(
+    line!.otherRecord!,
+    /^S2 in M[0-9a-f]{8,} losartan potassium 50 MG Oral Tablet$/,
+  );
+  await reads.close();
+});
+
 test("what needs review gives each record by its source and its own label, less its kind, its source's name and when it was received, so two records of one source are told apart", async () => {
   const [one, other] = [
     entryOf("medications", 1),
