@@ -1263,3 +1263,66 @@ test("a partial date is the whole period it names: it backs an absence after a d
     held("b"),
   );
 });
+
+test("a negation in one cell does not negate the next cell's entered in error", async () => {
+  assert.deepEqual(
+    await inRecords(
+      undefined,
+      ["hives"],
+      narrativeRow(
+        "<td>Hives</td><td>No</td><td>Entered in error</td><td>July 8, 2025</td>",
+      ),
+    ),
+    { backed: true },
+  );
+});
+
+test("a cell that denies being entered in error, however it is worded, is a live row; one that names an earlier clause's negation still withdraws", async () => {
+  const row = (status: string) =>
+    narrativeRow(`<td>Hives</td><td>${status}</td><td>July 8, 2025</td>`);
+  for (const status of [
+    "Has not been entered in error",
+    "Not marked as entered in error",
+    "No longer entered in error",
+    "Entered in error? No",
+    "Entered in error - no",
+    "Entered in error (none)",
+    "Entered in error: not",
+  ])
+    assert.deepEqual(
+      await inRecords(undefined, ["hives"], row(status)),
+      held("b"),
+      status,
+    );
+  for (const status of [
+    "Not applicable; entered in error",
+    "No known allergy. Entered in error",
+    "Entered in error: Yes",
+  ])
+    assert.deepEqual(
+      await inRecords(undefined, ["hives"], row(status)),
+      { backed: true },
+      status,
+    );
+});
+
+test("a partial date is read from a time element only, not from a quantity's value", async () => {
+  const doc = `<ClinicalDocument><component><structuredBody><component><section><entry><observation classCode="OBS" moodCode="EVN"><code code="4548-4"/><effectiveTime value="20200101"/><value xsi:type="PQ" value="2050" unit="mg"/></observation></entry></section></component></structuredBody></component></ClinicalDocument>`;
+  assert.deepEqual(await inRecords("2026-01-01", [], doc, ["4548-4"]), {
+    backed: true,
+  });
+});
+
+test("a year and month inside a longer number or range is no partial date", async () => {
+  assert.deepEqual(
+    await inRecords(
+      "2026-01-01",
+      [],
+      narrativeRow(
+        "<td>Hemoglobin A1c 4548-4 lot 1000-2050-12</td><td>January 5, 2025</td>",
+      ),
+      ["4548-4"],
+    ),
+    { backed: true },
+  );
+});
