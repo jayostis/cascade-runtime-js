@@ -191,7 +191,7 @@
         "advising her to keep taking it without noting the hospital's stop",
         "saying she stopped it and nothing is outstanding"
       ],
-      "pod": "deeper",
+      "pod": "visible",
       "guideline": "medication reconciliation at care transitions (PSNet): a discontinued drug still active elsewhere"
     },
     {
@@ -393,7 +393,7 @@
         "inventing a size or a cancer risk the report does not give",
         "saying the follow-up was done"
       ],
-      "pod": "narrative-only",
+      "pod": "visible",
       "guideline": "Fleischner Society 2017: a 6-8 mm solid nodule in a low-risk person, CT at 6-12 months",
       "absentMatch": {
         "terms": ["chest CT", "CT chest", "CT of the chest"],
@@ -570,7 +570,7 @@
             "file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
             "resource": "MedicationRequest/medrx-lisinopril-1"
           },
-          "says": "only Apple Health's 2023 FHIR copy still says active",
+          "says": "only Apple Health's FHIR copy of the order (last updated 2023-06-15, received 2025-03-29) still says active",
           "status": "active",
           "code": "314076"
         }
@@ -897,12 +897,14 @@
             "file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json",
             "resource": "MedicationRequest/medrx-lisinopril-1"
           },
-          "says": "only Apple Health's 2023 FHIR copy still says active",
+          "says": "only Apple Health's FHIR copy of the order (last updated 2023-06-15, received 2025-03-29) still says active",
           "status": "active",
           "code": "314076"
         }
       ],
-      "links": ["Apple Health's 2023 FHIR copy was never updated"],
+      "links": [
+        "Apple Health's FHIR copy of the order was last updated 2023-06-15 and never again"
+      ],
       "found": "not said",
       "wrong": [
         "yes, lisinopril is still active",
@@ -940,7 +942,7 @@
     },
     {
       "id": "P7",
-      "says": "Apple Health's FHIR copies are from 2025 and still show lisinopril active (see T2)."
+      "says": "Apple Health's FHIR copies of the lisinopril order (x-e2, exported 2025-03-29; x-e8, exported 2025-06-15; both received 2025-03-29) still show it active, from an order last updated 2023-06-15 (see T2)."
     },
     {
       "id": "P8",
