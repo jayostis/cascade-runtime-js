@@ -34,8 +34,7 @@ history to whoever answers.
    - the HCTZ stop reason and the April refill (G2);
    - the TSH repeat advice (G6);
    - the colonoscopy's "normal" (T4);
-   - the eye exam findings (T1);
-   - the CT angiogram text (TT2).
+   - the eye exam findings (T1).
 
    Do not require them unless an item's "Found" line does.
 
@@ -120,7 +119,7 @@ id) unless named.
 - **Wrong:** "you had a blood clot in the lung: are you on a blood thinner / do you need follow-up for it"; "your high
   D-dimer was not followed up". Not wrong: "a CT angiogram was done the same day and its result isn't in my records"
   (scoring rule 3).
-- **Pod:** feature: code semantics (verification status). The DiagnosticReport is in the dump arm only: the importer drops it. Absent from `pod/My active conditions`; `pod/My condition history` gives it with status "ruled out".
+- **Pod:** feature: code semantics (verification status). Absent from `pod/My active conditions`; `pod/My condition history` gives it with status "ruled out", and `pod/My reports, notes and documents` gives the CT angiogram report with its conclusion "No pulmonary embolism".
 
 ### Pre-existing items (true, neither credit nor penalty)
 

@@ -230,7 +230,7 @@
           "means": "the D-dimer called unfollowed"
         }
       ],
-      "pod": "deeper"
+      "pod": "visible"
     },
     {
       "id": "TF1",
@@ -419,7 +419,7 @@
       "found": "says no, it was ruled out",
       "partly": "says none is recorded, without the July 2025 work-up",
       "wrong": ["yes, in July 2025"],
-      "pod": "deeper"
+      "pod": "visible"
     },
     {
       "id": "TT5",
@@ -446,7 +446,7 @@
           "means": "treatment for an embolism she never had"
         }
       ],
-      "pod": "deeper"
+      "pod": "visible"
     },
     {
       "id": "TA1",
