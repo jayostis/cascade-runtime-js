@@ -809,6 +809,32 @@ test("both arms read the person alike: a death is an end, a gender a value", asy
   }
 });
 
+test("a pod medication's dosage text is quoted from the entry", async () => {
+  const lisinopril = "pod://p/clinical/medications.ttl#lisinopril";
+  const medications = podRowsSource(async (entry) =>
+    entry === lisinopril
+      ? [
+          { field: `${NS}drugName`, value: "lisinopril 10 MG Oral Tablet" },
+          { field: `${NS}dosage`, value: "1 tablet by mouth every morning" },
+        ]
+      : undefined,
+  );
+  const cases: [string, Claim, boolean][] = [
+    [
+      "the dosage as written",
+      { cite: { entry: lisinopril }, quote: "1 tablet by mouth every morning" },
+      true,
+    ],
+    [
+      "a dosage the entry does not state",
+      { cite: { entry: lisinopril }, quote: "2 tablets by mouth every night" },
+      false,
+    ],
+  ];
+  for (const [what, claim, held] of cases)
+    assert.equal((await checkCitation(claim, medications)).ok, held, what);
+});
+
 test("a name holds as whole words in both arms, and a gene change's coding expression is a code, not a name", async () => {
   const variant = "pod://p/genetics.ttl#v1";
   const variants = podRowsSource(async (entry) =>

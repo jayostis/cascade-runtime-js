@@ -1070,6 +1070,7 @@ export const POD_FIELDS: Readonly<Record<string, readonly (keyof Fields)[]>> = {
   reportEffectiveTime: ["when"],
   reportIssuedTime: ["recorded"],
   reportConclusion: ["text"],
+  dosage: ["text"],
   noteOrDocumentType: ["code"],
   noteOrDocumentTypeInOtherSystem: ["code"],
   noteOrDocumentTypeName: ["name"],
