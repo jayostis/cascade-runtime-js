@@ -219,6 +219,8 @@ function calendar(
 const lower = (text: string) => text.trim().toLowerCase().replace(/\s+/g, " ");
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The statuses of a record its source withdrew, as a citation may word them. */
+const REFUTED = /^(?:refuted|ruled[- ]out)$/;
 const codeOf = (written: string) => lower(written).split(/[/#]/).pop() ?? "";
 
 /** Whether a value holds `want` as whole words, not as a fragment of a word. */
@@ -248,8 +250,14 @@ function holds(
     case "unit":
     case "id":
       return values.some((value) => lower(value) === want);
-    case "status":
-      return values.some((value) => codeOf(value) === codeOf(want));
+    case "status": {
+      const refuted = values.some((value) => REFUTED.test(codeOf(value)));
+      const said = (value: string) =>
+        REFUTED.test(codeOf(value)) ? "refuted" : codeOf(value);
+      return refuted
+        ? REFUTED.test(codeOf(want))
+        : values.some((value) => said(value) === said(want));
+    }
     case "code":
       return values.some((value) => codeOf(value) === codeOf(want));
     case "name":
@@ -797,9 +805,9 @@ const plain = (xml: string) =>
 
 const WORDED_DATE =
   /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}|\b\d{4}-\d{2}-\d{2}\b/g;
-/** What precedes "ruled out" in a line that says it has not been: no withdrawal. */
+/** What precedes "ruled out" in a clause that does not say it was: a negation, or a ruling out yet to be made. */
 const NOT_RULED_OUT =
-  /\b(?:not|never|cannot be|can't be|to be)\s+(?:been\s+)?$/i;
+  /\b(?:not|never|yet|cannot|unable|should|must|needs? to|to be|to rule|could|can|may|might|will|would|if)\b|n't\b/i;
 const STATUS_WORDS =
   /\b(active|completed|stopped|discontinued|inactive|aborted|expired|resolved|final|refuted|ruled out|cancelled|nullified|entered[- ]in[- ]error)\b/gi;
 
@@ -868,6 +876,7 @@ export function narrativeFields(xml: string): Fields {
       const after = segment.slice(match.index + match[0].length);
       if (
         /\b(not|no|never|without)\b/i.test(before) ||
+        (/^ruled out$/i.test(match[0]) && NOT_RULED_OUT.test(before)) ||
         /^[\s:?\-(=]*(none|no|not|nil|n\/a|false)(?!\w)/i.test(after)
       )
         continue;
