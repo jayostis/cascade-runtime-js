@@ -1175,6 +1175,46 @@ test("a pod medication's dosage text is quoted from the entry", async () => {
     assert.equal((await checkCitation(claim, medications)).ok, held, what);
 });
 
+test("the text a source wrote for a procedure or a lab result is quoted from the entry", async () => {
+  const colonoscopy = "pod://p/clinical/procedures.ttl#colonoscopy";
+  const tsh = "pod://p/clinical/lab-results.ttl#tsh";
+  const rows = podRowsSource(async (entry) =>
+    entry === colonoscopy
+      ? [
+          { field: `${NS}procedureName`, value: "Colonoscopy" },
+          { field: `${NS}narrativeText`, value: "Normal; repeat in 10 years." },
+        ]
+      : entry === tsh
+        ? [
+            { field: `${NS}testName`, value: "TSH" },
+            {
+              field: `${NS}narrativeText`,
+              value: "TSH\n2.1 mIU/L\nhistorical result",
+            },
+          ]
+        : undefined,
+  );
+  const cases: [string, Claim, boolean][] = [
+    [
+      "the finding beside a procedure",
+      { cite: { entry: colonoscopy }, quote: "repeat in 10 years" },
+      true,
+    ],
+    [
+      "a label across the lines of a row's text",
+      { cite: { entry: tsh }, quote: "2.1 mIU/L historical result" },
+      true,
+    ],
+    [
+      "a finding the entry does not state",
+      { cite: { entry: colonoscopy }, quote: "repeat in 5 years" },
+      false,
+    ],
+  ];
+  for (const [what, claim, held] of cases)
+    assert.equal((await checkCitation(claim, rows)).ok, held, what);
+});
+
 test("a name holds as whole words in both arms, and a gene change's coding expression is a code, not a name", async () => {
   const variant = "pod://p/genetics.ttl#v1";
   const variants = podRowsSource(async (entry) =>

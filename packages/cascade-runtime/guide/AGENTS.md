@@ -484,7 +484,7 @@ async function search(word) {
 - `pod/My active medications`: medications whose status is active
   (`?medication`, `?code`, `?started`, `?written`, `?records`, `?entry`), with
   `?statuses`, each record's own status and the day it ended, so a medication
-  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", joined by "; " (none when no record states one), and `?sources`. One
+  one hospital stopped and another still lists says both, `?dosages`, each record that states a dosage, "<record> <text>", joined by "; " (none when no record states one), `?narrativeTexts`, the text each record's source wrote for it, such as a stop reason, in the same form, and `?sources`. One
   whose status was taken from a record that stopped it is only in
   `pod/My medication history`.
 - `pod/My genetic variants`: variants, a row for each code an entry states
@@ -495,7 +495,9 @@ async function search(word) {
   the source gave each, as codes of HL7's ObservationInterpretation such as H,
   L and A (`?interpretations`), its reference range as text and each bound as
   written with its unit (`?referenceRange`, `?referenceRangeLow`,
-  `?referenceRangeHigh`), and `?sources`.
+  `?referenceRangeHigh`), `?narrativeTexts`, the text each record's source wrote
+  for it, such as a label beside the value, "<record> <text>" joined by "; "
+  (none when no record has one), and `?sources`.
 - `pod/My medication history`: every medication whatever its status, with when
   it started and the day its prescription was written (`?medication`, `?code`,
   `?status`, `?lifecycle`, `?started`, `?written`, `?ended`); `?ended` is bound only when the source states a stop, `?status` is
@@ -503,8 +505,12 @@ async function search(word) {
   stopped, paused, unknown or entered in error), which says whether the
   medication is still taken; `?records` is how many records its `?entry` joins;
   `?statuses` gives each record's own status and end, as in
-  `pod/My active medications`, `?dosages` the dosage each record states, and `?sources` each record's source.
-- `pod/My procedures`: procedures, newest first, with the sources of each.
+  `pod/My active medications`, `?dosages` the dosage each record states, `?narrativeTexts` the text each record's source wrote for it, such as a stop reason, and `?sources` each record's source.
+- `pod/My procedures`: procedures, newest first (`?performed`, `?procedure`,
+  `?snomed`, `?status`, `?records`, `?entry`), with the text each record's
+  source wrote for it, such as the finding beside a screening
+  (`?narrativeTexts`, "<record> <text>" joined by "; ", none when no record has
+  one), and the `?sources` of each.
 - `pod/My reports, notes and documents`: one row for each report and note,
   newest first (`?date`, else `?issued`), with what it says (`?kind`, `?name`,
   `?title`, `?status`, `?contentStatus`, `?conclusion`, `?text`) and its
