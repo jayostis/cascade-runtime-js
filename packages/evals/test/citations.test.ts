@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,12 +12,14 @@ import {
   downloadsSource,
   fhirFields,
   isoDate,
+  kindOfCall,
   narrativeFields,
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
   type Source,
 } from "../src/citations.js";
+import { entryRows as rowsOfEntries } from "../src/checks.js";
 import { readConfig, resolveVocabulary } from "@cascade-runtime/runtime/node";
 
 const FOLDER = fileURLToPath(
@@ -382,6 +385,172 @@ test("a pod's absence is backed only by a query that ran, answered whole, and fo
     ],
   ] as const)
     assert.deepEqual(checkAbsence(claim, ran), backing, what);
+});
+
+test("a compact read backs an absence by its whole views of the absence's kind, line by line: a date on another line, a withdrawn line or a view of another kind does not count against it, and a paged or filtered read backs nothing", () => {
+  const view = (
+    question: string,
+    header: string,
+    lines: readonly string[],
+    total = lines.length,
+  ) => ({
+    question,
+    total,
+    offset: 0,
+    shown: lines.length,
+    text: [header, ...lines].join("\n"),
+  });
+  const LABS = "id\tperformed\ttest\tcode\tvalue\tunit\tstatus\tfrom";
+  const a1c2023 =
+    "La1c00001\t2023-03-01\tHemoglobin A1c\tloinc:4548-4\t7.1\t%\tfinal\tS1";
+  const egfr2026 =
+    "Lef0000001\t2026-02-16\teGFR\tloinc:98979-8\t69\tmL/min\tfinal\tS2";
+  const a1c2026 =
+    "La1c00002\t2026-02-16\tHemoglobin A1c\tloinc:4548-4\t6.9\t%\tfinal\tS2";
+  const conditions = view(
+    "pod/My condition history",
+    "id\tcondition\tsnomed\tstatus\tonset\tfrom",
+    [
+      "Cfe000001\tPulmonary embolism\tsnomed:59282003\truled out\t2025-07-08\tS2",
+      "Cd00000001\tType 2 diabetes, followed by A1c\tsnomed:44054006\tactive\t2026-03-01\tS2",
+    ],
+  );
+  const read = { pod: "p", format: "compact" };
+  const ran = (views: readonly object[], input: object = read, more = {}) => [
+    {
+      tool: "ask",
+      input,
+      ok: true,
+      answer: JSON.stringify({
+        format: "compact",
+        sources: "source\twritten by\tretrieved\nS1\tLab\t2026-05-01",
+        views,
+        ...more,
+      }),
+    },
+  ];
+  const a1c = {
+    what: "an A1c since 2025",
+    coverage: "every lab result",
+    match: { codes: ["4548-4"], terms: ["A1c"], after: "2025-01-01" },
+  };
+  const pe = {
+    what: "a pulmonary embolism",
+    coverage: "every condition",
+    match: { codes: ["59282003"], terms: ["pulmonary embolism"] },
+  };
+  const lab = { kind: "lab" } as const;
+  const labs = (lines: readonly string[], total?: number) =>
+    view("pod/My lab results", LABS, lines, total);
+  for (const [what, absence, calls, tied, backing] of [
+    [
+      "an old A1c and a new eGFR",
+      a1c,
+      ran([labs([a1c2023, egfr2026]), conditions]),
+      lab,
+      { backed: true },
+    ],
+    [
+      "a new A1c",
+      a1c,
+      ran([labs([a1c2023, a1c2026])]),
+      lab,
+      { backed: false, reason: "query found it" },
+    ],
+    [
+      "a new A1c entered in error",
+      a1c,
+      ran([labs([a1c2023, a1c2026.replace("final", "entered-in-error")])]),
+      lab,
+      { backed: true },
+    ],
+    [
+      "the lab results cut at a page",
+      a1c,
+      ran([labs([a1c2023], 2)]),
+      lab,
+      { backed: false, reason: "query cut short" },
+    ],
+    [
+      "a page with no lab results on it",
+      a1c,
+      ran([conditions], read, { next: { format: "compact", offset: 2 } }),
+      lab,
+      { backed: false, reason: "query cut short" },
+    ],
+    [
+      "a read of the entries asked for",
+      a1c,
+      ran([labs([a1c2023])], { ...read, entries: ["La1c00001"] }),
+      lab,
+      { backed: false, reason: "query cut short" },
+    ],
+    [
+      "a pulmonary embolism ruled out",
+      pe,
+      ran([labs([a1c2023]), conditions]),
+      undefined,
+      { backed: true },
+    ],
+    [
+      "a read of no kind that goes on to another page",
+      pe,
+      ran([labs([a1c2023]), conditions], read, {
+        next: { format: "compact", offset: 3 },
+      }),
+      undefined,
+      { backed: false, reason: "query cut short" },
+    ],
+  ] as const)
+    assert.deepEqual(
+      checkAbsence(
+        { ...absence, query: { tool: "ask", input: calls[0]!.input } },
+        calls,
+        tied,
+      ),
+      backing,
+      what,
+    );
+  assert.equal(
+    kindOfCall({
+      tool: "ask",
+      input: { question: "pod/My condition history" },
+    }),
+    "condition",
+  );
+  assert.equal(kindOfCall({ tool: "ask", input: read }), undefined);
+});
+
+test("a pod citation by handle is checked against the entry it names: by the start of its fragment, or a stale one by a record merged into it", async () => {
+  const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+  const [first, later] = [1, 2].map(
+    (n) => `urn:uuid:00000000-0000-4000-8000-00000000000${n}`,
+  );
+  const entry = `pod://p/clinical/lab-results.ttl#${sha(first!)}`;
+  const shows = [first, later].map((from) => ({
+    entry,
+    from: from!,
+    field: "https://ns.cascadeprotocol.org/cascade#testName",
+    value: "LDL cholesterol",
+  }));
+  const source = podRowsSource(
+    rowsOfEntries({
+      ask: async (question) =>
+        question === "entry/What it shows" ? shows : [],
+    }),
+  );
+  for (const [handle, ok] of [
+    [`L${sha(first!).slice(0, 8)}`, true],
+    [`L${sha(later!).slice(0, 12)}`, true],
+    [`C${sha(first!).slice(0, 8)}`, false],
+    [`L${sha("urn:uuid:other").slice(0, 8)}`, false],
+  ] as const)
+    assert.equal(
+      (await checkCitation({ cite: { entry: handle }, name: "LDL" }, source))
+        .ok,
+      ok,
+      handle,
+    );
 });
 
 test("a records absence is backed only by the sources it names, each read whole, none holding it", async () => {

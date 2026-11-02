@@ -44,6 +44,10 @@ export const QUESTIONS = [
   "entry/Where it came from",
   "entry/What needs review",
 ];
+export const COMPACT_QUESTIONS: readonly string[] = [];
+export const LEFT_OUT_OF_THE_COMPACT_READ: Readonly<Record<string, string>> =
+  {};
+export const PAGE_CHARACTERS = 24_000;
 /** How many rows `ask` gives unless asked for more: a pod's lab results run to thousands of tokens. */
 export const DEFAULT_ROWS = 50;
 export const MAXIMUM_ROWS = 500;

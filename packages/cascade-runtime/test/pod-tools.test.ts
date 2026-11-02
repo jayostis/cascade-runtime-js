@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import type { Pod, Row } from "cascade-runtime";
-import { TOOLS } from "cascade-runtime/tools";
-import { podReads } from "cascade-runtime/tools/node";
+import { replayKit } from "cascade-runtime/fixtures";
+import {
+  COMPACT_QUESTIONS,
+  LEFT_OUT_OF_THE_COMPACT_READ,
+  PAGE_CHARACTERS,
+  TOOLS,
+} from "cascade-runtime/tools";
+import { podReads, podsIn } from "cascade-runtime/tools/node";
 
 const RXNORM = "https://ns.cascadeprotocol.org/codes/rxnorm/";
 const LOINC = "http://loinc.org/";
@@ -452,4 +462,199 @@ test("ask offers the question a model reads every report's and note's text by, a
   });
   await reads.close();
   assert.deepEqual(asked, ["pod/My reports, notes and documents"]);
+});
+
+const ask = TOOLS.find((tool) => tool.name === "ask")!;
+const PROVENANCE = "entry/Where it came from";
+const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+const record = (n: number) =>
+  `urn:uuid:00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const DOCUMENT = `ni:///sha-256;${"d".repeat(43)}`;
+
+interface Compact {
+  readonly views: readonly {
+    readonly question: string;
+    readonly total: number;
+    readonly offset: number;
+    readonly shown: number;
+    readonly text: string;
+  }[];
+  readonly leftOut?: string;
+  readonly next?: Record<string, unknown>;
+}
+const idsOf = (text: string) =>
+  text
+    .split("\n")
+    .slice(1)
+    .filter(Boolean)
+    .map((line) => line.split("\t")[0]!);
+
+let kits: string;
+before(
+  async () => {
+    kits = await mkdtemp(join(tmpdir(), "compact-"));
+    await replayKit("tamsin-vale", join(kits, "tamsin-vale"));
+  },
+  { timeout: 120_000 },
+);
+after(() => rm(kits, { recursive: true, force: true, maxRetries: 5 }));
+
+test("ask's compact read of Tamsin's pod is one answer under the page budget, with every entry of every view it covers, each view's count, handles that name their entries, and no IRI but the person's", async () => {
+  const reads = podReads(podsIn(kits));
+  const pod = "tamsin-vale";
+  const answer = (await ask.run(reads, { pod, format: "compact" })) as Compact;
+  const text = JSON.stringify(answer);
+  assert.ok(text.length <= PAGE_CHARACTERS, `${text.length} characters`);
+  assert.equal(answer.next, undefined);
+  assert.deepEqual(
+    answer.views.map(({ question }) => question),
+    COMPACT_QUESTIONS,
+  );
+  for (const view of answer.views) {
+    const { total, rows } = await reads.ask({ pod, question: view.question });
+    assert.deepEqual(
+      [view.total, view.offset, view.shown, idsOf(view.text).length],
+      [total, 0, total, total],
+      view.question,
+    );
+    const entries = new Set(rows.flatMap(({ entry }) => entry ?? []));
+    if (entries.size === 0) continue;
+    const named = (await ask.run(reads, {
+      pod,
+      question: PROVENANCE,
+      entries: [...new Set(idsOf(view.text))],
+    })) as { rows: Row[] };
+    assert.deepEqual(
+      new Set(named.rows.map(({ entry }) => entry)),
+      entries,
+      view.question,
+    );
+  }
+  const [person] = (
+    await reads.ask({ pod, question: "pod/The person this pod is about" })
+  ).rows;
+  assert.deepEqual(
+    [...new Set(text.match(/pod:\/\/|urn:uuid:[0-9a-f-]+|ni:\/\/\//g))],
+    [person!.subject],
+  );
+  const of = async (question: string) =>
+    new Set((await reads.ask({ pod, question })).rows.map((it) => it.entry));
+  for (const [subset, whole] of Object.entries(LEFT_OUT_OF_THE_COMPACT_READ)) {
+    const parent = await of(whole);
+    for (const entry of await of(subset))
+      assert.ok(parent.has(entry), `${subset}: ${entry} is in ${whole}`);
+    assert.ok(answer.leftOut?.includes(subset), subset);
+  }
+  await reads.close();
+});
+
+/** A pod of `labs` lab results, each its own entry of one record, all from one document of one pull. */
+function labPod(labs: number) {
+  const rows: Row[] = Array.from({ length: labs }, (_, n) => ({
+    performed: `2024-${String(1 + (n % 12)).padStart(2, "0")}-01T16:00:00Z`,
+    test: `Test ${n}, named at the length a panel's tests are`,
+    code: `${LOINC}rdf/${n}-0`,
+    value: String(n),
+    unit: "mg/dL",
+    records: "1",
+    entry: `pod://p/clinical/lab-results.ttl#${sha(record(n))}`,
+    sources: `${record(n)} from ${DOCUMENT}, retrieved 2024-02-01T00:00:00Z, written by Lab`,
+  }));
+  const provenance: Row[] = rows.map(({ entry }, n) => ({
+    entry: entry!,
+    record: record(n),
+    import: record(1_000_000),
+    importLabel: "FHIR pull",
+    document: DOCUMENT,
+    hospital: "Lab",
+    retrieved: "2024-02-01T00:00:00Z",
+  }));
+  return podReads({
+    names: async () => ["p"],
+    open: async () =>
+      ({
+        ask: async (question: string) =>
+          question === "pod/My lab results"
+            ? rows
+            : question === PROVENANCE
+              ? provenance
+              : [],
+        close: async () => undefined,
+      }) as unknown as Pod,
+  });
+}
+
+test("a read longer than a page goes on from the offset its answer names: every page under the budget, every row on exactly one", async () => {
+  const reads = labPod(400);
+  const shown = new Map<string, string[]>();
+  let input: Record<string, unknown> = { pod: "p", format: "compact" };
+  let pages = 0;
+  for (;;) {
+    const page = (await ask.run(reads, input)) as Compact;
+    pages += 1;
+    assert.ok(JSON.stringify(page).length <= PAGE_CHARACTERS, `page ${pages}`);
+    for (const view of page.views) {
+      const ids = idsOf(view.text);
+      assert.equal(ids.length, view.shown, view.question);
+      assert.equal(view.offset, shown.get(view.question)?.length ?? 0);
+      shown.set(view.question, [...(shown.get(view.question) ?? []), ...ids]);
+    }
+    if (page.next === undefined) break;
+    input = { pod: "p", ...page.next };
+  }
+  assert.ok(pages > 1, `${pages} page`);
+  assert.deepEqual([...shown.keys()], COMPACT_QUESTIONS);
+  assert.equal(new Set(shown.get("pod/My lab results")).size, 400);
+  const tail = (await ask.run(reads, {
+    pod: "p",
+    question: "pod/My lab results",
+    offset: 390,
+    limit: 50,
+  })) as { total: number; offset: number; rows: Row[] };
+  assert.deepEqual([tail.total, tail.offset, tail.rows.length], [400, 390, 10]);
+  await reads.close();
+});
+
+test("a handle names its entry by a view letter and the start of the entry's fragment, a stale one the entry its record is merged into now; a handle that names none, rows with no question and a compact read with a limit are refused", async () => {
+  const entry = `pod://p/clinical/conditions.ttl#${sha(record(1))}`;
+  const reads = podReads({
+    names: async () => ["p"],
+    open: async () =>
+      ({
+        ask: async (question: string) =>
+          question === PROVENANCE
+            ? [1, 2].map((n) => ({ entry, record: record(n) }))
+            : [],
+        close: async () => undefined,
+      }) as unknown as Pod,
+  });
+  const named = async (handle: string) =>
+    (
+      (await ask.run(reads, {
+        pod: "p",
+        question: PROVENANCE,
+        entries: [handle],
+      })) as { rows: Row[] }
+    ).rows.map((it) => it.entry);
+  assert.deepEqual(await named(`C${sha(record(1)).slice(0, 8)}`), [
+    entry,
+    entry,
+  ]);
+  assert.deepEqual(
+    await named(`C${sha(record(2)).slice(0, 10)}`),
+    [entry, entry],
+    "the entry was named by record 2 before record 1 joined it",
+  );
+  for (const input of [
+    { question: PROVENANCE, entries: [`L${sha(record(1)).slice(0, 8)}`] },
+    { question: PROVENANCE, entries: [`C${sha(record(3)).slice(0, 8)}`] },
+    { format: "rows" },
+    { format: "compact", limit: 10 },
+  ])
+    await assert.rejects(
+      ask.run(reads, { pod: "p", ...input }),
+      (error: Error) => error.name === "Refusal",
+      JSON.stringify(input),
+    );
+  await reads.close();
 });
