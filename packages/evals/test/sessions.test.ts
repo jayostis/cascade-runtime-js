@@ -987,6 +987,32 @@ test("an arm's prompt version covers everything that reaches its prompt: changin
   );
 });
 
+test("the pod prompt shows the whole-pod read as the exact command that works: the pod's name in an input the ask tool's schema accepts", async () => {
+  const { sessionPrompt } = await import("../src/prompts.js");
+  const { TOOLS, schemaOf } = await import("cascade-runtime/tools");
+  const { Ajv2020 } = await import("ajv/dist/2020.js");
+  const command = "node cli.js pod --run run --job job";
+  const prompt = sessionPrompt({
+    arm: "pod",
+    tag: "t",
+    name: "Tamsin Vale",
+    pronoun: "her",
+    today: "2026-01-01",
+    ask: "ask",
+    command,
+    pod: "tamsin-vale",
+  });
+  const shown = [...prompt.matchAll(/ ask '([^']*)'/g)].map((it) => it[1]!);
+  assert.equal(shown.length, 1);
+  const input = JSON.parse(shown[0]!) as Record<string, unknown>;
+  assert.equal(input.format, "compact");
+  assert.ok(prompt.includes(`${command} ask '${shown[0]}'`));
+  const ask = TOOLS.find((it) => it.name === "ask")!;
+  const validate = new Ajv2020({ strict: false }).compile(schemaOf(ask));
+  assert.ok(validate(input), JSON.stringify(validate.errors));
+  assert.equal(input.pod, "tamsin-vale");
+});
+
 test("an answer may link facts across its items, and a judge reads that link", () => {
   const fact = (says: string) => ({
     says,

@@ -435,6 +435,25 @@ test("what the judges find contradicted by the records is said plainly, on the r
   );
 });
 
+test("a point a judge raises outside any numbered item is shown on the answer's page, not only counted", () => {
+  const grades = recorded.grades.map((g, at) =>
+    at === 0
+      ? {
+          ...g,
+          beyond: [
+            { item: 0, verdict: "fair" as const, why: "said between items" },
+          ],
+        }
+      : g,
+  );
+  const site = renderSite([{ name: "c", results: { ...recorded, grades } }]);
+  const section = element(
+    site.get(`instances/${ID}.html`)!,
+    /<section[^>]*id="q_checkup"/,
+  );
+  assert.match(text(section), /said between items/);
+});
+
 const withPerson = (person: { name: string; pronoun: string }): Results => ({
   ...recorded,
   cases: recorded.cases.map((it) => ({ ...it, person })),

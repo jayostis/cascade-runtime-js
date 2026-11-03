@@ -2,7 +2,7 @@
 // reached the records, each question's in an order of each judge's own, given with the key to each judge in a folder
 // of its own that holds nothing else; the verdicts turned back into grades per answer through the letters that judge
 // saw, and the judges' agreement.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
@@ -395,25 +395,50 @@ function judgeEstimate(
   };
 }
 
+interface Verdict {
+  outputs: (Omit<Grade, "subject" | "question" | "judge"> & {
+    label: string;
+  })[];
+}
+
+/** A judge's verdict file as written: undefined when there is none yet, else its content, or why it cannot be one. */
+export function readVerdict(
+  folder: string,
+  job: Job,
+): { verdict: Verdict } | { errors: string[] } | undefined {
+  if (job.role !== "judge" || job.verdict === undefined) return undefined;
+  const path = join(folder, job.verdict);
+  if (!existsSync(path)) return undefined;
+  let verdict: unknown;
+  try {
+    verdict = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    return { errors: [`is not JSON: ${(error as Error).message}`] };
+  }
+  const errors = errorsOf("verdict", verdict);
+  return errors.length > 0 ? { errors } : { verdict: verdict as Verdict };
+}
+
+/** Each judge whose verdict file does not match the verdict schema, with the schema's errors: none of it is graded. */
+export function verdictProblems(
+  plan: Pick<Plan, "folder" | "jobs">,
+): { judge: string; errors: string[] }[] {
+  return plan.jobs.flatMap((job) => {
+    const read = readVerdict(plan.folder, job);
+    return read !== undefined && "errors" in read
+      ? [{ judge: job.id, errors: read.errors }]
+      : [];
+  });
+}
+
 /** Each judge's verdict turned into a grade per answer it labelled: one subject job's answer to one question. */
 export async function gradesOf(plan: Plan): Promise<Grade[]> {
   const grades: Grade[] = [];
   const kinds = new Map<string, Map<string, boolean>>();
   for (const job of plan.jobs) {
-    if (job.role !== "judge" || job.verdict === undefined) continue;
-    const path = join(plan.folder, job.verdict);
-    if (!existsSync(path)) continue;
-    let verdict: {
-      outputs: (Omit<Grade, "subject" | "question" | "judge"> & {
-        label: string;
-      })[];
-    };
-    try {
-      verdict = JSON.parse(await readFile(path, "utf8"));
-    } catch {
-      continue;
-    }
-    if (errorsOf("verdict", verdict).length > 0) continue;
+    const read = readVerdict(plan.folder, job);
+    if (read === undefined || "errors" in read) continue;
+    const { verdict } = read;
     if (job.case !== undefined && !kinds.has(job.case))
       kinds.set(
         job.case,

@@ -9,6 +9,7 @@ import {
   checkAbsence,
   checkCitation,
   checkRecordsAbsence,
+  ccdaFields,
   downloadsSource,
   fhirFields,
   isoDate,
@@ -246,6 +247,72 @@ test("a citation holds only when the cited record's own fields say what is claim
       "a pod entry's range is no value",
       { cite: { entry: LDL }, value: "99" },
       otherwise("value 99"),
+    ],
+    [
+      "a FHIR code with its system, as the compact read writes it",
+      { cite: fit, code: "loinc:29771-3" },
+      ok,
+    ],
+    [
+      "a FHIR code with another system",
+      { cite: fit, code: "snomed:29771-3" },
+      otherwise("code snomed:29771-3"),
+    ],
+    [
+      "a pod code with its system",
+      { cite: { entry: LDL }, code: "LOINC:13457-7" },
+      ok,
+    ],
+    [
+      "a pod code with another system",
+      { cite: { entry: LDL }, code: "snomed:13457-7" },
+      otherwise("code snomed:13457-7"),
+    ],
+    [
+      "a C-CDA code with its system, by the OID it names",
+      { cite: { file: "summary.xml", line: 9 }, code: "cvx:187" },
+      ok,
+    ],
+    [
+      "a C-CDA code with another system",
+      { cite: { file: "summary.xml", line: 9 }, code: "loinc:187" },
+      otherwise("code loinc:187"),
+    ],
+    [
+      "a C-CDA entry's own author time backs recorded",
+      {
+        cite: { file: "summary.xml", line: 29 },
+        date: "2026-03-04",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "an entry with none is recorded when its document says its author wrote it",
+      {
+        cite: { file: "summary.xml", line: 39 },
+        date: "2026-03-10",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "a narrative line is recorded when its document was",
+      {
+        cite: { file: "summary.xml", line: 47 },
+        date: "2026-03-10",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "a recorded day the C-CDA never states",
+      {
+        cite: { file: "summary.xml", line: 39 },
+        date: "2026-03-03",
+        dateKind: "recorded",
+      },
+      otherwise("recorded 2026-03-03"),
     ],
   ];
   for (const [what, claim, verdict] of cases) {
@@ -1276,6 +1343,44 @@ test("a name holds as whole words in both arms, and a gene change's coding expre
     assert.equal((await checkCitation(claim, source)).ok, held, what);
 });
 
+test("a pod code is claimed with the system the compact read shows for its IRI, whichever vocabulary namespace it is in, and only that one", async () => {
+  const NS_CODES = "https://ns.cascadeprotocol.org/codes/";
+  const codes = podRowsSource(async () => [
+    { field: "cascade:rxNormCode", value: `${NS_CODES}rxnorm/199903` },
+    { field: "cascade:snomedCode", value: "http://snomed.info/id/59282003" },
+    { field: "cascade:testCode", value: "https://loinc.org/rdf/4548-4" },
+    { field: "cascade:hgvsCodingDnaExpression", value: "NM_000249.3:c.2T>C" },
+  ]);
+  const held = async (code: string) =>
+    (await checkCitation({ cite: { entry: "e" }, code }, codes)).ok;
+  for (const code of [
+    "rxnorm:199903",
+    "snomed:59282003",
+    "loinc:4548-4",
+    "NM_000249.3:c.2T>C",
+  ])
+    assert.equal(await held(code), true, code);
+  for (const code of ["snomed:199903", "rxnorm:59282003", "loinc:59282003"])
+    assert.equal(await held(code), false, code);
+});
+
+test("a narrative line's date after reported or recorded is its recorded date, and one after started is not", () => {
+  const recorded = (line: string) =>
+    narrativeFields(`<tr><td>${line}</td></tr>`).recorded;
+  assert.deepEqual(recorded("Patient reported, May 14, 2026"), [
+    "May 14, 2026",
+  ]);
+  assert.deepEqual(recorded("Recorded on 2026-05-14"), ["2026-05-14"]);
+  assert.deepEqual(recorded("Started on 2026-05-14"), []);
+  for (const line of [
+    "Unreported 2026-05-14",
+    "Not documented on 2026-05-14",
+    "Never recorded 2026-05-14",
+    "Misreported 2026-05-14",
+  ])
+    assert.deepEqual(recorded(line), [], line);
+});
+
 test("a Patient's deceasedBoolean is a value and its deceasedDateTime an end", () => {
   const fields = fhirFields({
     resourceType: "Patient",
@@ -1624,6 +1729,9 @@ test("a record is dated by its clinical dates, not by when it was written: the s
     await inRecords("2026-02-01", [], ccda(written), ["4548-4"]),
     held("b"),
   );
+  const participation =
+    '<author><templateId root="2.16.840.1.113883.10.20.22.4.119"/><time value="20261015"/></author>';
+  assert.deepEqual(ccdaFields(ccda(participation)).recorded, ["20261015"]);
 });
 
 test("a C-CDA record that is negated, nullified or entered in error is no presence", async () => {

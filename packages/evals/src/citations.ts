@@ -4,6 +4,7 @@
 // only: never a reference range, an interpretation, an update time or a neighbouring record. The harness checks
 // answers with it; an app can check a model's answer before showing it.
 import { readFile } from "node:fs/promises";
+import { codeStems } from "cascade-runtime";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /** Where a citation points: a line of a download, a FHIR resource in one, or a pod entry as a pod's rows name it. */
@@ -792,6 +793,50 @@ const push = (into: string[], value: unknown) => {
   if (text !== undefined) into.push(text);
 };
 
+/** What the pod's compact read calls a code system, by how a FHIR coding (its URL) or a C-CDA code (its OID) names it. */
+const SYSTEMS: Readonly<Record<string, string>> = {
+  "http://loinc.org": "loinc",
+  "2.16.840.1.113883.6.1": "loinc",
+  [`${new URL(codeStems.SNOMEDCT).origin}/sct`]: "snomed",
+  "2.16.840.1.113883.6.96": "snomed",
+  "http://www.nlm.nih.gov/research/umls/rxnorm": "rxnorm",
+  "2.16.840.1.113883.6.88": "rxnorm",
+  "http://hl7.org/fhir/sid/cvx": "cvx",
+  "2.16.840.1.113883.12.292": "cvx",
+  "http://hl7.org/fhir/sid/icd-10-cm": "icd10cm",
+  "2.16.840.1.113883.6.90": "icd10cm",
+  "http://www.ama-assn.org/go/cpt": "cpt",
+  "2.16.840.1.113883.6.12": "cpt",
+};
+
+/**
+ * A code, and beside it system:code as the compact read writes it when the record names its system, so a claim may carry
+ * either; a system the record does not name, or one not listed, gives no second form.
+ */
+function pushCode(into: string[], code: unknown, system: unknown): void {
+  push(into, code);
+  const bare = str(code);
+  const name = SYSTEMS[(str(system) ?? "").replace(/\/$/, "")];
+  if (bare !== undefined && name !== undefined) into.push(`${name}:${bare}`);
+}
+
+/** A pod's code IRI as the compact read shows it: system:code; undefined for a value that is no code IRI. */
+function shownCode(iri: string): string | undefined {
+  const plain = iri.replace(/^https:/, "http:");
+  for (const [name, stem] of Object.entries(codeStems)) {
+    const prefix = stem.replace(/^https:/, "http:");
+    if (!plain.startsWith(prefix)) continue;
+    const code = plain.slice(prefix.length);
+    if (code === "" || code.includes("/")) return undefined;
+    const own = /\/codes\/([^/]+)\/$/.exec(stem)?.[1];
+    return `${own ?? SHOWN_AS[name] ?? name.toLowerCase()}:${code}`;
+  }
+  return undefined;
+}
+
+/** What the compact read calls a code system whose stem does not end in its name. */
+const SHOWN_AS: Readonly<Record<string, string>> = { SNOMEDCT: "snomed" };
+
 /** A CodeableConcept's codes into `code`, and its text and displays into each of `kinds`. */
 function concept(
   into: Mutable,
@@ -804,8 +849,12 @@ function concept(
   };
   for (const kind of kinds) push(into[kind], text);
   for (const one of asArray(coding)) {
-    const { code, display } = one as { code?: unknown; display?: unknown };
-    push(into.code, code);
+    const { code, display, system } = one as {
+      code?: unknown;
+      display?: unknown;
+      system?: unknown;
+    };
+    pushCode(into.code, code, system);
     for (const kind of kinds) {
       push(into[kind], display);
       if (kind !== "name") push(into[kind], code);
@@ -938,7 +987,7 @@ export function ccdaFields(xml: string): Fields {
   if (attribute(/^<[^>]*>/.exec(own)?.[0] ?? "", "negationInd") === "true")
     f.status.push("negated");
   for (const tag of tags("code|translation"))
-    push(f.code, attribute(tag, "code"));
+    pushCode(f.code, attribute(tag, "code"), attribute(tag, "codeSystem"));
   for (const tag of tags("\\w+")) push(f.name, attribute(tag, "displayName"));
   for (const [, text] of own.matchAll(
     /<(?:\w+:)?(?:originalText|name)\b[^>]*>([^<]+)</g,
@@ -952,11 +1001,24 @@ export function ccdaFields(xml: string): Fields {
     push(f.start, attribute(tag, "value"));
   }
   for (const tag of tags("high")) push(f.end, attribute(tag, "value"));
+  for (const [, time] of own.matchAll(AUTHOR_TIME)) push(f.recorded, time);
   for (const [, text] of own.matchAll(
     /<(?:\w+:)?text\b[^>]*>([\s\S]*?)<\/(?:\w+:)?text>/g,
   ))
     f.text.push(text!.replace(/<[^>]+>/g, " "));
   return f;
+}
+
+/** The time an author of a C-CDA entry or document wrote it. */
+const AUTHOR_TIME =
+  /<(?:\w+:)?author\b[^>]*>(?:\s*<(?:\w+:)?(?!time\b)\w+\b[^>]*\/>)*\s*<(?:\w+:)?time\b[^>]*\bvalue="([^"]*)"/g;
+
+/** The author time of a C-CDA document's header, which every entry without an author of its own takes. */
+function documentTime(xml: string): string | undefined {
+  const body = xml.search(/<(?:\w+:)?(?:component|structuredBody)\b/);
+  return [
+    ...(body < 0 ? xml : xml.slice(0, body)).matchAll(AUTHOR_TIME),
+  ][0]?.[1];
 }
 
 const ENTITIES: Readonly<Record<string, string>> = {
@@ -1045,6 +1107,12 @@ export function narrativeFields(xml: string): Fields {
       )
     )
       f.end.push(match[0]);
+    if (
+      /(?<![\w-])(?<!\b(?:not|never|no)\s+)(reported|recorded|documented)\s*(on\s*)?,?\s*$/.test(
+        before,
+      )
+    )
+      f.recorded.push(match[0]);
   }
   for (const segment of cells.length > 0 ? cells : [text])
     for (const match of segment.matchAll(STATUS_WORDS)) {
@@ -1098,6 +1166,11 @@ function lineAt(starts: readonly number[], offset: number): number {
 /** A C-CDA document's records: each entry's act, and each result of an organizer, with its span. */
 function ccdaRecords(xml: string): Span[] {
   const spans: Span[] = [];
+  const written = documentTime(xml);
+  const recorded = (fields: Fields): Fields =>
+    fields.recorded.length > 0 || written === undefined
+      ? fields
+      : { ...fields, recorded: [written] };
   const stack: {
     name: string;
     from: number;
@@ -1117,9 +1190,9 @@ function ccdaRecords(xml: string): Span[] {
         spans.push({
           from: open.from,
           to,
-          fields: open.record
-            ? ccdaFields(fragment)
-            : narrativeFields(fragment),
+          fields: recorded(
+            open.record ? ccdaFields(fragment) : narrativeFields(fragment),
+          ),
         });
       }
       continue;
@@ -1379,7 +1452,11 @@ export function podRowsSource(
           name === "lifecycle"
             ? (row.value.split("#").pop() ?? "").replace(/^Medication/, "")
             : row.value;
-        for (const kind of POD_FIELDS[name] ?? []) fields[kind].push(value);
+        for (const kind of POD_FIELDS[name] ?? []) {
+          fields[kind].push(value);
+          const shown = kind === "code" ? shownCode(value) : undefined;
+          if (shown !== undefined) fields.code.push(shown);
+        }
       }
       return { fields };
     },

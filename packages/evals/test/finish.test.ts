@@ -71,6 +71,17 @@ test("finish checks and writes a run of two cases in one process, opening each c
           questions: [],
           prompt: "prompts/tamsin-vale.checkup.pod.txt",
         },
+        {
+          id: "tamsin-vale.checkup.judge",
+          role: "judge",
+          case: "tamsin-vale",
+          model: "claude-haiku-5-5",
+          tag: "two-cases/tamsin-vale.checkup.judge",
+          status: "done",
+          estimate: { tokens: 0, usd: 0 },
+          verdict: "judges/tamsin-vale.checkup.judge.json",
+          labels: {},
+        },
       ],
       estimate: { tokens: 0, usd: 0 },
       fitsCap: true,
@@ -81,7 +92,31 @@ test("finish checks and writes a run of two cases in one process, opening each c
     join(run, "prompts", "tamsin-vale.checkup.pod.txt"),
     "You are answering Tamsin Vale.\n",
   );
-  await finish(run, () => undefined);
+  await mkdir(join(run, "judges"), { recursive: true });
+  await writeFile(
+    join(run, "judges", "tamsin-vale.checkup.judge.json"),
+    JSON.stringify({
+      outputs: [
+        {
+          label: "A",
+          items: [],
+          beyond: [{ item: -1, verdict: "fair", why: "" }],
+          chains: [],
+        },
+      ],
+    }),
+  );
+  const lines: string[] = [];
+  const finished = await finish(run, (line) => lines.push(line));
+  assert.deepEqual(
+    finished.invalidVerdicts.map((it) => it.judge),
+    ["tamsin-vale.checkup.judge"],
+    "finish reports a verdict that fails its schema, per judge",
+  );
+  assert.ok(
+    lines.some((it) => /tamsin-vale\.checkup\.judge.*verdict/.test(it)),
+    "and says so while it runs",
+  );
   const results = JSON.parse(
     await readFile(join(run, "results.json"), "utf8"),
   ) as {
@@ -91,8 +126,18 @@ test("finish checks and writes a run of two cases in one process, opening each c
       person: { name: string; pronoun: string };
       description: Record<string, string>;
     }[];
-    jobs: { id: string; promptText?: string }[];
+    jobs: {
+      id: string;
+      promptText?: string;
+      status: string;
+      reason?: string;
+    }[];
   };
+  const judge = results.jobs.find(
+    (it) => it.id === "tamsin-vale.checkup.judge",
+  );
+  assert.equal(judge?.status, "failed");
+  assert.match(judge?.reason ?? "", /verdict/);
   assert.deepEqual(
     results.cases.map(({ id }) => id),
     ["tamsin-vale", "priya-natarajan"],

@@ -65,9 +65,13 @@ const POD = `Your access: {PRONOUN_POSSESSIVE} records are in a pod, which you r
   {COMMAND} <tool> '<JSON input>'
 
 It calls the pod's MCP server (cascade-mcp) and prints the tool's answer, then the call's number. \`{COMMAND} --list\`
-prints the tools and their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}". \`ask\` with {"format": "compact"}
-and no question reads the whole pod in one compact answer, a page at a time: every view's entries as tab-separated
-rows, each entry by a short handle. Run the command once per Bash call, exactly as written, with one tool and its input: no
+prints the tools and their input schemas. {PRONOUN_POSSESSIVE} pod is named "{POD}"; a tool that reads it takes that name as
+"pod". To read the whole pod in one compact answer, a page at a time (every view's entries as tab-separated
+rows, each entry by a short handle), run:
+
+  {COMMAND} ask '{"pod": "{POD}", "format": "compact"}'
+
+Run the command once per Bash call, exactly as written, with one tool and its input: no
 loops, variables, pipes or chained commands (several Bash calls in one turn run together). Use no other command and
 read no file; use no tool except Bash for these two commands and Write for each answer.`;
 
@@ -208,7 +212,8 @@ For each answer, give:
   on (by "n") and a one-line reason;
 - every item of the answer that no key item covers, with your verdict: "fair" (true and fair to raise),
   "true-not-planted" (true, and a find the key does not list), "speculative" (not supported by the records), or
-  "contradicted" (the records say otherwise), and why;
+  "contradicted" (the records say otherwise), and why; give it by the item's number, or 0 for a point made in text that
+  is in no numbered item, such as an introduction or a closing paragraph, which has no chain;
 - for every item of the answer: whether its chain is complete (its facts, any knowledge it needs and its point all
   there, and for a key item, every link that item lists) and faithful (each fact it states is what the records say,
   as far as the key and the answer's own facts let you tell), with the steps it skips.

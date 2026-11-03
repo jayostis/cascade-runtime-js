@@ -109,6 +109,9 @@ const files =
   wanted[tag] ?? (tag.includes(".judge.") ? wanted.judge : undefined) ?? {};
 const copy = ([path, source]) => {
   const target = isAbsolute(path) ? path : join(process.cwd(), path);
+  // FAKE_CLAUDE_NO_OVERWRITE: like Claude's Write, which refuses a file that exists and was not read first.
+  if (process.env.FAKE_CLAUDE_NO_OVERWRITE !== undefined && existsSync(target))
+    return;
   mkdirSync(join(target, ".."), { recursive: true });
   copyFileSync(source, target);
   if (process.env.FAKE_CLAUDE_ASKED !== undefined)

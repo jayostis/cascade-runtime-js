@@ -24,7 +24,7 @@ import {
   openPrepared,
   type Prepared,
 } from "./cases.js";
-import { agreementOf, gradesOf, tellsIn } from "./judging.js";
+import { agreementOf, gradesOf, tellsIn, verdictProblems } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
 import { callCost, PRICE_TABLE, priced } from "./prices.js";
 import {
@@ -141,7 +141,7 @@ const keptUse = ({
   return { name, input: rest };
 };
 
-/** The files a job is to write, and whether each, or any, is there. */
+/** The files a job is to write, and whether each, or any, is there; a judge's verdict counts only when it matches its schema. */
 export function writtenOf(plan: Plan, job: Job) {
   const outputs = (
     job.role === "judge"
@@ -149,8 +149,12 @@ export function writtenOf(plan: Plan, job: Job) {
       : (job.questions ?? []).map((it) => answerPath(job, it))
   ).filter((it): it is string => it !== undefined);
   const there = outputs.filter((it) => existsSync(join(plan.folder, it)));
+  const unusable = verdictProblems({ folder: plan.folder, jobs: [job] });
   return {
-    all: outputs.length > 0 && there.length === outputs.length,
+    all:
+      unusable.length === 0 &&
+      outputs.length > 0 &&
+      there.length === outputs.length,
     any: there.length > 0,
   };
 }
@@ -408,6 +412,18 @@ export async function finish(given: string, log: (line: string) => void) {
   const plan = await loadPlan(folder);
   await refreshed(plan);
   const spentBefore = spentOf(plan.jobs);
+  const invalidVerdicts = verdictProblems(plan);
+  for (const { judge, errors } of invalidVerdicts) {
+    const reason = `its verdict does not match the verdict schema, so none of it is graded: ${errors.slice(0, 3).join("; ")}`;
+    log(`${judge}: ${reason}`);
+    Object.assign(
+      plan.jobs.find((it) => it.id === judge)!,
+      {
+        status: "failed",
+        reason,
+      },
+    );
+  }
   for (const job of plan.jobs)
     if (job.status === "pending" || job.status === "running") {
       job.reason =
@@ -615,6 +631,7 @@ export async function finish(given: string, log: (line: string) => void) {
     run: plan.run,
     results: join(folder, "results.json"),
     site,
+    invalidVerdicts,
     spent: results.budget.spent,
     estimate: plan.estimate,
     jobs: plan.jobs.map(({ id, status, reason, stats }) => ({
