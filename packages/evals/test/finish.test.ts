@@ -126,9 +126,16 @@ test("finish checks and writes a run of two cases in one process, opening each c
       person: { name: string; pronoun: string };
       description: Record<string, string>;
     }[];
-    jobs: { id: string; promptText?: string; status: string; reason?: string }[];
+    jobs: {
+      id: string;
+      promptText?: string;
+      status: string;
+      reason?: string;
+    }[];
   };
-  const judge = results.jobs.find((it) => it.id === "tamsin-vale.checkup.judge");
+  const judge = results.jobs.find(
+    (it) => it.id === "tamsin-vale.checkup.judge",
+  );
   assert.equal(judge?.status, "failed");
   assert.match(judge?.reason ?? "", /verdict/);
   assert.deepEqual(

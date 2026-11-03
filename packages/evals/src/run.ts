@@ -16,7 +16,7 @@ import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { execPath } from "node:process";
 import { sha256 } from "./cases.js";
 import { type Plan, loadConfig, loadPlan, planRun, savePlan } from "./plan.js";
-import { judgePackets } from "./judging.js";
+import { judgePackets, verdictProblems } from "./judging.js";
 import { CLI, TOOLS, askCommand, podCommand } from "./prompts.js";
 import { finish, recordRun, refreshed, writtenOf } from "./record.js";
 import { stopPodServer } from "./pod-client.js";
@@ -83,13 +83,11 @@ const NEVER = [
   "WebFetch",
   "WebSearch",
   "Edit",
-  "MultiEdit",
   "NotebookEdit",
   "Glob",
   "Grep",
   "PowerShell",
   "Skill",
-  "SlashCommand",
   "TodoWrite",
   "ToolSearch",
 ];
@@ -285,7 +283,18 @@ async function waves(
       it.status === "fulfilled" ? it.value : null,
     );
     const after = await loadPlan(folder);
+    // A judge's verdict reaches the run's folder when its job is refreshed, from the judge's own.
+    await refreshed(after);
     const failed = new Set<string>();
+    const invalid = verdictProblems(after).filter((it) =>
+      meter.next.some((handed) => handed.id === it.judge),
+    );
+    for (const { judge, errors } of invalid) {
+      failed.add(judge);
+      log(
+        `${judge}: its verdict does not match the verdict schema (${errors.slice(0, 3).join("; ")}); giving the job back to run again`,
+      );
+    }
     for (const [at, handed] of meter.next.entries()) {
       const job = after.jobs.find((it) => it.id === handed.id)!;
       const written = writtenOf(after, job);
@@ -295,7 +304,7 @@ async function waves(
     await giveBack(folder, (job) => failed.has(job.id));
     if (failed.size === meter.next.length)
       throw new Error(
-        `every child of the wave ended in an error or was refused or stopped (${ended.join(", ")}); see ${join(folder, "logs")}. Run again with --run ${folder} --go once it is fixed`,
+        `every child of the wave ended in an error or was refused or stopped, or wrote a verdict that does not match the verdict schema (${ended.join(", ")}); see ${join(folder, "logs")}. Run again with --run ${folder} --go once it is fixed`,
       );
   }
 }

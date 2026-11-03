@@ -1342,6 +1342,27 @@ test("a name holds as whole words in both arms, and a gene change's coding expre
     assert.equal((await checkCitation(claim, source)).ok, held, what);
 });
 
+test("a pod code is claimed with the system the compact read shows for its IRI, whichever vocabulary namespace it is in, and only that one", async () => {
+  const NS_CODES = "https://ns.cascadeprotocol.org/codes/";
+  const codes = podRowsSource(async () => [
+    { field: "cascade:rxNormCode", value: `${NS_CODES}rxnorm/199903` },
+    { field: "cascade:snomedCode", value: "http://snomed.info/id/59282003" },
+    { field: "cascade:testCode", value: "https://loinc.org/4548-4" },
+    { field: "cascade:hgvsCodingDnaExpression", value: "NM_000249.3:c.2T>C" },
+  ]);
+  const held = async (code: string) =>
+    (await checkCitation({ cite: { entry: "e" }, code }, codes)).ok;
+  for (const code of [
+    "rxnorm:199903",
+    "snomed:59282003",
+    "loinc:4548-4",
+    "NM_000249.3:c.2T>C",
+  ])
+    assert.equal(await held(code), true, code);
+  for (const code of ["snomed:199903", "rxnorm:59282003", "loinc:59282003"])
+    assert.equal(await held(code), false, code);
+});
+
 test("a narrative line's date after reported or recorded is its recorded date, and one after started is not", () => {
   const recorded = (line: string) =>
     narrativeFields(`<tr><td>${line}</td></tr>`).recorded;
