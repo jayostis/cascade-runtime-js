@@ -1,6 +1,7 @@
 build/
 dist/
 package-lock.json
+packages/evals/history/
 packages/evals/runs/
 packages/evals/work/
 packages/evals/site/
