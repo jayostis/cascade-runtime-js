@@ -610,3 +610,18 @@ test("a second --go on a run being run is refused, and a lock left by a dead pro
   );
   assert.equal(existsSync(join(run, "run.lock")), false);
 });
+
+test("a lock whose process is dead is not taken over while a child it recorded is alive", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "orphan",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  await writeFile(
+    join(run, "run.lock"),
+    JSON.stringify({ pid: 2147483646, children: [process.pid] }),
+  );
+  await assert.rejects(runEval({ run, log: () => undefined }), /still running/);
+  assert.deepEqual(await starts(), []);
+});
