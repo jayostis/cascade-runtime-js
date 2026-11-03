@@ -184,6 +184,21 @@ and a failed example's report names its rule and the step that failed.
 `CASCADE_CONFORMANCE_REPORT=<report>` it asserts on that report instead and
 does not run the command; CI hands it the report its compatibility check wrote.
 
+An eval run (the pod against the same records read as files, judged blind) is
+one command, and a finished run is committed by recording it. CI publishes
+every recorded run at
+[the eval runs](https://jayostis.github.io/cascade-runtime-js/evals/):
+
+```sh
+node packages/evals/dist/src/cli.js run --config small-models   # plans; prints the jobs and the estimate
+node packages/evals/dist/src/cli.js run --run <id> --go         # the subjects, the judges, then finish
+npm run evals:record packages/evals/runs/<id>                   # copies it into packages/evals/history/
+npm run evals:report -- --history                               # the published site, built locally
+```
+
+[`packages/evals/README.md`](packages/evals/README.md) says what a run holds,
+the configs, and how it is scored.
+
 ### The developer story
 
 There are two, one per epic. `developer-story/allergies.mjs` is what an app would write against the package

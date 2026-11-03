@@ -1,0 +1,246 @@
+{
+  "answer": "No. Your records show that lisinopril was stopped on September 22, 2025, and you should not be taking it. Dr. Marsh stopped it because you had a dry cough for several months while on it. She switched you to losartan 50 mg once a day. At your December 2025 follow-up the cough had resolved. Your clinic now lists lisinopril as a drug intolerance (dry cough), and a Kestrel Harbor Hospital summary from March 2026 also shows it as discontinued and replaced by losartan. Since then, your ER visit list (October 2025), your eye clinic list (May 2026) and your pharmacy record (July 2026) show losartan and not lisinopril. I found nothing in your records that restarts lisinopril. The app is most likely showing an old entry from before the change, when lisinopril 10 mg was an active prescription from June 2023. Losartan and lisinopril do the same job for blood pressure, and taking both together is not recommended, so please do not take any lisinopril you may still have at home. Ask the app to remove or mark that entry as stopped. If you have been taking it recently, or you're unsure which blood pressure pills you take, call Dr. Marsh's office or your pharmacist. One more thing to raise with Dr. Marsh: hydrochlorothiazide was stopped at Kestrel Harbor in March 2026 after a low sodium level, but your pharmacy still lists it as active with refills, and it was filled on April 2, 2026. Please confirm you are not taking it.",
+  "short": "Lisinopril was stopped on 22 Sept 2025 by Dr. Marsh because of a dry cough and replaced with losartan 50 mg daily; it is listed as an intolerance and has not been restarted in my records. The app entry is outdated. Separately, hydrochlorothiazide was stopped in March 2026 for low sodium but the pharmacy still lists it as active.",
+  "items": [
+    {
+      "n": 1,
+      "says": "Your primary care doctor stopped lisinopril on September 22, 2025 because of a dry cough and switched you to losartan 50 mg daily.",
+      "why": "The clinic's own medication list and plan note both say lisinopril was stopped that day for cough and changed to losartan. The lisinopril entry is marked stopped, with an end date of 2025-09-22.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Fernhill Family Clinic medication list: lisinopril 10 mg tablet, from June 15, 2023, stopped September 22, 2025 because of dry cough, changed to losartan.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 230},
+          "name": "lisinopril 10 MG Oral Tablet",
+          "code": "314076",
+          "date": "2025-09-22",
+          "dateKind": "end",
+          "status": "aborted"
+        },
+        {
+          "says": "Plan note for the September 22, 2025 annual visit: dry cough for several months on lisinopril; stop lisinopril, start losartan 50 mg daily.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 1258},
+          "quote": "Dry cough for several months on lisinopril: stop lisinopril, start losartan 50 mg daily.",
+          "date": "2025-09-22",
+          "dateKind": "when"
+        },
+        {
+          "says": "Losartan potassium 50 mg tablet, once daily, active from September 22, 2025.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 331},
+          "name": "losartan potassium 50 MG Oral Tablet",
+          "code": "979492",
+          "date": "2025-09-22",
+          "dateKind": "start",
+          "status": "active"
+        }
+      ],
+      "absences": [],
+      "knowledge": {
+        "says": "ACE inhibitors such as lisinopril commonly cause a dry, persistent cough that goes away after the drug is stopped. An angiotensin receptor blocker such as losartan is the usual substitute and does not cause this cough.",
+        "guideline": "ACC/AHA hypertension guideline: an ARB is recommended when an ACE inhibitor is not tolerated because of cough."
+      },
+      "links": []
+    },
+    {
+      "n": 2,
+      "says": "Your clinic lists lisinopril as an intolerance (dry cough, September 2025), and the cough had resolved by December 2025.",
+      "why": "The intolerance entry means lisinopril should not be restarted. The December visit note records that the cough went away after the switch, which fits the cough being caused by lisinopril.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Allergy and intolerance list: lisinopril, dry cough (intolerance), September 2025.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 108},
+          "name": "Lisinopril",
+          "code": "29046",
+          "date": "2025-09-22",
+          "dateKind": "recorded"
+        },
+        {
+          "says": "December 9, 2025 follow-up: cough resolved.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 1259},
+          "quote": "Cough resolved.",
+          "date": "2025-12-09",
+          "dateKind": "when"
+        }
+      ],
+      "absences": [],
+      "knowledge": {
+        "says": "A cough that clears after an ACE inhibitor is stopped is a typical ACE-inhibitor cough, and the drug is usually avoided afterward.",
+        "guideline": "ACC/AHA hypertension guideline (ACE inhibitor intolerance due to cough)"
+      },
+      "links": [
+        {"from": 0, "to": 1, "says": "The cough was the reason lisinopril was stopped and was gone by the December follow-up."}
+      ]
+    },
+    {
+      "n": 3,
+      "says": "The hospital's records also show lisinopril as discontinued on September 22, 2025 and replaced by losartan.",
+      "why": "Kestrel Harbor Hospital's March 2026 summary agrees with the clinic that lisinopril ended on that date, which is a second, independent source.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Kestrel Harbor medication table: lisinopril 10 mg, started June 15, 2023, discontinued September 22, 2025 by outside provider (cough); replaced by losartan.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 229},
+          "name": "lisinopril 10 MG Oral Tablet",
+          "code": "314076",
+          "date": "2025-09-22",
+          "dateKind": "end",
+          "status": "aborted"
+        }
+      ],
+      "absences": [],
+      "knowledge": {
+        "says": "Two separate providers recording the same stop date and reason makes it very unlikely that the stop was a mistake.",
+        "guideline": ""
+      },
+      "links": []
+    },
+    {
+      "n": 4,
+      "says": "The app entry is most likely an older copy of a record from before the change.",
+      "why": "The older hospital data exports show lisinopril 10 mg as an active order from June 15, 2023. They were received in March and June 2025, before it was stopped in September 2025.",
+      "confidence": "medium",
+      "facts": [
+        {
+          "says": "Health-app record of the lisinopril 10 mg order, status active, written June 15, 2023. This copy was received before the September 2025 stop.",
+          "provider": "Kestrel Harbor Hospital (via health app export)",
+          "cite": {"file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json", "resource": "MedicationRequest/medrx-lisinopril-1"},
+          "name": "lisinopril 10 MG Oral Tablet",
+          "code": "314076",
+          "status": "active",
+          "date": "2023-06-15",
+          "dateKind": "recorded"
+        },
+        {
+          "says": "The same app export was made on June 15, 2025, about three months before lisinopril was stopped.",
+          "provider": "Kestrel Harbor Hospital (via health app export)",
+          "cite": {"file": "x-e8/apple_health_export/export.xml", "line": 3},
+          "date": "2025-06-15",
+          "dateKind": "recorded"
+        },
+        {
+          "says": "Lisinopril stopped on September 22, 2025.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 230},
+          "name": "lisinopril 10 MG Oral Tablet",
+          "date": "2025-09-22",
+          "dateKind": "end"
+        }
+      ],
+      "absences": [],
+      "knowledge": {
+        "says": "Apps that pull records from one source can keep showing a prescription as active until a newer record replaces it. I can't see which app you mean, so this is my best explanation and not something the records confirm.",
+        "guideline": ""
+      },
+      "links": [
+        {"from": 0, "to": 2, "says": "This older 'active' copy was superseded by the later stop on September 22, 2025."}
+      ]
+    },
+    {
+      "n": 5,
+      "says": "Later lists from other places show losartan and no lisinopril, and I found no record of lisinopril being restarted.",
+      "why": "The ER visit in October 2025, the eye clinic in May 2026 and the pharmacy record in July 2026 all list your blood pressure medicines without lisinopril. The pharmacy shows losartan last filled June 28, 2026.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Pharmacy record: losartan 50 mg once daily, first filled September 23, 2025, last filled June 28, 2026 (90 days), active.",
+          "provider": "Alder Street Pharmacy",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 183},
+          "name": "losartan potassium 50 MG Oral Tablet",
+          "code": "979492",
+          "date": "2026-06-28",
+          "dateKind": "when",
+          "status": "active"
+        },
+        {
+          "says": "Eye clinic medication list (patient reported, May 14, 2026) includes losartan, amlodipine, metformin ER, hydrochlorothiazide and Claritin, and does not include lisinopril.",
+          "provider": "Clearwater Eye Associates",
+          "cite": {"file": "clearwater-eye-associates-visit-summary.xml", "line": 186},
+          "name": "losartan 50 mg tablet",
+          "date": "2026-05-14",
+          "dateKind": "recorded"
+        },
+        {
+          "says": "ER home medication list (patient reported, October 18, 2025) lists losartan, amlodipine and metformin ER, and no lisinopril.",
+          "provider": "Saltmarsh Regional Medical Center",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 186},
+          "name": "losartan potassium 50 MG Oral Tablet",
+          "date": "2025-10-18",
+          "dateKind": "recorded"
+        }
+      ],
+      "absences": [
+        {
+          "what": "Any record of lisinopril being restarted or prescribed or filled after the September 22, 2025 stop.",
+          "match": {"codes": ["314076", "29046"], "terms": ["lisinopril"], "after": "2025-09-23"},
+          "coverage": "All 26 files, including the clinic, hospital, ER, eye clinic, laboratory and pharmacy records and the health-app exports, for the period from September 23, 2025 to the latest record (July 14, 2026). Lisinopril appears after that date only as stopped or as an intolerance. One hospital file (kestrel-harbor-health-summary-4.xml) is cut off partway through and was read only up to its results section.",
+          "sources": []
+        }
+      ],
+      "knowledge": {
+        "says": "Losartan and lisinopril both act on the same blood-pressure pathway, so they are not taken together, and a drug that has been swapped out should not be restarted unless a doctor decides to.",
+        "guideline": "ACC/AHA hypertension guideline: do not combine an ACE inhibitor with an ARB."
+      },
+      "links": [
+        {"from": 0, "to": 0, "says": "The pharmacy's ongoing losartan fills match the clinic's switch from lisinopril to losartan."}
+      ]
+    },
+    {
+      "n": 6,
+      "says": "Separate medicine check: hydrochlorothiazide was stopped by the hospital in March 2026 for low sodium, but the pharmacy still lists it as active with refills.",
+      "why": "Your pharmacy filled hydrochlorothiazide on April 2, 2026, after the hospital stopped it on March 5, 2026, and your sodium was again slightly low in June 2026. Your clinic's June 2026 list also still shows it as active, so the clinic and pharmacy may not know about the stop.",
+      "confidence": "medium",
+      "facts": [
+        {
+          "says": "Hospital medication table: hydrochlorothiazide 12.5 mg capsule, 'STOP taking this medicine', discontinued March 5, 2026 (hyponatremia).",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 223},
+          "name": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "code": "199903",
+          "date": "2026-03-05",
+          "dateKind": "end",
+          "status": "aborted"
+        },
+        {
+          "says": "Pharmacy record: hydrochlorothiazide 12.5 mg, last filled April 2, 2026 (90 days), 2 refills remaining, status active.",
+          "provider": "Alder Street Pharmacy",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 218},
+          "name": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "code": "199903",
+          "date": "2026-04-02",
+          "dateKind": "when",
+          "status": "active"
+        },
+        {
+          "says": "Sodium 134 mmol/L (low) on June 15, 2026.",
+          "provider": "Northbay Clinical Laboratories",
+          "cite": {"file": "northbay-clinical-laboratories-results.xml", "line": 216},
+          "name": "Sodium",
+          "value": "134",
+          "date": "2026-06-15",
+          "dateKind": "when"
+        }
+      ],
+      "absences": [],
+      "knowledge": {
+        "says": "Hydrochlorothiazide can lower blood sodium. If the hospital stopped it for that reason, taking it again could bring the problem back. I can't tell from the records whether you actually took the April refill.",
+        "guideline": ""
+      },
+      "links": [
+        {"from": 1, "to": 0, "says": "The pharmacy refill on April 2, 2026 came after the hospital's March 5, 2026 stop."},
+        {"from": 2, "to": 1, "says": "The low sodium in June 2026 could be related to continuing to fill hydrochlorothiazide."}
+      ]
+    }
+  ],
+  "links": [
+    {"from": {"item": 1, "fact": 0}, "to": {"item": 3, "fact": 0}, "says": "The hospital's discontinuation entry matches the clinic's stop date and reason."},
+    {"from": {"item": 4, "fact": 0}, "to": {"item": 1, "fact": 0}, "says": "The older active lisinopril order in the app was replaced by the later stop."},
+    {"from": {"item": 5, "fact": 0}, "to": {"item": 1, "fact": 2}, "says": "The pharmacy's losartan fills confirm that you were switched from lisinopril to losartan."}
+  ]
+}
