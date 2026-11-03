@@ -2,9 +2,13 @@
 // way Claude Code does (<session id>.jsonl, the prompt as its first user line) and the files its job is to write.
 // FAKE_CLAUDE_LOG: where each start is logged as a JSON line. FAKE_CLAUDE_FILES: {tag: {path: source file}}, copied
 // as the job's answers, under "judge" for any judge; a path that is not absolute is relative to the working directory.
+// FAKE_CLAUDE_EXIT: {tag: {code, times}}: the first `times` starts of that tag write a transcript and exit `code` with no answers
+// (a usage limit, a lost login). --session-id names the transcript file.
 import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
+  existsSync,
+  readFileSync,
   copyFileSync,
   mkdirSync,
   writeFileSync,
@@ -23,6 +27,9 @@ for await (const chunk of process.stdin) prompt += chunk;
 const args = process.argv.slice(2);
 const alias = args[args.indexOf("--model") + 1] ?? "opus";
 const tag = /eval-tag: (\S+)/.exec(prompt)?.[1] ?? "";
+const sessionId = args.includes("--session-id")
+  ? args[args.indexOf("--session-id") + 1]
+  : randomUUID();
 appendFileSync(
   process.env.FAKE_CLAUDE_LOG,
   `${JSON.stringify({ args, cwd: process.cwd(), prompt, tag, memory: process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY })}\n`,
@@ -41,7 +48,7 @@ const usage = {
   output_tokens: 200,
 };
 writeFileSync(
-  join(project, `${randomUUID()}.jsonl`),
+  join(project, `${sessionId}.jsonl`),
   [
     { type: "queue-operation", timestamp: at(0) },
     {
@@ -64,6 +71,18 @@ writeFileSync(
     .map((line) => JSON.stringify(line))
     .join("\n") + "\n",
 );
+
+const failing = JSON.parse(process.env.FAKE_CLAUDE_EXIT ?? "{}")[tag];
+const failed = `${process.env.FAKE_CLAUDE_LOG}.failed`;
+const failedBefore = existsSync(failed)
+  ? readFileSync(failed, "utf8")
+      .split("\n")
+      .filter((it) => it === tag).length
+  : 0;
+if (failing !== undefined && failedBefore < failing.times) {
+  appendFileSync(failed, `${tag}\n`);
+  process.exit(failing.code);
+}
 
 const wanted = JSON.parse(process.env.FAKE_CLAUDE_FILES ?? "{}");
 const files =

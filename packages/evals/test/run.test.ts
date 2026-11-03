@@ -269,3 +269,138 @@ test("a claude that cannot be started stops the run and gives its jobs back, so 
     ["pending", "pending"],
   );
 });
+
+const tagOf = (name: string, at: 0 | 1) => `${name}/${JOBS[at].id}`;
+const statusOf = async (run: string) =>
+  (await showRun({ config: "unused", run, log: () => undefined })).jobs.map(
+    (it) => it.status,
+  );
+
+test("a child that exits with an error and wrote no answer is given back, so the wave's others finish and it runs again to done", async () => {
+  await rm(log, { force: true });
+  const run = await planned("limit", { tokens: 10_000_000 }, { judges: false });
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("limit", 0)]: { code: 1, times: 1 },
+  });
+  try {
+    const done = await runEval({ config: "unused", run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done"],
+    );
+    assert.equal((await starts()).length, 3, "the failed job ran twice");
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
+  }
+});
+
+test("a wave in which every child fails stops the run with its jobs pending, and the next --go takes them to done", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "all-fail",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("all-fail", 0)]: { code: 1, times: 1 },
+    [tagOf("all-fail", 1)]: { code: 1, times: 1 },
+  });
+  try {
+    await assert.rejects(
+      runEval({ config: "unused", run, log: () => undefined }),
+      /every child/,
+    );
+    assert.deepEqual(await statusOf(run), ["pending", "pending"]);
+    const done = await runEval({ config: "unused", run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done"],
+    );
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
+  }
+});
+
+test("a run interrupted with jobs handed out and no child alive resumes them: --go takes each to done", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "interrupted",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  const path = join(run, "plan.json");
+  const plan = JSON.parse(await readFile(path, "utf8")) as {
+    jobs: { status: string; dispatched?: boolean }[];
+  };
+  plan.jobs[0]!.status = "dispatched";
+  plan.jobs[1]!.status = "running";
+  for (const job of plan.jobs) job.dispatched = true;
+  await writeFile(path, JSON.stringify(plan));
+  const done = await runEval({ config: "unused", run, log: () => undefined });
+  assert.deepEqual(
+    done.jobs.map((it) => it.status),
+    ["done", "done"],
+  );
+});
+
+test("a child is started with its own --session-id and its transcript is that session's file: a later session pasting its tag, or an unknown tag, is not taken for the job", async () => {
+  await rm(log, { force: true });
+  const run = await planned("ids", { tokens: 10_000_000 }, { judges: false });
+  const other = join(process.env.CASCADE_EVALS_TRANSCRIPTS!, "C--elsewhere");
+  await mkdir(other, { recursive: true });
+  const decoy = (tag: string, model: string) =>
+    [
+      {
+        type: "user",
+        timestamp: "2030-01-01T00:00:00.000Z",
+        message: { role: "user", content: `eval-tag: ${tag}\n\nhello` },
+      },
+      {
+        type: "assistant",
+        timestamp: "2030-01-01T00:00:01.000Z",
+        message: {
+          id: "m",
+          model,
+          content: [],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    ]
+      .map((it) => JSON.stringify(it))
+      .join("\n");
+  await writeFile(
+    join(other, "5e4ec0a4-0000-4000-8000-000000000001.jsonl"),
+    decoy(tagOf("ids", 0), "claude-sonnet-5-5"),
+  );
+  await writeFile(
+    join(other, "5e4ec0a4-0000-4000-8000-000000000002.jsonl"),
+    decoy("ids/phantom", "claude-sonnet-5-5"),
+  );
+  const done = await runEval({ config: "unused", run, log: () => undefined });
+  assert.deepEqual(
+    done.jobs.map((it) => [it.id, it.status]),
+    JOBS.map(({ id }) => [id, "done"]),
+  );
+  for (const start of await starts())
+    assert.match(
+      flag(start.args, "session-id") ?? "",
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+});
+
+test("Bash is allowed only as the commands the job's prompt names, written with forward slashes", async () => {
+  await rm(log, { force: true });
+  const run = await planned("allow", { tokens: 10_000_000 }, { judges: false });
+  await runEval({ config: "unused", run, log: () => undefined });
+  for (const start of await starts()) {
+    const allowed = flag(start.args, "allowedTools")!;
+    assert.ok(!/Bash\(node \*\)/.test(allowed), allowed);
+    assert.ok(!allowed.includes("\\"), allowed);
+    const job = start.tag.slice("allow/".length);
+    const command =
+      start.tag === tagOf("allow", 0)
+        ? /Bash\(node "[^"]+\/cli\.js" ask --run "[^"]+" --job (\S+)\)/
+        : /Bash\(node "[^"]+\/cli\.js" pod --run "[^"]+" --job (\S+) \*\)/;
+    assert.equal(command.exec(allowed)?.[1], job, allowed);
+  }
+});
