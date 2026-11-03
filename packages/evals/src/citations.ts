@@ -4,6 +4,7 @@
 // only: never a reference range, an interpretation, an update time or a neighbouring record. The harness checks
 // answers with it; an app can check a model's answer before showing it.
 import { readFile } from "node:fs/promises";
+import { codeStems } from "cascade-runtime";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /** Where a citation points: a line of a download, a FHIR resource in one, or a pod entry as a pod's rows name it. */
@@ -796,7 +797,7 @@ const push = (into: string[], value: unknown) => {
 const SYSTEMS: Readonly<Record<string, string>> = {
   "http://loinc.org": "loinc",
   "2.16.840.1.113883.6.1": "loinc",
-  "http://snomed.info/sct": "snomed",
+  [`${new URL(codeStems.SNOMEDCT).origin}/sct`]: "snomed",
   "2.16.840.1.113883.6.96": "snomed",
   "http://www.nlm.nih.gov/research/umls/rxnorm": "rxnorm",
   "2.16.840.1.113883.6.88": "rxnorm",
@@ -822,18 +823,19 @@ function pushCode(into: string[], code: unknown, system: unknown): void {
 /** A pod's code IRI as the compact read shows it: system:code; undefined for a value that is no code IRI. */
 function shownCode(iri: string): string | undefined {
   const plain = iri.replace(/^https:/, "http:");
-  for (const [prefix, system] of [
-    ["http://loinc.org/rdf/", "loinc"],
-    ["http://loinc.org/", "loinc"],
-    ["http://snomed.info/id/", "snomed"],
-  ] as const)
-    if (plain.startsWith(prefix))
-      return `${system}:${plain.slice(prefix.length)}`;
-  const own = "https://ns.cascadeprotocol.org/codes/";
-  if (!iri.startsWith(own)) return undefined;
-  const [system, code, ...more] = iri.slice(own.length).split("/");
-  return system && code && more.length === 0 ? `${system}:${code}` : undefined;
+  for (const [name, stem] of Object.entries(codeStems)) {
+    const prefix = stem.replace(/^https:/, "http:");
+    if (!plain.startsWith(prefix)) continue;
+    const code = plain.slice(prefix.length);
+    if (code === "" || code.includes("/")) return undefined;
+    const own = /\/codes\/([^/]+)\/$/.exec(stem)?.[1];
+    return `${own ?? SHOWN_AS[name] ?? name.toLowerCase()}:${code}`;
+  }
+  return undefined;
 }
+
+/** What the compact read calls a code system whose stem does not end in its name. */
+const SHOWN_AS: Readonly<Record<string, string>> = { SNOMEDCT: "snomed" };
 
 /** A CodeableConcept's codes into `code`, and its text and displays into each of `kinds`. */
 function concept(
@@ -1009,7 +1011,7 @@ export function ccdaFields(xml: string): Fields {
 
 /** The time an author of a C-CDA entry or document wrote it. */
 const AUTHOR_TIME =
-  /<(?:\w+:)?author\b[^>]*>\s*<(?:\w+:)?time\b[^>]*\bvalue="([^"]*)"/g;
+  /<(?:\w+:)?author\b[^>]*>(?:\s*<(?:\w+:)?(?!time\b)\w+\b[^>]*\/>)*\s*<(?:\w+:)?time\b[^>]*\bvalue="([^"]*)"/g;
 
 /** The author time of a C-CDA document's header, which every entry without an author of its own takes. */
 function documentTime(xml: string): string | undefined {
@@ -1105,7 +1107,11 @@ export function narrativeFields(xml: string): Fields {
       )
     )
       f.end.push(match[0]);
-    if (/(reported|recorded|documented)\s*(on\s*)?,?\s*$/.test(before))
+    if (
+      /(?<![\w-])(?<!\b(?:not|never|no)\s+)(reported|recorded|documented)\s*(on\s*)?,?\s*$/.test(
+        before,
+      )
+    )
       f.recorded.push(match[0]);
   }
   for (const segment of cells.length > 0 ? cells : [text])

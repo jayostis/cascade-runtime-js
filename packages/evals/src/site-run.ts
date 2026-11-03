@@ -150,17 +150,25 @@ function keyHtml(
     const t = turns[at];
     if (t?.answer === undefined) return [];
     const grades = gradesOf(s.results, t);
-    return t.answer.items
-      .map((item) => ({
+    const named = new Set(t.answer.items.map((item) => item.n));
+    const viewsOf = (own: (n: number) => boolean) =>
+      grades.flatMap((g) =>
+        g.beyond
+          .filter((b) => own(b.item))
+          .map((b) => ({ judge: judgeName(s.results, g.judge), ...b })),
+      );
+    return [
+      ...t.answer.items.map((item) => ({
         arm,
-        item,
-        views: grades.flatMap((g) =>
-          g.beyond
-            .filter((b) => b.item === item.n)
-            .map((b) => ({ judge: judgeName(s.results, g.judge), ...b })),
-        ),
-      }))
-      .filter((it) => it.views.length > 0);
+        item: { says: item.says },
+        views: viewsOf((n) => n === item.n),
+      })),
+      {
+        arm,
+        item: { says: "A remark outside any item of the answer" },
+        views: viewsOf((n) => !named.has(n)),
+      },
+    ].filter((it) => it.views.length > 0);
   });
   const beyondTable =
     beyond.length === 0

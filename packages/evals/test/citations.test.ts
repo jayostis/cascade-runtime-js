@@ -9,6 +9,7 @@ import {
   checkAbsence,
   checkCitation,
   checkRecordsAbsence,
+  ccdaFields,
   downloadsSource,
   fhirFields,
   isoDate,
@@ -1347,7 +1348,7 @@ test("a pod code is claimed with the system the compact read shows for its IRI, 
   const codes = podRowsSource(async () => [
     { field: "cascade:rxNormCode", value: `${NS_CODES}rxnorm/199903` },
     { field: "cascade:snomedCode", value: "http://snomed.info/id/59282003" },
-    { field: "cascade:testCode", value: "https://loinc.org/4548-4" },
+    { field: "cascade:testCode", value: "https://loinc.org/rdf/4548-4" },
     { field: "cascade:hgvsCodingDnaExpression", value: "NM_000249.3:c.2T>C" },
   ]);
   const held = async (code: string) =>
@@ -1371,6 +1372,13 @@ test("a narrative line's date after reported or recorded is its recorded date, a
   ]);
   assert.deepEqual(recorded("Recorded on 2026-05-14"), ["2026-05-14"]);
   assert.deepEqual(recorded("Started on 2026-05-14"), []);
+  for (const line of [
+    "Unreported 2026-05-14",
+    "Not documented on 2026-05-14",
+    "Never recorded 2026-05-14",
+    "Misreported 2026-05-14",
+  ])
+    assert.deepEqual(recorded(line), [], line);
 });
 
 test("a Patient's deceasedBoolean is a value and its deceasedDateTime an end", () => {
@@ -1721,6 +1729,9 @@ test("a record is dated by its clinical dates, not by when it was written: the s
     await inRecords("2026-02-01", [], ccda(written), ["4548-4"]),
     held("b"),
   );
+  const participation =
+    '<author><templateId root="2.16.840.1.113883.10.20.22.4.119"/><time value="20261015"/></author>';
+  assert.deepEqual(ccdaFields(ccda(participation)).recorded, ["20261015"]);
 });
 
 test("a C-CDA record that is negated, nullified or entered in error is no presence", async () => {

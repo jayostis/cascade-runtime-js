@@ -363,20 +363,30 @@ test("a judge that writes a verdict failing the schema is given back with its fi
       ],
     }),
   );
-  await assert.rejects(
-    runEval({ run, log: () => undefined }),
-    /verdict.*schema/,
-  );
-  assert.deepEqual(await statusOf(run), ["done", "done", "pending"]);
-  const judge = (await loadPlan(run)).jobs.find((it) => it.role === "judge")!;
-  assert.equal(existsSync(join(run, judge.verdict!)), false);
-  await writeFile(verdict, JSON.stringify({ outputs: [] }));
-  const done = await runEval({ run, log: () => undefined });
-  assert.deepEqual(
-    done.jobs.map((it) => it.status),
-    ["done", "done", "done"],
-  );
-  assert.equal((await starts()).length, 4, "the judge ran twice");
+  process.env.FAKE_CLAUDE_NO_OVERWRITE = "1";
+  try {
+    await assert.rejects(
+      runEval({ run, log: () => undefined }),
+      /verdict.*schema/,
+    );
+    assert.deepEqual(await statusOf(run), ["done", "done", "pending"]);
+    const judge = (await loadPlan(run)).jobs.find((it) => it.role === "judge")!;
+    assert.equal(existsSync(join(run, judge.verdict!)), false);
+    assert.equal(
+      existsSync(join(judge.workdir!, "verdict.json")),
+      false,
+      "the judge's own copy is removed too, so a Write that refuses an existing file can write the retried verdict",
+    );
+    await writeFile(verdict, JSON.stringify({ outputs: [] }));
+    const done = await runEval({ run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done", "done"],
+    );
+    assert.equal((await starts()).length, 4, "the judge ran twice");
+  } finally {
+    delete process.env.FAKE_CLAUDE_NO_OVERWRITE;
+  }
 });
 
 test("a run interrupted with jobs handed out and no child alive resumes them: --go takes each to done", async () => {

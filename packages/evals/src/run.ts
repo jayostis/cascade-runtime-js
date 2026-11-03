@@ -393,6 +393,9 @@ export async function giveBack(
           : (job.questions ?? []).map((it) => answerPath(job, it));
       for (const file of answers)
         if (file !== undefined) await rm(join(folder, file), { force: true });
+      // A Write refuses a file it did not read, so the judge's own copy would stay as the retried judge's verdict.
+      if (job.role === "judge" && job.workdir !== undefined)
+        await rm(join(job.workdir, "verdict.json"), { force: true });
       await dropLines(join(folder, "asked.jsonl"), job.id);
       await dropLines(join(folder, "tool-calls.jsonl"), job.id);
       job.status = "pending";
