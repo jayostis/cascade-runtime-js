@@ -59,7 +59,7 @@ function rowsIn(value: unknown): number {
 }
 
 /** The local socket a job's server listens on: a named pipe on Windows, a socket file elsewhere. */
-function socketOf(folder: string, job: string): string {
+export function socketOf(folder: string, job: string): string {
   const name = `cascade-evals-${createHash("sha256").update(`${folder}\n${job}`).digest("hex").slice(0, 24)}`;
   return process.platform === "win32"
     ? `\\\\.\\pipe\\${name}`
@@ -80,10 +80,21 @@ export function mcpServer(prepared: Pick<Prepared, "mcp" | "pods">) {
 }
 
 /** Sends one call to the job's server and returns its answer, or undefined when no server listens. */
-function ask(socket: string, call: string[]): Promise<string | undefined> {
+function ask(
+  socket: string,
+  call: string[],
+  within?: number,
+): Promise<string | undefined> {
   return new Promise((resolve, reject) => {
     const connection = connect(socket);
     let answer = "";
+    // `within` bounds the wait for any byte: a server that accepts and never answers is an ETIMEDOUT error.
+    if (within !== undefined)
+      connection.setTimeout(within, () =>
+        connection.destroy(
+          Object.assign(new Error("no answer"), { code: "ETIMEDOUT" }),
+        ),
+      );
     // One line out, then the answer until the server ends: a Windows pipe has no half-close, so the call never ends
     // its own side first.
     connection.on("connect", () =>
@@ -100,10 +111,26 @@ function ask(socket: string, call: string[]): Promise<string | undefined> {
 }
 
 /** Stops a job's server, if one runs, and returns once its socket no longer answers: its call counter and its log lines go with it. */
-export async function stopPodServer(given: string, job: string): Promise<void> {
+export async function stopPodServer(
+  given: string,
+  job: string,
+  limit = 10_000,
+): Promise<void> {
   const socket = socketOf(runFolder(given), job);
-  const until = Date.now() + 10_000;
-  while ((await ask(socket, ["--stop"])) !== undefined) {
+  const until = Date.now() + limit;
+  for (;;) {
+    try {
+      if (
+        (await ask(socket, ["--stop"], Math.max(until - Date.now(), 1))) ===
+        undefined
+      )
+        return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      // The pipe closing as the server exits is the server stopped; one that does not answer is asked again until the limit.
+      if (["ECONNRESET", "EPIPE", "EBUSY"].includes(code)) return;
+      if (code !== "ETIMEDOUT") throw error;
+    }
     if (Date.now() > until)
       throw new Error(`the pod server of ${job} did not stop`);
     await new Promise((done) => setTimeout(done, 50));

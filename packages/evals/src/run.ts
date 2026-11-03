@@ -358,7 +358,7 @@ async function dropLines(path: string, job: string): Promise<void> {
  * `asked.jsonl` and `tool-calls.jsonl`, its session and its stats, so it reruns from the first question. A job whose
  * every answer is written is left for the meter to close.
  */
-async function giveBack(
+export async function giveBack(
   folder: string,
   which: (job: Job) => boolean,
 ): Promise<void> {
@@ -397,6 +397,8 @@ async function giveBack(
         "reason",
       ] as const)
         delete job[key];
+      // Saved per job, so that a throw on a later one does not lose this one's status after its answers are gone.
+      await savePlan(plan);
     }
   await savePlan(plan);
 }
@@ -492,6 +494,7 @@ function startedWith(pid: number, at: number | undefined): boolean {
     spawnSync(command!, args as string[], {
       encoding: "utf8",
       windowsHide: true,
+      timeout: 5_000,
     }).stdout?.trim() ?? "",
   );
   return Number.isNaN(started) || started <= at + 5_000;
