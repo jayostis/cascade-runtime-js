@@ -66,6 +66,8 @@ test("a reworded question reruns only the sessions that ask it", async () => {
         effort: undefined,
         repeat: 1,
         pod: {},
+        tools: ["Bash", "Write"],
+        runner: "1",
       }),
     );
   const before = hashes(found);
@@ -74,6 +76,26 @@ test("a reworded question reruns only the sessions that ask it", async () => {
   const now = hashes(reworded);
   assert.equal(now[0], before[0]);
   assert.notEqual(now[1], before[1]);
+});
+
+test("how a child was run is in the session hash: other tools or another runner, another hash", async () => {
+  const found = await loadCase("tamsin-vale");
+  const hash = (tools: string[], runner: string) =>
+    sessionInputsHash({
+      found,
+      session: found.sessions[0]!,
+      downloads: "d",
+      arm: "pod",
+      model: "m",
+      effort: undefined,
+      repeat: 1,
+      pod: {},
+      tools,
+      runner,
+    });
+  assert.equal(hash(["Bash"], "1"), hash(["Bash"], "1"));
+  assert.notEqual(hash(["Bash"], "1"), hash(["Bash", "Write"], "1"));
+  assert.notEqual(hash(["Bash"], "1"), hash(["Bash"], "2"));
 });
 
 const valid = JSON.stringify({

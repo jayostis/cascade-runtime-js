@@ -1,6 +1,7 @@
 // The prompts a run gives its subjects and judges: a session's prompt, each question's message in the person's own
 // words, and a judge's. A prompt's version is the hash of its template, so a changed prompt reruns what it changes
 // and nothing else.
+import { fileURLToPath } from "node:url";
 import { sha256 } from "./cases.js";
 import { tagLine } from "./transcripts.js";
 
@@ -121,6 +122,33 @@ export const ARM_PARTS = {
     example: EXAMPLE(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
   },
 };
+
+/**
+ * The tools each prompt allows, by name: the records arm Read for its files, Write for its answers and Bash for its
+ * `ask` command; the pod arm Bash for its two commands and Write; a judge Read for its packet and Write for its verdict.
+ * Apart from `ARM_PARTS`, so a change here does not rerun what was answered.
+ */
+export const TOOLS = {
+  records: ["Read", "Write", "Bash"],
+  pod: ["Bash", "Write"],
+  judge: ["Read", "Write"],
+} as const;
+
+/** How a child is run (its flags, its isolation, how its transcript is found): a change here reruns what was answered. */
+export const RUNNER_VERSION = "1";
+
+const slashed = (path: string) => path.replaceAll("\\", "/");
+
+/** The harness's command line, written with forward slashes, which node accepts on every platform. */
+export const CLI = slashed(fileURLToPath(new URL("./cli.js", import.meta.url)));
+
+/** The command a records-arm session runs to be handed its next question: in its prompt, and the one Bash call it is allowed. */
+export const askCommand = (run: string, job: string) =>
+  `node "${CLI}" ask --run "${slashed(run)}" --job ${job}`;
+
+/** The command prefix a pod-arm session runs for each tool call: in its prompt, and the Bash calls it is allowed. */
+export const podCommand = (run: string, job: string) =>
+  `node "${CLI}" pod --run "${slashed(run)}" --job ${job}`;
 
 export const PRONOUNS: Record<string, [string, string]> = {
   her: ["she", "Her"],

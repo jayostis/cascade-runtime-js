@@ -99,6 +99,17 @@ function ask(socket: string, call: string[]): Promise<string | undefined> {
   });
 }
 
+/** Stops a job's server, if one runs, and returns once its socket no longer answers: its call counter and its log lines go with it. */
+export async function stopPodServer(given: string, job: string): Promise<void> {
+  const socket = socketOf(runFolder(given), job);
+  const until = Date.now() + 10_000;
+  while ((await ask(socket, ["--stop"])) !== undefined) {
+    if (Date.now() > until)
+      throw new Error(`the pod server of ${job} did not stop`);
+    await new Promise((done) => setTimeout(done, 50));
+  }
+}
+
 /** The pod command: the call sent to the job's server, started first when none runs. */
 export async function podCommand(
   given: string,
@@ -163,6 +174,10 @@ export async function podServe(given: string, job: string): Promise<void> {
       answered = true;
       try {
         const call = JSON.parse(text.slice(0, end)) as string[];
+        if (call[0] === "--stop") {
+          connection.end("stopped\n", stop);
+          return;
+        }
         connection.end(await answer(client, folder, job, call, counter));
       } catch (error) {
         connection.end(`the pod server failed: ${(error as Error).message}\n`);
