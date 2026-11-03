@@ -3,7 +3,8 @@
 // FAKE_CLAUDE_LOG: where each start is logged as a JSON line. FAKE_CLAUDE_FILES: {tag: {path: source file}}, copied
 // as the job's answers, under "judge" for any judge; a path that is not absolute is relative to the working directory.
 // FAKE_CLAUDE_EXIT: {tag: {code, times}}: the first `times` starts of that tag write a transcript and exit `code` with no answers
-// (a usage limit, a lost login). --session-id names the transcript file.
+// (a usage limit, a lost login); `keep` writes the tag's first file first, `refused` puts a refused tool call in the
+// transcript. FAKE_CLAUDE_ASKED: an asked.jsonl that gets a line for each file written. --session-id names the transcript file.
 import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
@@ -13,7 +14,7 @@ import {
   mkdirSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import process from "node:process";
 
 const MODELS = {
@@ -34,6 +35,16 @@ appendFileSync(
   process.env.FAKE_CLAUDE_LOG,
   `${JSON.stringify({ args, cwd: process.cwd(), prompt, tag, memory: process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY })}\n`,
 );
+
+const failing = JSON.parse(process.env.FAKE_CLAUDE_EXIT ?? "{}")[tag];
+const failed = `${process.env.FAKE_CLAUDE_LOG}.failed`;
+const failedBefore = existsSync(failed)
+  ? readFileSync(failed, "utf8")
+      .split("\n")
+      .filter((it) => it === tag).length
+  : 0;
+const refusing =
+  failing?.refused === true && failedBefore < (failing?.times ?? 0);
 
 const at = (seconds) => new Date(Date.now() + seconds * 1000).toISOString();
 const project = join(
@@ -68,28 +79,49 @@ writeFileSync(
       },
     },
   ]
+    .concat(
+      refusing
+        ? [
+            {
+              type: "user",
+              timestamp: at(2),
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    is_error: true,
+                    content:
+                      "Claude requested permissions to use Bash, but you haven't granted it yet.",
+                  },
+                ],
+              },
+            },
+          ]
+        : [],
+    )
     .map((line) => JSON.stringify(line))
     .join("\n") + "\n",
 );
 
-const failing = JSON.parse(process.env.FAKE_CLAUDE_EXIT ?? "{}")[tag];
-const failed = `${process.env.FAKE_CLAUDE_LOG}.failed`;
-const failedBefore = existsSync(failed)
-  ? readFileSync(failed, "utf8")
-      .split("\n")
-      .filter((it) => it === tag).length
-  : 0;
-if (failing !== undefined && failedBefore < failing.times) {
-  appendFileSync(failed, `${tag}\n`);
-  process.exit(failing.code);
-}
-
 const wanted = JSON.parse(process.env.FAKE_CLAUDE_FILES ?? "{}");
 const files =
   wanted[tag] ?? (tag.includes(".judge.") ? wanted.judge : undefined) ?? {};
-for (const [path, source] of Object.entries(files)) {
+const copy = ([path, source]) => {
   const target = isAbsolute(path) ? path : join(process.cwd(), path);
   mkdirSync(join(target, ".."), { recursive: true });
   copyFileSync(source, target);
+  if (process.env.FAKE_CLAUDE_ASKED !== undefined)
+    appendFileSync(
+      process.env.FAKE_CLAUDE_ASKED,
+      `${JSON.stringify({ job: tag.split("/")[1], question: basename(target, ".json"), at: at(1), message: "asked" })}\n`,
+    );
+};
+if (failing !== undefined && failedBefore < failing.times) {
+  appendFileSync(failed, `${tag}\n`);
+  if (failing.keep) Object.entries(files).slice(0, 1).forEach(copy);
+  process.exit(failing.code);
 }
+
+Object.entries(files).forEach(copy);
 process.stdout.write("done\n");

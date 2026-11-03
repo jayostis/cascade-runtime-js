@@ -16,7 +16,11 @@ process.env.CASCADE_EVALS_CLAUDE = fixture("fake-claude.mjs");
 process.env.FAKE_CLAUDE_LOG = log;
 const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
-const { resolveClaude, runEval, showRun } = await import("../src/run.js");
+const { childOf, resolveClaude, runEval, showRun } =
+  await import("../src/run.js");
+const { loadPlan } = await import("../src/plan.js");
+const { askCommand, podCommand, sessionPrompt } =
+  await import("../src/prompts.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 const MODEL = "claude-haiku-5-5";
@@ -149,6 +153,12 @@ const starts = async (): Promise<Start[]> =>
     : [];
 const flag = (args: readonly string[], name: string) =>
   args[args.indexOf(`--${name}`) + 1];
+/** The rules after `--allowedTools`, each its own argument, up to the next flag. */
+const rulesOf = (args: readonly string[]) => {
+  const rest = args.slice(args.indexOf("--allowedTools") + 1);
+  const end = rest.findIndex((it) => it.startsWith("--"));
+  return end < 0 ? rest : rest.slice(0, end);
+};
 
 test("run without --go starts no child: it lists the jobs and the estimate against the cap", async () => {
   await rm(log, { force: true });
@@ -193,7 +203,13 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
     assert.equal(flag(start.args, "permission-mode"), "dontAsk");
     assert.equal(start.memory, "1");
     assert.equal(
-      flag(start.args, "allowedTools")!.replace(/Bash\(.*\)/, "Bash"),
+      [
+        ...new Set(
+          rulesOf(start.args).map((it) =>
+            it.startsWith("Bash(") ? "Bash" : it,
+          ),
+        ),
+      ].join(","),
       tools(start),
     );
     const denied = flag(start.args, "disallowedTools")!.split(",");
@@ -383,20 +399,153 @@ test("a child is started with its own --session-id and its transcript is that se
     );
 });
 
-test("Bash is allowed only as the commands the job's prompt names, written with forward slashes", async () => {
-  await rm(log, { force: true });
+test("every command a job's prompt names is allowed by the child's args, for every arm, and nothing wider, written with forward slashes", async () => {
   const run = await planned("allow", { tokens: 10_000_000 }, { judges: false });
-  await runEval({ run, log: () => undefined });
-  for (const start of await starts()) {
-    const allowed = flag(start.args, "allowedTools")!;
-    assert.ok(!/Bash\(node \*\)/.test(allowed), allowed);
-    assert.ok(!allowed.includes("\\"), allowed);
-    const job = start.tag.slice("allow/".length);
-    const command =
-      start.tag === tagOf("allow", 0)
-        ? /Bash\(node "[^"]+\/cli\.js" ask --run "[^"]+" --job (\S+)\)/
-        : /Bash\(node "[^"]+\/cli\.js" pod --run "[^"]+" --job (\S+) \*\)/;
-    assert.equal(command.exec(allowed)?.[1], job, allowed);
+  const plan = await loadPlan(run);
+  const seen = new Set<string>();
+  for (const job of plan.jobs) {
+    const prompt = sessionPrompt({
+      arm: job.arm!,
+      tag: job.tag,
+      name: "Tamsin Vale",
+      pronoun: "her",
+      today: "2026-01-01",
+      ask: askCommand(plan.folder, job.id),
+      ...(job.arm === "records"
+        ? { folder: "/downloads", files: ["a.json"] }
+        : { command: podCommand(plan.folder, job.id), pod: "tamsin-vale" }),
+    });
+    const child = childOf(plan, job, prompt);
+    const rules = rulesOf(child.args);
+    const named = [
+      ...prompt.matchAll(
+        new RegExp(
+          `node "[^"]+" (?:ask|pod) --run "[^"]+" --job ${job.id.replaceAll(".", "\\.")}`,
+          "g",
+        ),
+      ),
+    ].map((it) => it[0]);
+    assert.ok(
+      named.some((it) => / ask /.test(it)),
+      `${job.arm} names ask`,
+    );
+    assert.equal(
+      named.some((it) => / pod /.test(it)),
+      job.arm === "pod",
+    );
+    for (const command of named) {
+      seen.add(command);
+      assert.ok(
+        rules.includes(`Bash(${command})`) ||
+          rules.includes(`Bash(${command} *)`),
+        `${job.arm}: ${command} is not allowed by ${rules.join(" | ")}`,
+      );
+    }
+    for (const rule of rules.filter((it) => it.startsWith("Bash(")))
+      assert.ok(!/Bash\(node \*\)/.test(rule) && !rule.includes("\\"), rule);
+  }
+  assert.equal(seen.size, 3, "ask for both arms, and pod for one");
+});
+
+test("a cli or run path with a space is refused before any child starts, as --allowedTools cannot hold it", async () => {
+  await rm(log, { force: true });
+  const run = await planned("spaced", { tokens: 10_000_000 });
+  const plan = await loadPlan(run);
+  assert.throws(
+    () =>
+      childOf(
+        { ...plan, folder: join(plan.folder, "with space") },
+        plan.jobs[0]!,
+        "",
+      ),
+    /space/,
+  );
+  assert.deepEqual(await starts(), []);
+});
+
+test("a child that writes one of its two answers and exits in an error gives its job back whole: resumed, it asks every question again, once", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "partial",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  const path = join(run, "plan.json");
+  const plan = JSON.parse(await readFile(path, "utf8")) as {
+    jobs: { questions: string[] }[];
+  };
+  plan.jobs[0]!.questions = ["allergies", "second"];
+  await writeFile(path, JSON.stringify(plan));
+  const answers = join(run, "answers", JOBS[0].id);
+  const files = JSON.parse(process.env.FAKE_CLAUDE_FILES!) as Record<
+    string,
+    Record<string, string>
+  >;
+  files[tagOf("partial", 0)]![join(answers, "second.json")] = fixture(
+    "smoke-answers/records-allergies.json",
+  );
+  process.env.FAKE_CLAUDE_FILES = JSON.stringify(files);
+  process.env.FAKE_CLAUDE_ASKED = join(run, "asked.jsonl");
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("partial", 0)]: { code: 1, times: 1, keep: true },
+  });
+  try {
+    const done = await runEval({ run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done"],
+    );
+    const asked = (await readFile(join(run, "asked.jsonl"), "utf8"))
+      .split("\n")
+      .filter(Boolean)
+      .map((it) => JSON.parse(it) as { job: string; question: string })
+      .filter((it) => it.job === JOBS[0].id)
+      .map((it) => it.question);
+    assert.deepEqual(asked.sort(), ["allergies", "second"]);
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
+    delete process.env.FAKE_CLAUDE_ASKED;
+  }
+});
+
+test("a child that exits 0 having answered nothing, its transcript showing a refused tool call, is given back, and a wave of such children stops the run", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "refused",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("refused", 0)]: { code: 0, times: 1, refused: true },
+  });
+  try {
+    const done = await runEval({ run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done"],
+    );
+    assert.equal((await starts()).length, 3);
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
+  }
+  await rm(log, { force: true });
+  const again = await planned(
+    "refused-all",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("refused-all", 0)]: { code: 0, times: 1, refused: true },
+    [tagOf("refused-all", 1)]: { code: 0, times: 1, refused: true },
+  });
+  try {
+    await assert.rejects(
+      runEval({ run: again, log: () => undefined }),
+      /every child/,
+    );
+    assert.deepEqual(await statusOf(again), ["pending", "pending"]);
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
   }
 });
 
