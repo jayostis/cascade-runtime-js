@@ -16,7 +16,7 @@ process.env.CASCADE_EVALS_CLAUDE = fixture("fake-claude.mjs");
 process.env.FAKE_CLAUDE_LOG = log;
 const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
-const { childOf, resolveClaude, runEval, showRun } =
+const { childOf, giveBack, resolveClaude, runEval, showRun } =
   await import("../src/run.js");
 const { loadPlan, subjectPrompt } = await import("../src/plan.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
@@ -680,4 +680,42 @@ test("a lock whose process is dead is not taken over while a child it recorded i
   );
   await assert.rejects(runEval({ run, log: () => undefined }), /still running/);
   assert.deepEqual(await starts(), []);
+});
+
+test("a throw while giving one job back leaves the jobs given back before it pending, their attempts counted as abandoned", async () => {
+  const run = await planned(
+    "giveback-throw",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  const path = join(run, "plan.json");
+  const plan = JSON.parse(await readFile(path, "utf8")) as {
+    jobs: {
+      status: string;
+      questions: string[];
+      answers: string;
+      stats?: unknown;
+      abandoned?: unknown[];
+    }[];
+  };
+  const [first, second] = plan.jobs as [
+    (typeof plan.jobs)[number],
+    (typeof plan.jobs)[number],
+  ];
+  for (const job of [first, second]) {
+    job.status = "dispatched";
+    job.questions.push("second-question");
+  }
+  first.stats = { tokens: { total: 7 }, cost: { usd: 1 } };
+  await writeFile(path, JSON.stringify(plan));
+  await writeFile(join(run, first.answers, "allergies.json"), "{}");
+  // An answer that is a folder cannot be removed as a file: the second job's give-back throws.
+  await mkdir(join(run, second.answers, "blood-clot.json"), {
+    recursive: true,
+  });
+  await assert.rejects(giveBack(run, () => true));
+  const after = JSON.parse(await readFile(path, "utf8")) as typeof plan;
+  assert.equal(after.jobs[0]!.status, "pending");
+  assert.equal(after.jobs[0]!.abandoned?.length, 1);
+  assert.equal(existsSync(join(run, first.answers, "allergies.json")), false);
 });
