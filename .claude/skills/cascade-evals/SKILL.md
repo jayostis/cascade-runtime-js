@@ -25,6 +25,16 @@ time with `CLI ask --run <run> --job <id>`.
 
 ## 2. Run
 
+**With one command** (the maintainer's go-ahead first; no orchestrating session is needed, and each subject starts with none of
+the user's CLAUDE.md, memory, hooks or plugins):
+
+```
+CLI run --config <tier|file>                  # plans; lists the jobs and the estimate against the cap, and stops
+CLI run --config <tier|file> --run <id> --go  # runs every job as a `claude -p` child, then the judges, then finish
+```
+
+The same `--run <id> --go` resumes a run that stopped part way. The two ways below are the older orchestrated runs.
+
 **With the Workflow tool** (the maintainer's go-ahead first; it plans the run itself):
 
 ```

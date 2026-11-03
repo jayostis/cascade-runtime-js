@@ -1,14 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -22,23 +16,38 @@ process.env.CASCADE_EVALS_CLAUDE = fixture("fake-claude.mjs");
 process.env.FAKE_CLAUDE_LOG = log;
 const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
-const { runEval } = await import("../src/run.js");
+const { runEval, showRun } = await import("../src/run.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 const MODEL = "claude-haiku-5-5";
 const JOBS = [
-  { id: "tamsin-vale.worries.records.haiku-5-5.r1", arm: "records", q: "allergies" },
+  {
+    id: "tamsin-vale.worries.records.haiku-5-5.r1",
+    arm: "records",
+    q: "allergies",
+  },
   { id: "tamsin-vale.worries.pod.haiku-5-5.r1", arm: "pod", q: "blood-clot" },
 ] as const;
 
 /** A planned run of the two jobs (Tamsin's worries session, one question each, on each arm), nothing run yet. */
-async function planned(name: string, cap: { tokens: number }, judges = true) {
+async function planned(
+  name: string,
+  cap: { tokens: number },
+  options: { judges?: boolean; concurrency?: number; estimate?: number } = {},
+) {
+  const { judges = true, concurrency = 2, estimate = 1_000_000 } = options;
   const run = join(folder, name);
   const pods = join(folder, `${name}-pods`);
   await (await openPod(join(pods, "tamsin-vale"), { title: "t" })).close();
   await mkdir(join(run, "prompts"), { recursive: true });
   const downloads = join(folder, `${name}-downloads`);
-  await mkdir(downloads, { recursive: true });
+  const { reading } = JSON.parse(
+    await readFile(fixture("../../cases/tamsin-vale/case.json"), "utf8"),
+  ) as { reading: string[] };
+  for (const file of reading) {
+    await mkdir(dirname(join(downloads, file)), { recursive: true });
+    await writeFile(join(downloads, file), "{}");
+  }
   const jobs = [];
   for (const { id, arm, q } of JOBS) {
     await mkdir(join(run, "answers", id), { recursive: true });
@@ -59,7 +68,7 @@ async function planned(name: string, cap: { tokens: number }, judges = true) {
       tag: `${name}/${id}`,
       inputsHash: id,
       status: "pending",
-      estimate: { tokens: 1_000_000, usd: 1 },
+      estimate: { tokens: estimate, usd: 1 },
       answers: `answers/${id}`,
       prompt: `prompts/${id}.txt`,
     });
@@ -78,7 +87,7 @@ async function planned(name: string, cap: { tokens: number }, judges = true) {
         repeats: 1,
         judges: judges ? [MODEL] : [],
         cap: { ...cap, usd: 100 },
-        concurrency: 2,
+        concurrency,
       },
       configSha256: "",
       harness: { commit: "0000000", uncommitted: 0 },
@@ -102,7 +111,7 @@ async function planned(name: string, cap: { tokens: number }, judges = true) {
         },
       ],
       jobs,
-      estimate: { tokens: 2_000_000, usd: 2 },
+      estimate: { tokens: 2 * estimate, usd: 2 },
       fitsCap: true,
     }),
   );
@@ -141,10 +150,10 @@ const starts = async (): Promise<Start[]> =>
 const flag = (args: readonly string[], name: string) =>
   args[args.indexOf(`--${name}`) + 1];
 
-test("run without --go plans nothing to run and starts no child: it lists the jobs and the estimate against the cap", async () => {
+test("run without --go starts no child: it lists the jobs and the estimate against the cap", async () => {
   await rm(log, { force: true });
   const run = await planned("dry", { tokens: 10_000_000 });
-  const shown = await runEval({ run, go: false, log: () => undefined });
+  const shown = await showRun({ config: "unused", run, log: () => undefined });
   assert.deepEqual(
     shown.jobs.map((it) => [it.id, it.status]),
     JOBS.map(({ id }) => [id, "pending"]),
@@ -158,7 +167,7 @@ test("run without --go plans nothing to run and starts no child: it lists the jo
 test("run --go starts one claude -p child per job with the job's model, its arm's tools and the isolation flags, takes the run through its judge to finish, and a second --go starts none", async () => {
   await rm(log, { force: true });
   const run = await planned("two-jobs", { tokens: 10_000_000 });
-  const done = await runEval({ run, go: true, log: () => undefined });
+  const done = await runEval({ config: "unused", run, log: () => undefined });
   const made = await starts();
   assert.equal(made.length, 3, "two subjects and a judge");
   const tools = (start: Start) => flag(start.args, "tools");
@@ -167,7 +176,10 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
   const pod = byTag(`two-jobs/${JOBS[1].id}`);
   assert.equal(tools(records), "Read,Write,Bash");
   assert.equal(tools(pod), "Bash,Write");
-  assert.equal(tools(made.find((it) => it.tag.includes(".judge."))!), "Read,Write");
+  assert.equal(
+    tools(made.find((it) => it.tag.includes(".judge."))!),
+    "Read,Write",
+  );
   for (const start of made) {
     assert.ok(start.args.includes("-p"));
     assert.equal(flag(start.args, "model"), "haiku");
@@ -180,8 +192,19 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
       assert.ok(start.args.includes(isolating), isolating);
     assert.equal(flag(start.args, "permission-mode"), "dontAsk");
     assert.equal(start.memory, "1");
+    assert.equal(
+      flag(start.args, "allowedTools"),
+      tools(start)!.replace("Bash", "Bash(node *)"),
+    );
     const denied = flag(start.args, "disallowedTools")!.split(",");
-    for (const tool of ["Agent", "WebFetch", "WebSearch", "Edit", "Glob", "Grep"])
+    for (const tool of [
+      "Agent",
+      "WebFetch",
+      "WebSearch",
+      "Edit",
+      "Glob",
+      "Grep",
+    ])
       assert.ok(denied.includes(tool), tool);
     assert.ok(
       start.prompt.startsWith(`eval-tag: ${start.tag}\n`),
@@ -204,14 +227,19 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
   assert.equal(results.jobs.length, 3);
   assert.ok(results.jobs.every((it) => it.stats?.calls === 1));
 
-  await runEval({ run, go: true, log: () => undefined });
+  await runEval({ config: "unused", run, log: () => undefined });
   assert.equal((await starts()).length, 3, "a finished run starts nothing");
 });
 
 test("run --go stops dispatching at the cap: the job that would pass it is not started and finish skips it for the cap", async () => {
   await rm(log, { force: true });
-  const run = await planned("capped", { tokens: 1_500_000 }, false);
-  const done = await runEval({ run, go: true, log: () => undefined });
+  // one child at a time, each spending about 6,200 tokens against an estimate of 1,000: the second would pass 7,000
+  const run = await planned(
+    "capped",
+    { tokens: 7_000 },
+    { judges: false, concurrency: 1, estimate: 1_000 },
+  );
+  const done = await runEval({ config: "unused", run, log: () => undefined });
   assert.equal((await starts()).length, 1);
   assert.deepEqual(
     done.jobs.map((it) => [it.status, it.reason]),
@@ -219,5 +247,25 @@ test("run --go stops dispatching at the cap: the job that would pass it is not s
       ["done", undefined],
       ["skipped", "the cap"],
     ],
+  );
+});
+
+test("a claude that cannot be started stops the run and gives its jobs back, so a later --go still runs them", async () => {
+  await rm(log, { force: true });
+  const run = await planned("missing", { tokens: 10_000_000 });
+  const fake = process.env.CASCADE_EVALS_CLAUDE;
+  process.env.CASCADE_EVALS_CLAUDE = join(folder, "no-such-claude.exe");
+  try {
+    await assert.rejects(
+      runEval({ config: "unused", run, log: () => undefined }),
+      /could not start/,
+    );
+  } finally {
+    process.env.CASCADE_EVALS_CLAUDE = fake;
+  }
+  const shown = await showRun({ config: "unused", run, log: () => undefined });
+  assert.deepEqual(
+    shown.jobs.map((it) => it.status),
+    ["pending", "pending"],
   );
 });

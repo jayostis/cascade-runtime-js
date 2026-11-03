@@ -122,6 +122,17 @@ export const ARM_PARTS = {
   },
 };
 
+/**
+ * The tools each prompt allows, by name: the records arm Read for its files, Write for its answers and Bash for its
+ * `ask` command; the pod arm Bash for its two commands and Write; a judge Read for its packet and Write for its verdict.
+ * Apart from `ARM_PARTS`, so a change here does not rerun what was answered.
+ */
+export const TOOLS = {
+  records: ["Read", "Write", "Bash"],
+  pod: ["Bash", "Write"],
+  judge: ["Read", "Write"],
+} as const;
+
 export const PRONOUNS: Record<string, [string, string]> = {
   her: ["she", "Her"],
   his: ["he", "His"],

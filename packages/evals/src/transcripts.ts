@@ -1,6 +1,6 @@
-// The model calls of a Claude Code agent, read from the transcript Claude Code keeps of it: each call's model, its
-// input, cache and output tokens as the API reported them, when it ran and the tools it called. An agent's
-// transcript is found by the tag its prompt carries.
+// The model calls of a Claude Code agent or a `claude -p` session, read from the transcript Claude Code keeps of it:
+// each call's model, its input, cache and output tokens as the API reported them, when it ran and the tools it called.
+// A transcript is found by the tag its prompt carries, in an agent's `agent-<id>.jsonl` or a session's `<session id>.jsonl`.
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -169,7 +169,7 @@ export async function transcriptsSince(
     return found;
   }
   for (const entry of entries) {
-    if (!entry.isFile() || !/^agent-.*\.jsonl$/.test(entry.name)) continue;
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
     const path = join(entry.parentPath, entry.name);
     if ((await stat(path)).mtime < since) continue;
     const transcript = await readTranscript(path);

@@ -3,7 +3,12 @@
 // FAKE_CLAUDE_LOG: where each start is logged as a JSON line. FAKE_CLAUDE_FILES: {tag: {path: source file}}, copied
 // as the job's answers, under "judge" for any judge; a path that is not absolute is relative to the working directory.
 import { randomUUID } from "node:crypto";
-import { appendFileSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join } from "node:path";
 import process from "node:process";
 
@@ -61,7 +66,8 @@ writeFileSync(
 );
 
 const wanted = JSON.parse(process.env.FAKE_CLAUDE_FILES ?? "{}");
-const files = wanted[tag] ?? (tag.includes(".judge.") ? wanted.judge : undefined) ?? {};
+const files =
+  wanted[tag] ?? (tag.includes(".judge.") ? wanted.judge : undefined) ?? {};
 for (const [path, source] of Object.entries(files)) {
   const target = isAbsolute(path) ? path : join(process.cwd(), path);
   mkdirSync(join(target, ".."), { recursive: true });

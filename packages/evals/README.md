@@ -49,6 +49,28 @@ node packages/evals/dist/src/cli.js plan --config smoke      # prepares the case
 then the skill's loop, or the workflow, runs the jobs the cap allows and `finish` writes `runs/<run>/results.json` and
 `runs/<run>/site/`. `node packages/evals/dist/src/cli.js` with no command lists every command.
 
+### One command, no orchestrator
+
+```sh
+node packages/evals/dist/src/cli.js run --config small-models            # plans; lists the jobs and the estimate against the cap
+node packages/evals/dist/src/cli.js run --config small-models --run <id> --go
+```
+
+`run --config <tier|file>` plans the run (or reads the plan of `--run <id>` when it has one), prints its jobs and the
+estimate against the cap, and stops. With `--go` it runs the whole eval: the meter hands out the jobs that fit the cap
+(at most the config's `concurrency`), each is one `claude -p --model <alias>` child, the meter runs again when the wave
+has ended, then the judges the same way, then `finish`. A run stopped part way resumes with the same `--run <id> --go`;
+a job already finished is not run again. Each child's output is in `runs/<run>/logs/<job>.log`.
+
+A child gets the prompt the meter gives (its first line is its tag, which is how its `<session id>.jsonl` transcript is
+found), only the tools its prompt allows (`TOOLS` in `src/prompts.ts`: the records arm Read, Write and Bash; the pod arm
+Bash and Write; a judge Read and Write), no permission prompts, and none of the user's setup: `--safe-mode` (no CLAUDE.md,
+hooks, plugins, skills, MCP), `--restricted` (file tools confined to the child's folder, the run's answers folder and, for
+the records arm, its downloads), `--strict-mcp-config`, and the environment variables that switch off auto-memory,
+CLAUDE.md, claude.ai connectors and the PowerShell tool. Bash is allowed as `Bash(node *)` only. `--bare` is not used: it
+cannot read a subscription login. `CASCADE_EVALS_CLAUDE` names another executable (a `.js` or `.mjs` file runs under node),
+which is how the tests use a fake; `CASCADE_EVALS_CHILD_MINUTES` (default 60) stops a child that runs too long.
+
 - **Reference tables.** Every case's pod is given the reference tables, as an app holds them beside its pods: held once in
   `work/reference-tables/` (the package's starter copies, else the feeds `cascade-runtime.json` names, read once) and
   copied into each case's `pods/.tables/`. A pod prepared without them, or on other tables, is rebuilt, and a pod-arm

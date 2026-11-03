@@ -11,6 +11,9 @@ const USAGE = `usage: cascade-evals <command>
   check-key <case>                        check every claim of the case's key against its downloads
   plan --config <file|tier> [--run <id>] [--brief]
                                           a run's jobs, what is reused, and its estimate against the cap
+  run --config <file|tier> [--run <id>] [--go]
+                                          a whole eval from one config: the jobs and the estimate against the cap;
+                                          with --go, plan (or resume), run every job as a claude -p child, judge, finish
   ask --run <dir> --job <id>              a session's next question, once the last is answered
   pod --run <dir> --job <id> <tool> [<json input>]
                                           the pod arm's one command: a cascade-mcp tool, logged to the run
@@ -75,6 +78,19 @@ async function main(args: string[]): Promise<void> {
               judges: plan.config.judges,
             }
           : plan,
+      );
+    }
+    case "run": {
+      await tablesFirst();
+      const config = option(args, "config");
+      const run = option(args, "run");
+      if (config === undefined && run === undefined) break;
+      const mod = await import("./run.js");
+      const given = { config: config ?? "smoke", run, log };
+      return print(
+        args.includes("--go")
+          ? await mod.runEval(given)
+          : await mod.showRun(given),
       );
     }
     case "ask": {
