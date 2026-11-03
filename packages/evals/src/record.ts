@@ -100,6 +100,12 @@ const handedOut = (job: Job) =>
     job.stats === undefined &&
     job.dispatched === true);
 
+/** What a job's given-back attempts spent: they ran, and are paid for, though the job runs again. */
+const abandonedOf = (job: Job) => ({
+  tokens: (job.abandoned ?? []).reduce((sum, it) => sum + it.tokens, 0),
+  usd: (job.abandoned ?? []).reduce((sum, it) => sum + (it.usd ?? 0), 0),
+});
+
 /** What the run itself spent: a reused job cost this run nothing; a job handed out without a transcript, its estimate. */
 const spentOf = (jobs: readonly Job[]) => ({
   tokens: jobs.reduce(
@@ -107,7 +113,8 @@ const spentOf = (jobs: readonly Job[]) => ({
       sum +
       (it.status === "reused"
         ? 0
-        : (it.stats?.tokens.total ?? (handedOut(it) ? it.estimate.tokens : 0))),
+        : abandonedOf(it).tokens +
+          (it.stats?.tokens.total ?? (handedOut(it) ? it.estimate.tokens : 0))),
     0,
   ),
   usd: jobs.reduce(
@@ -115,7 +122,8 @@ const spentOf = (jobs: readonly Job[]) => ({
       sum +
       (it.status === "reused"
         ? 0
-        : (it.stats?.cost.usd ?? (handedOut(it) ? it.estimate.usd : 0))),
+        : abandonedOf(it).usd +
+          (it.stats?.cost.usd ?? (handedOut(it) ? it.estimate.usd : 0))),
     0,
   ),
 });
@@ -148,7 +156,7 @@ export function writtenOf(plan: Plan, job: Job) {
 }
 
 /** The run's jobs brought up to date from their transcripts and output files, and harness jobs added as found. */
-async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
+export async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
   const since = new Date(Date.parse(plan.created) - 60_000);
   const found = await transcriptsSince(
     since,
@@ -531,10 +539,15 @@ export async function finish(given: string, log: (line: string) => void) {
   const spent = spentOf(plan.jobs);
   const byRole: Record<string, { tokens: number; usd: number }> = {};
   for (const job of plan.jobs) {
-    if (job.status === "reused" || job.stats === undefined) continue;
+    const given = abandonedOf(job);
+    if (
+      job.status === "reused" ||
+      (job.stats === undefined && given.tokens === 0)
+    )
+      continue;
     const role = (byRole[job.role] ??= { tokens: 0, usd: 0 });
-    role.tokens += job.stats.tokens.total;
-    role.usd += job.stats.cost.usd ?? 0;
+    role.tokens += given.tokens + (job.stats?.tokens.total ?? 0);
+    role.usd += given.usd + (job.stats?.cost.usd ?? 0);
   }
   const finished = new Date();
   const results: Results = {

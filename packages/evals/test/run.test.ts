@@ -18,9 +18,7 @@ const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
 const { childOf, resolveClaude, runEval, showRun } =
   await import("../src/run.js");
-const { loadPlan } = await import("../src/plan.js");
-const { askCommand, podCommand, sessionPrompt } =
-  await import("../src/prompts.js");
+const { loadPlan, subjectPrompt } = await import("../src/plan.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 const MODEL = "claude-haiku-5-5";
@@ -57,7 +55,18 @@ async function planned(
     await mkdir(join(run, "answers", id), { recursive: true });
     await writeFile(
       join(run, "prompts", `${id}.txt`),
-      `eval-tag: ${name}/${id}\n\nYou are a health assistant (${arm}).\n`,
+      subjectPrompt({
+        folder: run,
+        jobId: id,
+        tag: `${name}/${id}`,
+        arm,
+        name: "Tamsin Vale",
+        pronoun: "her",
+        today: "2026-01-01",
+        downloads,
+        reading,
+        pod: "tamsin-vale",
+      }),
     );
     jobs.push({
       id,
@@ -399,23 +408,18 @@ test("a child is started with its own --session-id and its transcript is that se
     );
 });
 
-test("every command a job's prompt names is allowed by the child's args, for every arm, and nothing wider, written with forward slashes", async () => {
-  const run = await planned("allow", { tokens: 10_000_000 }, { judges: false });
+test("every command the prompt a child was handed names is allowed by the args it was started with, for every arm and the judge, and nothing wider, written with forward slashes", async () => {
+  await rm(log, { force: true });
+  const run = await planned("allow", { tokens: 10_000_000 });
+  await runEval({ run, log: () => undefined });
   const plan = await loadPlan(run);
   const seen = new Set<string>();
-  for (const job of plan.jobs) {
-    const prompt = sessionPrompt({
-      arm: job.arm!,
-      tag: job.tag,
-      name: "Tamsin Vale",
-      pronoun: "her",
-      today: "2026-01-01",
-      ask: askCommand(plan.folder, job.id),
-      ...(job.arm === "records"
-        ? { folder: "/downloads", files: ["a.json"] }
-        : { command: podCommand(plan.folder, job.id), pod: "tamsin-vale" }),
-    });
-    const child = childOf(plan, job, prompt);
+  const made = await starts();
+  assert.equal(made.length, 3, "two subjects and a judge");
+  for (const start of made) {
+    const job = plan.jobs.find((it) => it.tag === start.tag)!;
+    const prompt = start.prompt;
+    const child = { args: start.args };
     const rules = rulesOf(child.args);
     const named = [
       ...prompt.matchAll(
@@ -425,13 +429,20 @@ test("every command a job's prompt names is allowed by the child's args, for eve
         ),
       ),
     ].map((it) => it[0]);
-    assert.ok(
+    named.splice(0, named.length, ...new Set(named));
+    assert.equal(
       named.some((it) => / ask /.test(it)),
-      `${job.arm} names ask`,
+      job.role === "subject",
+      `${job.role} ${job.arm} names ask`,
     );
     assert.equal(
       named.some((it) => / pod /.test(it)),
       job.arm === "pod",
+    );
+    assert.equal(
+      rules.filter((it) => it.startsWith("Bash(")).length,
+      named.length,
+      "a rule for each command the prompt names, and no other",
     );
     for (const command of named) {
       seen.add(command);
@@ -502,9 +513,54 @@ test("a child that writes one of its two answers and exits in an error gives its
       .filter((it) => it.job === JOBS[0].id)
       .map((it) => it.question);
     assert.deepEqual(asked.sort(), ["allergies", "second"]);
+    assert.equal(
+      done.spent.tokens,
+      3 * 6210,
+      "the given-back attempt's tokens are spent too",
+    );
   } finally {
     delete process.env.FAKE_CLAUDE_EXIT;
     delete process.env.FAKE_CLAUDE_ASKED;
+  }
+});
+
+test("a child that exits 0 having written one of its two answers, its transcript showing a refused tool call, is given back whole and ends done", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "partial-refused",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  const path = join(run, "plan.json");
+  const plan = JSON.parse(await readFile(path, "utf8")) as {
+    jobs: { questions: string[] }[];
+  };
+  plan.jobs[0]!.questions = ["allergies", "second"];
+  await writeFile(path, JSON.stringify(plan));
+  const files = JSON.parse(process.env.FAKE_CLAUDE_FILES!) as Record<
+    string,
+    Record<string, string>
+  >;
+  files[tagOf("partial-refused", 0)]![
+    join(run, "answers", JOBS[0].id, "second.json")
+  ] = fixture("smoke-answers/records-allergies.json");
+  process.env.FAKE_CLAUDE_FILES = JSON.stringify(files);
+  process.env.FAKE_CLAUDE_EXIT = JSON.stringify({
+    [tagOf("partial-refused", 0)]: {
+      code: 0,
+      times: 1,
+      keep: true,
+      refused: true,
+    },
+  });
+  try {
+    const done = await runEval({ run, log: () => undefined });
+    assert.deepEqual(
+      done.jobs.map((it) => it.status),
+      ["done", "done"],
+    );
+  } finally {
+    delete process.env.FAKE_CLAUDE_EXIT;
   }
 });
 

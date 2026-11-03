@@ -105,6 +105,8 @@ export interface Job {
   dispatched?: boolean;
   /** The session id a `claude -p` child was started with: its transcript is `<id>.jsonl`. */
   sessionId?: string;
+  /** What each attempt that was given back and run again spent: counted in the run's spend and against its cap. */
+  abandoned?: { tokens: number; usd: number | null }[];
   readonly estimate: {
     readonly tokens: number;
     readonly usd: number;

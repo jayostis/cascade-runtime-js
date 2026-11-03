@@ -1,7 +1,7 @@
 // `cascade-evals run`: a whole eval from one config with no orchestrator. Each job the meter hands out is one `claude -p`
 // child, started with the job's model, only the tools its prompt allows and none of the user's setup, in a folder of its
 // own; the meter runs between waves, as it does when an orchestrator drives it, then the judges, then `finish`.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import {
@@ -18,7 +18,8 @@ import { sha256 } from "./cases.js";
 import { type Plan, loadConfig, loadPlan, planRun, savePlan } from "./plan.js";
 import { judgePackets } from "./judging.js";
 import { CLI, TOOLS, askCommand, podCommand } from "./prompts.js";
-import { finish, recordRun, writtenOf } from "./record.js";
+import { finish, recordRun, refreshed, writtenOf } from "./record.js";
+import { stopPodServer } from "./pod-client.js";
 import { type Job, runFolder } from "./results.js";
 import { answerPath } from "./sessions.js";
 import { TRANSCRIPTS, tagLine } from "./transcripts.js";
@@ -288,10 +289,7 @@ async function waves(
     for (const [at, handed] of meter.next.entries()) {
       const job = after.jobs.find((it) => it.id === handed.id)!;
       const written = writtenOf(after, job);
-      if (
-        !written.all &&
-        (ended[at] !== 0 || (!written.any && (await stopped(job.sessionId))))
-      )
+      if (!written.all && (ended[at] !== 0 || (await stopped(job.sessionId))))
         failed.add(handed.id);
     }
     await giveBack(folder, (job) => failed.has(job.id));
@@ -365,12 +363,21 @@ async function giveBack(
   which: (job: Job) => boolean,
 ): Promise<void> {
   const plan = await loadPlan(folder);
+  // What the attempts spent is read from their transcripts before the sessions are forgotten.
+  await refreshed(plan);
   for (const job of plan.jobs)
     if (
       which(job) &&
       (job.status === "dispatched" || job.status === "running") &&
       !writtenOf(plan, job).all
     ) {
+      // A still-running pod server would append to the log being rewritten and carry its call counter into the rerun.
+      if (job.arm === "pod") await stopPodServer(folder, job.id);
+      if (job.stats !== undefined)
+        (job.abandoned ??= []).push({
+          tokens: job.stats.tokens.total,
+          usd: job.stats.cost.usd,
+        });
       const answers =
         job.role === "judge"
           ? [job.verdict]
@@ -404,9 +411,12 @@ async function locked<T>(
   work: (track: Track) => Promise<T>,
 ): Promise<T> {
   const path = join(folder, "run.lock");
-  const children = new Set<number>();
+  const children = new Map<number, number>();
   const content = () =>
-    JSON.stringify({ pid: process.pid, children: [...children] });
+    JSON.stringify({
+      pid: process.pid,
+      children: [...children].map(([pid, at]) => ({ pid, at })),
+    });
   for (;;) {
     const taken = await writeFile(path, content(), { flag: "wx" }).then(
       () => true,
@@ -420,34 +430,71 @@ async function locked<T>(
     const held = (() => {
       try {
         const parsed = JSON.parse(text) as
-          number | Partial<{ pid: number; children: number[] }>;
+          | number
+          | Partial<{
+              pid: number;
+              children: (number | { pid: number; at?: number })[];
+            }>;
         return typeof parsed === "number"
           ? { pid: parsed, children: [] }
-          : { pid: parsed.pid ?? 0, children: parsed.children ?? [] };
+          : {
+              pid: parsed.pid ?? 0,
+              children: (parsed.children ?? []).map((it) =>
+                typeof it === "number" ? { pid: it } : it,
+              ),
+            };
       } catch {
-        return { pid: 0, children: [] as number[] };
+        return { pid: 0, children: [] as { pid: number; at?: number }[] };
       }
     })();
     if (held.pid > 0 && alive(held.pid))
       throw new Error(
         `${folder} is being run by process ${held.pid} (${path}); wait for it to end`,
       );
-    const orphan = held.children.find(alive);
+    const orphan = held.children.find(
+      (it) => alive(it.pid) && startedWith(it.pid, it.at),
+    );
     if (orphan !== undefined)
       throw new Error(
-        `${folder} was run by process ${held.pid}, which is gone, but its child ${orphan} is still running (${path}); stop it first`,
+        `${folder} was run by process ${held.pid}, which is gone, but a process with the id of its child ${orphan.pid}, started when that child was, is still running (${path}); wait for it to end`,
       );
     await rm(path, { force: true });
   }
   try {
     return await work((pid, on) => {
-      if (on) children.add(pid);
+      if (on) children.set(pid, Date.now());
       else children.delete(pid);
       writeFileSync(path, content());
     });
   } finally {
     await rm(path, { force: true });
   }
+}
+
+/**
+ * Whether the process `pid` started when a child recorded at `at` did: Windows reuses a pid, and a process that started
+ * later is not that child. A start time that cannot be read, or none recorded, counts as the child's.
+ */
+function startedWith(pid: number, at: number | undefined): boolean {
+  if (at === undefined) return true;
+  const [command, args] =
+    process.platform === "win32"
+      ? [
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-Command",
+            `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`,
+          ],
+        ]
+      : ["ps", ["-o", "lstart=", "-p", String(pid)]];
+  const started = Date.parse(
+    spawnSync(command!, args as string[], {
+      encoding: "utf8",
+      windowsHide: true,
+    }).stdout?.trim() ?? "",
+  );
+  return Number.isNaN(started) || started <= at + 5_000;
 }
 
 const alive = (pid: number): boolean => {

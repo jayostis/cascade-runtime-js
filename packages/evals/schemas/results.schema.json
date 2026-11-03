@@ -776,6 +776,19 @@
             "type": "string",
             "description": "The session id a claude -p child was started with; its transcript is <id>.jsonl."
           },
+          "abandoned": {
+            "type": "array",
+            "description": "What each attempt that was given back and run again spent; counted in the run's spend and against its cap.",
+            "items": {
+              "type": "object",
+              "required": ["tokens", "usd"],
+              "additionalProperties": false,
+              "properties": {
+                "tokens": { "type": "number" },
+                "usd": { "type": ["number", "null"] }
+              }
+            }
+          },
           "toolUses": {
             "type": "array",
             "description": "The tools the agent used, from its transcript (a written file's content left out).",

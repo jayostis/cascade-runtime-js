@@ -10,7 +10,7 @@ import {
   readFile,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   type Case,
   caseIds,
@@ -237,6 +237,32 @@ export function estimateOf(
 const runId = (tier: string, at: Date) =>
   `${at.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")}-${tier}`;
 
+/** A subject job's opening prompt: the commands it names are the ones `childOf` allows the child. */
+export function subjectPrompt(o: {
+  folder: string;
+  jobId: string;
+  tag: string;
+  arm: Arm;
+  name: string;
+  pronoun: string;
+  today: string;
+  downloads: string;
+  reading: readonly string[];
+  pod: string;
+}): string {
+  return sessionPrompt({
+    arm: o.arm,
+    tag: o.tag,
+    name: o.name,
+    pronoun: o.pronoun,
+    today: o.today,
+    ask: askCommand(o.folder, o.jobId),
+    ...(o.arm === "records"
+      ? { folder: o.downloads, files: o.reading }
+      : { command: podCommand(o.folder, o.jobId), pod: o.pod }),
+  });
+}
+
 /**
  * Plans a run: prepares each case, lists the subject jobs, reuses what an earlier run answered for the same inputs,
  * estimates the rest and writes the run's folder. Judges are planned once their subjects have answered.
@@ -248,8 +274,12 @@ export async function planRun(
 ): Promise<Plan> {
   const config = await loadConfig(configName);
   const created = new Date();
-  const id = run ?? runId(config.tier, created);
-  const folder = join(RUNS, id);
+  // A run named by an existing folder is planned in that folder, the one `run` locks.
+  const folder =
+    run !== undefined && existsSync(run)
+      ? resolve(run)
+      : join(RUNS, run ?? runId(config.tier, created));
+  const id = basename(folder);
   if (existsSync(join(folder, "plan.json")))
     throw new Error(`${folder} already holds a plan`);
   await mkdir(join(folder, "answers"), { recursive: true });
@@ -324,19 +354,17 @@ export async function planRun(
             });
             const answers = `answers/${jobId}`;
             const tag = `${id}/${jobId}`;
-            const prompt = sessionPrompt({
-              arm,
+            const prompt = subjectPrompt({
+              folder,
+              jobId,
               tag,
+              arm,
               name: found.person.name,
               pronoun: found.person.pronoun,
               today: found.today,
-              ask: askCommand(folder, jobId),
-              ...(arm === "records"
-                ? { folder: prepared.downloads, files: found.reading }
-                : {
-                    command: podCommand(folder, jobId),
-                    pod: prepared.pod,
-                  }),
+              downloads: prepared.downloads,
+              reading: found.reading,
+              pod: prepared.pod,
             });
             const job: Job = {
               id: jobId,
