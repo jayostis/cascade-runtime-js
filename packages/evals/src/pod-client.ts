@@ -127,9 +127,9 @@ export async function stopPodServer(
         return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? "";
-      // The pipe closing as the server exits is the server stopped; one that does not answer is asked again until the limit.
-      if (["ECONNRESET", "EPIPE", "EBUSY"].includes(code)) return;
-      if (code !== "ETIMEDOUT") throw error;
+      // The pipe closing as the server exits is the server stopped; a busy pipe or a silent server is asked again until the limit.
+      if (["ECONNRESET", "EPIPE"].includes(code)) return;
+      if (code !== "ETIMEDOUT" && code !== "EBUSY") throw error;
     }
     if (Date.now() > until)
       throw new Error(`the pod server of ${job} did not stop`);
