@@ -247,6 +247,72 @@ test("a citation holds only when the cited record's own fields say what is claim
       { cite: { entry: LDL }, value: "99" },
       otherwise("value 99"),
     ],
+    [
+      "a FHIR code with its system, as the compact read writes it",
+      { cite: fit, code: "loinc:29771-3" },
+      ok,
+    ],
+    [
+      "a FHIR code with another system",
+      { cite: fit, code: "snomed:29771-3" },
+      otherwise("code snomed:29771-3"),
+    ],
+    [
+      "a pod code with its system",
+      { cite: { entry: LDL }, code: "LOINC:13457-7" },
+      ok,
+    ],
+    [
+      "a pod code with another system",
+      { cite: { entry: LDL }, code: "snomed:13457-7" },
+      otherwise("code snomed:13457-7"),
+    ],
+    [
+      "a C-CDA code with its system, by the OID it names",
+      { cite: { file: "summary.xml", line: 9 }, code: "cvx:187" },
+      ok,
+    ],
+    [
+      "a C-CDA code with another system",
+      { cite: { file: "summary.xml", line: 9 }, code: "loinc:187" },
+      otherwise("code loinc:187"),
+    ],
+    [
+      "a C-CDA entry's own author time backs recorded",
+      {
+        cite: { file: "summary.xml", line: 29 },
+        date: "2026-03-04",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "an entry with none is recorded when its document says its author wrote it",
+      {
+        cite: { file: "summary.xml", line: 39 },
+        date: "2026-03-10",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "a narrative line is recorded when its document was",
+      {
+        cite: { file: "summary.xml", line: 47 },
+        date: "2026-03-10",
+        dateKind: "recorded",
+      },
+      ok,
+    ],
+    [
+      "a recorded day the C-CDA never states",
+      {
+        cite: { file: "summary.xml", line: 39 },
+        date: "2026-03-03",
+        dateKind: "recorded",
+      },
+      otherwise("recorded 2026-03-03"),
+    ],
   ];
   for (const [what, claim, verdict] of cases) {
     const {
@@ -1274,6 +1340,16 @@ test("a name holds as whole words in both arms, and a gene change's coding expre
   ];
   for (const [what, claim, source, held] of cases)
     assert.equal((await checkCitation(claim, source)).ok, held, what);
+});
+
+test("a narrative line's date after reported or recorded is its recorded date, and one after started is not", () => {
+  const recorded = (line: string) =>
+    narrativeFields(`<tr><td>${line}</td></tr>`).recorded;
+  assert.deepEqual(recorded("Patient reported, May 14, 2026"), [
+    "May 14, 2026",
+  ]);
+  assert.deepEqual(recorded("Recorded on 2026-05-14"), ["2026-05-14"]);
+  assert.deepEqual(recorded("Started on 2026-05-14"), []);
 });
 
 test("a Patient's deceasedBoolean is a value and its deceasedDateTime an end", () => {

@@ -423,6 +423,54 @@ test("a verdict of the wrong kind for its key item is rejected, so counts never 
   );
 });
 
+test("a verdict point numbered 0, text outside every numbered item, is graded; one that fails the schema is graded for nothing and reported by its judge", async () => {
+  const { gradesOf, verdictProblems } = await import("../src/judging.js");
+  const folder = join(temporary, "item-zero");
+  await mkdir(folder, { recursive: true });
+  const output = (beyond: object[]) => ({
+    label: "A",
+    items: [{ id: "TF1", verdict: "found", items: [1], reason: "" }],
+    beyond,
+    chains: [],
+  });
+  const intro = { item: 0, verdict: "fair", why: "the closing paragraph" };
+  const files = {
+    zero: { outputs: [output([intro])] },
+    negative: { outputs: [output([{ ...intro, item: -1 }])] },
+    unknown: { outputs: [output([{ ...intro, verdict: "good" }])] },
+  };
+  for (const [name, verdict] of Object.entries(files))
+    await writeFile(join(folder, `${name}.json`), JSON.stringify(verdict));
+  await writeFile(join(folder, "broken.json"), "{ not json");
+  const judge = (id: string) => ({
+    id,
+    role: "judge",
+    case: "tamsin-vale",
+    verdict: `${id}.json`,
+    labels: { A: { job: POD, question: "medications", label: "A" } },
+  });
+  const plan = {
+    folder,
+    jobs: [
+      ...["zero", "negative", "unknown", "broken"].map(judge),
+      { ...judge("missing"), verdict: "missing.json" },
+    ],
+  } as never;
+  const grades = await gradesOf(plan);
+  assert.deepEqual(
+    grades.map((it) => [it.judge, it.beyond[0]!.item]),
+    [["zero", 0]],
+  );
+  const problems = await verdictProblems(plan);
+  assert.deepEqual(
+    problems.map((it) => it.judge),
+    ["negative", "unknown", "broken"],
+    "a verdict not yet written is not a problem",
+  );
+  assert.match(problems[0]!.errors.join(), /item must be >= 0/);
+  assert.match(problems[2]!.errors.join(), /JSON/i);
+});
+
 /** What would tell a judge which arm wrote an answer: the arms by name, what the pod holds and how it is read. */
 const ARM_TERMS = new RegExp(
   [

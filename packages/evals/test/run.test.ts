@@ -231,6 +231,11 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
       "Grep",
     ])
       assert.ok(denied.includes(tool), tool);
+    for (const unknown of ["MultiEdit", "SlashCommand"])
+      assert.ok(
+        !denied.includes(unknown),
+        `${unknown} is no tool of the claude this harness runs, which warns in every log`,
+      );
     assert.ok(
       start.prompt.startsWith(`eval-tag: ${start.tag}\n`),
       "the prompt opens with its tag",
@@ -339,6 +344,39 @@ test("a wave in which every child fails stops the run with its jobs pending, and
   } finally {
     delete process.env.FAKE_CLAUDE_EXIT;
   }
+});
+
+test("a judge that writes a verdict failing the schema is given back with its file removed, so the run stops loudly and the next --go asks that judge again", async () => {
+  await rm(log, { force: true });
+  const run = await planned("bad-verdict", { tokens: 10_000_000 });
+  const verdict = join(folder, "verdict.json");
+  await writeFile(
+    verdict,
+    JSON.stringify({
+      outputs: [
+        {
+          label: "A",
+          items: [],
+          beyond: [{ item: -1, verdict: "fair", why: "" }],
+          chains: [],
+        },
+      ],
+    }),
+  );
+  await assert.rejects(
+    runEval({ run, log: () => undefined }),
+    /verdict.*schema/,
+  );
+  assert.deepEqual(await statusOf(run), ["done", "done", "pending"]);
+  const judge = (await loadPlan(run)).jobs.find((it) => it.role === "judge")!;
+  assert.equal(existsSync(join(run, judge.verdict!)), false);
+  await writeFile(verdict, JSON.stringify({ outputs: [] }));
+  const done = await runEval({ run, log: () => undefined });
+  assert.deepEqual(
+    done.jobs.map((it) => it.status),
+    ["done", "done", "done"],
+  );
+  assert.equal((await starts()).length, 4, "the judge ran twice");
 });
 
 test("a run interrupted with jobs handed out and no child alive resumes them: --go takes each to done", async () => {
