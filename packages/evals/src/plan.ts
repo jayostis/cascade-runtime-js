@@ -11,7 +11,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   type Case,
   caseIds,
@@ -29,6 +28,10 @@ import { callCost } from "./prices.js";
 import {
   type Arm,
   PROMPT_VERSIONS,
+  RUNNER_VERSION,
+  TOOLS,
+  askCommand,
+  podCommand,
   questionMessage,
   sessionPrompt,
 } from "./prompts.js";
@@ -289,7 +292,6 @@ export async function planRun(
     log(
       `${id}: planned from uncommitted work, so it reuses nothing and cannot be recorded into history`,
     );
-  const cli = fileURLToPath(new URL("./cli.js", import.meta.url));
   const cases: Plan["cases"][number][] = [];
   const jobs: Job[] = [];
   for (const caseId of ids) {
@@ -317,6 +319,8 @@ export async function planRun(
               effort: config.effort,
               repeat,
               pod: podInputs(podCommits, prepared.tables),
+              tools: TOOLS[arm],
+              runner: RUNNER_VERSION,
             });
             const answers = `answers/${jobId}`;
             const tag = `${id}/${jobId}`;
@@ -326,11 +330,11 @@ export async function planRun(
               name: found.person.name,
               pronoun: found.person.pronoun,
               today: found.today,
-              ask: `node "${cli}" ask --run "${folder}" --job ${jobId}`,
+              ask: askCommand(folder, jobId),
               ...(arm === "records"
                 ? { folder: prepared.downloads, files: found.reading }
                 : {
-                    command: `node "${cli}" pod --run "${folder}" --job ${jobId}`,
+                    command: podCommand(folder, jobId),
                     pod: prepared.pod,
                   }),
             });

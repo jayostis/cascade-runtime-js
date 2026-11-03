@@ -16,7 +16,7 @@ process.env.CASCADE_EVALS_CLAUDE = fixture("fake-claude.mjs");
 process.env.FAKE_CLAUDE_LOG = log;
 const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
-const { runEval, showRun } = await import("../src/run.js");
+const { resolveClaude, runEval, showRun } = await import("../src/run.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 const MODEL = "claude-haiku-5-5";
@@ -153,7 +153,7 @@ const flag = (args: readonly string[], name: string) =>
 test("run without --go starts no child: it lists the jobs and the estimate against the cap", async () => {
   await rm(log, { force: true });
   const run = await planned("dry", { tokens: 10_000_000 });
-  const shown = await showRun({ config: "unused", run, log: () => undefined });
+  const shown = await showRun({ run, log: () => undefined });
   assert.deepEqual(
     shown.jobs.map((it) => [it.id, it.status]),
     JOBS.map(({ id }) => [id, "pending"]),
@@ -167,7 +167,7 @@ test("run without --go starts no child: it lists the jobs and the estimate again
 test("run --go starts one claude -p child per job with the job's model, its arm's tools and the isolation flags, takes the run through its judge to finish, and a second --go starts none", async () => {
   await rm(log, { force: true });
   const run = await planned("two-jobs", { tokens: 10_000_000 });
-  const done = await runEval({ config: "unused", run, log: () => undefined });
+  const done = await runEval({ run, log: () => undefined });
   const made = await starts();
   assert.equal(made.length, 3, "two subjects and a judge");
   const tools = (start: Start) => flag(start.args, "tools");
@@ -193,8 +193,8 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
     assert.equal(flag(start.args, "permission-mode"), "dontAsk");
     assert.equal(start.memory, "1");
     assert.equal(
-      flag(start.args, "allowedTools"),
-      tools(start)!.replace("Bash", "Bash(node *)"),
+      flag(start.args, "allowedTools")!.replace(/Bash\(.*\)/, "Bash"),
+      tools(start),
     );
     const denied = flag(start.args, "disallowedTools")!.split(",");
     for (const tool of [
@@ -227,7 +227,7 @@ test("run --go starts one claude -p child per job with the job's model, its arm'
   assert.equal(results.jobs.length, 3);
   assert.ok(results.jobs.every((it) => it.stats?.calls === 1));
 
-  await runEval({ config: "unused", run, log: () => undefined });
+  await runEval({ run, log: () => undefined });
   assert.equal((await starts()).length, 3, "a finished run starts nothing");
 });
 
@@ -239,7 +239,7 @@ test("run --go stops dispatching at the cap: the job that would pass it is not s
     { tokens: 7_000 },
     { judges: false, concurrency: 1, estimate: 1_000 },
   );
-  const done = await runEval({ config: "unused", run, log: () => undefined });
+  const done = await runEval({ run, log: () => undefined });
   assert.equal((await starts()).length, 1);
   assert.deepEqual(
     done.jobs.map((it) => [it.status, it.reason]),
@@ -257,13 +257,13 @@ test("a claude that cannot be started stops the run and gives its jobs back, so 
   process.env.CASCADE_EVALS_CLAUDE = join(folder, "no-such-claude.exe");
   try {
     await assert.rejects(
-      runEval({ config: "unused", run, log: () => undefined }),
+      runEval({ run, log: () => undefined }),
       /could not start/,
     );
   } finally {
     process.env.CASCADE_EVALS_CLAUDE = fake;
   }
-  const shown = await showRun({ config: "unused", run, log: () => undefined });
+  const shown = await showRun({ run, log: () => undefined });
   assert.deepEqual(
     shown.jobs.map((it) => it.status),
     ["pending", "pending"],
@@ -272,9 +272,7 @@ test("a claude that cannot be started stops the run and gives its jobs back, so 
 
 const tagOf = (name: string, at: 0 | 1) => `${name}/${JOBS[at].id}`;
 const statusOf = async (run: string) =>
-  (await showRun({ config: "unused", run, log: () => undefined })).jobs.map(
-    (it) => it.status,
-  );
+  (await showRun({ run, log: () => undefined })).jobs.map((it) => it.status);
 
 test("a child that exits with an error and wrote no answer is given back, so the wave's others finish and it runs again to done", async () => {
   await rm(log, { force: true });
@@ -283,7 +281,7 @@ test("a child that exits with an error and wrote no answer is given back, so the
     [tagOf("limit", 0)]: { code: 1, times: 1 },
   });
   try {
-    const done = await runEval({ config: "unused", run, log: () => undefined });
+    const done = await runEval({ run, log: () => undefined });
     assert.deepEqual(
       done.jobs.map((it) => it.status),
       ["done", "done"],
@@ -306,12 +304,9 @@ test("a wave in which every child fails stops the run with its jobs pending, and
     [tagOf("all-fail", 1)]: { code: 1, times: 1 },
   });
   try {
-    await assert.rejects(
-      runEval({ config: "unused", run, log: () => undefined }),
-      /every child/,
-    );
+    await assert.rejects(runEval({ run, log: () => undefined }), /every child/);
     assert.deepEqual(await statusOf(run), ["pending", "pending"]);
-    const done = await runEval({ config: "unused", run, log: () => undefined });
+    const done = await runEval({ run, log: () => undefined });
     assert.deepEqual(
       done.jobs.map((it) => it.status),
       ["done", "done"],
@@ -336,7 +331,7 @@ test("a run interrupted with jobs handed out and no child alive resumes them: --
   plan.jobs[1]!.status = "running";
   for (const job of plan.jobs) job.dispatched = true;
   await writeFile(path, JSON.stringify(plan));
-  const done = await runEval({ config: "unused", run, log: () => undefined });
+  const done = await runEval({ run, log: () => undefined });
   assert.deepEqual(
     done.jobs.map((it) => it.status),
     ["done", "done"],
@@ -376,7 +371,7 @@ test("a child is started with its own --session-id and its transcript is that se
     join(other, "5e4ec0a4-0000-4000-8000-000000000002.jsonl"),
     decoy("ids/phantom", "claude-sonnet-5-5"),
   );
-  const done = await runEval({ config: "unused", run, log: () => undefined });
+  const done = await runEval({ run, log: () => undefined });
   assert.deepEqual(
     done.jobs.map((it) => [it.id, it.status]),
     JOBS.map(({ id }) => [id, "done"]),
@@ -391,7 +386,7 @@ test("a child is started with its own --session-id and its transcript is that se
 test("Bash is allowed only as the commands the job's prompt names, written with forward slashes", async () => {
   await rm(log, { force: true });
   const run = await planned("allow", { tokens: 10_000_000 }, { judges: false });
-  await runEval({ config: "unused", run, log: () => undefined });
+  await runEval({ run, log: () => undefined });
   for (const start of await starts()) {
     const allowed = flag(start.args, "allowedTools")!;
     assert.ok(!/Bash\(node \*\)/.test(allowed), allowed);
@@ -403,4 +398,66 @@ test("Bash is allowed only as the commands the job's prompt names, written with 
         : /Bash\(node "[^"]+\/cli\.js" pod --run "[^"]+" --job (\S+) \*\)/;
     assert.equal(command.exec(allowed)?.[1], job, allowed);
   }
+});
+
+test("a non-numeric CASCADE_EVALS_CHILD_MINUTES is an error before any child starts", async () => {
+  await rm(log, { force: true });
+  const run = await planned("minutes", { tokens: 10_000_000 });
+  process.env.CASCADE_EVALS_CHILD_MINUTES = "soon";
+  try {
+    await assert.rejects(
+      runEval({ run, log: () => undefined }),
+      /CASCADE_EVALS_CHILD_MINUTES/,
+    );
+  } finally {
+    delete process.env.CASCADE_EVALS_CHILD_MINUTES;
+  }
+  assert.deepEqual(await starts(), []);
+});
+
+test("an npm .cmd shim for claude is run through the script it names, under node", async () => {
+  const bin = join(folder, "shim-bin");
+  const script = join(bin, "node_modules", "claude-code", "cli.js");
+  await mkdir(dirname(script), { recursive: true });
+  await writeFile(script, "");
+  await writeFile(
+    join(bin, "claude.cmd"),
+    String.raw`@ECHO off
+"%_prog%"  "%dp0%\node_modules\claude-code\cli.js" %*
+`,
+  );
+  const found = resolveClaude("claude", "win32", bin);
+  assert.deepEqual(found.prefix, [script]);
+  assert.match(found.note ?? "", /\.cmd shim/);
+  await writeFile(join(bin, "claude.exe"), "");
+  assert.deepEqual(resolveClaude("claude", "win32", bin), {
+    command: "claude",
+    prefix: [],
+  });
+});
+
+test("--config naming another config than the run's plan is an error, not ignored", async () => {
+  const run = await planned("other-config", { tokens: 10_000_000 });
+  await assert.rejects(
+    showRun({ config: "smoke", run, log: () => undefined }),
+    /another config/,
+  );
+});
+
+test("a second --go on a run being run is refused, and a lock left by a dead process is taken over", async () => {
+  await rm(log, { force: true });
+  const run = await planned(
+    "locked",
+    { tokens: 10_000_000 },
+    { judges: false },
+  );
+  await writeFile(join(run, "run.lock"), String(process.pid));
+  await assert.rejects(runEval({ run, log: () => undefined }), /being run/);
+  await writeFile(join(run, "run.lock"), "2147483646");
+  const done = await runEval({ run, log: () => undefined });
+  assert.deepEqual(
+    done.jobs.map((it) => it.status),
+    ["done", "done"],
+  );
+  assert.equal(existsSync(join(run, "run.lock")), false);
 });

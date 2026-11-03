@@ -41,7 +41,7 @@ const session = (prompt: string) =>
     },
   });
 
-test("a `claude -p` session file, named by its session id, is found by the tag its prompt carries, beside an agent transcript; an untagged session is not", async () => {
+test("a `claude -p` session is found by the session id its job was started with, beside an agent transcript found by tag; no other session is, whatever tag it carries", async () => {
   const root = await mkdtemp(join(tmpdir(), "cascade-evals-transcripts-"));
   try {
     const project = join(root, "C--work-job");
@@ -52,7 +52,7 @@ test("a `claude -p` session file, named by its session id, is found by the tag i
     );
     await writeFile(
       join(project, "7d1c0e44-2a5b-4c39-8e6f-1b9a4d5c2f08.jsonl"),
-      session("What is a good breakfast?"),
+      session("eval-tag: run-1/job-c\n\nA later session pasting a tag."),
     );
     await copyFile(
       fileURLToPath(
@@ -67,6 +67,10 @@ test("a `claude -p` session file, named by its session id, is found by the tag i
       new Date(0),
       (tag) => tag.startsWith("run-1/") || tag.startsWith("workflow-smoke-1/"),
       root,
+      new Map([
+        ["run-1/job-a", "0b9f6a52-3c1e-4d7a-9a41-6f2d3c8e1b77"],
+        ["run-1/job-b", "7d1c0e44-2a5b-4c39-8e6f-1b9a4d5c2f08"],
+      ]),
     );
     assert.deepEqual([...found.keys()].sort(), [
       "run-1/job-a",

@@ -59,17 +59,22 @@ node packages/evals/dist/src/cli.js run --config small-models --run <id> --go
 `run --config <tier|file>` plans the run (or reads the plan of `--run <id>` when it has one), prints its jobs and the
 estimate against the cap, and stops. With `--go` it runs the whole eval: the meter hands out the jobs that fit the cap
 (at most the config's `concurrency`), each is one `claude -p --model <alias>` child, the meter runs again when the wave
-has ended, then the judges the same way, then `finish`. A run stopped part way resumes with the same `--run <id> --go`;
-a job already finished is not run again. Each child's output is in `runs/<run>/logs/<job>.log`.
+has ended, then the judges the same way, then `finish`. A run stopped part way resumes with the same `--run <id> --go`:
+a job already finished is not run again, and a job a child left without an answer (a usage limit, a lost login, Ctrl-C)
+is given back and runs again, from the start. `--config` with a `--run` that has a plan must be the config it was planned
+from. Only one `--go` runs a run at a time (`runs/<run>/run.lock`). Each child's output is in `runs/<run>/logs/<job>.log`.
 
-A child gets the prompt the meter gives (its first line is its tag, which is how its `<session id>.jsonl` transcript is
-found), only the tools its prompt allows (`TOOLS` in `src/prompts.ts`: the records arm Read, Write and Bash; the pod arm
+A child gets the prompt the meter gives (its first line is its tag; the runner starts it with `--session-id <uuid>`, recorded
+on the job, and its transcript is that `<uuid>.jsonl`, so no other session is taken for it), only the tools its prompt allows (`TOOLS` in `src/prompts.ts`: the records arm Read, Write and Bash; the pod arm
 Bash and Write; a judge Read and Write), no permission prompts, and none of the user's setup: `--safe-mode` (no CLAUDE.md,
 hooks, plugins, skills, MCP), `--restricted` (file tools confined to the child's folder, the run's answers folder and, for
 the records arm, its downloads), `--strict-mcp-config`, and the environment variables that switch off auto-memory,
-CLAUDE.md, claude.ai connectors and the PowerShell tool. Bash is allowed as `Bash(node *)` only. `--bare` is not used: it
+CLAUDE.md, claude.ai connectors and the PowerShell tool. Bash is allowed as exactly the command the prompt names (`ask` for the records arm, `pod` for the pod arm, for this job and run,
+paths with forward slashes), nothing else. `--bare` is not used: it
 cannot read a subscription login. `CASCADE_EVALS_CLAUDE` names another executable (a `.js` or `.mjs` file runs under node),
-which is how the tests use a fake; `CASCADE_EVALS_CHILD_MINUTES` (default 60) stops a child that runs too long.
+which is how the tests use a fake; `CASCADE_EVALS_CHILD_MINUTES` (a number above 0, default 60) stops a child that runs too long. A `claude` that is
+only an npm `.cmd` shim on Windows is run through the script the shim names, under node, and the run says so. How a child
+is run (its tools, `RUNNER_VERSION` in `src/prompts.ts`) is part of a session's inputs hash, so changing it reruns what was answered.
 
 - **Reference tables.** Every case's pod is given the reference tables, as an app holds them beside its pods: held once in
   `work/reference-tables/` (the package's starter copies, else the feeds `cascade-runtime.json` names, read once) and

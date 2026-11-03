@@ -44,6 +44,8 @@ test("a session is answered on the tables its pod was built with: other tables, 
       effort: undefined,
       repeat: 1,
       pod: podInputs({ packages: {}, components: [] }, held(tables)),
+      tools: ["Bash"],
+      runner: "1",
     });
   assert.equal(hash("a"), hash("a"));
   assert.notEqual(hash("a"), hash("b"));

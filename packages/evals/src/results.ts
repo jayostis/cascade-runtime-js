@@ -103,6 +103,8 @@ export interface Job {
   reusedFrom?: string;
   /** Whether the meter handed it out. */
   dispatched?: boolean;
+  /** The session id a `claude -p` child was started with: its transcript is `<id>.jsonl`. */
+  sessionId?: string;
   readonly estimate: {
     readonly tokens: number;
     readonly usd: number;

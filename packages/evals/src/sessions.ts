@@ -11,7 +11,8 @@ import { errorsOf } from "./schemas.js";
 
 /**
  * What a session's answers depend on: the case without its sessions, this session's own questions, the downloads, the
- * arm, model and effort, the arm's template and the question template, the repeat, and for the pod arm its commits.
+ * arm, model and effort, the arm's template and the question template, the repeat, how the child was run (the tools
+ * it was allowed and the runner's version), and for the pod arm its commits.
  * A reworded question reruns only the sessions that ask it.
  */
 export function sessionInputsHash(o: {
@@ -23,6 +24,8 @@ export function sessionInputsHash(o: {
   effort: string | undefined;
   repeat: number;
   pod: unknown;
+  tools: readonly string[];
+  runner: string;
 }): string {
   const person = { ...o.found, sessions: undefined };
   return sha256(
@@ -36,6 +39,8 @@ export function sessionInputsHash(o: {
       effort: o.effort ?? null,
       prompt: [PROMPT_VERSIONS[o.arm], PROMPT_VERSIONS.question],
       repeat: o.repeat,
+      tools: o.tools,
+      runner: o.runner,
       ...(o.arm === "pod" ? { pod: o.pod } : {}),
     }),
   );

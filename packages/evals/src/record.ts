@@ -133,11 +133,32 @@ const keptUse = ({
   return { name, input: rest };
 };
 
+/** The files a job is to write, and whether each, or any, is there. */
+export function writtenOf(plan: Plan, job: Job) {
+  const outputs = (
+    job.role === "judge"
+      ? [job.verdict]
+      : (job.questions ?? []).map((it) => answerPath(job, it))
+  ).filter((it): it is string => it !== undefined);
+  const there = outputs.filter((it) => existsSync(join(plan.folder, it)));
+  return {
+    all: outputs.length > 0 && there.length === outputs.length,
+    any: there.length > 0,
+  };
+}
+
 /** The run's jobs brought up to date from their transcripts and output files, and harness jobs added as found. */
 async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
   const since = new Date(Date.parse(plan.created) - 60_000);
-  const found = await transcriptsSince(since, (tag) =>
-    tag.startsWith(`${plan.run}/`),
+  const found = await transcriptsSince(
+    since,
+    (tag) => tag.startsWith(`${plan.run}/`),
+    undefined,
+    new Map(
+      plan.jobs.flatMap((it) =>
+        it.sessionId === undefined ? [] : [[it.tag, it.sessionId] as const],
+      ),
+    ),
   );
   const asked = await askedIn(plan.folder);
   for (const [tag, transcript] of found) {
@@ -175,15 +196,7 @@ async function refreshed(plan: Plan): Promise<Map<string, Transcript>> {
         transcript.ended,
         job.arm!,
       );
-    const outputs =
-      job.role === "judge"
-        ? [job.verdict]
-        : (job.questions ?? []).map((it) => answerPath(job!, it));
-    const wrote =
-      outputs.length > 0 &&
-      outputs.every(
-        (it) => it !== undefined && existsSync(join(plan.folder, it)),
-      );
+    const wrote = writtenOf(plan, job).all;
     const ran = stats.models.map(priced);
     if (wrote && !ran.includes(priced(job.model))) {
       job.status = "failed";

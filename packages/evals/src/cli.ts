@@ -86,7 +86,7 @@ async function main(args: string[]): Promise<void> {
       const run = option(args, "run");
       if (config === undefined && run === undefined) break;
       const mod = await import("./run.js");
-      const given = { config: config ?? "smoke", run, log };
+      const given = { config, run, log };
       return print(
         args.includes("--go")
           ? await mod.runEval(given)

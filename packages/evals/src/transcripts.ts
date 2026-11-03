@@ -1,6 +1,7 @@
 // The model calls of a Claude Code agent or a `claude -p` session, read from the transcript Claude Code keeps of it:
 // each call's model, its input, cache and output tokens as the API reported them, when it ran and the tools it called.
-// A transcript is found by the tag its prompt carries, in an agent's `agent-<id>.jsonl` or a session's `<session id>.jsonl`.
+// A transcript is found by the tag its prompt carries in an agent's `agent-<id>.jsonl`, or, for a `claude -p` child
+// started with `--session-id`, as that session's own `<session id>.jsonl`: no other session is taken for a job.
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -155,11 +156,16 @@ export async function readTranscript(
   };
 }
 
-/** Every tagged transcript under `root` written since `since`, by tag; a tag found twice keeps the later one. */
+/**
+ * Every tagged agent transcript under `root` written since `since`, by tag (a tag found twice keeps the later one),
+ * and each session in `sessions` (its id by the tag it was started for), found as `<id>.jsonl` anywhere under `root`
+ * and kept only if its prompt carries that tag.
+ */
 export async function transcriptsSince(
   since: Date,
   wanted: (tag: string) => boolean,
   root = TRANSCRIPTS,
+  sessions: ReadonlyMap<string, string> = new Map(),
 ): Promise<Map<string, Transcript>> {
   const found = new Map<string, Transcript>();
   let entries;
@@ -168,12 +174,23 @@ export async function transcriptsSince(
   } catch {
     return found;
   }
+  const tagOfSession = new Map(
+    [...sessions].map(([tag, id]) => [`${id}.jsonl`, tag]),
+  );
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    if (!entry.isFile()) continue;
+    const session = tagOfSession.get(entry.name);
+    const agent = /^agent-.*\.jsonl$/.test(entry.name);
+    if (session === undefined && !agent) continue;
     const path = join(entry.parentPath, entry.name);
     if ((await stat(path)).mtime < since) continue;
     const transcript = await readTranscript(path);
-    if (transcript === undefined || !wanted(transcript.tag)) continue;
+    if (transcript === undefined) continue;
+    if (session !== undefined) {
+      if (transcript.tag === session) found.set(session, transcript);
+      continue;
+    }
+    if (!wanted(transcript.tag)) continue;
     const before = found.get(transcript.tag);
     if (before === undefined || before.started < transcript.started)
       found.set(transcript.tag, transcript);
