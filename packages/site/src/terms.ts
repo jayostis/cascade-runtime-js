@@ -36,7 +36,7 @@ const PREFIXES: Readonly<Record<string, string>> = {
   void: "http://rdfs.org/ns/void#",
   xsd: "http://www.w3.org/2001/XMLSchema#",
 };
-const LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
+export const LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;
 
 /** The IRI as prefix:name, or undefined. */
 export function prefixed(iri: string): string | undefined {
@@ -46,6 +46,16 @@ export function prefixed(iri: string): string | undefined {
       return `${prefix}:${local}`;
   }
   return undefined;
+}
+
+/** The IRI a prefix:name stands for, or undefined when this site knows no such prefix. */
+export function expanded(prefix: string, local: string): string | undefined {
+  const namespace = Object.hasOwn(PREFIXES, prefix)
+    ? PREFIXES[prefix]
+    : undefined;
+  return namespace === undefined || !LOCAL_NAME.test(local)
+    ? undefined
+    : `${namespace}${local}`;
 }
 
 /** The label of the first registered code system whose URI space the IRI starts with, and the code after it, or undefined. */

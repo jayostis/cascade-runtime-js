@@ -40,7 +40,7 @@ import {
   podOf,
   viewTitles,
 } from "../front-page.js";
-import type { PagesContext } from "../hub/context.js";
+import type { Conformance, PagesContext } from "../hub/context.js";
 import { buildTree } from "../sections.js";
 import { Site, type SiteOptions } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
@@ -231,6 +231,63 @@ async function stagedVocabulary(repository: string): Promise<string> {
   return commit;
 }
 
+/** The runtime checkout and the vocabulary the pages are built from. */
+async function builtFromRuntime(resolved: Resolved): Promise<Ingredient[]> {
+  const runtime = await checkout(ROOT);
+  const self = { repository: RUNTIME };
+  return [
+    ...(runtime === undefined
+      ? []
+      : [
+          atCommit(
+            repositoryName(self),
+            treeIri(self, runtime.commit),
+            runtime.commit,
+            runtime.uncommitted,
+          ),
+        ]),
+    resolvedIngredient(resolved),
+  ];
+}
+
+/**
+ * A conformance run's report, read, with the table the run wrote beside it as table.md. A missing file is no error: the
+ * pages show every result as not run.
+ */
+async function readConformance(
+  file: string,
+  vocabulary: string,
+): Promise<Conformance> {
+  const none = { report: { results: new Map(), ranWith: [], repeated: [] } };
+  if (!existsSync(file)) {
+    log(`no conformance report at ${file}, so every example shows as not run`);
+    return none;
+  }
+  const earl = await readFile(file);
+  let report: SpecReport;
+  try {
+    report = await readSpecReport(earl);
+  } catch (error) {
+    log(
+      `the conformance report at ${file} cannot be read (${error instanceof Error ? error.message : String(error)}), so every example shows as not run`,
+    );
+    return none;
+  }
+  if (report.vocabulary !== undefined && report.vocabulary !== vocabulary)
+    log(
+      `the report is of ${report.vocabulary}, the pages read ${vocabulary}; results are joined by path`,
+    );
+  const tableFile = join(dirname(file), "table.md");
+  return {
+    report,
+    earl,
+    ...(existsSync(tableFile) ? { table: await readFile(tableFile) } : {}),
+  };
+}
+
+const reportFileOf = (named: string | undefined): string =>
+  absolute(named ?? join(ROOT, "build", "conformance", "earl.nt"));
+
 /** Runs the work on the first call, and gives the same answer to every call after. */
 function once<T>(work: () => Promise<T>): () => Promise<T> {
   let answer: Promise<T> | undefined;
@@ -241,7 +298,10 @@ function once<T>(work: () => Promise<T>): () => Promise<T> {
  * The providers of the hub's context: every kit's published sample built with the staged package, as an app that
  * installed it would, each one's pod and site, and what the pages were built from.
  */
-function pagesContext(vocabulary: LocalVocabulary): PagesContext {
+function pagesContext(
+  vocabulary: LocalVocabulary,
+  reportFile: string,
+): PagesContext {
   return {
     root: ROOT,
     log,
@@ -316,6 +376,15 @@ function pagesContext(vocabulary: LocalVocabulary): PagesContext {
         at: clock.now(),
       };
     }),
+    vocabulary: once(async () => ({
+      files: new FolderFiles(
+        vocabulary.resolved.folder,
+        vocabulary.resolved.iri,
+      ),
+      builtFrom: await builtFromRuntime(vocabulary.resolved),
+      at: clock.now(),
+    })),
+    report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
     start: once(async () => {
       const starter = await latestBuild(
         STARTER_REPOSITORY,
@@ -332,17 +401,18 @@ function pagesContext(vocabulary: LocalVocabulary): PagesContext {
 /**
  * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
- * what is made of the kits, which is most of the time.
+ * what is made of the kits, which is most of the time. `--report` names the conformance run's EARL report, with its
+ * table.md beside it; the spec and conformance pages show every result as not run when there is none.
  */
 async function buildPages(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
-    options: { "no-kits": { type: "boolean" } },
+    options: { "no-kits": { type: "boolean" }, report: { type: "string" } },
   });
   const vocabulary = await localVocabulary(ROOT, log);
   const { tree } = await buildTree({
     sections: SECTIONS,
-    ctx: pagesContext(vocabulary),
+    ctx: pagesContext(vocabulary, reportFileOf(values.report)),
     front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows),
     finishers: FINISHERS,
     skip: ({ needsKits }) => values["no-kits"] === true && needsKits === true,
@@ -365,44 +435,20 @@ async function buildSpec(args: string[]): Promise<number> {
     args,
     options: { report: { type: "string" }, out: { type: "string" } },
   });
-  const reportFile = absolute(
-    values.report ?? join(ROOT, "build", "conformance", "earl.nt"),
-  );
   const resolved = await resolveVocabulary(
     ROOT,
     await readConfig(ROOT),
     undefined,
     log,
   );
-  let report: SpecReport = { results: new Map(), ranWith: [], repeated: [] };
-  if (existsSync(reportFile))
-    report = await readSpecReport(await readFile(reportFile));
-  else
-    log(
-      `build-spec: no report at ${reportFile}, so every example shows as not run`,
-    );
-  if (report.vocabulary !== undefined && report.vocabulary !== resolved.iri)
-    log(
-      `build-spec: the report is of ${report.vocabulary}, the pages read ${resolved.iri}; results are joined by path`,
-    );
-  const runtime = await checkout(ROOT);
-  const self = { repository: RUNTIME };
+  const { report } = await readConformance(
+    reportFileOf(values.report),
+    resolved.iri,
+  );
   const { files, warnings, unnoted, waiting } = await specPages({
     vocabulary: new FolderFiles(resolved.folder, resolved.iri),
     report,
-    builtFrom: [
-      ...(runtime === undefined
-        ? []
-        : [
-            atCommit(
-              repositoryName(self),
-              treeIri(self, runtime.commit),
-              runtime.commit,
-              runtime.uncommitted,
-            ),
-          ]),
-      resolvedIngredient(resolved),
-    ],
+    builtFrom: await builtFromRuntime(resolved),
     at: clock.now(),
   });
   const out = absolute(values.out ?? SPEC);
