@@ -13,6 +13,7 @@ import {
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { apiSection } from "../src/node/hub/api.js";
+import { evalsSection } from "../src/node/hub/evals.js";
 import { FINISHERS, SECTIONS } from "../src/node/hub/index.js";
 import { trySection } from "../src/hub/try.js";
 import { buildTree, type Section } from "../src/sections.js";
@@ -243,17 +244,126 @@ test("llms.txt points an agent at the guide, the index and the conformance resul
   assert.match(llms, /`ranWith`/);
 });
 
-test("a build writes the same llms.txt and index.json twice", async () => {
-  const build = () =>
+test("a build writes the same llms.txt and index.json whatever order a section lists its files in", async () => {
+  const files = ["a/index.html", "a/z.html", "a/m.html", "a/b.json"];
+  const build = (order: readonly string[]) =>
     buildTree({
-      sections: [trySection, apiSection],
-      ctx: { root: ROOT } as PagesContext,
+      sections: [
+        made(
+          "a/index.html",
+          "Section A",
+          Object.fromEntries(order.map((path) => [path, page(path)])),
+          {
+            kind: "build",
+            rows: async () => [{ href: "a/", label: "Open A" }],
+          },
+        ),
+      ],
+      ctx: {},
       front,
       finishers: [agentFiles],
     });
-  const [one, two] = [await build(), await build()];
-  for (const file of [LLMS_FILE, INDEX_FILE])
+  const [one, two] = [await build(files), await build([...files].reverse())];
+  for (const file of [LLMS_FILE, INDEX_FILE]) {
+    assert.ok(read(one.tree, file).length > 100, `${file} has content`);
     assert.equal(read(one.tree, file), read(two.tree, file));
+  }
+  assert.ok(read(one.tree, INDEX_FILE).includes("a/z.html"));
+});
+
+test("with a base address, the local links of llms.txt are absolute under it and index.json carries it; without one both stay relative", async () => {
+  const sections = [
+    made(
+      "a/index.html",
+      "Section A",
+      { "a/index.html": page("A"), [AGENTS_FILE]: text("# guide") },
+      {
+        kind: "build",
+        rows: async () => [
+          { href: "a/", label: "Open A", about: "its line" },
+          { href: "https://example.org/x", label: "Elsewhere" },
+        ],
+      },
+    ),
+  ];
+  const base = "https://hub.example/pages/";
+  const based = await buildTree({
+    sections,
+    ctx: { base },
+    front,
+    finishers: [agentFiles],
+  });
+  const llms = read(based.tree, LLMS_FILE);
+  assert.ok(llms.includes(`- [Open A](${base}a/): its line`));
+  assert.ok(llms.includes(`(${base}${AGENTS_FILE})`));
+  assert.ok(llms.includes(`(${base}${INDEX_FILE})`));
+  assert.ok(llms.includes("(https://example.org/x)"));
+  assert.ok(!llms.includes("relative"), "it no longer says links are relative");
+  for (const link of links(llms))
+    assert.ok(!local(link), `${link} is absolute`);
+  const index = JSON.parse(read(based.tree, INDEX_FILE)) as {
+    base?: string;
+    files: { path: string }[];
+  };
+  assert.equal(index.base, base);
+  assert.ok(index.files.some(({ path }) => path === "a/index.html"));
+  assert.ok(index.files.every(({ path }) => local(path)));
+
+  const bare = await buildTree({
+    sections,
+    ctx: {},
+    front,
+    finishers: [agentFiles],
+  });
+  assert.ok(read(bare.tree, LLMS_FILE).includes("- [Open A](a/): its line"));
+  assert.match(read(bare.tree, LLMS_FILE), /relative/);
+  assert.ok(!("base" in JSON.parse(read(bare.tree, INDEX_FILE))));
+
+  for (const bad of ["https://hub.example/pages", ""])
+    await assert.rejects(
+      buildTree({
+        sections,
+        ctx: { base: bad },
+        front,
+        finishers: [agentFiles],
+      }),
+      /end in "\/"/,
+    );
+});
+
+test("llms.txt lists a section marked optional last, under the llmstxt.org heading ## Optional, and the evals section is one", async () => {
+  const { tree } = await buildTree({
+    sections: [
+      made(
+        "o/index.html",
+        "Optional one",
+        { "o/index.html": page("O") },
+        {
+          kind: "build",
+          about: "may be skipped",
+          optional: true,
+        },
+      ),
+      made(
+        "a/index.html",
+        "Section A",
+        { "a/index.html": page("A") },
+        {
+          kind: "explore",
+          about: "read this",
+        },
+      ),
+    ],
+    ctx: {},
+    front,
+    finishers: [agentFiles],
+  });
+  const llms = read(tree, LLMS_FILE);
+  const optional = llms.indexOf("## Optional");
+  assert.ok(optional > llms.indexOf("- [Section A]"), "after the rest");
+  assert.ok(llms.indexOf("- [Optional one]") > optional);
+  assert.ok(!llms.includes("## Build an app"), "its part has no other link");
+  assert.equal(evalsSection.optional, true);
 });
 
 test("the API page is the guide and the package README as pages: openPod and every call, code kept as code, nothing of the README's install marker, and every link resolving in the tree", async () => {
@@ -289,4 +399,36 @@ test("the API page is the guide and the package README as pages: openPod and eve
       const target = new URL(link, `http://hub/${path}`).pathname.slice(1);
       assert.ok(tree.has(fileOf(target)), `${path} links ${link}`);
     }
+});
+
+test("every section of the hub says what its files are built from, so index.json never falls back to a title", () => {
+  for (const section of SECTIONS)
+    assert.ok(
+      section.source !== undefined && section.source !== "",
+      `${section.title} has a source`,
+    );
+});
+
+test("the API page opens with a contents list that links each h2 of the guide to a heading with that id", async () => {
+  const { tree } = await buildTree({
+    sections: [apiSection],
+    ctx: { root: ROOT } as PagesContext,
+    front,
+    finishers: [agentFiles],
+  });
+  const html = read(tree, "api/index.html");
+  const api = readPage(html);
+  const guide = await readFile(GUIDE, "utf8");
+  const h2s = [...guide.matchAll(/^## (.+)$/gm)].map(([, h]) => h ?? "");
+  const anchors = api.hrefs.filter((href) => href.startsWith("#"));
+  assert.equal(anchors.length, h2s.length, "one entry for each h2");
+  assert.equal(new Set(anchors).size, anchors.length);
+  for (const anchor of anchors)
+    assert.ok(api.ids.has(anchor.slice(1)), `${anchor} has a heading`);
+  assert.ok(html.indexOf('href="#') < html.indexOf("<h2"));
+  assert.ok(
+    !readPage(read(tree, "api/package.html")).hrefs.some((h) =>
+      h.startsWith("#"),
+    ),
+  );
 });

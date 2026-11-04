@@ -86,7 +86,7 @@ function said(markup: string): string {
 /** A page of the site as a reader sees it: its heading, its links and anchors, and each block on it. */
 export function readPage(markup: string): Page {
   return {
-    h1: first(/<h1>([\s\S]*?)<\/h1>/, markup),
+    h1: first(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/, markup),
     said: said(markup),
     code: all(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: all(/href="([^"]*)"/g, markup),

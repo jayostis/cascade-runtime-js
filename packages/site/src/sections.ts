@@ -25,6 +25,8 @@ export interface Section<Ctx> {
   readonly about?: string;
   /** What its files are built from, as `index.json` says; the section's title when none. */
   readonly source?: string;
+  /** Listed in `llms.txt` last, under llmstxt.org's `## Optional`, which marks links an agent may skip. */
+  readonly optional?: boolean;
   /** Left out of a build that skips the kits, because it is made of them. */
   readonly needsKits?: boolean;
   /** Every file of the section, by path from the tree's root. */

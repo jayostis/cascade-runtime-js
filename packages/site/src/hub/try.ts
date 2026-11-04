@@ -7,6 +7,8 @@ export const trySection: Section<PagesContext> = {
   path: TRY_PAGE,
   title: "An app running in your browser",
   kind: "build",
+  source:
+    "the starter kit's published site, which this page sends a visitor on to",
   async build() {
     return new Map([[TRY_PAGE, new TextEncoder().encode(redirectPage())]]);
   },

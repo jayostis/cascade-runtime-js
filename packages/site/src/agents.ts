@@ -1,6 +1,6 @@
 import { FRONT_PAGE, PART_TITLES } from "./front-page.js";
-import { type Html, markup } from "./html.js";
-import { renderMarkdown } from "./markdown.js";
+import { Html, markup } from "./html.js";
+import { renderMarkdown, renderWithHeadings } from "./markdown.js";
 import { isLocal, pageOf, type Row, type Walk } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 
@@ -87,12 +87,19 @@ function item(label: string, href: string, about?: string): string {
  * a page another step adds is indexed with no change here. `llms.txt` is in the llmstxt.org form: it lists each
  * section's rows, which name the kinds of page and each kit's root, never every page; `index.json` lists every file
  * but the stylesheets, each with its title, kind and what it is built from. Links are relative to the file, because the
- * hub does not depend on the address it is served at.
+ * hub does not depend on the address it is served at; a build given the address it will be served at (`base`, ending in
+ * `/`) puts it before every local link in `llms.txt` and names it in `index.json`, whose paths stay relative to it.
  */
-export async function agentFiles<Ctx>({
-  tree,
-  sections,
-}: Walk<Ctx>): Promise<ReadonlyMap<string, Uint8Array>> {
+export async function agentFiles<Ctx extends { readonly base?: string }>(
+  { tree, sections }: Walk<Ctx>,
+  { base }: Ctx,
+): Promise<ReadonlyMap<string, Uint8Array>> {
+  if (base !== undefined && !base.endsWith("/"))
+    throw new Error(
+      `the base address ${JSON.stringify(base)} must end in "/", or a link joined to it names another file`,
+    );
+  const at = (href: string): string =>
+    base !== undefined && isLocal(href) ? `${base}${href}` : href;
   const title = titleOf(FRONT_PAGE, tree.get(FRONT_PAGE));
   const sourceOf = new Map<string, string>([
     [FRONT_PAGE, "the sections' rows"],
@@ -126,7 +133,7 @@ export async function agentFiles<Ctx>({
       ? [
           item(
             AGENTS_FILE,
-            AGENTS_FILE,
+            at(AGENTS_FILE),
             "the guide to building an app on a pod, with every call of `cascade-runtime` and code for each",
           ),
         ]
@@ -135,7 +142,7 @@ export async function agentFiles<Ctx>({
       ? [
           item(
             INDEX_FILE,
-            INDEX_FILE,
+            at(INDEX_FILE),
             "every page and file of this site, each with its title, kind and what it is built from",
           ),
         ]
@@ -144,7 +151,7 @@ export async function agentFiles<Ctx>({
       ? [
           item(
             "Conformance results as JSON",
-            RESULTS_FILE,
+            at(RESULTS_FILE),
             "the latest run on main, by feature and rule. `at` is when this site was built, not when the run was made; the vocabulary the run used is the `cascade-vocabulary` entry of `ranWith`, while `vocabulary` is the one these pages were read from",
           ),
         ]
@@ -152,20 +159,22 @@ export async function agentFiles<Ctx>({
   ];
 
   const kinds = new Map<string, string[]>();
+  const optional: string[] = [];
   for (const { section, rows } of sections) {
-    const lines = kinds.get(section.kind) ?? [];
+    const lines =
+      section.optional === true ? optional : (kinds.get(section.kind) ?? []);
     const named = rows.some(({ href }) => pageOf(href) === section.path);
     const own: readonly Row[] =
       named || section.about === undefined
         ? []
         : [{ href: section.path, label: section.title, about: section.about }];
     for (const { href, label, about } of [...rows, ...own])
-      if (once(href)) lines.push(item(label, href, about));
-    kinds.set(section.kind, lines);
+      if (once(href)) lines.push(item(label, at(href), about));
+    if (section.optional !== true) kinds.set(section.kind, lines);
   }
   const place = (kind: string): number => {
-    const at = Object.keys(PART_TITLES).indexOf(kind);
-    return at === -1 ? Object.keys(PART_TITLES).length : at;
+    const found = Object.keys(PART_TITLES).indexOf(kind);
+    return found === -1 ? Object.keys(PART_TITLES).length : found;
   };
   const parts = [...kinds.keys()].sort((a, b) => place(a) - place(b));
 
@@ -174,7 +183,7 @@ export async function agentFiles<Ctx>({
     "",
     `> ${SUMMARY}`,
     "",
-    "Links here are relative to the address of this file. Start with the guide, then read the index to find anything else.",
+    `${base === undefined ? "Links here are relative to the address of this file." : `Links here are absolute, under ${base}.`} Start with the guide, then read the index to find anything else.`,
     "",
     ...(forAgents.length === 0
       ? []
@@ -185,13 +194,16 @@ export async function agentFiles<Ctx>({
       ...(kinds.get(kind) ?? []),
       "",
     ]),
+    ...(optional.length === 0 ? [] : ["## Optional", "", ...optional, ""]),
   ].join("\n");
 
   return new Map([
     [LLMS_FILE, encoder.encode(llms)],
     [
       INDEX_FILE,
-      encoder.encode(`${JSON.stringify({ title, files }, null, 2)}\n`),
+      encoder.encode(
+        `${JSON.stringify(base === undefined ? { title, files } : { title, base, files }, null, 2)}\n`,
+      ),
     ],
   ]);
 }
@@ -208,7 +220,12 @@ function documentPage(
   here: "guide" | "package",
   lead: Html,
   source: string,
+  contents = false,
 ): string {
+  const { html, headings } = contents
+    ? renderWithHeadings(source)
+    : { html: renderMarkdown(source), headings: [] };
+  const list = headings.filter(({ depth }) => depth === 2);
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -219,8 +236,15 @@ function documentPage(
 </head>
 <body>
 ${bar(here)}<main>
-${lead}<article class="document">
-${renderMarkdown(source)}</article>
+${lead}${
+    list.length === 0
+      ? ""
+      : markup`<p class="about">On this page</p>
+<ul class="contents">
+${list.map(({ id, html: label }) => markup`<li><a href="#${id}">${new Html(label)}</a></li>\n`)}</ul>
+`
+  }<article class="document">
+${html}</article>
 </main>
 </body>
 </html>
@@ -248,6 +272,7 @@ export function apiPages(
           markup`<p class="about">This page is the guide a coding agent reads, <a href="../${AGENTS_FILE}">${AGENTS_FILE}</a>, as a page. What the package is and holds: <a href="package.html">the package</a>.</p>
 `,
           guide,
+          true,
         ),
       ),
     ],
