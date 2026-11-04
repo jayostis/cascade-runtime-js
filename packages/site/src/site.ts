@@ -93,7 +93,7 @@ function namesOf(called: Answer | undefined): Map<string, string> {
 }
 
 /** Each view's rules: those of the runtime's features whose text names the view's file or the query that writes it. */
-async function viewRules(
+export async function viewRules(
   vocabulary: Files,
   views: readonly { readonly iri: string; readonly names: readonly string[] }[],
 ): Promise<Map<string, SpecRule[]>> {
@@ -438,10 +438,19 @@ async function vocabularyLabels(
     await ontologies.loadTurtle(await readText(vocabulary, path), about["@id"]);
   }
   const { rows } = await ontologies.select(called.text);
+  const { rows: described } = await ontologies.select(
+    `SELECT ?thing WHERE { ?thing a <http://www.w3.org/2002/07/owl#Ontology> }`,
+  );
+  const ontologyIris = new Set(described.map((row) => row.get("thing")?.value));
   const labels = new Map<string, string>();
   for (const row of rows) {
     const [thing, label] = [row.get("thing"), row.get("label")];
-    if (thing !== undefined && label !== undefined && !labels.has(thing.value))
+    if (
+      thing !== undefined &&
+      label !== undefined &&
+      !ontologyIris.has(thing.value) &&
+      !labels.has(thing.value)
+    )
       labels.set(thing.value, label.value);
   }
   return labels;

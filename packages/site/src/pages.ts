@@ -6,6 +6,7 @@ import {
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
 import { type Content, Html, markup } from "./html.js";
+import { namedInQuery } from "./term-reference.js";
 import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
 import {
@@ -90,6 +91,16 @@ function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
     answer.lens === defaultLens
       ? markup`<p>Or in GraphDB, open the saved query <code>${question}</code> in the repository <code>${name}</code>.</p>`
       : markup`<p>GraphDB holds the pod under the ${defaultLens} lens only.</p>`;
+  const { terms } = site.options;
+  const uses =
+    terms === undefined
+      ? []
+      : [...namedInQuery(answer.query.text)].filter((iri) =>
+          site.labels.has(iri),
+        );
+  const using =
+    uses.length > 0 &&
+    markup`<p>The terms it uses: ${uses.map((iri, at) => markup`${at === 0 ? "" : ", "}<a href="${termHref(iri, terms ?? "")}"><code>${prefixed(iri) ?? iri}</code></a>`)}.</p>`;
   const runIt =
     question !== undefined &&
     markup`
@@ -103,7 +114,7 @@ ${about}${graphdb}`;
 ${inner}
 <details>
 <summary>The query: <code>${answer.query.path}</code>${source}</summary>
-<pre><code>${answer.query.text}</code></pre>${runIt}
+<pre><code>${answer.query.text}</code></pre>${using}${runIt}
 </details>
 </section>`;
 }

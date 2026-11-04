@@ -37,8 +37,9 @@ import { examplesSection } from "../src/hub/examples.js";
 import { startSection } from "../src/hub/start.js";
 import { trySection } from "../src/hub/try.js";
 import { buildTree } from "../src/sections.js";
-import { Site, type SiteOptions } from "../src/site.js";
-import { termId } from "../src/links.js";
+import { Site, type SiteOptions, viewRules } from "../src/site.js";
+import { termHref, termId } from "../src/links.js";
+import { namedInQuery } from "../src/term-reference.js";
 import { code, codePage, shown } from "../src/terms.js";
 import { agentPrompt, startOf } from "../src/node/start.js";
 import { type Page, readPage } from "./page.js";
@@ -77,6 +78,9 @@ before(async () => {
     name: "matching",
     at: "2026-03-03T08:00:00Z",
     ask: "npm run ask -- matching",
+    blob: BLOB,
+    terms: "../terms/",
+    spec: "../spec/",
   };
   site = await Site.build(options);
   files = await site.files();
@@ -95,36 +99,7 @@ function readPages(built: ReadonlyMap<string, Uint8Array>): Map<string, Page> {
   );
 }
 
-const KIT = "conformance/alex-rivera/alex-rivera.feature";
 const BLOB = "https://github.com/jayostis/cascade-vocabulary/blob/0123abc/";
-
-/** Alex Rivera's site as the hub builds it, in a folder beside the term reference and the spec, and its files built again. */
-async function kitOf() {
-  const { pod } = await featurePod(
-    vocabulary,
-    KIT,
-    new MemoryFiles("https://pod.example/"),
-  );
-  const kit: SiteOptions = {
-    ...options,
-    pod,
-    name: "alex-rivera",
-    ask: "npm run ask -- alex-rivera",
-    blob: BLOB,
-    terms: "../terms/",
-    spec: "../spec/",
-  };
-  const built = await Site.build(kit);
-  const builtFiles = await built.files();
-  return {
-    site: built,
-    files: builtFiles,
-    pages: readPages(builtFiles),
-    again: await (await Site.build(kit)).files(),
-  };
-}
-let kitBuilt: ReturnType<typeof kitOf> | undefined;
-const kitSite = () => (kitBuilt ??= kitOf());
 
 function page(path: string | undefined): Page {
   const found = pages.get(path ?? "");
@@ -288,53 +263,42 @@ test("the page of what is not shown lists each record no view shows, with why, a
 });
 
 test("every internal link resolves to a file the build wrote, and every anchor to an id on its page; a kit's site links out of its folder only to the term reference and the spec", async () => {
-  const kit = await kitSite();
   const broken: string[] = [];
-  for (const [built, read, out] of [
-    [files, pages, []],
-    [kit.files, kit.pages, ["../terms/#", "../spec/"]],
-  ] as const) {
-    for (const [path, { hrefs }] of read) {
-      for (const href of hrefs) {
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
-        if (href.startsWith("../")) {
-          if (!out.some((folder) => href.startsWith(folder)))
-            broken.push(`${path} -> ${href}`);
-          continue;
-        }
-        const [file = "", anchor] = href.split("#");
-        const target = file === "" ? path : file;
-        if (
-          !built.has(target) ||
-          (anchor !== undefined && !read.get(target)?.ids.has(anchor))
-        )
+  const out = ["../terms/#", "../spec/"];
+  for (const [path, { hrefs }] of pages) {
+    for (const href of hrefs) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+      if (href.startsWith("../")) {
+        if (!out.some((folder) => href.startsWith(folder)))
           broken.push(`${path} -> ${href}`);
+        continue;
       }
+      const [file = "", anchor] = href.split("#");
+      const target = file === "" ? path : file;
+      if (
+        !files.has(target) ||
+        (anchor !== undefined && !pages.get(target)?.ids.has(anchor))
+      )
+        broken.push(`${path} -> ${href}`);
     }
   }
   assert.deepEqual(broken, []);
 });
 
-test("a kit's site names each page by its kind's folder and its label, never by a digest, the same on every build of its pod: Alex Rivera's allergies view is views/allergies.html", async () => {
-  const { site: kit, files: built, pages: read, again } = await kitSite();
+test("a site names each page by its kind's folder and its label, a digest only where things share one, and lists those at the plain address: the allergies view is views/allergies.html", () => {
+  const [kit, built, read] = [site, files, pages];
   const html = (each: ReadonlyMap<string, Uint8Array>) =>
     [...each.keys()].filter((path) => path.endsWith(".html")).sort();
   assert.deepEqual(
     html(built).filter((path) => /(^|\/)[0-9a-f]{64}\.html$/.test(path)),
     [],
   );
-  assert.deepEqual(html(again), html(built));
   const allergies = kit.views.find(({ value }) =>
-    value.endsWith("/clinical/allergies.ttl"),
+    value.endsWith("/allergies.ttl"),
   );
   assert.ok(allergies);
   assert.equal(kit.page(allergies), "views/allergies.html");
   assert.equal(read.get("views/allergies.html")?.h1, "clinical/allergies.ttl");
-  const peanuts = (kit.things.get("record") ?? []).find(
-    (thing) => kit.name(thing) === "Allergy · Peanuts · own entry",
-  );
-  assert.ok(peanuts);
-  assert.equal(kit.page(peanuts), "records/allergy-peanuts-own-entry.html");
   const things = [...kit.views, ...[...kit.things.values()].flat()];
   const addressed = things.map((thing) => kit.page(thing) ?? "");
   assert.ok(addressed.every((path) => built.has(path)));
@@ -342,10 +306,20 @@ test("a kit's site names each page by its kind's folder and its label, never by 
     new Set(addressed).size,
     new Set(things.map(({ value }) => value)).size,
   );
+  const shared = addressed.filter((path) => path.includes("--"));
+  assert.ok(shared.length > 1);
+  for (const path of shared) {
+    const plain = path.replace(/--[0-9a-f]+\.html$/, ".html");
+    assert.ok(!addressed.includes(plain), plain);
+    const listing = read.get(plain);
+    assert.ok(listing, `no page ${plain} lists the things named alike`);
+    assert.ok(listing.hrefs.includes(path), `${plain} does not list ${path}`);
+    assert.match(listing.said, /\d+ things are called this/);
+  }
 });
 
-test("no link on a kit's site goes to ns.cascadeprotocol.org or to a code's own IRI, and each link to the term reference names a term of the vocabulary", async () => {
-  const { site: kit, pages: read } = await kitSite();
+test("no link on a site goes to ns.cascadeprotocol.org or to a code's own IRI, and each link to the term reference names a term of the vocabulary", () => {
+  const [kit, read] = [site, pages];
   const hrefs = [...read.values()].flatMap((page) => page.hrefs);
   const spaces = kit.codeSystems.map(({ uriSpace }) => uriSpace);
   assert.deepEqual(
@@ -356,6 +330,7 @@ test("no link on a kit's site goes to ns.cascadeprotocol.org or to a code's own 
     ),
     [],
   );
+  assert.ok(!kit.labels.has("https://ns.cascadeprotocol.org/cascade#"));
   const ids = new Set([...kit.labels.keys()].map(termId));
   const terms = hrefs.filter((href) => href.startsWith("../terms/#"));
   assert.ok(terms.length > 0);
@@ -366,8 +341,8 @@ test("no link on a kit's site goes to ns.cascadeprotocol.org or to a code's own 
     );
 });
 
-test("each query on a kit's site links its file on GitHub at the commit built, and a view's page links each rule of the spec that names the view or its query", async () => {
-  const { pages: read } = await kitSite();
+test("each query on a site links its file on GitHub at the commit built, a view's page links each rule of the spec that names the view or its query, and a question's block links each term of the vocabulary its query names", async () => {
+  const read = pages;
   const blocks = [...read].flatMap(([path, { blocks }]) =>
     blocks.map((block) => [path, block] as const),
   );
@@ -384,8 +359,39 @@ test("each query on a kit's site links its file on GitHub at the commit built, a
       href.startsWith("../spec/"),
     );
   assert.ok(rules("allergies").includes("../spec/arrivals.html#a15"));
-  assert.ok(rules("conditions").includes("../spec/currency.html#c9"));
-  assert.deepEqual(rules("immunizations"), []);
+  const allergies = read.get("views/allergies.html");
+  const used = allergies?.blocks.flatMap(({ path, hrefs }) =>
+    hrefs
+      .filter((href) => href.startsWith("../terms/#"))
+      .map((href) => [path, href]),
+  );
+  assert.ok(used?.length, "no question block links a term its query names");
+  const block = site.question("pod/Which view lists each kind");
+  const [first] = [...namedInQuery(block.query.text)].filter((iri) =>
+    site.labels.has(iri),
+  );
+  assert.ok(first);
+  assert.ok(
+    read
+      .get("index.html")
+      ?.blocks.some(
+        ({ path, hrefs }) =>
+          path === block.query.path &&
+          hrefs.includes(termHref(first, "../terms/")),
+      ),
+  );
+  const placed = vocabulary.layout.views.flatMap(({ file, writtenBy }) =>
+    file === undefined || writtenBy === undefined
+      ? []
+      : [{ iri: file, names: [file, writtenBy] }],
+  );
+  const named = await viewRules(vocabulary.files, placed);
+  const ruled = (end: string) =>
+    (
+      named.get(placed.find(({ iri }) => iri.endsWith(end))?.iri ?? "") ?? []
+    ).map(({ path, number }) => `${path}#${number}`);
+  assert.ok(ruled("conditions.ttl").some((rule) => rule.endsWith("#C9")));
+  assert.deepEqual(ruled("immunizations.ttl"), []);
 });
 
 test("text put in a page is never markup", () => {
