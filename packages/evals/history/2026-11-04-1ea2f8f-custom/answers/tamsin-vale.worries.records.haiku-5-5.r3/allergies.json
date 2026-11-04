@@ -1,0 +1,13 @@
+{"answer": "Your records do not list any allergies or drug intolerances. That does not prove you have none, because allergies are sometimes never written down. Before any new medicine, tell your doctor and pharmacist about any reaction you have had in the past, including rashes, swelling or breathing trouble, and check your own memory and any old paperwork you have.",
+"short": "No allergies or intolerances are recorded in your hospital records through October 2026.",
+"items": [
+{"n": 1, "says": "No allergies or drug intolerances are recorded in your records.", "why": "None of the records from the 2024, 2025 or 2026 snapshots contains an allergy or intolerance entry.", "confidence": "medium",
+"facts": [],
+"absences": [
+{"what": "any allergy or drug intolerance entry", "match": {"codes": [], "terms": ["allergy", "AllergyIntolerance", "intolerance"]}, "coverage": "all six files: the 2024-02, 2025-02 and 2026-10 snapshots, through 2026-10-15"}
+],
+"knowledge": {"says": "Allergy and intolerance lists are often incomplete, so an empty list in a record does not mean you have no reactions to medicines."}
+}
+],
+"links": []
+}
