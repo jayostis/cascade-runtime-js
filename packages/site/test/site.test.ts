@@ -26,12 +26,17 @@ import {
 import {
   EXAMPLES_PAGE,
   FRONT_PAGE,
-  pagesTree,
+  hubFiles,
+  viewTitles,
   START_PAGE,
   STARTER_TRY,
   TRY_PAGE,
 } from "../src/front-page.js";
 import { escape, markup } from "../src/html.js";
+import { examplesSection } from "../src/hub/examples.js";
+import { startSection } from "../src/hub/start.js";
+import { trySection } from "../src/hub/try.js";
+import { buildTree } from "../src/sections.js";
 import { Site, type SiteOptions } from "../src/site.js";
 import { code, shown } from "../src/terms.js";
 import { agentPrompt, startOf } from "../src/node/start.js";
@@ -336,13 +341,29 @@ async function pagesOf() {
   };
   const commit = "0123456789abcdef0123456789abcdef01234567";
   const start = startOf(commit, vocabulary.layout, examples[0]?.folder ?? "");
+  const ctx = {
+    root: ROOT,
+    log: () => undefined,
+    vocabulary: async () => vocabulary,
+    examples: async () => examples,
+    builtFrom: async () => built,
+    start: async () => start,
+  };
+  const sections = [startSection, trySection, examplesSection];
+  const front = (rows: Parameters<typeof hubFiles>[1]) =>
+    hubFiles(viewTitles(vocabulary.layout), rows);
   return {
     examples,
     vocabularyAt,
-    built,
     commit,
     start,
-    tree: pagesTree(examples, built, start),
+    tree: (await buildTree({ sections, ctx, front })).tree,
+    refused: () =>
+      buildTree({
+        sections,
+        ctx: { ...ctx, start: async () => ({ ...start, example: "nobody" }) },
+        front,
+      }),
   };
 }
 let pagesTreeOf: ReturnType<typeof pagesOf> | undefined;
@@ -380,7 +401,7 @@ test("the Pages examples page links each kit of the vocabulary, by its name, to 
 });
 
 test("the Pages front page leads to the quick start, the starter kit's try/, every example's pod, the kinds a pod holds and its two formats; the quick start gives the starter kit's command, the prompt and its try/; neither links what the tree does not hold", async () => {
-  const { examples, built, commit, start, tree } = await shared();
+  const { examples, commit, refused, tree } = await shared();
   const page = (path: string) =>
     readPage(new TextDecoder().decode(tree.get(path)));
   const front = page(FRONT_PAGE);
@@ -415,10 +436,7 @@ test("the Pages front page leads to the quick start, the starter kit's try/, eve
   ])
     assert.ok(front.hrefs.includes(href), href);
   assert.ok(front.said.includes("FHIR R4") && front.said.includes("C-CDA"));
-  assert.throws(
-    () => pagesTree(examples, built, { ...start, example: "nobody" }),
-    /nobody/,
-  );
+  await assert.rejects(refused(), /nobody/);
 });
 
 test("try/'s old page unregisters the worker of its own folder and sends a visitor on to the starter kit's try/, with the pod or table they were sent to", async () => {

@@ -86,7 +86,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  # The docs site as Pages would serve it: every kit's pod and site, the front page and the quick start.
+  # The docs site as Pages would serve it: `build-pages` runs the same command, and this job keeps the tree it wrote.
   browser:
     name: docs site
     if: ${{ github.event_name != 'push' }}
@@ -133,15 +133,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # The counterparts the start step checked out, a pull request named on Depends-On among them.
           CASCADE_PACK_SIBLINGS: ${{ github.workspace }}
-      - name: Build every kit's pod and site, and the front page above them
+      # The whole tree, as the deploy builds it: every kit's pod and site, the front page, the quick start and the eval
+      # report from the recorded runs (CI never calls a model, it only checks every recorded run renders).
+      - name: Build the Pages tree
         if: ${{ !cancelled() }}
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # The eval report from the recorded runs: CI never calls a model, it only checks every recorded run renders.
-      - name: Build the eval report from packages/evals/history
-        if: ${{ !cancelled() }}
-        run: node packages/evals/dist/src/cli.js report --history --out build/evals-site
       - name: Drop half-written row files before they are saved
         if: ${{ !cancelled() }}
         shell: bash
@@ -154,26 +152,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: alex-rivera
-          path: |
-            cascade-runtime-js/build/alex-rivera/pod
-            cascade-runtime-js/build/alex-rivera/site
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: priya-natarajan
-          path: |
-            cascade-runtime-js/build/priya-natarajan/pod
-            cascade-runtime-js/build/priya-natarajan/site
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: martin-okafor
-          path: |
-            cascade-runtime-js/build/martin-okafor/pod
-            cascade-runtime-js/build/martin-okafor/site
+          name: pages
+          path: cascade-runtime-js/build/pages
           if-no-files-found: error
 
   # The reverse check: the starter kit's own tests and checks, run on this commit's tarball. A change the starter must
@@ -343,10 +323,11 @@ jobs:
             *) [ "${STARTER}" = success ] ;;
           esac
 
-  # The vocabulary, the adapters and the Bridge are each read at the head of their default branch.
+  # The vocabulary, the adapters and the Bridge are each read at the head of their default branch. On a push to main, and
+  # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night.
   build-pages:
     name: build-pages
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
@@ -374,12 +355,10 @@ jobs:
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Build every kit's pod and site, and the front page above them
+      - name: Build the Pages tree
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Add the eval report, built from packages/evals/history, under evals/
-        run: node packages/evals/dist/src/cli.js report --history --out build/pages/evals
       - name: Drop half-written row files before they are saved
         if: ${{ !cancelled() }}
         shell: bash
@@ -396,6 +375,8 @@ jobs:
   pages:
     name: pages
     needs: [build-pages, release]
+    # A push deploys what its release built; the nightly run has no release, only the tree to redeploy.
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' && (needs.release.result == 'success' || (github.event_name == 'schedule' && needs.release.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -430,7 +411,7 @@ jobs:
   live:
     name: live
     needs: pages
-    if: ${{ needs.pages.outputs.deployed == 'true' }}
+    if: ${{ github.event_name == 'push' && needs.pages.outputs.deployed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
