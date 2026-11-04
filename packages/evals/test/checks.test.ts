@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 import type { Prepared } from "../src/cases.js";
 import { checkAnswer } from "../src/checks.js";
@@ -68,4 +70,62 @@ test("a job answered in this run is still held to this run's folder", async () =
   const wrong = await checked(jobIn("first"), "second");
   assert.equal(wrong.discipline.ok, false);
   assert.equal(wrong.discipline.violations.length, 3);
+});
+
+const elsewhere = "C:/wt/other/packages/evals";
+const recordsJob = (reusedFrom: string, readCase = "tamsin-vale"): Job => ({
+  ...jobIn("first", reusedFrom),
+  arm: "records",
+  toolUses: [
+    {
+      name: "Read",
+      input: {
+        file_path: `${elsewhere}/work/${readCase}/downloads/a.json`.replaceAll(
+          "/",
+          "\\",
+        ),
+      },
+    },
+    {
+      name: "Bash",
+      input: {
+        command: `node "${elsewhere}/dist/src/cli.js" ask --run "${elsewhere}/runs/first" --job ${id}`,
+      },
+    },
+    {
+      name: "Write",
+      input: {
+        file_path: `${elsewhere}/runs/first/answers/${id}/checkup.json`,
+      },
+    },
+  ],
+});
+
+const checkedRecords = async (job: Job) => {
+  const downloads = await mkdtemp(join(tmpdir(), "reused-"));
+  await writeFile(join(downloads, "a.json"), "{}");
+  return checkAnswer({
+    job,
+    question: "checkup",
+    answer: {},
+    folder: join(runs, "second"),
+    prepared: { downloads } as Prepared,
+    reading: ["a.json"],
+    key: { case: "tamsin-vale", written: "", items: [] },
+    toolCalls: [],
+    pod: undefined,
+    copies: true,
+  });
+};
+
+test("a reused job answered in another checkout is checked with the files and commands of that checkout", async () => {
+  const reused = await checkedRecords(recordsJob(`first/${id}`));
+  assert.deepEqual(reused.discipline, { ok: true, violations: [] });
+  assert.deepEqual(reused.read, ["a.json"]);
+});
+
+test("a read of another case's downloads in that checkout is still a violation", async () => {
+  const reused = await checkedRecords(recordsJob(`first/${id}`, "priya-natarajan"));
+  assert.equal(reused.discipline.violations.length, 1);
+  assert.deepEqual(reused.read, []);
 });
