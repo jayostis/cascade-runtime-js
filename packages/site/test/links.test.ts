@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import {
   addressesOf,
+  sharedPageOf,
   type Named,
   noteHref,
   ruleHref,
@@ -130,7 +131,7 @@ test("a page's address is its kind's folder and its name as a slug; things that 
     named("urn:e", "Café · Crème brûlée"),
     named("urn:f", "· · ·"),
     named("urn:g", "Con"),
-    named("urn:h", `${"x".repeat(50)} ${"y".repeat(50)}`),
+    named("urn:h", `${"x".repeat(70)} ${"y".repeat(70)}`),
     named("urn:i", "condition asthma"),
   ];
   const addresses = await addressesOf(things);
@@ -146,12 +147,60 @@ test("a page's address is its kind's folder and its name as a slug; things that 
       ["urn:e", "records/cafe-creme-brulee.html"],
       ["urn:f", "records/record.html"],
       ["urn:g", "records/con-record.html"],
-      ["urn:h", `records/${"x".repeat(50)}.html`],
+      ["urn:h", `records/${"x".repeat(70)}.html`],
       ["urn:i", `records/condition-asthma--${digest("urn:i")}.html`],
     ]),
   );
   assert.deepEqual(await addressesOf([...things].reverse()), addresses);
   assert.deepEqual(await addressesOf([]), new Map());
+});
+
+test("a name is cut at 120 characters only where the cut leaves it apart from the others: Priya's two fluticasone records keep the date that tells them apart", async () => {
+  const label = (received: string) =>
+    `Medication · fluticasone propionate 50 MCG/ACTUAT Nasal Spray · Fernhill Family Clinic · received ${received}`;
+  const [may, august] = [label("2025-05-20"), label("2025-08-12")];
+  const addresses = await addressesOf([
+    { iri: "urn:may", folder: "records", name: may, fallback: "record" },
+    { iri: "urn:august", folder: "records", name: august, fallback: "record" },
+    {
+      iri: "urn:long",
+      folder: "records",
+      name: "z".repeat(150),
+      fallback: "record",
+    },
+  ]);
+  assert.equal(
+    addresses.get("urn:may"),
+    "records/medication-fluticasone-propionate-50-mcg-actuat-nasal-spray-fernhill-family-clinic-received-2025-05-20.html",
+  );
+  assert.equal(
+    addresses.get("urn:august"),
+    "records/medication-fluticasone-propionate-50-mcg-actuat-nasal-spray-fernhill-family-clinic-received-2025-08-12.html",
+  );
+  assert.equal(addresses.get("urn:long"), `records/${"z".repeat(120)}.html`);
+  const [one, two] = await addressesOf([
+    {
+      iri: "urn:1",
+      folder: "records",
+      name: `${"w ".repeat(70)}1`,
+      fallback: "record",
+    },
+    {
+      iri: "urn:2",
+      folder: "records",
+      name: `${"w ".repeat(70)}2`,
+      fallback: "record",
+    },
+  ]).then((found) => [found.get("urn:1"), found.get("urn:2")]);
+  assert.ok(one?.endsWith("-w-1.html") && two?.endsWith("-w-2.html"));
+});
+
+test("the plain address of things that share a name is the page that lists them, not the address of one of them", () => {
+  assert.equal(
+    sharedPageOf("records/condition-asthma--0a1b2c3d.html"),
+    "records/condition-asthma.html",
+  );
+  assert.equal(sharedPageOf("records/condition-asthma.html"), undefined);
 });
 
 test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () => {

@@ -47,27 +47,29 @@ export interface Named {
   readonly fallback: string;
 }
 
-const LONGEST = 80;
+const LONGEST = 120;
 /** Names Windows will not give a file, whatever its extension. */
-const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/;
+const RESERVED = /^(con|prn|aux|nul|comd|lptd)$/;
 /** How many hex digits of an IRI's digest tell apart the things that share a slug, at the least. */
 const SHORTEST = 8;
+/** An address that tells things apart by a digest: the slug, then `--`, then hex digits. */
+const DIGESTED = /^(.*)--[0-9a-f]+.html$/;
 
 /**
  * A name as a slug: lowercase ASCII letters and digits, runs of anything else one hyphen, none at either end, so never
- * two in a row; at most 80 characters, cut at a hyphen where there is one.
+ * two in a row; with `longest`, at most that many characters, cut at a hyphen where there is one.
  */
-export function slugOf(name: string): string {
+export function slugOf(name: string, longest = Infinity): string {
   const slug = name
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  if (slug.length <= LONGEST) return slug;
-  const cut = slug.slice(0, LONGEST + 1);
+  if (slug.length <= longest) return slug;
+  const cut = slug.slice(0, longest + 1);
   const at = cut.lastIndexOf("-");
-  return at > 0 ? cut.slice(0, at) : slug.slice(0, LONGEST);
+  return at > 0 ? cut.slice(0, at) : slug.slice(0, longest);
 }
 
 async function digestOf(iri: string): Promise<string> {
@@ -80,24 +82,43 @@ async function digestOf(iri: string): Promise<string> {
     .join("");
 }
 
+/** The slug a thing's page is named by, `longest` at most: its name's, or its fallback's when its name gives none. */
+function pageSlug(thing: Named, longest: number): string {
+  const named = slugOf(thing.name, longest);
+  const slug = named === "" ? slugOf(thing.fallback, longest) : named;
+  return RESERVED.test(slug)
+    ? `${slug}-${slugOf(thing.fallback, longest)}`
+    : slug;
+}
+
 /**
  * Each thing's page, by its IRI: `<folder>/<slug>.html`, the slug its name's, or its fallback's when its name gives
- * none. Things of one folder that share a slug each get `--` and the first hex digits of their IRI's SHA-256, eight or
- * as many more as tell them apart; a slug never holds `--`, so no such name is another thing's. Nothing but the things
- * themselves decides an address, never their order. A thing given twice keeps its first folder and name.
+ * none, cut at 120 characters unless things whose full slugs differ would then share one. Things of one folder that still
+ * share a slug each get `--` and the first hex digits of their IRI's SHA-256, eight or as many more as tell them apart;
+ * a slug never holds `--`, so no such name is another thing's. Nothing but the things themselves decides an address,
+ * never their order. A thing given twice keeps its first folder and name. The plain `<slug>.html` of things that share
+ * one is for a page that lists them, see `sharedPageOf`.
  */
 export async function addressesOf(
   things: readonly Named[],
 ): Promise<Map<string, string>> {
-  const sharing = new Map<string, Named[]>();
   const seen = new Set<string>();
-  for (const thing of things) {
-    if (seen.has(thing.iri)) continue;
-    seen.add(thing.iri);
-    const named = slugOf(thing.name);
-    const slug = named === "" ? slugOf(thing.fallback) : named;
-    const key = `${thing.folder}/${RESERVED.test(slug) ? `${slug}-${slugOf(thing.fallback)}` : slug}`;
-    sharing.set(key, [...(sharing.get(key) ?? []), thing]);
+  const once = things.filter(({ iri }) => !seen.has(iri) && seen.add(iri));
+  const cut = new Map<string, Named[]>();
+  for (const thing of once) {
+    const key = `${thing.folder}/${pageSlug(thing, LONGEST)}`;
+    cut.set(key, [...(cut.get(key) ?? []), thing]);
+  }
+  const sharing = new Map<string, Named[]>();
+  for (const [key, group] of cut) {
+    const full = group.map(
+      (thing) => `${thing.folder}/${pageSlug(thing, Infinity)}`,
+    );
+    const apart = group.length > 1 && new Set(full).size === group.length;
+    group.forEach((thing, at) => {
+      const each = apart ? (full[at] ?? key) : key;
+      sharing.set(each, [...(sharing.get(each) ?? []), thing]);
+    });
   }
   const addresses = new Map<string, string>();
   for (const [key, group] of sharing) {
@@ -118,6 +139,12 @@ export async function addressesOf(
       addresses.set(iri, `${key}--${digest.slice(0, length)}.html`);
   }
   return addresses;
+}
+
+/** The plain address the page that lists the things sharing a name has, for the address of one of them; none for an address that is alone. */
+export function sharedPageOf(address: string): string | undefined {
+  const shared = DIGESTED.exec(address)?.[1];
+  return shared === undefined ? undefined : `${shared}.html`;
 }
 
 /**

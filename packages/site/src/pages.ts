@@ -6,7 +6,7 @@ import {
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
 import { type Content, Html, markup } from "./html.js";
-import { noteHref, ruleHref, termHref } from "./links.js";
+import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
 import {
   CALLED,
@@ -379,6 +379,25 @@ ${site.about(thing, kind).map((answer) => question(site, answer))}`,
   );
 }
 
+/** The page at a plain address that several things share the name of: each of them, linked. */
+function sharedPage(site: Site, path: string, things: readonly Term[]): Html {
+  const [first] = things;
+  const name = first === undefined ? path : site.label(first);
+  return layout(
+    site,
+    name,
+    markup`<h1>${name}</h1>
+<p>${things.length} things are called this. Each has a page of its own:</p>
+<ul>
+${things.map(
+  (
+    thing,
+  ) => markup`<li><a href="${site.page(thing)}">${site.label(thing)}</a> <code>${thing.value}</code></li>
+`,
+)}</ul>`,
+  );
+}
+
 /** Every page of the site, by its path. */
 export function pages(site: Site): Map<string, Html> {
   const found = new Map<string, Html>([
@@ -397,6 +416,15 @@ export function pages(site: Site): Map<string, Html> {
         found.set(page, thingPage(site, kind, thing));
     }
   }
+  const shared = new Map<string, Term[]>();
+  const named = [...site.views, ...[...site.things.values()].flat()];
+  for (const thing of named) {
+    const plain = sharedPageOf(site.page(thing) ?? "");
+    if (plain !== undefined && !found.has(plain))
+      shared.set(plain, [...(shared.get(plain) ?? []), thing]);
+  }
+  for (const [path, things] of shared)
+    found.set(path, sharedPage(site, path, things));
   return new Map([...found].map(([path, page]) => [path, from(path, page)]));
 }
 

@@ -336,6 +336,16 @@ export class Site {
     return this.#names.get(thing.value) ?? thing.value;
   }
 
+  /** What a page that lists the thing calls it: its name, or for a view its file. */
+  label(thing: Term): string {
+    return (
+      this.#names.get(thing.value) ??
+      (thing.value.startsWith(this.pod.address)
+        ? thing.value.slice(this.pod.address.length)
+        : thing.value)
+    );
+  }
+
   /** Which files state the thing, then each question of its kind, with only the rows about it. */
   about(thing: Term, kind?: string): Answer[] {
     return [
