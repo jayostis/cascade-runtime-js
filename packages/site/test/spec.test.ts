@@ -448,16 +448,21 @@ test("the hub's spec section writes the spec's pages and the conformance table w
 
   const conformance = readPage(treeText(tree, "conformance/index.html"));
   assert.match(conformance.said, /Naming 4 1 1 1/);
-  assert.match(conformance.said, /Kim's pod 1 1 0 0/);
+  assert.match(conformance.said, /Kim's pod 1 1 0 0 0 1 /);
   assert.ok(conformance.hrefs.includes("../spec/naming.html"));
   assert.ok(conformance.hrefs.includes("earl.ttl"));
   assert.ok(conformance.hrefs.includes("table.md"));
 
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
     ran: boolean;
-    features: { path: string }[];
+    features: { path: string; checks?: unknown }[];
   };
   assert.equal(json.ran, true);
+  assert.deepEqual(
+    json.features.find(({ path }) => path === "conformance/kim/kim.feature")
+      ?.checks,
+    { passed: 0, failed: 1, notRun: 0 },
+  );
   assert.deepEqual(
     json.features.find(({ path }) => path === "runtime/naming.feature"),
     {

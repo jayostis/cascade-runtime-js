@@ -72,6 +72,12 @@ export interface FeatureResult {
   readonly passed: number;
   readonly failed: number;
   readonly notRun: number;
+  /** A kit's checks after Check 1 (which is its examples), counted apart from the examples; none for a feature. */
+  readonly checks?: {
+    readonly passed: number;
+    readonly failed: number;
+    readonly notRun: number;
+  };
 }
 
 export interface SpecPages {
@@ -547,6 +553,18 @@ class Spec {
     return undefined;
   }
 
+  /** The result of each of a kit's checks after Check 1, which is its examples. */
+  kitCheckResults(folder: string): (SpecResult | undefined)[] {
+    return this.features
+      .flatMap(({ rules }) => rules)
+      .map(numberOf)
+      .filter(
+        (number) =>
+          number?.startsWith("Check ") === true && number !== "Check 1",
+      )
+      .map((number) => this.check(folder, number ?? ""));
+  }
+
   /** Check 1 of a kit: every example passes. */
   everyExample(feature: WrittenFeature): SpecResult | undefined {
     const counted = tally(
@@ -836,7 +854,7 @@ ${rulesPart(spec, feature, false)}`,
 function featureResult(
   spec: Spec,
   feature: WrittenFeature,
-  kit: boolean,
+  kit: string | undefined,
 ): FeatureResult {
   const counted = tally(
     feature.rules.flatMap(({ examples: listed }) =>
@@ -847,11 +865,12 @@ function featureResult(
     path: feature.path,
     name: feature.name,
     page: spec.pageOf(feature.path),
-    kit,
+    kit: kit !== undefined,
     rules: feature.rules.length,
     passed: counted.passed,
     failed: counted.failed,
     notRun: counted.notRun,
+    ...(kit === undefined ? {} : { checks: tally(spec.kitCheckResults(kit)) }),
   };
 }
 
@@ -860,10 +879,11 @@ export function resultsTable(
   listed: readonly FeatureResult[],
   base: string,
 ): Html {
+  const checked = listed.some(({ checks }) => checks !== undefined);
   return markup`<table>
-<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th></tr></thead>
+<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th>${checked ? markup`<th>checks pass</th><th>checks fail</th><th>checks not run</th>` : ""}</tr></thead>
 <tbody>
-${listed.map(({ name, page, rules, passed, failed, notRun }) => markup`<tr><td data-label="feature"><a href="${base}${page}">${name}</a></td><td data-label="rules">${rules}</td><td data-label="pass">${passed}</td><td data-label="fail">${failed}</td><td data-label="not run">${notRun}</td></tr>\n`)}</tbody>
+${listed.map(({ name, page, rules, passed, failed, notRun, checks }) => markup`<tr><td data-label="feature"><a href="${base}${page}">${name}</a></td><td data-label="rules">${rules}</td><td data-label="pass">${passed}</td><td data-label="fail">${failed}</td><td data-label="not run">${notRun}</td>${checked ? markup`<td data-label="checks pass">${checks?.passed ?? ""}</td><td data-label="checks fail">${checks?.failed ?? ""}</td><td data-label="checks not run">${checks?.notRun ?? ""}</td>` : ""}</tr>\n`)}</tbody>
 </table>`;
 }
 
@@ -1041,8 +1061,10 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
     );
   }
   const results = [
-    ...spec.features.map((feature) => featureResult(spec, feature, false)),
-    ...spec.kits.map(({ feature }) => featureResult(spec, feature, true)),
+    ...spec.features.map((feature) => featureResult(spec, feature, undefined)),
+    ...spec.kits.map(({ folder, feature }) =>
+      featureResult(spec, feature, folder),
+    ),
   ];
   files.set(SPEC_INDEX, indexPage(spec, options, results));
   files.set(
