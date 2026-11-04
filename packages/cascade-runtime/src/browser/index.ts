@@ -81,6 +81,30 @@ export { codeStems, type CodeStems, terms, type Terms } from "../terms.js";
 export { finishSignIn, popupSignIn, type PopupOptions } from "./sign-in.js";
 export type { Checked, Tables } from "../tables.js";
 export type {
+  Absence,
+  Backing,
+  Call,
+  Cite,
+  Claim,
+  DateKind,
+  Fields,
+  Pointed,
+  Verdict,
+} from "../citations.js";
+export type {
+  CheckedAbsence,
+  CheckedFact,
+  CheckedItem,
+  CheckedReply,
+  CitedRecord,
+  FactField,
+  FilledFact,
+  PodReplyFact,
+  RecordsReplyFact,
+  Reply,
+  ReplyFact,
+} from "../reply.js";
+export type {
   About,
   ClassificationRow,
   Coded,
