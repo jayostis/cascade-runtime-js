@@ -42,11 +42,11 @@ export const specSection: Section<SpecContext> = {
     for (const [path, bytes] of pages.files)
       files.set(`${SPEC_FOLDER}${path}`, bytes);
 
-    const ran = report.results.size > 0;
     const features = pages.features.map((result) => ({
       ...result,
       page: `${SPEC_FOLDER}${result.page}`,
     }));
+    const ran = total(features, "passed") + total(features, "failed") > 0;
     files.set(
       `${CONFORMANCE_FOLDER}${RESULTS_FILE}`,
       encoder.encode(
@@ -54,7 +54,7 @@ export const specSection: Section<SpecContext> = {
           {
             at,
             vocabulary: vocabulary.iri,
-            report: ran,
+            ran,
             ranWith: report.ranWith,
             passed: total(features, "passed"),
             failed: total(features, "failed"),
@@ -97,7 +97,7 @@ shows every example with its result.</p>
 ${
   ran
     ? markup`<p class="prose">${total(features, "passed")} pass, ${total(features, "failed")} fail, ${total(features, "notRun")} not run.</p>`
-    : markup`<p class="prose">No conformance report was available for this build, so every example shows as not run.</p>`
+    : markup`<p class="prose">No result of a conformance report joins an example in this build, so every example shows as not run.</p>`
 }
 <h2 class="part">The features</h2>
 ${listed(false)}

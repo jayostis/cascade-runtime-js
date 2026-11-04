@@ -228,12 +228,21 @@ async function readConformance(
   file: string,
   vocabulary: string,
 ): Promise<Conformance> {
+  const none = { report: { results: new Map(), ranWith: [], repeated: [] } };
   if (!existsSync(file)) {
     log(`no conformance report at ${file}, so every example shows as not run`);
-    return { report: { results: new Map(), ranWith: [], repeated: [] } };
+    return none;
   }
   const earl = await readFile(file);
-  const report = await readSpecReport(earl);
+  let report: SpecReport;
+  try {
+    report = await readSpecReport(earl);
+  } catch (error) {
+    log(
+      `the conformance report at ${file} cannot be read (${error instanceof Error ? error.message : String(error)}), so every example shows as not run`,
+    );
+    return none;
+  }
   if (report.vocabulary !== undefined && report.vocabulary !== vocabulary)
     log(
       `the report is of ${report.vocabulary}, the pages read ${vocabulary}; results are joined by path`,

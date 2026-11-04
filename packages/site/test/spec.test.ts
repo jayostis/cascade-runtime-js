@@ -454,10 +454,10 @@ test("the hub's spec section writes the spec's pages and the conformance table w
   assert.ok(conformance.hrefs.includes("table.md"));
 
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
-    report: boolean;
+    ran: boolean;
     features: { path: string }[];
   };
-  assert.equal(json.report, true);
+  assert.equal(json.ran, true);
   assert.deepEqual(
     json.features.find(({ path }) => path === "runtime/naming.feature"),
     {
@@ -479,13 +479,13 @@ test("with no conformance report the section still writes both, every result is 
   assert.ok(!tree.has("conformance/earl.ttl"));
   assert.ok(!tree.has("conformance/table.md"));
   const conformance = readPage(treeText(tree, "conformance/index.html"));
-  assert.match(conformance.said, /No conformance report/);
+  assert.match(conformance.said, /No result of a conformance report/);
   assert.match(conformance.said, /Naming 4 0 0 3/);
   assert.ok(!conformance.hrefs.includes("earl.ttl"));
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
-    report: boolean;
+    ran: boolean;
   };
-  assert.equal(json.report, false);
+  assert.equal(json.ran, false);
 });
 
 test("a rule is named in parentheses, beside a .feature pointer, after the word rule, or by a possessive, and a code after item or conformance-review names none", () => {
