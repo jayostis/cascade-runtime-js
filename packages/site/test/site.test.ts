@@ -344,7 +344,7 @@ async function pagesOf() {
   const ctx = {
     root: ROOT,
     log: () => undefined,
-    vocabulary: async () => vocabulary,
+    vocabulary: async () => vocabulary.files,
     examples: async () => examples,
     builtFrom: async () => built,
     start: async () => start,

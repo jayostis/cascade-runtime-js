@@ -296,6 +296,7 @@ function pagesContext(vocabulary: LocalVocabulary): PagesContext {
       );
       return startOf(starter, vocabulary.layout, EXAMPLE);
     }),
+    vocabulary: async () => vocabulary.files,
   };
 }
 

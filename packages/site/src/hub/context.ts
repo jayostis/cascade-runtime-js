@@ -1,3 +1,4 @@
+import type { Files } from "@cascade-runtime/runtime";
 import type { BuiltFrom, Example, Start } from "../front-page.js";
 
 /**
@@ -14,4 +15,6 @@ export interface PagesContext {
   builtFrom(): Promise<BuiltFrom>;
   /** What the quick start gives a newcomer. */
   start(): Promise<Start>;
+  /** The vocabulary the pages are built from, named by the IRI of its tree at the commit read. */
+  vocabulary(): Promise<Files>;
 }
