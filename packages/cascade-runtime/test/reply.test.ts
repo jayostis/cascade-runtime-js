@@ -156,8 +156,16 @@ test("a reply checked against downloads is held to the contract that cites a fil
     ["nothing to check against"],
     "an entry cite with no pod to ask is not checked, which is not the cite being invented",
   );
+  const answered = await checkReply(copied, { ask, copied: true, ran });
+  assert.deepEqual(answered.errors, []);
+  assert.deepEqual(
+    answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
+    [true],
+    "a reply a recorded run copied is held to the pod's rows, not turned away for lacking a field",
+  );
   // @ts-expect-error a call names a pod to ask or the downloads to read, and at least one of them
-  void (() => checkReply(reply, { ran }));
+  const neither = checkReply(reply, { ran });
+  await assert.rejects(neither, /`ask`.*`files`.*neither/);
 });
 
 // Priya's pod (the eval case priya-natarajan), cut to the rows the checker reads of her and of two entries, with one provenance row
@@ -263,6 +271,8 @@ test("a handle the pod does not hold, a field or source the entry lacks, and a q
     fact(NOTE, "text", { quote: "new diagnosis of type 2 diabetes" }),
     fact(NOTE, "text"),
     fact(HBA1C, "value", { quote: "new diagnosis of type 2 diabetes" }),
+    fact(NOTE, "text", { quote: "the" }),
+    fact(NOTE, "text", { quote: "new diagnosis" }),
   );
   assert.deepEqual(reasons(facts), [
     "no such record: entry Lffffffff",
@@ -272,6 +282,8 @@ test("a handle the pod does not hold, a field or source the entry lacks, and a q
     "ok",
     "nothing to check: quote",
     "says otherwise: quote new diagnosis of type 2 diabetes",
+    "quote too short: quote the",
+    "quote too short: quote new diagnosis",
   ]);
   assert.equal(facts[0]!.filled, undefined);
   assert.equal(

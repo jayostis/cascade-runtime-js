@@ -60,7 +60,8 @@ export type Verdict =
         | "nothing to check"
         | "nothing to check against"
         | "no such field"
-        | "no such source";
+        | "no such source"
+        | "quote too short";
       /** Each claimed field the record does not hold, as `<field> <claimed>`. */
       readonly missing: readonly string[];
       /** For a line cited, where the file holds a record that does say it: that record's first line. */
@@ -1404,6 +1405,21 @@ export function fieldsOf(held: readonly Held[]): Fields {
 /** Whether `quote` is words of one of `texts`, whole words, as a quote's check reads it. */
 export const quoted = (quote: string, texts: readonly string[]): boolean =>
   quote.trim() !== "" && holds("text", quote, texts);
+
+/** The fewest words a quote shows anything with, unless the text it is found in is shorter. */
+export const QUOTE_WORDS = 3;
+const wordsIn = (text: string) => text.match(/\S+/g)?.length ?? 0;
+
+/** Whether a quote found in one of `texts` is three words, or all of a text of fewer. */
+export const quoteLongEnough = (
+  quote: string,
+  texts: readonly string[],
+): boolean =>
+  texts.some(
+    (text) =>
+      quoted(quote, [text]) &&
+      wordsIn(quote) >= Math.min(QUOTE_WORDS, wordsIn(text)),
+  );
 
 /**
  * A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. The

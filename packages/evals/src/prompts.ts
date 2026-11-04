@@ -213,6 +213,15 @@ export const versionOf = (
     SESSIONS[arm] + JSON.stringify(parts) + JSON.stringify(PRONOUNS),
   ).slice(0, 16);
 
+/** The pod arm's prompt version before a fact pointed at an entry: its answers copy what an entry says, as the records arm's do. */
+export const COPYING_POD_PROMPT = "a51f892dead3534c";
+
+/** Whether an arm's answers copy what a record says (the contract of `recordsReplySchema`) rather than point at entries, by the prompt version the arm was asked under. */
+export const copiesFacts = (
+  arm: Arm,
+  asked: { readonly pod?: string } | undefined,
+) => arm === "records" || asked?.pod === COPYING_POD_PROMPT;
+
 /** The version of each template a run's results name. */
 export const PROMPT_VERSIONS = {
   pod: versionOf("pod"),

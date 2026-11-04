@@ -138,7 +138,7 @@ test("a judge reads its packet alone, in its own folder, with neither arm's cita
   assert.match(blinded(answer("Q")), /- Absent: No colonoscopy$/m);
 });
 
-test("a judge reads a fact in one form for either arm: from whom, its day, its words and what its record holds; for a fact about a pod, all but its words are the pod's", () => {
+test("a judge reads a fact that points with what the pod holds of its record, and a fact that copies exactly as before the pod arm pointed", () => {
   const reply = (fact: object) =>
     ({
       answer: "a",
@@ -178,7 +178,11 @@ test("a judge reads a fact in one form for either arm: from whom, its day, its w
       date: "2025-09-22",
     }),
   );
-  assert.equal(copied, pod, "the form says neither arm");
+  assert.match(
+    copied,
+    /^- Fact 0: Northbay Clinical Laboratories, 2025-09-22: Her A1c was 6.9%.$/m,
+    "its own words, with no record of the program's beside them: the model's copy is not the record",
+  );
 });
 
 test("a judge sees the answers in an order of its run, and a reused verdict keeps the letters it was written to", async () => {

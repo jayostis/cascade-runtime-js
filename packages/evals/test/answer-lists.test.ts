@@ -13,6 +13,7 @@ import {
   replyErrors,
 } from "cascade-runtime";
 import { blinded, judgePackets } from "../src/judging.js";
+import { COPYING_POD_PROMPT } from "../src/prompts.js";
 import { ask } from "../src/sessions.js";
 
 const temporary = await mkdtemp(join(tmpdir(), "cascade-evals-lists-"));
@@ -145,6 +146,58 @@ test("ask gives no new question while the last answer is malformed, and says how
     );
     assert.equal(await ask(run, job), "Second.");
   }
+});
+
+test("an answer is held to the contract it was asked under: a pod answer of the prompt that copied is valid, one of the prompt that points is not", async () => {
+  const run = join(temporary, "ask-contracts");
+  const job = "c.s.pod.opus-5-5.r1";
+  const copied = {
+    answer: "a",
+    short: "s",
+    items: [
+      {
+        says: "p",
+        why: "w",
+        confidence: "high",
+        facts: [
+          {
+            says: "A1c was 6.9%.",
+            provider: "Northbay Clinical Laboratories",
+            cite: { entry: "pod://p/clinical/lab-results.ttl#a" },
+            name: "Hemoglobin A1c",
+          },
+        ],
+      },
+    ],
+  };
+  await mkdir(join(run, "prompts", job), { recursive: true });
+  await mkdir(join(run, "answers", job), { recursive: true });
+  await writeFile(join(run, "prompts", job, "a.txt"), "First.");
+  await writeFile(join(run, "prompts", job, "b.txt"), "Second.");
+  await writeFile(join(run, "answers", job, "a.json"), JSON.stringify(copied));
+  const plan = (pod: string) =>
+    writeFile(
+      join(run, "plan.json"),
+      JSON.stringify({
+        run: "ask-contracts",
+        folder: run,
+        prompts: { pod },
+        jobs: [
+          {
+            id: job,
+            role: "subject",
+            arm: "pod",
+            session: "s",
+            questions: ["a", "b"],
+            answers: `answers/${job}`,
+          },
+        ],
+      }),
+    );
+  await plan(COPYING_POD_PROMPT);
+  assert.equal(await ask(run, job), "Second.");
+  await plan("883f605fdafc7d5a");
+  assert.match(await ask(run, job), /required property 'field'/);
 });
 
 test("an item without n is numbered by its place, an n given is kept, and two items with one n are no answer", async () => {

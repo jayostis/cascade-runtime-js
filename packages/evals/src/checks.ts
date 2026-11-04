@@ -267,6 +267,8 @@ export async function checkAnswer(options: {
   key: Key;
   toolCalls: readonly ToolCallRecord[];
   pod: PodAsker | undefined;
+  /** Whether the answer was asked under the contract that copies what a record says, not the one that points. */
+  copies: boolean;
 }): Promise<SubjectChecks> {
   const { job, prepared, folder } = options;
   const items = options.key.items.filter(
@@ -307,7 +309,15 @@ export async function checkAnswer(options: {
   const checked = await checkReply(
     options.answer,
     job.arm === "pod" && pod !== undefined
-      ? { ask: (question) => pod.ask(question), ran, tie }
+      ? options.copies
+        ? {
+            ask: (question) => pod.ask(question),
+            files: downloadsSource(prepared.downloads),
+            copied: true,
+            ran,
+            tie,
+          }
+        : { ask: (question) => pod.ask(question), ran, tie }
       : {
           files: downloadsSource(prepared.downloads),
           ran,

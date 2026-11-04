@@ -15,6 +15,7 @@ import { passageOf, podProvenance } from "./evidence.js";
 import { instancesOf } from "./instances.js";
 import { answerPath, askedIn, splitSession } from "./sessions.js";
 import { askerOf } from "./pinned.js";
+import { copiesFacts } from "./prompts.js";
 import { type KeyItem, loadCase, loadKey, type Prepared } from "./cases.js";
 import { agreementOf, gradesOf, tellsIn, verdictProblems } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
@@ -488,6 +489,7 @@ export async function finish(given: string, log: (line: string) => void) {
             key,
             toolCalls,
             pod: job.arm === "pod" ? pod : undefined,
+            copies: copiesFacts(job.arm ?? "pod", plan.prompts),
           });
           (checks[job.id] ??= {})[question] = checked;
           if (checked.answerValid && job.arm !== undefined)

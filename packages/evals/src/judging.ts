@@ -22,7 +22,7 @@ import { errorsOf } from "./schemas.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
 import { askerOf } from "./pinned.js";
-import { type Arm, judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
+import { copiesFacts, judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
 import { callCost } from "./prices.js";
 import type { Grade, Job, Label } from "./results.js";
 import { runFolder } from "./results.js";
@@ -128,7 +128,7 @@ export async function filledOf(
  */
 async function packetBody(
   text: string,
-  arm: Arm,
+  copies: boolean,
   pod: () => Promise<PodAsker>,
 ): Promise<string> {
   let value: unknown;
@@ -137,13 +137,13 @@ async function packetBody(
   } catch (error) {
     return `(the answer is not valid JSON: ${error instanceof Error ? error.message : String(error)})`;
   }
-  const errors = replyErrors(value, arm);
+  const errors = replyErrors(value, copies ? "records" : "pod");
   if (errors.length > 0)
     return `(the answer is not a valid answer: ${errors.join("; ")})`;
   const answer = numberedReply(value) as Reply;
   return blinded(
     answer,
-    arm === "pod" ? await filledOf(answer, await pod()) : undefined,
+    copies ? undefined : await filledOf(answer, await pod()),
   );
 }
 
@@ -151,30 +151,24 @@ async function packetBody(
 const writer = (source: string) => source.replace(/^S\d+ /, "");
 
 /**
- * A fact as a judge reads it, in one form for either arm so its form says neither: who it is from, its day, its words,
- * and what the record is called and holds. For a fact about a pod all but its words are the pod's; for one about
- * downloads, the model's own.
+ * A fact as a judge reads it. One that copies (the records arm's, and the pod arm's before facts pointed) is its
+ * provider, day and words, as it always was, so the judge of those answers is reused. One that points is who it is
+ * from, its day, its words, and what the record is called and holds: all but its words the pod's, the program's fill.
  */
 function factLine(at: number, f: ReplyFact, filled?: FilledFact): string {
-  const [from, day, label, value] = pointsAtEntry(f)
-    ? [
-        filled === undefined
-          ? undefined
-          : [...new Set(filled.sources.map(writer))].join(", ") || undefined,
-        filled?.date,
-        filled?.label,
-        filled?.value,
-      ]
-    : [
-        f.provider,
-        f.date,
-        f.name,
-        f.value === undefined
-          ? undefined
-          : `${f.value}${f.unit === undefined ? "" : ` ${f.unit}`}`,
-      ];
-  const record = [label, value].filter((it) => it !== undefined).join(": ");
-  const head = [from, day].filter((it) => it !== undefined).join(", ");
+  if (!pointsAtEntry(f))
+    return `- Fact ${at}: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`;
+  const record = [filled?.label, filled?.value]
+    .filter((it) => it !== undefined)
+    .join(": ");
+  const head = [
+    filled === undefined
+      ? undefined
+      : [...new Set(filled.sources.map(writer))].join(", ") || undefined,
+    filled?.date,
+  ]
+    .filter((it) => it !== undefined)
+    .join(", ");
   return `- Fact ${at}: ${head === "" ? "" : `${scrubbed(head)}: `}${scrubbed(f.says)}${record === "" ? "" : ` (the record: ${scrubbed(record)})`}`;
 }
 
@@ -267,7 +261,7 @@ async function answerBodies(
             `${job.id}\n${question}`,
             await packetBody(
               await readFile(path, "utf8"),
-              job.arm ?? "pod",
+              copiesFacts(job.arm ?? "pod", plan.prompts),
               podOf(job.case!),
             ),
           );

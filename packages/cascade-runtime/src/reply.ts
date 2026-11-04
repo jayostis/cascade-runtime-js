@@ -17,8 +17,10 @@ import {
   type Held,
   isoDate,
   personHeld,
+  podRowsSource,
   type Pointed,
   quoted,
+  quoteLongEnough,
   type Ran,
   type Source,
   summary,
@@ -275,11 +277,22 @@ export type ReplyChecking = ReplyCheckingBeyondSources &
         /** Reads the pod's questions: the reply is about the pod, and each fact is read from the entry it names. */
         readonly ask: PodAsker["ask"];
         readonly files?: undefined;
+        readonly copied?: undefined;
+      }
+    | {
+        /**
+         * Reads the pod's questions for a reply written before facts pointed: it copies what an entry says, citing the
+         * entry by its IRI, and is held to the contract that copies. For an answer a recorded run was given.
+         */
+        readonly ask: PodAsker["ask"];
+        readonly files?: Source;
+        readonly copied: true;
       }
     | {
         readonly ask?: undefined;
         /** Where a citation of a file and line or resource is read, such as `downloadsSource(folder)`: the reply is about downloads. */
         readonly files: Source;
+        readonly copied?: undefined;
       }
   );
 
@@ -444,9 +457,21 @@ function pointedAt(
             missing: [`quote ${fact.quote}`],
             shows,
           }
-        : fact.field === "text" && fact.quote === undefined
-          ? { ok: false, reason: "nothing to check", missing: ["quote"], shows }
-          : { ok: true, shows };
+        : fact.quote !== undefined && !quoteLongEnough(fact.quote, fields.text)
+          ? {
+              ok: false,
+              reason: "quote too short",
+              missing: [`quote ${fact.quote}`],
+              shows,
+            }
+          : fact.field === "text" && fact.quote === undefined
+            ? {
+                ok: false,
+                reason: "nothing to check",
+                missing: ["quote"],
+                shows,
+              }
+            : { ok: true, shows };
   return {
     verdict,
     record: {
@@ -467,11 +492,20 @@ export async function checkReply(
   checking: ReplyChecking,
 ): Promise<CheckedReply> {
   const { ask, ran, files, tie, backing } = checking;
-  const errors = replyErrors(value, ask === undefined ? "records" : "pod");
+  if (ask === undefined && files === undefined)
+    throw new Error(
+      "checkReply needs `ask` (a reply about a pod) or `files` (a reply about downloads); it was given neither",
+    );
+  const copies = checking.copied === true || ask === undefined;
+  const errors = replyErrors(value, copies ? "records" : "pod");
   if (errors.length > 0) return { errors, items: [] };
   const reply = numberedReply(value) as Reply;
   const pod = ask === undefined ? undefined : { ask };
   const rowsOf = pod === undefined ? undefined : podEntryRows(pod);
+  const entries =
+    pod === undefined || !copies
+      ? undefined
+      : podRowsSource(rowsOf!, podPersonRows(pod));
   const person = pod === undefined ? undefined : podPersonRows(pod);
   let named: Promise<CompactSources> | undefined;
   const pointed: Pointed[] = [];
@@ -508,7 +542,12 @@ export async function checkReply(
         await named,
       );
     }
-    if (pointsAtEntry(fact) || "entry" in fact.cite || files === undefined)
+    const source = pointsAtEntry(fact)
+      ? undefined
+      : "entry" in fact.cite
+        ? entries
+        : files;
+    if (source === undefined)
       return {
         verdict: {
           ok: false,
@@ -517,7 +556,10 @@ export async function checkReply(
         },
       };
     pointed.length = 0;
-    const verdict = await checkCitation(claimOf(fact), watching(files));
+    const verdict = await checkCitation(
+      claimOf(fact as RecordsReplyFact),
+      watching(source),
+    );
     return {
       verdict,
       ...(pointed[0] === undefined

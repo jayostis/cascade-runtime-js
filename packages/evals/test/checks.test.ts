@@ -56,6 +56,7 @@ const checked = (job: Job, run: string) =>
     key: { case: "tamsin-vale", written: "", items: [] },
     toolCalls: [],
     pod: undefined,
+    copies: true,
   });
 
 test("a reused job's commands and answer file are checked against the run it was answered in", async () => {
