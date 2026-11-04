@@ -61,8 +61,23 @@ export interface SpecWarning {
   readonly what: string;
 }
 
+/** One feature's or kit's line of the results table: how many of its examples passed, failed or were not run. */
+export interface FeatureResult {
+  readonly path: string;
+  readonly name: string;
+  /** The feature's page among the spec's pages. */
+  readonly page: string;
+  readonly kit: boolean;
+  readonly rules: number;
+  readonly passed: number;
+  readonly failed: number;
+  readonly notRun: number;
+}
+
 export interface SpecPages {
   readonly files: ReadonlyMap<string, Uint8Array>;
+  /** The features and then the kits, each with its tally. */
+  readonly features: readonly FeatureResult[];
   readonly warnings: readonly SpecWarning[];
   /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
   readonly unnoted: readonly string[];
@@ -818,23 +833,57 @@ ${rulesPart(spec, feature, false)}`,
   );
 }
 
-function indexPage(spec: Spec, options: SpecOptions): Uint8Array {
-  const row = (feature: WrittenFeature, path: string) => {
-    const counted = tally(
-      feature.rules.flatMap(({ examples: listed }) =>
-        listed.map((e) => spec.result(e)),
-      ),
-    );
-    return markup`<tr><td data-label="feature"><a href="${spec.pageOf(path)}">${feature.name}</a></td><td data-label="rules">${feature.rules.length}</td><td data-label="pass">${counted.passed}</td><td data-label="fail">${counted.failed}</td><td data-label="not run">${counted.notRun}</td></tr>\n`;
+function featureResult(
+  spec: Spec,
+  feature: WrittenFeature,
+  kit: boolean,
+): FeatureResult {
+  const counted = tally(
+    feature.rules.flatMap(({ examples: listed }) =>
+      listed.map((e) => spec.result(e)),
+    ),
+  );
+  return {
+    path: feature.path,
+    name: feature.name,
+    page: spec.pageOf(feature.path),
+    kit,
+    rules: feature.rules.length,
+    passed: counted.passed,
+    failed: counted.failed,
+    notRun: counted.notRun,
   };
-  const head = markup`<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th></tr></thead>`;
-  const footer = (heading: string, listed: readonly Ingredient[]) =>
-    listed.length === 0
-      ? ""
-      : markup`<p class="about">${heading}</p>
+}
+
+/** The table of each feature's rules and results, whose links to the pages begin with `base`. The spec's index and the conformance page both show it. */
+export function resultsTable(
+  listed: readonly FeatureResult[],
+  base: string,
+): Html {
+  return markup`<table>
+<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th></tr></thead>
+<tbody>
+${listed.map(({ name, page, rules, passed, failed, notRun }) => markup`<tr><td data-label="feature"><a href="${base}${page}">${name}</a></td><td data-label="rules">${rules}</td><td data-label="pass">${passed}</td><td data-label="fail">${failed}</td><td data-label="not run">${notRun}</td></tr>\n`)}</tbody>
+</table>`;
+}
+
+/** The repositories a run was made with, as a list under a heading; nothing when it names none. */
+export const ranWithList = (
+  heading: string,
+  listed: readonly Ingredient[],
+): Html =>
+  listed.length === 0
+    ? markup``
+    : markup`<p class="about">${heading}</p>
 <ul class="about">
 ${listed.map(({ name, version, href }) => markup`<li><a href="${href}">${name} ${version}</a></li>\n`)}</ul>
 `;
+
+function indexPage(
+  spec: Spec,
+  options: SpecOptions,
+  results: readonly FeatureResult[],
+): Uint8Array {
   return page(
     spec,
     "The rules",
@@ -844,17 +893,15 @@ that ruled it, a paragraph of the note's reasons, its examples as written, and t
 each, from the EARL report its conformance run wrote. The conformance kits follow: each person's story, its scripted
 input, its expected views and its result. Built from the repositories on every run; never edited by hand.</p>
 <h2 class="part">The features</h2>
-<table>
-${head}
-<tbody>
-${spec.features.map((feature) => row(feature, feature.path))}</tbody>
-</table>
+${resultsTable(
+  results.filter(({ kit }) => !kit),
+  "",
+)}
 <h2 class="part">The kits</h2>
-<table>
-${head}
-<tbody>
-${spec.kits.map(({ feature }) => row(feature, feature.path))}</tbody>
-</table>
+${resultsTable(
+  results.filter(({ kit }) => kit),
+  "",
+)}
 <h2 class="part" id="warnings">Warnings</h2>
 <p class="prose">A rule and the Choice row that ruled it name each other (<a href="${spec.blob}decisions/README.md">decisions/README.md</a>).
 ${plural(spec.warnings.length, "place")} where they do not yet:</p>
@@ -867,7 +914,7 @@ ${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</sp
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">
 ${options.builtFrom.map(({ name, version, href }) => markup`<li><a href="${href}">${name} ${version}</a></li>\n`)}</ul>
-${footer("The results are of the run with:", options.report.ranWith)}</footer>`,
+${ranWithList("The results are of the run with:", options.report.ranWith)}</footer>`,
   );
 }
 
@@ -993,13 +1040,18 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
       ),
     );
   }
-  files.set(SPEC_INDEX, indexPage(spec, options));
+  const results = [
+    ...spec.features.map((feature) => featureResult(spec, feature, false)),
+    ...spec.kits.map(({ feature }) => featureResult(spec, feature, true)),
+  ];
+  files.set(SPEC_INDEX, indexPage(spec, options, results));
   files.set(
     SPEC_STYLESHEET_FILE,
     new TextEncoder().encode(STYLESHEET + SPEC_STYLES),
   );
   return {
     files,
+    features: results,
     warnings: spec.warnings,
     unnoted: spec.unnoted,
     waiting: spec.waiting,
