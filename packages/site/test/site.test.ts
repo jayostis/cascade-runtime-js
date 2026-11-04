@@ -373,7 +373,12 @@ test("each query on a kit's site links its file on GitHub at the commit built, a
   );
   assert.ok(blocks.length > 0);
   for (const [path, { title, path: query, hrefs }] of blocks)
-    assert.ok(hrefs.includes(BLOB + query), `${path}: ${title}`);
+    assert.ok(
+      hrefs.some(
+        (href) => !/\s/.test(href) && decodeURIComponent(href) === BLOB + query,
+      ),
+      `${path}: ${title}`,
+    );
   const rules = (view: string) =>
     (read.get(`views/${view}.html`)?.hrefs ?? []).filter((href) =>
       href.startsWith("../spec/"),

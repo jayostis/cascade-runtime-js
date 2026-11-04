@@ -46,10 +46,77 @@ export interface Named {
   readonly fallback: string;
 }
 
+const LONGEST = 80;
+/** Names Windows will not give a file, whatever its extension. */
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/;
+/** How many hex digits of an IRI's digest tell apart the things that share a slug, at the least. */
+const SHORTEST = 8;
+
+/**
+ * A name as a slug: lowercase ASCII letters and digits, runs of anything else one hyphen, none at either end, so never
+ * two in a row; at most 80 characters, cut at a hyphen where there is one.
+ */
+export function slugOf(name: string): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug.length <= LONGEST) return slug;
+  const cut = slug.slice(0, LONGEST + 1);
+  const at = cut.lastIndexOf("-");
+  return at > 0 ? cut.slice(0, at) : slug.slice(0, LONGEST);
+}
+
+async function digestOf(iri: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(iri),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Each thing's page, by its IRI: `<folder>/<slug>.html`, the slug its name's, or its fallback's when its name gives
+ * none. Things of one folder that share a slug each get `--` and the first hex digits of their IRI's SHA-256, eight or
+ * as many more as tell them apart; a slug never holds `--`, so no such name is another thing's. Nothing but the things
+ * themselves decides an address, never their order. A thing given twice keeps its first folder and name.
+ */
 export async function addressesOf(
-  _things: readonly Named[],
+  things: readonly Named[],
 ): Promise<Map<string, string>> {
-  return new Map();
+  const sharing = new Map<string, Named[]>();
+  const seen = new Set<string>();
+  for (const thing of things) {
+    if (seen.has(thing.iri)) continue;
+    seen.add(thing.iri);
+    const named = slugOf(thing.name);
+    const slug = named === "" ? slugOf(thing.fallback) : named;
+    const key = `${thing.folder}/${RESERVED.test(slug) ? `${slug}-${slugOf(thing.fallback)}` : slug}`;
+    sharing.set(key, [...(sharing.get(key) ?? []), thing]);
+  }
+  const addresses = new Map<string, string>();
+  for (const [key, group] of sharing) {
+    if (group.length === 1) {
+      addresses.set(group[0]?.iri ?? "", `${key}.html`);
+      continue;
+    }
+    const digests = await Promise.all(
+      group.map(async ({ iri }) => [iri, await digestOf(iri)] as const),
+    );
+    let length = SHORTEST;
+    while (
+      new Set(digests.map(([, digest]) => digest.slice(0, length))).size <
+      digests.length
+    )
+      length += 1;
+    for (const [iri, digest] of digests)
+      addresses.set(iri, `${key}--${digest.slice(0, length)}.html`);
+  }
+  return addresses;
 }
 
 /**

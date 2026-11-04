@@ -57,11 +57,18 @@ export function code(
   return found && [found.label, iri.slice(found.uriSpace.length)];
 }
 
+/**
+ * The page of the code at its publisher, from the template its code system registers, or undefined: a code IRI is no
+ * page, and most do not resolve.
+ */
 export function codePage(
-  _iri: string,
-  _codeSystems: readonly CodeSystem[],
+  iri: string,
+  codeSystems: readonly CodeSystem[],
 ): string | undefined {
-  return undefined;
+  const found = codeSystems.find(({ uriSpace }) => iri.startsWith(uriSpace));
+  return found?.pageTemplate?.replace("{code}", () =>
+    encodeURIComponent(iri.slice(found.uriSpace.length)),
+  );
 }
 
 /** A literal as the site shows it: a time in UTC to the minute, anything else as written. */

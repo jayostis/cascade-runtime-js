@@ -3,6 +3,7 @@ import {
   type CodeSystem,
   DERIVED,
   documentName,
+  featuresOf,
   type Files,
   iri,
   type Layout,
@@ -12,6 +13,7 @@ import {
   podDataset,
   questions,
   readText,
+  readWrittenFeature,
   type StoreFactory,
   tableTerms,
   type Term,
@@ -22,7 +24,9 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import { Answer } from "./answer.js";
+import { addressesOf } from "./links.js";
 import { pages } from "./pages.js";
+import { numberOf } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { CALLED, COPY, STATED, terms } from "./terms.js";
 
@@ -65,12 +69,56 @@ export interface BuiltFile {
   readonly statements: number;
 }
 
-async function pageOf(thing: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(thing),
-  );
-  return `${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")}.html`;
+/** A rule of the spec, by its feature file and its number. */
+export interface SpecRule {
+  readonly path: string;
+  readonly number: string;
+  readonly name: string;
+}
+
+/** The folder a kind's pages are in, where it is not the kind with an s. */
+const FOLDERS: Readonly<Record<string, string>> = { entry: "entries" };
+const VIEWS_FOLDER = "views";
+const folderOf = (kind: string): string => FOLDERS[kind] ?? `${kind}s`;
+
+/** Each thing's name, the last label the question that names everything gives it. */
+function namesOf(called: Answer | undefined): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const row of called?.rows ?? []) {
+    const [thing, label] = [row.get("thing"), row.get("label")];
+    if (thing !== undefined && label !== undefined)
+      names.set(thing.value, label.value);
+  }
+  return names;
+}
+
+/** Each view's rules: those of the runtime's features whose text names the view's file or the query that writes it. */
+async function viewRules(
+  vocabulary: Files,
+  views: readonly { readonly iri: string; readonly names: readonly string[] }[],
+): Promise<Map<string, SpecRule[]>> {
+  const found = new Map<string, SpecRule[]>();
+  const paths = (await featuresOf(vocabulary))
+    .filter((path) => path.startsWith("runtime/"))
+    .sort();
+  for (const path of paths) {
+    for (const rule of (await readWrittenFeature(vocabulary, path)).rules) {
+      const number = numberOf(rule);
+      if (number === undefined) continue;
+      const text = [
+        rule.name,
+        rule.description,
+        ...rule.examples.map(({ text }) => text),
+      ].join("\n");
+      for (const { iri, names } of views)
+        if (names.some((name) => text.includes(name)))
+          found.set(iri, [
+            ...(found.get(iri) ?? []),
+            { path, number, name: rule.name },
+          ]);
+    }
+  }
+  return found;
 }
 
 /** What every page of the site reads: the pod built under each lens, its questions' answers, and where each thing is. */
@@ -100,6 +148,8 @@ export class Site {
     storedBytes: ReadonlyMap<string, string>,
     built: ReadonlyMap<string, BuiltFile>,
     views: readonly Term[],
+    /** The rules of the spec that name each view, by its IRI; none without the spec's folder. */
+    readonly rules: ReadonlyMap<string, readonly SpecRule[]>,
   ) {
     this.questions = answers.get(options.lens) ?? new Map();
     this.things = things;
@@ -131,13 +181,7 @@ export class Site {
       turtles.set(thing.value, copy);
     }
     this.#turtles = turtles;
-    const names = new Map<string, string>();
-    for (const row of this.question(CALLED).rows) {
-      const [thing, label] = [row.get("thing"), row.get("label")];
-      if (thing !== undefined && label !== undefined)
-        names.set(thing.value, label.value);
-    }
-    this.#names = names;
+    this.#names = namesOf(this.question(CALLED));
     this.#links = [copies, pages, steps, storedBytes, turtles];
   }
 
@@ -190,13 +234,37 @@ export class Site {
     }
     const defaults = answers.get(lens) as Map<string, Answer>;
     const things = thingsWithPages(defaults);
-    const views = options.layout.views
-      .filter(({ file }) => pod.built.has(file ?? ""))
-      .map(({ file }) => iri(pod.address + (file ?? "")));
-    const pages = new Map<string, string>();
-    for (const thing of [...[...things.values()].flat(), ...views]) {
-      pages.set(thing.value, await pageOf(thing.value));
-    }
+    const placed = options.layout.views.filter(({ file }) =>
+      pod.built.has(file ?? ""),
+    );
+    const views = placed.map(({ file }) => iri(pod.address + (file ?? "")));
+    const names = namesOf(defaults.get(CALLED));
+    const pages = await addressesOf([
+      ...placed.map(({ file = "" }) => ({
+        iri: pod.address + file,
+        folder: VIEWS_FOLDER,
+        name: file.slice(file.lastIndexOf("/") + 1).replace(/\.[^.]*$/, ""),
+        fallback: "view",
+      })),
+      ...[...things].flatMap(([kind, of]) =>
+        of.map(({ value }) => ({
+          iri: value,
+          folder: folderOf(kind),
+          name: names.get(value) ?? "",
+          fallback: kind,
+        })),
+      ),
+    ]);
+    const rules =
+      options.spec === undefined
+        ? new Map<string, SpecRule[]>()
+        : await viewRules(
+            vocabulary,
+            placed.map(({ file = "", writtenBy = "" }) => ({
+              iri: pod.address + file,
+              names: [file, writtenBy].filter((name) => name !== ""),
+            })),
+          );
     const storedFolder = options.layout.storedBytes.folder ?? "";
     const storedBytes = new Map<string, string>();
     for (const path of pod.files.filter((path) =>
@@ -233,6 +301,7 @@ export class Site {
       storedBytes,
       built,
       views,
+      rules,
     );
   }
 
