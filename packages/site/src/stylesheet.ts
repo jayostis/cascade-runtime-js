@@ -22,7 +22,7 @@ p code, dd code, dt code, td code { overflow-wrap: anywhere; }
 .layout { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; }
 .layout dt { font-weight: 600; }
 .layout dd { margin: 0; }
-section.query { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1px solid var(--rule); }
+section.query, section.term { margin: 1.5rem 0; padding: 1rem 0 0; border-top: 1px solid var(--rule); }
 .prose { margin: 0 0 .5rem; max-width: 46rem; }
 .about, .count, .lens { color: var(--quiet); font-size: .9rem; margin: .25rem 0; }
 .answer { overflow-x: auto; }
