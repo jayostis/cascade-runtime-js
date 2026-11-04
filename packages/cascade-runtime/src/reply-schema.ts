@@ -49,8 +49,7 @@ function anyToolInput() {
       schemaOf(tool).properties ?? {},
     )) {
       const it = bare(property);
-      const of =
-        variants.get(name) ?? variants.set(name, new Map()).get(name)!;
+      const of = variants.get(name) ?? variants.set(name, new Map()).get(name)!;
       of.set(JSON.stringify(it), it);
     }
   return {
@@ -67,7 +66,6 @@ function anyToolInput() {
 }
 
 export const replySchema = {
-  $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://github.com/jayostis/cascade-runtime-js/packages/cascade-runtime/src/reply-schema.ts",
   title: "A reply to one question about a person's pod",
   description:

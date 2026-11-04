@@ -1,384 +1,391 @@
 {
- "entry/What it shows": [
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-   "value": "https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#leadMember",
-   "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
-   "value": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
-   "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
-   "value": "4.0-5.6 %",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
-   "value": "4.0-5.6 %",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultClinicallyRelevantTime",
-   "value": "2025-09-22T16:15:00Z",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultClinicallyRelevantTime",
-   "value": "2025-09-22T16:15:00Z",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultInterpretationCode",
-   "value": "https://ns.cascadeprotocol.org/codes/observationinterpretation/H",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultInterpretationCode",
-   "value": "https://ns.cascadeprotocol.org/codes/observationinterpretation/H",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultUnit",
-   "value": "%"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#resultValue",
-   "value": "6.9"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#statusFrom",
-   "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#testCode",
-   "value": "http://loinc.org/rdf/4548-4",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#testCode",
-   "value": "http://loinc.org/rdf/4548-4",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#testName",
-   "value": "Hemoglobin A1c/Hemoglobin.total in Blood",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#testName",
-   "value": "Hemoglobin A1c/Hemoglobin.total in Blood",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
-   "value": "final",
-   "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
-   "value": "final",
-   "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-   "value": "https://ns.cascadeprotocol.org/cascade#ClinicalNoteOrDocument"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#leadMember",
-   "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
-   "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
-   "value": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#narrativeText",
-   "value": "September 22, 2025 (annual visit, Elena Marsh, MD): Fasting glucose 138 and hemoglobin A1c 6.9%: new diagnosis of type 2 diabetes. Start metformin ER 500 mg with the evening meal; referred to diabetes education. Dry cough for several months on lisinopril: stop lisinopril, start losartan 50 mg daily. Continue amlodipine 5 mg.\nDecember 9, 2025 (follow-up, Elena Marsh, MD): Cough resolved. Blood pressure 142/88, above goal. Add hydrochlorothiazide 12.5 mg daily. A1c 6.7%. Return in 3 months.\nJune 15, 2026 (follow-up, Elena Marsh, MD): Blood pressure 128/80, at goal. A1c 6.6%. Continue current medications. Return in 6 months.",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#narrativeText",
-   "value": "September 22, 2025 (annual visit, Elena Marsh, MD): Fasting glucose 138 and hemoglobin A1c 6.9%: new diagnosis of type 2 diabetes. Start metformin ER 500 mg with the evening meal; referred to diabetes education. Dry cough for several months on lisinopril: stop lisinopril, start losartan 50 mg daily. Continue amlodipine 5 mg.\nDecember 9, 2025 (follow-up, Elena Marsh, MD): Cough resolved. Blood pressure 142/88, above goal. Add hydrochlorothiazide 12.5 mg daily. A1c 6.7%. Return in 3 months.",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentDate",
-   "value": "2026-06-22T18:03:44Z",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentDate",
-   "value": "2026-01-05T17:12:05Z",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTitle",
-   "value": "Plan of Treatment",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTitle",
-   "value": "Plan of Treatment",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
-   "value": "http://loinc.org/rdf/18776-5",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
-   "value": "http://loinc.org/rdf/18776-5",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeName",
-   "value": "Plan of care note",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeName",
-   "value": "Plan of care note",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#statusFrom",
-   "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
-   "value": "current",
-   "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
-   "value": "current",
-   "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
-  }
- ],
- "entry/Where it came from": [
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:3276d319-248c-8b93-8342-3b1ffa356f20",
-   "document": "ni:///sha-256;qXn6lMeu_atscvvwusJYEXv5V5rOs7zhN3BQ40XFKd0",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-03-29T18:39:51Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:1e34e75f-f22b-8b29-b85e-ac9214de3f50",
-   "document": "ni:///sha-256;Bwm0crFETA-xzDHxXmRCabkhh_ERelDEVRRKvQdzgWg",
-   "hospital": "Kestrel Harbor Hospital",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:50f8bff5-59b8-4cc3-967f-2c7547234f08"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:ed292d3f-0e3b-8504-8be2-1c1a149764dd",
-   "document": "ni:///sha-256;qurj4q_ZRRUEBFDJ5YawdegzxLUUUJn62fRs8J-LcDE",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:e1d17914-5069-4516-9da9-0724ab7bfc6e"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:4d1c700d-83c9-84bc-8190-bb425fc63bb7",
-   "document": "ni:///sha-256;gxlfTcL5Yeh84xq37JJjp7lbQTZ4IhrkF2EoT084MUU",
-   "hospital": "Saltmarsh Regional Medical Center",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:1b946d9f-5faa-404d-bab6-fb1aa62fa8e6"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:49465dc9-ac2d-85be-b665-8a12a512af73",
-   "document": "ni:///sha-256;yRNzeMDaWZYIiO6uiars0bRGWcXu2loz2jfxwjCqPJs",
-   "hospital": "Clearwater Eye Associates",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:1078b2fe-390b-4d99-b9fe-c7259571bdfb"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
-   "record": "urn:uuid:792d9235-7d0b-8016-90ba-c1681e32cd20",
-   "document": "ni:///sha-256;4QVcxEh14k0paedN4twfVp2AHgEd85sJwXmqPDtK00s",
-   "hospital": "Alder Street Pharmacy",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:2b5df3b4-0ad2-463b-abda-af2167ab4079"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#c3045883e2686c089758a888f164f090efaf2bde7c3758adc9e9b725863314cb",
-   "record": "urn:uuid:6c328000-3e84-8215-a64a-f92d7d4009f4",
-   "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#e3513b1898164fdd30598170d6ac50f8f66e0d8a848b18981168b29cae312496",
-   "record": "urn:uuid:908ca1db-13ad-82a9-8391-2f3f3d035453",
-   "document": "ni:///sha-256;PjSmpjsg6m6RHn2fkn6Y2jtlRcq8TQbB4GAGhVWWV1Q",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-03-29T18:39:51Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#e3513b1898164fdd30598170d6ac50f8f66e0d8a848b18981168b29cae312496",
-   "record": "urn:uuid:fc7b002e-5233-8177-b19f-b7684b02507b",
-   "document": "ni:///sha-256;1NNkDAj1ax7VmzXMrvZ4e-wQvOjnNR9cNLz_fm_pLII",
-   "hospital": "Kestrel Harbor Hospital",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:c09dee09-8453-41ed-83e9-fa9a59dd1b8a"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#a51a83bd95ba0eb35a83901457378453a852b08fd8cd9c777b7b8339d41543c3",
-   "record": "urn:uuid:6000b1fe-424b-8d34-bafa-fc04b76524df",
-   "document": "ni:///sha-256;QDRkpekdC8a39WZ2FtuJ8X1d17Q1cRQImrpSSFvShSQ",
-   "hospital": "Kestrel Harbor Hospital",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:e7f94a9f-e1c1-4143-8865-0b262f6838af"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#5d4da663adc5dbdebd5c6676ad9456de57fd2ce1378f0918e500212a5c161753",
-   "record": "urn:uuid:898e106f-df80-8bb3-979a-f4f3c5884d77",
-   "document": "ni:///sha-256;Y4BiLF6eEzIIWuhf8Bg1LlIWTT1xYp5n-WqLP7qjWK4",
-   "hospital": "Northbay Clinical Laboratories",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:7d26345c-a33d-44e7-88e0-be420981eafe"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#160332c3885cd1e20a8647e8a46b7198fed77dd59b4aeb10d41b6e380524f84a",
-   "record": "urn:uuid:1b508a43-ea9a-8d7b-9798-7f41a5626eff",
-   "document": "ni:///sha-256;tTG2P5VnR59M8OJ4aNf3wBrkImrsxZ8mO0qTv7iXvi8",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:ede6de61-de24-4e4a-9f66-375483cfc471"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "record": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c",
-   "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
-   "record": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670",
-   "document": "ni:///sha-256;Y4BiLF6eEzIIWuhf8Bg1LlIWTT1xYp5n-WqLP7qjWK4",
-   "hospital": "Northbay Clinical Laboratories",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:7d26345c-a33d-44e7-88e0-be420981eafe"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#385e5ffb09b34c8b29d19a3ff9f5675403e0e3e8a5f5f5e3ee145441d3c16751",
-   "record": "urn:uuid:5d05bfc9-fed1-8887-a78a-62bd0f938d7e",
-   "document": "ni:///sha-256;9A9vb7ioqrBFMhikgEJ_t7jN_ytVUXaoQ7a8eBBia4c",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-03-29T18:39:51Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#15d0eac9e4d855f980ef5e9767b9822ccd0162a80dcc9528d8d68f75a2e4fd3d",
-   "record": "urn:uuid:89e2da27-e7d8-8643-8a3e-d4b817d3fb18",
-   "document": "ni:///sha-256;uaajzsPxTtKovhO7m0Az4GIX2nEb19Ocab3Mv5Sx-mA",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-06-14T07:12:40Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:e7fc99f4-9274-4b99-b1a6-27b1e6184686"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#0ef3bfcdbd76ec00357ba6e9381cc7a32b076cd36266f3e349356c9ceffa8ab9",
-   "record": "urn:uuid:acf3f318-ce80-8c57-b247-632d6648bafc",
-   "document": "ni:///sha-256;uceV7W1vUib_6nbQMyon-i3vQoM0LbQ6aZnaW47jqcQ",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:e90f62f5-da15-4c32-8a4f-a79a75bc7dc4"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#cb10936edbc1d90675fe6ae5bd33f1a399774b1e0f6d9a53182c2d7e4231562f",
-   "record": "urn:uuid:eb08288e-0f3c-86f1-9e2e-98c0721a59e4",
-   "document": "ni:///sha-256;tgT6mpcxmsu7GZScyv7uNZTwDhbUgJG8ZnvdhVWDKCM",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-06-14T07:12:40Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:e7fc99f4-9274-4b99-b1a6-27b1e6184686"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#35b82bdc59ca4bddc15cbb5fefc661620449566ed27335bd01df6fbf3ddd58d8",
-   "record": "urn:uuid:62afa632-0672-8e62-b160-02d3a96f6c5b",
-   "document": "ni:///sha-256;AAZXQ4qJikuBjOyYT8yakeYd2jjZvhGJ4knRmhehZKo",
-   "hospital": "Kestrel Harbor Hospital",
-   "retrieved": "2025-03-29T18:39:51Z",
-   "importLabel": "Apple Health export",
-   "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "record": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158",
-   "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
-  },
-  {
-   "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
-   "record": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb",
-   "document": "ni:///sha-256;tTG2P5VnR59M8OJ4aNf3wBrkImrsxZ8mO0qTv7iXvi8",
-   "hospital": "Fernhill Family Clinic",
-   "importLabel": "C-CDA download",
-   "import": "urn:uuid:ede6de61-de24-4e4a-9f66-375483cfc471"
-  }
- ]
+  "entry/What it shows": [
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+      "value": "https://ns.cascadeprotocol.org/cascade#LaboratoryTestResult"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#leadMember",
+      "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
+      "value": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
+      "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
+      "value": "4.0-5.6 %",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#referenceRange",
+      "value": "4.0-5.6 %",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultClinicallyRelevantTime",
+      "value": "2025-09-22T16:15:00Z",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultClinicallyRelevantTime",
+      "value": "2025-09-22T16:15:00Z",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultInterpretationCode",
+      "value": "https://ns.cascadeprotocol.org/codes/observationinterpretation/H",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultInterpretationCode",
+      "value": "https://ns.cascadeprotocol.org/codes/observationinterpretation/H",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultUnit",
+      "value": "%"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#resultValue",
+      "value": "6.9"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#statusFrom",
+      "value": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#testCode",
+      "value": "http://loinc.org/rdf/4548-4",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#testCode",
+      "value": "http://loinc.org/rdf/4548-4",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#testName",
+      "value": "Hemoglobin A1c/Hemoglobin.total in Blood",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#testName",
+      "value": "Hemoglobin A1c/Hemoglobin.total in Blood",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
+      "value": "final",
+      "from": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
+      "value": "final",
+      "from": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+      "value": "https://ns.cascadeprotocol.org/cascade#ClinicalNoteOrDocument"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#leadMember",
+      "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
+      "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#mergedFrom",
+      "value": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#narrativeText",
+      "value": "September 22, 2025 (annual visit, Elena Marsh, MD): Fasting glucose 138 and hemoglobin A1c 6.9%: new diagnosis of type 2 diabetes. Start metformin ER 500 mg with the evening meal; referred to diabetes education. Dry cough for several months on lisinopril: stop lisinopril, start losartan 50 mg daily. Continue amlodipine 5 mg.\nDecember 9, 2025 (follow-up, Elena Marsh, MD): Cough resolved. Blood pressure 142/88, above goal. Add hydrochlorothiazide 12.5 mg daily. A1c 6.7%. Return in 3 months.\nJune 15, 2026 (follow-up, Elena Marsh, MD): Blood pressure 128/80, at goal. A1c 6.6%. Continue current medications. Return in 6 months.",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#narrativeText",
+      "value": "September 22, 2025 (annual visit, Elena Marsh, MD): Fasting glucose 138 and hemoglobin A1c 6.9%: new diagnosis of type 2 diabetes. Start metformin ER 500 mg with the evening meal; referred to diabetes education. Dry cough for several months on lisinopril: stop lisinopril, start losartan 50 mg daily. Continue amlodipine 5 mg.\nDecember 9, 2025 (follow-up, Elena Marsh, MD): Cough resolved. Blood pressure 142/88, above goal. Add hydrochlorothiazide 12.5 mg daily. A1c 6.7%. Return in 3 months.",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentDate",
+      "value": "2026-06-22T18:03:44Z",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentDate",
+      "value": "2026-01-05T17:12:05Z",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTitle",
+      "value": "Plan of Treatment",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTitle",
+      "value": "Plan of Treatment",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
+      "value": "http://loinc.org/rdf/18776-5",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentType",
+      "value": "http://loinc.org/rdf/18776-5",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeName",
+      "value": "Plan of care note",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#noteOrDocumentTypeName",
+      "value": "Plan of care note",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#statusFrom",
+      "value": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
+      "value": "current",
+      "from": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "field": "https://ns.cascadeprotocol.org/cascade#workflowStatus",
+      "value": "current",
+      "from": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158"
+    }
+  ],
+  "entry/Where it came from": [
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:3276d319-248c-8b93-8342-3b1ffa356f20",
+      "document": "ni:///sha-256;qXn6lMeu_atscvvwusJYEXv5V5rOs7zhN3BQ40XFKd0",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-03-29T18:39:51Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:1e34e75f-f22b-8b29-b85e-ac9214de3f50",
+      "document": "ni:///sha-256;Bwm0crFETA-xzDHxXmRCabkhh_ERelDEVRRKvQdzgWg",
+      "hospital": "Kestrel Harbor Hospital",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:50f8bff5-59b8-4cc3-967f-2c7547234f08"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:ed292d3f-0e3b-8504-8be2-1c1a149764dd",
+      "document": "ni:///sha-256;qurj4q_ZRRUEBFDJ5YawdegzxLUUUJn62fRs8J-LcDE",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:e1d17914-5069-4516-9da9-0724ab7bfc6e"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:4d1c700d-83c9-84bc-8190-bb425fc63bb7",
+      "document": "ni:///sha-256;gxlfTcL5Yeh84xq37JJjp7lbQTZ4IhrkF2EoT084MUU",
+      "hospital": "Saltmarsh Regional Medical Center",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:1b946d9f-5faa-404d-bab6-fb1aa62fa8e6"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:49465dc9-ac2d-85be-b665-8a12a512af73",
+      "document": "ni:///sha-256;yRNzeMDaWZYIiO6uiars0bRGWcXu2loz2jfxwjCqPJs",
+      "hospital": "Clearwater Eye Associates",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:1078b2fe-390b-4d99-b9fe-c7259571bdfb"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#99864e5e2d0df8808dcb66f1f6b5448ea1b197002821fdb31a0bd0e23685f831",
+      "record": "urn:uuid:792d9235-7d0b-8016-90ba-c1681e32cd20",
+      "document": "ni:///sha-256;4QVcxEh14k0paedN4twfVp2AHgEd85sJwXmqPDtK00s",
+      "hospital": "Alder Street Pharmacy",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:2b5df3b4-0ad2-463b-abda-af2167ab4079"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/allergies.ttl#c3045883e2686c089758a888f164f090efaf2bde7c3758adc9e9b725863314cb",
+      "record": "urn:uuid:6c328000-3e84-8215-a64a-f92d7d4009f4",
+      "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#e3513b1898164fdd30598170d6ac50f8f66e0d8a848b18981168b29cae312496",
+      "record": "urn:uuid:908ca1db-13ad-82a9-8391-2f3f3d035453",
+      "document": "ni:///sha-256;PjSmpjsg6m6RHn2fkn6Y2jtlRcq8TQbB4GAGhVWWV1Q",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-03-29T18:39:51Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#e3513b1898164fdd30598170d6ac50f8f66e0d8a848b18981168b29cae312496",
+      "record": "urn:uuid:fc7b002e-5233-8177-b19f-b7684b02507b",
+      "document": "ni:///sha-256;1NNkDAj1ax7VmzXMrvZ4e-wQvOjnNR9cNLz_fm_pLII",
+      "hospital": "Kestrel Harbor Hospital",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:c09dee09-8453-41ed-83e9-fa9a59dd1b8a"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/conditions.ttl#a51a83bd95ba0eb35a83901457378453a852b08fd8cd9c777b7b8339d41543c3",
+      "record": "urn:uuid:6000b1fe-424b-8d34-bafa-fc04b76524df",
+      "document": "ni:///sha-256;QDRkpekdC8a39WZ2FtuJ8X1d17Q1cRQImrpSSFvShSQ",
+      "hospital": "Kestrel Harbor Hospital",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:e7f94a9f-e1c1-4143-8865-0b262f6838af"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#5d4da663adc5dbdebd5c6676ad9456de57fd2ce1378f0918e500212a5c161753",
+      "record": "urn:uuid:898e106f-df80-8bb3-979a-f4f3c5884d77",
+      "document": "ni:///sha-256;Y4BiLF6eEzIIWuhf8Bg1LlIWTT1xYp5n-WqLP7qjWK4",
+      "hospital": "Northbay Clinical Laboratories",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:7d26345c-a33d-44e7-88e0-be420981eafe"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#160332c3885cd1e20a8647e8a46b7198fed77dd59b4aeb10d41b6e380524f84a",
+      "record": "urn:uuid:1b508a43-ea9a-8d7b-9798-7f41a5626eff",
+      "document": "ni:///sha-256;tTG2P5VnR59M8OJ4aNf3wBrkImrsxZ8mO0qTv7iXvi8",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:ede6de61-de24-4e4a-9f66-375483cfc471"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "record": "urn:uuid:2a2516eb-46b0-8352-9042-93639f23ae9c",
+      "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712",
+      "record": "urn:uuid:ca582a17-052b-890b-a5ad-0f2567e25670",
+      "document": "ni:///sha-256;Y4BiLF6eEzIIWuhf8Bg1LlIWTT1xYp5n-WqLP7qjWK4",
+      "hospital": "Northbay Clinical Laboratories",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:7d26345c-a33d-44e7-88e0-be420981eafe"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#385e5ffb09b34c8b29d19a3ff9f5675403e0e3e8a5f5f5e3ee145441d3c16751",
+      "record": "urn:uuid:5d05bfc9-fed1-8887-a78a-62bd0f938d7e",
+      "document": "ni:///sha-256;9A9vb7ioqrBFMhikgEJ_t7jN_ytVUXaoQ7a8eBBia4c",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-03-29T18:39:51Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/lab-results.ttl#15d0eac9e4d855f980ef5e9767b9822ccd0162a80dcc9528d8d68f75a2e4fd3d",
+      "record": "urn:uuid:89e2da27-e7d8-8643-8a3e-d4b817d3fb18",
+      "document": "ni:///sha-256;uaajzsPxTtKovhO7m0Az4GIX2nEb19Ocab3Mv5Sx-mA",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-06-14T07:12:40Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:e7fc99f4-9274-4b99-b1a6-27b1e6184686"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#0ef3bfcdbd76ec00357ba6e9381cc7a32b076cd36266f3e349356c9ceffa8ab9",
+      "record": "urn:uuid:acf3f318-ce80-8c57-b247-632d6648bafc",
+      "document": "ni:///sha-256;uceV7W1vUib_6nbQMyon-i3vQoM0LbQ6aZnaW47jqcQ",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:e90f62f5-da15-4c32-8a4f-a79a75bc7dc4"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#cb10936edbc1d90675fe6ae5bd33f1a399774b1e0f6d9a53182c2d7e4231562f",
+      "record": "urn:uuid:eb08288e-0f3c-86f1-9e2e-98c0721a59e4",
+      "document": "ni:///sha-256;tgT6mpcxmsu7GZScyv7uNZTwDhbUgJG8ZnvdhVWDKCM",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-06-14T07:12:40Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:e7fc99f4-9274-4b99-b1a6-27b1e6184686"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/medications.ttl#35b82bdc59ca4bddc15cbb5fefc661620449566ed27335bd01df6fbf3ddd58d8",
+      "record": "urn:uuid:62afa632-0672-8e62-b160-02d3a96f6c5b",
+      "document": "ni:///sha-256;AAZXQ4qJikuBjOyYT8yakeYd2jjZvhGJ4knRmhehZKo",
+      "hospital": "Kestrel Harbor Hospital",
+      "retrieved": "2025-03-29T18:39:51Z",
+      "importLabel": "Apple Health export",
+      "import": "urn:uuid:2a301040-4bb4-4e05-9339-72b9b70ae8aa"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "record": "urn:uuid:80afad1b-91cb-8766-b527-1beabf2a4158",
+      "document": "ni:///sha-256;EDbk30n5TfNXWY3iUutBGE7DB5Z1_6T2_taIKUbPfmY",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:8062d8bd-753d-417a-935a-2f9469e54c64"
+    },
+    {
+      "entry": "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical/notes-and-documents.ttl#fcb7c333e0d9e541d59f84463ba670e117eb6456da13886edf00b9c1e7261e20",
+      "record": "urn:uuid:45c4f0ee-4874-8fbf-89d3-b7d0214ae2cb",
+      "document": "ni:///sha-256;tTG2P5VnR59M8OJ4aNf3wBrkImrsxZ8mO0qTv7iXvi8",
+      "hospital": "Fernhill Family Clinic",
+      "importLabel": "C-CDA download",
+      "import": "urn:uuid:ede6de61-de24-4e4a-9f66-375483cfc471"
+    }
+  ],
+  "pod/The person this pod is about": [
+    {
+      "subject": "urn:uuid:a6a69b65-6745-4520-b1cd-fc8321062ab3",
+      "dateOfBirth": "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 1968-11-04; urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 1968-11-04; urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 1968-11-04; urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba 1968-11-04; urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 1968-11-04; urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 1968-11-04",
+      "administrativeGender": "urn:uuid:052a6e7d-382b-891b-a6f0-cc7540681817 female; urn:uuid:2ac2622d-c327-8f8b-ad3b-c818bbda69f2 female; urn:uuid:42b81298-5706-89b9-a054-bc4dfacc0753 female; urn:uuid:5d5ec9e3-66e6-8264-96ec-1cb07f9fb0ba female; urn:uuid:5f56d939-331d-8188-a8c9-498c75654753 female; urn:uuid:c51f530c-52eb-876a-9d3c-4c705e1dae23 female"
+    }
+  ]
 }

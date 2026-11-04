@@ -125,14 +125,11 @@ export function replyContract(
   template: string = REPLY_CONTRACT,
 ): string {
   const [subject] = PRONOUNS[pronoun] ?? ["they"];
-  return `Reply, and nothing else, as JSON in this form:\n\n${filled(
-    template,
-    {
-      PRONOUN: pronoun,
-      PRONOUN_SUBJECT: subject!,
-      EXAMPLE: parts.example,
-      CITE: parts.cite,
-      ABSENCE: parts.absence,
-    },
-  )}`;
+  return `Reply, and nothing else, as JSON in this form:\n\n${filled(template, {
+    PRONOUN: pronoun,
+    PRONOUN_SUBJECT: subject!,
+    EXAMPLE: parts.example,
+    CITE: parts.cite,
+    ABSENCE: parts.absence,
+  })}`;
 }

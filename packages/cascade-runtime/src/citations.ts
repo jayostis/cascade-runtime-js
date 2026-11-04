@@ -1385,7 +1385,11 @@ export function personHeld(row: Readonly<Record<string, string>>): Held[] {
       const record = MEMBER_PREFIX.exec(part)?.[1];
       if (value !== "")
         for (const kind of POD_FIELDS[column] ?? [])
-          held.push({ kind, value, ...(record === undefined ? {} : { record }) });
+          held.push({
+            kind,
+            value,
+            ...(record === undefined ? {} : { record }),
+          });
     }
   return held;
 }

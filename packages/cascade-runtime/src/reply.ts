@@ -386,7 +386,8 @@ function pointedAt(
   const sourceOf = ({ record }: Held) =>
     record === undefined ? undefined : sources.of(record);
   const named = fact.source;
-  const known = named === undefined || held.some((it) => sourceOf(it) === named);
+  const known =
+    named === undefined || held.some((it) => sourceOf(it) === named);
   const theirs =
     named === undefined || !known
       ? held

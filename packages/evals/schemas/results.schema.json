@@ -23,6 +23,41 @@
   ],
   "additionalProperties": false,
   "$defs": {
+    "filledFact": {
+      "description": "What the pod holds of the entry a fact about a pod names, as a reader is shown it.",
+      "type": "object",
+      "required": ["entry", "held", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "dateKind": {
+          "enum": ["when", "start", "end", "recorded"]
+        },
+        "held": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "commit": {
       "type": "string",
       "minLength": 1
@@ -972,6 +1007,17 @@
                   },
                   "item": {
                     "type": "integer"
+                  },
+                  "field": {
+                    "description": "For a fact about a pod: the field of the entry it names.",
+                    "type": "string"
+                  },
+                  "source": {
+                    "description": "For a fact about a pod: the source it names, by its short name in a compact read.",
+                    "type": "string"
+                  },
+                  "filled": {
+                    "$ref": "#/$defs/filledFact"
                   }
                 }
               }
@@ -1461,6 +1507,23 @@
                     },
                     "failed": {
                       "$ref": "#/$defs/count"
+                    },
+                    "byField": {
+                      "description": "For facts that name a field: how many held and failed, by that field.",
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": ["held", "failed"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "held": {
+                            "$ref": "#/$defs/count"
+                          },
+                          "failed": {
+                            "$ref": "#/$defs/count"
+                          }
+                        }
+                      }
                     }
                   }
                 },

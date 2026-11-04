@@ -160,7 +160,7 @@ test("a reply checked against downloads is held to the contract that cites a fil
   void (() => checkReply(reply, { ran }));
 });
 
-// Priya's pod (the eval case priya-natarajan), cut to the rows the checker reads of two entries, with one provenance row
+// Priya's pod (the eval case priya-natarajan), cut to the rows the checker reads of her and of two entries, with one provenance row
 // per document so its sources are named as a whole read of her pod names them: her hemoglobin A1c of 2025-09-22, which
 // came from both her clinic (S3, Fernhill Family Clinic) and the lab (S12, Northbay Clinical Laboratories), and a plan
 // of care note two records state, each with its own date.
@@ -172,6 +172,7 @@ const askPriya = async (question: string) => priya[question] ?? [];
 const POD = "pod://62c61be2-abd9-4485-b614-87ee83666495/clinical";
 const HBA1C = "Lcd05f84f";
 const NOTE = "Nfcb7c333";
+const PERSON = "urn:uuid:a6a69b65-6745-4520-b1cd-fc8321062ab3";
 
 const pointed = async (...facts: Record<string, unknown>[]) => {
   const checked = await checkReply(
@@ -228,6 +229,12 @@ test("a fact names an entry the pod holds and the field it rests on, and comes b
     held: ["2025-09-22T16:15:00Z"],
     sources: ["S3 Fernhill Family Clinic"],
   });
+  const [born] = await pointed(fact(PERSON, "date"));
+  assert.deepEqual(reasons([born!]), ["ok"], "the person, who has no entry");
+  assert.deepEqual(
+    [born!.filled?.entry, born!.filled?.date, born!.filled?.held],
+    [PERSON, "1968-11-04", ["1968-11-04"]],
+  );
 });
 
 test("a fact naming one of an entry's sources is held to what that source says", async () => {
@@ -267,11 +274,18 @@ test("a handle the pod does not hold, a field or source the entry lacks, and a q
     "says otherwise: quote new diagnosis of type 2 diabetes",
   ]);
   assert.equal(facts[0]!.filled, undefined);
-  assert.equal(facts[1]!.filled?.label, "Hemoglobin A1c/Hemoglobin.total in Blood");
+  assert.equal(
+    facts[1]!.filled?.label,
+    "Hemoglobin A1c/Hemoglobin.total in Blood",
+  );
 });
 
 /** Each place a schema uses what a provider's structured output does not take; a map of schemas by name is no schema. */
-function beyondStructuredOutput(schema: unknown, at = "", map = false): string[] {
+function beyondStructuredOutput(
+  schema: unknown,
+  at = "",
+  map = false,
+): string[] {
   if (typeof schema !== "object" || schema === null) return [];
   if (Array.isArray(schema))
     return schema.flatMap((it, i) => beyondStructuredOutput(it, `${at}/${i}`));
@@ -281,6 +295,7 @@ function beyondStructuredOutput(schema: unknown, at = "", map = false): string[]
       beyondStructuredOutput(value, `${at}/${name}`),
     );
   const found = [
+    "$schema",
     "oneOf",
     "not",
     "if",

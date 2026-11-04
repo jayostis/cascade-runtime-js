@@ -249,7 +249,9 @@ class Rewriter {
     value.split(apart).forEach((part, at) => {
       const [first = "", rest = ""] = part.split(/ (.*)/s);
       const handle = this.handles.get(first);
-      const source = first.startsWith("urn:") ? this.sourceOf(first) : undefined;
+      const source = first.startsWith("urn:")
+        ? this.sourceOf(first)
+        : undefined;
       if (source === undefined) {
         bySaid.set(`\u0000${at}`, [
           handle === undefined

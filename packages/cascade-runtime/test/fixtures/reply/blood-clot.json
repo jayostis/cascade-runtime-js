@@ -79,14 +79,8 @@
         {
           "what": "A diagnosis or scan showing a pulmonary embolism (lung blood clot) after the 8 July 2025 CT.",
           "match": {
-            "codes": [
-              "snomed:59282003"
-            ],
-            "terms": [
-              "pulmonary embolism",
-              "pulmonary embolus",
-              "lung clot"
-            ],
+            "codes": ["snomed:59282003"],
+            "terms": ["pulmonary embolism", "pulmonary embolus", "lung clot"],
             "after": "2025-07-09"
           },
           "coverage": "All of the pod's conditions, procedures, reports and documents, and lab results, from the hospital feeds dated 2024 to 2026 (last retrieved 2026-10-15).",

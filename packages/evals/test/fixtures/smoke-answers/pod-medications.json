@@ -10,15 +10,10 @@
       "facts": [
         {
           "says": "Jardiance 10 mg tablet, active, prescribed 2025-02-20",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
           },
-          "name": "Jardiance 10 mg tablet",
-          "code": "1545658",
-          "status": "active",
-          "date": "2025-02-20",
-          "dateKind": "recorded"
+          "field": "status"
         }
       ],
       "knowledge": {
@@ -34,15 +29,10 @@
       "facts": [
         {
           "says": "Atorvastatin 20 mg tablet, active, prescribed 2025-02-20",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e"
           },
-          "name": "Atorvastatin 20 mg tablet",
-          "code": "617310",
-          "status": "active",
-          "date": "2025-02-20",
-          "dateKind": "recorded"
+          "field": "status"
         }
       ]
     },
@@ -54,15 +44,10 @@
       "facts": [
         {
           "says": "Metformin 500 mg tablet, started 2022-03-01, completed, ended 2024-04-15",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/medications.ttl#be8dd2c5f410cc2d9699d179fffa3df6034a2eed4cdf2d1fce31cf50d695600b"
           },
-          "name": "Metformin 500 mg tablet",
-          "code": "861007",
-          "status": "completed",
-          "date": "2024-04-15",
-          "dateKind": "end"
+          "field": "status"
         }
       ]
     }

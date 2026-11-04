@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { numberedReply, type Reply, replyErrors } from "cascade-runtime";
+import {
+  configureTables,
+  numberedReply,
+  openPod,
+  type Reply,
+  replyErrors,
+} from "cascade-runtime";
 import { blinded, judgePackets } from "../src/judging.js";
 import { ask } from "../src/sessions.js";
 
@@ -32,7 +38,11 @@ test("a point with no facts, no absences, or neither is a valid answer, and a ju
     "pod-medications",
   ]) {
     const answer = smoke(name);
-    assert.deepEqual(replyErrors(answer), [], name);
+    assert.deepEqual(
+      replyErrors(answer, name.startsWith("pod") ? "pod" : "records"),
+      [],
+      name,
+    );
     const packet = blinded(numberedReply(answer) as Reply);
     for (const [at] of answer.items.entries())
       assert.match(packet, new RegExp(`### Item ${at + 1}. `), name);
@@ -195,6 +205,11 @@ test("an item without n is numbered by its place, an n given is kept, and two it
 test("a packet built from an answer with no n on its items shows each item by its place", async () => {
   const folder = join(temporary, "packet-numbers");
   const job = "tamsin-vale.checkup.pod.opus-5-5.r1";
+  const pods = join(temporary, "packet-numbers-pods");
+  configureTables({ checkOnOpen: false });
+  await (
+    await openPod(join(pods, "tamsin-vale"), { title: "tamsin-vale" })
+  ).close();
   await mkdir(join(folder, "answers", job), { recursive: true });
   await mkdir(join(folder, "prompts"), { recursive: true });
   await writeFile(
@@ -207,7 +222,7 @@ test("a packet built from an answer with no n on its items shows each item by it
       run: "packet-numbers",
       folder,
       config: { judges: ["claude-haiku-5-5"] },
-      cases: [{ id: "tamsin-vale" }],
+      cases: [{ id: "tamsin-vale", prepared: { pods, pod: "tamsin-vale" } }],
       jobs: [
         {
           id: job,

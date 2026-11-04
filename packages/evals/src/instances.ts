@@ -5,6 +5,8 @@ import type { Arm } from "./prompts.js";
 import type {
   ArmSummary,
   BeyondCounts,
+  CitationCheck,
+  CitationCounts,
   Grade,
   Instance,
   Job,
@@ -134,10 +136,7 @@ export function instancesOf(
           grades.filter((it) => ids.has(it.subject)),
           questions,
         ),
-        citations: {
-          held: citations.filter((it) => it.ok).length,
-          failed: citations.filter((it) => !it.ok).length,
-        },
+        citations: citationCounts(citations),
         tokens: sum((it) => it.stats?.tokens.total),
         usd: sessions.some((it) => it.stats?.cost.usd === null)
           ? null
@@ -166,4 +165,22 @@ export function instancesOf(
       },
     };
   });
+}
+
+/** How many facts held and failed, and for those that name a field, by that field. */
+export function citationCounts(
+  citations: readonly CitationCheck[],
+): CitationCounts {
+  const byField: Record<string, { held: number; failed: number }> = {};
+  for (const { field, ok } of citations)
+    if (field !== undefined) {
+      const counts = (byField[field] ??= { held: 0, failed: 0 });
+      if (ok) counts.held += 1;
+      else counts.failed += 1;
+    }
+  return {
+    held: citations.filter((it) => it.ok).length,
+    failed: citations.filter((it) => !it.ok).length,
+    ...(Object.keys(byField).length === 0 ? {} : { byField }),
+  };
 }

@@ -9,7 +9,8 @@ import type { pinnedPod } from "../src/pinned.js";
 
 const folder = await mkdtemp(join(tmpdir(), "cascade-evals-finish-"));
 process.env.CASCADE_EVALS_TRANSCRIPTS = join(folder, "transcripts");
-const { configureTables, openPod } = await import("cascade-runtime");
+const { configureTables, openPod, REPLY_QUESTIONS } =
+  await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
 const { askerOf, finish } = await import("../src/record.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
@@ -261,8 +262,15 @@ test("a pinned run's checks ask its runtime every question they read", async () 
   );
   assert.deepEqual(
     [...asked].sort(),
-    ["entry/What it shows", "pod/The person this pod is about"],
+    [...REPLY_QUESTIONS].sort(),
     "the list handed to the pinned call",
   );
+  for (const question of [
+    "entry/What it shows",
+    "pod/The person this pod is about",
+    "entry/Where it came from",
+    "pod/My lab results",
+  ])
+    assert.ok(asked.includes(question), question);
   assert.deepEqual(await reader.ask("entry/What it shows"), [{ entry: "x" }]);
 });
