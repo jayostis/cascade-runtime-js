@@ -140,8 +140,9 @@ npm install
 npm run build:example alex-rivera        # the pod, then the site
 npm run build:example-pod alex-rivera    # generates build/alex-rivera/pod from the story
 npm run build:example-site alex-rivera   # generates build/alex-rivera/site from that pod
-npm run build:pages                      # the whole Pages tree in build/pages: every kit's pod and site, the newcomer's page, the eval report
+npm run build:pages                      # the whole Pages tree in build/pages: every kit's pod and site, the newcomer's page, the eval report, the spec and the conformance results
 npm run build:pages -- --no-kits         # the same without what is made of the kits, which is most of the time
+npm run build:pages -- --report earl.ttl # with that conformance report, its table.md beside it, in spec/ and conformance/; without one every result reads not run
 npm run build:spec                       # every rule beside its note and its result in build/conformance/earl.nt, in build/spec
 ```
 

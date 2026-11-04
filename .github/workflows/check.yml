@@ -68,7 +68,7 @@ jobs:
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run typecheck
       # Every rule beside the note that ruled it and this run's result; its warnings fail nothing yet. Kept as an
-      # artifact, published nowhere.
+      # artifact; the pages on main show the `conformance` job's run, not this one.
       - name: The spec's pages
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         continue-on-error: true
@@ -323,11 +323,68 @@ jobs:
             *) [ "${STARTER}" = success ] ;;
           esac
 
+  # The conformance run of main that the Pages tree shows. `tests and conformance` is skipped on a push and its report is
+  # not kept for the site, so this job runs the start action alone, on a push and nightly, and keeps the report with the
+  # table the check wrote beside it under the artifact name `conformance`. The tests, the lint and the types are not its
+  # business, and `build-pages` does not wait for them.
+  conformance:
+    name: conformance
+    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      # Node 24 as the tests job runs the same check.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      - run: npm ci
+      # The Bridge's build, picked with the job's token and kept for the conformance command, which holds none.
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - id: start
+        uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      # The start action names the report it wrote and keeps its table.md two folders up. A run that wrote none keeps
+      # nothing, and the pages show every result as not run.
+      - name: Keep the report and its table
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          REPORT: ${{ steps.start.outputs.report }}
+        run: |
+          set -euo pipefail
+          kept="$RUNNER_TEMP/conformance"
+          mkdir -p "$kept"
+          if [ -z "$REPORT" ] || [ ! -f "$REPORT" ]; then
+            echo "::warning::the start step named no conformance report: '$REPORT'"
+            exit 0
+          fi
+          cp "$REPORT" "$kept/earl.ttl"
+          table="$(dirname "$(dirname "$REPORT")")/table.md"
+          if [ -f "$table" ]; then cp "$table" "$kept/table.md"; fi
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance
+          path: ${{ runner.temp }}/conformance
+          if-no-files-found: ignore
+
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch. On a push to main, and
-  # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night.
+  # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night. It waits for the conformance
+  # run's report and not for its verdict: a red run still deploys, with its failures on the pages, and a run that kept no
+  # report deploys with every result shown as not run.
   build-pages:
     name: build-pages
-    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
+    needs: conformance
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
@@ -355,8 +412,15 @@ jobs:
         run: npm run build:package
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # Nothing to download when the conformance run kept no report, which is no failure.
+      - name: The conformance run's report
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: conformance
+          path: build/conformance
       - name: Build the Pages tree
-        run: npm run build:pages
+        run: npm run build:pages -- --report build/conformance/earl.ttl
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Drop half-written row files before they are saved
