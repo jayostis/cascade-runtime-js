@@ -16,6 +16,9 @@ export const evalsSection: Section<PagesContext> = {
   path: "evals/index.html",
   title: "Evals",
   kind: "explore",
+  about:
+    "recorded runs of a model answering a person's questions from a pod, against reading her downloads in full.",
+  source: "packages/evals/history in cascade-runtime-js",
   async build({ root }) {
     const { buildSite } = (await import(
       pathToFileURL(join(root, "packages", "evals", "dist", "src", "site.js"))

@@ -1,0 +1,267 @@
+import { FRONT_PAGE, PART_TITLES } from "./front-page.js";
+import { type Html, markup } from "./html.js";
+import { renderMarkdown } from "./markdown.js";
+import { isLocal, pageOf, type Row, type Walk } from "./sections.js";
+import { STYLESHEET_FILE } from "./site.js";
+
+export const LLMS_FILE = "llms.txt";
+export const INDEX_FILE = "index.json";
+/** The package's guide, served as it is at the root of the hub. */
+export const AGENTS_FILE = "AGENTS.md";
+/** The conformance section's machine-readable results, which `llms.txt` points an agent at when the tree holds them. */
+const RESULTS_FILE = "conformance/results.json";
+
+const API_FOLDER = "api/";
+export const API_PAGE = `${API_FOLDER}index.html`;
+export const PACKAGE_PAGE = `${API_FOLDER}package.html`;
+
+const SUMMARY =
+  "A pod holds one person's health records as files, and an app reads and writes it through `cascade-runtime`, the reference runtime. These pages are built from the repositories on every merge: how to build an app, the example pods, and what the vocabulary and the runtime promise.";
+
+const encoder = new TextEncoder();
+
+const ENTITIES: Readonly<Record<string, string>> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+function decoded(text: string): string {
+  return text.replace(
+    /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi,
+    (whole, decimal?: string, hex?: string, name?: string) => {
+      if (name !== undefined) return ENTITIES[name.toLowerCase()] ?? whole;
+      const code = Number.parseInt(decimal ?? hex ?? "", decimal ? 10 : 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    },
+  );
+}
+
+const basename = (path: string): string =>
+  path.slice(path.lastIndexOf("/") + 1);
+
+const DATA = /\.(?:ttl|nt|nq|trig|jsonld|json|rdf)$/i;
+const DOCUMENT = /\.(?:md|txt)$/i;
+
+/** What a file is: a page, data (RDF and JSON), a document (Markdown and text), or any other file. */
+function kindOf(path: string): "page" | "data" | "document" | "file" {
+  if (/\.html?$/i.test(path)) return "page";
+  if (DATA.test(path)) return "data";
+  if (DOCUMENT.test(path)) return "document";
+  return "file";
+}
+
+/** A page's own title, a Markdown file's first heading; any other file is titled by its name. */
+function titleOf(path: string, bytes: Uint8Array | undefined): string {
+  const body = (): string => new TextDecoder().decode(bytes);
+  const found = /\.html?$/i.test(path)
+    ? decoded(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(body())?.[1] ?? "")
+    : /\.md$/i.test(path)
+      ? (/^# +(.+)$/m.exec(body())?.[1] ?? "")
+      : "";
+  const title = found.replace(/\s+/g, " ").trim();
+  return title === "" ? basename(path) : title;
+}
+
+/** One file of the hub, as `index.json` lists it. */
+export interface Listed {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: "page" | "data" | "document" | "file";
+  readonly source: string;
+}
+
+const link = (label: string, href: string): string =>
+  `[${label.replace(/[[\]\\]/g, "\\$&")}](${href.replace(/[\s()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`)})`;
+
+const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+function item(label: string, href: string, about?: string): string {
+  return `- ${link(label, href)}${about === undefined || oneLine(about) === "" ? "" : `: ${oneLine(about)}`}`;
+}
+
+/**
+ * `llms.txt` and `index.json`, written from the tree as it stands once every section and the front page are in it, so
+ * a page another step adds is indexed with no change here. `llms.txt` is in the llmstxt.org form: it lists each
+ * section's rows, which name the kinds of page and each kit's root, never every page; `index.json` lists every file
+ * but the stylesheets, each with its title, kind and what it is built from. Links are relative to the file, because the
+ * hub does not depend on the address it is served at.
+ */
+export async function agentFiles<Ctx>({
+  tree,
+  sections,
+}: Walk<Ctx>): Promise<ReadonlyMap<string, Uint8Array>> {
+  const title = titleOf(FRONT_PAGE, tree.get(FRONT_PAGE));
+  const sourceOf = new Map<string, string>([
+    [FRONT_PAGE, "the sections' rows"],
+    [LLMS_FILE, "the tree the build wrote"],
+    [INDEX_FILE, "the tree the build wrote"],
+  ]);
+  for (const { section, paths } of sections)
+    for (const path of paths)
+      sourceOf.set(path, section.source ?? section.title);
+
+  const files: Listed[] = [...new Set([...tree.keys(), LLMS_FILE, INDEX_FILE])]
+    .filter((path) => !/\.css$/i.test(path))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((path) => ({
+      path,
+      title: titleOf(path, tree.get(path)),
+      kind: kindOf(path),
+      source: sourceOf.get(path) ?? "the build",
+    }));
+
+  const listed = new Set<string>([LLMS_FILE]);
+  const once = (href: string): boolean => {
+    const target = isLocal(href) ? pageOf(href) : href;
+    if (listed.has(target)) return false;
+    listed.add(target);
+    return true;
+  };
+
+  const forAgents = [
+    ...(tree.has(AGENTS_FILE) && once(AGENTS_FILE)
+      ? [
+          item(
+            AGENTS_FILE,
+            AGENTS_FILE,
+            "the guide to building an app on a pod, with every call of `cascade-runtime` and code for each",
+          ),
+        ]
+      : []),
+    ...(once(INDEX_FILE)
+      ? [
+          item(
+            INDEX_FILE,
+            INDEX_FILE,
+            "every page and file of this site, each with its title, kind and what it is built from",
+          ),
+        ]
+      : []),
+    ...(tree.has(RESULTS_FILE) && once(RESULTS_FILE)
+      ? [
+          item(
+            "Conformance results as JSON",
+            RESULTS_FILE,
+            "the latest run on main, by feature and rule. `at` is when this site was built, not when the run was made; the vocabulary the run used is the `cascade-vocabulary` entry of `ranWith`, while `vocabulary` is the one these pages were read from",
+          ),
+        ]
+      : []),
+  ];
+
+  const kinds = new Map<string, string[]>();
+  for (const { section, rows } of sections) {
+    const lines = kinds.get(section.kind) ?? [];
+    const named = rows.some(({ href }) => pageOf(href) === section.path);
+    const own: readonly Row[] =
+      named || section.about === undefined
+        ? []
+        : [{ href: section.path, label: section.title, about: section.about }];
+    for (const { href, label, about } of [...rows, ...own])
+      if (once(href)) lines.push(item(label, href, about));
+    kinds.set(section.kind, lines);
+  }
+  const place = (kind: string): number => {
+    const at = Object.keys(PART_TITLES).indexOf(kind);
+    return at === -1 ? Object.keys(PART_TITLES).length : at;
+  };
+  const parts = [...kinds.keys()].sort((a, b) => place(a) - place(b));
+
+  const llms = [
+    `# ${title}`,
+    "",
+    `> ${SUMMARY}`,
+    "",
+    "Links here are relative to the address of this file. Start with the guide, then read the index to find anything else.",
+    "",
+    ...(forAgents.length === 0
+      ? []
+      : ["## For an agent", "", ...forAgents, ""]),
+    ...parts.flatMap((kind) => [
+      `## ${(PART_TITLES as Readonly<Record<string, string>>)[kind] ?? kind}`,
+      "",
+      ...(kinds.get(kind) ?? []),
+      "",
+    ]),
+  ].join("\n");
+
+  return new Map([
+    [LLMS_FILE, encoder.encode(llms)],
+    [
+      INDEX_FILE,
+      encoder.encode(`${JSON.stringify({ title, files }, null, 2)}\n`),
+    ],
+  ]);
+}
+
+const bar = (here: "guide" | "package") => markup`<nav>
+<a href="../${FRONT_PAGE}">Cascade pods</a>
+${here === "guide" ? markup`<a href="package.html">The package</a>` : markup`<a href="index.html">The guide</a>`}
+<a href="../${AGENTS_FILE}">${AGENTS_FILE}</a>
+</nav>
+`;
+
+function documentPage(
+  title: string,
+  here: "guide" | "package",
+  lead: Html,
+  source: string,
+): string {
+  return markup`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<link rel="stylesheet" href="../${STYLESHEET_FILE}">
+</head>
+<body>
+${bar(here)}<main>
+${lead}<article class="document">
+${renderMarkdown(source)}</article>
+</main>
+</body>
+</html>
+`.text;
+}
+
+/** The README's marker where the package's install line goes, which a page has no install line for. */
+const INSTALL_MARKER = /^<!-- INSTALL -->\r?\n(?:\r?\n)?/m;
+
+/**
+ * The API page and the package page: the guide an agent reads and the package's README, rendered as they are. The guide
+ * is `AGENTS.md` at the hub's root byte for byte; the page is that same text as a page.
+ */
+export function apiPages(
+  guide: string,
+  readme: string,
+): ReadonlyMap<string, Uint8Array> {
+  return new Map([
+    [
+      API_PAGE,
+      encoder.encode(
+        documentPage(
+          "The cascade-runtime API: building an app on a Cascade pod",
+          "guide",
+          markup`<p class="about">This page is the guide a coding agent reads, <a href="../${AGENTS_FILE}">${AGENTS_FILE}</a>, as a page. What the package is and holds: <a href="package.html">the package</a>.</p>
+`,
+          guide,
+        ),
+      ),
+    ],
+    [
+      PACKAGE_PAGE,
+      encoder.encode(
+        documentPage(
+          "cascade-runtime, the package",
+          "package",
+          markup`<p class="about">The calls are on <a href="index.html">the guide</a>.</p>
+`,
+          readme.replace(INSTALL_MARKER, ""),
+        ),
+      ),
+    ],
+  ]);
+}

@@ -7,6 +7,8 @@ export const startSection: Section<PagesContext> = {
   path: START_PAGE,
   title: "Quick start",
   kind: "build",
+  source:
+    "cascade-starter-kit's newest build and cascade-vocabulary's pod layout",
   needsKits: true,
   async build(ctx) {
     const start = await ctx.start();

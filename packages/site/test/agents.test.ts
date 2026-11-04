@@ -13,6 +13,7 @@ import {
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { apiSection } from "../src/node/hub/api.js";
+import { FINISHERS, SECTIONS } from "../src/node/hub/index.js";
 import { trySection } from "../src/hub/try.js";
 import { buildTree, type Section } from "../src/sections.js";
 import { STYLESHEET_FILE } from "../src/site.js";
@@ -33,7 +34,9 @@ const fileOf = (link: string) => {
 };
 
 const page = (title: string, body = "") =>
-  text(`<!DOCTYPE html><html><head><title>${title}</title></head><body>${body}</body></html>`);
+  text(
+    `<!DOCTYPE html><html><head><title>${title}</title></head><body>${body}</body></html>`,
+  );
 
 /** A section that writes the files it is given and lists the rows it is given. */
 function made(
@@ -69,6 +72,11 @@ test("after the build, llms.txt, index.json and AGENTS.md sit at the root, every
     await readFile(GUIDE),
   );
 
+  assert.ok(SECTIONS.includes(apiSection) && FINISHERS.includes(agentFiles));
+  const onFront = readPage(read(tree, FRONT_PAGE)).hrefs;
+  for (const link of ["api/", AGENTS_FILE, LLMS_FILE, INDEX_FILE])
+    assert.ok(onFront.includes(link), `the front page links ${link}`);
+
   const llms = read(tree, LLMS_FILE);
   for (const link of links(llms).filter(local))
     assert.ok(tree.has(fileOf(link)), `llms.txt links ${link}`);
@@ -87,21 +95,33 @@ test("after the build, llms.txt, index.json and AGENTS.md sit at the root, every
 test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sections of links with a line each, taken from the sections' rows, with no row twice and nothing of the tree's pages listed one by one", async () => {
   const { tree } = await buildTree({
     sections: [
-      made("a/index.html", "Section A", { "a/index.html": page("A") }, {
-        kind: "build",
-        about: "what A is",
-        rows: async () => [
-          { href: "a/", label: "Open A", about: "its first line" },
-          { href: "a/index.html", label: "Open A again" },
-          { href: "https://example.org/x", label: "Elsewhere" },
-          { href: "llms.txt", label: "The llms.txt itself" },
-        ],
-      }),
-      made("b/index.html", "Section B", {
-        "b/index.html": page("B"),
-        "b/one.html": page("One"),
-        "b/two.html": page("Two"),
-      }, { about: "what B is" }),
+      made(
+        "a/index.html",
+        "Section A",
+        { "a/index.html": page("A"), "a/one (two).html": page("x") },
+        {
+          kind: "build",
+          about: "what A is",
+          rows: async () => [
+            { href: "a/", label: "Open A", about: "its first line" },
+            { href: "a/index.html", label: "Open A again" },
+            { href: "https://example.org/x", label: "Elsewhere" },
+            { href: "llms.txt", label: "The llms.txt itself" },
+            { href: "a/one (two).html", label: "Odd [name]" },
+          ],
+        },
+      ),
+      made("c/index.html", "Section C", { "c/index.html": page("C") }),
+      made(
+        "b/index.html",
+        "Section B",
+        {
+          "b/index.html": page("B"),
+          "b/one.html": page("One"),
+          "b/two.html": page("Two"),
+        },
+        { about: "what B is" },
+      ),
     ],
     ctx: {},
     front,
@@ -113,7 +133,7 @@ test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sectio
   assert.match(lines[2] ?? "", /^> \S/);
   assert.ok(lines.some((line) => /^## \S/.test(line)));
   for (const line of lines.filter((line) => line.startsWith("- ")))
-    assert.match(line, /^- \[[^\]]+\]\([^)\s]+\)(: \S.*)?$/);
+    assert.match(line, /^- \[.+\]\([^)\s]+\)(: \S.*)?$/);
   assert.ok(llms.includes("- [Open A](a/): its first line"));
   assert.ok(!llms.includes("Open A again"), "a/ and a/index.html are one row");
   assert.ok(llms.includes("(https://example.org/x)"));
@@ -122,21 +142,34 @@ test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sectio
     llms.includes("- [Section B](b/index.html): what B is"),
     "a section none of whose rows names its page is listed by its title and what it is",
   );
-  assert.ok(!llms.includes("b/one.html"), "a section's other pages are not listed");
+  assert.ok(
+    !llms.includes("b/one.html"),
+    "a section's other pages are not listed",
+  );
+  assert.ok(
+    !llms.includes("Section C"),
+    "a section that says nothing is not listed",
+  );
+  assert.ok(llms.includes("- [Odd \\[name\\]](a/one%20%28two%29.html)"));
   assert.equal(llms.split("\n- [").length - 1, 5);
 });
 
 test("index.json gives each page its title, kind and source, titles decoded, and a section's source is what it says it is built from or else its title", async () => {
   const { tree } = await buildTree({
     sections: [
-      made("a/index.html", "Section A", {
-        "a/index.html": page("Terms &amp; &lt;things&gt; &#39;x&#39;"),
-        "a/data.ttl": text("<a> <b> <c> ."),
-        "a/notes.md": text("# Notes"),
-        "a/table.json": text("{}"),
-        "a/blob.bin": new Uint8Array([1, 2, 3]),
-        "a/style.css": text("body {}"),
-      }, { source: "the A repository" }),
+      made(
+        "a/index.html",
+        "Section A",
+        {
+          "a/index.html": page("Terms &amp; &lt;things&gt; &#39;x&#39;"),
+          "a/data.ttl": text("<a> <b> <c> ."),
+          "a/notes.md": text("# Notes"),
+          "a/table.json": text("{}"),
+          "a/blob.bin": new Uint8Array([1, 2, 3]),
+          "a/style.css": text("body {}"),
+        },
+        { source: "the A repository" },
+      ),
       made("b/index.html", "Section B", { "b/index.html": page("B") }),
     ],
     ctx: {},
@@ -160,7 +193,7 @@ test("index.json gives each page its title, kind and source, titles decoded, and
     ]),
     [
       ["data", "data.ttl"],
-      ["document", "notes.md"],
+      ["document", "Notes"],
       ["data", "table.json"],
       ["file", "blob.bin"],
     ],
@@ -202,7 +235,9 @@ test("llms.txt points an agent at the guide, the index and the conformance resul
   });
   const llms = read(tree, LLMS_FILE);
   assert.ok(llms.includes("(AGENTS.md)"));
-  const results = llms.split("\n").find((line) => line.includes("results.json"));
+  const results = llms
+    .split("\n")
+    .find((line) => line.includes("results.json"));
   assert.match(results ?? "", /^- \[[^\]]+\]\(conformance\/results\.json\): /);
   assert.match(llms, /`at`[^\n]*built|built[^\n]*`at`/);
   assert.match(llms, /`ranWith`/);
@@ -223,17 +258,24 @@ test("a build writes the same llms.txt and index.json twice", async () => {
 
 test("the API page is the guide and the package README as pages: openPod and every call, code kept as code, nothing of the README's install marker, and every link resolving in the tree", async () => {
   const { tree } = await buildTree({
-    sections: [made("start.html", "Quick start", { "start.html": page("Start") }), apiSection],
+    sections: [
+      made("start.html", "Quick start", { "start.html": page("Start") }),
+      apiSection,
+    ],
     ctx: { root: ROOT } as PagesContext,
     front,
+    finishers: [agentFiles],
   });
   assert.equal(apiSection.path, "api/index.html");
   const guide = await readFile(GUIDE, "utf8");
   const api = readPage(read(tree, "api/index.html"));
   assert.equal(api.h1, "Building an app on a Cascade pod");
-  const headings = [...guide.matchAll(/^## (.+)$/gm)].map(([, heading]) => heading ?? "");
+  const headings = [...guide.matchAll(/^## (.+)$/gm)].map(
+    ([, heading]) => heading ?? "",
+  );
   assert.ok(headings.length > 5);
-  for (const heading of headings) assert.ok(api.said.includes(heading), heading);
+  for (const heading of headings)
+    assert.ok(api.said.includes(heading), heading);
   assert.ok(api.code.some((block) => block.includes("openPod(")));
   assert.ok(api.hrefs.includes("../AGENTS.md"));
   assert.ok(api.hrefs.includes("package.html"));

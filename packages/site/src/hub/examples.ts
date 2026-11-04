@@ -15,6 +15,8 @@ export const examplesSection: Section<PagesContext> = {
   path: EXAMPLES_PAGE,
   title: "Example pods",
   kind: "explore",
+  source:
+    "cascade-vocabulary's conformance kits, replayed into pods by cascade-runtime-js",
   needsKits: true,
   async build(ctx) {
     const examples = await ctx.examples();

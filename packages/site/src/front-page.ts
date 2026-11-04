@@ -1,9 +1,15 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
 import { type Content, markup } from "./html.js";
-import type { Row, Rows } from "./sections.js";
+import type { Kind, Row, Rows } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { COPY } from "./terms.js";
+
+/** The heading of each part of the front page, which `llms.txt` groups its links under too. */
+export const PART_TITLES: Readonly<Record<Kind, string>> = {
+  build: "Build an app",
+  explore: "Explore a pod",
+};
 
 export const FRONT_PAGE = "index.html";
 export const START_PAGE = "start.html";
@@ -126,9 +132,9 @@ function frontPage(kinds: readonly string[], rows: Rows): string {
 <h1>Cascade pods</h1>
 <p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
 <code>cascade-runtime</code>.</p>
-<h2 class="part">Build an app</h2>
+<h2 class="part">${PART_TITLES.build}</h2>
 <p class="prose">One command makes a working app on a pod, and a coding agent builds your idea on it.</p>
-${rowList(rows.get("build"))}<h2 class="part">Explore a pod</h2>
+${rowList(rows.get("build"))}<h2 class="part">${PART_TITLES.explore}</h2>
 <p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
 question that reads it is a SPARQL query.</p>
 ${rowList(rows.get("explore"))}<h3>What a pod holds today</h3>

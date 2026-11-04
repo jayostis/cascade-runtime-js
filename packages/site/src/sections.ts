@@ -21,6 +21,10 @@ export interface Section<Ctx> {
   readonly path: string;
   readonly title: string;
   readonly kind: Kind;
+  /** What the section is, in a line; `llms.txt` lists the entry page with it when no row of the section names that page. */
+  readonly about?: string;
+  /** What its files are built from, as `index.json` says; the section's title when none. */
+  readonly source?: string;
   /** Left out of a build that skips the kits, because it is made of them. */
   readonly needsKits?: boolean;
   /** Every file of the section, by path from the tree's root. */
@@ -65,10 +69,12 @@ export interface BuildOptions<Ctx> {
   readonly skip?: (section: Section<Ctx>) => boolean;
 }
 
-const LOCAL = /^(?![a-z][a-z0-9+.-]*:|\/\/|#)/i;
+/** Whether a link stays inside the tree. */
+export const isLocal = (link: string): boolean =>
+  /^(?![a-z][a-z0-9+.-]*:|\/\/|#)/i.test(link);
 
 /** The file a link in the tree reaches: a folder's is its index. */
-function pageOf(link: string): string {
+export function pageOf(link: string): string {
   const path = link.replace(/[?#].*$/, "");
   return path === "" || path.endsWith("/") ? `${path}index.html` : path;
 }
@@ -126,7 +132,7 @@ export async function buildTree<Ctx>({
   for (const { section, rows: listed } of built)
     for (const { href, also } of listed)
       for (const link of also === undefined ? [href] : [href, also.href])
-        if (LOCAL.test(link) && !tree.has(pageOf(link)))
+        if (isLocal(link) && !tree.has(pageOf(link)))
           throw new Error(
             `the section ${section.title} has a row that links ${link}, which nothing writes`,
           );

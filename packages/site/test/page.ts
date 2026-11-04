@@ -88,7 +88,7 @@ export function readPage(markup: string): Page {
   return {
     h1: first(/<h1>([\s\S]*?)<\/h1>/, markup),
     said: said(markup),
-    code: all(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g, markup),
+    code: all(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: all(/href="([^"]*)"/g, markup),
     ids: new Set(all(/\sid="([^"]*)"/g, markup)),
     blocks: markup

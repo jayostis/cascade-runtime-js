@@ -34,6 +34,8 @@ export const specSection: Section<SpecContext> = {
   path: `${SPEC_FOLDER}index.html`,
   title: "The runtime's rules and their results",
   kind: "explore",
+  source:
+    "cascade-vocabulary's features and decision notes, and the latest conformance run on main",
   async build(ctx) {
     const { files: vocabulary, builtFrom, at } = await ctx.vocabulary();
     const { report, earl, table } = await ctx.report();

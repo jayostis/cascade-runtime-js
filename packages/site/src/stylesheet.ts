@@ -37,6 +37,13 @@ th { background: var(--panel); font: 600 .85rem/1.4 ui-monospace, SFMono-Regular
 td code { color: var(--quiet); font-size: .8rem; }
 details { margin: .5rem 0 0; }
 summary { cursor: pointer; color: var(--link); }
+.document { max-width: 52rem; }
+.document h1 { margin-top: 1rem; }
+.document h2 { margin: 2.25rem 0 .5rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+.document h3 { margin: 1.5rem 0 .25rem; }
+.document pre { background: var(--panel); padding: .75rem; overflow-x: auto; border-radius: 4px; }
+.document :not(pre) > code { background: var(--panel); padding: 0 .2rem; border-radius: 3px; }
+.document li { margin: .15rem 0; }
 details pre { background: var(--panel); padding: .75rem; overflow-x: auto; border-radius: 4px; }
 @media (max-width: 40rem) {
   .layout { grid-template-columns: 1fr; }
