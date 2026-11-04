@@ -72,14 +72,20 @@ export {
   type CheckedReply,
   checkReply,
   type CitedRecord,
+  type FactField,
+  type FilledFact,
   type PodAsker,
   podEntryNamed,
   podEntryRows,
   podPersonRows,
   POD_ENTRY_QUESTION,
   POD_PERSON_QUESTION,
+  type PodReplyFact,
+  pointsAtEntry,
+  type RecordsReplyFact,
   type Reply,
   type ReplyChecking,
+  type ReplyContract,
   type ReplyFact,
   REPLY_QUESTIONS,
   numberedReply,
@@ -89,12 +95,17 @@ export {
   filled,
   podReplyParts,
   PRONOUNS,
+  RECORDS_REPLY_CONTRACT,
   REPLY_CONTRACT,
   replyContract,
   replyExample,
   type ReplyParts,
 } from "./reply-prompt.js";
-export { replySchema } from "./reply-schema.js";
+export {
+  FACT_FIELDS,
+  recordsReplySchema,
+  replySchema,
+} from "./reply-schema.js";
 export { sixWords, typedWords } from "./six-words.js";
 export { codeStems, type CodeStems, terms, type Terms } from "./terms.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";

@@ -234,7 +234,7 @@ test("a fact naming one of an entry's sources is held to what that source says",
   const facts = await pointed(
     fact(NOTE, "date"),
     fact(NOTE, "date", { source: "S6" }),
-    fact(NOTE, "date", { source: "S5" }),
+    fact(NOTE, "date", { source: "S3" }),
   );
   assert.deepEqual(reasons(facts), ["ok", "ok", "ok"]);
   assert.deepEqual(
