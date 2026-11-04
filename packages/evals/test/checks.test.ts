@@ -125,7 +125,9 @@ test("a reused job answered in another checkout is checked with the files and co
 });
 
 test("a read of another case's downloads in that checkout is still a violation", async () => {
-  const reused = await checkedRecords(recordsJob(`first/${id}`, "priya-natarajan"));
+  const reused = await checkedRecords(
+    recordsJob(`first/${id}`, "priya-natarajan"),
+  );
   assert.equal(reused.discipline.violations.length, 1);
   assert.deepEqual(reused.read, []);
 });

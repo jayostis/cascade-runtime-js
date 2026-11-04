@@ -137,6 +137,55 @@ export function isPodCommand(
 const pathOf = (use: ToolUse) =>
   typeof use.input.file_path === "string" ? use.input.file_path : "";
 
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A session's tool uses with the paths of the checkout it ran in read as this one's: a reused job, or one recorded
+ * from another worktree, names that checkout's downloads, runs folder and `cli.js`, which are the same files here.
+ * The checkout is the one the first harness path names; a session that names two is held to the first.
+ */
+function inThisCheckout(
+  uses: readonly ToolUse[],
+  job: Job,
+  folder: string,
+  prepared: Prepared,
+): readonly ToolUse[] {
+  let origin: string | undefined;
+  for (const use of uses) {
+    for (const value of Object.values(use.input)) {
+      if (typeof value !== "string") continue;
+      origin ??=
+        /(?:[A-Za-z]:)?[\\/][^"'\r\n]*?[\\/]packages[\\/]evals(?=[\\/](?:work|runs|dist)[\\/])/i.exec(
+          value,
+        )?.[0];
+    }
+  }
+  if (origin === undefined) return uses;
+  const at = origin
+    .split(/[\\/]+/)
+    .map(escaped)
+    .join("[\\\\/]+");
+  const downloads = new RegExp(
+    `${at}[\\\\/]work[\\\\/]${escaped(job.case ?? "")}[\\\\/]downloads(?=[\\\\/]|$)`,
+    "gi",
+  );
+  const runs = new RegExp(`${at}[\\\\/]runs[\\\\/]`, "gi");
+  const cli = new RegExp(`${at}[\\\\/]dist[\\\\/]src[\\\\/]cli\\.js`, "gi");
+  return uses.map((use) => ({
+    ...use,
+    input: Object.fromEntries(
+      Object.entries(use.input).map(([key, value]) => {
+        if (typeof value !== "string") return [key, value];
+        const here = value
+          .replace(downloads, () => prepared.downloads)
+          .replace(runs, () => `${dirname(folder)}/`)
+          .replace(cli, () => CLI);
+        return [key, key === "file_path" ? here.replaceAll("\\", "/") : here];
+      }),
+    ),
+  }));
+}
+
 /** The case's files a records-arm job read whole: every line within a Read's range. */
 async function readWhole(
   uses: readonly ToolUse[],
@@ -276,7 +325,7 @@ export async function checkAnswer(options: {
     (it) => it.question === options.question,
   );
   const key = { ...options.key, items };
-  const uses = job.toolUses ?? [];
+  const uses = inThisCheckout(job.toolUses ?? [], job, folder, prepared);
   const violations = subjectViolations(
     job,
     uses,
