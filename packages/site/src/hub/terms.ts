@@ -8,7 +8,7 @@ export const termsSection: Section<PagesContext> = {
   title: "Terms",
   kind: "build",
   async build(ctx) {
-    const page = await termReference(await ctx.vocabulary());
+    const page = await termReference((await ctx.vocabulary()).files);
     return new Map([[TERMS_PAGE, new TextEncoder().encode(page)]]);
   },
   async rows() {

@@ -209,7 +209,7 @@ test("the term reference is a section of the hub, and the front page links it", 
   const ctx = {
     root: "",
     log: () => undefined,
-    vocabulary: async () => files,
+    vocabulary: async () => ({ files, builtFrom: [], at: "" }),
   } as unknown as PagesContext;
   const { tree } = await buildTree({
     sections: [termsSection],
