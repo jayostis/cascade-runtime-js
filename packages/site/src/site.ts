@@ -3,6 +3,7 @@ import {
   type CodeSystem,
   DERIVED,
   documentName,
+  featuresOf,
   type Files,
   iri,
   type Layout,
@@ -12,6 +13,7 @@ import {
   podDataset,
   questions,
   readText,
+  readWrittenFeature,
   type StoreFactory,
   tableTerms,
   type Term,
@@ -22,7 +24,9 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import { Answer } from "./answer.js";
+import { addressesOf } from "./links.js";
 import { pages } from "./pages.js";
+import { numberOf } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { CALLED, COPY, STATED, terms } from "./terms.js";
 
@@ -45,6 +49,12 @@ export interface SiteOptions {
   readonly at: string;
   /** The command a reader runs, from the runtime's root, to ask the pod a question, less the question. */
   readonly ask: string;
+  /** The vocabulary's files on GitHub at the commit the site is built from, `…/blob/<commit>/`: a query links its file there. */
+  readonly blob?: string;
+  /** The term reference's address from the site's root, before the `#`; without one, a term links nowhere. */
+  readonly terms?: string;
+  /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
+  readonly spec?: string;
 }
 
 /** A step of the build and what it added. */
@@ -59,12 +69,56 @@ export interface BuiltFile {
   readonly statements: number;
 }
 
-async function pageOf(thing: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(thing),
-  );
-  return `${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")}.html`;
+/** A rule of the spec, by its feature file and its number. */
+export interface SpecRule {
+  readonly path: string;
+  readonly number: string;
+  readonly name: string;
+}
+
+/** The folder a kind's pages are in, where it is not the kind with an s. */
+const FOLDERS: Readonly<Record<string, string>> = { entry: "entries" };
+const VIEWS_FOLDER = "views";
+const folderOf = (kind: string): string => FOLDERS[kind] ?? `${kind}s`;
+
+/** Each thing's name, the last label the question that names everything gives it. */
+function namesOf(called: Answer | undefined): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const row of called?.rows ?? []) {
+    const [thing, label] = [row.get("thing"), row.get("label")];
+    if (thing !== undefined && label !== undefined)
+      names.set(thing.value, label.value);
+  }
+  return names;
+}
+
+/** Each view's rules: those of the runtime's features whose text names the view's file or the query that writes it. */
+export async function viewRules(
+  vocabulary: Files,
+  views: readonly { readonly iri: string; readonly names: readonly string[] }[],
+): Promise<Map<string, SpecRule[]>> {
+  const found = new Map<string, SpecRule[]>();
+  const paths = (await featuresOf(vocabulary))
+    .filter((path) => path.startsWith("runtime/"))
+    .sort();
+  for (const path of paths) {
+    for (const rule of (await readWrittenFeature(vocabulary, path)).rules) {
+      const number = numberOf(rule);
+      if (number === undefined) continue;
+      const text = [
+        rule.name,
+        rule.description,
+        ...rule.examples.map(({ text }) => text),
+      ].join("\n");
+      for (const { iri, names } of views)
+        if (names.some((name) => text.includes(name)))
+          found.set(iri, [
+            ...(found.get(iri) ?? []),
+            { path, number, name: rule.name },
+          ]);
+    }
+  }
+  return found;
 }
 
 /** What every page of the site reads: the pod built under each lens, its questions' answers, and where each thing is. */
@@ -94,6 +148,8 @@ export class Site {
     storedBytes: ReadonlyMap<string, string>,
     built: ReadonlyMap<string, BuiltFile>,
     views: readonly Term[],
+    /** The rules of the spec that name each view, by its IRI; none without the spec's folder. */
+    readonly rules: ReadonlyMap<string, readonly SpecRule[]>,
   ) {
     this.questions = answers.get(options.lens) ?? new Map();
     this.things = things;
@@ -125,13 +181,7 @@ export class Site {
       turtles.set(thing.value, copy);
     }
     this.#turtles = turtles;
-    const names = new Map<string, string>();
-    for (const row of this.question(CALLED).rows) {
-      const [thing, label] = [row.get("thing"), row.get("label")];
-      if (thing !== undefined && label !== undefined)
-        names.set(thing.value, label.value);
-    }
-    this.#names = names;
+    this.#names = namesOf(this.question(CALLED));
     this.#links = [copies, pages, steps, storedBytes, turtles];
   }
 
@@ -184,13 +234,37 @@ export class Site {
     }
     const defaults = answers.get(lens) as Map<string, Answer>;
     const things = thingsWithPages(defaults);
-    const views = options.layout.views
-      .filter(({ file }) => pod.built.has(file ?? ""))
-      .map(({ file }) => iri(pod.address + (file ?? "")));
-    const pages = new Map<string, string>();
-    for (const thing of [...[...things.values()].flat(), ...views]) {
-      pages.set(thing.value, await pageOf(thing.value));
-    }
+    const placed = options.layout.views.filter(({ file }) =>
+      pod.built.has(file ?? ""),
+    );
+    const views = placed.map(({ file }) => iri(pod.address + (file ?? "")));
+    const names = namesOf(defaults.get(CALLED));
+    const pages = await addressesOf([
+      ...placed.map(({ file = "" }) => ({
+        iri: pod.address + file,
+        folder: VIEWS_FOLDER,
+        name: file.slice(file.lastIndexOf("/") + 1).replace(/\.[^.]*$/, ""),
+        fallback: "view",
+      })),
+      ...[...things].flatMap(([kind, of]) =>
+        of.map(({ value }) => ({
+          iri: value,
+          folder: folderOf(kind),
+          name: names.get(value) ?? "",
+          fallback: kind,
+        })),
+      ),
+    ]);
+    const rules =
+      options.spec === undefined
+        ? new Map<string, SpecRule[]>()
+        : await viewRules(
+            vocabulary,
+            placed.map(({ file = "", writtenBy = "" }) => ({
+              iri: pod.address + file,
+              names: [file, writtenBy].filter((name) => name !== ""),
+            })),
+          );
     const storedFolder = options.layout.storedBytes.folder ?? "";
     const storedBytes = new Map<string, string>();
     for (const path of pod.files.filter((path) =>
@@ -227,6 +301,7 @@ export class Site {
       storedBytes,
       built,
       views,
+      rules,
     );
   }
 
@@ -259,6 +334,16 @@ export class Site {
   /** The name the labels give the thing, or its IRI. */
   name(thing: Term): string {
     return this.#names.get(thing.value) ?? thing.value;
+  }
+
+  /** What a page that lists the thing calls it: its name, or for a view its file. */
+  label(thing: Term): string {
+    return (
+      this.#names.get(thing.value) ??
+      (thing.value.startsWith(this.pod.address)
+        ? thing.value.slice(this.pod.address.length)
+        : thing.value)
+    );
   }
 
   /** Which files state the thing, then each question of its kind, with only the rows about it. */
@@ -353,10 +438,19 @@ async function vocabularyLabels(
     await ontologies.loadTurtle(await readText(vocabulary, path), about["@id"]);
   }
   const { rows } = await ontologies.select(called.text);
+  const { rows: described } = await ontologies.select(
+    `SELECT ?thing WHERE { ?thing a <http://www.w3.org/2002/07/owl#Ontology> }`,
+  );
+  const ontologyIris = new Set(described.map((row) => row.get("thing")?.value));
   const labels = new Map<string, string>();
   for (const row of rows) {
     const [thing, label] = [row.get("thing"), row.get("label")];
-    if (thing !== undefined && label !== undefined && !labels.has(thing.value))
+    if (
+      thing !== undefined &&
+      label !== undefined &&
+      !ontologyIris.has(thing.value) &&
+      !labels.has(thing.value)
+    )
       labels.set(thing.value, label.value);
   }
   return labels;

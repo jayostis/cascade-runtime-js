@@ -5,9 +5,20 @@ import {
   written,
 } from "@cascade-runtime/runtime";
 import type { Answer } from "./answer.js";
-import { type Content, type Html, markup } from "./html.js";
+import { type Content, Html, markup } from "./html.js";
+import { namedInQuery } from "./term-reference.js";
+import { noteHref, ruleHref, sharedPageOf, termHref } from "./links.js";
 import type { Site } from "./site.js";
-import { CALLED, code, COPY, prefixed, shown, STATED, terms } from "./terms.js";
+import {
+  CALLED,
+  code,
+  codePage,
+  COPY,
+  prefixed,
+  shown,
+  STATED,
+  terms,
+} from "./terms.js";
 
 const FOLDERS = "pod/What each folder holds";
 const VIEWS = "pod/Which view lists each kind";
@@ -22,10 +33,19 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
     markup`<data value="${written(value)}">${inner}</data>`;
   if (value.termType === "Literal") return data(shown(value));
   const coded = code(value.value, site.codeSystems);
-  if (coded !== undefined)
-    return data(markup`<a href="${value.value}">${coded[0]} ${coded[1]}</a>`);
+  if (coded !== undefined) {
+    const page = codePage(value.value, site.codeSystems);
+    const said = `${coded[0]} ${coded[1]}`;
+    return data(
+      page === undefined ? said : markup`<a href="${page}">${said}</a>`,
+    );
+  }
   const address = site.pod.address;
   const known = site.labels.get(value.value);
+  const reference =
+    known !== undefined && site.options.terms !== undefined
+      ? termHref(value.value, site.options.terms)
+      : undefined;
   const plain =
     value.termType === "BlankNode"
       ? written(value)
@@ -38,26 +58,30 @@ function term(site: Site, value: Term, label?: Term, linked = true): Html {
         : value.termType === "NamedNode" && value.value.startsWith(address)
           ? markup`<code>${value.value.slice(address.length)}</code>`
           : markup`<code>${plain}</code>`;
-  if (!linked) return data(said);
-  const [href, page, turtle] = [
-    site.href(value),
-    site.page(value),
-    site.turtle(value),
-  ];
+  const [href, page, turtle] = linked
+    ? [site.href(value), site.page(value), site.turtle(value)]
+    : [];
+  const main = href ?? reference;
   return data([
-    href === undefined ? said : markup`<a href="${href}">${said}</a>`,
+    main === undefined ? said : markup`<a href="${main}">${said}</a>`,
     page !== undefined &&
-      page !== href &&
+      page !== main &&
       markup` <a class="also" href="${page}">page</a>`,
     turtle !== undefined &&
-      turtle !== href &&
+      turtle !== main &&
       markup` <a class="also" href="${turtle}">Turtle</a>`,
+    reference !== undefined &&
+      reference !== main &&
+      markup` <a class="also" href="${reference}">term</a>`,
   ]);
 }
 
 function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
   const { defaultLens, name } = site.options;
   const question = answer.question;
+  const source =
+    site.options.blob !== undefined &&
+    markup` <a href="${noteHref(answer.query.path.split("/").map(encodeURIComponent).join("/"), site.options.blob)}">on GitHub</a>`;
   const about =
     answer.about !== undefined &&
     markup`<p>It prints the rows for every ${answer.about}; this block keeps those whose <code>?${answer.about}</code> is
@@ -67,6 +91,16 @@ function block(site: Site, answer: Answer, inner: Content, id?: string): Html {
     answer.lens === defaultLens
       ? markup`<p>Or in GraphDB, open the saved query <code>${question}</code> in the repository <code>${name}</code>.</p>`
       : markup`<p>GraphDB holds the pod under the ${defaultLens} lens only.</p>`;
+  const { terms } = site.options;
+  const uses =
+    terms === undefined
+      ? []
+      : [...namedInQuery(answer.query.text)].filter((iri) =>
+          site.labels.has(iri),
+        );
+  const using =
+    uses.length > 0 &&
+    markup`<p>The terms it uses: ${uses.map((iri, at) => markup`${at === 0 ? "" : ", "}<a href="${termHref(iri, terms ?? "")}"><code>${prefixed(iri) ?? iri}</code></a>`)}.</p>`;
   const runIt =
     question !== undefined &&
     markup`
@@ -79,8 +113,8 @@ ${about}${graphdb}`;
 <p class="prose">${answer.prose}</p>
 ${inner}
 <details>
-<summary>The query: <code>${answer.query.path}</code></summary>
-<pre><code>${answer.query.text}</code></pre>${runIt}
+<summary>The query: <code>${answer.query.path}</code>${source}</summary>
+<pre><code>${answer.query.text}</code></pre>${using}${runIt}
 </details>
 </section>`;
 }
@@ -305,6 +339,15 @@ function viewPage(site: Site, view: Term): Html {
       markup`<p class="answer">It wrote <a href="${COPY}${path}"><code>${path}</code></a>, ${built.statements} statements, after the
 derivations of the <a href="pipeline.html#${site.options.lens}">${site.options.lens} lens</a> had run.</p>`,
     );
+  const { spec } = site.options;
+  const rules = spec === undefined ? [] : (site.rules.get(view.value) ?? []);
+  const ruled =
+    spec !== undefined &&
+    rules.length > 0 &&
+    markup`<p>The rules of the spec that name this view: ${rules.map(
+      ({ path: feature, number, name }, index) =>
+        markup`${index === 0 ? "" : "; "}<a href="${ruleHref(feature, number, spec)}">${name}</a>`,
+    )}.</p>\n`;
   return layout(
     site,
     path,
@@ -314,7 +357,7 @@ derivations of the <a href="pipeline.html#${site.options.lens}">${site.options.l
 <p>A view is a file the build writes. An app reads it to show a list, and never needs to know about records, revisions or
 judgments. Nobody edits a view: delete it and the build writes the same file again from the pod's records and judgments.
 Below are the files that state it, the query that wrote it, and every entry it lists.</p>
-${site.about(view).map((answer) => question(site, answer))}
+${ruled}${site.about(view).map((answer) => question(site, answer))}
 ${wrote}
 ${question(site, site.question(VIEWS).of("view", view))}
 ${question(site, site.question(SHOWS).of("view", view))}`,
@@ -347,6 +390,25 @@ ${site.about(thing, kind).map((answer) => question(site, answer))}`,
   );
 }
 
+/** The page at a plain address that several things share the name of: each of them, linked. */
+function sharedPage(site: Site, path: string, things: readonly Term[]): Html {
+  const [first] = things;
+  const name = first === undefined ? path : site.label(first);
+  return layout(
+    site,
+    name,
+    markup`<h1>${name}</h1>
+<p>${things.length} things are called this. Each has a page of its own:</p>
+<ul>
+${things.map(
+  (
+    thing,
+  ) => markup`<li><a href="${site.page(thing)}">${site.label(thing)}</a> <code>${thing.value}</code></li>
+`,
+)}</ul>`,
+  );
+}
+
 /** Every page of the site, by its path. */
 export function pages(site: Site): Map<string, Html> {
   const found = new Map<string, Html>([
@@ -361,8 +423,34 @@ export function pages(site: Site): Map<string, Html> {
   for (const [kind, things] of site.things) {
     for (const thing of things) {
       const page = site.page(thing);
-      if (page !== undefined) found.set(page, thingPage(site, kind, thing));
+      if (page !== undefined && !found.has(page))
+        found.set(page, thingPage(site, kind, thing));
     }
   }
-  return found;
+  const shared = new Map<string, Term[]>();
+  const named = [...site.views, ...[...site.things.values()].flat()];
+  for (const thing of named) {
+    const plain = sharedPageOf(site.page(thing) ?? "");
+    if (plain !== undefined && !found.has(plain))
+      shared.set(plain, [...(shared.get(plain) ?? []), thing]);
+  }
+  for (const [path, things] of shared)
+    found.set(path, sharedPage(site, path, things));
+  return new Map([...found].map(([path, page]) => [path, from(path, page)]));
+}
+
+/**
+ * The page with each link written from the site's root made one from the page's own folder. Only a `markup` template's
+ * literal text can hold ` href="`: a value put in it has its quotes escaped.
+ */
+function from(path: string, page: Html): Html {
+  const up = "../".repeat(path.split("/").length - 1);
+  return up === ""
+    ? page
+    : new Html(
+        page.text.replace(
+          / href="(?![a-z][a-z0-9+.-]*:|#|\/)/gi,
+          ` href="${up}`,
+        ),
+      );
 }
