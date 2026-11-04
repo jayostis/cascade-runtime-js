@@ -10,24 +10,18 @@
       "facts": [
         {
           "says": "CT angiography chest (pulmonary embolism protocol) report, final, issued 2025-07-08, concluding no pulmonary embolism.",
-          "provider": "Cascade North Demo Hospital",
-          "cite": { "entry": "Rde64c513" },
-          "name": "CT angiography chest (pulmonary embolism protocol)",
-          "id": "urn:uuid:1889f959-6178-8833-9850-96a22a25cc04",
-          "code": "loinc:24627-2",
-          "status": "final",
-          "date": "2025-07-08",
-          "dateKind": "when",
-          "quote": "No pulmonary embolism. Lungs are clear. No pleural or pericardial effusion. Mild degenerative changes of the thoracic spine."
+          "cite": {
+            "entry": "Rde64c513"
+          },
+          "field": "text",
+          "quote": "No pulmonary embolism. Lungs are clear."
         },
         {
           "says": "The chest CT angiography procedure was completed on 2025-07-08.",
-          "provider": "Cascade North Demo Hospital",
-          "cite": { "entry": "P7eb7ac1d" },
-          "name": "CT angiography of the chest",
-          "status": "completed",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "cite": {
+            "entry": "P7eb7ac1d"
+          },
+          "field": "date"
         }
       ],
       "absences": [],
@@ -45,13 +39,10 @@
       "facts": [
         {
           "says": "Pulmonary embolism condition, status ruled out, verification status refuted, onset 2025-07-08.",
-          "provider": "Cascade North Demo Hospital",
-          "cite": { "entry": "C9f080aa6" },
-          "name": "Pulmonary embolism",
-          "code": "snomed:59282003",
-          "status": "refuted",
-          "date": "2025-07-08",
-          "dateKind": "start"
+          "cite": {
+            "entry": "C9f080aa6"
+          },
+          "field": "status"
         }
       ],
       "absences": [],
@@ -65,15 +56,10 @@
       "facts": [
         {
           "says": "D-dimer result flagged high (H) on 2025-07-08.",
-          "provider": "Cascade North Demo Hospital",
-          "cite": { "entry": "L41e35923" },
-          "name": "D-dimer",
-          "code": "loinc:48065-7",
-          "value": 0.92,
-          "unit": "mg/L{FEU}",
-          "status": "final",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "cite": {
+            "entry": "L41e35923"
+          },
+          "field": "value"
         }
       ],
       "absences": [],
@@ -93,14 +79,23 @@
         {
           "what": "A diagnosis or scan showing a pulmonary embolism (lung blood clot) after the 8 July 2025 CT.",
           "match": {
-            "codes": ["snomed:59282003"],
-            "terms": ["pulmonary embolism", "pulmonary embolus", "lung clot"],
+            "codes": [
+              "snomed:59282003"
+            ],
+            "terms": [
+              "pulmonary embolism",
+              "pulmonary embolus",
+              "lung clot"
+            ],
             "after": "2025-07-09"
           },
           "coverage": "All of the pod's conditions, procedures, reports and documents, and lab results, from the hospital feeds dated 2024 to 2026 (last retrieved 2026-10-15).",
           "query": {
             "tool": "ask",
-            "input": { "pod": "tamsin-vale", "format": "compact" },
+            "input": {
+              "pod": "tamsin-vale",
+              "format": "compact"
+            },
             "call": 1
           }
         }
@@ -110,13 +105,25 @@
   ],
   "links": [
     {
-      "from": { "item": 3, "fact": 0 },
-      "to": { "item": 1, "fact": 0 },
+      "from": {
+        "item": 3,
+        "fact": 0
+      },
+      "to": {
+        "item": 1,
+        "fact": 0
+      },
       "says": "The raised D-dimer was recorded on the same day as the CT; the records do not say the test prompted the scan."
     },
     {
-      "from": { "item": 1, "fact": 0 },
-      "to": { "item": 2, "fact": 0 },
+      "from": {
+        "item": 1,
+        "fact": 0
+      },
+      "to": {
+        "item": 2,
+        "fact": 0
+      },
       "says": "The report's negative conclusion matches the condition being marked ruled out."
     }
   ]
