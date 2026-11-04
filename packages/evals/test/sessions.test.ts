@@ -529,9 +529,8 @@ test("a recorded session run finishes into results that hold to their schema: ea
             facts: [
               {
                 says: "A pulmonary embolism, refuted.",
-                provider: "Cascade North",
                 cite: { entry: ENTRY },
-                status: "refuted",
+                field: "status",
               },
             ],
             absences: [
@@ -838,6 +837,14 @@ test("a recorded session run finishes into results that hold to their schema: ea
   });
   assert.equal(instance.arms.records.beyond.speculative, 1);
   assert.equal(instance.arms.records.citations.held, 1);
+  assert.equal(
+    instance.arms.records.citations.byField,
+    undefined,
+    "a copied fact names no field",
+  );
+  assert.deepEqual(instance.arms.pod.citations.byField, {
+    status: { held: 0, failed: 1 },
+  });
   assert.equal(instance.judging.usd, job(JUDGE).stats.cost.usd);
   assert.ok(instance.judging.usd > 0);
   assert.ok(instance.arms.pod.usd > 0);
@@ -1022,9 +1029,8 @@ test("the pod prompt shows the whole-pod read as the exact command that works: t
 test("an answer may link facts across its items, and a judge reads that link", () => {
   const fact = (says: string) => ({
     says,
-    provider: "Cascade North",
     cite: { entry: "pod://p/clinical/medications.ttl#a" },
-    name: says,
+    field: "name",
   });
   const item = (n: number, says: string) => ({
     n,

@@ -10,27 +10,18 @@
       "facts": [
         {
           "says": "CT angiography of the chest, pulmonary embolism protocol, final report: no pulmonary embolism, lungs clear.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/reports.ttl#de64c5136ee1f407e99705e33b2f3ecd40608a404c14e75d22a432798cce2d89"
           },
-          "name": "CT angiography chest (pulmonary embolism protocol)",
-          "code": "24627-2",
-          "status": "final",
-          "date": "2025-07-08",
-          "dateKind": "when",
+          "field": "text",
           "quote": "No pulmonary embolism. Lungs are clear."
         },
         {
           "says": "The CT angiography of the chest was performed and completed.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
           },
-          "name": "CT angiography of the chest",
-          "status": "completed",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "field": "status"
         }
       ],
       "links": [
@@ -52,17 +43,10 @@
       "facts": [
         {
           "says": "D-dimer 0.92 mg/L FEU, flagged high, about an hour before the scan.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/lab-results.ttl#41e3592370849fec9b70b52fc5896d32b0c21872db58f937a6fc7d4244119502"
           },
-          "name": "D-dimer",
-          "code": "48065-7",
-          "value": "0.92",
-          "unit": "mg/L{FEU}",
-          "status": "final",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "field": "value"
         }
       ],
       "knowledge": {
@@ -77,14 +61,10 @@
       "facts": [
         {
           "says": "The only active condition is type 2 diabetes.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/conditions.ttl#612592c5699111745e5ec9a78f0071930e64980eef704cca45b43f3ec178cbb5"
           },
-          "name": "Type 2 diabetes mellitus",
-          "code": "44054006",
-          "date": "2022-03-01",
-          "dateKind": "start"
+          "field": "start"
         }
       ],
       "absences": [
@@ -119,21 +99,17 @@
       "facts": [
         {
           "says": "Atorvastatin 20 mg, active, written 2025-02-20.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/medications.ttl#d8d1152a5a405c66e41d5eda356fed93ef0c452564e9dcd63e29e460c72c775e"
           },
-          "name": "Atorvastatin 20 mg tablet",
-          "status": "active"
+          "field": "status"
         },
         {
           "says": "Jardiance 10 mg, active, written 2025-02-20.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/medications.ttl#4c38f471e928531aabdcd1375340f94c1357810bc3cd98d2912d20e99a8615e3"
           },
-          "name": "Jardiance 10 mg tablet",
-          "status": "active"
+          "field": "status"
         }
       ],
       "absences": [
@@ -179,13 +155,11 @@
       "facts": [
         {
           "says": "The report also notes mild degenerative changes of the thoracic spine.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/reports.ttl#de64c5136ee1f407e99705e33b2f3ecd40608a404c14e75d22a432798cce2d89"
           },
-          "quote": "Mild degenerative changes of the thoracic spine.",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "field": "text",
+          "quote": "Mild degenerative changes of the thoracic spine."
         }
       ],
       "knowledge": {
@@ -195,8 +169,14 @@
   ],
   "links": [
     {
-      "from": { "item": 2, "fact": 0 },
-      "to": { "item": 1, "fact": 0 },
+      "from": {
+        "item": 2,
+        "fact": 0
+      },
+      "to": {
+        "item": 1,
+        "fact": 0
+      },
       "says": "The raised D-dimer on the same evening is what led to the scan that then ruled out a clot."
     }
   ]

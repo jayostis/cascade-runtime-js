@@ -2,7 +2,7 @@
 // same fields from each response's usage; a run driven from Claude Code fills them from each agent's transcript.
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Cite } from "cascade-runtime";
+import type { Cite, FilledFact } from "cascade-runtime";
 import type { Case, Component, KeyItem, Prepared, Session } from "./cases.js";
 import type { Asked } from "./sessions.js";
 import { RUNS } from "./paths.js";
@@ -158,6 +158,9 @@ export interface CitationCheck {
   readonly item: number;
   readonly fact: number;
   readonly cite: Cite;
+  /** For a fact about a pod: the field it names, and the source when it names one. */
+  readonly field?: string;
+  readonly source?: string;
   readonly ok: boolean;
   readonly reason?: string;
   readonly missing?: readonly string[];
@@ -166,6 +169,17 @@ export interface CitationCheck {
   readonly excerpt?: string;
   /** What the cited record does say, as the checker read it. */
   readonly shows?: string;
+  /** For a fact about a pod: what the pod holds of the entry it names, as a reader is shown it. */
+  readonly filled?: FilledFact;
+}
+
+/** How many of an arm's facts held and failed; for facts that name a field, the same by that field. */
+export interface CitationCounts {
+  readonly held: number;
+  readonly failed: number;
+  readonly byField?: Readonly<
+    Record<string, { readonly held: number; readonly failed: number }>
+  >;
 }
 
 export interface AbsenceCheck {
@@ -247,7 +261,7 @@ export interface ArmSummary {
   readonly expected: Verdicts<"found" | "partly" | "missed">;
   readonly traps: Verdicts<"avoided" | "raised">;
   readonly beyond: BeyondCounts;
-  readonly citations: { readonly held: number; readonly failed: number };
+  readonly citations: CitationCounts;
   readonly tokens: number;
   readonly usd: number | null;
   readonly seconds: number;

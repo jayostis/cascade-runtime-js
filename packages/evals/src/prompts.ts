@@ -6,6 +6,7 @@ import {
   filled,
   podReplyParts,
   PRONOUNS,
+  RECORDS_REPLY_CONTRACT,
   REPLY_CONTRACT,
   replyExample,
 } from "cascade-runtime";
@@ -14,7 +15,10 @@ import { tagLine } from "./transcripts.js";
 
 export type Arm = "pod" | "records";
 
-const SESSION = `You are a health assistant in a chat with {NAME} about {PRONOUN} own health records. Today is {TODAY}.
+/** A session's prompt, given the contract its answers are written to: the pod's, which points, or the records', which copies. */
+const session = (
+  contract: string,
+) => `You are a health assistant in a chat with {NAME} about {PRONOUN} own health records. Today is {TODAY}.
 
 {PRONOUN_POSSESSIVE} questions come one at a time. Get the next one by running this command with the Bash tool, exactly as
 written:
@@ -28,8 +32,13 @@ settle something.
 
 Write each answer, and nothing else, as JSON to the file its question names, with the Write tool, in this form:
 
-${REPLY_CONTRACT} When the command says there are no more questions, reply
+${contract} When the command says there are no more questions, reply
 with the word done.`;
+
+const SESSIONS = {
+  pod: session(REPLY_CONTRACT),
+  records: session(RECORDS_REPLY_CONTRACT),
+};
 
 const RECORDS = `Your access: {PRONOUN_POSSESSIVE} records are the {COUNT} files listed below, under {FOLDER}. Before you ask for the first
 question, read every file in full, in this order, with the Read tool, as if they were pasted into this conversation (a
@@ -136,7 +145,7 @@ export function sessionPrompt(p: SessionPrompt): string {
   };
   return [
     tagLine(p.tag),
-    filled(SESSION, values),
+    filled(SESSIONS[p.arm], values),
     filled(parts.access, values),
   ].join("\n\n");
 }
@@ -200,10 +209,18 @@ export const versionOf = (
   arm: Arm,
   parts: (typeof ARM_PARTS)[Arm] = ARM_PARTS[arm],
 ) =>
-  sha256(SESSION + JSON.stringify(parts) + JSON.stringify(PRONOUNS)).slice(
-    0,
-    16,
-  );
+  sha256(
+    SESSIONS[arm] + JSON.stringify(parts) + JSON.stringify(PRONOUNS),
+  ).slice(0, 16);
+
+/** Frozen history: names the recorded runs' prompt, and must never be recomputed. The pod arm's prompt version before a fact pointed at an entry: its answers copy what an entry says, as the records arm's do. */
+export const COPYING_POD_PROMPT = "a51f892dead3534c";
+
+/** Whether an arm's answers copy what a record says (the contract of `recordsReplySchema`) rather than point at entries, by the prompt version the arm was asked under. */
+export const copiesFacts = (
+  arm: Arm,
+  asked: { readonly pod?: string } | undefined,
+) => arm === "records" || asked?.pod === COPYING_POD_PROMPT;
 
 /** The version of each template a run's results name. */
 export const PROMPT_VERSIONS = {

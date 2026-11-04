@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Case, type Session, sha256 } from "./cases.js";
-import { PROMPT_VERSIONS, type Arm } from "./prompts.js";
+import { copiesFacts, PROMPT_VERSIONS, type Arm } from "./prompts.js";
 import type { CallRecord, Job, Part, Split, TokenCounts } from "./results.js";
 import { runFolder } from "./results.js";
 import { replyErrors } from "cascade-runtime";
@@ -65,10 +65,13 @@ export async function askedIn(folder: string): Promise<Asked[]> {
     .map((line) => JSON.parse(line) as Asked);
 }
 
-/** What is wrong with an answer file as an answer, in the schema's words; empty when it holds to the schema. */
-async function answerErrors(path: string): Promise<string[]> {
+/** What is wrong with an answer file as an answer, in the schema of the contract it was asked under; empty when it holds to it. */
+async function answerErrors(path: string, copies: boolean): Promise<string[]> {
   try {
-    return replyErrors(JSON.parse(await readFile(path, "utf8")));
+    return replyErrors(
+      JSON.parse(await readFile(path, "utf8")),
+      copies ? "records" : "pod",
+    );
   } catch (error) {
     return [
       `the file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
@@ -86,6 +89,7 @@ export async function ask(given: string, id: string): Promise<string> {
     await readFile(join(folder, "plan.json"), "utf8"),
   ) as {
     jobs: Job[];
+    prompts: typeof PROMPT_VERSIONS;
   };
   const job = plan.jobs.find((it) => it.id === id && it.role === "subject");
   if (job?.questions === undefined)
@@ -98,7 +102,10 @@ export async function ask(given: string, id: string): Promise<string> {
   for (const question of job.questions) {
     const answer = answerPath(job, question);
     if (existsSync(join(folder, answer))) {
-      const errors = await answerErrors(join(folder, answer));
+      const errors = await answerErrors(
+        join(folder, answer),
+        copiesFacts(job.arm ?? "pod", plan.prompts),
+      );
       if (errors.length === 0) continue;
       return `Your answer to the last question, ${join(folder, answer)}, is not a valid answer:\n  ${errors.join("\n  ")}\nRewrite the file so it is JSON that holds to the form above, then run this command again.`;
     }

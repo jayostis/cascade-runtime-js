@@ -17,6 +17,7 @@ import {
   POD_FIELDS,
   POD_NOT_CHECKABLE,
   podRowsSource,
+  quoteLongEnough,
   type Source,
 } from "../src/citations.js";
 import { downloadsSource } from "../src/node/downloads.js";
@@ -1935,5 +1936,15 @@ test("a year and month inside a longer number or range is no partial date", asyn
       ["4548-4"],
     ),
     { backed: true },
+  );
+});
+
+test("a quote is three words, or all of a text that has fewer", () => {
+  const texts = ["No pulmonary embolism seen", "Not seen"];
+  assert.deepEqual(
+    ["No pulmonary", "No pulmonary embolism", "Not seen", "seen"].map((quote) =>
+      quoteLongEnough(quote, texts),
+    ),
+    [false, true, true, false],
   );
 });

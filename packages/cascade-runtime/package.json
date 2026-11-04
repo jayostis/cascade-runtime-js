@@ -30,6 +30,10 @@
       "types": "./dist/src/check.d.ts",
       "default": "./dist/src/check.js"
     },
+    "./copied-reply": {
+      "types": "./dist/src/copied-reply.d.ts",
+      "default": "./dist/src/copied-reply.js"
+    },
     "./package.json": "./package.json",
     "./terms": {
       "types": "./dist/src/terms.d.ts",

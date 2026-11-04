@@ -264,6 +264,45 @@ test("the pod's graph is the agent's citations plus the pod's own provenance loo
   assert.match(text(checkup), /not from the records/);
 });
 
+test("a fact about a pod is shown as the pod holds it, its name, value, day and sources, with the handle and field the model named", () => {
+  const pointing = structuredClone(recorded) as unknown as {
+    answers: Record<string, Record<string, { items: { facts: unknown[] }[] }>>;
+    checks: Record<string, Record<string, { citations: object[] }>>;
+  };
+  const job = "tamsin-vale.checkup.pod.opus-5-5.r1";
+  const entry = "pod://tamsin/clinical/medications.ttl#4c38f471";
+  pointing.answers[job]!.medications!.items[0]!.facts[0] = {
+    says: "Jardiance 10 mg is active.",
+    cite: { entry: "M4c38f471" },
+    field: "status",
+  };
+  pointing.checks[job]!.medications!.citations[0] = {
+    item: 1,
+    fact: 0,
+    cite: { entry: "M4c38f471" },
+    field: "status",
+    ok: true,
+    filled: {
+      entry,
+      label: "Jardiance 10 mg tablet",
+      date: "2025-02-20",
+      dateKind: "recorded",
+      held: ["active"],
+      sources: ["S2 Cascade North Demo Hospital"],
+    },
+  };
+  assert.deepEqual(errorsOf("results", pointing), []);
+  const html = renderSite([
+    { name: "fixture-1", results: pointing as unknown as Results },
+  ]).get(`instances/${ID}.html`)!;
+  const said = text(html);
+  assert.match(
+    said,
+    /Jardiance 10 mg is active\. Jardiance 10 mg tablet · 2025-02-20 · S2 Cascade North Demo Hospital · M4c38f471, status/,
+  );
+  assert.match(said, /2025-02-20 · Cascade North Demo Hospital/);
+});
+
 test("the grab bag's graph ends at the passage the agent's citation names; a link between files exists only where the agent wrote one", () => {
   const meds = drill("medications", "records");
   const said = text(meds);

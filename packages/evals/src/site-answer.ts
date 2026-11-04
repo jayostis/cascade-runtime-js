@@ -1,7 +1,7 @@
 // One arm's answer to one question, rendered: the reply as given, its reasoning (the chain the agent wrote and the
 // graph of what it cited), the doctor card and the cost. Everything comes from results.json: the agent's own output,
 // the program's checks, and the lookups the harness recorded. Nothing is inferred here.
-import type { Reply } from "cascade-runtime";
+import { type FilledFact, pointsAtEntry, type Reply } from "cascade-runtime";
 import { instanceOf } from "./instances.js";
 import type { Arm } from "./prompts.js";
 import type {
@@ -123,19 +123,32 @@ export function replyHtml(t: Turn): string {
 // ---------------------------------------------------------------- what the agent relied on
 
 const claimOf = (f: Fact) =>
-  [
-    f.name !== undefined && `name ${f.name}`,
-    f.code !== undefined && `code ${f.code}`,
-    f.value !== undefined &&
-      `value ${f.value}${f.unit === undefined ? "" : ` ${f.unit}`}`,
-    f.status !== undefined && `status ${f.status}`,
-    f.date !== undefined && `${f.dateKind ?? "when"} ${f.date}`,
-    f.quote !== undefined && `words “${f.quote}”`,
-  ]
-    .filter((it) => it !== false)
-    .join(" · ");
+  pointsAtEntry(f)
+    ? [
+        `field ${f.field}${f.source === undefined ? "" : ` of ${f.source}`}`,
+        f.quote !== undefined && `words “${f.quote}”`,
+      ]
+        .filter((it) => it !== false)
+        .join(" · ")
+    : [
+        f.name !== undefined && `name ${f.name}`,
+        f.code !== undefined && `code ${f.code}`,
+        f.value !== undefined &&
+          `value ${f.value}${f.unit === undefined ? "" : ` ${f.unit}`}`,
+        f.status !== undefined && `status ${f.status}`,
+        f.date !== undefined && `${f.dateKind ?? "when"} ${f.date}`,
+        f.quote !== undefined && `words “${f.quote}”`,
+      ]
+        .filter((it) => it !== false)
+        .join(" · ");
 
-const factSub = (f: Fact) =>
+/** The record's day and value under a fact: the pod's, for a fact about a pod; the model's copy, for one about downloads. */
+const factSub = (f: Fact, filled?: FilledFact) =>
+  pointsAtEntry(f)
+    ? [filled?.date, filled?.value].filter((it) => it !== undefined).join(" · ")
+    : factSubCopied(f);
+
+const factSubCopied = (f: Exclude<Fact, { field: unknown }>) =>
   [
     f.date,
     f.value !== undefined &&
@@ -144,6 +157,25 @@ const factSub = (f: Fact) =>
   ]
     .filter((it) => it !== undefined && it !== false)
     .join(" · ");
+
+/**
+ * What a fact about a pod rests on, as the pod holds it, beside the handle and field the model named: the entry's
+ * name, value, day and sources. Never the model's words.
+ */
+const heldLine = (f: Fact, filled: FilledFact | undefined) =>
+  pointsAtEntry(f)
+    ? [
+        filled?.label,
+        filled?.value,
+        filled?.date,
+        filled === undefined || filled.sources.length === 0
+          ? undefined
+          : filled.sources.join(", "),
+        `${f.cite.entry}, ${f.field}${f.source === undefined ? "" : ` of ${f.source}`}`,
+      ]
+        .filter((it) => it !== undefined)
+        .join(" · ")
+    : [f.date, f.provider].filter(Boolean).join(" · ");
 
 const citationOf = (t: Turn, item: number, fact: number) =>
   checksOf(t)?.citations.find((it) => it.item === item && it.fact === fact);
@@ -171,7 +203,7 @@ function chainHtml(t: Turn, item: Item): string {
   const facts = (item.facts ?? [])
     .map((f, i) => {
       const c = citationOf(t, item.n, i);
-      return `<li><span class="ck ${tone(c?.ok)}">${tick(c?.ok)}</span> ${esc(f.says)} <span class="muted small">${esc([f.date, f.provider].filter(Boolean).join(" · "))}</span></li>`;
+      return `<li><span class="ck ${tone(c?.ok)}">${tick(c?.ok)}</span> ${esc(f.says)} <span class="muted small">${esc(heldLine(f, c?.filled))}</span></li>`;
     })
     .join("");
   const absences = (item.absences ?? [])
@@ -206,7 +238,7 @@ ${judges === "" ? "" : `<h4>What the judges said of this chain</h4><ul class="sm
 
 const factNode = (t: Turn, item: Item, f: Fact, i: number): GNode => {
   const c = citationOf(t, item.n, i);
-  const sub = factSub(f);
+  const sub = factSub(f, c?.filled);
   return {
     id: `f${i}`,
     col: 1,
@@ -219,6 +251,10 @@ const factNode = (t: Turn, item: Item, f: Fact, i: number): GNode => {
     detail: kv([
       ["says", esc(f.says)],
       ["relies on the record for", esc(claimOf(f))],
+      [
+        "the pod holds",
+        c?.filled === undefined ? undefined : esc(heldLine(f, c.filled)),
+      ],
       ["the record says", verdictOf(c)],
     ]),
   };
@@ -330,7 +366,12 @@ function podGraph(t: Turn, item: Item): Graph {
         id,
         col: 2,
         kind: "entry",
-        label: f.name ?? prov?.type ?? "Pod entry",
+        label:
+          (pointsAtEntry(f)
+            ? citationOf(t, item.n, i)?.filled?.label
+            : f.name) ??
+          prov?.type ??
+          "Pod entry",
         sub:
           prov === null
             ? "no such record in the pod"
@@ -573,6 +614,12 @@ export function reasoningHtml(t: Turn): string {
 /** Where a fact came from, as far as results.json says: the document that brought it, else the agent's own words. */
 function sourceOf(t: Turn, item: number, fact: number, f: Fact): string {
   const ev = evidenceOf(t, item, `f${fact}`);
+  const said = pointsAtEntry(f) ? undefined : f.provider;
+  const filled = citationOf(t, item, fact)?.filled;
+  if (filled !== undefined && filled.sources.length > 0)
+    return [
+      ...new Set(filled.sources.map((it) => it.replace(/^S[0-9]+ /, ""))),
+    ].join(", ");
   if (t.arm === "pod") {
     const documents = (ev?.entry?.members ?? [])
       .flatMap((m) => m.revisions.map((r) => r.document))
@@ -580,13 +627,13 @@ function sourceOf(t: Turn, item: number, fact: number, f: Fact): string {
       .sort((x, y) => (x.retrievedOn ?? "").localeCompare(y.retrievedOn ?? ""));
     const d = documents.at(-1);
     if (d !== undefined)
-      return `${d.author ?? f.provider}${d.retrievedOn === undefined ? "" : `, download of ${day(d.retrievedOn)}`}`;
+      return `${d.author ?? said ?? ""}${d.retrievedOn === undefined ? "" : `, download of ${day(d.retrievedOn)}`}`;
   } else {
     const d = ev?.passage?.download;
     if (d !== undefined)
-      return `${d.source ?? f.provider}${d.retrievedAt === undefined ? "" : `, download of ${day(d.retrievedAt)}`}`;
+      return `${d.source ?? said ?? ""}${d.retrievedAt === undefined ? "" : `, download of ${day(d.retrievedAt)}`}`;
   }
-  return f.provider;
+  return said ?? "";
 }
 
 /** What I'd show my doctor: the question, the short answer, each point's dated facts and sources. Never the model's own knowledge. */
@@ -605,7 +652,10 @@ export function doctorCardHtml(
       const facts = (item.facts ?? [])
         .map((f, i) => {
           const source = sourceOf(t, item.n, i, f);
-          return `<li>${esc(f.says)} <span class="muted">· ${f.date === undefined ? "" : `${esc(f.date)} · `}${esc(source)}</span></li>`;
+          const date = pointsAtEntry(f)
+            ? citationOf(t, item.n, i)?.filled?.date
+            : f.date;
+          return `<li>${esc(f.says)} <span class="muted">· ${date === undefined ? "" : `${esc(date)} · `}${esc(source)}</span></li>`;
         })
         .join("");
       const absences = (item.absences ?? [])

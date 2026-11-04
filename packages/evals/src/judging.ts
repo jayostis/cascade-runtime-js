@@ -5,14 +5,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { numberedReply, type Reply, replyErrors } from "cascade-runtime";
+import {
+  checkReply,
+  type FilledFact,
+  numberedReply,
+  type PodAsker,
+  pointsAtEntry,
+  type Reply,
+  type ReplyFact,
+  replyErrors,
+} from "cascade-runtime";
 import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
 import { instanceOf } from "./instances.js";
 import { answerPath } from "./sessions.js";
 import { errorsOf } from "./schemas.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
-import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
+import { askerOf } from "./pinned.js";
+import { copiesFacts, judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
 import { callCost } from "./prices.js";
 import type { Grade, Job, Label } from "./results.js";
 import { runFolder } from "./results.js";
@@ -92,30 +102,81 @@ export const tellsOf = (text: string): string[] =>
 export const tellsIn = (
   at: { job: string; arm: string; question: string },
   answer: Reply,
-) => tellsOf(blinded(answer)).map((term) => ({ ...at, term }));
+  filled?: Filled,
+) => tellsOf(blinded(answer, filled)).map((term) => ({ ...at, term }));
+
+/** What the pod holds of each fact of an answer about a pod, by the fact's item and place. */
+export type Filled = (item: number, fact: number) => FilledFact | undefined;
+
+/** What the pod holds of each fact of a valid answer about a pod, read from the pod the way the checks read it. */
+export async function filledOf(
+  answer: unknown,
+  pod: PodAsker,
+): Promise<Filled> {
+  const checked = await checkReply(answer, {
+    ask: (question) => pod.ask(question),
+    ran: [],
+  });
+  return (item, fact) =>
+    checked.items.find(({ n }) => n === item)?.facts[fact]?.filled;
+}
 
 /**
  * An answer file as a packet shows it: blinded, or when the file is no answer, the reason. Only that failure of the file
- * itself is turned into text; a throw from the blinding of a valid answer is the harness's own and stops the judges.
+ * itself is turned into text; a throw from the blinding of a valid answer is the harness's own and stops the judges. An
+ * answer about a pod is shown with what the pod holds of each of its facts.
  */
-function packetBody(text: string): string {
+async function packetBody(
+  text: string,
+  copies: boolean,
+  pod: () => Promise<PodAsker>,
+): Promise<string> {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch (error) {
     return `(the answer is not valid JSON: ${error instanceof Error ? error.message : String(error)})`;
   }
-  const errors = replyErrors(value);
-  return errors.length > 0
-    ? `(the answer is not a valid answer: ${errors.join("; ")})`
-    : blinded(numberedReply(value) as Reply);
+  const errors = replyErrors(value, copies ? "records" : "pod");
+  if (errors.length > 0)
+    return `(the answer is not a valid answer: ${errors.join("; ")})`;
+  const answer = numberedReply(value) as Reply;
+  return blinded(
+    answer,
+    copies ? undefined : await filledOf(answer, await pod()),
+  );
+}
+
+/** The words of who wrote a source, without the short name that would say a compact read named it. */
+const writer = (source: string) => source.replace(/^S\d+ /, "");
+
+/**
+ * A fact as a judge reads it. One that copies (the records arm's, and the pod arm's before facts pointed) is its
+ * provider, day and words, as it always was, so the judge of those answers is reused. One that points is who it is
+ * from, its day, its words, and what the record is called and holds: all but its words the pod's, the program's fill.
+ */
+function factLine(at: number, f: ReplyFact, filled?: FilledFact): string {
+  if (!pointsAtEntry(f))
+    return `- Fact ${at}: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`;
+  const record = [filled?.label, filled?.value]
+    .filter((it) => it !== undefined)
+    .join(": ");
+  const head = [
+    filled === undefined
+      ? undefined
+      : [...new Set(filled.sources.map(writer))].join(", ") || undefined,
+    filled?.date,
+  ]
+    .filter((it) => it !== undefined)
+    .join(", ");
+  return `- Fact ${at}: ${head === "" ? "" : `${scrubbed(head)}: `}${scrubbed(f.says)}${record === "" ? "" : ` (the record: ${scrubbed(record)})`}`;
 }
 
 /**
- * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
- * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
+ * An answer as a judge reads it: the reply, then each point with its facts (`factLine`), what it says is absent (never
+ * what it looked through, which differs by arm), its knowledge and its links; no citations.
  */
-export function blinded(answer: Reply): string {
+export function blinded(answer: Reply, filled?: Filled): string {
   return [
     `Reply: ${scrubbed(answer.answer)}`,
     `Short answer: ${scrubbed(answer.short)}`,
@@ -123,9 +184,8 @@ export function blinded(answer: Reply): string {
       [
         `### Item ${item.n}. ${scrubbed(item.says)}`,
         `- Why: ${scrubbed(item.why)}`,
-        ...(item.facts ?? []).map(
-          (f, at) =>
-            `- Fact ${at}: ${scrubbed(f.provider)}${f.date === undefined ? "" : `, ${f.date}`}: ${scrubbed(f.says)}`,
+        ...(item.facts ?? []).map((f, at) =>
+          factLine(at, f, filled?.(item.n, at)),
         ),
         ...(item.absences ?? []).map((a) => `- Absent: ${scrubbed(a.what)}`),
         ...(item.knowledge === undefined
@@ -176,6 +236,43 @@ const judgesKey = (key: Key) => ({
   preExisting: key.preExisting?.map(({ podNote: _note, ...item }) => item),
 });
 
+/** Each sitting's answers as its packets show them, by job and question; a case's pod is opened once, for its answers about it. */
+async function answerBodies(
+  folder: string,
+  plan: Plan,
+  sittings: ReadonlyMap<string, readonly Job[]>,
+): Promise<Map<string, Map<string, string>>> {
+  const pods = new Map<string, ReturnType<typeof askerOf>>();
+  const podOf = (caseId: string) => () =>
+    pods.get(caseId) ??
+    pods
+      .set(caseId, askerOf(plan.cases.find((it) => it.id === caseId)!.prepared))
+      .get(caseId)!;
+  const bodies = new Map<string, Map<string, string>>();
+  try {
+    for (const [instance, subjects] of sittings) {
+      const of = new Map<string, string>();
+      bodies.set(instance, of);
+      for (const job of subjects)
+        for (const question of job.questions ?? []) {
+          const path = join(folder, answerPath(job, question));
+          if (!existsSync(path)) continue;
+          of.set(
+            `${job.id}\n${question}`,
+            await packetBody(
+              await readFile(path, "utf8"),
+              copiesFacts(job.arm ?? "pod", plan.prompts),
+              podOf(job.case!),
+            ),
+          );
+        }
+    }
+  } finally {
+    for (const pod of pods.values()) await (await pod).close();
+  }
+  return bodies;
+}
+
 /**
  * Writes a blind packet for each judge of each sitting (a case, model and repeat: its arms' sessions), with each
  * question's answers under letters in an order of its own, in a folder of its own outside the run, and plans the judge.
@@ -194,21 +291,13 @@ export async function judgePackets(given: string) {
     const id = instanceOf(job);
     (sittings.get(id) ?? sittings.set(id, []).get(id)!).push(job);
   }
+  const bodiesOf = await answerBodies(folder, plan, sittings);
   for (const [instance, subjects] of sittings) {
     const caseId = subjects[0]!.case!;
     const found = await loadCase(caseId);
     const { key, prose: whole } = await loadKey(caseId);
     const prose = judgesProse(whole);
-    const bodies = new Map<string, string>();
-    for (const job of subjects)
-      for (const question of job.questions ?? []) {
-        const path = join(folder, answerPath(job, question));
-        if (!existsSync(path)) continue;
-        bodies.set(
-          `${job.id}\n${question}`,
-          packetBody(await readFile(path, "utf8")),
-        );
-      }
+    const bodies = bodiesOf.get(instance)!;
     if (bodies.size === 0) continue;
     for (const [at, model] of plan.config.judges.entries()) {
       const id = `${instance}.judge.${model.replace(/^claude-/, "")}.j${at + 1}`;

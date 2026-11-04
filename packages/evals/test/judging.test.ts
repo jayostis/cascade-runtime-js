@@ -138,6 +138,53 @@ test("a judge reads its packet alone, in its own folder, with neither arm's cita
   assert.match(blinded(answer("Q")), /- Absent: No colonoscopy$/m);
 });
 
+test("a judge reads a fact that points with what the pod holds of its record, and a fact that copies exactly as before the pod arm pointed", () => {
+  const reply = (fact: object) =>
+    ({
+      answer: "a",
+      short: "s",
+      items: [{ n: 1, says: "p", why: "w", confidence: "high", facts: [fact] }],
+    }) as Reply;
+  const pod = blinded(
+    reply({
+      says: "Her A1c was 6.9%.",
+      cite: { entry: "Lcd05f84f" },
+      field: "value",
+      source: "S12",
+    }),
+    () => ({
+      entry: "pod://p/clinical/lab-results.ttl#cd05f84f",
+      label: "Hemoglobin A1c",
+      value: "6.9 %",
+      date: "2025-09-22",
+      dateKind: "when",
+      held: ["6.9"],
+      sources: ["S12 Northbay Clinical Laboratories"],
+    }),
+  );
+  assert.match(
+    pod,
+    /^- Fact 0: Northbay Clinical Laboratories, 2025-09-22: Her A1c was 6\.9%\. \(the record: Hemoglobin A1c: 6\.9 %\)$/m,
+  );
+  assert.doesNotMatch(pod, /S12|Lcd05f84f/);
+  const copied = blinded(
+    reply({
+      says: "Her A1c was 6.9%.",
+      provider: "Northbay Clinical Laboratories",
+      cite: { file: "lab.xml", line: 3 },
+      name: "Hemoglobin A1c",
+      value: 6.9,
+      unit: "%",
+      date: "2025-09-22",
+    }),
+  );
+  assert.match(
+    copied,
+    /^- Fact 0: Northbay Clinical Laboratories, 2025-09-22: Her A1c was 6.9%.$/m,
+    "its own words, with no record of the program's beside them: the model's copy is not the record",
+  );
+});
+
 test("a judge sees the answers in an order of its run, and a reused verdict keeps the letters it was written to", async () => {
   const orders = new Set<string>();
   for (const run of ["r1", "r2", "r3", "r4", "r5", "r6"]) {

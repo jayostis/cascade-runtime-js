@@ -11,9 +11,11 @@ import {
   downloadsSource,
   holdsRecords,
   type PodAsker,
+  pointsAtEntry,
   type Ran,
   type Tie,
 } from "cascade-runtime";
+import { checkCopiedReply } from "cascade-runtime/copied-reply";
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { answerPath } from "./sessions.js";
@@ -266,6 +268,8 @@ export async function checkAnswer(options: {
   key: Key;
   toolCalls: readonly ToolCallRecord[];
   pod: PodAsker | undefined;
+  /** Whether the answer was asked under the contract that copies what a record says, not the one that points. */
+  copies: boolean;
 }): Promise<SubjectChecks> {
   const { job, prepared, folder } = options;
   const items = options.key.items.filter(
@@ -302,18 +306,21 @@ export async function checkAnswer(options: {
     for (const file of options.reading)
       if (holdsRecords(await text(file))) couldHold.push(file);
   const pod = options.pod;
-  const checked = await checkReply(options.answer, {
-    ...(pod === undefined ? {} : { ask: (question) => pod.ask(question) }),
-    ran,
-    files: downloadsSource(prepared.downloads),
-    tie: (absence) => tieOf(absence, key),
-    ...(job.arm === "pod"
-      ? {}
-      : {
+  const tie = (absence: Absence) => tieOf(absence, key);
+  const checked =
+    job.arm === "pod" && pod !== undefined
+      ? await (options.copies ? checkCopiedReply : checkReply)(options.answer, {
+          ask: (question) => pod.ask(question),
+          ran,
+          tie,
+        })
+      : await checkReply(options.answer, {
+          files: downloadsSource(prepared.downloads),
+          ran,
+          tie,
           backing: (absence, tied) =>
             checkRecordsAbsence(absence, read, text, couldHold, tied),
-        }),
-  });
+        });
   if (checked.reply === undefined)
     return {
       answerValid: false,
@@ -326,11 +333,18 @@ export async function checkAnswer(options: {
     };
   const answer = checked.reply;
   const citations = checked.items.flatMap(({ n, facts }) =>
-    facts.map(({ fact, verdict }, at) => ({
+    facts.map(({ fact, verdict, filled }, at) => ({
       item: n,
       fact: at,
       cite: fact.cite,
+      ...(pointsAtEntry(fact)
+        ? {
+            field: fact.field,
+            ...(fact.source === undefined ? {} : { source: fact.source }),
+          }
+        : {}),
       ...verdict,
+      ...(filled === undefined ? {} : { filled }),
     })),
   );
   const absences = checked.items.flatMap(({ n, absences: held }) =>

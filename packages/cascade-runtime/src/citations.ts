@@ -58,7 +58,10 @@ export type Verdict =
         | "not at that line"
         | "says otherwise"
         | "nothing to check"
-        | "nothing to check against";
+        | "nothing to check against"
+        | "no such field"
+        | "no such source"
+        | "quote too short";
       /** Each claimed field the record does not hold, as `<field> <claimed>`. */
       readonly missing: readonly string[];
       /** For a line cited, where the file holds a record that does say it: that record's first line. */
@@ -1343,6 +1346,81 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
 
 const MEMBER_PREFIX = /^(urn:uuid:\S+) /;
 
+/** A value a pod holds of an entry or of the person: the kind of field it is, and the record that states it, if one does. */
+export interface Held {
+  readonly kind: keyof Fields;
+  readonly value: string;
+  /** The member record that states it; none for a value of the entry as a whole, such as a merged result. */
+  readonly record?: string;
+}
+
+/** What an entry's rows of `entry/What it shows` hold, value by value. */
+export function entryHeld(
+  rows: readonly Readonly<Record<string, string>>[],
+): Held[] {
+  const held: Held[] = [];
+  for (const row of rows) {
+    const name = (row.field ?? "").split(/[#/:]/).pop() ?? "";
+    if (row.value === undefined) continue;
+    const value =
+      name === "lifecycle"
+        ? (row.value.split("#").pop() ?? "").replace(/^Medication/, "")
+        : row.value;
+    const by =
+      row.from === undefined || row.from === "" ? {} : { record: row.from };
+    for (const kind of POD_FIELDS[name] ?? []) {
+      held.push({ kind, value, ...by });
+      const shown = kind === "code" ? shownCode(value) : undefined;
+      if (shown !== undefined) held.push({ kind: "code", value: shown, ...by });
+    }
+  }
+  return held;
+}
+
+/** What the person's row of `pod/The person this pod is about` holds: each part of a column is "<record> <value>". */
+export function personHeld(row: Readonly<Record<string, string>>): Held[] {
+  const held: Held[] = [];
+  for (const [column, text] of Object.entries(row))
+    for (const part of text.split("; ")) {
+      const value = part.replace(MEMBER_PREFIX, "");
+      const record = MEMBER_PREFIX.exec(part)?.[1];
+      if (value !== "")
+        for (const kind of POD_FIELDS[column] ?? [])
+          held.push({
+            kind,
+            value,
+            ...(record === undefined ? {} : { record }),
+          });
+    }
+  return held;
+}
+
+/** The fields the values `held` give, by kind. */
+export function fieldsOf(held: readonly Held[]): Fields {
+  const fields = fresh();
+  for (const { kind, value } of held) fields[kind].push(value);
+  return fields;
+}
+
+/** Whether `quote` is words of one of `texts`, whole words, as a quote's check reads it. */
+export const quoted = (quote: string, texts: readonly string[]): boolean =>
+  quote.trim() !== "" && holds("text", quote, texts);
+
+/** The fewest words a quote shows anything with, unless the text it is found in is shorter. */
+export const QUOTE_WORDS = 3;
+const wordsIn = (text: string) => text.match(/\S+/g)?.length ?? 0;
+
+/** Whether a quote found in one of `texts` is three words, or all of a text of fewer. */
+export const quoteLongEnough = (
+  quote: string,
+  texts: readonly string[],
+): boolean =>
+  texts.some(
+    (text) =>
+      quoted(quote, [text]) &&
+      wordsIn(quote) >= Math.min(QUOTE_WORDS, wordsIn(text)),
+  );
+
 /**
  * A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. The
  * person has no entry: `personRows` gives the person's row, and a cite of its subject IRI is checked against its
@@ -1363,36 +1441,29 @@ export function podRowsSource(
           (row) => row.subject === cite.entry,
         );
         if (who === undefined) return undefined;
-        const person = fresh();
-        const from = new Set<string>();
-        for (const [column, text] of Object.entries(who))
-          for (const part of text.split("; ")) {
-            const value = part.replace(MEMBER_PREFIX, "");
-            const member = MEMBER_PREFIX.exec(part)?.[1];
-            if (member !== undefined) from.add(member);
-            if (value !== "")
-              for (const kind of POD_FIELDS[column] ?? [])
-                person[kind].push(value);
-          }
-        return { fields: person, source: [...from] };
+        return {
+          fields: fieldsOf(personHeld(who)),
+          source: [
+            ...new Set(
+              Object.values(who).flatMap((text) =>
+                text
+                  .split("; ")
+                  .flatMap((part) => MEMBER_PREFIX.exec(part)?.[1] ?? []),
+              ),
+            ),
+          ],
+        };
       }
-      const fields = fresh();
-      const source = new Set<string>();
-      for (const row of rows) {
-        if (row.from !== undefined && row.from !== "") source.add(row.from);
-        const name = (row.field ?? "").split(/[#/:]/).pop() ?? "";
-        if (row.value === undefined) continue;
-        const value =
-          name === "lifecycle"
-            ? (row.value.split("#").pop() ?? "").replace(/^Medication/, "")
-            : row.value;
-        for (const kind of POD_FIELDS[name] ?? []) {
-          fields[kind].push(value);
-          const shown = kind === "code" ? shownCode(value) : undefined;
-          if (shown !== undefined) fields.code.push(shown);
-        }
-      }
-      return { fields, source: [...source] };
+      return {
+        fields: fieldsOf(entryHeld(rows)),
+        source: [
+          ...new Set(
+            rows.flatMap(({ from }) =>
+              from === undefined || from === "" ? [] : [from],
+            ),
+          ),
+        ],
+      };
     },
   };
 }

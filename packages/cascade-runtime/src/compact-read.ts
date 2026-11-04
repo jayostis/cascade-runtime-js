@@ -6,6 +6,7 @@ import {
   type CompactAnswer,
   type CompactInput,
   type CompactView,
+  COMPACT_QUESTIONS,
   entriesNamed,
   handlesOf,
   PAGE_CHARACTERS,
@@ -149,6 +150,8 @@ class Rewriter {
   /** The entries with a row in this read, whose rows a cell need not restate. */
   readonly shown: Set<string>;
   readonly legend: string;
+  /** Who wrote each source's documents, by its short name. */
+  readonly writtenBy = new Map<string, string>();
 
   constructor(provenance: readonly Row[], views: readonly (readonly Row[])[]) {
     const document = (iri: string) =>
@@ -199,6 +202,7 @@ class Rewriter {
         const handle = `S${at + 1}`;
         for (const iri of iris) this.#sourceOf.set(iri, handle);
         const [author, retrieved, kind] = key.split("\t");
+        if (author) this.writtenBy.set(handle, author);
         lines.push(
           [
             handle,
@@ -219,7 +223,8 @@ class Rewriter {
     this.shown = new Set(views.flat().flatMap(({ entry }) => entry ?? []));
   }
 
-  #source(iri: string): string | undefined {
+  /** The short name of the source a record or document is from. */
+  sourceOf(iri: string): string | undefined {
     return this.#sourceOf.get(this.#recordDocument.get(iri) ?? iri);
   }
 
@@ -228,7 +233,7 @@ class Rewriter {
     return CODES.reduce(
       (it, [code, short]) => it.replace(code, short),
       text,
-    ).replace(IRI, (iri) => this.handles.get(iri) ?? this.#source(iri) ?? iri);
+    ).replace(IRI, (iri) => this.handles.get(iri) ?? this.sourceOf(iri) ?? iri);
   }
 
   /**
@@ -244,7 +249,9 @@ class Rewriter {
     value.split(apart).forEach((part, at) => {
       const [first = "", rest = ""] = part.split(/ (.*)/s);
       const handle = this.handles.get(first);
-      const source = first.startsWith("urn:") ? this.#source(first) : undefined;
+      const source = first.startsWith("urn:")
+        ? this.sourceOf(first)
+        : undefined;
       if (source === undefined) {
         bySaid.set(`\u0000${at}`, [
           handle === undefined
@@ -275,7 +282,7 @@ class Rewriter {
   /** The sources of a row's records, as `sources` names them. */
   from(value: string): string {
     return inOrder(
-      [...value.matchAll(IRI)].flatMap(([iri]) => this.#source(iri) ?? []),
+      [...value.matchAll(IRI)].flatMap(([iri]) => this.sourceOf(iri) ?? []),
     );
   }
 }
@@ -478,4 +485,26 @@ export async function compactRead(
   }
   if (to === rows) page.views.push(...pending);
   return to < rows ? { ...page, next: next(to) } : page;
+}
+
+/** The sources of a pod's records as a whole compact read names them: each record's source and who wrote it. */
+export interface CompactSources {
+  /** The short name (`S3`) of the source a record is from; undefined for a record of no document the read names. */
+  of(record: string): string | undefined;
+  /** Who wrote a source's documents, by its short name. */
+  writtenBy(source: string): string | undefined;
+}
+
+/** The sources a whole compact read of a pod names, read from the questions that read asks. */
+export async function compactSources(
+  ask: (question: string) => Promise<readonly Row[]>,
+): Promise<CompactSources> {
+  const [provenance, ...views] = await Promise.all(
+    [PROVENANCE_QUESTION, ...COMPACT_QUESTIONS].map(ask),
+  );
+  const rewrite = new Rewriter(provenance!, views);
+  return {
+    of: (record) => rewrite.sourceOf(record),
+    writtenBy: (source) => rewrite.writtenBy.get(source),
+  };
 }

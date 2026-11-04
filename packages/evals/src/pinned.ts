@@ -5,8 +5,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Component } from "./cases.js";
-import { sha256 } from "./cases.js";
+import { type PodAsker, REPLY_QUESTIONS } from "cascade-runtime";
+import type { Component, Prepared } from "./cases.js";
+import { openPrepared, sha256 } from "./cases.js";
 import { runtimeRoot, WORK } from "./paths.js";
 
 /** The repositories a run can pin, and where each is fetched from. */
@@ -180,6 +181,36 @@ export async function environment(
 const SCRIPT = fileURLToPath(
   new URL("../../scripts/pinned.mjs", import.meta.url),
 );
+
+/**
+ * What reads a case's pod for the checks: the pod itself, or for a pinned run its own build of the runtime, asked
+ * every question the checks need in one process, since another build may not read the pod the same way.
+ */
+export async function askerOf(
+  prepared: Prepared,
+  pinned: typeof pinnedPod = pinnedPod,
+): Promise<PodAsker & { close(): Promise<void> }> {
+  if (prepared.runtime === undefined) {
+    const pod = await openPrepared(prepared);
+    const asked = new Map<string, ReturnType<PodAsker["ask"]>>();
+    return {
+      ask: (question) =>
+        asked.get(question) ??
+        asked.set(question, pod.ask(question)).get(question)!,
+      close: () => pod.close(),
+    };
+  }
+  const rows = pinned(
+    { runtime: prepared.runtime } as Environment,
+    "ask",
+    join(prepared.pods, prepared.pod),
+    REPLY_QUESTIONS,
+  ) as Record<string, Readonly<Record<string, string>>[]>;
+  return {
+    ask: async (question) => rows[question] ?? [],
+    close: async () => undefined,
+  };
+}
 
 export { runtimeRoot } from "./paths.js";
 

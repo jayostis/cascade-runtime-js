@@ -53,14 +53,10 @@
       "facts": [
         {
           "says": "CT angiography of the chest, completed.",
-          "provider": "Cascade North Demo Hospital",
           "cite": {
             "entry": "pod://3b1b0f1e-b6c8-494e-b372-aea5a11b5886/clinical/procedures.ttl#7eb7ac1dec5093384cc45c443250df0e35f1107776a2cdad9336a8f51ddcfb04"
           },
-          "name": "CT angiography of the chest",
-          "status": "completed",
-          "date": "2025-07-08",
-          "dateKind": "when"
+          "field": "status"
         }
       ],
       "knowledge": {

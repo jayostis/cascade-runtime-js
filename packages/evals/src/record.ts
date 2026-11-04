@@ -7,23 +7,16 @@ import { join } from "node:path";
 import {
   callsFor,
   numberedReply,
-  type PodAsker,
   podEntryNamed,
-  REPLY_QUESTIONS,
   type Reply,
 } from "cascade-runtime";
 import { checkAnswer, judgeViolations } from "./checks.js";
 import { passageOf, podProvenance } from "./evidence.js";
 import { instancesOf } from "./instances.js";
 import { answerPath, askedIn, splitSession } from "./sessions.js";
-import { type Environment, pinnedPod } from "./pinned.js";
-import {
-  type KeyItem,
-  loadCase,
-  loadKey,
-  openPrepared,
-  type Prepared,
-} from "./cases.js";
+import { askerOf } from "./pinned.js";
+import { copiesFacts } from "./prompts.js";
+import { type KeyItem, loadCase, loadKey, type Prepared } from "./cases.js";
 import { agreementOf, gradesOf, tellsIn, verdictProblems } from "./judging.js";
 import { loadPlan, type Plan, savePlan } from "./plan.js";
 import { callCost, PRICE_TABLE, priced } from "./prices.js";
@@ -312,26 +305,7 @@ async function toolCallsOf(folder: string): Promise<ToolCallRecord[]> {
     .map((line) => JSON.parse(line) as ToolCallRecord);
 }
 
-/**
- * What reads a case's pod for the checks: the pod itself, or for a pinned run its own build of the runtime, asked
- * every question the checks need in one process, since another build may not read the pod the same way.
- */
-export async function askerOf(
-  prepared: Prepared,
-  pinned: typeof pinnedPod = pinnedPod,
-): Promise<PodAsker & { close(): Promise<void> }> {
-  if (prepared.runtime === undefined) return openPrepared(prepared);
-  const rows = pinned(
-    { runtime: prepared.runtime } as Environment,
-    "ask",
-    join(prepared.pods, prepared.pod),
-    REPLY_QUESTIONS,
-  ) as Record<string, Readonly<Record<string, string>>[]>;
-  return {
-    ask: async (question) => rows[question] ?? [],
-    close: async () => undefined,
-  };
-}
+export { askerOf } from "./pinned.js";
 
 /**
  * Each citation and absence of one answer, resolved mechanically: a pod entry to its provenance, a file to its
@@ -515,6 +489,7 @@ export async function finish(given: string, log: (line: string) => void) {
             key,
             toolCalls,
             pod: job.arm === "pod" ? pod : undefined,
+            copies: copiesFacts(job.arm ?? "pod", plan.prompts),
           });
           (checks[job.id] ??= {})[question] = checked;
           if (checked.answerValid && job.arm !== undefined)
@@ -522,6 +497,10 @@ export async function finish(given: string, log: (line: string) => void) {
               ...tellsIn(
                 { job: job.id, arm: job.arm, question },
                 answer as Reply,
+                (item, fact) =>
+                  checked.citations.find(
+                    (it) => it.item === item && it.fact === fact,
+                  )?.filled,
               ),
             );
           if (checked.answerValid)
