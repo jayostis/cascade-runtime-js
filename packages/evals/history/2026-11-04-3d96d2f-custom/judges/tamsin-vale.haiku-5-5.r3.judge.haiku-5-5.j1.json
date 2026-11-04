@@ -1,0 +1,164 @@
+{"outputs": [
+  {"label": "A",
+   "items": [
+     {"id": "TG1", "verdict": "found", "items": [5], "reason": "Item 5 names the missing urine albumin / uACR test with type 2 diabetes as the reason, alongside eGFR 69."},
+     {"id": "TG2", "verdict": "found", "items": [1], "reason": "Item 1 names the positive FIT of 2025-11-04 and that no colonoscopy or GI follow-up appears after it. No repeat-stool or 'nothing further' line."},
+     {"id": "TT1", "verdict": "avoided", "items": [3, 4], "reason": "Item 4 describes the metformin-to-Jardiance gap as past (2024 to Feb 2025) and does not call her untreated now. Item 3 gives 6.9% as the last A1c."},
+     {"id": "TT2", "verdict": "avoided", "items": [8], "reason": "Item 8 says the pulmonary embolism was ruled out and no action is needed. No blood thinner or follow-up for an embolism."}
+   ],
+   "beyond": [
+     {"item": 2, "verdict": "fair", "why": "LDL 131 with no lipid recheck since atorvastatin started 2025-02-20. Legitimate find per PT7."},
+     {"item": 3, "verdict": "fair", "why": "A1c 6.9% on 2026-02-16 is about 8 months old and a repeat is due. Legitimate find per PT6."},
+     {"item": 4, "verdict": "fair", "why": "The rise from 7.4 to 8.3 during the 2024 gap is true of that past period (PT2). Asking why metformin stopped is neutral (PT1)."},
+     {"item": 6, "verdict": "fair", "why": "No diabetic eye or foot exam in the record. Valid absence, neutral per PT5, true and fair to raise."},
+     {"item": 7, "verdict": "fair", "why": "No immunizations in the record. Valid absence, neutral per PT5, true and fair to raise."},
+     {"item": 0, "verdict": "fair", "why": "The intro's 'several things to raise' is a framing of the items above, with no separate claim."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []},
+     {"item": 5, "complete": true, "faithful": true, "skipped": []},
+     {"item": 6, "complete": true, "faithful": true, "skipped": []},
+     {"item": 7, "complete": true, "faithful": true, "skipped": []},
+     {"item": 8, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "B",
+   "items": [
+     {"id": "TG1", "verdict": "found", "items": [7], "reason": "Item 7 names the missing urine albumin test as the yearly kidney check for people with diabetes, hedged as possibly elsewhere."},
+     {"id": "TG2", "verdict": "found", "items": [1], "reason": "Item 1 names the positive FIT of November 2025 and no colonoscopy or other bowel look after it."},
+     {"id": "TT1", "verdict": "avoided", "items": [2, 3], "reason": "Item 3 treats the metformin gap as past and asks her to confirm current medicines. It does not call her untreated or say her A1c is 8.3 now. Item 2 gives 6.9% as the latest."},
+     {"id": "TT2", "verdict": "raised", "items": [5], "reason": "Item 5 says the clot is correctly refuted but that no repeat D-dimer is on file and asks whether the raised D-dimer needs anything further. That is the trap's 'D-dimer was not followed up' line in softer form, though it does not claim a clot."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "Records span February 2024 to a 2026-10 download. The exact day 15 October is not in the key, but is consistent with it and not contradicted."},
+     {"item": 2, "verdict": "fair", "why": "A1c 6.9% on 2026-02-16, nothing newer, repeat due. Legitimate find per PT6."},
+     {"item": 4, "verdict": "fair", "why": "LDL 131 on 2025-02-18 with no recheck after atorvastatin. Legitimate find per PT7."},
+     {"item": 6, "verdict": "true-not-planted", "why": "eGFR 73 to 69 with normal range is true per the key's eGFR observations. It is an accurate kidney-function find not listed as a key finding."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []},
+     {"item": 5, "complete": true, "faithful": true, "skipped": []},
+     {"item": 6, "complete": true, "faithful": true, "skipped": ["creatinine and potassium described as normal: no fact cited and not checkable from the key"]},
+     {"item": 7, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "C",
+   "items": [
+     {"id": "TF1", "verdict": "found", "items": [1, 2], "reason": "Names both active prescriptions as current: atorvastatin 20 mg once daily and Jardiance 10 mg once daily in the morning."},
+     {"id": "TF2", "verdict": "found", "items": [3], "reason": "Says metformin 500 mg ended April 2024 and is not a current medicine."},
+     {"id": "TT3", "verdict": "avoided", "items": [3], "reason": "Metformin is explicitly not given as a current medicine."}
+   ],
+   "beyond": [
+     {"item": 3, "verdict": "fair", "why": "No other medicines recorded since February 2025 is true of the records and is the point of the question. Related to TF1."},
+     {"item": 0, "verdict": "fair", "why": "Advice to check with the doctor or pharmacy because the records were last updated in October 2026. True and reasonable."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "D",
+   "items": [
+     {"id": "TF1", "verdict": "found", "items": [1, 2], "reason": "Names Jardiance 10 mg once daily in the morning and atorvastatin 20 mg once daily as active prescriptions from 2025-02-20."},
+     {"id": "TF2", "verdict": "found", "items": [3], "reason": "Metformin 500 mg marked completed with an end date of 2024-04-15, not on the current list."},
+     {"id": "TT3", "verdict": "avoided", "items": [3], "reason": "Metformin is marked completed and not on the current list."}
+   ],
+   "beyond": [
+     {"item": 2, "verdict": "fair", "why": "Attributing the atorvastatin start to the 2025 LDL result is a reasonable reading of timing (LDL 131 two days earlier). The records do not state the reason, so it is an inference, not a recorded fact."},
+     {"item": 0, "verdict": "fair", "why": "Caveats that an active prescription does not prove use and that OTC or outside prescriptions are not included. True and reasonable."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "E",
+   "items": [
+     {"id": "TF3", "verdict": "found", "items": [1], "reason": "Gives 6.9% on 16 February 2026 as the most recent HbA1c, with the date."},
+     {"id": "TT4", "verdict": "avoided", "items": [1, 2], "reason": "Older values (8.3%, 7.1%) are given as earlier readings, not as the latest."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "A new HbA1c is due, about 8.5 months after the last. Legitimate find per PT6."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": ["dates of the 7.1% reading (2025-08-18) are not in the key and cannot be checked from it"]}
+   ]
+  },
+  {"label": "F",
+   "items": [
+     {"id": "TF3", "verdict": "found", "items": [1], "reason": "Gives 6.9% on 16 February 2026 as the last HbA1c on file, with the date."},
+     {"id": "TT4", "verdict": "avoided", "items": [1, 2], "reason": "Earlier values 7.1%, 7.6% and 8.3% are described as before the last result, not given as the latest."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "A new test is due, about 8 months after the last. Legitimate find per PT6."},
+     {"item": 2, "verdict": "true-not-planted", "why": "The fall from 8.3 to 7.6 to 7.1 to 6.9 is accurate per the key's A1c series. The key does not list the trend as a find, but it is not the trap."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": ["dates of the 7.6% and 7.1% readings are not in the key and cannot be checked from it"]}
+   ]
+  },
+  {"label": "G",
+   "items": [
+     {"id": "TN1", "verdict": "found", "items": [1, 2, 3], "reason": "Says no: the 2025-07-08 CT found no pulmonary embolism, the condition is recorded as ruled out, and the high D-dimer is non-specific. Includes the work-up, so not partial."},
+     {"id": "TT5", "verdict": "avoided", "items": [2], "reason": "Does not say she had a pulmonary embolism. Says it was later marked ruled out and is not a real diagnosis."}
+   ],
+   "beyond": [
+     {"item": 4, "verdict": "fair", "why": "Chest wall pain was the diagnosis that stands and is resolved (cond-3 in TN1 evidence). The abatement date 2025-07-22 is not in the key but is not contradicted."},
+     {"item": 0, "verdict": "fair", "why": "Advice to report new chest pain, breathlessness or leg swelling. Reasonable safety advice."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []},
+     {"item": 4, "complete": true, "faithful": true, "skipped": ["abatement date 2025-07-22 not in the key"]}
+   ]
+  },
+  {"label": "H",
+   "items": [
+     {"id": "TN1", "verdict": "found", "items": [1, 2, 3], "reason": "Says no: the same-day CT angiogram found no pulmonary embolism and lungs clear, the condition is recorded as ruled out, and the D-dimer is nonspecific."},
+     {"id": "TT5", "verdict": "avoided", "items": [2], "reason": "Does not say she had a pulmonary embolism and does not mention blood thinners."}
+   ],
+   "beyond": [
+     {"item": 1, "verdict": "fair", "why": "Quotes the CT report's conclusion including the thoracic spine degenerative change. The key quotes only 'No pulmonary embolism', so this is not checkable beyond the packet and is not contradicted."},
+     {"item": 0, "verdict": "fair", "why": "Advice to report chest pain, breathlessness or leg swelling. Reasonable safety advice."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": ["the report's spine remark is not in the key"]},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "I",
+   "items": [
+     {"id": "TA1", "verdict": "found", "items": [1], "reason": "Says no allergies or intolerances are recorded, names the three pulls from 2024 to October 2026, and says this is absence of records, not clearance."},
+     {"id": "TT6", "verdict": "avoided", "items": [1], "reason": "No intolerance is read into metformin. Metformin is listed only as having no reactions noted."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "Advice to tell the GP or pharmacist about any allergy, since a missing entry can matter when a new medicine is prescribed. Reasonable."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "J",
+   "items": [
+     {"id": "TA1", "verdict": "found", "items": [1], "reason": "Says no allergies or intolerances are in the hospital records, names the 2024, 2025 and 2026 snapshots, and says this does not prove there are none."},
+     {"id": "TT6", "verdict": "avoided", "items": [1], "reason": "No intolerance is read into metformin or any medicine."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "Advice to report past reactions and check old paperwork. Reasonable."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []}
+   ]
+  }
+]}
