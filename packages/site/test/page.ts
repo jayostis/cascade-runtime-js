@@ -106,9 +106,9 @@ function said(markup: string): string {
  */
 export function readPage(markup: string, page?: string): Page {
   return {
-    h1: first(/<h1>([\s\S]*?)<\/h1>/, markup),
+    h1: first(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/, markup),
     said: said(markup),
-    code: all(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g, markup),
+    code: all(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, markup),
     hrefs: links(markup, page),
     ids: new Set(all(/\sid="([^"]*)"/g, markup)),
     blocks: markup

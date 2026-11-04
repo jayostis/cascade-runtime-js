@@ -7,6 +7,7 @@ export const termsSection: Section<PagesContext> = {
   path: TERMS_PAGE,
   title: "Terms",
   kind: "build",
+  source: "cascade-vocabulary's ontologies, shapes, queries and runtime rules",
   async build(ctx) {
     const page = await termReference((await ctx.vocabulary()).files);
     return new Map([[TERMS_PAGE, new TextEncoder().encode(page)]]);

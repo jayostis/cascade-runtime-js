@@ -305,6 +305,8 @@ function pagesContext(
   return {
     root: ROOT,
     log,
+    // Set only by the deploy's build, so a pull request's artifact and a local build keep relative links.
+    ...(process.env.PAGES_URL ? { base: process.env.PAGES_URL } : {}),
     examples: once(async () => {
       const staged = await stagedVocabulary(
         vocabulary.config.vocabulary.repository,

@@ -231,3 +231,30 @@ test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () =>
   assert.match(scripted, /<a href="\.\.\/a\.md">ok<\/a>/);
   assert.match(scripted, /<a href="http:\/\/example\.org\/">web<\/a>/);
 });
+
+test("Markdown gives headings GitHub-style ids only when asked, and otherwise renders as it did", () => {
+  const source =
+    "# Top\n\n## What `a pod` holds & more\n\n### Same\n\n### Same\n\ntext\n";
+  const plain = renderMarkdown(source).text;
+  assert.ok(!plain.includes("id="));
+  assert.equal(renderMarkdown(source, { ids: false }).text, plain);
+  const withIds = renderMarkdown(source, { ids: true }).text;
+  assert.match(withIds, /<h2 id="what-a-pod-holds--more">/);
+  assert.match(withIds, /<h3 id="same">Same<\/h3>/);
+  assert.match(withIds, /<h3 id="same-1">Same<\/h3>/);
+  assert.equal(withIds.replace(/ id="[^"]*"/g, ""), plain);
+
+  const repeated = renderMarkdown("## Same\n\n## Same\n\n## Same-1\n", {
+    ids: true,
+  }).text;
+  assert.deepEqual(
+    [...repeated.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
+    ["same", "same-1", "same-1-1"],
+  );
+
+  const bare = renderMarkdown("## !!!\n\n## ???\n", { ids: true }).text;
+  assert.deepEqual(
+    [...bare.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
+    ["section", "section-1"],
+  );
+});
