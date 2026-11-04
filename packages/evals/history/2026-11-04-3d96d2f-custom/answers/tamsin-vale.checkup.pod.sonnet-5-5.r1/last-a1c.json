@@ -1,0 +1,8 @@
+{"answer": "Your most recent A1c was 6.9%, drawn on 16 February 2026. It is the lowest in over a year: 8.3% (Jan 2025), 7.6% (May 2025), 7.1% (Aug 2025), then 6.9%. It is now more than 8 months old, so a repeat is due soon. The records don't show a newer one.", "short": "Last A1c: 6.9% on 2026-02-16, down from 8.3% in Jan 2025; a repeat is due.", "items": [
+{"n": 1, "says": "Last A1c was 6.9% on 16 Feb 2026", "why": "It is the newest A1c result in the records.", "confidence": "high",
+"facts": [{"says": "A1c 6.9% on 2026-02-16", "provider": "Cascade North Demo Hospital", "cite": {"entry": "L19ee4eff"}, "name": "Hemoglobin A1c", "code": "4548-4", "value": "6.9", "unit": "%", "date": "2026-02-16", "dateKind": "when"}]},
+{"n": 2, "says": "A1c has fallen steadily from 8.3% in Jan 2025", "why": "Earlier results were higher, showing improvement.", "confidence": "high",
+"facts": [{"says": "A1c 7.1% in Aug 2025", "provider": "Cascade North Demo Hospital", "cite": {"entry": "L06ed9a38"}, "name": "Hemoglobin A1c", "value": "7.1", "unit": "%", "date": "2025-08-18", "dateKind": "when"},
+{"says": "A1c 8.3% in Jan 2025", "provider": "Cascade North Demo Hospital", "cite": {"entry": "Lf073dd78"}, "name": "Hemoglobin A1c", "value": "8.3", "unit": "%", "date": "2025-01-13", "dateKind": "when"}],
+"links": [{"from": 1, "to": 0, "says": "older, higher value"}]}
+]}

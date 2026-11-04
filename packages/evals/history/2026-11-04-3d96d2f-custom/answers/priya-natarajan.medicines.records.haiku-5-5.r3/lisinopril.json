@@ -1,0 +1,42 @@
+{"answer": "No, you should not be taking lisinopril. Dr. Marsh at Fernhill Family Clinic stopped it on September 22, 2025 because it was causing a dry cough, and switched you to losartan 50 mg once a day. Kestrel Harbor Hospital's record says the same, and your pharmacy has not filled lisinopril since then. The app is most likely showing an old copy: the lisinopril entries from your 2025 Apple Health data still say 'active', but they were saved before that stop date. Remove or update that entry in the app, and ask your pharmacy to confirm that no lisinopril refills remain. Lisinopril should also stay on your record as a side effect (dry cough). Fernhill lists it, but the hospital's allergy list only has aspirin, so tell any new doctor about it. Separate concern: the hospital told you to stop hydrochlorothiazide on March 5, 2026, after your sodium dropped. Your pharmacy still shows it as active with refills left, and Fernhill's June 2026 summary still lists it. Please confirm with Dr. Marsh and the pharmacy that it has been stopped and the refills cancelled.",
+"short": "Lisinopril was stopped on Sept 22, 2025 for dry cough and replaced by losartan; an old 2025 app entry still shows it as active. Hydrochlorothiazide, stopped by the hospital on Mar 5, 2026, still shows as active at the pharmacy.",
+"items": [
+{"n": 1, "says": "Lisinopril was stopped on September 22, 2025 because of dry cough, and replaced by losartan.", "why": "The Fernhill visit plan and the later Kestrel Harbor medication list both record the stop on that date.", "confidence": "high",
+"facts": [
+{"says": "Lisinopril stopped September 22, 2025 because of dry cough, changed to losartan.", "provider": "Fernhill Family Clinic", "cite": {"file": "fernhill-family-clinic-summary-3.xml", "line": 230}, "name": "lisinopril 10 MG Oral Tablet", "date": "2025-09-22", "dateKind": "end", "quote": "stopped September 22, 2025 because of dry cough, changed to losartan"},
+{"says": "Plan from the September 22, 2025 visit: stop lisinopril, start losartan 50 mg daily.", "provider": "Fernhill Family Clinic (Elena Marsh, MD)", "cite": {"file": "fernhill-family-clinic-summary-3.xml", "line": 1048}, "name": "lisinopril", "date": "2025-09-22", "dateKind": "when", "quote": "stop lisinopril, start losartan 50 mg daily"},
+{"says": "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan.", "provider": "Kestrel Harbor Hospital", "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 229}, "name": "lisinopril 10 MG Oral Tablet", "date": "2025-09-22", "dateKind": "end", "quote": "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan"}
+],
+"absences": [{"what": "A lisinopril prescription or fill at the pharmacy after the stop date", "match": {"codes": ["314076"], "terms": ["lisinopril"], "after": "2025-09-22"}, "coverage": "Pharmacy record of prescriptions and fills, through 2026-07-14", "sources": ["alder-street-pharmacy-patient-record.xml"]}],
+"knowledge": {"says": "Lisinopril is an ACE inhibitor. A dry cough is a common side effect of that class, and switching to an ARB such as losartan is the usual response."}
+},
+{"n": 2, "says": "The app is probably showing an old copy. The lisinopril entries from your 2025 Apple Health data still say active, and they were saved before the September 2025 stop.", "why": "The import dates are before September 22, 2025, so they could not show the change, and the app is most likely reading one of these copies.", "confidence": "medium",
+"facts": [
+{"says": "Lisinopril medication record with status active.", "provider": "Kestrel Harbor Hospital (Apple Health copy)", "cite": {"file": "x-e8/apple_health_export/clinical-records/MedicationRequest-medrx-lisinopril-1.json", "line": 8}, "name": "lisinopril 10 MG Oral Tablet", "id": "medrx-lisinopril-1", "code": "314076", "status": "active", "date": "2023-06-15", "dateKind": "when", "quote": "\"status\": \"active\""},
+{"says": "Lisinopril record received into the Apple Health data on 2025-03-29.", "provider": "Kestrel Harbor Hospital (Apple Health copy)", "cite": {"file": "x-e8/apple_health_export/export.xml", "line": 6}, "name": "lisinopril 10 MG Oral Tablet", "id": "medrx-lisinopril-1", "date": "2025-03-29", "dateKind": "recorded", "quote": "identifier=\"medrx-lisinopril-1\" ... receivedDate=\"2025-03-29 18:39:51 +0000\""}
+],
+"absences": [],
+"links": []
+},
+{"n": 3, "says": "Lisinopril should stay on your record as an intolerance (dry cough). Fernhill lists it, but the hospital's allergy list does not.", "why": "A hospital reading only its own allergy list would miss the reaction, so tell any new doctor or hospital about it.", "confidence": "high",
+"facts": [
+{"says": "Allergy list entry: lisinopril, dry cough (intolerance), September 2025.", "provider": "Fernhill Family Clinic", "cite": {"file": "fernhill-family-clinic-summary-3.xml", "line": 108}, "name": "lisinopril", "code": "29046", "date": "2025-09-22", "dateKind": "start", "quote": "Lisinopril: dry cough (intolerance), September 2025"}
+],
+"absences": [{"what": "Lisinopril or cough intolerance on the hospital allergy list", "match": {"codes": ["29046"], "terms": ["lisinopril", "cough"], "after": "2025-09-22"}, "coverage": "Hospital summaries from 2025 through 2026-03, allergy sections", "sources": ["kestrel-harbor-health-summary-4.xml", "kestrel-harbor-health-summary-5.xml"]}],
+"knowledge": {"says": "An intolerance that is recorded at only one of your providers can be missed by the others, so the hospital's list should match the fuller record."}
+},
+{"n": 4, "says": "Separate from the lisinopril question: the hospital told you to stop hydrochlorothiazide on March 5, 2026. Your pharmacy still lists it as active with refills, and Fernhill's June 2026 summary still lists it as active.", "why": "Three records disagree about a medicine the hospital told you to stop after a low sodium level, so it needs confirming with your doctor and pharmacy.", "confidence": "high",
+"facts": [
+{"says": "STOP taking this medicine. Discontinued March 5, 2026 (hyponatremia).", "provider": "Kestrel Harbor Hospital", "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 221}, "name": "hydrochlorothiazide 12.5 MG Oral Capsule", "date": "2026-03-05", "dateKind": "end", "quote": "STOP taking this medicine."},
+{"says": "Last filled April 2, 2026 (90 days), 2 refills remaining; status Active.", "provider": "Alder Street Pharmacy (prescriber Elena Marsh, MD)", "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 218}, "name": "hydrochlorothiazide 12.5 MG Oral Capsule", "status": "active", "date": "2026-04-02", "dateKind": "when", "quote": "April 2, 2026 (90 days), 2 refills remaining"},
+{"says": "Hydrochlorothiazide 12.5 mg, 1 capsule daily, still listed as active.", "provider": "Fernhill Family Clinic", "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 234}, "name": "hydrochlorothiazide 12.5 MG Oral Capsule", "status": "active", "date": "2026-06-22", "dateKind": "recorded", "quote": "hydrochlorothiazide 12.5 MG Oral Capsule: 1 capsule daily, from December 9, 2025"}
+],
+"absences": [],
+"knowledge": {"says": "Hydrochlorothiazide can lower sodium, and a stop order should be carried into the pharmacy and GP lists so the drug is not refilled by mistake."}
+}
+],
+"links": [
+{"from": {"item": 2, "fact": 0}, "to": {"item": 1, "fact": 0}, "says": "The 2025 copy predates the September 22, 2025 stop, so its active status is out of date."},
+{"from": {"item": 4, "fact": 0}, "to": {"item": 4, "fact": 1}, "says": "The hospital stopped it on March 5, 2026, but the pharmacy still lists it as active with refills."},
+{"from": {"item": 4, "fact": 0}, "to": {"item": 4, "fact": 2}, "says": "The hospital stopped it on March 5, 2026, but Fernhill's June 2026 summary still lists it as active."}
+]}

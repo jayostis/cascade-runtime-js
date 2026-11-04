@@ -1,0 +1,39 @@
+{"answer": "Not as far as your records show. The CT scan of your chest on July 8, 2025 found no blood clot in your lungs, and the report says your lungs were clear. A clot in the lungs (pulmonary embolism) was on your problem list from that visit, but it was later marked as ruled out, so it is not recorded as a real diagnosis. The visit was for chest pain, which was diagnosed as chest wall pain and was marked resolved by July 22, 2025. A blood test that day (D-dimer) came back high. A high D-dimer is not specific to clots and can be raised by many other things; the scan is what settled the question. Nothing later in your records mentions a clot in the lungs. If you get new chest pain, shortness of breath or leg swelling, tell your doctor promptly.",
+"short": "A CT chest scan on 2025-07-08 found no pulmonary embolism, and the diagnosis is recorded as ruled out.",
+"items": [
+{"n": 1, "says": "The CT scan of the chest on July 8, 2025 found no blood clot in the lungs.", "why": "The radiology report's conclusion says there is no pulmonary embolism and the lungs are clear.", "confidence": "high",
+"facts": [
+{"says": "CT angiography chest (pulmonary embolism protocol) report concludes: No pulmonary embolism. Lungs are clear.", "provider": "Cascade North Demo Hospital", "cite": {"file": "north-2026-10/bundle.json", "resource": "DiagnosticReport/story-stopped-dr-1"}, "name": "CT angiography chest (pulmonary embolism protocol)", "id": "story-stopped-dr-1", "code": "24627-2", "status": "final", "date": "2025-07-08", "dateKind": "when", "quote": "No pulmonary embolism. Lungs are clear."},
+{"says": "CT angiography of the chest was performed", "provider": "Cascade North Demo Hospital", "cite": {"file": "north-2026-10/bundle.json", "resource": "Procedure/story-stopped-proc-1"}, "name": "CT angiography of the chest", "id": "story-stopped-proc-1", "code": "71275", "status": "completed", "date": "2025-07-08", "dateKind": "when"}
+],
+"absences": [],
+"knowledge": {"says": "A CT angiogram of the chest is the standard test for a clot in the lungs, so a clear report on the day of the scan answers the question for that date.", "guideline": "ESC 2019 guidelines on acute pulmonary embolism"}
+},
+{"n": 2, "says": "Pulmonary embolism was on your problem list from that time, but it is marked as ruled out (refuted), not as an active or confirmed diagnosis. No later record of a clot in the lungs appears in your records.", "why": "The entry has a clinical status of resolved and a verification status of refuted, and none of the records after July 2025 lists pulmonary embolism.", "confidence": "high",
+"facts": [
+{"says": "Pulmonary embolism entry: clinical status resolved, verification status refuted", "provider": "Cascade North Demo Hospital", "cite": {"file": "north-2026-10/bundle.json", "resource": "Condition/story-stopped-cond-2"}, "name": "Pulmonary embolism", "id": "story-stopped-cond-2", "code": "59282003", "status": "refuted", "date": "2025-07-08", "dateKind": "start"}
+],
+"absences": [
+{"what": "any record of pulmonary embolism dated after the July 2025 scan", "match": {"codes": ["59282003"], "terms": ["pulmonary embolism"], "after": "2025-07-09"}, "coverage": "all six files: the 2024-02, 2025-02 and 2026-10 snapshots, through 2026-10-15"}
+],
+"knowledge": {"says": "A condition marked refuted means the clinician concluded it was not present, so it is not a diagnosis you have.", "guideline": "ESC 2019 guidelines on acute pulmonary embolism"}
+},
+{"n": 3, "says": "A D-dimer blood test on July 8, 2025 was high, at 0.92 mg/L FEU.", "why": "A raised D-dimer prompts imaging but is not specific for clots; the report's reference range tops out at 0.49, and the CT that day found no clot.", "confidence": "medium",
+"facts": [
+{"says": "D-dimer result 0.92 mg/L FEU, flagged high", "provider": "Cascade North Demo Hospital", "cite": {"file": "north-2026-10/bundle.json", "resource": "Observation/story-stopped-ddimer-1"}, "name": "D-dimer", "id": "story-stopped-ddimer-1", "code": "48065-7", "value": 0.92, "unit": "mg/L{FEU}", "status": "final", "date": "2025-07-08", "dateKind": "when"}
+],
+"absences": [],
+"knowledge": {"says": "D-dimer is sensitive but not specific: it is often raised by inflammation, recent surgery, infection and other conditions, so a high value alone does not mean a clot.", "guideline": "ESC 2019 guidelines on acute pulmonary embolism"}
+},
+{"n": 4, "says": "The chest pain that led to the July 2025 scan was diagnosed as chest wall pain and was marked resolved by July 22, 2025.", "why": "The chest wall pain entry has an abatement date of 2025-07-22 and a resolved clinical status.", "confidence": "high",
+"facts": [
+{"says": "Chest wall pain entry: clinical status resolved, abated 2025-07-22", "provider": "Cascade North Demo Hospital", "cite": {"file": "north-2026-10/bundle.json", "resource": "Condition/story-stopped-cond-3"}, "name": "Chest wall pain", "id": "story-stopped-cond-3", "code": "102588006", "date": "2025-07-22", "dateKind": "end"}
+],
+"absences": [],
+"knowledge": {"says": "Chest wall pain is a common, usually benign cause of chest pain that resolves over days to weeks."}
+}
+],
+"links": [
+{"from": {"item": 2, "fact": 0}, "to": {"item": 1, "fact": 0}, "says": "The refuted diagnosis agrees with the CT report's no-clot conclusion from the same day."},
+{"from": {"item": 3, "fact": 0}, "to": {"item": 1, "fact": 0}, "says": "The raised D-dimer was followed up by the CT that day, which found no clot."}
+]}
