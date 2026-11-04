@@ -42,7 +42,7 @@ import {
 } from "../front-page.js";
 import type { Conformance, PagesContext } from "../hub/context.js";
 import { buildTree } from "../sections.js";
-import { Site } from "../site.js";
+import { Site, type SiteOptions } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
 import { COPY } from "../terms.js";
 import { FINISHERS, SECTIONS } from "./hub/index.js";
@@ -68,6 +68,9 @@ const STARTER = "cascade-starter-kit";
 const PAGES = join(ROOT, "build", "pages");
 const SPEC = join(ROOT, "build", "spec");
 const log = (line: string): void => console.error(line);
+/** The hub's folders of the term reference and the spec's pages. */
+const TERMS = "terms/";
+const SPEC_FOLDER = "spec/";
 
 interface Target {
   readonly name: string;
@@ -88,7 +91,24 @@ function target(name: string | undefined, pod: string | undefined): Target {
   return { name, pod: new FolderFiles(folder), named };
 }
 
-async function buildExampleSite(args: string[]): Promise<number> {
+/** Where a kit's site, in a folder of the hub, finds the hub's pages it links: those a section of the hub writes. */
+function inHub(): Pick<SiteOptions, "terms" | "spec"> {
+  const written = (path: string) =>
+    SECTIONS.some((section) => section.path === path);
+  return {
+    ...(written(`${TERMS}index.html`) && { terms: `../${TERMS}` }),
+    ...(written(`${SPEC_FOLDER}index.html`) && { spec: `../${SPEC_FOLDER}` }),
+  };
+}
+
+/**
+ * Builds a kit's site. Built alone it links no term and no rule, since nothing beside it holds the term reference or
+ * the spec; the hub gives it the folders of those it holds.
+ */
+async function buildExampleSite(
+  args: string[],
+  hub: Pick<SiteOptions, "terms" | "spec"> = {},
+): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
@@ -100,7 +120,13 @@ async function buildExampleSite(args: string[]): Promise<number> {
   });
   const { name, pod, named } = target(positionals[0], values.pod);
   const vocabulary = await localVocabulary(ROOT, log);
-  return writeSite(vocabulary, { name, pod, named }, values.out, values.lens);
+  return writeSite(
+    vocabulary,
+    { name, pod, named },
+    values.out,
+    values.lens,
+    hub,
+  );
 }
 
 async function writeSite(
@@ -108,7 +134,9 @@ async function writeSite(
   { name, pod, named }: Target,
   outFolder: string | undefined,
   lens: string | undefined,
+  hub: Pick<SiteOptions, "terms" | "spec">,
 ): Promise<number> {
+  const { iri } = vocabulary.resolved;
   const out = absolute(outFolder ?? join(ROOT, "build", name, "site"));
   const site = await Site.build({
     vocabulary: vocabulary.files,
@@ -121,6 +149,8 @@ async function writeSite(
     name,
     at: clock.now(),
     ask: `npm run ask -- ${named}`,
+    ...(iri.includes("/tree/") && { blob: iri.replace("/tree/", "/blob/") }),
+    ...hub,
   });
   const files = await site.files();
   if (outFolder === undefined) await rm(out, { recursive: true, force: true });
@@ -300,7 +330,7 @@ function pagesContext(
         const podFiles = new FolderFiles(pod);
         for (const [path, bytes] of podOf(sample))
           await podFiles.write(path, bytes);
-        const built = await buildExampleSite([name]);
+        const built = await buildExampleSite([name], inHub());
         if (built !== 0) throw new Error(`the site of ${name} was not built`);
         const folder = new FolderFiles(join(ROOT, "build", name, "site"));
         const site = new Map<string, Uint8Array>();
