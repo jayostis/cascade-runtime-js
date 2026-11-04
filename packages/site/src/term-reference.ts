@@ -247,7 +247,7 @@ class Reference {
   /** Where each shape's anchor is: the entry of the first class it checks, else of the first property whose subjects it checks, or undefined for the shapes' own part. */
   readonly #homes = new Map<string, string | undefined>();
 
-  /** The shapes no entry holds: those that check no class and no property, and are reached only by another shape's node. */
+  /** The shapes no entry holds: those reached by another shape's node, and those whose class or property has no entry. */
   get unhomed(): NamedNode[] {
     return this.#nodeShapes.filter(
       ({ value }) => this.#homes.get(value) === undefined,
@@ -775,7 +775,7 @@ ${grouped.map(
 <p class="prose">${about}</p>
 ${entries.length === 0 ? markup`<p class="about">None.</p>\n` : entries.map((entry) => reference.entry(entry))}`,
 )}<h2 class="part" id="shapes">Shapes other shapes use</h2>
-<p class="prose">The shapes no class's entry shows, which another shape sends a value to with <code>node</code>.</p>
+<p class="prose">The shapes no entry above shows: those another shape sends a value to with <code>node</code>, and those whose class or property this page has no entry for.</p>
 ${unhomed.length === 0 ? markup`<p class="about">None.</p>\n` : unhomed.map((shape) => markup`<section class="term">\n<h3><code>${reference.name(shape.value)}</code></h3>\n<p class="iri">${shape.value}</p>\n${reference.shape(shape, true)}</section>\n`)}</main>
 </body>
 </html>
