@@ -24,6 +24,7 @@ const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const VACCINE_CODE = `${CASCADE}vaccineCode`;
 const VACCINATION = `${CASCADE}Vaccination`;
 const FOAF_NAME = "http://xmlns.com/foaf/0.1/name";
+const CVX_SHAPE = `${CASCADE}CvxCodeShape`;
 const SPEC = "../spec/";
 
 const ONTOLOGY = `@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
@@ -68,10 +69,13 @@ cascade:VaccinationShape a sh:NodeShape ;
     sh:targetSubjectsOf cascade:vaccineCode ;
     sh:property [
         sh:path cascade:vaccineCode ;
-        sh:nodeKind sh:IRI ;
+        sh:node cascade:CvxCodeShape ;
         sh:maxCount 1 ;
         sh:message "A vaccine code is one IRI."@en
     ] .
+
+cascade:CvxCodeShape a sh:NodeShape ;
+    sh:nodeKind sh:IRI .
 `;
 
 const PREFIXED = `PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
@@ -150,6 +154,11 @@ test("a term's entry says what it is, its shape and every query and rule that na
   assert.match(shown.said, /cascade:VaccinationShape/);
   assert.match(shown.said, /maxCount 1/);
   assert.match(shown.said, /A vaccine code is one IRI\./);
+  assert.ok(
+    shown.hrefs.includes(termHref(CVX_SHAPE, "")) &&
+      readPage(page).ids.has(termId(CVX_SHAPE)),
+    "a shape another shape sends a value to has its own anchor, and is linked",
+  );
   assert.ok(shown.hrefs.includes(`${BLOB}queries/views/vaccines.rq`));
   assert.ok(shown.hrefs.includes(`${BLOB}queries/questions/latest-vaccine.rq`));
   assert.ok(
@@ -164,7 +173,9 @@ test("a term's entry says what it is, its shape and every query and rule that na
   );
   const vaccination = readPage(entry(page, termId(VACCINATION)));
   assert.ok(
-    vaccination.hrefs.includes(ruleHref("runtime/vaccines.feature", "V2", SPEC)),
+    vaccination.hrefs.includes(
+      ruleHref("runtime/vaccines.feature", "V2", SPEC),
+    ),
     "a rule naming the whole IRI uses it",
   );
   assert.match(vaccination.said, /A vaccine given to the person\./);
@@ -185,7 +196,9 @@ test("an IRI on ns.cascadeprotocol.org is shown as text and never linked, and a 
     [],
   );
   assert.ok(said.includes(VACCINE_CODE), "the IRI as text");
-  assert.ok(said.includes("https://ns.cascadeprotocol.org/bridge/v1-draft#Run"));
+  assert.ok(
+    said.includes("https://ns.cascadeprotocol.org/bridge/v1-draft#Run"),
+  );
   const name = readPage(entry(page, termId(FOAF_NAME)));
   assert.ok(name.hrefs.includes("http://xmlns.com/foaf/spec/20140114.rdf"));
   assert.ok(page.includes(TREE), "the page names the commit it was read at");
@@ -205,7 +218,10 @@ test("the term reference is a section of the hub, and the front page links it", 
   });
   assert.ok(tree.has(TERMS_PAGE));
   const front = readPage(new TextDecoder().decode(tree.get(FRONT_PAGE)));
-  assert.ok(front.hrefs.includes("terms/"), "the base termHref takes from the front page");
+  assert.ok(
+    front.hrefs.includes("terms/"),
+    "the base termHref takes from the front page",
+  );
 });
 
 test("over the real vocabulary, every cascade# term has an anchor, vaccineCode names a query that uses it, and every rule link lands on a rule", async () => {
@@ -260,5 +276,8 @@ test("over the real vocabulary, every cascade# term has an anchor, vaccineCode n
     );
   }
   for (const href of hrefs.filter((href) => href.startsWith("#")))
-    assert.ok(ids.has(decodeURIComponent(href.slice(1))), `${href} lands nowhere`);
+    assert.ok(
+      ids.has(decodeURIComponent(href.slice(1))),
+      `${href} lands nowhere`,
+    );
 });

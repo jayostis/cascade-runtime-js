@@ -1,6 +1,7 @@
 import { examplesSection } from "../../hub/examples.js";
 import type { PagesContext } from "../../hub/context.js";
 import { startSection } from "../../hub/start.js";
+import { termsSection } from "../../hub/terms.js";
 import { trySection } from "../../hub/try.js";
 import type { Finisher, Section } from "../../sections.js";
 import { evalsSection } from "./evals.js";
@@ -9,6 +10,7 @@ import { evalsSection } from "./evals.js";
 export const SECTIONS: readonly Section<PagesContext>[] = [
   startSection,
   trySection,
+  termsSection,
   examplesSection,
   evalsSection,
 ];

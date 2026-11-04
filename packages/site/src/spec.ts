@@ -163,7 +163,8 @@ interface Pointer {
 const RULE_NUMBER = /^([A-Z]+\d+|Check \d+)\.\s*/;
 /** The sentence a rule opens with when no note rules it (decisions/README.md). */
 const NO_NOTE = /^No note rules this\.\s*/;
-const numberOf = (rule: WrittenRule): string | undefined =>
+/** The rule's number, `R19` or `Check 3`, as its heading's anchor is made from, or undefined for a rule with none. */
+export const numberOf = (rule: WrittenRule): string | undefined =>
   RULE_NUMBER.exec(rule.name)?.[1];
 const thingKey = (thing: string): string =>
   thing.replaceAll("`", "").trim().toLowerCase();
