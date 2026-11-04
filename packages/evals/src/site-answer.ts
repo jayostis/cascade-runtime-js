@@ -1,7 +1,7 @@
 // One arm's answer to one question, rendered: the reply as given, its reasoning (the chain the agent wrote and the
 // graph of what it cited), the doctor card and the cost. Everything comes from results.json: the agent's own output,
 // the program's checks, and the lookups the harness recorded. Nothing is inferred here.
-import type { Answer } from "./checks.js";
+import type { Reply } from "cascade-runtime";
 import { instanceOf } from "./instances.js";
 import type { Arm } from "./prompts.js";
 import type {
@@ -23,7 +23,7 @@ import {
   thousands,
 } from "./site-text.js";
 
-type Item = Answer["items"][number];
+type Item = Reply["items"][number];
 type Fact = NonNullable<Item["facts"]>[number];
 
 /** One instance of the run, with the jobs that answered it and the evidence recorded for them. */
@@ -73,7 +73,7 @@ export interface Turn {
   readonly arm: Arm;
   readonly job: Job;
   readonly question: string;
-  readonly answer: Answer | undefined;
+  readonly answer: Reply | undefined;
 }
 
 export function turnOf(
@@ -86,12 +86,12 @@ export function turnOf(
   );
   if (job === undefined) return undefined;
   const given = sitting.results.answers[job.id]?.[question] as
-    Partial<Answer> | undefined;
+    Partial<Reply> | undefined;
   const answer =
     given !== undefined &&
     typeof given.answer === "string" &&
     Array.isArray(given.items)
-      ? (given as Answer)
+      ? (given as Reply)
       : undefined;
   return { sitting, arm, job, question, answer };
 }

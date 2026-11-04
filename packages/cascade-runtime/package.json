@@ -65,6 +65,7 @@
   "dependencies": {
     "@cascade-runtime/fhir-pull": "0.0.0",
     "@cascade-runtime/runtime": "0.0.0",
+    "ajv": "8.20.0",
     "oxigraph": "0.5.11"
   },
   "peerDependencies": {

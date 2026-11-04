@@ -1,11 +1,9 @@
 // The citation checker: whether a cited record says what is claimed of it, and whether a claim that something is
 // absent is backed by what was looked through. A claim names the field it is about (the record's value, status, code,
 // name, id, a clinical date of a kind, or words it quotes), and each is compared with that field of the cited record
-// only: never a reference range, an interpretation, an update time or a neighbouring record. The harness checks
-// answers with it; an app can check a model's answer before showing it.
-import { readFile } from "node:fs/promises";
-import { codeStems } from "cascade-runtime";
-import { isAbsolute, relative, resolve } from "node:path";
+// only: never a reference range, an interpretation, an update time or a neighbouring record. No Node: the source of a
+// citation is a parameter, and the one that reads downloads from disk is `node/downloads.ts`.
+import { codeStems } from "./terms.js";
 
 /** Where a citation points: a line of a download, a FHIR resource in one, or a pod entry as a pod's rows name it. */
 export type Cite =
@@ -59,7 +57,8 @@ export type Verdict =
         | "no such record"
         | "not at that line"
         | "says otherwise"
-        | "nothing to check";
+        | "nothing to check"
+        | "nothing to check against";
       /** Each claimed field the record does not hold, as `<field> <claimed>`. */
       readonly missing: readonly string[];
       /** For a line cited, where the file holds a record that does say it: that record's first line. */
@@ -75,6 +74,8 @@ export interface Source {
 
 export interface Pointed {
   readonly fields: Fields;
+  /** Where the record is from: for a pod entry, the records its values are stated by; for a download, its file. */
+  readonly source: readonly string[];
   /** For a line cited, every record of its file with the line it starts on, to say where a claim does hold. */
   readonly others?: readonly {
     readonly line: number;
@@ -108,6 +109,8 @@ export interface Call {
 export interface Ran extends Call {
   readonly ok: boolean;
   readonly answer: string;
+  /** The number the pod command printed with the call's answer, which an absence's query may name. */
+  readonly call?: number;
 }
 
 /** What a key item says must be absent, which an absence that ties to it is held to, and the kind of record it is. */
@@ -157,8 +160,8 @@ export type Backing =
   | { readonly backed: true }
   | { readonly backed: false; readonly reason: string };
 
-type Mutable = { -readonly [K in keyof Fields]: string[] };
-const fresh = (): Mutable => ({
+export type Mutable = { -readonly [K in keyof Fields]: string[] };
+export const fresh = (): Mutable => ({
   value: [],
   unit: [],
   status: [],
@@ -780,7 +783,7 @@ export async function checkRecordsAbsence(
 
 // ---- Reading records ----------------------------------------------------------------------------------------------
 
-const asArray = (value: unknown): unknown[] =>
+export const asArray = (value: unknown): unknown[] =>
   Array.isArray(value) ? value : value === undefined ? [] : [value];
 const str = (value: unknown) =>
   typeof value === "string" ||
@@ -1145,14 +1148,14 @@ const RECORD_ELEMENTS = new Set([
   "supply",
 ]);
 
-interface Span {
+export interface Span {
   readonly from: number;
   readonly to: number;
   readonly fields: Fields;
 }
 
 /** The line, from 1, of the character at `offset`, given each line's start. */
-function lineAt(starts: readonly number[], offset: number): number {
+export function lineAt(starts: readonly number[], offset: number): number {
   let low = 0;
   let high = starts.length - 1;
   while (low < high) {
@@ -1164,7 +1167,7 @@ function lineAt(starts: readonly number[], offset: number): number {
 }
 
 /** A C-CDA document's records: each entry's act, and each result of an organizer, with its span. */
-function ccdaRecords(xml: string): Span[] {
+export function ccdaRecords(xml: string): Span[] {
   const spans: Span[] = [];
   const written = documentTime(xml);
   const recorded = (fields: Fields): Fields =>
@@ -1216,7 +1219,7 @@ function ccdaRecords(xml: string): Span[] {
 }
 
 /** A JSON file's FHIR resources, each with its span: the objects that carry a resourceType other than Bundle. */
-function jsonRecords(text: string): Span[] {
+export function jsonRecords(text: string): Span[] {
   const spans: Span[] = [];
   const stack: number[] = [];
   let inString = false;
@@ -1254,80 +1257,6 @@ export function holdsRecords(text: string): boolean {
   return (
     (/^\s*[{[]/.test(text) ? jsonRecords(text) : ccdaRecords(text)).length > 0
   );
-}
-
-/** The downloads in `folder`, cited by file and line or by FHIR resource; a path out of the folder names nothing. */
-export function downloadsSource(folder: string): Source {
-  const root = resolve(folder);
-  const read = new Map<string, Promise<string | undefined>>();
-  const fileText = (file: string) => {
-    const path = resolve(root, file);
-    const inside = relative(root, path);
-    if (inside.startsWith("..") || isAbsolute(inside))
-      return Promise.resolve(undefined);
-    let found = read.get(path);
-    if (found === undefined) {
-      found = readFile(path, "utf8").catch(() => undefined);
-      read.set(path, found);
-    }
-    return found;
-  };
-  return {
-    async at(cite) {
-      if (!("file" in cite)) return undefined;
-      const text = await fileText(cite.file);
-      if (text === undefined) return undefined;
-      const json = /^\s*[{[]/.test(text);
-      if ("resource" in cite) {
-        if (!json) return undefined;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          return undefined;
-        }
-        const named = (it: unknown) => {
-          const { resourceType, id } = (it ?? {}) as Record<string, unknown>;
-          return `${String(resourceType)}/${String(id)}` === cite.resource;
-        };
-        const resource = named(parsed)
-          ? parsed
-          : asArray((parsed as { entry?: unknown }).entry)
-              .map((it) => (it as { resource?: unknown }).resource)
-              .find(named);
-        return resource === undefined
-          ? undefined
-          : { fields: fhirFields(resource as Record<string, unknown>) };
-      }
-      const starts = [0];
-      for (
-        let at = text.indexOf("\n");
-        at !== -1;
-        at = text.indexOf("\n", at + 1)
-      )
-        starts.push(at + 1);
-      if (
-        !Number.isInteger(cite.line) ||
-        cite.line < 1 ||
-        cite.line > starts.length
-      )
-        return undefined;
-      const from = starts[cite.line - 1]!;
-      const to =
-        cite.line < starts.length ? starts[cite.line]! - 1 : text.length;
-      const records = json ? jsonRecords(text) : ccdaRecords(text);
-      const others = records
-        .map((it) => ({ line: lineAt(starts, it.from), fields: it.fields }))
-        .sort((a, b) => a.line - b.line);
-      const holding = records
-        .filter((it) => it.from <= to && it.to >= from)
-        .sort((a, b) => a.to - a.from - (b.to - b.from))[0];
-      if (holding !== undefined) return { fields: holding.fields, others };
-      const line = fresh();
-      line.text.push(text.slice(from, to).replace(/<[^>]+>/g, " "));
-      return { fields: line, others };
-    },
-  };
 }
 
 /** The kind of field each pod field is, by its local name. */
@@ -1412,7 +1341,7 @@ export const POD_NOT_CHECKABLE: readonly string[] = [
   "RO_0002351",
 ];
 
-const MEMBER_PREFIX = /^urn:uuid:\S+ /;
+const MEMBER_PREFIX = /^(urn:uuid:\S+) /;
 
 /**
  * A pod's entries, each read by `rowsOf` as rows of a field and its value; undefined for an entry there is not. The
@@ -1435,17 +1364,22 @@ export function podRowsSource(
         );
         if (who === undefined) return undefined;
         const person = fresh();
+        const from = new Set<string>();
         for (const [column, text] of Object.entries(who))
           for (const part of text.split("; ")) {
             const value = part.replace(MEMBER_PREFIX, "");
+            const member = MEMBER_PREFIX.exec(part)?.[1];
+            if (member !== undefined) from.add(member);
             if (value !== "")
               for (const kind of POD_FIELDS[column] ?? [])
                 person[kind].push(value);
           }
-        return { fields: person };
+        return { fields: person, source: [...from] };
       }
       const fields = fresh();
+      const source = new Set<string>();
       for (const row of rows) {
+        if (row.from !== undefined && row.from !== "") source.add(row.from);
         const name = (row.field ?? "").split(/[#/:]/).pop() ?? "";
         if (row.value === undefined) continue;
         const value =
@@ -1458,7 +1392,7 @@ export function podRowsSource(
           if (shown !== undefined) fields.code.push(shown);
         }
       }
-      return { fields };
+      return { fields, source: [...source] };
     },
   };
 }

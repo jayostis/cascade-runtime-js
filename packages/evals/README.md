@@ -23,10 +23,10 @@ Recorded runs: **[jayostis.github.io/cascade-runtime-js/evals/](https://jayostis
 - `configs/`: the tiers. **smoke**: one case, one run per arm, one judge (so the judging path runs end to end). **standard**: every case, one run, one
   judge. **full**: three runs, two judges and their agreement. Each config names the subject and judge models (judges
   are cheap models picked by calibration: [calibration.md](calibration.md)) and a hard cap in tokens and dollars.
-- `schemas/`: case, key, config, answer, verdict and results. `results.schema.json` is the contract a runner fills.
-- `src/citations.ts`: the citation checker, exported as `cascade-evals/citations` for an app to check a model's answer:
-  a cited line, FHIR resource or pod entry exists and holds the date and values claimed; an absence counts only when
-  its query ran and its coverage is stated.
+- `schemas/`: case, key, config, verdict and results. `results.schema.json` is the contract a runner fills. The reply a
+  subject writes, its schema and the citation checker are `cascade-runtime`'s (`replySchema`, `checkReply`: a cited line,
+  FHIR resource or pod entry exists and holds the date and values claimed; an absence counts only when its query ran and
+  its coverage is stated), the one copy an app and the harness share; `src/checks.ts` calls them for each answer.
 - `src/sessions.ts`: a subject job is one session; its `ask` command hands out the questions one at a time, each once
   the last is answered, and its calls are split at each hand-out, so each question's cost and time stand apart from the
   session's own (the grab bag's reading of every file). `src/evidence.ts`: every citation resolved mechanically, a pod

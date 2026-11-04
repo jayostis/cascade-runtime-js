@@ -5,55 +5,18 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type Absence,
-  checkAbsence,
   checkCitation,
   checkRecordsAbsence,
-  type Claim,
+  checkReply,
   downloadsSource,
   holdsRecords,
-  podRowsSource,
+  type PodAsker,
   type Ran,
   type Tie,
-} from "./citations.js";
-import { entryOfHandle, HANDLE } from "cascade-runtime/tools";
+} from "cascade-runtime";
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
-import { errorsOf } from "./schemas.js";
 import { answerPath } from "./sessions.js";
-
-export type Fact = Omit<Claim, "cite"> & {
-  readonly cite: Claim["cite"];
-  readonly says: string;
-  readonly provider: string;
-};
-
-/** A subject's answer to one question: the reply, its short form, and each point with its chain. */
-export interface Answer {
-  readonly answer: string;
-  readonly short: string;
-  readonly items: readonly {
-    readonly n: number;
-    readonly says: string;
-    readonly why: string;
-    readonly confidence: string;
-    readonly facts?: readonly Fact[];
-    readonly absences?: readonly (Absence & {
-      readonly query?: Absence["query"] & { readonly call?: number };
-    })[];
-    readonly knowledge?: { readonly says: string; readonly guideline?: string };
-    readonly links?: readonly {
-      readonly from: number;
-      readonly to: number;
-      readonly says: string;
-    }[];
-  }[];
-  /** Links the agent states between facts of different items. */
-  readonly links?: readonly {
-    readonly from: { readonly item: number; readonly fact: number };
-    readonly to: { readonly item: number; readonly fact: number };
-    readonly says: string;
-  }[];
-}
 
 /** Every claim of the case's key, checked against its downloads: a key whose evidence does not hold is no key. */
 export async function checkKey(id: string, log: (line: string) => void) {
@@ -70,58 +33,6 @@ export async function checkKey(id: string, log: (line: string) => void) {
     }
   return { case: id, claims, failed };
 }
-
-/** What reads a pod's questions: the pod itself, or a pinned build of the runtime asked in its own process. */
-export interface Asker {
-  ask(question: string): Promise<readonly Readonly<Record<string, string>>[]>;
-}
-
-/**
- * The entry a cite names: its IRI as given, or the entry a compact read's handle names, looked up among the entries
- * `entry/What it shows` gives and the records merged into each (`entryOfHandle`).
- */
-export function entryNamed(pod: Asker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  return async (cited: string) => {
-    if (!HANDLE.test(cited)) return cited;
-    all ??= pod.ask(ENTRY_QUESTION);
-    return entryOfHandle(
-      cited,
-      (await all).flatMap(({ entry, from }) =>
-        entry === undefined
-          ? []
-          : [{ entry, ...(from === undefined ? {} : { record: from }) }],
-      ),
-    );
-  };
-}
-
-/** The rows `entry/What it shows` gives of the entry a cite names: each field, its value and the record it is from. */
-export function entryRows(pod: Asker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  const named = entryNamed(pod);
-  return async (cited: string) => {
-    all ??= pod.ask(ENTRY_QUESTION);
-    const entry = await named(cited);
-    const rows = (await all).filter((row) => row.entry === entry);
-    return rows.length === 0 ? undefined : rows;
-  };
-}
-
-/** The row `pod/The person this pod is about` gives, which names no entry: the person is cited by its subject IRI. */
-export function personRows(pod: Asker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  return () => (all ??= pod.ask(PERSON_QUESTION));
-}
-
-const ENTRY_QUESTION = "entry/What it shows";
-const PERSON_QUESTION = "pod/The person this pod is about";
-
-/** Every question the checks read a pod with, which a pinned runtime is asked in one process. */
-export const PINNED_QUESTIONS: readonly string[] = [
-  ENTRY_QUESTION,
-  PERSON_QUESTION,
-];
 
 /** Tools the agent runner itself calls (to load a tool, to hand back, to return structured output): no one's reading. */
 const HARNESS_TOOLS = new Set([
@@ -344,10 +255,6 @@ export function tieOf(absence: Absence, key: Key): Tie | undefined {
   )?.absentMatch;
 }
 
-/** The claim a fact makes, without its words: what the checker compares with the record. */
-const claimOf = ({ says: _says, provider: _provider, ...claim }: Fact): Claim =>
-  claim;
-
 /** The program checks of one subject's answer to one question, from its tool uses and the run's tool calls; nothing is copied. */
 export async function checkAnswer(options: {
   job: Job;
@@ -358,7 +265,7 @@ export async function checkAnswer(options: {
   reading: readonly string[];
   key: Key;
   toolCalls: readonly ToolCallRecord[];
-  pod: Asker | undefined;
+  pod: PodAsker | undefined;
 }): Promise<SubjectChecks> {
   const { job, prepared, folder } = options;
   const items = options.key.items.filter(
@@ -378,26 +285,7 @@ export async function checkAnswer(options: {
       ? await readWhole(uses, prepared, options.reading)
       : [];
   const discipline = { ok: violations.length === 0, violations };
-  const answerErrors = errorsOf("answer", options.answer);
-  if (answerErrors.length > 0)
-    return {
-      answerValid: false,
-      answerErrors,
-      citations: [],
-      absences: [],
-      trapWording: [],
-      discipline,
-      ...(job.arm === "records" ? { read } : {}),
-    };
-  const answer = options.answer as Answer;
-  const files = downloadsSource(prepared.downloads);
-  const entries =
-    options.pod === undefined
-      ? undefined
-      : podRowsSource(entryRows(options.pod), personRows(options.pod));
-  const citations: SubjectChecks["citations"][number][] = [];
-  const absences: SubjectChecks["absences"][number][] = [];
-  const ran: (Ran & { call?: number })[] = options.toolCalls
+  const ran: Ran[] = options.toolCalls
     .filter((it) => it.job === job.id)
     .map(({ call, tool, input, ok, answer: text = "" }) => ({
       ...(call === undefined ? {} : { call }),
@@ -413,33 +301,41 @@ export async function checkAnswer(options: {
   if (job.arm === "records")
     for (const file of options.reading)
       if (holdsRecords(await text(file))) couldHold.push(file);
-  for (const point of answer.items) {
-    for (const [at, fact] of (point.facts ?? []).entries()) {
-      const source = "entry" in fact.cite ? entries : files;
-      const verdict =
-        source === undefined
-          ? {
-              ok: false as const,
-              reason: "no such record" as const,
-              missing: [],
-            }
-          : await checkCitation(claimOf(fact), source);
-      citations.push({
-        item: point.n,
-        fact: at,
-        cite: fact.cite,
-        ...verdict,
-      });
-    }
-    for (const [at, absence] of (point.absences ?? []).entries()) {
-      const tied = tieOf(absence, key);
-      const backing =
-        job.arm === "pod"
-          ? checkAbsence(absence, ran, tied)
-          : await checkRecordsAbsence(absence, read, text, couldHold, tied);
-      absences.push({ item: point.n, absence: at, ...backing });
-    }
-  }
+  const pod = options.pod;
+  const checked = await checkReply(options.answer, {
+    ...(pod === undefined ? {} : { ask: (question) => pod.ask(question) }),
+    ran,
+    files: downloadsSource(prepared.downloads),
+    tie: (absence) => tieOf(absence, key),
+    ...(job.arm === "pod"
+      ? {}
+      : {
+          backing: (absence, tied) =>
+            checkRecordsAbsence(absence, read, text, couldHold, tied),
+        }),
+  });
+  if (checked.reply === undefined)
+    return {
+      answerValid: false,
+      answerErrors: [...checked.errors],
+      citations: [],
+      absences: [],
+      trapWording: [],
+      discipline,
+      ...(job.arm === "records" ? { read } : {}),
+    };
+  const answer = checked.reply;
+  const citations = checked.items.flatMap(({ n, facts }) =>
+    facts.map(({ fact, verdict }, at) => ({
+      item: n,
+      fact: at,
+      cite: fact.cite,
+      ...verdict,
+    })),
+  );
+  const absences = checked.items.flatMap(({ n, absences: held }) =>
+    held.map(({ backing }, at) => ({ item: n, absence: at, ...backing })),
+  );
   const trapWording: SubjectChecks["trapWording"][number][] = [];
   for (const item of key.items)
     for (const { pattern, means } of item.wording ?? []) {

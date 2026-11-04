@@ -42,6 +42,11 @@ import {
 import { keptRows, prunedRows, ROWS_CACHE } from "../src/node/rowCache.js";
 import { LISTED, PUBLISHED_ROWS, writeStarterCopies } from "../src/tables.js";
 import { packageVersion, tarballAddress } from "./address.js";
+import {
+  mergedDependencies,
+  undeclaredImports,
+  vendored,
+} from "./dependencies.js";
 import { bundleBrowser } from "./browser.js";
 
 const WORKSPACE = fileURLToPath(new URL("../../", import.meta.url));
@@ -91,6 +96,11 @@ const VOCABULARY = [
 const TABLES_FOLDER = "tables";
 /** What an adapter reads of another vocabulary repository it names. */
 const OTHER_VOCABULARY = ["LICENSE", METADATA, "ontologies"];
+/**
+ * What the package imports that is on a registry but is carried in it too, so that the staged package runs where nothing
+ * is installed beside it, as the docs site reads it: a copy above it may be another version.
+ */
+const VENDORED = ["ajv"];
 const KEPT_BY_BUNDLED = ["name", "version", "type", "exports", "license"];
 const KEPT_BY_PACKAGE = [
   "name",
@@ -315,12 +325,15 @@ async function writeListed(
 }
 
 /** The workspaces and the Bridge as real folders under the package's `node_modules/`, and the dependencies they bring. */
-async function packCode(bridgeFolder: string): Promise<{
+async function packCode(
+  bridgeFolder: string,
+  own: Manifest,
+): Promise<{
   readonly bundled: Record<string, string>;
   readonly dependencies: Record<string, string>;
 }> {
   const bundled: Record<string, string> = {};
-  const required: Record<string, string> = {};
+  const declarers: Manifest[] = [];
   for (const folder of BUNDLED) {
     const workspace = join(ROOT, "packages", folder);
     const manifest = await manifestOf(workspace);
@@ -331,15 +344,10 @@ async function packCode(bridgeFolder: string): Promise<{
     });
     await writeJson(join(to, "package.json"), kept(manifest, KEPT_BY_BUNDLED));
     bundled[manifest.name] = manifest.version;
-    for (const [name, version] of Object.entries(manifest.dependencies ?? {})) {
-      const pinned = required[name];
-      if (pinned !== undefined && pinned !== version)
-        throw new Error(
-          `${manifest.name} pins ${name} at ${version}, but another bundled workspace pins it at ${pinned}`,
-        );
-      required[name] = version;
-    }
+    declarers.push(manifest);
   }
+  const required = mergedDependencies([...declarers, own]);
+  Object.assign(bundled, await vendored(VENDORED, WORKSPACE, NODE_MODULES));
   const bridge = await manifestOf(bridgeFolder);
   await cp(bridgeFolder, join(NODE_MODULES, bridge.name), { recursive: true });
   bundled[bridge.name] = bridge.version;
@@ -485,7 +493,7 @@ async function main(): Promise<void> {
   await rm(STAGE, { recursive: true, force: true });
   await mkdir(STAGE, { recursive: true });
   const { resolved, components, bridge, bridgeFolder } = await packComponents();
-  const { bundled, dependencies } = await packCode(bridgeFolder);
+  const { bundled, dependencies } = await packCode(bridgeFolder, manifest);
   const dirty = head.uncommitted > 0;
   const entryVersion = await bundleBrowser(BROWSER, {
     commit,
@@ -494,6 +502,14 @@ async function main(): Promise<void> {
     bridge: bridgeFolder,
   });
   await packOwnFiles(manifest, address);
+  const undeclared = await undeclaredImports(join(STAGE, "dist", "src"), {
+    ...dependencies,
+    ...(manifest.peerDependencies as Record<string, string> | undefined),
+  });
+  if (undeclared.length > 0)
+    throw new Error(
+      `the package imports ${undeclared.join(", ")}, which it neither declares nor carries`,
+    );
   await writeJson(join(STAGE, "package.json"), {
     ...kept(manifest, KEPT_BY_PACKAGE),
     version: packageVersion(commit),

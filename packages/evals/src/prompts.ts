@@ -2,6 +2,13 @@
 // words, and a judge's. A prompt's version is the hash of its template, so a changed prompt reruns what it changes
 // and nothing else.
 import { fileURLToPath } from "node:url";
+import {
+  filled,
+  podReplyParts,
+  PRONOUNS,
+  REPLY_CONTRACT,
+  replyExample,
+} from "cascade-runtime";
 import { sha256 } from "./cases.js";
 import { tagLine } from "./transcripts.js";
 
@@ -21,36 +28,7 @@ settle something.
 
 Write each answer, and nothing else, as JSON to the file its question names, with the Write tool, in this form:
 
-{EXAMPLE}
-
-- "answer": your reply, as {PRONOUN_SUBJECT} will read it, in plain words.
-- "short": one or two sentences {PRONOUN_SUBJECT} could show {PRONOUN} doctor.
-- "items": each point of your reply that rests on {PRONOUN} records or your knowledge (at most 10, most important
-  first), each with "says" (the point, in plain words), "why" (one or two sentences) and "confidence" (high, medium
-  or low), and its chain:
-  - "facts": each record you rely on: what it says in words ("says"), its provider, and "cite", where it is:
-{CITE}
-    Then each thing you rely on that record for, as the record itself writes it, in the field it belongs to, so a
-    program can check it against that record: "value" (its own result: 131, Positive; with "unit" if it has one),
-    "status" (active, completed, final, refuted), "code" (a LOINC, SNOMED CT, RxNorm, CVX or ICD-10 code it carries),
-    "name" (words of the test, condition, drug, vaccine or procedure), "id" (its identifier in its source), "date"
-    (YYYY-MM-DD) with "dateKind": "when" it happened, "start", "end" or "recorded", and "quote" (words of its text,
-    such as a report's conclusion). Give at least one; a fact with none cannot be checked. Never put a reference
-    range, a flag or another record's value in "value".
-  - "absences": each thing you say the records lack: "what"; "match", the codes and words a record of it would carry
-    ({"codes": [...], "terms": [...]}), with "after": "YYYY-MM-DD" whenever the absence is about a period ("since
-    February", "after the stool test", "in the last year"), since only a record from that day on would count against
-    it; and "coverage", what you looked through (which sources, which dates){ABSENCE}
-  - "knowledge", when you used any: the medical knowledge of your own that links the facts to the point, and the
-    guideline you have in mind if you can name one. It is yours, not the records'.
-  - "links", when you draw any: that one of your facts bears on another, as {"from": <fact's place, from 0>, "to":
-    <fact's place>, "says": "how"}, such as an older copy of a record against a newer one.
-
-When a fact of one item bears on a fact of another item, say so once in the same answer, beside "items", as "links":
-[{"from": {"item": <n>, "fact": <place>}, "to": {"item": <n>, "fact": <place>}, "says": "how"}].
-
-Do not mention how you reached the records in "answer", "short", "says", "why" or "knowledge" (no file names, paths,
-tool or command names): cite only in "cite" and "query". When the command says there are no more questions, reply
+${REPLY_CONTRACT} When the command says there are no more questions, reply
 with the word done.`;
 
 const RECORDS = `Your access: {PRONOUN_POSSESSIVE} records are the {COUNT} files listed below, under {FOLDER}. Before you ask for the first
@@ -79,18 +57,8 @@ const QUESTION = `{ASKS}
 
 (Write your answer to {ANSWER}.)`;
 
-const EXAMPLE = (cite: string, query: string) =>
-  `{"answer": "…", "short": "…",
-  "items": [{"n": 1, "says": "…", "why": "…", "confidence": "high",
-  "facts": [{"says": "…", "provider": "…", "cite": ${cite}, "name": "…", "value": "Positive", "date": "2025-11-04", "dateKind": "when"}],
-  "absences": [{"what": "…", "match": {"codes": ["…"], "terms": ["…"], "after": "2025-11-05"}, "coverage": "…"${query}}],
-  "knowledge": {"says": "…", "guideline": "…"},
-  "links": [{"from": 0, "to": 1, "says": "…"}]}]}`;
-
 const FILE_CITE = `    {"file": "<path as listed>", "line": <line number>}, or for a FHIR JSON file {"file": "<path>", "resource":
     "<resourceType>/<id>"}`;
-const ENTRY_CITE = `    {"entry": "<the entry IRI the row names, or the entry's handle in a compact answer>"}`;
-const POD_ABSENCE = `, and "query": the tool call that looked, {"tool": "<name>", "input": <its JSON input, exactly as you ran it>, "call": <the number the command printed after its answer>}`;
 
 export interface SessionPrompt {
   readonly arm: Arm;
@@ -110,20 +78,12 @@ export interface SessionPrompt {
 
 /** What differs by arm in a session's prompt: its access, how a fact is cited, the absence line and the example. */
 export const ARM_PARTS = {
-  pod: {
-    access: POD,
-    cite: ENTRY_CITE,
-    absence: POD_ABSENCE,
-    example: EXAMPLE(
-      `{"entry": "pod://…#…"}`,
-      `, "query": {"tool": "ask", "input": {…}, "call": 3}`,
-    ),
-  },
+  pod: { access: POD, ...podReplyParts },
   records: {
     access: RECORDS,
     cite: FILE_CITE,
     absence: "",
-    example: EXAMPLE(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
+    example: replyExample(`{"file": "…", "line": 120}`, `, "sources": ["…"]`),
   },
 };
 
@@ -153,19 +113,6 @@ export const askCommand = (run: string, job: string) =>
 /** The command prefix a pod-arm session runs for each tool call: in its prompt, and the Bash calls it is allowed. */
 export const podCommand = (run: string, job: string) =>
   `node "${CLI}" pod --run "${slashed(run)}" --job ${job}`;
-
-export const PRONOUNS: Record<string, [string, string]> = {
-  her: ["she", "Her"],
-  his: ["he", "His"],
-  their: ["they", "Their"],
-};
-
-function filled(template: string, values: Record<string, string>): string {
-  return template.replace(
-    /\{([A-Z_]+)\}/g,
-    (all, name: string) => values[name] ?? all,
-  );
-}
 
 /** A session's prompt: who, today, the arm's access, how to ask for each question and how to write each answer. */
 export function sessionPrompt(p: SessionPrompt): string {

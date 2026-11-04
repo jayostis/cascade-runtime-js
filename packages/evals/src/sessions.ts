@@ -7,7 +7,7 @@ import { type Case, type Session, sha256 } from "./cases.js";
 import { PROMPT_VERSIONS, type Arm } from "./prompts.js";
 import type { CallRecord, Job, Part, Split, TokenCounts } from "./results.js";
 import { runFolder } from "./results.js";
-import { errorsOf } from "./schemas.js";
+import { replyErrors } from "cascade-runtime";
 
 /**
  * What a session's answers depend on: the case without its sessions, this session's own questions, the downloads, the
@@ -68,7 +68,7 @@ export async function askedIn(folder: string): Promise<Asked[]> {
 /** What is wrong with an answer file as an answer, in the schema's words; empty when it holds to the schema. */
 async function answerErrors(path: string): Promise<string[]> {
   try {
-    return errorsOf("answer", JSON.parse(await readFile(path, "utf8")));
+    return replyErrors(JSON.parse(await readFile(path, "utf8")));
   } catch (error) {
     return [
       `the file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,

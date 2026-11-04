@@ -5,11 +5,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { numberedReply, type Reply, replyErrors } from "cascade-runtime";
 import { type Key, loadCase, loadKey, sha256 } from "./cases.js";
 import { instanceOf } from "./instances.js";
 import { answerPath } from "./sessions.js";
-import type { Answer } from "./checks.js";
-import { errorsOf, numbered } from "./schemas.js";
+import { errorsOf } from "./schemas.js";
 import { aliasOf, loadPlan, pastJobs, type Plan, savePlan } from "./plan.js";
 import { WORK } from "./paths.js";
 import { judgePrompt, PROMPT_VERSIONS } from "./prompts.js";
@@ -91,7 +91,7 @@ export const tellsOf = (text: string): string[] =>
 /** The tells in one blinded answer, with the job (and so the arm) and the question it answers. */
 export const tellsIn = (
   at: { job: string; arm: string; question: string },
-  answer: Answer,
+  answer: Reply,
 ) => tellsOf(blinded(answer)).map((term) => ({ ...at, term }));
 
 /**
@@ -105,17 +105,17 @@ function packetBody(text: string): string {
   } catch (error) {
     return `(the answer is not valid JSON: ${error instanceof Error ? error.message : String(error)})`;
   }
-  const errors = errorsOf("answer", value);
+  const errors = replyErrors(value);
   return errors.length > 0
     ? `(the answer is not a valid answer: ${errors.join("; ")})`
-    : blinded(numbered(value) as Answer);
+    : blinded(numberedReply(value) as Reply);
 }
 
 /**
  * An answer as a judge reads it: the reply, then each point with its facts as provider, date and words, what it says
  * is absent (never what it looked through, which differs by arm), its knowledge and its links; no citations.
  */
-export function blinded(answer: Answer): string {
+export function blinded(answer: Reply): string {
   return [
     `Reply: ${scrubbed(answer.answer)}`,
     `Short answer: ${scrubbed(answer.short)}`,

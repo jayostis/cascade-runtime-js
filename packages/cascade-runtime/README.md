@@ -22,6 +22,12 @@ page; `cascade-runtime/tools/node` is the reads they run over a folder of pods
 (`podReads(podsIn(folder))`); every row they give names its entry, and none writes or opens an
 encrypted pod. `cascade-mcp` serves them over MCP.
 
+`replySchema` is the contract for a model's reply about a person's records (an answer, a short form, and items whose
+facts each cite a record and whose absences each name the query that looked), `replyContract(pronoun)` is the words
+that explain it to the model, and `checkReply(reply, { ask, ran, files?, tie? })` holds a reply to the schema and
+every citation and absence to what the pod's rows and the calls that ran say, giving each fact its verdict and the
+cited record's own fields and source (`CheckedReply`). The checker trusts only those sources, never the model's words.
+
 The package needs only Node 22 or later. It carries everything a pod reads, at
 the commits its build resolved: the code under its interface, the Bridge's
 WebAssembly build, the vocabulary's ontologies, queries, pod layout and every

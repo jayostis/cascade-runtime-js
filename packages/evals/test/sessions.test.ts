@@ -19,6 +19,7 @@ const { configureTables, openPod } = await import("cascade-runtime");
 configureTables({ checkOnOpen: false });
 const { caseIds, loadCase, loadKey } = await import("../src/cases.js");
 const { errorsOf } = await import("../src/schemas.js");
+const { PRONOUNS, replyErrors } = await import("cascade-runtime");
 const { ask, sessionInputsHash, splitSession } =
   await import("../src/sessions.js");
 const { passageOf, podProvenance } = await import("../src/evidence.js");
@@ -212,7 +213,12 @@ async function downloads(at: string) {
   for (const name of ["north-2024-02", "north-2025-02", "north-2026-10"]) {
     await mkdir(join(at, name), { recursive: true });
     await copyFile(
-      fixture("citations/bundle.json"),
+      fileURLToPath(
+        new URL(
+          "../../../cascade-runtime/test/fixtures/citations/bundle.json",
+          import.meta.url,
+        ),
+      ),
       join(at, name, "bundle.json"),
     );
     await writeFile(join(at, name, "pull.json"), JSON.stringify(PULL));
@@ -1040,19 +1046,18 @@ test("an answer may link facts across its items, and a judge reads that link", (
       },
     ],
   };
-  assert.deepEqual(errorsOf("answer", answer), []);
+  assert.deepEqual(replyErrors(answer), []);
   assert.match(
     blinded(answer as never),
     /^- Link: item 1 fact 0 to item 2 fact 0: the later copy closes the earlier one$/m,
   );
   assert.notDeepEqual(
-    errorsOf("answer", { ...answer, links: [{ from: 1, to: 2 }] }),
+    replyErrors({ ...answer, links: [{ from: 1, to: 2 }] }),
     [],
   );
 });
 
 test("an arm's prompt version covers the pronouns a prompt is written with", async () => {
-  const { PRONOUNS } = await import("../src/prompts.js");
   const before = versionOf("pod");
   const kept = PRONOUNS.her!;
   try {
