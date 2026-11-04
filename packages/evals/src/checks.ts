@@ -140,9 +140,9 @@ const pathOf = (use: ToolUse) =>
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * A session's tool uses with the paths of the checkout it ran in read as this one's: a reused job, or one recorded
- * from another worktree, names that checkout's downloads, runs folder and `cli.js`, which are the same files here.
- * The checkout is the one the first harness path names; a session that names two is held to the first.
+ * A reused job's tool uses with the paths of the checkout it ran in read as this one's: it names
+ * that checkout's downloads, runs folder and `cli.js`, which are the same files here. A fresh job is not rebased:
+ * it ran in this checkout. History does not record the origin: it is the first harness path; a second is held to it.
  */
 function inThisCheckout(
   uses: readonly ToolUse[],
@@ -150,6 +150,7 @@ function inThisCheckout(
   folder: string,
   prepared: Prepared,
 ): readonly ToolUse[] {
+  if (job.reusedFrom === undefined) return uses;
   let origin: string | undefined;
   for (const use of uses) {
     for (const value of Object.values(use.input)) {
