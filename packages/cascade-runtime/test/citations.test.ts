@@ -10,7 +10,6 @@ import {
   checkCitation,
   checkRecordsAbsence,
   ccdaFields,
-  downloadsSource,
   fhirFields,
   isoDate,
   kindOfCall,
@@ -20,7 +19,8 @@ import {
   podRowsSource,
   type Source,
 } from "../src/citations.js";
-import { entryRows as rowsOfEntries } from "../src/checks.js";
+import { downloadsSource } from "../src/node/downloads.js";
+import { podEntryRows as rowsOfEntries } from "../src/reply.js";
 import { readConfig, resolveVocabulary } from "@cascade-runtime/runtime/node";
 
 const FOLDER = fileURLToPath(

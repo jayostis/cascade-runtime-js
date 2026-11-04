@@ -2,12 +2,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkReply, replyErrors, replySchema, type Ran } from "cascade-runtime";
+import {
+  checkReply,
+  replyErrors,
+  replySchema,
+  type Ran,
+} from "cascade-runtime";
 
 const read = (name: string): unknown =>
   JSON.parse(
     readFileSync(
-      fileURLToPath(new URL(`../../test/fixtures/reply/${name}`, import.meta.url)),
+      fileURLToPath(
+        new URL(`../../test/fixtures/reply/${name}`, import.meta.url),
+      ),
       "utf8",
     ),
   );
@@ -33,7 +40,13 @@ const shown = (
   which: string,
   fields: [string, string][],
   from = "urn:uuid:other",
-) => fields.map(([field, value]) => ({ entry: which, field: NS + field, value, from }));
+) =>
+  fields.map(([field, value]) => ({
+    entry: which,
+    field: NS + field,
+    value,
+    from,
+  }));
 
 const WHAT_IT_SHOWS = [
   ...shown(
@@ -97,15 +110,18 @@ test("a model's reply is checked citation by citation and absence by absence, ag
   assert.deepEqual(failed.record?.fields.name, [
     "CT angiography chest (pulmonary embolism protocol)",
   ]);
-  assert.deepEqual(later!.absences.map(({ backing }) => backing), [
-    { backed: true },
-  ]);
+  assert.deepEqual(
+    later!.absences.map(({ backing }) => backing),
+    [{ backed: true }],
+  );
 });
 
 test("a reply that breaks the contract is reported with the schema's errors and checked for nothing", async () => {
   assert.equal(replySchema.required.join(), "answer,short,items");
   const broken = { answer: "x", short: "y", items: [] };
-  assert.deepEqual(replyErrors(broken), ["/items must NOT have fewer than 1 items"]);
+  assert.deepEqual(replyErrors(broken), [
+    "/items must NOT have fewer than 1 items",
+  ]);
   const checked = await checkReply(broken, { ask, ran });
   assert.deepEqual(checked.errors, replyErrors(broken));
   assert.deepEqual(checked.items, []);

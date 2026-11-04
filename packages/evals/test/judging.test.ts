@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, test } from "node:test";
-import type { Answer } from "../src/checks.js";
+import type { Reply } from "cascade-runtime";
 import { loadCase } from "../src/cases.js";
 import { blinded, judgePackets } from "../src/judging.js";
 import { RUNS } from "../src/paths.js";
@@ -17,7 +17,7 @@ after(async () => {
   await rm(earlier, { recursive: true, force: true, maxRetries: 5 });
 });
 
-const answer = (says: string): Answer => ({
+const answer = (says: string): Reply => ({
   answer: `${says} A positive stool test needs a colonoscopy.`,
   short: says,
   items: [
@@ -235,7 +235,7 @@ const FILE_LINES = [
   "DiagnosticReport/story-stopped-dr-1 says no pulmonary embolism, urn:uuid:abc",
 ];
 
-const lineAnswer = (lines: readonly string[]): Answer => ({
+const lineAnswer = (lines: readonly string[]): Reply => ({
   answer: lines.join(" "),
   short: lines[0]!,
   items: [

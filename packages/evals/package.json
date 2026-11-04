@@ -11,12 +11,6 @@
   "bin": {
     "cascade-evals": "dist/src/cli.js"
   },
-  "exports": {
-    "./citations": {
-      "types": "./dist/src/citations.d.ts",
-      "default": "./dist/src/citations.js"
-    }
-  },
   "dependencies": {
     "@cascade-runtime/runtime": "0.0.0",
     "@modelcontextprotocol/client": "2.3.1",

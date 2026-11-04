@@ -5,14 +5,14 @@ import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  type Answer,
-  type Asker,
-  checkAnswer,
-  entryNamed,
-  PINNED_QUESTIONS,
-  judgeViolations,
-} from "./checks.js";
-import { callsFor } from "./citations.js";
+  callsFor,
+  numberedReply,
+  type PodAsker,
+  podEntryNamed,
+  REPLY_QUESTIONS,
+  type Reply,
+} from "cascade-runtime";
+import { checkAnswer, judgeViolations } from "./checks.js";
 import { passageOf, podProvenance } from "./evidence.js";
 import { instancesOf } from "./instances.js";
 import { answerPath, askedIn, splitSession } from "./sessions.js";
@@ -38,7 +38,7 @@ import {
   type SubjectChecks,
   type ToolCallRecord,
 } from "./results.js";
-import { numbered, valid } from "./schemas.js";
+import { valid } from "./schemas.js";
 import { buildSite } from "./site.js";
 import { type Transcript, transcriptsSince } from "./transcripts.js";
 
@@ -319,13 +319,13 @@ async function toolCallsOf(folder: string): Promise<ToolCallRecord[]> {
 export async function askerOf(
   prepared: Prepared,
   pinned: typeof pinnedPod = pinnedPod,
-): Promise<Asker & { close(): Promise<void> }> {
+): Promise<PodAsker & { close(): Promise<void> }> {
   if (prepared.runtime === undefined) return openPrepared(prepared);
   const rows = pinned(
     { runtime: prepared.runtime } as Environment,
     "ask",
     join(prepared.pods, prepared.pod),
-    PINNED_QUESTIONS,
+    REPLY_QUESTIONS,
   ) as Record<string, Readonly<Record<string, string>>[]>;
   return {
     ask: async (question) => rows[question] ?? [],
@@ -342,7 +342,7 @@ export async function askerOf(
 export async function evidenceOf(o: {
   job: Job;
   question: string;
-  answer: Answer;
+  answer: Reply;
   prepared: Prepared;
   reading: readonly string[];
   /** The files the job read whole, as its checks found them. */
@@ -486,7 +486,7 @@ export async function finish(given: string, log: (line: string) => void) {
     });
     const provenanceOf = await podProvenance(join(prepared.pods, prepared.pod));
     const pod = await askerOf(prepared);
-    const named = entryNamed(pod);
+    const named = podEntryNamed(pod);
     const provenance = async (cited: string) => {
       const entry = await named(cited);
       return entry === undefined ? undefined : provenanceOf(entry);
@@ -500,7 +500,7 @@ export async function finish(given: string, log: (line: string) => void) {
           if (!existsSync(path)) continue;
           let answer: unknown;
           try {
-            answer = numbered(JSON.parse(await readFile(path, "utf8")));
+            answer = numberedReply(JSON.parse(await readFile(path, "utf8")));
           } catch (error) {
             answer = { unparsed: String(error) };
           }
@@ -521,7 +521,7 @@ export async function finish(given: string, log: (line: string) => void) {
             tells.push(
               ...tellsIn(
                 { job: job.id, arm: job.arm, question },
-                answer as Answer,
+                answer as Reply,
               ),
             );
           if (checked.answerValid)
@@ -529,7 +529,7 @@ export async function finish(given: string, log: (line: string) => void) {
               ...(await evidenceOf({
                 job,
                 question,
-                answer: answer as Answer,
+                answer: answer as Reply,
                 prepared,
                 reading: found.reading,
                 ...(checked.read === undefined ? {} : { read: checked.read }),

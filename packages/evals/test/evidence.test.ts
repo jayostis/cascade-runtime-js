@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
 import type { Prepared } from "../src/cases.js";
-import { checkAbsence } from "../src/citations.js";
+import { checkAbsence } from "cascade-runtime";
 import { answer } from "../src/pod-client.js";
 import { passageOf, unescaped } from "../src/evidence.js";
 import { evidenceOf } from "../src/record.js";

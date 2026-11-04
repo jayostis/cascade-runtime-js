@@ -4,7 +4,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import type { Cite } from "./citations.js";
+import type { Cite } from "cascade-runtime";
 import { type EntryProvenance, PASSAGE_CAP, type Passage } from "./results.js";
 
 interface Triple {

@@ -43,6 +43,58 @@ export {
   Unopened,
   type UnopenedOutcome,
 } from "@cascade-runtime/runtime";
+export {
+  type Absence,
+  type Backing,
+  checkAbsence,
+  checkCitation,
+  checkRecordsAbsence,
+  type Call,
+  callsFor,
+  type Cite,
+  type Claim,
+  type DateKind,
+  type Fields,
+  holdsRecords,
+  isoDate,
+  type Pointed,
+  podRowsSource,
+  type Ran,
+  type Source,
+  type Tie,
+  type Verdict,
+} from "./citations.js";
+export { downloadsSource } from "./node/downloads.js";
+export {
+  type CheckedAbsence,
+  type CheckedFact,
+  type CheckedItem,
+  type CheckedReply,
+  checkReply,
+  type CitedRecord,
+  type PodAsker,
+  podEntryNamed,
+  podEntryRows,
+  podPersonRows,
+  POD_ENTRY_QUESTION,
+  POD_PERSON_QUESTION,
+  type Reply,
+  type ReplyChecking,
+  type ReplyFact,
+  REPLY_QUESTIONS,
+  numberedReply,
+  replyErrors,
+} from "./reply.js";
+export {
+  filled,
+  podReplyParts,
+  PRONOUNS,
+  REPLY_CONTRACT,
+  replyContract,
+  replyExample,
+  type ReplyParts,
+} from "./reply-prompt.js";
+export { replySchema } from "./reply-schema.js";
 export { sixWords, typedWords } from "./six-words.js";
 export { codeStems, type CodeStems, terms, type Terms } from "./terms.js";
 export { loopbackSignIn, type LoopbackOptions } from "./node/loopback.js";

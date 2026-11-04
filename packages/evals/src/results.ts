@@ -2,7 +2,7 @@
 // same fields from each response's usage; a run driven from Claude Code fills them from each agent's transcript.
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Cite } from "./citations.js";
+import type { Cite } from "cascade-runtime";
 import type { Case, Component, KeyItem, Prepared, Session } from "./cases.js";
 import type { Asked } from "./sessions.js";
 import { RUNS } from "./paths.js";
