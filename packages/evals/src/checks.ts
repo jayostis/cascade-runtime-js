@@ -218,6 +218,8 @@ function subjectViolations(
   folder: string,
   prepared: Prepared,
   reading: readonly string[],
+  /** The tool uses as the session made them, which a violation quotes. */
+  made: readonly ToolUse[],
 ): string[] {
   const violations: string[] = [];
   // A reused job's commands and files name the run it was answered in, not this one.
@@ -226,7 +228,7 @@ function subjectViolations(
     folder = join(dirname(folder), reusedRun);
     job = { ...job, id: reusedId };
   }
-  for (const use of uses) {
+  for (const [at, use] of uses.entries()) {
     if (HARNESS_TOOLS.has(use.name)) continue;
     if (
       (use.name === "Write" || use.name === "Edit") &&
@@ -262,7 +264,9 @@ function subjectViolations(
       )
     )
       continue;
-    violations.push(`${use.name} ${JSON.stringify(use.input).slice(0, 200)}`);
+    violations.push(
+      `${use.name} ${JSON.stringify(made[at]!.input).slice(0, 200)}`,
+    );
   }
   return violations;
 }
@@ -332,6 +336,7 @@ export async function checkAnswer(options: {
     folder,
     prepared,
     options.reading,
+    job.toolUses ?? [],
   );
   const read =
     job.arm === "records"

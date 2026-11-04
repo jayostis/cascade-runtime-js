@@ -129,5 +129,7 @@ test("a read of another case's downloads in that checkout is still a violation",
     recordsJob(`first/${id}`, "priya-natarajan"),
   );
   assert.equal(reused.discipline.violations.length, 1);
+  assert.match(reused.discipline.violations[0]!, /priya-natarajan/);
+  assert.match(reused.discipline.violations[0]!, /wt.+other/);
   assert.deepEqual(reused.read, []);
 });
