@@ -1,7 +1,8 @@
 import { prefixed } from "./terms.js";
 
 /** The host whose names do not resolve, on either scheme, with or without a path or port; no page links it. */
-export const NAMESPACE_HOST = /^https?:\/\/ns\.cascadeprotocol\.org(?:[:/?#]|$)/i;
+export const NAMESPACE_HOST =
+  /^https?:\/\/ns\.cascadeprotocol\.org(?:[:/?#]|$)/i;
 
 function away(where: string): string {
   if (NAMESPACE_HOST.test(where))
