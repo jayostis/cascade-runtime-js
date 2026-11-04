@@ -126,6 +126,32 @@ test("a section list is refused when two sections write one file, a section leav
       ],
       /\.\.\/a\.html/,
     ],
+    [
+      "a section writes a path with a dot part",
+      [
+        inMemory("a", "build", {
+          build: async () =>
+            new Map([
+              ["a.html", text("a")],
+              ["a/./b.html", text("a")],
+            ]),
+        }),
+      ],
+      /a\/\.\/b\.html/,
+    ],
+    [
+      "a section writes a drive path",
+      [
+        inMemory("a", "build", {
+          build: async () =>
+            new Map([
+              ["a.html", text("a")],
+              ["C:/x", text("a")],
+            ]),
+        }),
+      ],
+      /C:\/x/,
+    ],
   ];
   for (const [what, sections, why] of refused)
     await assert.rejects(buildTree({ sections, ctx: {}, front }), why, what);
@@ -171,6 +197,17 @@ test("a finisher is handed the tree as written, every section's paths and rows, 
     }),
     /a\.html/,
   );
+  const linked = await buildTree({
+    sections: [
+      inMemory("a", "build", {
+        rows: async () => [{ href: "llms.txt", label: "For models" }],
+      }),
+    ],
+    ctx: {},
+    front,
+    finishers: [async () => new Map([["llms.txt", text("x")]])],
+  });
+  assert.ok(linked.tree.has("llms.txt"));
 });
 
 test("the evals report is a section whose files all sit under evals/, and whose entry page is evals/index.html, the same in the build a pull request makes and the one that deploys", async () => {

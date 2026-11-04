@@ -17,16 +17,23 @@ const TYPE = `${RDF}type`;
 const PREFIXES: Readonly<Record<string, string>> = {
   bridge: "https://ns.cascadeprotocol.org/bridge/v1-draft#",
   cascade: "https://ns.cascadeprotocol.org/cascade#",
+  dcat: "http://www.w3.org/ns/dcat#",
   dct: "http://purl.org/dc/terms/",
   foaf: "http://xmlns.com/foaf/0.1/",
   ldp: "http://www.w3.org/ns/ldp#",
   oa: "http://www.w3.org/ns/oa#",
+  obo: "http://purl.obolibrary.org/obo/",
+  org: "http://www.w3.org/ns/org#",
+  owl: "http://www.w3.org/2002/07/owl#",
   pav: "http://purl.org/pav/",
   pim: "http://www.w3.org/ns/pim/space#",
   prov: "http://www.w3.org/ns/prov#",
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+  skos: "http://www.w3.org/2004/02/skos/core#",
   solid: "http://www.w3.org/ns/solid/terms#",
+  sssom: "https://w3id.org/sssom/",
+  void: "http://rdfs.org/ns/void#",
   xsd: "http://www.w3.org/2001/XMLSchema#",
 };
 const LOCAL_NAME = /^[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$/;

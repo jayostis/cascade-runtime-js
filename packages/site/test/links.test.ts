@@ -24,6 +24,30 @@ test("a term's link keeps its prefix in the anchor, so copied terms do not colli
       "terms/#bridge:Source",
     ],
     [
+      "http://www.w3.org/2004/02/skos/core#prefLabel",
+      "terms/",
+      "terms/#skos:prefLabel",
+    ],
+    [
+      "http://www.w3.org/2004/02/skos/core#Concept",
+      "terms/",
+      "terms/#skos:Concept",
+    ],
+    ["http://www.w3.org/2002/07/owl#sameAs", "terms/", "terms/#owl:sameAs"],
+    [
+      "http://purl.obolibrary.org/obo/BFO_0000050",
+      "terms/",
+      "terms/#obo:BFO_0000050",
+    ],
+    ["http://rdfs.org/ns/void#inDataset", "terms/", "terms/#void:inDataset"],
+    [
+      "https://w3id.org/sssom/mapping_justification",
+      "terms/",
+      "terms/#sssom:mapping_justification",
+    ],
+    ["http://www.w3.org/ns/org#identifier", "terms/", "terms/#org:identifier"],
+    ["http://www.w3.org/ns/dcat#Dataset", "terms/", "terms/#dcat:Dataset"],
+    [
       "http://example.org/a b#c",
       "terms/",
       "terms/#http%3A%2F%2Fexample.org%2Fa%20b%23c",
@@ -55,6 +79,20 @@ test("a rule links to its feature's page and its number's anchor, a note to its 
     noteHref("decisions/identity.md", `${blob}/`),
     `${blob}/decisions/identity.md`,
   );
+  assert.equal(
+    noteHref("/decisions/identity.md", blob),
+    `${blob}/decisions/identity.md`,
+  );
+  for (const where of [
+    "http://ns.cascadeprotocol.org/terms/",
+    "https://ns.cascadeprotocol.org",
+    "HTTPS://NS.CASCADEPROTOCOL.ORG/x",
+  ])
+    assert.throws(
+      () => termHref("http://xmlns.com/foaf/0.1/name", where),
+      /ns\.cascadeprotocol\.org/,
+      where,
+    );
   const host = "https://ns.cascadeprotocol.org/";
   assert.throws(
     () => termHref("http://xmlns.com/foaf/0.1/name", host),
@@ -85,4 +123,10 @@ test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () =>
   assert.ok(!html.includes("<script>"));
   assert.ok(html.includes("&lt;script&gt;"));
   assert.equal(renderMarkdown("").text, "");
+  const scripted = renderMarkdown(
+    "[x](javascript:alert(1)) [y](data:text/html,a) [ok](../a.md) [web](http://example.org/)",
+  ).text;
+  assert.ok(!/javascript:|data:/i.test(scripted), scripted);
+  assert.match(scripted, /<a href="\.\.\/a\.md">ok<\/a>/);
+  assert.match(scripted, /<a href="http:\/\/example\.org\/">web<\/a>/);
 });

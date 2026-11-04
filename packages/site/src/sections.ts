@@ -81,7 +81,10 @@ function add(
   for (const [path, bytes] of files) {
     if (
       path.includes("\\") ||
-      path.split("/").some((part) => part === ".." || part === "")
+      /^[a-z]:/i.test(path) ||
+      path
+        .split("/")
+        .some((part) => part === ".." || part === "." || part === "")
     )
       throw new Error(`${by} writes ${path}, which is not inside the tree`);
     if (tree.has(path))
@@ -90,7 +93,7 @@ function add(
   }
 }
 
-/** Builds every section in order, then the front page from their rows, then the finishers; refuses a row that links what no section wrote. */
+/** Builds every section in order, then the front page from their rows, then the finishers; refuses a row that links what neither a section nor a finisher wrote. */
 export async function buildTree<Ctx>({
   sections,
   ctx,
@@ -117,6 +120,9 @@ export async function buildTree<Ctx>({
   for (const { section, rows: listed } of built)
     rows.set(section.kind, [...(rows.get(section.kind) ?? []), ...listed]);
   add(tree, await front(rows, ctx), "the front page");
+  const walk: Walk<Ctx> = { tree, sections: built };
+  for (const finish of finishers)
+    add(tree, await finish(walk, ctx), "a finisher");
   for (const { section, rows: listed } of built)
     for (const { href, also } of listed)
       for (const link of also === undefined ? [href] : [href, also.href])
@@ -124,8 +130,5 @@ export async function buildTree<Ctx>({
           throw new Error(
             `the section ${section.title} has a row that links ${link}, which nothing writes`,
           );
-  const walk: Walk<Ctx> = { tree, sections: built };
-  for (const finish of finishers)
-    add(tree, await finish(walk, ctx), "a finisher");
   return walk;
 }

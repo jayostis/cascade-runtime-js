@@ -1,4 +1,5 @@
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FolderFiles } from "@cascade-runtime/runtime/node";
@@ -20,8 +21,7 @@ export const evalsSection: Section<PagesContext> = {
       pathToFileURL(join(root, "packages", "evals", "dist", "src", "site.js"))
         .href
     )) as Evals;
-    const out = join(root, "build", "evals-site");
-    await rm(out, { recursive: true, force: true });
+    const out = await mkdtemp(join(tmpdir(), "evals-site-"));
     try {
       await buildSite({ history: true }, out);
       const folder = new FolderFiles(out);

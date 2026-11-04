@@ -1,10 +1,10 @@
 import { prefixed } from "./terms.js";
 
-/** The host whose names do not resolve; no page links it. */
-const NAMESPACE_HOST = "https://ns.cascadeprotocol.org/";
+/** The host whose names do not resolve, on either scheme, with or without a path or port; no page links it. */
+const NAMESPACE_HOST = /^https?:\/\/ns\.cascadeprotocol\.org(?:[:/?#]|$)/i;
 
 function away(where: string): string {
-  if (where.startsWith(NAMESPACE_HOST))
+  if (NAMESPACE_HOST.test(where))
     throw new Error(
       `${where} is on ns.cascadeprotocol.org, which does not resolve; link a page of this site`,
     );
@@ -43,5 +43,5 @@ export function ruleHref(path: string, number: string, base: string): string {
  * files on GitHub at the commit the pages were built from. A page of this site replaces it when decisions have one.
  */
 export function noteHref(path: string, blob: string): string {
-  return `${away(blob).replace(/\/*$/, "/")}${path}`;
+  return `${away(blob).replace(/\/*$/, "/")}${path.replace(/^\/+/, "")}`;
 }
