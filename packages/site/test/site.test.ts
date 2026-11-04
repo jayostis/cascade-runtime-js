@@ -431,11 +431,14 @@ test("a code is shown by the label of the code system whose registered URI space
     codePage("http://id.nlm.nih.gov/mesh/D010406", site.codeSystems),
     "https://id.nlm.nih.gov/mesh/D010406.html",
   );
+  assert.equal(
+    codePage("http://loinc.org/rdf/2345-7", site.codeSystems),
+    "https://loinc.org/2345-7",
+  );
   for (const iri of [
     "https://ns.cascadeprotocol.org/codes/rxnorm/10180",
     "https://ns.cascadeprotocol.org/codes/cvx/150",
     "http://snomed.info/id/91936005",
-    "http://loinc.org/rdf/2345-7",
     "http://example.org/x/1",
   ])
     assert.equal(codePage(iri, site.codeSystems), undefined, iri);

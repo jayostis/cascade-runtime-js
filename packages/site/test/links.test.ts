@@ -243,4 +243,18 @@ test("Markdown gives headings GitHub-style ids only when asked, and otherwise re
   assert.match(withIds, /<h3 id="same">Same<\/h3>/);
   assert.match(withIds, /<h3 id="same-1">Same<\/h3>/);
   assert.equal(withIds.replace(/ id="[^"]*"/g, ""), plain);
+
+  const repeated = renderMarkdown("## Same\n\n## Same\n\n## Same-1\n", {
+    ids: true,
+  }).text;
+  assert.deepEqual(
+    [...repeated.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
+    ["same", "same-1", "same-1-1"],
+  );
+
+  const bare = renderMarkdown("## !!!\n\n## ???\n", { ids: true }).text;
+  assert.deepEqual(
+    [...bare.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]),
+    ["section", "section-1"],
+  );
 });

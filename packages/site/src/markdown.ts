@@ -41,11 +41,13 @@ function slug(html: string): string {
 /**
  * Raw HTML in a note is shown as text: only what the Markdown itself makes is a tag. A link or image whose scheme is not
  * http(s) or mailto, and is not relative, is shown as its text. With `ids`, each heading carries an `id` and is listed in
- * `headings`; a slug taken twice gets `-1`, `-2`, as GitHub does.
+ * `headings`; a slug taken twice gets `-1`, `-2`, as GitHub does, skipping
+ * any id already used; a heading with no letters or digits is `section`.
  */
 function markdown(ids: boolean): { marked: Marked; headings: Heading[] } {
   const headings: Heading[] = [];
   const taken = new Map<string, number>();
+  const used = new Set<string>();
   const marked = new Marked({
     gfm: true,
     renderer: {
@@ -60,10 +62,12 @@ function markdown(ids: boolean): { marked: Marked; headings: Heading[] } {
         ? {
             heading(token) {
               const inner = this.parser.parseInline(token.tokens);
-              const base = slug(inner);
-              const seen = taken.get(base) ?? 0;
+              const base = slug(inner) || "section";
+              let seen = taken.get(base) ?? 0;
+              let id = seen === 0 ? base : `${base}-${seen}`;
+              while (used.has(id)) id = `${base}-${++seen}`;
               taken.set(base, seen + 1);
-              const id = seen === 0 ? base : `${base}-${seen}`;
+              used.add(id);
               headings.push({
                 depth: token.depth,
                 html: inner.replace(/<\/?a\b[^>]*>/g, ""),
