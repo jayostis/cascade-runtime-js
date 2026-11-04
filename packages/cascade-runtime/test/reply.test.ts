@@ -7,6 +7,7 @@ import {
   replyErrors,
   replySchema,
   type Ran,
+  type Source,
 } from "cascade-runtime";
 
 const read = (name: string): unknown =>
@@ -125,4 +126,17 @@ test("a reply that breaks the contract is reported with the schema's errors and 
   const checked = await checkReply(broken, { ask, ran });
   assert.deepEqual(checked.errors, replyErrors(broken));
   assert.deepEqual(checked.items, []);
+});
+
+test("an entry cite met by a call with no pod to ask is not checked, which is not the cite being invented", async () => {
+  const files: Source = { at: async () => undefined };
+  const checked = await checkReply(reply, { files, ran });
+  assert.deepEqual(
+    checked.items.flatMap(({ facts }) =>
+      facts.map(({ verdict }) => !verdict.ok && verdict.reason),
+    ),
+    Array(4).fill("nothing to check against"),
+  );
+  // @ts-expect-error a call names a pod to ask or the downloads to read, and at least one of them
+  void (() => checkReply(reply, { ran }));
 });

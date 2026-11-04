@@ -1,7 +1,7 @@
 // The reply contract as code: a model's reply held to its schema, and every citation and absence of it checked against
 // the sources: the pod's rows and the calls that ran, never the model's own words. No Node; the one source that reads
 // downloads from disk is `node/downloads.ts`.
-import { Ajv2020 } from "ajv/dist/2020.js";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import {
   type Absence,
   type Backing,
@@ -51,9 +51,14 @@ export interface Reply {
   }[];
 }
 
-const validator = new Ajv2020({ allErrors: true, strict: false }).compile(
-  replySchema,
-);
+let compiled: ValidateFunction | undefined;
+/** The contract's validator, compiled when a reply is first held to it. */
+const validator = (): ValidateFunction => {
+  compiled ??= new Ajv2020({ allErrors: true, strict: false }).compile(
+    replySchema,
+  );
+  return compiled;
+};
 
 /**
  * A reply with every item numbered: an item's own `n` is kept, one without is numbered by its place, from 1. The one
@@ -87,8 +92,9 @@ function repeatedNumbers(reply: unknown): string[] {
 
 /** The contract's errors for `value`, one line each; empty when it is a reply. */
 export function replyErrors(value: unknown): string[] {
-  if (!validator(value))
-    return (validator.errors ?? []).map(
+  const validate = validator();
+  if (!validate(value))
+    return (validate.errors ?? []).map(
       (error) => `${error.instancePath || "/"} ${error.message ?? ""}`,
     );
   return repeatedNumbers(value);
@@ -148,14 +154,28 @@ export function podPersonRows(pod: PodAsker) {
   return () => (all ??= pod.ask(POD_PERSON_QUESTION));
 }
 
-/** What `checkReply` reads: the pod, the calls that ran, the downloads and what an absence is held to beyond its own words. */
-export interface ReplyChecking {
-  /** Reads the pod's questions; the citations of a pod's entries are checked against its rows. */
-  readonly ask?: PodAsker["ask"];
+/**
+ * What `checkReply` reads: the pod, the calls that ran, the downloads and what an absence is held to beyond its own
+ * words. At least one of `ask` or `files` is required; a cite whose source is not given comes back "nothing to check
+ * against", not "no such record".
+ */
+export type ReplyChecking = ReplyCheckingBeyondSources &
+  (
+    | {
+        /** Reads the pod's questions; the citations of a pod's entries are checked against its rows. */
+        readonly ask: PodAsker["ask"];
+        readonly files?: Source;
+      }
+    | {
+        readonly ask?: PodAsker["ask"];
+        /** Where a citation of a file and line or resource is read, such as `downloadsSource(folder)`. */
+        readonly files: Source;
+      }
+  );
+
+interface ReplyCheckingBeyondSources {
   /** The tool calls that produced the reply, which an absence's query names. */
   readonly ran: readonly Ran[];
-  /** Where a citation of a file and line or resource is read, such as `downloadsSource(folder)` from `cascade-runtime`. */
-  readonly files?: Source;
   /** What an absence is also held to: the codes, words, kind and date of what must be absent. */
   readonly tie?: (absence: Absence) => Tie | undefined;
   /** Backs an absence otherwise than by the calls that ran, as a reply about files does: by the files looked through. */
@@ -239,7 +259,7 @@ export async function checkReply(
         source === undefined
           ? {
               ok: false as const,
-              reason: "no such record" as const,
+              reason: "nothing to check against" as const,
               missing: [],
             }
           : await checkCitation(claimOf(fact), watching(source));

@@ -57,7 +57,8 @@ export type Verdict =
         | "no such record"
         | "not at that line"
         | "says otherwise"
-        | "nothing to check";
+        | "nothing to check"
+        | "nothing to check against";
       /** Each claimed field the record does not hold, as `<field> <claimed>`. */
       readonly missing: readonly string[];
       /** For a line cited, where the file holds a record that does say it: that record's first line. */
