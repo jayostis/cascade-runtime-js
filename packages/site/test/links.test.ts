@@ -133,6 +133,9 @@ test("a page's address is its kind's folder and its name as a slug; things that 
     named("urn:g", "Con"),
     named("urn:h", `${"x".repeat(70)} ${"y".repeat(70)}`),
     named("urn:i", "condition asthma"),
+    named("urn:j", "COM1"),
+    named("urn:k", "Lpt1"),
+    named("urn:l", "Comd"),
   ];
   const addresses = await addressesOf(things);
   const digest = (iri: string) =>
@@ -149,6 +152,9 @@ test("a page's address is its kind's folder and its name as a slug; things that 
       ["urn:g", "records/con-record.html"],
       ["urn:h", `records/${"x".repeat(70)}.html`],
       ["urn:i", `records/condition-asthma--${digest("urn:i")}.html`],
+      ["urn:j", "records/com1-record.html"],
+      ["urn:k", "records/lpt1-record.html"],
+      ["urn:l", "records/comd.html"],
     ]),
   );
   assert.deepEqual(await addressesOf([...things].reverse()), addresses);

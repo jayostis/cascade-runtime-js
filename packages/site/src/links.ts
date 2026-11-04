@@ -49,11 +49,11 @@ export interface Named {
 
 const LONGEST = 120;
 /** Names Windows will not give a file, whatever its extension. */
-const RESERVED = /^(con|prn|aux|nul|comd|lptd)$/;
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** How many hex digits of an IRI's digest tell apart the things that share a slug, at the least. */
 const SHORTEST = 8;
 /** An address that tells things apart by a digest: the slug, then `--`, then hex digits. */
-const DIGESTED = /^(.*)--[0-9a-f]+.html$/;
+const DIGESTED = /^(.*)--[0-9a-f]+\.html$/;
 
 /**
  * A name as a slug: lowercase ASCII letters and digits, runs of anything else one hyphen, none at either end, so never
