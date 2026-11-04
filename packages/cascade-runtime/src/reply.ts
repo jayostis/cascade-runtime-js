@@ -277,24 +277,22 @@ export type ReplyChecking = ReplyCheckingBeyondSources &
         /** Reads the pod's questions: the reply is about the pod, and each fact is read from the entry it names. */
         readonly ask: PodAsker["ask"];
         readonly files?: undefined;
-        readonly copied?: undefined;
-      }
-    | {
-        /**
-         * Reads the pod's questions for a reply written before facts pointed: it copies what an entry says, citing the
-         * entry by its IRI, and is held to the contract that copies. For an answer a recorded run was given.
-         */
-        readonly ask: PodAsker["ask"];
-        readonly files?: Source;
-        readonly copied: true;
       }
     | {
         readonly ask?: undefined;
         /** Where a citation of a file and line or resource is read, such as `downloadsSource(folder)`: the reply is about downloads. */
         readonly files: Source;
-        readonly copied?: undefined;
       }
   );
+
+/**
+ * What `checkCopiedReply` reads: the pod's questions, for a reply written before facts pointed, which copies what an
+ * entry says and cites the entry by its IRI. Only the evals harness checks a recorded run's answer this way.
+ */
+export type CopiedReplyChecking = ReplyCheckingBeyondSources & {
+  readonly ask: PodAsker["ask"];
+  readonly files?: undefined;
+};
 
 interface ReplyCheckingBeyondSources {
   /** The tool calls that produced the reply, which an absence's query names. */
@@ -487,16 +485,35 @@ function pointedAt(
  * A reply about a pod (`ask` given) is held to the contract that points, and each fact comes back filled from the pod;
  * one about downloads (`files` given) to the contract that copies. A reply that breaks its contract is checked for nothing.
  */
-export async function checkReply(
+export function checkReply(
   value: unknown,
   checking: ReplyChecking,
+): Promise<CheckedReply> {
+  return checkReplyUnder(value, checking, false);
+}
+
+/**
+ * Holds a recorded run's answer, written before facts pointed, to the contract that copies, each fact read against the
+ * pod's rows. Not exported from the package's index: an app's reply points.
+ */
+export function checkCopiedReply(
+  value: unknown,
+  checking: CopiedReplyChecking,
+): Promise<CheckedReply> {
+  return checkReplyUnder(value, checking, true);
+}
+
+async function checkReplyUnder(
+  value: unknown,
+  checking: ReplyChecking | CopiedReplyChecking,
+  copied: boolean,
 ): Promise<CheckedReply> {
   const { ask, ran, files, tie, backing } = checking;
   if (ask === undefined && files === undefined)
     throw new Error(
       "checkReply needs `ask` (a reply about a pod) or `files` (a reply about downloads); it was given neither",
     );
-  const copies = checking.copied === true || ask === undefined;
+  const copies = copied || ask === undefined;
   const errors = replyErrors(value, copies ? "records" : "pod");
   if (errors.length > 0) return { errors, items: [] };
   const reply = numberedReply(value) as Reply;

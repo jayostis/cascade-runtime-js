@@ -11,6 +11,7 @@ import {
   recordsReplySchema,
   type Source,
 } from "cascade-runtime";
+import { checkCopiedReply } from "cascade-runtime/copied-reply";
 
 const read = (name: string): unknown =>
   JSON.parse(
@@ -156,13 +157,21 @@ test("a reply checked against downloads is held to the contract that cites a fil
     ["nothing to check against"],
     "an entry cite with no pod to ask is not checked, which is not the cite being invented",
   );
-  const answered = await checkReply(copied, { ask, copied: true, ran });
+  const answered = await checkCopiedReply(copied, { ask, ran });
   assert.deepEqual(answered.errors, []);
   assert.deepEqual(
     answered.items[0]!.facts.map(({ verdict }) => verdict.ok),
     [true],
     "a reply a recorded run copied is held to the pod's rows, not turned away for lacking a field",
   );
+  const pointing = await checkReply(copied, { ask, ran });
+  assert.notDeepEqual(
+    pointing.errors,
+    [],
+    "an app's reply that copies is turned away",
+  );
+  // @ts-expect-error an app cannot ask checkReply to hold a reply to the contract that copies
+  await checkReply(copied, { ask, copied: true, ran });
   // @ts-expect-error a call names a pod to ask or the downloads to read, and at least one of them
   const neither = checkReply(reply, { ran });
   await assert.rejects(neither, /`ask`.*`files`.*neither/);

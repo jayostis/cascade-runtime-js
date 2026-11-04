@@ -15,6 +15,7 @@ import {
   type Ran,
   type Tie,
 } from "cascade-runtime";
+import { checkCopiedReply } from "cascade-runtime/copied-reply";
 import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { answerPath } from "./sessions.js";
@@ -306,26 +307,20 @@ export async function checkAnswer(options: {
       if (holdsRecords(await text(file))) couldHold.push(file);
   const pod = options.pod;
   const tie = (absence: Absence) => tieOf(absence, key);
-  const checked = await checkReply(
-    options.answer,
+  const checked =
     job.arm === "pod" && pod !== undefined
-      ? options.copies
-        ? {
-            ask: (question) => pod.ask(question),
-            files: downloadsSource(prepared.downloads),
-            copied: true,
-            ran,
-            tie,
-          }
-        : { ask: (question) => pod.ask(question), ran, tie }
-      : {
+      ? await (options.copies ? checkCopiedReply : checkReply)(options.answer, {
+          ask: (question) => pod.ask(question),
+          ran,
+          tie,
+        })
+      : await checkReply(options.answer, {
           files: downloadsSource(prepared.downloads),
           ran,
           tie,
           backing: (absence, tied) =>
             checkRecordsAbsence(absence, read, text, couldHold, tied),
-        },
-  );
+        });
   if (checked.reply === undefined)
     return {
       answerValid: false,
