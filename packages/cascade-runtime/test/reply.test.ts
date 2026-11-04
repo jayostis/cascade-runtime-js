@@ -214,6 +214,40 @@ const reasons = (facts: readonly CheckedFact[]) =>
     verdict.ok ? "ok" : `${verdict.reason}: ${verdict.missing.join(", ")}`,
   );
 
+test("a pod that cannot be read rejects checkReply once and leaves no rejection unhandled", async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (why: unknown) => unhandled.push(why);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    for (const cited of [HBA1C, PERSON]) {
+      const failing = (question: string) =>
+        Promise.reject(new Error(`cannot read ${question}`));
+      await assert.rejects(
+        checkReply(
+          {
+            answer: "…",
+            short: "…",
+            items: [
+              {
+                says: "…",
+                why: "…",
+                confidence: "high",
+                facts: [fact(cited, "value")],
+              },
+            ],
+          },
+          { ask: failing, ran: [] },
+        ),
+        /cannot read/,
+      );
+    }
+    await new Promise((done) => setImmediate(done));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
+
 test("a fact names an entry the pod holds and the field it rests on, and comes back with what the pod holds of it", async () => {
   const [result, lab, clinic] = await pointed(
     fact(HBA1C, "value"),
