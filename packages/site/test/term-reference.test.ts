@@ -189,6 +189,38 @@ test("a term's entry says what it is, its shape and every query and rule that na
   assert.match(vaccination.said, /No query names it\./);
 });
 
+test("a shape that checks the subjects of a property, and no class, is shown whole on that property's entry; more than ten queries are folded", async () => {
+  const system = `${CASCADE}vaccineCodeSystem`;
+  const alone = `${CASCADE}SystemShape`;
+  const files = await fixture();
+  await files.write(
+    "ontologies/cascade.shapes.ttl",
+    text(
+      `${SHAPES}\ncascade:SystemShape a sh:NodeShape ;\n    sh:targetSubjectsOf cascade:vaccineCodeSystem ;\n    sh:nodeKind sh:BlankNodeOrIRI .\n`,
+    ),
+  );
+  for (let n = 0; n < 11; n++)
+    await files.write(
+      `queries/views/many-${n}.rq`,
+      text(`SELECT ?s WHERE { ?v <${system}> ?s } # ${n}`),
+    );
+  const built = await termReference(files);
+  const shown = entry(built, termId(system));
+  assert.ok(shown.includes(`id="${termId(alone)}"`), "the shape's anchor");
+  assert.match(readPage(shown).said, /SystemShape checks the subject of any/);
+  const part = built.split('id="shapes"')[1] ?? "";
+  assert.ok(
+    !part.includes(`id="${termId(alone)}"`),
+    "not repeated in the part for shapes reached only by node",
+  );
+  assert.ok(part.includes(`id="${termId(CVX_SHAPE)}"`));
+  assert.match(shown, /<details><summary>12 queries<\/summary>/);
+  assert.ok(
+    !entry(built, termId(VACCINE_CODE)).includes("<details>"),
+    "two queries are not folded",
+  );
+});
+
 test("an IRI on ns.cascadeprotocol.org is shown as text and never linked, and a copied term shows its source", () => {
   const { hrefs, said } = readPage(page);
   assert.deepEqual(

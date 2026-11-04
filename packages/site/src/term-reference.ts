@@ -23,6 +23,8 @@ export const TERMS_FOLDER = "terms/";
 const ONTOLOGY = "ontologies/cascade.ttl";
 const SHAPES = "ontologies/cascade.shapes.ttl";
 const QUERIES = "queries";
+/** A list of queries or rules longer than this is folded behind a summary. */
+const FOLD_AFTER = 10;
 /** The spec's pages, from this page. */
 const SPEC = "../spec/";
 
@@ -233,14 +235,19 @@ class Reference {
         .map(({ value }) => value)
         .filter((iri) => entries.get(iri)?.kind === "class")
         .sort((a, b) => this.name(a).localeCompare(this.name(b)));
-      this.#homes.set(shape.value, classes[0]);
+      const properties = shapes
+        .objects(shape, `${SH}targetSubjectsOf`)
+        .map(({ value }) => value)
+        .filter((iri) => entries.get(iri)?.kind === "property")
+        .sort((a, b) => this.name(a).localeCompare(this.name(b)));
+      this.#homes.set(shape.value, classes[0] ?? properties[0]);
     }
   }
 
-  /** Where each shape's anchor is: the entry of the first class it checks, or undefined for the shapes' own part. */
+  /** Where each shape's anchor is: the entry of the first class it checks, else of the first property whose subjects it checks, or undefined for the shapes' own part. */
   readonly #homes = new Map<string, string | undefined>();
 
-  /** The shapes no class's entry holds: those another shape sends a node to. */
+  /** The shapes no entry holds: those that check no class and no property, and are reached only by another shape's node. */
   get unhomed(): NamedNode[] {
     return this.#nodeShapes.filter(
       ({ value }) => this.#homes.get(value) === undefined,
@@ -435,6 +442,13 @@ class Reference {
     return markup`<div class="shape"${home ? markup` id="${termId(shape.value)}"` : ""}>${this.targets(shape)}${wide.length === 0 ? "" : markup`<p>On the whole node: ${wide.map(([predicate, object], i) => markup`${i === 0 ? "" : "; "}${this.constraint(predicate, object)}`)}${this.said(shape)}</p>\n`}${properties.length === 0 ? "" : markup`<ul>\n${properties.map((p) => this.propertyLine(p))}</ul>\n`}</div>\n`;
   }
 
+  /** The shapes at home on the property's entry, each whole. */
+  homedOn(iri: string): Html[] {
+    return this.#nodeShapes
+      .filter((shape) => this.#homes.get(shape.value) === iri)
+      .map((shape) => this.shape(shape, true));
+  }
+
   #byProperty: Map<string, Html[]> | undefined;
 
   /**
@@ -524,6 +538,13 @@ class Reference {
       .sort((a, b) => this.name(a.value).localeCompare(this.name(b.value)));
   }
 
+  /** A list behind a summary of its length when it is longer than FOLD_AFTER. */
+  folded(count: number, noun: string, list: Html): Html {
+    return count > FOLD_AFTER
+      ? markup`<details><summary>${count} ${noun}</summary>\n${list}</details>`
+      : list;
+  }
+
   field(name: string, value: Content): Html {
     return markup`<dt>${name}</dt><dd>${value}</dd>\n`;
   }
@@ -541,6 +562,7 @@ class Reference {
         : kind === "property"
           ? this.propertyShapes(iri)
           : [];
+    const homed = kind === "property" ? this.homedOn(iri) : [];
     const queries = this.#used.queries.get(iri) ?? [];
     const rules = this.#used.rules.get(iri) ?? [];
     return markup`<section class="term">
@@ -584,11 +606,11 @@ ${this.field("Type", this.values(this.objects(iri, [TYPE]), "none stated"))}${
         ? ""
         : this.field(
             "Shapes",
-            shapes.length === 0
+            shapes.length + homed.length === 0
               ? markup`<span class="about">No shape checks it.</span>`
               : kind === "class"
                 ? shapes
-                : markup`<ul>\n${shapes}</ul>`,
+                : markup`${shapes.length === 0 ? "" : markup`<ul>\n${shapes}</ul>\n`}${homed}`,
           )
     }${this.field("Source", this.links(this.objects(iri, SOURCE), "none stated"))}${this.field(
       "License",
@@ -604,12 +626,20 @@ ${this.field("Type", this.values(this.objects(iri, [TYPE]), "none stated"))}${
       "Queries",
       queries.length === 0
         ? markup`<span class="about">No query names it.</span>`
-        : markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
+        : this.folded(
+            queries.length,
+            "queries",
+            markup`<ul>\n${queries.map((path) => markup`<li><a href="${this.blob}${encodeURI(path)}">${path}</a></li>\n`)}</ul>`,
+          ),
     )}${this.field(
       "Rules",
       rules.length === 0
         ? markup`<span class="about">No rule names it.</span>`
-        : markup`<ul>\n${rules.map(({ href, path, name }) => markup`<li><a href="${href}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
+        : this.folded(
+            rules.length,
+            "rules",
+            markup`<ul>\n${rules.map(({ href, path, name }) => markup`<li><a href="${href}">${name}</a> <span class="about">${path}</span></li>\n`)}</ul>`,
+          ),
     )}</dl>
 </section>
 `;
