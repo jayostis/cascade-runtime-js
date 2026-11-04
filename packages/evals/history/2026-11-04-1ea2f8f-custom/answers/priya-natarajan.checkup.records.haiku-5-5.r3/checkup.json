@@ -1,0 +1,647 @@
+{
+  "answer": "Here is what I would bring up, most important first. The newest record I have is from July 14, 2026, so anything after that will not show here.\n\n1. Hydrochlorothiazide may still be in use. Kestrel Harbor Hospital stopped it on March 5, 2026 because your sodium had dropped to 123. But the pharmacy still lists it as active, with a fill on April 2, 2026 and two refills left. Your May eye-clinic list shows it as taken, and your Fernhill list from June still shows it as active. Fernhill's June note says to continue current medications. Your June sodium was still a little low at 134. Please confirm with the pharmacy and Dr. Marsh whether you are taking it, and have it removed from every list if it has been stopped.\n\n2. The thyroid recheck is overdue. Your TSH was 7.9 (high) on March 3, with a normal free T4. The hospital asked for TSH and free T4 to be repeated 6 to 8 weeks after discharge, which is late April. I do not see a repeat in any record. Your sodium has not been checked since June 15.\n\n3. The lung spot needs its follow-up scan. The CT at the Saltmarsh emergency department on October 18, 2025, done for the kidney stone, also found a 7 mm solid spot in the right lower lung. The radiologist recommended a chest CT in 6 to 12 months, so that window closed around October 18, 2026. Nothing after that visit mentions the spot or a scan.\n\n4. Cholesterol and a statin. In September 2025 your LDL was 142, total cholesterol 221, HDL 48 (low), and triglycerides 155. You were diagnosed with type 2 diabetes that month, and guidelines usually recommend a statin for people with diabetes your age. No statin is on any of your lists, and there has been no cholesterol test since September 2025.\n\n5. Vaccines. The second Shingrix dose is not recorded. It was due 2 to 6 months after the first on November 8, 2025. No flu shot for this season is recorded, and I see no Tdap or COVID vaccine anywhere. Prevnar 20 from the same visit is complete. Fernhill's vaccine list also leaves out the November 2025 shots.\n\n6. Diabetes checks. Your A1c was 6.6% on June 15, so the next one is due about now. No urine kidney test (albumin-to-creatinine ratio) and no foot exam appear in any record. Your eye exam on May 14, 2026 found no diabetic eye damage, and the next is due in May 2027. Ask whether you went to the diabetes education visit suggested in September 2025. Mammogram and cervical screening also do not appear in these records, though they may have been done elsewhere. Your colonoscopy in April 2019 was normal, so the next is due around 2029.\n\n7. The kidney stone follow-up. The emergency department asked you to see your primary doctor within a week, and urology if the stone had not passed in two weeks. Nothing in your records shows either visit or a repeat urine test. Ask whether a repeat urine test is needed to confirm the blood in your urine has cleared.\n\n8. Fernhill's record is missing recent events. It does not mention the October kidney stone visit, the lung spot, or the March hospital stay for low sodium, including the fall at home without injury. Its problem list has no low sodium entry. Please ask Fernhill to add these and to get the hospital and emergency summaries.\n\n9. Lisinopril cough. Fernhill lists lisinopril as an intolerance (dry cough, 2025), but the hospital and pharmacy allergy lists show only aspirin. Ask for it to be added to every list so an ACE inhibitor is not given to you again by mistake.\n\n10. Amlodipine start date. It was prescribed April 1, 2025, but this pharmacy's first fill was September 27, 2025. You may have filled it somewhere else. If not, you may have gone without it for several months, so it is worth checking.\n\nI am not your doctor, so please confirm these points with Dr. Marsh.",
+  "short": "Please check whether I am still taking hydrochlorothiazide, which Kestrel Harbor stopped on 3/5/2026 for low sodium but which was refilled on 4/2/2026. Also overdue or missing: TSH and free T4 recheck (TSH 7.9 in March), chest CT for a 7 mm lung nodule (due by about 10/18/2026), a statin discussion (LDL 142 with diabetes), and the second Shingrix dose.",
+  "items": [
+    {
+      "n": 1,
+      "says": "Kestrel Harbor Hospital stopped hydrochlorothiazide on March 5, 2026 for low sodium, but the pharmacy still lists it as active with a fill on April 2, 2026 and two refills left. The Fernhill list still shows it as active, and the May eye-clinic list shows it as taken.",
+      "why": "A drug that caused low sodium is still on several lists and may still be in use, and the June sodium was still low at 134.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Hospital discharge medication list: hydrochlorothiazide marked STOP and discontinued March 5, 2026 for low sodium.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 223},
+          "name": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "status": "aborted",
+          "code": "199903",
+          "date": "2026-03-05",
+          "dateKind": "end",
+          "quote": "Discontinued March 5, 2026 (hyponatremia)"
+        },
+        {
+          "says": "Pharmacy: hydrochlorothiazide still listed as active, last filled April 2, 2026 for 90 days, with 2 refills remaining.",
+          "provider": "Alder Street Pharmacy",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 218},
+          "name": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "status": "active",
+          "code": "199903",
+          "date": "2026-04-02",
+          "dateKind": "when",
+          "quote": "April 2, 2026 (90 days), 2 refills remaining"
+        },
+        {
+          "says": "Eye clinic medication list, patient reported: hydrochlorothiazide 12.5 mg capsule, 1 capsule daily, active.",
+          "provider": "Clearwater Eye Associates",
+          "cite": {"file": "clearwater-eye-associates-visit-summary.xml", "line": 204},
+          "name": "hydrochlorothiazide 12.5 mg capsule",
+          "status": "active",
+          "date": "2026-05-14",
+          "dateKind": "recorded",
+          "quote": "hydrochlorothiazide 12.5 mg capsule"
+        },
+        {
+          "says": "Fernhill medication list still shows hydrochlorothiazide as active, started December 9, 2025, with no stop recorded.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 234},
+          "name": "hydrochlorothiazide 12.5 MG Oral Capsule",
+          "status": "active",
+          "date": "2025-12-09",
+          "dateKind": "start",
+          "quote": "1 capsule daily, from December 9, 2025"
+        },
+        {
+          "says": "June 15, 2026 plan at Fernhill says to continue current medications; it does not mention stopping hydrochlorothiazide.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 1260},
+          "date": "2026-06-15",
+          "dateKind": "when",
+          "quote": "Continue current medications."
+        },
+        {
+          "says": "Sodium on June 15, 2026 was 134 mmol/L, low (reference 135-145).",
+          "provider": "Northbay Clinical Laboratories",
+          "cite": {"file": "northbay-clinical-laboratories-results.xml", "line": 215},
+          "name": "Sodium",
+          "value": 134,
+          "unit": "mmol/L",
+          "code": "2951-2",
+          "date": "2026-06-15",
+          "dateKind": "when",
+          "quote": "134 mmol/L (Low)"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No stop or discontinuation of hydrochlorothiazide on the pharmacy or Fernhill lists after the hospital stopped it",
+          "match": {"codes": ["199903"], "terms": ["hydrochlorothiazide", "discontinued", "stop"], "after": "2026-03-06"},
+          "coverage": "Pharmacy record (to July 14, 2026), eye clinic visit (May 14, 2026), Fernhill summary (June 22, 2026)",
+          "sources": ["alder-street-pharmacy-patient-record.xml", "clearwater-eye-associates-visit-summary.xml", "fernhill-family-clinic-summary-4.xml"]
+        }
+      ],
+      "knowledge": {
+        "says": "Hydrochlorothiazide can lower sodium. Her sodium was 123 in March, 133 at discharge, and 134 in June. If she is still taking the drug, it could be part of why sodium stays low. Usual practice after a drug causes low sodium is to stop it and recheck sodium."
+      },
+      "links": [
+        {"from": 1, "to": 0, "says": "The April 2 fill came about four weeks after the March 5 stop."}
+      ]
+    },
+    {
+      "n": 2,
+      "says": "Her TSH was high at 7.9 in March 2026, with a normal free T4. The hospital asked for TSH and free T4 to be repeated 6 to 8 weeks after discharge. No repeat appears in any record, and sodium has not been checked since June 15.",
+      "why": "A requested repeat test that never happened leaves a high thyroid result and a low sodium unresolved.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "TSH 7.9 m[IU]/L, high (reference 0.40-4.00), drawn March 3, 2026 during the hospital stay.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 639},
+          "name": "TSH",
+          "value": 7.9,
+          "unit": "m[IU]/L",
+          "code": "3016-3",
+          "date": "2026-03-03",
+          "dateKind": "when",
+          "quote": "7.9 m[IU]/L (High)"
+        },
+        {
+          "says": "Discharge instructions: have TSH and free T4 repeated in 6 to 8 weeks, once recovered.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 1258},
+          "name": "TSH and free T4 repeat",
+          "date": "2026-03-05",
+          "dateKind": "when",
+          "quote": "Please have TSH and free T4 repeated in 6-8 weeks, once you have recovered."
+        },
+        {
+          "says": "Free T4 1.0 ng/dL, normal (reference 0.8-1.8), March 3, 2026.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 645},
+          "name": "Free T4",
+          "value": 1.0,
+          "unit": "ng/dL",
+          "code": "3024-7",
+          "date": "2026-03-03",
+          "dateKind": "when",
+          "quote": "1.0 ng/dL"
+        },
+        {
+          "says": "Sodium 123 mmol/L, low, on March 2, 2026 at admission.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 597},
+          "name": "Sodium",
+          "value": 123,
+          "unit": "mmol/l",
+          "code": "2951-2",
+          "date": "2026-03-02",
+          "dateKind": "when",
+          "quote": "123 mmol/l (Low)"
+        },
+        {
+          "says": "Sodium 133 mmol/L, still low, on March 5, 2026, the day of discharge.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 651},
+          "name": "Sodium",
+          "value": 133,
+          "unit": "mmol/l",
+          "code": "2951-2",
+          "date": "2026-03-05",
+          "dateKind": "when",
+          "quote": "133 mmol/l (Low)"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No repeat TSH or free T4 after the hospital stay",
+          "match": {"codes": ["3016-3", "3024-7"], "terms": ["TSH", "thyrotropin", "free T4", "thyroxine"], "after": "2026-03-05"},
+          "coverage": "All 26 files; the newest record is dated July 14, 2026"
+        },
+        {
+          "what": "No sodium test after June 15, 2026",
+          "match": {"codes": ["2951-2"], "terms": ["sodium"], "after": "2026-06-15"},
+          "coverage": "All 26 files; the newest record is dated July 14, 2026"
+        }
+      ],
+      "knowledge": {
+        "says": "A TSH slightly above normal with a normal free T4 is usually called mild, or subclinical, underactive thyroid. The usual approach is to repeat TSH and free T4 in a few months, and to consider treatment if the TSH stays high or symptoms appear.",
+        "guideline": "American Thyroid Association guidance on subclinical hypothyroidism"
+      },
+      "links": [
+        {"from": 1, "to": 0, "says": "The repeat was requested because of this high TSH."}
+      ]
+    },
+    {
+      "n": 3,
+      "says": "A CT done in the Saltmarsh emergency department on October 18, 2025, for the kidney stone, also found a 7 mm solid spot in the right lower lung. The radiologist recommended a non-contrast chest CT in 6 to 12 months, a window that closed around October 18, 2026. No later record mentions the spot or a follow-up scan.",
+      "why": "A lung nodule needs follow-up at the recommended interval, and nothing shows that it was scheduled.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Radiology impression: incidental 7 mm solid nodule in the right lower lobe; non-contrast chest CT recommended in 6 to 12 months.",
+          "provider": "Saltmarsh Regional Medical Center (Hannah Lindqvist, MD, Radiology)",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 546},
+          "name": "Solid pulmonary nodule, right lower lobe, 7 mm (incidental)",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "a non-contrast CT of the chest is recommended in 6-12 months"
+        },
+        {
+          "says": "Findings: a 7 mm solid nodule in the right lower lobe, series 2 image 14.",
+          "provider": "Saltmarsh Regional Medical Center (Hannah Lindqvist, MD, Radiology)",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 545},
+          "name": "Solid pulmonary nodule, right lower lobe, 7 mm (incidental)",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "a 7 mm solid nodule is present in the right lower lobe (series 2, image 14)"
+        },
+        {
+          "says": "The scan was a CT of the abdomen and pelvis without contrast, performed October 18, 2025 in the emergency department.",
+          "provider": "Saltmarsh Regional Medical Center",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 542},
+          "name": "CT abdomen and pelvis without contrast",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "performed October 18, 2025 07:52 UTC"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No follow-up chest CT, and no mention of the lung nodule, after the October 2025 scan",
+          "match": {"codes": [], "terms": ["nodule", "chest CT", "CT of the chest", "pulmonary nodule", "lung"], "after": "2025-10-19"},
+          "coverage": "Every later record: Fernhill (January and June 2026), Kestrel Harbor (March 2026), eye clinic (May 2026), Northbay labs (June 2026), pharmacy (July 2026)",
+          "sources": ["fernhill-family-clinic-summary-3.xml", "fernhill-family-clinic-summary-4.xml", "kestrel-harbor-health-summary-5.xml", "clearwater-eye-associates-visit-summary.xml", "northbay-clinical-laboratories-results.xml", "alder-street-pharmacy-patient-record.xml"]
+        }
+      ],
+      "knowledge": {
+        "says": "For a single solid nodule of 6 to 8 mm, the usual approach is a CT at 6 to 12 months, then considering another CT at 18 to 24 months. Most such nodules are benign, but they are still checked. The window in the report closed around October 18, 2026.",
+        "guideline": "Fleischner Society guidelines for incidental pulmonary nodules (2017)"
+      }
+    },
+    {
+      "n": 4,
+      "says": "Your cholesterol in September 2025 was high: total 221, LDL 142, HDL 48 (low), triglycerides 155. You were diagnosed with type 2 diabetes that month. No statin or other cholesterol medicine is on any list, and no cholesterol test has been done since.",
+      "why": "Guidelines usually call for a statin for people with diabetes aged 40 to 75, and a cholesterol check at least once a year.",
+      "confidence": "medium",
+      "facts": [
+        {
+          "says": "Cholesterol, total 221 mg/dL, high, on September 22, 2025.",
+          "provider": "Northbay Clinical Laboratories",
+          "cite": {"file": "northbay-clinical-laboratories-results.xml", "line": 173},
+          "name": "Cholesterol, total",
+          "value": 221,
+          "unit": "mg/dL",
+          "code": "2093-3",
+          "date": "2025-09-22",
+          "dateKind": "when",
+          "quote": "221 mg/dL (High)"
+        },
+        {
+          "says": "LDL cholesterol, calculated, 142 mg/dL, high, same date.",
+          "provider": "Northbay Clinical Laboratories",
+          "cite": {"file": "northbay-clinical-laboratories-results.xml", "line": 191},
+          "name": "LDL cholesterol, calculated",
+          "value": 142,
+          "unit": "mg/dL",
+          "code": "13457-7",
+          "date": "2025-09-22",
+          "dateKind": "when",
+          "quote": "142 mg/dL (High)"
+        },
+        {
+          "says": "Type 2 diabetes mellitus recorded as starting September 2025.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 453},
+          "name": "Type 2 diabetes mellitus",
+          "code": "44054006",
+          "date": "2025-09-22",
+          "dateKind": "start",
+          "quote": "Type 2 diabetes mellitus, since September 2025"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No statin or other cholesterol-lowering medicine on any medication list",
+          "match": {"codes": [], "terms": ["statin", "atorvastatin", "rosuvastatin", "simvastatin", "pravastatin", "ezetimibe"]},
+          "coverage": "All medication lists in all 26 files (Fernhill, hospital, pharmacy, eye clinic)"
+        },
+        {
+          "what": "No cholesterol panel after September 22, 2025",
+          "match": {"codes": ["2093-3", "2085-9", "2571-8", "13457-7", "24331-1"], "terms": ["cholesterol", "LDL", "HDL", "triglyceride", "lipid"], "after": "2025-09-23"},
+          "coverage": "All 26 files; the newest record is dated July 14, 2026"
+        }
+      ],
+      "knowledge": {
+        "says": "For adults with diabetes aged 40 to 75, guidelines generally recommend a statin, and a stronger one when other risk factors such as high blood pressure or a high LDL are present. A lipid panel is usually repeated at least yearly for people with diabetes.",
+        "guideline": "ADA Standards of Care in Diabetes, cardiovascular disease and risk management"
+      }
+    },
+    {
+      "n": 5,
+      "says": "The second Shingrix dose is not recorded; it was due 2 to 6 months after the first dose on November 8, 2025. No flu shot for the 2026 to 2027 season is recorded, and no Tdap or COVID vaccine appears in any record. Prevnar 20 from the same visit is complete.",
+      "why": "Shingrix needs two doses, and flu vaccine is due every season, so these are either overdue or due now.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Shingrix first dose given November 8, 2025 at Alder Street Pharmacy; the second dose is due 2 to 6 months later.",
+          "provider": "Alder Street Pharmacy (Grace Oyelaran, PharmD)",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 417},
+          "name": "Zoster vaccine recombinant, adjuvanted (Shingrix)",
+          "code": "187",
+          "status": "completed",
+          "date": "2025-11-08",
+          "dateKind": "when",
+          "quote": "Zoster vaccine recombinant, adjuvanted (Shingrix)"
+        },
+        {
+          "says": "Prevnar 20 given November 8, 2025 at the pharmacy, a single dose; complete.",
+          "provider": "Alder Street Pharmacy (Grace Oyelaran, PharmD)",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 424},
+          "name": "Pneumococcal 20-valent conjugate vaccine (Prevnar 20)",
+          "code": "216",
+          "status": "completed",
+          "date": "2025-11-08",
+          "dateKind": "when",
+          "quote": "Pneumococcal 20-valent conjugate vaccine (Prevnar 20)"
+        },
+        {
+          "says": "Influenza vaccine given November 8, 2025 at the pharmacy, for the 2025 to 2026 season.",
+          "provider": "Alder Street Pharmacy (Grace Oyelaran, PharmD)",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 410},
+          "name": "Influenza vaccine, trivalent, preservative free (Fluarix)",
+          "code": "140",
+          "status": "completed",
+          "date": "2025-11-08",
+          "dateKind": "when",
+          "quote": "Influenza vaccine, trivalent, preservative free (Fluarix)"
+        },
+        {
+          "says": "Fernhill vaccine list shows only an influenza vaccine given October 15, 2024; the November 2025 vaccines are not on it.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 568},
+          "name": "Influenza vaccine",
+          "code": "141",
+          "date": "2024-10-15",
+          "dateKind": "when",
+          "quote": "Influenza vaccine, given October 15, 2024"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No second Shingrix dose",
+          "match": {"codes": ["187"], "terms": ["Shingrix", "zoster"], "after": "2026-01-08"},
+          "coverage": "All 26 files; the newest record is dated July 14, 2026"
+        },
+        {
+          "what": "No flu vaccine for the 2026 to 2027 season",
+          "match": {"codes": ["141", "140"], "terms": ["influenza", "flu vaccine", "Fluarix"], "after": "2026-08-01"},
+          "coverage": "All 26 files; the newest record is dated July 14, 2026, so August to October 2026 are not visible"
+        },
+        {
+          "what": "No Tdap (tetanus, diphtheria, pertussis) vaccine in any record",
+          "match": {"codes": ["115"], "terms": ["Tdap", "tetanus", "Td"]},
+          "coverage": "All 26 files"
+        },
+        {
+          "what": "No COVID-19 vaccine in any record",
+          "match": {"codes": ["207", "208", "213"], "terms": ["COVID", "SARS-CoV-2"]},
+          "coverage": "All 26 files"
+        }
+      ],
+      "knowledge": {
+        "says": "Shingrix is two doses for adults 50 and older, given 2 to 6 months apart. If the second dose is late, it is still given, without starting the series over. Flu vaccine is recommended every season. Tdap is repeated every 10 years. COVID-19 vaccine follows current advice.",
+        "guideline": "CDC adult immunization schedule"
+      },
+      "links": [
+        {"from": 3, "to": 2, "says": "Fernhill's vaccine list does not show the November 2025 flu shot that the pharmacy recorded."}
+      ]
+    },
+    {
+      "n": 6,
+      "says": "Your A1c was 6.6% on June 15, 2026, so the next one is due about now. No urine kidney test (albumin-to-creatinine ratio) and no foot exam appear in any record. Your eye exam on May 14, 2026 showed no diabetic eye damage, and the next is due in May 2027. The diabetes education recommended in September 2025 has no record of attendance.",
+      "why": "Diabetes guidelines call for yearly kidney and foot checks, and those are missing from these records.",
+      "confidence": "medium",
+      "facts": [
+        {
+          "says": "Hemoglobin A1c 6.6% (high) on June 15, 2026, down from 6.7% in December 2025 and 6.9% at diagnosis in September 2025.",
+          "provider": "Northbay Clinical Laboratories",
+          "cite": {"file": "northbay-clinical-laboratories-results.xml", "line": 203},
+          "name": "Hemoglobin A1c",
+          "value": 6.6,
+          "unit": "%",
+          "code": "4548-4",
+          "date": "2026-06-15",
+          "dateKind": "when",
+          "quote": "6.6 % (High)"
+        },
+        {
+          "says": "Eye examination with dilation on May 14, 2026: no diabetic retinopathy and no macular edema in either eye.",
+          "provider": "Clearwater Eye Associates (Daniel Reyes, OD)",
+          "cite": {"file": "clearwater-eye-associates-visit-summary.xml", "line": 476},
+          "name": "Comprehensive eye examination with dilation",
+          "code": "92004",
+          "date": "2026-05-14",
+          "dateKind": "when",
+          "quote": "no diabetic retinopathy and no macular edema in either eye"
+        },
+        {
+          "says": "Eye clinic plan: return in 12 months for a dilated diabetic eye examination.",
+          "provider": "Clearwater Eye Associates (Daniel Reyes, OD)",
+          "cite": {"file": "clearwater-eye-associates-visit-summary.xml", "line": 516},
+          "date": "2026-05-14",
+          "dateKind": "when",
+          "quote": "Return in 12 months for a dilated diabetic eye examination."
+        },
+        {
+          "says": "September 22, 2025 plan: referred to diabetes education.",
+          "provider": "Fernhill Family Clinic (Elena Marsh, MD)",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 1258},
+          "date": "2025-09-22",
+          "dateKind": "when",
+          "quote": "referred to diabetes education"
+        },
+        {
+          "says": "Colonoscopy on April 16, 2019 was normal; repeat in 10 years.",
+          "provider": "Kestrel Harbor Hospital Endoscopy",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 559},
+          "name": "Colonoscopy",
+          "code": "73761001",
+          "date": "2019-04-16",
+          "dateKind": "when",
+          "quote": "Normal colon; no polyps. Repeat colonoscopy in 10 years."
+        }
+      ],
+      "absences": [
+        {
+          "what": "No urine albumin-to-creatinine ratio since diagnosis",
+          "match": {"codes": [], "terms": ["albumin/creatinine", "microalbumin", "urine albumin", "UACR"], "after": "2025-09-22"},
+          "coverage": "All 26 files"
+        },
+        {
+          "what": "No diabetic foot exam recorded since diagnosis",
+          "match": {"codes": [], "terms": ["foot exam", "monofilament", "diabetic foot"], "after": "2025-09-22"},
+          "coverage": "All 26 files"
+        },
+        {
+          "what": "No record of attending diabetes education after the September 2025 referral",
+          "match": {"codes": [], "terms": ["diabetes education", "diabetes self-management", "DSMES"], "after": "2025-09-23"},
+          "coverage": "All 26 files"
+        },
+        {
+          "what": "No mammogram in any record",
+          "match": {"codes": [], "terms": ["mammogram", "mammography"]},
+          "coverage": "All 26 files"
+        },
+        {
+          "what": "No cervical screening (Pap or HPV test) in any record",
+          "match": {"codes": [], "terms": ["Pap smear", "cervical cytology", "HPV test", "cervical cancer screening"]},
+          "coverage": "All 26 files"
+        }
+      ],
+      "knowledge": {
+        "says": "For diabetes, guidelines suggest an A1c every 3 to 6 months, a yearly urine albumin-to-creatinine ratio and kidney function test, a yearly foot exam, and a yearly lipid panel. Eye exams are usually yearly, or every 1 to 2 years once normal. For screening, mammograms are usually every 2 years from age 40 to 74, and cervical screening is recommended from 21 to 65.",
+        "guideline": "ADA Standards of Care in Diabetes; US Preventive Services Task Force screening recommendations"
+      }
+    },
+    {
+      "n": 7,
+      "says": "In October 2025 the emergency department found a 4 mm stone at the right ureter with blood in the urine. It asked you to see your primary doctor within a week, and urology if the stone had not passed in two weeks. Nothing later shows either visit or a repeat urine test.",
+      "why": "Blood in the urine should clear once the stone passes, and nothing shows that it was checked.",
+      "confidence": "medium",
+      "facts": [
+        {
+          "says": "Emergency visit October 18, 2025: a 4 mm stone at the right ureter where it meets the bladder, with mild swelling of the kidney.",
+          "provider": "Saltmarsh Regional Medical Center Emergency Department (Malik Osei, MD)",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 546},
+          "name": "Kidney stone, 4 mm, right ureterovesical junction",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "4 mm obstructing calculus at the right ureterovesical junction with mild right hydroureteronephrosis"
+        },
+        {
+          "says": "Urine dipstick, October 18, 2025: blood Large (3+), abnormal.",
+          "provider": "Saltmarsh Regional Medical Center",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 476},
+          "name": "Blood, urine (dipstick)",
+          "value": "Large (3+)",
+          "code": "5794-3",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "Large (3+) (Abnormal)"
+        },
+        {
+          "says": "Discharge plan: follow up with primary care in 1 week; see urology if the stone has not passed in 2 weeks.",
+          "provider": "Saltmarsh Regional Medical Center Emergency Department",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 986},
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "Follow up with your primary care provider in 1 week. If the stone has not passed in 2 weeks, see urology."
+        }
+      ],
+      "absences": [
+        {
+          "what": "No urology visit or stone follow-up after October 2025",
+          "match": {"codes": [], "terms": ["urology", "urologist", "kidney stone", "calculus", "stone"], "after": "2025-10-19"},
+          "coverage": "All later records",
+          "sources": ["fernhill-family-clinic-summary-3.xml", "fernhill-family-clinic-summary-4.xml", "kestrel-harbor-health-summary-5.xml", "clearwater-eye-associates-visit-summary.xml", "northbay-clinical-laboratories-results.xml", "alder-street-pharmacy-patient-record.xml"]
+        },
+        {
+          "what": "No repeat urinalysis after October 2025 to confirm the blood in urine has cleared",
+          "match": {"codes": ["5794-3", "5804-0"], "terms": ["urinalysis", "urine dipstick", "Blood, urine", "hematuria", "urine microscopy"], "after": "2025-10-19"},
+          "coverage": "All later records",
+          "sources": ["fernhill-family-clinic-summary-3.xml", "fernhill-family-clinic-summary-4.xml", "kestrel-harbor-health-summary-5.xml", "clearwater-eye-associates-visit-summary.xml", "northbay-clinical-laboratories-results.xml", "alder-street-pharmacy-patient-record.xml"]
+        }
+      ],
+      "knowledge": {
+        "says": "Blood in the urine usually clears within days to weeks after a stone passes. A repeat urine test confirms it. If blood persists, the doctor will look further.",
+        "guideline": "AUA guidance on hematuria"
+      }
+    },
+    {
+      "n": 8,
+      "says": "Fernhill's most recent summary (June 2026) does not mention the October 2025 kidney stone visit, the lung spot, or the March 2026 hospital stay for low sodium, including the fall at home. Its problem list has three items and no low sodium, and its vaccine list shows only the October 2024 flu shot.",
+      "why": "Decisions are only as good as the list the doctor has, so the gaps matter.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Fernhill problem list in June 2026 has three items: hay fever, high blood pressure, and type 2 diabetes. It has no low sodium and no kidney stone.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 452},
+          "name": "Essential hypertension",
+          "date": "2026-06-22",
+          "dateKind": "recorded",
+          "quote": "Essential hypertension, since June 2023"
+        },
+        {
+          "says": "Emergency department visit October 18, 2025 for a right ureteral stone with renal colic.",
+          "provider": "Saltmarsh Regional Medical Center Emergency Department",
+          "cite": {"file": "saltmarsh-regional-medical-center-ed-summary.xml", "line": 970},
+          "name": "Emergency department visit",
+          "date": "2025-10-18",
+          "dateKind": "when",
+          "quote": "Right ureteral stone with renal colic"
+        },
+        {
+          "says": "Inpatient stay March 2 to 5, 2026 at Kestrel Harbor Hospital for low sodium, likely from hydrochlorothiazide, with dizziness and a fall at home without injury.",
+          "provider": "Kestrel Harbor Hospital (Rahul Venkat, MD)",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 1241},
+          "name": "Inpatient admission",
+          "date": "2026-03-02",
+          "dateKind": "start",
+          "quote": "Hyponatremia, likely due to hydrochlorothiazide; dizziness with a fall at home, no injury"
+        }
+      ],
+      "absences": [
+        {
+          "what": "Fernhill records do not mention the March 2026 hospital stay or the fall",
+          "match": {"codes": [], "terms": ["hyponatremia", "admission", "fall", "Kestrel Harbor Hospital"], "after": "2026-03-02"},
+          "coverage": "Fernhill's most recent summary (June 22, 2026)",
+          "sources": ["fernhill-family-clinic-summary-4.xml"]
+        },
+        {
+          "what": "Fernhill records do not mention the kidney stone visit or the lung nodule",
+          "match": {"codes": [], "terms": ["kidney stone", "calculus", "ureteral", "nodule"], "after": "2025-10-18"},
+          "coverage": "Fernhill's most recent summary (June 22, 2026)",
+          "sources": ["fernhill-family-clinic-summary-4.xml"]
+        }
+      ]
+    },
+    {
+      "n": 9,
+      "says": "Fernhill records lisinopril as an intolerance from a dry cough in September 2025. The hospital and pharmacy allergy lists show only aspirin, so a future prescriber might restart lisinopril or another ACE inhibitor.",
+      "why": "Recording the cough prevents an ACE inhibitor from being given again by mistake.",
+      "confidence": "high",
+      "facts": [
+        {
+          "says": "Fernhill allergy list: lisinopril, dry cough (intolerance), September 2025.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 108},
+          "name": "Lisinopril",
+          "code": "29046",
+          "date": "2025-09-22",
+          "dateKind": "start",
+          "quote": "Lisinopril: dry cough (intolerance), September 2025"
+        },
+        {
+          "says": "Hospital record: lisinopril discontinued September 22, 2025 by an outside provider because of cough, replaced by losartan.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 229},
+          "name": "lisinopril 10 MG Oral Tablet",
+          "status": "aborted",
+          "code": "314076",
+          "date": "2025-09-22",
+          "dateKind": "end",
+          "quote": "Discontinued September 22, 2025 by outside provider (cough); replaced by losartan"
+        },
+        {
+          "says": "Hospital allergy list: the only allergy entry is aspirin, with hives.",
+          "provider": "Kestrel Harbor Hospital",
+          "cite": {"file": "kestrel-harbor-health-summary-5.xml", "line": 141},
+          "name": "Aspirin (allergy to drug)",
+          "date": "2026-03-10",
+          "dateKind": "recorded",
+          "quote": "Allergy to drug"
+        },
+        {
+          "says": "Pharmacy allergy list: the only allergy entry is aspirin, with hives.",
+          "provider": "Alder Street Pharmacy",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 139},
+          "name": "Aspirin (allergy to drug)",
+          "date": "2026-07-14",
+          "dateKind": "recorded",
+          "quote": "Allergy to drug"
+        }
+      ],
+      "absences": [
+        {
+          "what": "No lisinopril intolerance on the hospital or pharmacy allergy lists",
+          "match": {"codes": ["29046", "314076"], "terms": ["lisinopril", "cough", "intolerance"], "after": "2025-09-22"},
+          "coverage": "Hospital summary (March 2026) and pharmacy record (July 2026)",
+          "sources": ["kestrel-harbor-health-summary-5.xml", "alder-street-pharmacy-patient-record.xml"]
+        }
+      ],
+      "knowledge": {
+        "says": "A dry cough is a common reason to stop an ACE inhibitor such as lisinopril and switch to an ARB such as losartan. Recording it as an intolerance keeps future prescribers from restarting the same class."
+      },
+      "links": [
+        {"from": 0, "to": 2, "says": "Fernhill records the intolerance, but the hospital allergy list does not."}
+      ]
+    },
+    {
+      "n": 10,
+      "says": "Amlodipine is listed as started April 1, 2025, but the pharmacy's first fill was September 27, 2025. You may have filled it somewhere else. If not, there may have been a gap of several months.",
+      "why": "A gap in blood pressure medicine matters, but this may simply be a second pharmacy.",
+      "confidence": "low",
+      "facts": [
+        {
+          "says": "Fernhill medication list: amlodipine 5 mg, 1 tablet daily, from April 1, 2025.",
+          "provider": "Fernhill Family Clinic",
+          "cite": {"file": "fernhill-family-clinic-summary-4.xml", "line": 232},
+          "name": "amlodipine 5 MG Oral Tablet",
+          "code": "197361",
+          "date": "2025-04-01",
+          "dateKind": "start",
+          "quote": "1 tablet daily, from April 1, 2025"
+        },
+        {
+          "says": "Pharmacy: amlodipine first filled September 27, 2025.",
+          "provider": "Alder Street Pharmacy",
+          "cite": {"file": "alder-street-pharmacy-patient-record.xml", "line": 201},
+          "name": "amlodipine 5 MG Oral Tablet",
+          "code": "197361",
+          "date": "2025-09-27",
+          "dateKind": "start",
+          "quote": "September 27, 2025"
+        }
+      ],
+      "links": [
+        {"from": 1, "to": 0, "says": "The first pharmacy fill came about five months after the prescribed start date."}
+      ]
+    }
+  ],
+  "links": [
+    {"from": {"item": 1, "fact": 5}, "to": {"item": 2, "fact": 3}, "says": "The June sodium of 134 is still low after the March low of 123 that led to stopping the drug."},
+    {"from": {"item": 2, "fact": 0}, "to": {"item": 1, "fact": 0}, "says": "The high TSH and the drug stop come from the same hospital stay."},
+    {"from": {"item": 8, "fact": 2}, "to": {"item": 1, "fact": 3}, "says": "Fernhill still lists the drug the hospital stopped, because the March stop never reached its record."},
+    {"from": {"item": 7, "fact": 0}, "to": {"item": 8, "fact": 1}, "says": "Same emergency visit; the Fernhill records do not include it."}
+  ]
+}

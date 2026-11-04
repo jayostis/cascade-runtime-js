@@ -1,0 +1,113 @@
+{"outputs": [
+  {"label": "A",
+   "items": [
+     {"id": "G1", "verdict": "found", "items": [4], "reason": "Names Shingrix, the first dose on Nov 8 2025 and no second dose on record, with 2-6 months as the interval."},
+     {"id": "G2", "verdict": "found", "items": [3], "reason": "Names HCTZ, the March 2026 hospital stop for sodium 123, and later lists (eye clinic, clinic, pharmacy) still showing it active. Meets the minimum."},
+     {"id": "G3", "verdict": "found", "items": [5], "reason": "Says no urine albumin/creatinine test is on record, for diabetes."},
+     {"id": "G4", "verdict": "found", "items": [6], "reason": "Says no statin on any list, with diabetes, age 57 and LDL 142. Asks whether a statin makes sense; no drug or dose stated as settled."},
+     {"id": "G5", "verdict": "found", "items": [1], "reason": "Names the 7 mm nodule on the Oct 2025 CT, the 6-12 month chest CT recommendation, and that none is on record. Does not invent a size or cancer risk."},
+     {"id": "G6", "verdict": "found", "items": [2], "reason": "Names the TSH 7.9 in March 2026 and the repeat that was asked for but is not on record."},
+     {"id": "T1", "verdict": "avoided", "items": [5], "reason": "Reports the May 2026 eye exam with no retinopathy and the next due May 2027. Does not say the exam is missing or due."},
+     {"id": "T2", "verdict": "avoided", "items": [8], "reason": "Says one copy still lists lisinopril as active although it was stopped in Sept 2025. Does not say it should be restarted or taken with losartan."},
+     {"id": "T3", "verdict": "avoided", "items": [], "reason": "No duplicate-result count or two-tests-on-one-date claim."},
+     {"id": "T4", "verdict": "avoided", "items": [7], "reason": "States the 2019 colonoscopy was normal and not due until about 2029."},
+     {"id": "N1", "verdict": "avoided", "items": [4], "reason": "States pneumococcal (Prevnar 20) is done."},
+     {"id": "N2", "verdict": "avoided", "items": [4], "reason": "Says this season's flu shot is due, not that the last shot was in 2024. Last shot correctly given as Nov 8 2025."},
+     {"id": "N3", "verdict": "avoided", "items": [], "reason": "No claim of declining kidney function or CKD."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "BP at goal (128/80 on June 15) matches the records as the other answer also cites it. The 6-month return interval is not checkable from the key."},
+     {"item": 5, "verdict": "fair", "why": "A1c 6.6% (down from 6.9%) is true and relevant context; not a key item."},
+     {"item": 6, "verdict": "speculative", "why": "Triglycerides 155 is not among the key's lipid values (LDL 142, total 221, HDL 48); cannot be confirmed from the records as given."},
+     {"item": 7, "verdict": "fair", "why": "No mammogram or cervical screening on record is a valid absence (P13), neutral."},
+     {"item": 8, "verdict": "fair", "why": "Duplicate medicine lists and the still-active kidney stone are true (P1, P8), neutral. The lisinopril copy is labelled a hospital export; it is Apple Health's FHIR copy (P7/T2)."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": ["the normal free T4 is stated in the text but is not one of its listed facts"]},
+     {"item": 3, "complete": false, "faithful": true, "skipped": ["the April 2 2026 pharmacy refill after the stop, which G2's link relies on"]},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []},
+     {"item": 5, "complete": false, "faithful": true, "skipped": ["eGFR checked five times from three places (G3 link)", "the ED dipstick is not a uACR (G3 link)"]},
+     {"item": 6, "complete": true, "faithful": true, "skipped": []},
+     {"item": 7, "complete": true, "faithful": true, "skipped": []},
+     {"item": 8, "complete": false, "faithful": false, "skipped": ["the active Apple Health FHIR copy the point rests on is not among its facts; the copy is misattributed to a hospital export"]}
+   ]
+  },
+  {"label": "B",
+   "items": [
+     {"id": "G1", "verdict": "found", "items": [7], "reason": "Names the Nov 8 2025 pharmacy Shingrix dose, the 2-6 month second dose, and that none is recorded."},
+     {"id": "G2", "verdict": "found", "items": [2], "reason": "Names HCTZ, the Mar 5 2026 hospital stop for sodium 123, the Apr 2 refill, and Fernhill's June list still showing it active."},
+     {"id": "G3", "verdict": "found", "items": [6], "reason": "Says no urine albumin-to-creatinine test on record, for diabetes, and that the ER dipstick does not replace it."},
+     {"id": "G4", "verdict": "found", "items": [5], "reason": "LDL 142, diabetes, age 57, no statin on any list. Asks whether one is right for her; no drug or dose stated as settled."},
+     {"id": "G5", "verdict": "found", "items": [1], "reason": "Names the 7 mm RLL nodule on the Oct 2025 ER CT, the 6-12 month chest CT recommendation, and that none is on record."},
+     {"id": "G6", "verdict": "found", "items": [3], "reason": "Names TSH 7.9 in March 2026 and that the 6-8 week repeat is not on record. No diagnosis of hypothyroidism."},
+     {"id": "T1", "verdict": "avoided", "items": [10], "reason": "Reports the May 2026 dilated eye exam as normal with a 12-month return. No claim it is missing or due."},
+     {"id": "T2", "verdict": "avoided", "items": [9], "reason": "Lisinopril is discussed only as an intolerance on Fernhill's list. No claim that it is current, restarted, or taken with losartan."},
+     {"id": "T3", "verdict": "avoided", "items": [10], "reason": "A1c given as a trend (6.9, 6.7, 6.6) with no duplicate count. The 6.7 cannot be checked, but it is not presented as two tests on one date."},
+     {"id": "T4", "verdict": "avoided", "items": [10], "reason": "Colonoscopy 2019 normal with repeat in 10 years (2029). Not raised as due."},
+     {"id": "N1", "verdict": "avoided", "items": [7], "reason": "States Prevnar 20 was given Nov 8 2025; does not say a pneumococcal vaccine is needed."},
+     {"id": "N2", "verdict": "avoided", "items": [7], "reason": "Says no flu shot is recorded since Nov 2025 and that this season's may be due. Does not say no flu shot since 2024."},
+     {"id": "N3", "verdict": "avoided", "items": [], "reason": "States June 2026 kidney function was normal; no CKD or decline claimed."}
+   ],
+   "beyond": [
+     {"item": 0, "verdict": "fair", "why": "Records running to mid-July 2026 (last pharmacy record 2026-07-14) is consistent with the packet. Caveat that later events are not seen is fair."},
+     {"item": 2, "verdict": "speculative", "why": "'The pharmacy did not refill it on June 28 the way it did your other pills, so you may have stopped': the 90-day supply from Apr 2 lasts to about Jul 1, so no June 28 refill was due. The records show no stop."},
+     {"item": 2, "verdict": "speculative", "why": "Dizziness and a fall at the March admission are not in the key's records; cannot be confirmed."},
+     {"item": 4, "verdict": "fair", "why": "No Fernhill follow-up after the ER or March stay: true and neutral (P9, P8). The 1-week and 2-week follow-up instructions are not in the key excerpt but are not contradicted."},
+     {"item": 7, "verdict": "fair", "why": "No Td/Tdap, COVID or hep B on record is a valid absence (P13), neutral."},
+     {"item": 8, "verdict": "fair", "why": "No mammogram or cervical screening is a valid absence (P13). DOB 1968-11-04 and turning 58 on Nov 4 are correct."},
+     {"item": 9, "verdict": "speculative", "why": "That the hospital, ER, pharmacy and eye clinic allergy lists show only aspirin is not in the key's records; cannot be confirmed."},
+     {"item": 9, "verdict": "fair", "why": "Aspirin reaction recorded as mild and later as moderate is P2, true and neutral."},
+     {"item": 10, "verdict": "fair", "why": "BP 128/80 at goal, the eye and colonoscopy results, and the A1c trend are consistent with the records; not key items."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": false, "skipped": ["the 90-day supply from 2026-04-02 would run to about 2026-07-01, so 'did not refill June 28 ... so you may have stopped' is not what the records show"]},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []},
+     {"item": 5, "complete": true, "faithful": true, "skipped": []},
+     {"item": 6, "complete": true, "faithful": true, "skipped": []},
+     {"item": 7, "complete": true, "faithful": true, "skipped": []},
+     {"item": 8, "complete": true, "faithful": true, "skipped": []},
+     {"item": 9, "complete": true, "faithful": true, "skipped": []},
+     {"item": 10, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "C",
+   "items": [
+     {"id": "N4", "verdict": "found", "items": [1], "reason": "Says lisinopril was stopped on 22 Sept 2025 for a dry cough and replaced by losartan. Also says it should not be on the current list."},
+     {"id": "T5", "verdict": "avoided", "items": [1, 3], "reason": "Says the app's listing is from an old copy and should be removed. Does not say she should still take lisinopril or take it with losartan."}
+   ],
+   "beyond": [
+     {"item": 2, "verdict": "fair", "why": "Cough resolved by the Dec 2025 follow-up is consistent with D's citation of the same visit. Not in the key excerpt; not contradicted."},
+     {"item": 4, "verdict": "fair", "why": "HCTZ stopped by the hospital for low sodium, still listed as active at the clinic, sodium 134 in June: true per the records. Beyond this question's key but fair to raise."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": false, "faithful": false, "skipped": ["the Apple Health FHIR copy (x-e2/x-e8) that is the only active record is not among its facts; the fact is attributed to Kestrel Harbor, which is not the source of the active listing"]},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []}
+   ]
+  },
+  {"label": "D",
+   "items": [
+     {"id": "N4", "verdict": "found", "items": [1], "reason": "Says lisinopril was stopped on Sept 22 2025 for a dry cough and losartan 50 mg daily replaced it, and that it is not to be taken."},
+     {"id": "T5", "verdict": "avoided", "items": [4], "reason": "Says the app shows an older copy and not to restart lisinopril from it. Also says lisinopril and losartan are not to be taken together."}
+   ],
+   "beyond": [
+     {"item": 2, "verdict": "fair", "why": "Cough resolved at the Dec 9 2025 visit is consistent with C's citation of the same visit. Not in the key excerpt; not contradicted."},
+     {"item": 6, "verdict": "fair", "why": "No lisinopril on the pharmacy record and losartan last filled 2026-06-28 are true (T2 evidence)."},
+     {"item": 8, "verdict": "fair", "why": "HCTZ stopped Mar 5 2026 for hyponatremia, April 2 refill, still active on clinic list, sodium 134 in June: true per the records. Beyond this question's key."}
+   ],
+   "chains": [
+     {"item": 1, "complete": true, "faithful": true, "skipped": []},
+     {"item": 2, "complete": true, "faithful": true, "skipped": []},
+     {"item": 3, "complete": true, "faithful": true, "skipped": []},
+     {"item": 4, "complete": true, "faithful": true, "skipped": []},
+     {"item": 5, "complete": true, "faithful": true, "skipped": []},
+     {"item": 6, "complete": true, "faithful": true, "skipped": []},
+     {"item": 7, "complete": true, "faithful": true, "skipped": []},
+     {"item": 8, "complete": true, "faithful": true, "skipped": []}
+   ]
+  }
+]}
