@@ -45,6 +45,12 @@ export interface SiteOptions {
   readonly at: string;
   /** The command a reader runs, from the runtime's root, to ask the pod a question, less the question. */
   readonly ask: string;
+  /** The vocabulary's files on GitHub at the commit the site is built from, `…/blob/<commit>/`: a query links its file there. */
+  readonly blob?: string;
+  /** The term reference's address from the site's root, before the `#`; without one, a term links nowhere. */
+  readonly terms?: string;
+  /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
+  readonly spec?: string;
 }
 
 /** A step of the build and what it added. */

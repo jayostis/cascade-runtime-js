@@ -38,6 +38,20 @@ export function ruleHref(path: string, number: string, base: string): string {
   return `${away(base)}${pageNameOf(path)}#${anchorOf(number)}`;
 }
 
+/** A thing a pod site gives a page: its IRI, the folder its kind's pages are in, its name, and the name it falls back to. */
+export interface Named {
+  readonly iri: string;
+  readonly folder: string;
+  readonly name: string;
+  readonly fallback: string;
+}
+
+export async function addressesOf(
+  _things: readonly Named[],
+): Promise<Map<string, string>> {
+  return new Map();
+}
+
 /**
  * A link to a note of the vocabulary, `path` being its path in the vocabulary and `blob` the address of the vocabulary's
  * files on GitHub at the commit the pages were built from. A page of this site replaces it when decisions have one.

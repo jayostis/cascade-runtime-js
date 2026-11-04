@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
-import { noteHref, ruleHref, termHref } from "../src/links.js";
+import {
+  addressesOf,
+  type Named,
+  noteHref,
+  ruleHref,
+  termHref,
+} from "../src/links.js";
 import { renderMarkdown } from "../src/markdown.js";
 
 test("a term's link keeps its prefix in the anchor, so copied terms do not collide with ours, and takes the base of whichever page holds the term reference", () => {
@@ -106,6 +113,45 @@ test("a rule links to its feature's page and its number's anchor, a note to its 
     () => noteHref("decisions/identity.md", host),
     /ns\.cascadeprotocol\.org/,
   );
+});
+
+test("a page's address is its kind's folder and its name as a slug; things that share one each add the start of their IRI's digest, whatever order they come in", async () => {
+  const named = (
+    iri: string,
+    name: string,
+    folder = "records",
+    fallback = "record",
+  ): Named => ({ iri, folder, name, fallback });
+  const things = [
+    named("urn:a", "Allergy · Peanuts · own entry"),
+    named("urn:b", "Condition · Asthma"),
+    named("urn:c", "Condition · Asthma"),
+    named("urn:d", "Condition · Asthma", "entries", "entry"),
+    named("urn:e", "Café · Crème brûlée"),
+    named("urn:f", "· · ·"),
+    named("urn:g", "Con"),
+    named("urn:h", `${"x".repeat(50)} ${"y".repeat(50)}`),
+    named("urn:i", "condition asthma"),
+  ];
+  const addresses = await addressesOf(things);
+  const digest = (iri: string) =>
+    createHash("sha256").update(iri).digest("hex").slice(0, 8);
+  assert.deepEqual(
+    addresses,
+    new Map([
+      ["urn:a", "records/allergy-peanuts-own-entry.html"],
+      ["urn:b", `records/condition-asthma--${digest("urn:b")}.html`],
+      ["urn:c", `records/condition-asthma--${digest("urn:c")}.html`],
+      ["urn:d", "entries/condition-asthma.html"],
+      ["urn:e", "records/cafe-creme-brulee.html"],
+      ["urn:f", "records/record.html"],
+      ["urn:g", "records/con-record.html"],
+      ["urn:h", `records/${"x".repeat(50)}.html`],
+      ["urn:i", `records/condition-asthma--${digest("urn:i")}.html`],
+    ]),
+  );
+  assert.deepEqual(await addressesOf([...things].reverse()), addresses);
+  assert.deepEqual(await addressesOf([]), new Map());
 });
 
 test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () => {

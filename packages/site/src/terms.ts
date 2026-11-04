@@ -57,6 +57,13 @@ export function code(
   return found && [found.label, iri.slice(found.uriSpace.length)];
 }
 
+export function codePage(
+  _iri: string,
+  _codeSystems: readonly CodeSystem[],
+): string | undefined {
+  return undefined;
+}
+
 /** A literal as the site shows it: a time in UTC to the minute, anything else as written. */
 export function shown(literal: Literal): string {
   if (literal.datatype.value !== `${XSD}dateTime`) return literal.value;
