@@ -4,8 +4,10 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
+import type { PagesContext } from "../src/hub/context.js";
 import { evalsSection } from "../src/node/hub/evals.js";
 import { buildTree, type Kind, type Section } from "../src/sections.js";
+import { STYLESHEET_FILE } from "../src/site.js";
 import { readPage } from "./page.js";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
@@ -38,23 +40,26 @@ test("two in-memory sections are both built, and the front page lists both rows 
     ctx: {},
     front,
   });
-  assert.deepEqual([...tree.keys()].sort(), [
-    "first.html",
-    "later.html",
-    "index.html",
-    "style.css",
-  ].sort());
+  assert.deepEqual(
+    [...tree.keys()].sort(),
+    ["first.html", "later.html", "index.html", STYLESHEET_FILE].sort(),
+  );
   const page = readPage(read(tree, FRONT_PAGE));
   assert.ok(page.hrefs.includes("first.html"));
   assert.ok(page.hrefs.includes("later.html"));
-  assert.ok(page.said.indexOf("Row of first") < page.said.indexOf("Row of later"));
+  assert.ok(
+    page.said.indexOf("Row of first") < page.said.indexOf("Row of later"),
+  );
   assert.deepEqual(
     sections.map(({ section }) => section.title),
     ["The later", "The first"],
   );
 
   const skipped = await buildTree({
-    sections: [inMemory("a", "build"), inMemory("b", "build", { needsKits: true })],
+    sections: [
+      inMemory("a", "build"),
+      inMemory("b", "build", { needsKits: true }),
+    ],
     ctx: {},
     front,
     skip: ({ needsKits }) => needsKits === true,
@@ -70,7 +75,11 @@ test("a section list is refused when two sections write one file, a section leav
       [
         inMemory("a", "build"),
         inMemory("b", "build", {
-          build: async () => new Map([["a.html", text("b")]]),
+          build: async () =>
+            new Map([
+              ["b.html", text("b")],
+              ["a.html", text("b")],
+            ]),
         }),
       ],
       /a\.html/,
@@ -119,11 +128,7 @@ test("a section list is refused when two sections write one file, a section leav
     ],
   ];
   for (const [what, sections, why] of refused)
-    await assert.rejects(
-      buildTree({ sections, ctx: {}, front }),
-      why,
-      what,
-    );
+    await assert.rejects(buildTree({ sections, ctx: {}, front }), why, what);
 });
 
 test("a finisher is handed the tree as written, every section's paths and rows, and what it returns joins the tree, but not over a file already there", async () => {
@@ -169,10 +174,7 @@ test("a finisher is handed the tree as written, every section's paths and rows, 
 });
 
 test("the evals report is a section whose files all sit under evals/, and whose entry page is evals/index.html, the same in the build a pull request makes and the one that deploys", async () => {
-  const files = await evalsSection.build({
-    root: ROOT,
-    log: () => undefined,
-  } as never);
+  const files = await evalsSection.build({ root: ROOT } as PagesContext);
   assert.equal(evalsSection.path, "evals/index.html");
   assert.ok(files.has("evals/index.html"));
   assert.deepEqual(

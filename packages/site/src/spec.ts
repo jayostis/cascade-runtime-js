@@ -13,6 +13,7 @@ import {
 } from "@cascade-runtime/runtime";
 import type { Ingredient } from "./front-page.js";
 import { type Content, escape, Html, markup } from "./html.js";
+import { anchorOf, pageNameOf } from "./links.js";
 import { STYLESHEET } from "./stylesheet.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -164,8 +165,6 @@ const RULE_NUMBER = /^([A-Z]+\d+|Check \d+)\.\s*/;
 const NO_NOTE = /^No note rules this\.\s*/;
 const numberOf = (rule: WrittenRule): string | undefined =>
   RULE_NUMBER.exec(rule.name)?.[1];
-const anchorOf = (number: string): string =>
-  number.toLowerCase().replace(/\s+/g, "-");
 const thingKey = (thing: string): string =>
   thing.replaceAll("`", "").trim().toLowerCase();
 
@@ -646,9 +645,6 @@ class Spec {
       }
   }
 }
-
-const pageNameOf = (path: string): string =>
-  `${path.startsWith("runtime/") ? path.slice(path.lastIndexOf("/") + 1, -".feature".length) : (path.split("/").at(-2) ?? path)}.html`;
 
 function page(spec: Spec, title: string, main: Content): Uint8Array {
   return new TextEncoder().encode(

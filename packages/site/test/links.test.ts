@@ -7,7 +7,11 @@ test("a term's link keeps its prefix in the anchor, so copied terms do not colli
   const cases: [string, string, string][] = [
     ["http://xmlns.com/foaf/0.1/name", "terms/", "terms/#foaf:name"],
     ["http://purl.org/pav/version", "terms/", "terms/#pav:version"],
-    ["http://www.w3.org/ns/prov#wasDerivedFrom", "../", "../#prov:wasDerivedFrom"],
+    [
+      "http://www.w3.org/ns/prov#wasDerivedFrom",
+      "../",
+      "../#prov:wasDerivedFrom",
+    ],
     ["http://www.w3.org/ns/solid/terms#account", "", "#solid:account"],
     [
       "https://ns.cascadeprotocol.org/cascade#name",
@@ -25,7 +29,8 @@ test("a term's link keeps its prefix in the anchor, so copied terms do not colli
       "terms/#http%3A%2F%2Fexample.org%2Fa%20b%23c",
     ],
   ];
-  for (const [iri, base, href] of cases) assert.equal(termHref(iri, base), href);
+  for (const [iri, base, href] of cases)
+    assert.equal(termHref(iri, base), href);
   assert.notEqual(
     termHref("http://xmlns.com/foaf/0.1/name", "terms/"),
     termHref("https://ns.cascadeprotocol.org/cascade#name", "terms/"),
@@ -51,9 +56,18 @@ test("a rule links to its feature's page and its number's anchor, a note to its 
     `${blob}/decisions/identity.md`,
   );
   const host = "https://ns.cascadeprotocol.org/";
-  assert.throws(() => termHref("http://xmlns.com/foaf/0.1/name", host), /ns\.cascadeprotocol\.org/);
-  assert.throws(() => ruleHref("runtime/matcher.feature", "R1", `${host}spec/`), /ns\.cascadeprotocol\.org/);
-  assert.throws(() => noteHref("decisions/identity.md", host), /ns\.cascadeprotocol\.org/);
+  assert.throws(
+    () => termHref("http://xmlns.com/foaf/0.1/name", host),
+    /ns\.cascadeprotocol\.org/,
+  );
+  assert.throws(
+    () => ruleHref("runtime/matcher.feature", "R1", `${host}spec/`),
+    /ns\.cascadeprotocol\.org/,
+  );
+  assert.throws(
+    () => noteHref("decisions/identity.md", host),
+    /ns\.cascadeprotocol\.org/,
+  );
 });
 
 test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () => {
@@ -64,7 +78,10 @@ test("Markdown renders blocks and GFM tables, and shows raw HTML as text", () =>
   assert.match(html, /<code>code<\/code>/);
   assert.match(html, /<a href="https:\/\/example\.org\/">link<\/a>/);
   assert.match(html, /<table>[\s\S]*<td>1<\/td>/);
-  assert.match(html, /<pre><code class="language-ttl">x:a x:b x:c \.\n<\/code><\/pre>/);
+  assert.match(
+    html,
+    /<pre><code class="language-ttl">x:a x:b x:c \.\n<\/code><\/pre>/,
+  );
   assert.ok(!html.includes("<script>"));
   assert.ok(html.includes("&lt;script&gt;"));
   assert.equal(renderMarkdown("").text, "");

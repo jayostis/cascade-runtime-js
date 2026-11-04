@@ -1,5 +1,6 @@
-import { FILES_JSON, type Layout, packFolder } from "@cascade-runtime/runtime";
-import { markup } from "./html.js";
+import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
+import { type Content, markup } from "./html.js";
+import type { Row, Rows } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { COPY } from "./terms.js";
@@ -12,7 +13,7 @@ export const TRY_PAGE = "try/index.html";
 /** The page that keeps pods in the browser, published by the starter kit, on the same origin as these pages. */
 export const STARTER_TRY =
   "https://jayostis.github.io/cascade-starter-kit/try/";
-const POD_ENTRY = "manifest.ttl";
+export const POD_ENTRY = "manifest.ttl";
 
 /** An example's site, placed in the folder named after its kit. */
 export interface Example {
@@ -44,7 +45,10 @@ ${listed.map(
 )}</ul>
 `;
 
-function examplesPage(examples: readonly Example[], built: BuiltFrom): string {
+export function examplesPage(
+  examples: readonly Example[],
+  built: BuiltFrom,
+): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,7 +101,18 @@ export function viewTitles(layout: Layout): string[] {
   });
 }
 
-function frontPage({ kinds }: Start, examples: readonly Example[]): string {
+const rowList = (rows: readonly Row[] = []): Content =>
+  rows.length === 0
+    ? ""
+    : markup`<ul>
+${rows.map(
+  ({ href, label, about, also }) =>
+    markup`<li><a href="${href}">${label}</a>${about === undefined ? "" : markup`: ${about}`}${also === undefined ? "" : markup` <a class="also" href="${also.href}">${also.label}</a>`}</li>
+`,
+)}</ul>
+`;
+
+function frontPage(kinds: readonly string[], rows: Rows): string {
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -113,20 +128,10 @@ function frontPage({ kinds }: Start, examples: readonly Example[]): string {
 <code>cascade-runtime</code>.</p>
 <h2 class="part">Build an app</h2>
 <p class="prose">One command makes a working app on a pod, and a coding agent builds your idea on it.</p>
-<ul>
-<li><a href="${START_PAGE}">Quick start</a></li>
-<li><a href="${STARTER_TRY}">See an app running in your browser, nothing to install</a></li>
-</ul>
-<h2 class="part">Explore a pod</h2>
+${rowList(rows.get("build"))}<h2 class="part">Explore a pod</h2>
 <p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
 question that reads it is a SPARQL query.</p>
-<ul>
-${examples.map(
-  ({ folder, title }) =>
-    markup`<li><a href="${folder}/index.html">Browse ${title}'s pod</a>: its records, its views, and every question with its SPARQL query. <a class="also" href="${folder}/${COPY}${POD_ENTRY}">The pod's files</a></li>\n`,
-)}<li><a href="${EXAMPLES_PAGE}">Every example pod, and what built these pages</a></li>
-</ul>
-<h3>What a pod holds today</h3>
+${rowList(rows.get("explore"))}<h3>What a pod holds today</h3>
 <ul>
 ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
 <p class="prose">Records come in from two formats: FHIR R4, from the clinical records of an Apple Health export, and C-CDA, a
@@ -139,7 +144,7 @@ so a real export shows fewer automatic joins than the example pods.</p>
 `.text;
 }
 
-function startPage(
+export function startPage(
   { command, app, prompt }: Start,
   { title }: Example,
 ): string {
@@ -177,7 +182,7 @@ installed package, and loads a pod, such as ${title}'s, when your idea needs one
  * name a pod or a table. The old page's demo hospitals' worker, registered for this folder, is unregistered first: its
  * script is gone, so it would otherwise stay registered here for good.
  */
-function redirectPage(): string {
+export function redirectPage(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -232,38 +237,14 @@ export function podOf(
   );
 }
 
-/**
- * The Pages tree: the newcomer's front page, the quick start, the examples' page, each example's site in its folder with its pod's
- * files listed and packed beside it, and try/'s old page, which sends a visitor on to the starter kit's.
- */
-export function pagesTree(
-  examples: readonly Example[],
-  built: BuiltFrom,
-  start: Start,
+/** The front page, from the rows every section added, and the stylesheet every page of the tree links. */
+export function hubFiles(
+  kinds: readonly string[],
+  rows: Rows,
 ): Map<string, Uint8Array> {
-  const shown = examples.find(({ folder }) => folder === start.example);
-  if (shown === undefined)
-    throw new Error(`no example ${start.example} among the kits`);
   const encoder = new TextEncoder();
-  const tree = new Map<string, Uint8Array>([
-    [EXAMPLES_PAGE, encoder.encode(examplesPage(examples, built))],
+  return new Map([
+    [FRONT_PAGE, encoder.encode(frontPage(kinds, rows))],
     [STYLESHEET_FILE, encoder.encode(STYLESHEET)],
   ]);
-  for (const { folder, site } of examples) {
-    for (const [path, bytes] of site) tree.set(`${folder}/${path}`, bytes);
-    const pod = podOf(site);
-    const paths = [...pod.keys()];
-    tree.set(
-      `${folder}/${COPY}${FILES_JSON}`,
-      encoder.encode(`${JSON.stringify(paths, null, 2)}\n`),
-    );
-    tree.set(
-      `${folder}/${POD_PACK}`,
-      encoder.encode(JSON.stringify(packFolder(paths, pod))),
-    );
-  }
-  tree.set(TRY_PAGE, encoder.encode(redirectPage()));
-  tree.set(START_PAGE, encoder.encode(startPage(start, shown)));
-  tree.set(FRONT_PAGE, encoder.encode(frontPage(start, examples)));
-  return tree;
 }

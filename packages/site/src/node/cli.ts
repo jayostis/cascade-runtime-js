@@ -35,13 +35,17 @@ import {
 import type * as Published from "cascade-runtime/published";
 import {
   type Example,
+  hubFiles,
   type Ingredient,
-  pagesTree,
   podOf,
+  viewTitles,
 } from "../front-page.js";
+import type { PagesContext } from "../hub/context.js";
+import { buildTree } from "../sections.js";
 import { Site } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
 import { COPY } from "../terms.js";
+import { FINISHERS, SECTIONS } from "./hub/index.js";
 import { servePages } from "./serve.js";
 import { assertStagedCurrent } from "./staged.js";
 import { STARTER_REPOSITORY, startOf } from "./start.js";
@@ -197,82 +201,122 @@ async function stagedVocabulary(repository: string): Promise<string> {
   return commit;
 }
 
+/** Runs the work on the first call, and gives the same answer to every call after. */
+function once<T>(work: () => Promise<T>): () => Promise<T> {
+  let answer: Promise<T> | undefined;
+  return () => (answer ??= work());
+}
+
 /**
- * Builds every kit's published sample with the staged package, as an app that installed it would, and each one's site
- * over its pod, and writes them under build/pages beneath the newcomer's page and the examples' page.
+ * The providers of the hub's context: every kit's published sample built with the staged package, as an app that
+ * installed it would, each one's pod and site, and what the pages were built from.
  */
-async function buildPages(): Promise<number> {
-  const vocabulary = await localVocabulary(ROOT, log);
-  const staged = await stagedVocabulary(
-    vocabulary.config.vocabulary.repository,
-  );
-  log(
-    `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods read the one the package carries, at ${staged}`,
-  );
-  const { publishedSamples } = (await import(
-    pathToFileURL(join(STAGE, "dist", "src", "node", "published.js")).href
-  )) as typeof Published;
-  const samples = await publishedSamples();
-  const examples: Example[] = [];
-  for (const [name, title] of samples.kits) {
-    const sample = new Map(
-      [...samples.files]
-        .filter(([path]) => path.startsWith(`${name}/`))
-        .map(([path, bytes]) => [path.slice(name.length + 1), bytes] as const),
-    );
-    const pod = join(ROOT, "build", name, "pod");
-    await rm(pod, { recursive: true, force: true });
-    const podFiles = new FolderFiles(pod);
-    for (const [path, bytes] of podOf(sample))
-      await podFiles.write(path, bytes);
-    const built = await buildExampleSite([name]);
-    if (built !== 0) return built;
-    const folder = new FolderFiles(join(ROOT, "build", name, "site"));
-    const site = new Map<string, Uint8Array>();
-    for (const path of await folder.list(""))
-      if (!path.startsWith(COPY)) {
-        const bytes = await folder.read(path);
-        if (bytes !== undefined) site.set(path, bytes);
+function pagesContext(vocabulary: LocalVocabulary): PagesContext {
+  return {
+    root: ROOT,
+    log,
+    examples: once(async () => {
+      const staged = await stagedVocabulary(
+        vocabulary.config.vocabulary.repository,
+      );
+      log(
+        `the sites are built from cascade-vocabulary at ${vocabulary.resolved.version}; the pods read the one the package carries, at ${staged}`,
+      );
+      const { publishedSamples } = (await import(
+        pathToFileURL(join(STAGE, "dist", "src", "node", "published.js")).href
+      )) as typeof Published;
+      const samples = await publishedSamples();
+      const examples: Example[] = [];
+      for (const [name, title] of samples.kits) {
+        const sample = new Map(
+          [...samples.files]
+            .filter(([path]) => path.startsWith(`${name}/`))
+            .map(
+              ([path, bytes]) => [path.slice(name.length + 1), bytes] as const,
+            ),
+        );
+        const pod = join(ROOT, "build", name, "pod");
+        await rm(pod, { recursive: true, force: true });
+        const podFiles = new FolderFiles(pod);
+        for (const [path, bytes] of podOf(sample))
+          await podFiles.write(path, bytes);
+        const built = await buildExampleSite([name]);
+        if (built !== 0) throw new Error(`the site of ${name} was not built`);
+        const folder = new FolderFiles(join(ROOT, "build", name, "site"));
+        const site = new Map<string, Uint8Array>();
+        for (const path of await folder.list(""))
+          if (!path.startsWith(COPY)) {
+            const bytes = await folder.read(path);
+            if (bytes !== undefined) site.set(path, bytes);
+          }
+        for (const [path, bytes] of sample) site.set(path, bytes);
+        examples.push({ folder: name, title, site });
       }
-    for (const [path, bytes] of sample) site.set(path, bytes);
-    examples.push({ folder: name, title, site });
-  }
-  const siblingsIn = await siblingsOf(ROOT);
-  const cache = join(ROOT, "build", "cache");
-  const adapters = await Promise.all(
-    vocabulary.config.adapters.map((followed) =>
-      resolve(followed, { siblingsIn, cache, log }),
-    ),
-  );
-  const bridge = await findBridgePackage({ siblingsIn, cache, log });
-  const starter = await latestBuild(STARTER_REPOSITORY, join(cache, STARTER));
-  log(
-    `${STARTER}: the quick start names the release ${RELEASE}${starter}, the newest build of its default branch`,
-  );
-  const runtime = await checkout(ROOT);
-  if (runtime === undefined)
-    throw new Error(
-      `${ROOT} is not a git checkout, so no commit built the pages`,
-    );
-  const self = { repository: RUNTIME };
-  const builtFrom = atCommit(
-    repositoryName(self),
-    treeIri(self, runtime.commit),
-    runtime.commit,
-    runtime.uncommitted,
-  );
-  const tree = pagesTree(
-    examples,
-    {
-      ingredients: [builtFrom, resolvedIngredient(vocabulary.resolved)],
-      configured: [
-        ...adapters.map(resolvedIngredient),
-        bridgeIngredient(bridge),
-      ],
-      at: clock.now(),
-    },
-    startOf(starter, vocabulary.layout, EXAMPLE),
-  );
+      return examples;
+    }),
+    builtFrom: once(async () => {
+      const siblingsIn = await siblingsOf(ROOT);
+      const cache = join(ROOT, "build", "cache");
+      const adapters = await Promise.all(
+        vocabulary.config.adapters.map((followed) =>
+          resolve(followed, { siblingsIn, cache, log }),
+        ),
+      );
+      const bridge = await findBridgePackage({ siblingsIn, cache, log });
+      const runtime = await checkout(ROOT);
+      if (runtime === undefined)
+        throw new Error(
+          `${ROOT} is not a git checkout, so no commit built the pages`,
+        );
+      const self = { repository: RUNTIME };
+      return {
+        ingredients: [
+          atCommit(
+            repositoryName(self),
+            treeIri(self, runtime.commit),
+            runtime.commit,
+            runtime.uncommitted,
+          ),
+          resolvedIngredient(vocabulary.resolved),
+        ],
+        configured: [
+          ...adapters.map(resolvedIngredient),
+          bridgeIngredient(bridge),
+        ],
+        at: clock.now(),
+      };
+    }),
+    start: once(async () => {
+      const starter = await latestBuild(
+        STARTER_REPOSITORY,
+        join(ROOT, "build", "cache", STARTER),
+      );
+      log(
+        `${STARTER}: the quick start names the release ${RELEASE}${starter}, the newest build of its default branch`,
+      );
+      return startOf(starter, vocabulary.layout, EXAMPLE);
+    }),
+  };
+}
+
+/**
+ * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
+ * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
+ * what is made of the kits, which is most of the time.
+ */
+async function buildPages(args: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args,
+    options: { "no-kits": { type: "boolean" } },
+  });
+  const vocabulary = await localVocabulary(ROOT, log);
+  const { tree } = await buildTree({
+    sections: SECTIONS,
+    ctx: pagesContext(vocabulary),
+    front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows),
+    finishers: FINISHERS,
+    skip: ({ needsKits }) => values["no-kits"] === true && needsKits === true,
+  });
   const out = PAGES;
   await rm(out, { recursive: true, force: true });
   const pages = new FolderFiles(out);
