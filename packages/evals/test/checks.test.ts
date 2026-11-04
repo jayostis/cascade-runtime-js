@@ -73,7 +73,7 @@ test("a job answered in this run is still held to this run's folder", async () =
 });
 
 const elsewhere = "C:/wt/other/packages/evals";
-const recordsJob = (reusedFrom: string, readCase = "tamsin-vale"): Job => ({
+const recordsJob = (reusedFrom?: string, readCase = "tamsin-vale"): Job => ({
   ...jobIn("first", reusedFrom),
   arm: "records",
   toolUses: [
@@ -132,4 +132,63 @@ test("a read of another case's downloads in that checkout is still a violation",
   assert.match(reused.discipline.violations[0]!, /priya-natarajan/);
   assert.match(reused.discipline.violations[0]!, /wt.+other/);
   assert.deepEqual(reused.read, []);
+});
+
+const withPath = (job: Job, file_path: string, name = "Read"): Job => ({
+  ...job,
+  toolUses: [{ name, input: { file_path } }],
+});
+
+test("a fresh job reading downloads under a path that only looks like a checkout is a violation and reads nothing", async () => {
+  const fresh = await checkedRecords(
+    withPath(
+      recordsJob(),
+      "/tmp/x/packages/evals/work/tamsin-vale/downloads/a.json",
+    ),
+  );
+  assert.equal(fresh.discipline.violations.length, 1);
+  assert.deepEqual(fresh.read, []);
+});
+
+test("a reused job's `..` out of the case's downloads is a violation and reads nothing", async () => {
+  const escape = await checkedRecords(
+    withPath(
+      recordsJob(`first/${id}`),
+      `${elsewhere}/work/tamsin-vale/downloads/../../priya-natarajan/downloads/a.json`,
+    ),
+  );
+  assert.equal(escape.discipline.violations.length, 1);
+  assert.deepEqual(escape.read, []);
+});
+
+test("a reused job's path under work that is not the case's downloads is a violation", async () => {
+  const other = await checkedRecords(
+    withPath(
+      recordsJob(`first/${id}`),
+      `${elsewhere}/work/tamsin-vale/downloadsX/a.json`,
+    ),
+  );
+  assert.equal(other.discipline.violations.length, 1);
+  assert.deepEqual(other.read, []);
+});
+
+test("a reused job that names two checkouts is held to the first", async () => {
+  const two = await checkedRecords({
+    ...recordsJob(`first/${id}`),
+    toolUses: [
+      {
+        name: "Read",
+        input: { file_path: `${elsewhere}/work/tamsin-vale/downloads/a.json` },
+      },
+      {
+        name: "Read",
+        input: {
+          file_path:
+            "C:/wt/third/packages/evals/work/tamsin-vale/downloads/a.json",
+        },
+      },
+    ],
+  });
+  assert.equal(two.discipline.violations.length, 1);
+  assert.match(two.discipline.violations[0]!, /third/);
 });
