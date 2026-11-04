@@ -229,18 +229,26 @@ export const REPLY_QUESTIONS: readonly string[] = [
   ]),
 ];
 
+function podEntryAsked(pod: PodAsker) {
+  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+  return () => (all ??= pod.ask(POD_ENTRY_QUESTION));
+}
+
 /**
  * The entry a cite names: its IRI as given, or the entry a compact read's handle names, looked up among the entries
  * `entry/What it shows` gives and the records merged into each (`entryOfHandle`).
  */
-export function podEntryNamed(pod: PodAsker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
+export function podEntryNamed(
+  pod: PodAsker,
+  entryRows: () => Promise<
+    readonly Readonly<Record<string, string>>[]
+  > = podEntryAsked(pod),
+) {
   return async (cited: string) => {
     if (!HANDLE.test(cited)) return cited;
-    all ??= pod.ask(POD_ENTRY_QUESTION);
     return entryOfHandle(
       cited,
-      (await all).flatMap(({ entry, from }) =>
+      (await entryRows()).flatMap(({ entry, from }) =>
         entry === undefined
           ? []
           : [{ entry, ...(from === undefined ? {} : { record: from }) }],
@@ -251,12 +259,11 @@ export function podEntryNamed(pod: PodAsker) {
 
 /** The rows `entry/What it shows` gives of the entry a cite names: each field, its value and the record it is from. */
 export function podEntryRows(pod: PodAsker) {
-  let all: Promise<readonly Readonly<Record<string, string>>[]> | undefined;
-  const named = podEntryNamed(pod);
+  const entryRows = podEntryAsked(pod);
+  const named = podEntryNamed(pod, entryRows);
   return async (cited: string) => {
-    all ??= pod.ask(POD_ENTRY_QUESTION);
     const entry = await named(cited);
-    const rows = (await all).filter((row) => row.entry === entry);
+    const rows = (await entryRows()).filter((row) => row.entry === entry);
     return rows.length === 0 ? undefined : rows;
   };
 }
