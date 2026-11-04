@@ -6,6 +6,9 @@ import {
   MemoryFiles,
   type TestedWith,
 } from "@cascade-runtime/runtime";
+import { hubFiles } from "../src/front-page.js";
+import { specSection } from "../src/hub/spec.js";
+import { buildTree } from "../src/sections.js";
 import {
   filesNamed,
   readSpecReport,
@@ -394,6 +397,95 @@ test("a path a row names under a nested folder of the vocabulary is found, one t
       missing: new Set(["conformance/kim/scripted-input/gone.ttl"]),
     },
   );
+});
+
+/** The tree the hub writes for the spec's section, given the report the context would read. */
+async function hubWith(
+  ran: readonly Assertion[],
+  files: { readonly earl?: Uint8Array; readonly table?: Uint8Array } = {},
+): Promise<ReadonlyMap<string, Uint8Array>> {
+  const report = await readSpecReport(
+    earl(ran, "cascade-runtime-js", RAN_WITH),
+  );
+  const { tree } = await buildTree({
+    sections: [specSection],
+    ctx: {
+      vocabulary: async () => ({
+        files: vocabulary,
+        builtFrom: [],
+        at: "2026-10-24T00:00:00Z",
+      }),
+      report: async () => ({ report, ...files }),
+    },
+    front: (rows) => hubFiles(["Records"], rows),
+  });
+  return tree;
+}
+const treeText = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>
+  new TextDecoder().decode(tree.get(path));
+
+test("the hub's spec section writes the spec's pages and the conformance table with one result per feature, both linked from the front page", async () => {
+  const table = new TextEncoder().encode("| rule | result |\n");
+  const tree = await hubWith(ASSERTIONS, {
+    earl: new TextEncoder().encode("# earl\n"),
+    table,
+  });
+  for (const path of [
+    "spec/index.html",
+    "spec/naming.html",
+    "spec/kim.html",
+    "spec/spec.css",
+    "conformance/index.html",
+    "conformance/results.json",
+    "conformance/earl.ttl",
+    "conformance/table.md",
+  ])
+    assert.ok(tree.has(path), path);
+  assert.deepEqual(tree.get("conformance/table.md"), table);
+  const front = readPage(treeText(tree, "index.html"));
+  assert.ok(front.hrefs.includes("spec/index.html"));
+  assert.ok(front.hrefs.includes("conformance/index.html"));
+
+  const conformance = readPage(treeText(tree, "conformance/index.html"));
+  assert.match(conformance.said, /Naming 4 1 1 1/);
+  assert.match(conformance.said, /Kim's pod 1 1 0 0/);
+  assert.ok(conformance.hrefs.includes("../spec/naming.html"));
+  assert.ok(conformance.hrefs.includes("earl.ttl"));
+  assert.ok(conformance.hrefs.includes("table.md"));
+
+  const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
+    report: boolean;
+    features: { path: string }[];
+  };
+  assert.equal(json.report, true);
+  assert.deepEqual(
+    json.features.find(({ path }) => path === "runtime/naming.feature"),
+    {
+      path: "runtime/naming.feature",
+      name: "Naming",
+      page: "spec/naming.html",
+      kit: false,
+      rules: 4,
+      passed: 1,
+      failed: 1,
+      notRun: 1,
+    },
+  );
+});
+
+test("with no conformance report the section still writes both, every result is not run, and the report's files are not linked", async () => {
+  const tree = await hubWith([]);
+  assert.ok(tree.has("spec/index.html") && tree.has("conformance/index.html"));
+  assert.ok(!tree.has("conformance/earl.ttl"));
+  assert.ok(!tree.has("conformance/table.md"));
+  const conformance = readPage(treeText(tree, "conformance/index.html"));
+  assert.match(conformance.said, /No conformance report/);
+  assert.match(conformance.said, /Naming 4 0 0 3/);
+  assert.ok(!conformance.hrefs.includes("earl.ttl"));
+  const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
+    report: boolean;
+  };
+  assert.equal(json.report, false);
 });
 
 test("a rule is named in parentheses, beside a .feature pointer, after the word rule, or by a possessive, and a code after item or conformance-review names none", () => {
