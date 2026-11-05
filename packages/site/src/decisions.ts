@@ -3,9 +3,10 @@ import { noteHref, noteLinkOf, pageNameOf, ruleHref } from "./links.js";
 import { renderWithHeadings, type TableAddition } from "./markdown.js";
 import {
   type Citation,
+  claimRows,
   type DecisionNote,
   type DecisionNotes,
-  thingKey,
+  isWhatWeDo,
 } from "./spec.js";
 import { STYLESHEET } from "./stylesheet.js";
 
@@ -84,31 +85,31 @@ function citedBy(cited: readonly Citation[], spec: string): Html {
     : markup`<ul class="cited">${cited.map((rule) => markup`<li><a href="${ruleLink(rule, spec)}">${rule.name}</a></li>`)}</ul>`;
 }
 
+/** Where a link written in the note at `from` goes: a page for a note that has one, else its file or folder on GitHub. */
+const linkFrom =
+  (from: string, { notes, blob, tree }: DecisionNotes) =>
+  (href: string): string | undefined =>
+    sibling(
+      noteLinkOf(href, from, {
+        blob,
+        tree,
+        notes: UP,
+        has: (path) =>
+          path === README || notes.some((note) => note.path === path),
+      }) ?? "",
+    ) || undefined;
+
 function notePage(
   note: DecisionNote,
   { decisions, spec }: Pick<DecisionOptions, "decisions" | "spec">,
 ): Uint8Array {
   const claimed = new Set<string>();
   const { html } = renderWithHeadings(note.text, {
-    link: (href) =>
-      sibling(
-        noteLinkOf(href, note.path, {
-          blob: decisions.blob,
-          tree: decisions.tree,
-          notes: UP,
-        }) ?? "",
-      ) || undefined,
-    table: (header, firstCells): TableAddition | undefined => {
-      if (!header.some((cell) => cell.trim().toLowerCase() === "what we do"))
-        return undefined;
-      const rows = firstCells.map((cell) => {
-        const row = note.rows.find(
-          ({ id, thing }) =>
-            !claimed.has(id) && thingKey(thing) === thingKey(cell),
-        );
-        if (row !== undefined) claimed.add(row.id);
-        return row;
-      });
+    link: linkFrom(note.path, decisions),
+    reserved: note.rows.filter(({ anchored }) => anchored).map(({ id }) => id),
+    table: (header, firstCells, section): TableAddition | undefined => {
+      if (section !== "Choice" || !header.some(isWhatWeDo)) return undefined;
+      const rows = claimRows(note.rows, firstCells, claimed);
       return {
         heading: "Rules that cite it",
         ids: rows.map((row) => row?.id),
@@ -118,11 +119,6 @@ function notePage(
       };
     },
   });
-  const missing = note.rows.filter(({ id }) => !claimed.has(id));
-  if (missing.length > 0)
-    throw new Error(
-      `${note.path}: no table row of the page is Choice row ${missing.map(({ thing }) => `"${thing}"`).join(", ")}, so a rule cannot link it`,
-    );
   return page(
     note.title,
     { href: noteHref(note.path, decisions.blob), path: note.path },
@@ -135,14 +131,7 @@ function indexPage({
   readme,
 }: Pick<DecisionOptions, "decisions" | "readme">): Uint8Array {
   const { html } = renderWithHeadings(readme, {
-    link: (href) =>
-      sibling(
-        noteLinkOf(href, README, {
-          blob: decisions.blob,
-          tree: decisions.tree,
-          notes: UP,
-        }) ?? "",
-      ) || undefined,
+    link: linkFrom(README, decisions),
   });
   const plain = (thing: string): string => thing.replaceAll("`", "");
   return page(
@@ -157,7 +146,7 @@ rule, or by a rule that has yet to be written, or by none.</p>
 <tbody>
 ${decisions.notes.map((note) => {
   const none = note.rows.filter(({ cited }) => cited.length === 0);
-  return markup`<tr><td data-label="note"><a href="${pageOf(note.path)}">${note.title}</a></td><td data-label="rows">${note.rows.length}</td><td data-label="cited by a rule">${note.rows.length - none.length}</td><td data-label="cited by none">${none.map(({ id, thing }, at) => markup`${at === 0 ? "" : ", "}<a href="${pageOf(note.path)}#${id}">${plain(thing)}</a>`)}</td></tr>\n`;
+  return markup`<tr><td data-label="note"><a href="${pageOf(note.path)}">${note.title}</a></td><td data-label="rows">${note.rows.length}</td><td data-label="cited by a rule">${note.rows.length - none.length}</td><td data-label="cited by none">${none.map(({ id, thing, anchored }, at) => markup`${at === 0 ? "" : ", "}<a href="${pageOf(note.path)}${anchored ? `#${id}` : ""}">${plain(thing)}</a>`)}</td></tr>\n`;
 })}</tbody>
 </table>
 `,
@@ -167,8 +156,8 @@ ${decisions.notes.map((note) => {
 /**
  * The decision notes as pages, by path from the folder that holds them: `index.html` from the README, a page per note,
  * and the stylesheet. Each Choice row is an anchor listing the rules that cite it, linked to the spec's pages at `spec`;
- * each link between notes goes to a page, and any other relative link to the file at the commit built. A note whose Choice
- * row the page cannot anchor is an error, since the rule that cites it would link nothing.
+ * each link between notes that exist goes to a page, and any other relative link to the file at the commit built. A Choice
+ * row the page has no table row for is anchored nowhere; the spec's warnings say so.
  */
 export function decisionPages(
   options: DecisionOptions,

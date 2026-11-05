@@ -193,7 +193,11 @@ test("a rule with no note, a pointed row no Why paragraph names, a Choice row wh
 test("a rule that says no note rules it, and a row that names the issue that will write its rule, are listed apart from the warnings", () => {
   assert.deepEqual(built.unnoted, ["runtime/the-kit.feature Check 1"]);
   assert.deepEqual(built.waiting, [
-    { note: "decisions/naming.md", what: 'row "scheme" waits on #193' },
+    {
+      note: "decisions/naming.md",
+      id: "row-scheme",
+      what: 'row "scheme" waits on #193',
+    },
   ]);
   const html = pageText("the-kit.html");
   assert.match(
@@ -645,4 +649,77 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
       "decisions/index.html",
     ),
   );
+});
+
+const ODD_NOTE = `# Odd layouts
+
+Names are in [a note that is gone](gone.md) and [the currency note](currency.md).
+
+## Earlier
+
+| thing | what we do |
+|---|---|
+| x | a decoy that is no Choice row |
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| x | | first (N1) | ours |
+| \`a \\| b\` | | piped (N3) | ours |
+| z | | waits on #193 | ours |
+
+A line that breaks the table.
+
+| y | | more (N2) | ours |
+
+## Row x
+
+Text.
+`;
+
+const ODD_FEATURE = `Feature: Odd
+  Rule: N1. Cites x
+    decisions/odd.md, row "x". Fine.
+
+  Rule: N2. Cites y
+    decisions/odd.md, row "y". Linked without an anchor.
+
+  Rule: N3. Cites the piped one
+    decisions/odd.md, row "a | b". Linked with an anchor.
+`;
+
+test("a note whose layout marked renders otherwise still builds: a Choice row with no table row is a warning and has no anchor, an escaped pipe in a code span and a heading named for a row change nothing, an earlier table is no Choice table, and a link to a note that is gone keeps its GitHub address", async () => {
+  const files = new MemoryFiles(TREE);
+  const text = (value: string) => new TextEncoder().encode(value);
+  await files.write("decisions/README.md", text("# Decision notes\n"));
+  await files.write("decisions/odd.md", text(ODD_NOTE));
+  await files.write("decisions/currency.md", text("# Currency\n"));
+  await files.write("runtime/odd.feature", text(ODD_FEATURE));
+  const tree = await hubWith([], {}, files);
+
+  const spec = treeText(tree, "spec/index.html");
+  const index = readPage(spec);
+  assert.match(index.said, /row "y" has no row in the table the page renders/);
+  assert.doesNotMatch(index.said, /row "x" has no row/);
+  assert.doesNotMatch(index.said, /row "a \| b" has no row/);
+  assert.ok(index.hrefs.includes("../decisions/odd.html"));
+  assert.ok(index.hrefs.includes("../decisions/odd.html#row-z"));
+  assert.ok(!index.hrefs.some((href) => href.startsWith(`${BLOB}decisions/`)));
+
+  const rule = readPage(treeText(tree, "spec/odd.html"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html#row-x"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html#row-a-b"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html"));
+  assert.ok(!rule.hrefs.includes("../decisions/odd.html#row-y"));
+
+  const html = treeText(tree, "decisions/odd.html");
+  assert.equal(html.match(/id="row-x"/g)?.length, 1);
+  const row = html.slice(html.indexOf('id="row-x"'));
+  assert.match(row.slice(0, row.indexOf("</tr>")), /first/);
+  assert.match(html, /id="row-a-b"[^]*?\.\.\/spec\/odd\.html#n3/);
+  assert.ok(!html.includes('id="row-y"'));
+  const note = readPage(html);
+  assert.ok(note.hrefs.includes(`${BLOB}decisions/gone.md`));
+  assert.ok(note.hrefs.includes("currency.html"));
 });

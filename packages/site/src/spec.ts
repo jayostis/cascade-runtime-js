@@ -11,6 +11,7 @@ import {
   type WrittenFeature,
   type WrittenRule,
 } from "@cascade-runtime/runtime";
+import { Marked, type Tokens } from "marked";
 import type { Ingredient } from "./front-page.js";
 import { type Content, escape, Html, markup } from "./html.js";
 import { anchorOf, noteHref, noteLinkOf, pageNameOf, slugOf } from "./links.js";
@@ -58,6 +59,7 @@ export interface SpecWarning {
     | "row names no rule"
     | "pointer names nothing"
     | "row does not name the rule back"
+    | "row is in no table of the page"
     | "no Why paragraph names the row"
     | "two examples share a test"
     | "page name taken"
@@ -93,7 +95,11 @@ export interface SpecPages {
   /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
   readonly unnoted: readonly string[];
   /** Each Choice row that names no rule but the issue that will write it. */
-  readonly waiting: readonly { readonly note: string; readonly what: string }[];
+  readonly waiting: readonly {
+    readonly note: string;
+    readonly id: string;
+    readonly what: string;
+  }[];
   /** The decision notes, read once, for the pages that render them. */
   readonly decisions: DecisionNotes;
 }
@@ -110,6 +116,8 @@ export interface Citation {
 /** A note's Choice row, and the rules that name it. */
 export interface DecisionRow extends ChoiceRow {
   readonly cited: readonly Citation[];
+  /** Whether the note's page has a table row for it; false for a row on a line the page renders as text. */
+  readonly anchored: boolean;
 }
 
 export interface DecisionNote extends Omit<Note, "rows"> {
@@ -228,15 +236,17 @@ export const numberOf = (rule: WrittenRule): string | undefined =>
 export const thingKey = (thing: string): string =>
   thing.replaceAll("`", "").trim().toLowerCase();
 
-/** A table row's cells, split at each `|` outside a code span. */
+/**
+ * A table row's cells, split at each `|` outside a code span; an escaped `|` is one, in a code span too, as Markdown
+ * renders it.
+ */
 function cellsOf(line: string): string[] {
   const cells: string[] = [];
   let cell = "";
   let code = false;
   for (const char of line.trim().replace(/^\||\|$/g, "")) {
     if (char === "`") code = !code;
-    if (char === "|" && !code && cell.endsWith("\\"))
-      cell = `${cell.slice(0, -1)}|`;
+    if (char === "|" && cell.endsWith("\\")) cell = `${cell.slice(0, -1)}|`;
     else if (char === "|" && !code) {
       cells.push(cell.trim());
       cell = "";
@@ -244,6 +254,45 @@ function cellsOf(line: string): string[] {
   }
   cells.push(cell.trim());
   return cells;
+}
+
+/** The first cells of each Choice table of a note as Markdown renders it: a "what we do" table under `## Choice`. */
+function choiceTables(text: string): string[][] {
+  const marked = new Marked({ gfm: true });
+  const tables: string[][] = [];
+  let section = "";
+  marked.walkTokens(marked.lexer(text), (token) => {
+    if (token.type === "heading" && (token as Tokens.Heading).depth === 2)
+      section = (token as Tokens.Heading).text.trim();
+    else if (token.type === "table" && section === "Choice") {
+      const { header, rows } = token as Tokens.Table;
+      if (header.some(({ text: cell }) => isWhatWeDo(cell)))
+        tables.push(rows.map(([first]) => first?.text ?? ""));
+    }
+  });
+  return tables;
+}
+
+/** Whether a table's header cell heads the column that says what the runtime does. */
+export const isWhatWeDo = (cell: string): boolean =>
+  cell.trim().toLowerCase() === "what we do";
+
+/**
+ * The Choice row each first cell of a table is, none for a cell no row has: a row goes to the first cell that has its
+ * name, once. `claimed` holds the rows taken by the tables before, and takes these.
+ */
+export function claimRows<Row extends { id: string; thing: string }>(
+  rows: readonly Row[],
+  firstCells: readonly string[],
+  claimed: Set<string>,
+): (Row | undefined)[] {
+  return firstCells.map((cell) => {
+    const row = rows.find(
+      ({ id, thing }) => !claimed.has(id) && thingKey(thing) === thingKey(cell),
+    );
+    if (row !== undefined) claimed.add(row.id);
+    return row;
+  });
 }
 
 function sectionsOf(text: string): Map<string, string[]> {
@@ -498,7 +547,13 @@ class Spec {
   /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
   readonly unnoted: string[] = [];
   /** Each Choice row that names no rule but the issue that will write it. */
-  readonly waiting: { readonly note: string; readonly what: string }[] = [];
+  readonly waiting: {
+    readonly note: string;
+    readonly id: string;
+    readonly what: string;
+  }[] = [];
+  /** Each Choice row the note's page has no table row for, by note and row's anchor. */
+  readonly #unanchored = new Set<string>();
 
   constructor(
     options: SpecOptions,
@@ -520,6 +575,20 @@ class Spec {
     this.blob = iri.includes("/tree/") ? iri.replace("/tree/", "/blob/") : iri;
     this.tree = iri;
     this.notes = options.notes;
+    for (const note of notes.values()) {
+      const claimed = new Set<string>();
+      for (const cells of choiceTables(note.text))
+        claimRows(note.rows, cells, claimed);
+      for (const { id, thing } of note.rows) {
+        if (claimed.has(id)) continue;
+        this.#unanchored.add(`${note.path}\n${id}`);
+        this.#warn(
+          "row is in no table of the page",
+          note.path,
+          `row "${thing}" has no row in the table the page renders, so a rule links the note without the row`,
+        );
+      }
+    }
   }
 
   readonly tree: string;
@@ -533,6 +602,13 @@ class Spec {
     return noteHref(path, page ? (this.notes ?? "") : this.blob);
   }
 
+  /** The address of a note's Choice row: its anchor on the note's page, or the note alone where the page has no row for it. */
+  rowHref(path: string, id: string): string {
+    const anchored =
+      this.notes !== undefined && !this.#unanchored.has(`${path}\n${id}`);
+    return `${this.noteHref(path)}${anchored ? `#${id}` : ""}`;
+  }
+
   /** Where a link the note at `from` wrote goes. */
   linkFrom(from: string, href: string): string | undefined {
     return href.startsWith("#")
@@ -541,6 +617,8 @@ class Spec {
           blob: this.blob,
           tree: this.tree,
           ...(this.notes === undefined ? {} : { notes: this.notes }),
+          has: (path) =>
+            this.#notes.has(path) || path === "decisions/README.md",
         });
   }
 
@@ -556,6 +634,7 @@ class Spec {
           cited: [
             ...(this.#reached.get(`${note.path}\n${row.id}`)?.values() ?? []),
           ],
+          anchored: !this.#unanchored.has(`${note.path}\n${row.id}`),
         })),
       })),
     };
@@ -689,7 +768,10 @@ class Spec {
         const id = note?.rows.find(
           (r) => thingKey(r.thing) === thingKey(name),
         )?.id;
-        return id === undefined ? { name } : { name, id };
+        return id === undefined ||
+          this.#unanchored.has(`${pointer.note}\n${id}`)
+          ? { name }
+          : { name, id };
       });
       shown.push({ note, path: pointer.note, rows });
       if (note === undefined) {
@@ -760,6 +842,7 @@ class Spec {
         if (row.issues.length > 0) {
           this.waiting.push({
             note: note.path,
+            id: row.id,
             what: `row "${row.thing}" waits on ${row.issues.join(", ")}`,
           });
           continue;
@@ -1021,10 +1104,10 @@ ${resultsTable(
 <p class="prose">A rule and the Choice row that ruled it name each other (<a href="${spec.noteHref("decisions/README.md")}">decisions/README.md</a>).
 ${plural(spec.warnings.length, "place")} where they do not yet:</p>
 <ul class="warnings">
-${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.blob}${where}">${where}</a>: `}${what}</li>\n`)}</ul>
+${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.noteHref(where)}">${where}</a>: `}${what}</li>\n`)}</ul>
 <p class="prose">${plural(spec.unnoted.length, "rule says", "rules say")} no note rules it, and ${plural(spec.waiting.length, "Choice row waits", "Choice rows wait")} on the issue that will write its rule:</p>
 <ul class="warnings">
-${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.blob}${note}">${note}</a>: ${what}</li>\n`)}</ul>
+${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, id, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.rowHref(note, id)}">${note}</a>:${what}</li>\n`)}</ul>
 <footer>
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">

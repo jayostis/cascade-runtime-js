@@ -55,11 +55,17 @@ export interface MarkdownOptions {
    * document (`#why`) is left as written.
    */
   readonly link?: (href: string) => string | undefined;
-  /** Called once per table with its header cells and its body rows' first cells, as written; adds a column to it. */
+  /**
+   * Called once per table with its header cells, its body rows' first cells, as written, and the text of the `##` heading
+   * above it (none above the first); adds a column to it.
+   */
   readonly table?: (
     header: readonly string[],
     firstCells: readonly string[],
+    section: string,
   ) => TableAddition | undefined;
+  /** Ids no heading takes, for a page that gives them to something else. */
+  readonly reserved?: readonly string[];
 }
 
 /**
@@ -68,13 +74,19 @@ export interface MarkdownOptions {
  * `headings`; a slug taken twice gets `-1`, `-2`, as GitHub does, skipping
  * any id already used; a heading with no letters or digits is `section`.
  */
-function markdown({ ids = false, link, table }: MarkdownOptions): {
+function markdown({
+  ids = false,
+  link,
+  table,
+  reserved = [],
+}: MarkdownOptions): {
   marked: Marked;
   headings: Heading[];
 } {
   const headings: Heading[] = [];
   const taken = new Map<string, number>();
-  const used = new Set<string>();
+  const used = new Set<string>(reserved);
+  let section = "";
   const marked = new Marked({
     gfm: true,
     renderer: {
@@ -94,6 +106,7 @@ function markdown({ ids = false, link, table }: MarkdownOptions): {
               const added = table(
                 token.header.map(({ text }) => text),
                 token.rows.map(([first]) => first?.text ?? ""),
+                section,
               );
               if (added === undefined) return false;
               const cells = (row: typeof token.header): string =>
@@ -114,6 +127,7 @@ function markdown({ ids = false, link, table }: MarkdownOptions): {
         ? {
             heading(token) {
               const inner = this.parser.parseInline(token.tokens);
+              if (token.depth === 2) section = token.text.trim();
               const base = slug(inner) || "section";
               let seen = taken.get(base) ?? 0;
               let id = seen === 0 ? base : `${base}-${seen}`;

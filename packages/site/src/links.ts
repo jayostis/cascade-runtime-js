@@ -173,6 +173,8 @@ export interface NoteLinks {
   readonly tree: string;
   /** The folder of this site that holds `decisions/`, as {@link noteHref} takes it; absent when the notes have no pages. */
   readonly notes?: string;
+  /** Whether a note has a page; a link to one that has none keeps its address on GitHub. Absent: every note has one. */
+  readonly has?: (path: string) => boolean;
 }
 
 /**
@@ -184,7 +186,7 @@ export interface NoteLinks {
 export function noteLinkOf(
   href: string,
   from: string,
-  { blob, tree, notes }: NoteLinks,
+  { blob, tree, notes, has }: NoteLinks,
 ): string | undefined {
   const bare = [...href].filter((char) => char > " ").join("");
   if (SCHEME.test(bare))
@@ -194,7 +196,7 @@ export function noteLinkOf(
     `https://vocabulary.invalid/${from}`,
   );
   const path = pathname.slice(1);
-  if (notes !== undefined && NOTE_PATH.test(path))
+  if (notes !== undefined && NOTE_PATH.test(path) && (has?.(path) ?? true))
     return `${noteHref(path, notes)}${hash}`;
   return `${path.endsWith("/") ? tree : blob}${path}${search}${hash}`;
 }
