@@ -9,7 +9,8 @@
 //   --save-external <file>            write the addresses left to ask, with the pages that hold each, as JSON
 //   --only-external <file>            ask only the addresses in such a file; no --tree or --crawl
 //   --readmes                         also read the README of each repository the front page lists
-//   --readmes-from <url>              where READMEs are read: <url><repository>/<ref>/README.md
+//   --readmes-from <url>              where READMEs are read: <url><owner>/<repository>/<ref>/README.md, the owner
+//                                     being the one in the link of the repository's row on the front page
 //   --readme-ref <repository>=<ref>   read that repository's README at this ref, not HEAD; repeatable
 //
 // Exits 1 when a link does not resolve, naming it and the page it is on.
@@ -29,23 +30,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 const ALLOWED = new Map([
   ["loinc.org", "403 to bots"],
   ["snomed.info", "refuses automated requests"],
+  ["w3id.org/semapv/vocab/", "the SEMAPV namespace IRI, not a document"],
 ]);
 
 /** Addresses known dead and not ours to fix here, each with the issue that tracks it; an entry goes when its issue closes. */
-const TRACKED = "https://github.com/jayostis/cascade-vocabulary/issues/352";
-const KNOWN_DEAD = new Map(
-  [
-    "https://mapping-commons.github.io/sssom/spec-model/",
-    "http://prefix.cc/clinvar.file.json",
-    "https://mapping-commons.github.io/sssom/record_id/",
-    "https://w3id.org/sssom/schema/",
-    "https://w3id.org/semapv/vocab/",
-    "https://wiki.hl7.org/CG",
-  ].map((url) => [url, TRACKED]),
-);
+const KNOWN_DEAD = new Map([]);
 
 const HUB = "https://jayostis.github.io/cascade-runtime-js/";
-const RAW = "https://raw.githubusercontent.com/jayostis/";
+const RAW = "https://raw.githubusercontent.com/";
 const BACKOFF = Number(process.env["LINK_CHECK_BACKOFF_MS"] ?? 1000);
 const ATTEMPTS = 4;
 const TIMEOUT = 20_000;
@@ -60,6 +52,7 @@ const GONE = new Set([
   "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
 ]);
 const HTML = /(?:\/|\.html?)$/;
+const TEXT = /\.(?:txt|md)$/;
 
 function options(argv) {
   const found = { checkout: [], ref: new Map(), readmesFrom: RAW, site: HUB };
@@ -122,11 +115,23 @@ const linksOf = (html) =>
     ([, a, b]) => unescaped(a ?? b ?? ""),
   );
 
+/** The addresses of a served text file: Markdown links as in a README, and bare URLs. */
+const linksOfText = (text) => [
+  ...new Set([
+    ...markdownLinks(text),
+    ...[...text.matchAll(/https?:\/\/[^\s<>)\]"'`]+/g)].map(([url]) =>
+      url.replace(/[.,;:!?]+$/, ""),
+    ),
+  ]),
+];
+
+/** The ids of a page, and the names of its anchors: a `name` on any other tag, a meta tag's, names no place to link to. */
 const idsOf = (html) =>
   new Set(
-    [...html.matchAll(/\s(?:id|name)=(?:"([^"]*)"|'([^']*)')/g)].map(
-      ([, a, b]) => unescaped(a ?? b ?? ""),
-    ),
+    [
+      ...html.matchAll(/\sid=(?:"([^"]*)"|'([^']*)')/g),
+      ...html.matchAll(/<a\s(?:[^>]*?\s)?name=(?:"([^"]*)"|'([^']*)')/g),
+    ].map(([, a, b]) => unescaped(a ?? b ?? "")),
   );
 
 /** At most `size` of the tasks run at once. */
@@ -165,7 +170,15 @@ const settings = options(process.argv.slice(2));
 const failures = [];
 /** Addresses that did not answer, with no word from the host that they are gone: a down host is no dead link. */
 const unverified = [];
+/** Known dead addresses that answer again. */
+const stale = [];
 const fail = (where, link, why) => failures.push({ where, link, why });
+/** An answer that says nothing about the address: a host that is slow, limiting or down, as opposed to one that says it is gone. */
+const isDown = ({ status, error }) =>
+  error === undefined ? status === 429 || status >= 500 : !GONE.has(error);
+/** A problem with an address of the site or a README: a warning when the host did not answer, a dead link otherwise. */
+const problem = (answer, where, link, why) =>
+  (isDown(answer) ? unverified : failures).push({ where, link, why });
 
 const pending = new Map();
 const counts = {
@@ -185,17 +198,22 @@ function load(url) {
   return loaded(url, async () => {
     const path = decoded(url.slice(settings.site.length)).replace(/[?].*$/, "");
     const html = HTML.test(path) || path === "";
+    const readable = html || TEXT.test(path);
     if (settings.tree !== undefined) {
       let file = join(settings.tree, path);
       if (path === "" || path.endsWith("/")) file = join(file, "index.html");
       else if (existsSync(file) && statSync(file).isDirectory())
         file = join(file, "index.html");
       if (!existsSync(file) || !statSync(file).isFile()) return { status: 404 };
-      if (!html && !file.endsWith(".html")) return { status: 200 };
+      if (!readable && !file.endsWith(".html")) return { status: 200 };
       const text = readFileSync(file, "utf8");
-      return { status: 200, text, ids: idsOf(text) };
+      return {
+        status: 200,
+        text,
+        ids: file.endsWith(".html") ? idsOf(text) : undefined,
+      };
     }
-    const response = await ask(url, html ? "GET" : "HEAD");
+    const response = await ask(url, readable ? "GET" : "HEAD");
     if (response.status === undefined || response.status >= 400 || !html)
       return response;
     return { ...response, ids: idsOf(response.text) };
@@ -209,7 +227,8 @@ async function checkInternal(url, hash, where, written) {
   counts.internal += 1;
   const found = await load(url);
   if (found.status !== 200)
-    return fail(
+    return problem(
+      found,
       where,
       written,
       `${found.status ?? found.error}: ${url} is not on the site`,
@@ -266,7 +285,6 @@ async function ask(url, method = "HEAD") {
         } catch (error) {
           const cause = error?.cause?.code ?? error?.name ?? String(error);
           last = { error: cause };
-          if (cause === "ENOTFOUND") return last;
         }
         if (attempt + 1 < ATTEMPTS) await sleep(BACKOFF * 2 ** attempt);
       }
@@ -326,19 +344,29 @@ function inCheckoutUncached(url) {
       return undefined;
     }
   }
-  const target = join(checkout.folder, path);
-  return (
-    existsSync(target) &&
-    (kind === "tree"
-      ? statSync(target).isDirectory()
-      : statSync(target).isFile())
-  );
+  const rev = /^[0-9a-f]{40}$/.test(ref) ? ref : "HEAD";
+  try {
+    return (
+      execFileSync(
+        "git",
+        ["-C", checkout.folder, "cat-file", "-t", `${rev}:${path}`],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim() === (kind === "tree" ? "tree" : "blob")
+    );
+  } catch {
+    return false;
+  }
 }
 
-const allowedHost = (host) =>
-  [...ALLOWED.keys()].find(
-    (name) => host === name || host.endsWith(`.${name}`),
+/** The ALLOWED entry that holds an address: a host (and its subdomains), or a host and a path prefix. */
+const allowedHost = (url) => {
+  const { host, pathname } = new URL(url);
+  return [...ALLOWED.keys()].find((name) =>
+    name.includes("/")
+      ? `${host}${pathname}`.startsWith(name)
+      : host === name || host.endsWith(`.${name}`),
   );
+};
 
 /** Checks an address outside the site: asked once however many pages hold it. */
 async function checkExternal(url, where, written) {
@@ -355,29 +383,34 @@ async function checkExternal(url, where, written) {
       "not in the checkout of that repository at that commit",
     );
   }
-  const host = new URL(url).host;
-  const allowed = allowedHost(host);
+  const allowed = allowedHost(url);
   if (allowed !== undefined) {
-    counts.allowed.add(host);
+    counts.allowed.add(allowed);
     return;
   }
-  if (KNOWN_DEAD.has(url)) {
+  const known = KNOWN_DEAD.has(url);
+  if (settings.saveExternal !== undefined)
+    pending.set(url, [...(pending.get(url) ?? []), where]);
+  if (known && settings.onlyExternal === undefined) {
     counts.known.add(url);
     return;
   }
-  if (settings.saveExternal !== undefined)
-    pending.set(url, [...(pending.get(url) ?? []), where]);
   if (settings.noExternal) return;
   counts.external.add(url);
-  const { status, error } = await asked(url, () => ask(url));
-  if (error === undefined && status < 400) return;
-  const down =
-    error === undefined ? status === 429 || status >= 500 : !GONE.has(error);
-  (down ? unverified : failures).push({
-    where,
-    link: written,
-    why: `${status ?? error}: ${url}`,
-  });
+  const answer = await asked(url, () => ask(url));
+  if (known) {
+    // Asked on its own so that an entry whose address answers again shows.
+    counts.known.add(url);
+    if (answer.error === undefined && answer.status < 400)
+      stale.push({
+        where,
+        link: written,
+        why: `${answer.status}: ${url} answers; remove it from KNOWN_DEAD`,
+      });
+    return;
+  }
+  if (answer.error === undefined && answer.status < 400) return;
+  problem(answer, where, written, `${answer.status ?? answer.error}: ${url}`);
 }
 
 /** Resolves a link on a page: the site's own, or the world's; undefined for what is not an address to check. */
@@ -407,7 +440,8 @@ async function scan(url) {
   const found = await load(url);
   const where = url.slice(settings.site.length) || "index.html";
   if (found.status !== 200 || found.text === undefined) {
-    fail(
+    problem(
+      found,
       where,
       url,
       `${found.status ?? found.error}: a page of the site that is not served`,
@@ -415,14 +449,20 @@ async function scan(url) {
     return;
   }
   counts.pages += 1;
+  const links = HTML.test(new URL(url).pathname)
+    ? linksOf(found.text)
+    : linksOfText(found.text);
   await Promise.all(
-    linksOf(found.text).map(async (written) => {
+    links.map(async (written) => {
       await checkLink(written, url, where);
       if (settings.crawl) {
         try {
           const target = new URL(written, url);
           target.hash = "";
-          if (insideSite(target.href) && HTML.test(target.pathname))
+          if (
+            insideSite(target.href) &&
+            (HTML.test(target.pathname) || TEXT.test(target.pathname))
+          )
             pageUrls.push(target.href);
         } catch {
           // reported by checkLink
@@ -434,7 +474,7 @@ async function scan(url) {
 
 function treePages(folder) {
   return readdirSync(folder, { recursive: true })
-    .filter((entry) => entry.endsWith(".html"))
+    .filter((entry) => /\.(?:html|txt|md)$/.test(entry))
     .map((entry) => settings.site + entry.split("\\").join("/"));
 }
 
@@ -452,13 +492,13 @@ async function pages() {
 }
 
 // ---- the READMEs
-/** The block under a `## Docs` heading, up to the next heading, or undefined. */
+/** The block under a `## Docs` heading, up to the next heading of its level or above, or undefined. */
 function docsBlock(text) {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((line) => /^##\s+Docs\s*$/.test(line));
   if (start < 0) return undefined;
   const end = lines.findIndex(
-    (line, at) => at > start && /^#{1,6}\s/.test(line),
+    (line, at) => at > start && /^#{1,2}\s/.test(line),
   );
   return lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
 }
@@ -487,17 +527,26 @@ const sameAddress = (a, b) =>
     .replace(/index\.html$/, "")
     .replace(/\/?$/, "/");
 
+/** The rows of the front page's repository list: each repository's name, and its owner from the row's own link. */
 async function repositoriesOnFrontPage() {
   const front = await load(settings.site);
   if (front.text === undefined) return [];
-  return [...front.text.matchAll(/<tr id="repository-([^"]+)"/g)].map(
-    ([, name]) => name,
-  );
+  return [
+    ...front.text.matchAll(
+      /<tr id="repository-([^"]+)"[^>]*>([\s\S]*?)<\/tr>/g,
+    ),
+  ].map(([, name, row]) => {
+    const literal = name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    return {
+      name,
+      owner: new RegExp(`href="[^"]*/([^/"]+)/${literal}/?"`).exec(row)?.[1],
+    };
+  });
 }
 
 async function readmes() {
-  const names = await repositoriesOnFrontPage();
-  if (names.length === 0) {
+  const rows = await repositoriesOnFrontPage();
+  if (rows.length === 0) {
     fail(
       "index.html",
       "#repository-list",
@@ -506,14 +555,21 @@ async function readmes() {
     return;
   }
   await Promise.all(
-    names.map(async (name) => {
+    rows.map(async ({ name, owner }) => {
       const where = `README ${name}`;
-      const base = `${settings.readmesFrom}${name}/${settings.ref.get(name) ?? "HEAD"}/`;
+      if (owner === undefined)
+        return fail(where, "", `the front page's row links no page of ${name}`);
+      const base = `${settings.readmesFrom}${owner}/${name}/${settings.ref.get(name) ?? "HEAD"}/`;
       const readme = await asked(`${base}README.md`, () =>
         ask(`${base}README.md`, "GET"),
       );
       if (readme.status !== 200)
-        return fail(where, "", `no README: ${readme.status ?? readme.error}`);
+        return problem(
+          readme,
+          where,
+          "",
+          `no README: ${readme.status ?? readme.error}`,
+        );
       const block = docsBlock(readme.text);
       if (block === undefined)
         return fail(
@@ -600,6 +656,7 @@ report(
   unverified,
   ` (no answer after ${ATTEMPTS} tries; not counted as dead)`,
 );
+report("WARN", stale);
 const dead = report("FAIL", failures);
 if (dead > 0) {
   process.stdout.write(`${dead} link${dead === 1 ? "" : "s"} failed\n`);

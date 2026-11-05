@@ -196,11 +196,12 @@ jobs:
 
   # The addresses on other sites that the tree links, asked once each with retries: a 404 is red, a host that does not
   # answer is a warning. Alone and after `docs site`, since asking about five hundred addresses takes a minute, and not
-  # in `compatibility`, since a host that moved a page is not this pull request's doing.
+  # in `compatibility`, since a host that moved a page is not this pull request's doing. Not nightly: `live links` asks the
+  # same addresses of the deployed site then, and the outside is asked once a night.
   external-links:
     name: external links
     needs: browser
-    if: ${{ !cancelled() && github.event_name != 'push' && needs.browser.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.browser.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

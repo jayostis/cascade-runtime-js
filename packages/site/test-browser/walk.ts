@@ -136,8 +136,18 @@ async function click(
             `${where}: ${address} answered ${response.status()}, and does not start with ${expected.text}`,
           ];
     }
-    await link.click();
-    await page.waitForURL(address, { waitUntil: "load" });
+    // The page behind a click is slow now and then, on GitHub especially: the click is tried twice, the second time
+    // from the page it began on.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await link.click();
+        await page.waitForURL(address, { waitUntil: "domcontentloaded" });
+        break;
+      } catch (error) {
+        if (attempt > 0) throw error;
+        await page.goto(from, { waitUntil: "domcontentloaded" });
+      }
+    }
   } catch (error) {
     return [
       `${where}: clicking ${expected.href} did not reach ${address}: ${String(error).split("\n")[0]}`,

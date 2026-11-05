@@ -19,15 +19,24 @@ const asked: string[] = [];
 
 /** Answers by path: `/gone` is dead, `/flaky` fails once, `/no-head` refuses HEAD, `/readme/<repo>` is that README. */
 const READMES = new Map<string, string>();
+/** The deployed site the crawl reads, at `/site/`: a path to its text, or to a status. */
+const LIVE = new Map<string, string | number>();
 before(async () => {
   const attempts = new Map<string, number>();
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://x").pathname;
     asked.push(`${request.method ?? ""} ${path}`);
-    const readme = /^\/readmes\/([^/]+)\/HEAD\/README\.md$/.exec(path)?.[1];
-    if (readme !== undefined) {
+    const readme = /^\/readmes\/([^/]+\/[^/]+)\/HEAD\/README\.md$/.exec(
+      path,
+    )?.[1];
+    if (path.startsWith("/site/")) {
+      const served = LIVE.get(path.slice("/site/".length));
+      if (typeof served === "string") response.writeHead(200).end(served);
+      else response.writeHead(served ?? 404).end();
+    } else if (readme !== undefined) {
       const text = READMES.get(readme);
-      response.writeHead(text === undefined ? 404 : 200).end(text);
+      response.writeHead(text === undefined ? 404 : text === "503" ? 503 : 200);
+      response.end(text === "503" ? undefined : text);
     } else if (path === "/gone" || path.endsWith("/missing.md")) {
       response.writeHead(404).end();
     } else if (path === "/down") {
@@ -68,6 +77,7 @@ async function check(
   files: Record<string, string>,
   checkout: Record<string, string> = {},
   more: string[] = [],
+  uncommitted: Record<string, string> = {},
 ): Promise<{ code: number; said: string }> {
   const folder = join(SCRATCH, String(counter++));
   mkdirSync(join(folder, "checkout"), { recursive: true });
@@ -90,6 +100,7 @@ async function check(
   git("add", "-A");
   git("commit", "--quiet", "--allow-empty", "-m", "c");
   const sha = git("rev-parse", "HEAD");
+  write(join(folder, "checkout"), uncommitted);
   write(
     join(folder, "tree"),
     Object.fromEntries(
@@ -99,19 +110,22 @@ async function check(
       ]),
     ),
   );
+  return run([
+    "--tree",
+    join(folder, "tree"),
+    "--site",
+    SITE,
+    "--checkout",
+    `jayostis/cascade-vocabulary=${join(folder, "checkout")}`,
+    ...more,
+  ]);
+}
+
+function run(args: string[]): Promise<{ code: number; said: string }> {
   return new Promise((resolve) =>
     execFile(
       process.execPath,
-      [
-        "scripts/link-check.mjs",
-        "--tree",
-        join(folder, "tree"),
-        "--site",
-        SITE,
-        "--checkout",
-        `jayostis/cascade-vocabulary=${join(folder, "checkout")}`,
-        ...more,
-      ],
+      ["scripts/link-check.mjs", ...args],
       { cwd: ROOT, env: { ...process.env, LINK_CHECK_BACKOFF_MS: "1" } },
       (error, stdout, stderr) =>
         resolve({
@@ -192,10 +206,10 @@ const HUB = SITE;
 const tree = (): Record<string, string> => ({
   "site.css": "",
   "index.html": page(
-    `<h2 id="repositories">r</h2><table>${["a", "b", "c", "d", "e"]
+    `<h2 id="repositories">r</h2><table>${["a", "b", "c", "d", "e", "f"]
       .map(
         (name) =>
-          `<tr id="repository-${name}"><td><a href="${origin}/ok">${name}</a></td></tr>`,
+          `<tr id="repository-${name}"><td><a href="${origin}/${name === "a" ? "someone-else" : "jayostis"}/${name}">${name}</a></td></tr>`,
       )
       .join("")}</table>`,
   ),
@@ -204,18 +218,19 @@ const tree = (): Record<string, string> => ({
 
 test("each repository's README must have a Docs block whose first link is the hub and whose links all resolve, and the check names the README that does not", async () => {
   READMES.clear();
+  READMES.set("jayostis/f", "503");
   READMES.set(
-    "a",
+    "someone-else/a",
     `# a\n\n## Docs\n\n- [The hub](${HUB}): home\n- [Terms](${HUB}terms/#foaf:name): terms\n- [Elsewhere](${origin}/ok)\n- [Local](docs/guide.md)\n\n## Other\n\n[ignored](${origin}/gone)`,
   );
-  READMES.set("b", `# b\n\nno docs block here\n\n[x](${HUB})`);
+  READMES.set("jayostis/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
   READMES.set(
-    "c",
+    "jayostis/c",
     `# c\n\n## Docs\n\n- [Terms first](${HUB}terms/)\n- [The hub](${HUB})`,
   );
   READMES.set(
-    "d",
-    `# d\n\n## Docs\n\n- [The hub](${HUB})\n- [Dead](${origin}/gone)\n- [Anchor](${HUB}terms/#nope)\n- [Gone](docs/missing.md)`,
+    "jayostis/d",
+    `# d\n\n## Docs\n\n- [The hub](${HUB})\n- [Dead](${origin}/gone)\n- [Anchor](${HUB}terms/#nope)\n- [Gone](docs/missing.md)\n\n### More\n\n- [Deeper](deeper/missing.md)\n\n## Other`,
   );
   const { code, said } = await check(tree(), {}, [
     "--readmes",
@@ -229,10 +244,13 @@ test("each repository's README must have a Docs block whose first link is the hu
     `${origin}/gone`,
     `${HUB}terms/#nope`,
     "docs/missing.md",
+    "deeper/missing.md",
     "README e: no README",
+    "WARN README f: ",
   ])
     assert.ok(said.includes(named), `${named} is not in:\n${said}`);
   assert.ok(!said.includes("README a"), said);
+  assert.ok(!said.includes("FAIL README f"), said);
 });
 
 test("the external addresses a check leaves unasked can be saved and asked later on their own, and the second run fails on the dead one naming the page that holds it", async () => {
@@ -258,4 +276,86 @@ test("the external addresses a check leaves unasked can be saved and asked later
       !second.said.includes("sub.html"),
     second.said,
   );
+});
+
+test("a GitHub link into a checkout at its HEAD is checked in git: a file that is only on disk, untracked, is not there", async () => {
+  const { code, said } = await check(
+    {
+      "site.css": "",
+      "index.html": page(
+        [
+          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/q.rq">tracked</a>`,
+          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/local.rq">untracked</a>`,
+          `<a href="https://github.com/jayostis/cascade-vocabulary/tree/{SHA}/queries/">folder</a>`,
+        ].join(""),
+      ),
+    },
+    { "queries/q.rq": "SELECT * {}" },
+    [],
+    { "queries/local.rq": "SELECT * {}" },
+  );
+  assert.equal(code, 1, said);
+  assert.ok(said.includes("queries/local.rq"), said);
+  assert.ok(!said.includes("queries/q.rq"), said);
+});
+
+test("an anchor counts ids and the names of anchors, not the name of a meta tag", async () => {
+  const { code, said } = await check({
+    "site.css": "",
+    "index.html": page(
+      `<meta name="viewport" content="x"><a name="old-anchor"></a><a href="#old-anchor">fine</a><a href="#viewport">dead</a>`,
+    ),
+  });
+  assert.equal(code, 1, said);
+  assert.ok(said.includes("#viewport") && !said.includes("#old-anchor"), said);
+});
+
+test("the .txt and .md files a site serves are checked too, their links resolved against their own address: markdown links and bare URLs", async () => {
+  const { code, said } = await check({
+    "site.css": "",
+    "index.html": page(""),
+    "llms.txt": `# Hub\n\n- [Fine](index.html): ok\n- [Dead](missing-page.html): gone\n\nSee ${origin}/gone for more.`,
+    "docs/AGENTS.md": `[Up](../index.html) [Sibling](nope.md)`,
+  });
+  assert.equal(code, 1, said);
+  for (const dead of ["missing-page.html", `${origin}/gone`, "nope.md"])
+    assert.ok(said.includes(dead), `${dead} is not named in:\n${said}`);
+  assert.ok(
+    !said.includes("-> 404: https://hub.test/cascade/index.html"),
+    said,
+  );
+  assert.ok(said.includes("llms.txt") && said.includes("docs/AGENTS.md"), said);
+});
+
+const live = (body: string): string =>
+  `<!DOCTYPE html><html><body>${body}</body></html>`;
+
+test("the crawl follows links from the front page to pages of the site, however deep, and fails on a dead link there", async () => {
+  LIVE.clear();
+  const site = `${origin}/site/`;
+  LIVE.set("", live(`<a href="${site}a.html">a</a>`));
+  LIVE.set("a.html", live(`<a href="b.html">b</a><a href="notes.txt">n</a>`));
+  LIVE.set("b.html", live(`<a href="dead.html">dead</a>`));
+  LIVE.set("notes.txt", `[gone](${site}dead-from-text.html)`);
+  const { code, said } = await run(["--crawl", "--site", site]);
+  assert.equal(code, 1, said);
+  assert.ok(said.includes("b.html") && said.includes("dead.html"), said);
+  assert.ok(said.includes("dead-from-text.html"), said);
+  assert.ok(said.includes("4 pages"), said);
+});
+
+test("a page of the live site that answers 5xx is a warning, and 404 is a dead link", async () => {
+  LIVE.clear();
+  const site = `${origin}/site/`;
+  LIVE.set("", live(`<a href="down.html">down</a>`));
+  LIVE.set("down.html", 503);
+  const down = await run(["--crawl", "--site", site, "--no-external"]);
+  assert.equal(down.code, 0, down.said);
+  assert.ok(
+    down.said.includes("WARN") && down.said.includes("down.html"),
+    down.said,
+  );
+  LIVE.set("", live(`<a href="gone.html">gone</a>`));
+  const gone = await run(["--crawl", "--site", site, "--no-external"]);
+  assert.equal(gone.code, 1, gone.said);
 });
