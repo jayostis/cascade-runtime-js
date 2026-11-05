@@ -158,7 +158,11 @@ function layout(site: Site, title: string, main: Content): Html {
 </head>
 <body>
 <nav>
-<a href="index.html">How the pod is laid out</a>
+${
+  site.options.front !== undefined &&
+  markup`<a href="${site.options.front}">Cascade pods</a>
+`
+}<a href="index.html">How the pod is laid out</a>
 <a href="pipeline.html">How a view is built</a>
 <a href="not-shown.html">Not shown</a>
 </nav>

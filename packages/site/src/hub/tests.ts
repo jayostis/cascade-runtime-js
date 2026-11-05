@@ -1,4 +1,5 @@
 import { Html, markup } from "../html.js";
+import { frontPageLink } from "../links.js";
 import {
   declaredFailures,
   readJunit,
@@ -148,8 +149,10 @@ export const testsSection: Section<TestsContext> = {
 <style>${new Html(STYLES)}</style>
 </head>
 <body>
+<nav>
+${frontPageLink(2)}
+<a href="../index.html">Conformance results</a></nav>
 <main>
-<p class="about"><a href="../index.html">Conformance results</a></p>
 <h1>Cascade unit test reports</h1>
 <p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's, each case with its result
 and time. Failed cases come first, then every case by file and name.</p>

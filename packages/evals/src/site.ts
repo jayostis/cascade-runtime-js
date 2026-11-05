@@ -123,7 +123,14 @@ function people(entries: readonly Entry[]): [string, string][] {
   return [...seen];
 }
 
-function personPage(id: string, entries: readonly Entry[]): string {
+/** The crumbs ahead of the report's own: the page the report is published under, when it is. */
+type Above = readonly (readonly [string, string?])[];
+
+function personPage(
+  id: string,
+  entries: readonly Entry[],
+  above: Above,
+): string {
   const path = personPath(id);
   const own = entries.filter((e) => e.results.cases.some((c) => c.id === id));
   const c = own[0]!.results.cases.find((it) => it.id === id)!;
@@ -142,12 +149,12 @@ function personPage(id: string, entries: readonly Entry[]): string {
   return page({
     path,
     title: `${name} — Cascade evals`,
-    crumbs: [["Cascade evals", "index.html"], [name]],
+    crumbs: [...above, ["Cascade evals", "index.html"], [name]],
     body,
   });
 }
 
-function frontPage(entries: readonly Entry[]): string {
+function frontPage(entries: readonly Entry[], above: Above): string {
   const from = "index.html";
   const latest = entries[0];
   const body = `<p class="small muted">Cascade evals${latest === undefined ? "" : ` · latest run ${esc(latest.results.run.id)} · ${esc(latest.results.run.finished.slice(0, 10))}`} · <a href="${hrefTo(from, "how_it_works.html")}">how the test works</a></p>
@@ -174,7 +181,7 @@ ${headline(entries)}
   return page({
     path: from,
     title: "Cascade evals — ask your records a question",
-    crumbs: [["Cascade evals"]],
+    crumbs: [...above, ["Cascade evals"]],
     body,
   });
 }
@@ -217,7 +224,7 @@ ${t.question}`,
   return ` A fixed list of words that cannot be taken out without damaging the prose is left in and recorded: in the runs recorded here, ${tells.length} term${tells.length === 1 ? "" : "s"} in ${answers.size} answer${answers.size === 1 ? "" : "s"} could have given an arm away.`;
 }
 
-function howPage(runs: readonly { results: Results }[]): string {
+function howPage(runs: readonly { results: Results }[], above: Above): string {
   const body = `<h1>How the test works</h1>
 <p class="lead">A synthetic person with real-shaped downloads and an answer key written before any model ran. The same model answers the person's questions twice: once with the records joined into a Cascade pod and read through tools, once with the same downloads read whole, as if pasted into the chat. Judges score both blind. A program checks every cited fact.</p>
 <h2>The two arms</h2>
@@ -245,19 +252,22 @@ ${builds(runs)}
   return page({
     path: "how_it_works.html",
     title: "How the test works — Cascade evals",
-    crumbs: [["Cascade evals", "index.html"], ["How the test works"]],
+    crumbs: [...above, ["Cascade evals", "index.html"], ["How the test works"]],
     body,
   });
 }
 
 /**
  * Every page of the site, by path from its root. One run is laid out at the root; several are each under
- * `runs/<name>/`, newest first as given.
+ * `runs/<name>/`, newest first as given. A report published under a page of its own, `home`, a path from the report's
+ * root that starts with `../`, has a first crumb back to it.
  */
 export function renderSite(
   runs: readonly { name: string; results: Results }[],
   history = runs.length !== 1,
+  home?: string,
 ): Map<string, string> {
+  const above: Above = home === undefined ? [] : [["Cascade pods", home]];
   const site = new Map<string, string>();
   const entries: Entry[] = [];
   for (const { name, results } of runs)
@@ -268,14 +278,15 @@ export function renderSite(
       );
       entries.push({ name, results, instance, where });
       for (const [path, html] of runPages(results, instance, where, [
+        ...above,
         ["Cascade evals", "index.html"],
       ]))
         site.set(path, html);
     }
   for (const [id] of people(entries))
-    site.set(personPath(id), personPage(id, entries));
-  site.set("index.html", frontPage(entries));
-  site.set("how_it_works.html", howPage(runs));
+    site.set(personPath(id), personPage(id, entries, above));
+  site.set("index.html", frontPage(entries, above));
+  site.set("how_it_works.html", howPage(runs, above));
   return site;
 }
 
@@ -296,16 +307,17 @@ async function load(path: string): Promise<Results> {
   );
 }
 
-/** Builds the site of one run's folder, or of every run in history/. Returns the index. */
+/** Builds the site of one run's folder, or of every run in history/, with a crumb to `home` when given. Returns the index. */
 export async function buildSite(
   from: { run?: string; history?: boolean },
   out?: string,
+  home?: string,
 ): Promise<string> {
   if (from.history !== true) {
     const folder = runFolder(from.run ?? "");
     const results = await load(join(folder, "results.json"));
     return write(
-      renderSite([{ name: results.run.id, results }], false),
+      renderSite([{ name: results.run.id, results }], false, home),
       resolve(out ?? join(folder, "site")),
     );
   }
@@ -316,7 +328,7 @@ export async function buildSite(
       if (existsSync(path)) runs.push({ name, results: await load(path) });
     }
   return write(
-    renderSite(runs, true),
+    renderSite(runs, true, home),
     resolve(out ?? join(HISTORY, "..", "site")),
   );
 }

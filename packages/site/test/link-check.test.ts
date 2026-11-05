@@ -136,8 +136,11 @@ function run(args: string[]): Promise<{ code: number; said: string }> {
   );
 }
 
-const page = (body: string, title = "A page"): string =>
+/** A page of the hub that has no link back to the front page. */
+const bare = (body: string, title = "A page"): string =>
   `<!DOCTYPE html><html><head><title>${title}</title><link rel="stylesheet" href="${SITE}site.css"></head><body><h1 id="top-heading">${title}</h1>${body}</body></html>`;
+const page = (body: string, title = "A page"): string =>
+  bare(`<nav><a href="${SITE}">Cascade pods</a></nav>${body}`, title);
 
 test("a tree whose every link resolves passes: files, folders, anchors, a mailto, an external link that fails once, one that refuses HEAD, one whose host stays down (a warning, not a dead link), an allowlisted host never asked, and a GitHub link into a checkout", async () => {
   const { code, said } = await check(
@@ -202,11 +205,31 @@ test("a tree with a dead file, a dead anchor, a dead external link and a GitHub 
   assert.ok(!said.includes("sub/page.html#there"), said);
 });
 
+test("every page but the front page must link the front page, as a folder or index.html, relative or absolute, with a fragment, and the check names each page that does not", async () => {
+  const { code, said } = await check({
+    "site.css": "",
+    "index.html": bare(`<a href="a.html">a</a>`),
+    "a.html": bare(`<a href="sub/e.html">e</a>`),
+    "sub/b.html": bare(`<a href="../index.html">front</a>`),
+    "sub/c.html": bare(`<a href="../#repositories">front</a>`),
+    "sub/d.html": bare(`<a href="${SITE}index.html#x">front</a>`),
+    "sub/e.html": bare(`<a href="../sub/">not the front</a>`),
+    "sub/index.html": bare(`<a href="${SITE}">front</a>`),
+    "terms/index.html": bare(""),
+    "llms.txt": "a text file needs no link",
+  });
+  assert.equal(code, 1, said);
+  const failed = said.split("\n").filter((line) => line.startsWith("FAIL"));
+  assert.deepEqual(failed, [
+    "FAIL a.html, sub/e.html, terms/index.html: links no way back to the front page",
+  ]);
+});
+
 const HUB = SITE;
 const tree = (): Record<string, string> => ({
   "site.css": "",
   "index.html": page(
-    `<h2 id="repositories">r</h2><table>${["a", "b", "c", "d", "e", "f"]
+    `<h2 id="repositories">r</h2><table>${["a", "b", "c", "d", "e", "f", "g"]
       .map(
         (name) =>
           `<tr id="repository-${name}"><td><a href="${origin}/${name === "a" ? "someone-else" : "jayostis"}/${name}">${name}</a></td></tr>`,
@@ -224,6 +247,10 @@ test("each repository's README must have a Docs block whose first link is the hu
     `# a\n\n## Docs\n\n- [The hub](${HUB}): home\n- [Terms](${HUB}terms/#foaf:name): terms\n- [Elsewhere](${origin}/ok)\n- [Local](docs/guide.md)\n\n## Other\n\n[ignored](${origin}/gone)`,
   );
   READMES.set("jayostis/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
+  READMES.set(
+    "jayostis/g",
+    `# g\n\nintro\n\n\`\`\`\n## Docs in a fence\n\`\`\`\n\n## What it is\n\n## Docs\n\n- [The hub](${HUB})`,
+  );
   READMES.set(
     "jayostis/c",
     `# c\n\n## Docs\n\n- [Terms first](${HUB}terms/)\n- [The hub](${HUB})`,
@@ -245,6 +272,7 @@ test("each repository's README must have a Docs block whose first link is the hu
     `${HUB}terms/#nope`,
     "docs/missing.md",
     "deeper/missing.md",
+    'README g: the ## Docs block is not the first ## section of the README: "What it is" comes before it',
     "README e: no README",
     "WARN README f: ",
   ])
@@ -330,7 +358,7 @@ test("the .txt and .md files a site serves are checked too, their links resolved
 });
 
 const live = (body: string): string =>
-  `<!DOCTYPE html><html><body>${body}</body></html>`;
+  `<!DOCTYPE html><html><body><a href="${origin}/site/">Cascade pods</a>${body}</body></html>`;
 
 test("the crawl follows links from the front page to pages of the site, however deep, and fails on a dead link there", async () => {
   LIVE.clear();

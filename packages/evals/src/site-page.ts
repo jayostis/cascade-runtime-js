@@ -14,7 +14,7 @@ export const hrefTo = (from: string, to: string) => {
 export interface Frame {
   readonly path: string;
   readonly title: string;
-  /** Each crumb with the path it opens; the last has none. */
+  /** Each crumb with the path it opens, from the site's root or, ahead of it, beginning with `../`; the last has none. */
   readonly crumbs: readonly (readonly [string, string?])[];
   readonly body: string;
   /** A page made for paper has no theme button or footer. */
@@ -26,7 +26,7 @@ export function page(frame: Frame): string {
     .map(([label, to]) =>
       to === undefined
         ? `<span style="margin:0">${esc(label)}</span>`
-        : `<a href="${hrefTo(frame.path, to)}">${esc(label)}</a><span>›</span>`,
+        : `<a href="${to.startsWith("../") ? `${"../".repeat(frame.path.split("/").length - 1)}${to}` : hrefTo(frame.path, to)}">${esc(label)}</a><span>›</span>`,
     )
     .join("");
   return `<!doctype html>

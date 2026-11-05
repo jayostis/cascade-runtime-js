@@ -53,6 +53,8 @@ export interface SiteOptions {
   readonly blob?: string;
   /** The term reference's address from the site's root, before the `#`; without one, a term links nowhere. */
   readonly terms?: string;
+  /** The hub's front page's address from the site's root; without one, the site's pages link nowhere back. */
+  readonly front?: string;
   /** The spec's pages' folder from the site's root, with its slash; without one, a view names no rule. */
   readonly spec?: string;
 }

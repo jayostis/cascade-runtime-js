@@ -1,5 +1,11 @@
 import { type Content, Html, markup } from "./html.js";
-import { noteHref, noteLinkOf, pageNameOf, ruleHref } from "./links.js";
+import {
+  frontPageLink,
+  noteHref,
+  noteLinkOf,
+  pageNameOf,
+  ruleHref,
+} from "./links.js";
 import { renderWithHeadings, type TableAddition } from "./markdown.js";
 import {
   type Citation,
@@ -61,6 +67,7 @@ function page(
 </head>
 <body>
 <nav>
+${frontPageLink(1)}
 <a href="${DECISIONS_INDEX}">Decision notes</a>
 <a href="${UP}spec/index.html">The runtime's rules</a>
 </nav>
