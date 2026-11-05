@@ -1,11 +1,24 @@
-/** Where on the front page a section's rows go: the part of the page that is for a newcomer building, or for one looking at a pod. */
-export type Kind = "build" | "explore";
+/** What a reader came for: a row of the front page's "Find your way" table, which `front-page.ts` words and orders. */
+export type Want =
+  | "see"
+  | "build"
+  | "model"
+  | "why"
+  | "rules"
+  | "conformance"
+  | "adapters"
+  | "pods"
+  | "evals"
+  | "agent"
+  | "contribute";
 
 /** A section's line on the front page. */
 export interface Row {
   /** Relative to the tree's root, or absolute. */
   readonly href: string;
   readonly label: string;
+  /** The row of the table the link goes in; the section's own when none. */
+  readonly want?: Want;
   /** Said after the link. */
   readonly about?: string;
   /** A second, quieter link on the same line. */
@@ -20,7 +33,8 @@ export interface Section<Ctx> {
   /** The section's entry page in the tree, which `build` writes. */
   readonly path: string;
   readonly title: string;
-  readonly kind: Kind;
+  /** The row of the table that the section's entry page, and any row of it naming no other, goes in. */
+  readonly want: Want;
   /** What the section is, in a line; `llms.txt` lists the entry page with it when no row of the section names that page. */
   readonly about?: string;
   /** What its files are built from, as `index.json` says; the section's title when none. */
@@ -55,7 +69,8 @@ export type Finisher<Ctx> = (
   ctx: Ctx,
 ) => Promise<ReadonlyMap<string, Uint8Array>>;
 
-export type Rows = ReadonlyMap<Kind, readonly Row[]>;
+/** Every row, by what it is wanted for. */
+export type Rows = ReadonlyMap<Want, readonly Row[]>;
 
 export interface BuildOptions<Ctx> {
   readonly sections: readonly Section<Ctx>[];
@@ -124,9 +139,12 @@ export async function buildTree<Ctx>({
       rows: await section.rows(ctx),
     });
   }
-  const rows = new Map<Kind, Row[]>();
+  const rows = new Map<Want, Row[]>();
   for (const { section, rows: listed } of built)
-    rows.set(section.kind, [...(rows.get(section.kind) ?? []), ...listed]);
+    for (const row of listed) {
+      const want = row.want ?? section.want;
+      rows.set(want, [...(rows.get(want) ?? []), row]);
+    }
   add(tree, await front(rows, ctx), "the front page");
   const walk: Walk<Ctx> = { tree, sections: built };
   for (const finish of finishers)

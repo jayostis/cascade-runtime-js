@@ -6,7 +6,7 @@ import type { PagesContext } from "./context.js";
 export const trySection: Section<PagesContext> = {
   path: TRY_PAGE,
   title: "An app running in your browser",
-  kind: "build",
+  want: "see",
   source:
     "the starter kit's published site, which this page sends a visitor on to",
   async build() {

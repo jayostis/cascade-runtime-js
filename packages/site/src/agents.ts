@@ -1,7 +1,7 @@
-import { FRONT_PAGE, PART_TITLES } from "./front-page.js";
+import { FRONT_PAGE, WANT_ORDER, WANTS } from "./front-page.js";
 import { Html, markup } from "./html.js";
 import { renderMarkdown, renderWithHeadings } from "./markdown.js";
-import { isLocal, pageOf, type Row, type Walk } from "./sections.js";
+import { isLocal, pageOf, type Row, type Walk, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 
 export const LLMS_FILE = "llms.txt";
@@ -158,25 +158,23 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
       : []),
   ];
 
-  const kinds = new Map<string, string[]>();
+  const wanted = new Map<Want, string[]>();
   const optional: string[] = [];
   for (const { section, rows } of sections) {
-    const lines =
-      section.optional === true ? optional : (kinds.get(section.kind) ?? []);
     const named = rows.some(({ href }) => pageOf(href) === section.path);
     const own: readonly Row[] =
       named || section.about === undefined
         ? []
         : [{ href: section.path, label: section.title, about: section.about }];
-    for (const { href, label, about } of [...rows, ...own])
-      if (once(href)) lines.push(item(label, at(href), about));
-    if (section.optional !== true) kinds.set(section.kind, lines);
+    for (const { href, label, about, want = section.want } of [...rows, ...own])
+      if (once(href)) {
+        const lines =
+          section.optional === true ? optional : (wanted.get(want) ?? []);
+        lines.push(item(label, at(href), about));
+        if (section.optional !== true) wanted.set(want, lines);
+      }
   }
-  const place = (kind: string): number => {
-    const found = Object.keys(PART_TITLES).indexOf(kind);
-    return found === -1 ? Object.keys(PART_TITLES).length : found;
-  };
-  const parts = [...kinds.keys()].sort((a, b) => place(a) - place(b));
+  const parts = WANT_ORDER.filter((want) => wanted.has(want));
 
   const llms = [
     `# ${title}`,
@@ -188,10 +186,10 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
     ...(forAgents.length === 0
       ? []
       : ["## For an agent", "", ...forAgents, ""]),
-    ...parts.flatMap((kind) => [
-      `## ${(PART_TITLES as Readonly<Record<string, string>>)[kind] ?? kind}`,
+    ...parts.flatMap((want) => [
+      `## ${WANTS[want].charAt(0).toUpperCase()}${WANTS[want].slice(1)}`,
       "",
-      ...(kinds.get(kind) ?? []),
+      ...(wanted.get(want) ?? []),
       "",
     ]),
     ...(optional.length === 0 ? [] : ["## Optional", "", ...optional, ""]),

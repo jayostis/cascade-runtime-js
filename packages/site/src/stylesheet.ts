@@ -34,6 +34,8 @@ table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; vertical-align: top; padding: .3rem .6rem; border-bottom: 1px solid var(--line);
          overflow-wrap: anywhere; }
 th { background: var(--panel); font: 600 .85rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
+#find-your-way ul { margin: 0; padding-left: 1.1rem; }
+#find-your-way th[scope="row"], #repository-list th[scope="row"] { white-space: normal; font: 600 .95rem/1.4 system-ui, sans-serif; width: 14rem; }
 td code { color: var(--quiet); font-size: .8rem; }
 details { margin: .5rem 0 0; }
 summary { cursor: pointer; color: var(--link); }
@@ -52,6 +54,7 @@ details pre { background: var(--panel); padding: .75rem; overflow-x: auto; borde
   table, tbody, tr, td { display: block; }
   tr { border-bottom: 1px solid var(--rule); padding: .5rem 0; }
   td { border: 0; padding: .1rem 0; }
+  #find-your-way th[scope="row"], #repository-list th[scope="row"] { display: block; width: auto; background: none; padding-left: 0; border: 0; }
   td:empty { display: none; }
   td::before { content: attr(data-label); display: block; color: var(--quiet); font: .75rem ui-monospace, monospace; }
 }

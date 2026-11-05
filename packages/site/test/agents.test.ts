@@ -49,7 +49,7 @@ function made(
   return {
     path,
     title,
-    kind: "explore",
+    want: "see",
     build: async () => new Map(Object.entries(files)),
     rows: async () => [],
     ...more,
@@ -101,7 +101,7 @@ test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sectio
         "Section A",
         { "a/index.html": page("A"), "a/one (two).html": page("x") },
         {
-          kind: "build",
+          want: "build",
           about: "what A is",
           rows: async () => [
             { href: "a/", label: "Open A", about: "its first line" },
@@ -254,7 +254,7 @@ test("a build writes the same llms.txt and index.json whatever order a section l
           "Section A",
           Object.fromEntries(order.map((path) => [path, page(path)])),
           {
-            kind: "build",
+            want: "build",
             rows: async () => [{ href: "a/", label: "Open A" }],
           },
         ),
@@ -278,7 +278,7 @@ test("with a base address, the local links of llms.txt are absolute under it and
       "Section A",
       { "a/index.html": page("A"), [AGENTS_FILE]: text("# guide") },
       {
-        kind: "build",
+        want: "build",
         rows: async () => [
           { href: "a/", label: "Open A", about: "its line" },
           { href: "https://example.org/x", label: "Elsewhere" },
@@ -339,7 +339,7 @@ test("llms.txt lists a section marked optional last, under the llmstxt.org headi
         "Optional one",
         { "o/index.html": page("O") },
         {
-          kind: "build",
+          want: "build",
           about: "may be skipped",
           optional: true,
         },
@@ -349,7 +349,7 @@ test("llms.txt lists a section marked optional last, under the llmstxt.org headi
         "Section A",
         { "a/index.html": page("A") },
         {
-          kind: "explore",
+          want: "see",
           about: "read this",
         },
       ),

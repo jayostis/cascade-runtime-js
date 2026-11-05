@@ -11,11 +11,11 @@ interface Evals {
   buildSite(from: { history: true }, out: string): Promise<string>;
 }
 
-/** The eval report from the recorded runs in packages/evals/history, under evals/. No row yet: the front page does not list it. */
+/** The eval report from the recorded runs in packages/evals/history, under evals/. */
 export const evalsSection: Section<PagesContext> = {
   path: "evals/index.html",
   title: "Evals",
-  kind: "explore",
+  want: "evals",
   about:
     "recorded runs of a model answering a person's questions from a pod, against reading her downloads in full.",
   source: "packages/evals/history in cascade-runtime-js",
@@ -40,6 +40,13 @@ export const evalsSection: Section<PagesContext> = {
     }
   },
   async rows() {
-    return [];
+    return [
+      {
+        href: "evals/",
+        label: "How well a model answers from a pod",
+        about:
+          "recorded runs of a model answering a person's questions, against reading her downloads in full.",
+      },
+    ];
   },
 };

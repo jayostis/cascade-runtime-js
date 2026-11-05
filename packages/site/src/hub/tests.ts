@@ -9,7 +9,8 @@ import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
 import type { PagesContext, TestRun } from "./context.js";
 
-export const TESTS_PAGE = "conformance/tests/index.html";
+export const TESTS_FOLDER = "conformance/tests/";
+export const TESTS_PAGE = `${TESTS_FOLDER}index.html`;
 
 /** What the section reads of the context. */
 export type TestsContext = Pick<PagesContext, "tests">;
@@ -126,7 +127,7 @@ ${unlisted}${cases.length === 0 ? "" : table(cases)}`;
 export const testsSection: Section<TestsContext> = {
   path: TESTS_PAGE,
   title: "Unit test reports",
-  kind: "explore",
+  want: "conformance",
   about:
     "the newest run on main of the runtime's tests and the vocabulary's pytest, case by case.",
   source:
@@ -161,6 +162,13 @@ ${SUITES.map((suite) => part(suite, reports[suite.key]))}</main>
     ]);
   },
   async rows() {
-    return [];
+    return [
+      {
+        href: TESTS_FOLDER,
+        label: "Unit test reports",
+        about:
+          "the newest run on main of the runtime's tests and the vocabulary's pytest, case by case.",
+      },
+    ];
   },
 };

@@ -6,7 +6,7 @@ import { findRoot } from "@cascade-runtime/runtime/node";
 import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { evalsSection } from "../src/node/hub/evals.js";
-import { buildTree, type Kind, type Section } from "../src/sections.js";
+import { buildTree, type Want, type Section } from "../src/sections.js";
 import { STYLESHEET_FILE } from "../src/site.js";
 import { readPage } from "./page.js";
 
@@ -18,13 +18,13 @@ const read = (tree: ReadonlyMap<string, Uint8Array>, path: string) =>
 /** A section that writes its one page and lists it. */
 function inMemory(
   name: string,
-  kind: Kind,
+  want: Want,
   more: Partial<Section<object>> = {},
 ): Section<object> {
   return {
     path: `${name}.html`,
     title: `The ${name}`,
-    kind,
+    want,
     build: async () => new Map([[`${name}.html`, text(name)]]),
     rows: async () => [{ href: `${name}.html`, label: `Row of ${name}` }],
     ...more,
@@ -36,7 +36,7 @@ const front = (rows: Parameters<typeof hubFiles>[1]) =>
 
 test("two in-memory sections are both built, and the front page lists both rows under their kinds, whatever the order of the list", async () => {
   const { tree, sections } = await buildTree({
-    sections: [inMemory("later", "explore"), inMemory("first", "build")],
+    sections: [inMemory("later", "agent"), inMemory("first", "build")],
     ctx: {},
     front,
   });
@@ -160,7 +160,7 @@ test("a section list is refused when two sections write one file, a section leav
 test("a finisher is handed the tree as written, every section's paths and rows, and what it returns joins the tree, but not over a file already there", async () => {
   const seen: string[] = [];
   const { tree } = await buildTree({
-    sections: [inMemory("a", "build"), inMemory("b", "explore")],
+    sections: [inMemory("a", "build"), inMemory("b", "agent")],
     ctx: {},
     front,
     finishers: [
