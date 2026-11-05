@@ -457,6 +457,7 @@ test("the hub's spec section writes the spec's pages and the conformance table w
   assert.ok(conformance.hrefs.includes("../spec/naming.html"));
   assert.ok(conformance.hrefs.includes("earl.ttl"));
   assert.ok(conformance.hrefs.includes("table.md"));
+  assert.ok(conformance.hrefs.includes("tests/index.html"));
 
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
     ran: boolean;

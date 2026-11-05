@@ -498,6 +498,7 @@ async function pagesOf() {
     report: async () => ({
       report: { results: new Map(), ranWith: [], repeated: [] },
     }),
+    tests: async () => ({}),
     examples: async () => examples,
     builtFrom: async () => built,
     start: async () => start,
