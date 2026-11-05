@@ -14,7 +14,7 @@ import type { PagesContext } from "./context.js";
 export const examplesSection: Section<PagesContext> = {
   path: EXAMPLES_PAGE,
   title: "Example pods",
-  kind: "explore",
+  want: "see",
   source:
     "cascade-vocabulary's conformance kits, replayed into pods by cascade-runtime-js",
   needsKits: true,
@@ -47,6 +47,7 @@ export const examplesSection: Section<PagesContext> = {
       ...(await ctx.examples()).map(({ folder, title }) => ({
         href: `${folder}/index.html`,
         label: `Browse ${title}'s pod`,
+        want: "pods" as const,
         about:
           "its records, its views, and every question with its SPARQL query.",
         also: {

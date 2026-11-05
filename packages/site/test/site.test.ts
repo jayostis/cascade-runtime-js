@@ -36,7 +36,7 @@ import { escape, markup } from "../src/html.js";
 import { examplesSection } from "../src/hub/examples.js";
 import { startSection } from "../src/hub/start.js";
 import { trySection } from "../src/hub/try.js";
-import { buildTree } from "../src/sections.js";
+import { buildTree, isLocal } from "../src/sections.js";
 import { Site, type SiteOptions, viewRules } from "../src/site.js";
 import { termHref, termId } from "../src/links.js";
 import { namedInQuery } from "../src/term-reference.js";
@@ -576,7 +576,7 @@ test("the Pages front page leads to the quick start, the starter kit's try/, eve
     [START_PAGE, quick],
   ] as const)
     assert.deepEqual(
-      hrefs.filter((href) => !tree.has(href) && href !== STARTER_TRY),
+      hrefs.filter((href) => isLocal(href) && !tree.has(href)),
       [],
       `${path} links a file the tree does not hold`,
     );

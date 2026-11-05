@@ -63,7 +63,7 @@ async function viewOf(
 export const adaptersSection: Section<AdaptersContext> = {
   path: ADAPTERS_PAGE,
   title: "Adapters",
-  kind: "explore",
+  want: "adapters",
   about:
     "what each source format's paths become in a Cascade pod, and what is not carried and why.",
   source:
@@ -106,7 +106,7 @@ export const adaptersSection: Section<AdaptersContext> = {
     return [
       {
         href: ADAPTERS_FOLDER,
-        label: "See what a source format becomes",
+        label: "See where each FHIR R4 or C-CDA path goes",
         about:
           "each adapter's crosswalk from a FHIR R4 or C-CDA path to the Cascade term and record it is written as, and what it drops and why",
       },

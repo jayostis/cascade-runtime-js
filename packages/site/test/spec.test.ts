@@ -448,8 +448,8 @@ test("the hub's spec section writes the spec's pages and the conformance table w
     assert.ok(tree.has(path), path);
   assert.deepEqual(tree.get("conformance/table.md"), table);
   const front = readPage(treeText(tree, "index.html"));
-  assert.ok(front.hrefs.includes("spec/index.html"));
-  assert.ok(front.hrefs.includes("conformance/index.html"));
+  assert.ok(front.hrefs.includes("spec/"));
+  assert.ok(front.hrefs.includes("conformance/"));
 
   const conformance = readPage(treeText(tree, "conformance/index.html"));
   assert.match(conformance.said, /Naming 4 1 1 1/);
@@ -646,9 +646,7 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
   assert.ok(index.hrefs.includes("naming.html"));
   assert.ok(index.hrefs.includes(`${BLOB}decisions/README.md`));
   assert.ok(
-    readPage(treeText(tree, "index.html")).hrefs.includes(
-      "decisions/index.html",
-    ),
+    readPage(treeText(tree, "index.html")).hrefs.includes("decisions/"),
   );
 });
 

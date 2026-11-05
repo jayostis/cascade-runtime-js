@@ -19,7 +19,7 @@ const PACKAGE = ["packages", "cascade-runtime"];
 export const apiSection: Section<PagesContext> = {
   path: API_PAGE,
   title: "The API",
-  kind: "build",
+  want: "build",
   about:
     "openPod and every call of cascade-runtime, as the guide a coding agent reads.",
   source:
@@ -38,11 +38,17 @@ export const apiSection: Section<PagesContext> = {
         href: "api/",
         label: "The API: openPod and every call",
         about: "what a coding agent reads, as a page.",
-        also: { href: AGENTS_FILE, label: AGENTS_FILE },
+      },
+      {
+        href: AGENTS_FILE,
+        label: "The guide as a file",
+        want: "agent",
+        about: "AGENTS.md, what to give a coding agent.",
       },
       {
         href: LLMS_FILE,
         label: "Point an agent at this site",
+        want: "agent",
         about: "llms.txt, and an index of every page as JSON.",
         also: { href: INDEX_FILE, label: INDEX_FILE },
       },

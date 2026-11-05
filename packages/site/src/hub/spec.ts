@@ -36,7 +36,7 @@ const total = (
 export const specSection: Section<SpecContext> = {
   path: `${SPEC_FOLDER}index.html`,
   title: "The runtime's rules and their results",
-  kind: "explore",
+  want: "rules",
   source:
     "cascade-vocabulary's features and decision notes, and the latest conformance run on main",
   async build(ctx) {
@@ -144,22 +144,30 @@ ${ranWithList("The results are of the run with:", report.ranWith)}</footer>
   async rows() {
     return [
       {
-        href: `${SPEC_FOLDER}index.html`,
+        href: SPEC_FOLDER,
         label: "The runtime's rules",
         about:
           "every rule beside the note that ruled it, its examples and their latest result.",
       },
       {
-        href: `${CONFORMANCE_FOLDER}index.html`,
+        href: CONFORMANCE_FOLDER,
         label: "Conformance results",
+        want: "conformance",
         about:
           "the reference runtime's pass and fail for each feature, from the latest run on main.",
       },
       {
-        href: `${DECISIONS_FOLDER}index.html`,
+        href: DECISIONS_FOLDER,
         label: "Decision notes",
+        want: "why",
         about:
           "why each term, rule and shape is as it is, each Choice row beside the rules that apply it.",
+      },
+      {
+        href: `${DECISIONS_FOLDER}#the-bar`,
+        label: "How decisions are made",
+        want: "contribute",
+        about: "what a note must show, and who reads it before it is accepted.",
       },
     ];
   },

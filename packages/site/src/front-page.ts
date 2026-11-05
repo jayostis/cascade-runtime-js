@@ -1,15 +1,90 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
 import { type Content, markup } from "./html.js";
-import type { Kind, Row, Rows } from "./sections.js";
+import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { COPY } from "./terms.js";
 
-/** The heading of each part of the front page, which `llms.txt` groups its links under too. */
-export const PART_TITLES: Readonly<Record<Kind, string>> = {
-  build: "Build an app",
-  explore: "Explore a pod",
+/**
+ * What a reader came for, in the order the front page's table lists it and `llms.txt` groups its links: the table's
+ * "I want to" column, which `llms.txt` capitalises for a heading.
+ */
+export const WANTS: Readonly<Record<Want, string>> = {
+  see: "see it work",
+  build: "build an app",
+  model: "understand the data model",
+  why: "know why it is built this way",
+  rules: "read the rules",
+  conformance: "check conformance",
+  adapters: "map FHIR or C-CDA to the model",
+  pods: "look inside a pod",
+  evals: "see how well a model answers from a pod",
+  agent: "point an agent at it",
+  contribute: "contribute",
 };
+
+/** The table's rows in order. */
+export const WANT_ORDER = Object.keys(WANTS) as readonly Want[];
+
+/** The place on the front page that lists every repository, which the contribute row links. */
+export const REPOSITORIES_ANCHOR = "#repositories";
+
+export const OWNER = "https://github.com/jayostis";
+
+export interface Repository {
+  readonly name: string;
+  readonly about: string;
+  /** Its own site, when it has one. */
+  readonly site?: string;
+}
+
+/** Every repository of the project that is live: not the archived bridge-js or clinvar, nor the private health assistant. */
+export const REPOSITORIES: readonly Repository[] = [
+  {
+    name: "cascade-vocabulary",
+    about:
+      "The terms, shapes, queries and rules a pod is built and read by, and the conformance kits that test a runtime.",
+  },
+  {
+    name: "cascade-runtime-js",
+    about:
+      "The reference runtime, in TypeScript: it opens a pod, runs its questions and builds these pages.",
+  },
+  {
+    name: "cascade-bridge-spec",
+    about:
+      "The Cascade Bridge specification: the contract every adapter and bridge follows.",
+  },
+  {
+    name: "cascade-bridge-rs",
+    about:
+      "Cascade Bridge in Rust: it runs adapters under the sparql-1.1 profile.",
+  },
+  {
+    name: "cascade-bridge-adapter-fhir-r4",
+    about: "The adapter that turns FHIR R4 JSON into Cascade records.",
+  },
+  {
+    name: "cascade-bridge-adapter-ccda",
+    about: "The adapter that turns C-CDA R2.1 XML into Cascade records.",
+  },
+  {
+    name: "cascade-starter-kit",
+    about:
+      "The app template create-cascade-app makes, and the try/ page that runs one in your browser.",
+  },
+  {
+    name: "cascade-reference-tables",
+    about:
+      "The reference tables the matcher joins records of the same thing by, their builders, and the feed apps read.",
+    site: "https://jayostis.github.io/cascade-reference-tables/",
+  },
+  {
+    name: "cascade-sandbox",
+    about:
+      "A pretend health system with a past: demo FHIR hospitals that answer as of a date, for testing apps.",
+  },
+];
 
 export const FRONT_PAGE = "index.html";
 export const START_PAGE = "start.html";
@@ -107,18 +182,74 @@ export function viewTitles(layout: Layout): string[] {
   });
 }
 
-const rowList = (rows: readonly Row[] = []): Content =>
-  rows.length === 0
-    ? ""
-    : markup`<ul>
-${rows.map(
-  ({ href, label, about, also }) =>
-    markup`<li><a href="${href}">${label}</a>${about === undefined ? "" : markup`: ${about}`}${also === undefined ? "" : markup` <a class="also" href="${also.href}">${also.label}</a>`}</li>
-`,
-)}</ul>
+const entry = ({ href, label, about, also }: Row): Content =>
+  markup`<li><a href="${href}">${label}</a>${about === undefined ? "" : markup`: ${about}`}${also === undefined ? "" : markup` <a class="also" href="${also.href}">${also.label}</a>`}</li>
 `;
 
-function frontPage(kinds: readonly string[], rows: Rows): string {
+/** The rows by what they are wanted for, the link to the list of repositories among those of the contribute row. */
+function withRepositories(rows: Rows): Rows {
+  return new Map([
+    ...rows,
+    [
+      "contribute",
+      [
+        ...(rows.get("contribute") ?? []),
+        { href: REPOSITORIES_ANCHOR, label: "Every repository" },
+      ],
+    ],
+  ]);
+}
+
+/** Refuses a page that links an address twice: a reader who finds one in two places wonders which is the real one. */
+function checkOnce(rows: Rows): void {
+  const seen = new Set<string>();
+  const once = (href: string): void => {
+    const address = addressOf(href);
+    if (seen.has(address))
+      throw new Error(`the front page links ${href} twice`);
+    seen.add(address);
+  };
+  for (const listed of rows.values())
+    for (const { href, also } of listed) {
+      once(href);
+      if (also !== undefined) once(also.href);
+    }
+  for (const { name, site } of REPOSITORIES) {
+    once(`${OWNER}/${name}`);
+    if (site !== undefined) once(site);
+  }
+}
+
+const findYourWay = (rows: Rows): Content => markup`<table id="find-your-way">
+<thead><tr><th scope="col">I want to&hellip;</th><th scope="col">Go here</th></tr></thead>
+<tbody>
+${WANT_ORDER.flatMap((want) => {
+  const listed = rows.get(want) ?? [];
+  return listed.length === 0
+    ? []
+    : [
+        markup`<tr id="want-${want}"><th scope="row">${WANTS[want]}</th><td><ul>
+${listed.map(entry)}</ul></td></tr>
+`,
+      ];
+})}</tbody>
+</table>
+`;
+
+const repositories = markup`<h2 id="repositories">Every repository</h2>
+<table id="repository-list">
+<tbody>
+${REPOSITORIES.map(
+  ({ name, about, site }) =>
+    markup`<tr id="repository-${name}"><th scope="row"><a href="${OWNER}/${name}">${name}</a></th><td>${about}${site === undefined ? "" : markup` <a class="also" href="${site}">its site</a>`}</td></tr>
+`,
+)}</tbody>
+</table>
+`;
+
+function frontPage(kinds: readonly string[], listed: Rows): string {
+  const rows = withRepositories(listed);
+  checkOnce(rows);
   return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -132,19 +263,15 @@ function frontPage(kinds: readonly string[], rows: Rows): string {
 <h1>Cascade pods</h1>
 <p class="prose">A pod holds one person's health records as files, and an app reads and writes it through
 <code>cascade-runtime</code>.</p>
-<h2 class="part">${PART_TITLES.build}</h2>
-<p class="prose">One command makes a working app on a pod, and a coding agent builds your idea on it.</p>
-${rowList(rows.get("build"))}<h2 class="part">${PART_TITLES.explore}</h2>
-<p class="prose">A pod is one person's records as RDF files, laid out as cascade-vocabulary says, and every view and
-question that reads it is a SPARQL query.</p>
-${rowList(rows.get("explore"))}<h3>What a pod holds today</h3>
+<h2 id="find-your-way-heading">Find your way</h2>
+${findYourWay(rows)}<h3>What a pod holds today</h3>
 <ul>
 ${kinds.map((kind) => markup`<li>${kind}</li>\n`)}</ul>
 <p class="prose">Records come in from two formats: FHIR R4, from the clinical records of an Apple Health export, and C-CDA, a
 summary of care as a patient portal hands it out. The matcher joins one record across both. Vital signs, notes and daily
 measurements are not yet held. The reference tables the matcher uses to join records of the same thing are alpha test data,
 so a real export shows fewer automatic joins than the example pods.</p>
-</main>
+${repositories}</main>
 </body>
 </html>
 `.text;

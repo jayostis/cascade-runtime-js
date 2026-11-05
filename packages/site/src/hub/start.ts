@@ -6,7 +6,7 @@ import type { PagesContext } from "./context.js";
 export const startSection: Section<PagesContext> = {
   path: START_PAGE,
   title: "Quick start",
-  kind: "build",
+  want: "build",
   source:
     "cascade-starter-kit's newest build and cascade-vocabulary's pod layout",
   needsKits: true,
