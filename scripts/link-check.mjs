@@ -31,6 +31,10 @@ const ALLOWED = new Map([
   ["loinc.org", "403 to bots"],
   ["snomed.info", "refuses automated requests"],
   ["w3id.org/semapv/vocab/", "the SEMAPV namespace IRI, not a document"],
+  [
+    "ns.cascadeprotocol.org",
+    "namespace and example IRIs named in prose, not documents; they answer 404 until a redirect the maintainer owns is set",
+  ],
 ]);
 
 /** Addresses known dead and not ours to fix here, each with the issue that tracks it; an entry goes when its issue closes. */
@@ -115,13 +119,21 @@ const linksOf = (html) =>
     ([, a, b]) => unescaped(a ?? b ?? ""),
   );
 
-/** The addresses of a served text file: Markdown links as in a README, and bare URLs. */
-const linksOfText = (text) => [
+/** A Markdown file without its code fences and code spans, whose addresses are examples, not links. */
+const outsideCode = (text) =>
+  text
+    .replace(/^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1.*$/gm, "")
+    .replace(/`[^`\n]*`/g, "");
+
+/** The addresses of a served text file: Markdown links as in a README, and bare URLs, those in code of a .md file left out. */
+const linksOfText = (text, markdown) => [
   ...new Set([
     ...markdownLinks(text),
-    ...[...text.matchAll(/https?:\/\/[^\s<>)\]"'`]+/g)].map(([url]) =>
-      url.replace(/[.,;:!?]+$/, ""),
-    ),
+    ...[
+      ...(markdown ? outsideCode(text) : text).matchAll(
+        /https?:\/\/(?:[^\s<>()\]"'`]|\([^\s<>()]*\))+/g,
+      ),
+    ].map(([url]) => url.replace(/[.,;:!?]+$/, "")),
   ]),
 ];
 
@@ -176,9 +188,11 @@ const fail = (where, link, why) => failures.push({ where, link, why });
 /** An answer that says nothing about the address: a host that is slow, limiting or down, as opposed to one that says it is gone. */
 const isDown = ({ status, error }) =>
   error === undefined ? status === 429 || status >= 500 : !GONE.has(error);
-/** A problem with an address of the site or a README: a warning when the host did not answer, a dead link otherwise. */
-const problem = (answer, where, link, why) =>
-  (isDown(answer) ? unverified : failures).push({ where, link, why });
+/** A problem with an address of the site or a README: a warning when the host did not answer, a dead link otherwise; a page of the crawled site that never answers 2xx is a dead link either way. */
+const problem = (answer, where, link, why, ownPage = false) =>
+  (isDown(answer) && !(ownPage && settings.crawl) ? unverified : failures).push(
+    { where, link, why },
+  );
 
 const pending = new Map();
 const counts = {
@@ -232,6 +246,7 @@ async function checkInternal(url, hash, where, written) {
       where,
       written,
       `${found.status ?? found.error}: ${url} is not on the site`,
+      true,
     );
   if (hash === "" || hash === "top" || found.ids === undefined) return;
   if (!found.ids.has(decoded(hash)))
@@ -445,13 +460,14 @@ async function scan(url) {
       where,
       url,
       `${found.status ?? found.error}: a page of the site that is not served`,
+      true,
     );
     return;
   }
   counts.pages += 1;
   const links = HTML.test(new URL(url).pathname)
     ? linksOf(found.text)
-    : linksOfText(found.text);
+    : linksOfText(found.text, url.endsWith(".md"));
   await Promise.all(
     links.map(async (written) => {
       await checkLink(written, url, where);
@@ -654,7 +670,7 @@ function report(label, list, note = "") {
 report(
   "WARN",
   unverified,
-  ` (no answer after ${ATTEMPTS} tries; not counted as dead)`,
+  ` (no 2xx after ${ATTEMPTS} tries: no answer, 429 or 5xx; not counted as dead)`,
 );
 report("WARN", stale);
 const dead = report("FAIL", failures);

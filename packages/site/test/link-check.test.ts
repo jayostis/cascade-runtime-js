@@ -315,11 +315,13 @@ test("the .txt and .md files a site serves are checked too, their links resolved
     "site.css": "",
     "index.html": page(""),
     "llms.txt": `# Hub\n\n- [Fine](index.html): ok\n- [Dead](missing-page.html): gone\n\nSee ${origin}/gone for more.`,
-    "docs/AGENTS.md": `[Up](../index.html) [Sibling](nope.md)`,
+    "docs/AGENTS.md": `[Up](../index.html) [Sibling](nope.md)\n\nIn a span \`${origin}/in-span/missing.md\` and\n\n\`\`\`\n${origin}/in-fence/missing.md\n\`\`\`\n`,
   });
   assert.equal(code, 1, said);
   for (const dead of ["missing-page.html", `${origin}/gone`, "nope.md"])
     assert.ok(said.includes(dead), `${dead} is not named in:\n${said}`);
+  assert.ok(!said.includes("in-span/missing.md"), said);
+  assert.ok(!said.includes("in-fence/missing.md"), said);
   assert.ok(
     !said.includes("-> 404: https://hub.test/cascade/index.html"),
     said,
@@ -344,15 +346,19 @@ test("the crawl follows links from the front page to pages of the site, however 
   assert.ok(said.includes("4 pages"), said);
 });
 
-test("a page of the live site that answers 5xx is a warning, and 404 is a dead link", async () => {
+test("a page of the live site that never answers 2xx is a dead link, 5xx or 404; an external address that answers 5xx is a warning", async () => {
   LIVE.clear();
   const site = `${origin}/site/`;
+  LIVE.set("", live(`<a href="${origin}/down">elsewhere</a>`));
+  const external = await run(["--crawl", "--site", site]);
+  assert.equal(external.code, 0, external.said);
+  assert.ok(external.said.includes("WARN"), external.said);
   LIVE.set("", live(`<a href="down.html">down</a>`));
   LIVE.set("down.html", 503);
   const down = await run(["--crawl", "--site", site, "--no-external"]);
-  assert.equal(down.code, 0, down.said);
+  assert.equal(down.code, 1, down.said);
   assert.ok(
-    down.said.includes("WARN") && down.said.includes("down.html"),
+    down.said.includes("FAIL") && down.said.includes("down.html"),
     down.said,
   );
   LIVE.set("", live(`<a href="gone.html">gone</a>`));
