@@ -65,6 +65,16 @@ interface Building {
 }
 
 /**
+ * The failures node:test counts in the `<!-- fail N -->` comment ending its report, or undefined when there is none (pytest
+ * writes no such comment). Its JUnit elements leave out a failure of a test that has subtests, or of a hook, so N can exceed
+ * the failed cases the elements list.
+ */
+export function declaredFailures(xml: string): number | undefined {
+  const found = /<!--\s*fail\s+(\d+)\s*-->/.exec(xml);
+  return found === null ? undefined : Number(found[1]);
+}
+
+/**
  * The cases of a JUnit report, in the order written. Reads what pytest and node:test write: a case is failed when it holds a
  * `failure` or an `error`, skipped when it holds `skipped`. A case that names its `file` (node:test) is in that file, and
  * the describe blocks it sits in are part of its name; one that names a `classname` (pytest) is in that module.
@@ -120,7 +130,11 @@ export function parseJunit(xml: string): TestCase[] {
           file !== undefined
             ? sourceOf(file)
             : (attribute.get("classname") ?? inside.at(-1) ?? ""),
-        name: file !== undefined ? [...inside, name].join(" › ") : name,
+        // pytest-xdist's `loadgroup` appends `@<group>` to every id; it is the worker's, not the test's.
+        name:
+          file !== undefined
+            ? [...inside, name].join(" › ")
+            : name.replace(/@\w+$/, ""),
         result: failure === undefined ? "passed" : "failed",
         ...(attribute.has("time") && !Number.isNaN(seconds) ? { seconds } : {}),
         ...(failure === undefined ? {} : { message: failure }),

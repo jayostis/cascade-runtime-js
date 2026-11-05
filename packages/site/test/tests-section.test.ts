@@ -90,6 +90,49 @@ const failureOf = (markup: string, heading: string): string =>
     )?.[1] ?? "",
   );
 
+/**
+ * node 24.16 `--test-reporter=junit` on a describe whose `after` hook throws and a test with a subtest that throws after it:
+ * both parents say failures="0" and hold only their passing children, and only the `fail` comment records the failure.
+ * Generated, not written; only the hostname and the file's folder were replaced.
+ */
+const NODE_UNLISTED = `<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testsuite name="hook fails" time="0.002419" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="x">
+		<testcase name="child ok" time="0.000745" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js"/>
+	</testsuite>
+	<testsuite name="p" time="0.001751" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="x">
+		<testcase name="kid" time="0.000178" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js"/>
+	</testsuite>
+	<testcase name="plain ok" time="0.000183" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js"/>
+	<!-- tests 4 -->
+	<!-- suites 1 -->
+	<!-- pass 3 -->
+	<!-- fail 1 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 131.8153 -->
+</testsuites>
+`;
+
+test("a run whose node report counts more failures than it lists says so beside the count, with the run linked", async () => {
+  const { markup, page } = await pageWith({
+    runtime: { report: NODE_UNLISTED, ...RUN },
+  });
+  assert.match(page.said, /3 cases: 3 passed, 0 failed, 0 skipped/);
+  assert.match(
+    page.said,
+    /node counts 1 failure but the report lists 0 failed cases/,
+  );
+  const part = markup.split('id="runtime"')[1] ?? "";
+  assert.ok(
+    part.includes(`<a href="${RUN.url}">`),
+    "the run is linked in the runtime's part",
+  );
+  const honest = await pageWith({ runtime: { report: NODE, ...RUN } });
+  assert.doesNotMatch(honest.page.said, /node counts/);
+});
+
 test("each suite's newest run is a table of its cases with result and time, nested describes in the case, a failed case reading failed, and the run's commit, date and link", async () => {
   const { markup, page } = await pageWith({
     runtime: { report: NODE, ...RUN },
@@ -122,11 +165,7 @@ test("each suite's newest run is a table of its cases with result and time, nest
     vocabulary.map(([suite, name, result]) => [suite, name, result]),
     [
       ["tests.test_queries", "test_gone", "failed"],
-      [
-        "tests.test_naming",
-        "test_a_name[record-from-server]@test_naming",
-        "passed",
-      ],
+      ["tests.test_naming", "test_a_name[record-from-server]", "passed"],
       ["tests.test_queries", "test_later", "skipped"],
     ],
   );

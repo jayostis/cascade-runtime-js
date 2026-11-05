@@ -1,5 +1,10 @@
 import { Html, markup } from "../html.js";
-import { parseJunit, type Result, type TestCase } from "../junit.js";
+import {
+  declaredFailures,
+  parseJunit,
+  type Result,
+  type TestCase,
+} from "../junit.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
 import type { PagesContext, TestRun } from "./context.js";
@@ -100,9 +105,16 @@ function part(suite: Suite, run: TestRun | undefined): Html {
 <p class="prose">Not available: the report of that run cannot be read (${error instanceof Error ? error.message : String(error)}).</p>
 `;
   }
+  const failed = count(cases, "failed");
+  const counted = declaredFailures(run.report);
+  const unlisted =
+    counted !== undefined && counted > failed
+      ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
+`
+      : "";
   return markup`${heading}
-<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${count(cases, "failed")} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span></p>
-${cases.length === 0 ? "" : table(cases)}`;
+<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span></p>
+${unlisted}${cases.length === 0 ? "" : table(cases)}`;
 }
 
 /**

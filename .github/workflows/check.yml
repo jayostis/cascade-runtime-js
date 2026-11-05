@@ -81,7 +81,8 @@ jobs:
           if-no-files-found: warn
       - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
         run: npm run lint
-      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
+      # Nightly, the `runtime-tests` job runs the suite and keeps its report: once a night, not twice.
+      - if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' && github.event_name != 'schedule' }}
         run: npm test
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -325,9 +326,8 @@ jobs:
 
   # The conformance run of main that the Pages tree shows. `tests and conformance` is skipped on a push and its report is
   # not kept for the site, so this job runs the start action alone, on a push and nightly, and keeps the report with the
-  # table the check wrote beside it under the artifact name `conformance`. It also runs the runtime's own tests, whose JUnit
-  # report it keeps under `runtime-tests` for the Pages tree's test page. The lint and the types are not its business, and
-  # `build-pages` waits for the job and not for its verdict.
+  # table the check wrote beside it under the artifact name `conformance`. The tests, the lint and the types are not its
+  # business, and `build-pages` waits for the job and not for its verdict.
   conformance:
     name: conformance
     if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
@@ -377,10 +377,41 @@ jobs:
           name: conformance
           path: ${{ runner.temp }}/conformance
           if-no-files-found: ignore
-      # npm test transpiles its own sources, so it needs no build first. The log stays the spec reporter's; the JUnit file
-      # is the page's. A failing case fails this step, and the report is still kept.
+
+  # The runtime's own tests on main, in a job beside `conformance` so that the deploy waits for the longer of the two and not
+  # for both, with a timeout so that a hang cannot hold it. The log stays the spec reporter's; the JUnit file is the test
+  # page's. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
+  # failing case fails the job, and the report is still kept; `build-pages` waits for the job and not for its verdict.
+  # Nightly this is the one run of the suite: `tests and conformance` leaves it out then.
+  runtime-tests:
+    name: runtime tests
+    if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cascade-runtime-js
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cascade-runtime-js
+          persist-credentials: false
+      # Node 24 as the tests job runs the same suite.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cascade-runtime-js/package-lock.json
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: "true"
+      - run: npm ci
+      # The Bridge's build, which the suite's Bridge tests read.
+      - run: npm run --silent bridge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # npm test transpiles its own sources, so it needs no build first.
       - name: The runtime's tests
-        if: ${{ !cancelled() }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -401,11 +432,11 @@ jobs:
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch. On a push to main, and
   # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night. It waits for the conformance
-  # run's report and not for its verdict: a red run still deploys, with its failures on the pages, and a run that kept no
-  # report deploys with every result shown as not run.
+  # run's report and the runtime tests' report, and not for their verdicts: a red run still deploys, with its failures on
+  # the pages, and a run that kept no report deploys with every result shown as not run.
   build-pages:
     name: build-pages
-    needs: conformance
+    needs: [conformance, runtime-tests]
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
@@ -442,7 +473,7 @@ jobs:
           name: conformance
           path: build/conformance
       # The unit test page shows the newest run of each suite on main, case by case. The runtime's is this run's own, kept by
-      # the conformance job. The vocabulary's is another repository's artifact, found by the newest push or nightly run of
+      # the runtime-tests job. The vocabulary's is another repository's artifact, found by the newest push or nightly run of
       # its check workflow that still holds one (a cancelled or unfinished run does not), which the job's token may not be
       # allowed to download: then the page says "not available" for it and the deploy goes on.
       - name: The runtime's test report
