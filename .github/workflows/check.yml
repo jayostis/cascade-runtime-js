@@ -141,6 +141,37 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # Every link of the tree resolves as a file, its anchor in it, and a GitHub link into a repository checked out beside
+      # this one is read in that checkout, since a pull request's commit is on no server. The addresses on other sites are
+      # not asked here but saved, for `external links`, which asks them off this job's path.
+      - name: Every link of the tree resolves
+        if: ${{ !cancelled() }}
+        run: >-
+          node scripts/link-check.mjs --tree build/pages --no-external --save-external build/external-links.json
+          --checkout jayostis/cascade-runtime-js=.
+          --checkout jayostis/cascade-vocabulary=../cascade-vocabulary
+          --checkout jayostis/cascade-bridge-adapter-fhir-r4=../cascade-bridge-adapter-fhir-r4
+          --checkout jayostis/cascade-bridge-adapter-ccda=../cascade-bridge-adapter-ccda
+      # The browser the `live` job caches on main; a pull request reads it.
+      - id: playwright
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('playwright/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        if: ${{ !cancelled() }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
+      - run: npx playwright install --only-shell chromium
+        if: ${{ !cancelled() }}
+      # A newcomer on the front page of this tree reaches each row of "Find your way" in one click, on a page of the expected title.
+      - name: Walk the front page's rows
+        if: ${{ !cancelled() }}
+        run: npm run test:walkthrough
+        env:
+          WALK_TREE: build/pages
       - name: Drop half-written row files before they are saved
         if: ${{ !cancelled() }}
         shell: bash
@@ -156,6 +187,38 @@ jobs:
           name: pages
           path: cascade-runtime-js/build/pages
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: external-links
+          path: cascade-runtime-js/build/external-links.json
+          if-no-files-found: error
+
+  # The addresses on other sites that the tree links, asked once each with retries: a 404 is red, a host that does not
+  # answer is a warning. Alone and after `docs site`, since asking about five hundred addresses takes a minute, and not
+  # in `compatibility`, since a host that moved a page is not this pull request's doing. Not nightly: `live links` asks the
+  # same addresses of the deployed site then, and the outside is asked once a night.
+  external-links:
+    name: external links
+    needs: browser
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.browser.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: external-links
+          path: build
+      - run: node scripts/link-check.mjs --only-external build/external-links.json
 
   # The reverse check: the starter kit's own tests and checks, run on this commit's tarball. A change the starter must
   # follow lands as a pair: this pull request's body carries `Depends-On: https://github.com/jayostis/cascade-starter-kit/pull/<n>`
@@ -615,6 +678,46 @@ jobs:
         env:
           PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
           COMMIT: ${{ github.sha }}
+
+  # The deployed site once its deploy is served, and nightly: every link of every page, each README's Docs block and the
+  # addresses on other sites, and a newcomer's walk from the front page and from each README. Nothing waits for it; a dead
+  # link or a README without the hub's link fails the run.
+  live-links:
+    name: live links
+    needs: [pages, live]
+    if: ${{ !cancelled() && needs.pages.outputs.deployed == 'true' && (needs.live.result == 'success' || needs.live.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PAGES_URL: https://jayostis.github.io/cascade-runtime-js/
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - id: playwright
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('playwright/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
+      - run: npx playwright install --only-shell chromium
+      - uses: actions/cache/save@v6
+        if: ${{ steps.browsers.outputs.cache-hit != 'true' }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
+      - run: node scripts/link-check.mjs --crawl --site "$PAGES_URL" --readmes
+      - if: ${{ !cancelled() }}
+        run: npm run test:walkthrough
 
   # connect and pull against the SMART launcher, a server this project did not write, over the network: nightly and by
   # hand only, so a network failure gates no pull request.

@@ -49,6 +49,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["scripts/link-check.mjs"],
+    languageOptions: {
+      globals: { URL: "readonly", fetch: "readonly", AbortSignal: "readonly" },
+    },
+  },
+  {
     files: ["packages/cascade-runtime/test/**"],
     rules: {
       "no-restricted-imports": "off",
