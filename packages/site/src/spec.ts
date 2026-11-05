@@ -11,9 +11,10 @@ import {
   type WrittenFeature,
   type WrittenRule,
 } from "@cascade-runtime/runtime";
+import { Marked, type Tokens } from "marked";
 import type { Ingredient } from "./front-page.js";
 import { type Content, escape, Html, markup } from "./html.js";
-import { anchorOf, pageNameOf } from "./links.js";
+import { anchorOf, noteHref, noteLinkOf, pageNameOf, slugOf } from "./links.js";
 import { STYLESHEET } from "./stylesheet.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -44,6 +45,11 @@ export interface SpecOptions {
   /** What the pages were built from, for the index's footer. */
   readonly builtFrom: readonly Ingredient[];
   readonly at: string;
+  /**
+   * The folder of the site that holds `decisions/`, as {@link noteHref} takes it, when the notes have pages there; a rule
+   * then links its note's page and row. Without it they link the note on GitHub.
+   */
+  readonly notes?: string;
 }
 
 /** A rule with no note pointer, a Choice row with no rule, or a pointer that names nothing. */
@@ -53,6 +59,7 @@ export interface SpecWarning {
     | "row names no rule"
     | "pointer names nothing"
     | "row does not name the rule back"
+    | "row is in no table of the page"
     | "no Why paragraph names the row"
     | "two examples share a test"
     | "page name taken"
@@ -88,7 +95,41 @@ export interface SpecPages {
   /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
   readonly unnoted: readonly string[];
   /** Each Choice row that names no rule but the issue that will write it. */
-  readonly waiting: readonly { readonly note: string; readonly what: string }[];
+  readonly waiting: readonly {
+    readonly note: string;
+    readonly id: string;
+    readonly what: string;
+  }[];
+  /** The decision notes, read once, for the pages that render them. */
+  readonly decisions: DecisionNotes;
+}
+
+/** A rule whose first sentence names a Choice row. */
+export interface Citation {
+  /** The rule's feature file, as `runtime/currency.feature`. */
+  readonly feature: string;
+  /** The rule's number, absent for a rule that has none. */
+  readonly number?: string;
+  readonly name: string;
+}
+
+/** A note's Choice row, and the rules that name it. */
+export interface DecisionRow extends ChoiceRow {
+  readonly cited: readonly Citation[];
+  /** Whether the note's page has a table row for it; false for a row on a line the page renders as text. */
+  readonly anchored: boolean;
+}
+
+export interface DecisionNote extends Omit<Note, "rows"> {
+  readonly rows: readonly DecisionRow[];
+}
+
+/** The vocabulary's decision notes, with the rules that cite each Choice row. */
+export interface DecisionNotes {
+  readonly notes: readonly DecisionNote[];
+  /** The vocabulary's files and folders on GitHub at the commit built, each ending in a slash. */
+  readonly blob: string;
+  readonly tree: string;
 }
 
 /** The EARL report a conformance run wrote, read. */
@@ -155,22 +196,26 @@ const termKey = (
   term: { readonly termType: string; readonly value: string } | undefined,
 ): string => (term === undefined ? "" : `${term.termType}:${term.value}`);
 
-interface ChoiceRow {
+export interface ChoiceRow {
   readonly thing: string;
+  /** The row's anchor on its note's page: `row-` and the thing's slug, a number added to a slug the note's earlier row has. */
+  readonly id: string;
   readonly rules: readonly string[];
   readonly issues: readonly string[];
   /** The paths of the "what we do" cell's code spans, each a file that applies a ruling no runtime rule can. */
   readonly paths: readonly string[];
 }
 
-interface WhyParagraph {
+export interface WhyParagraph {
   /** The Choice rows the paragraph names right after its bold lead, as `(row "version")`. */
   readonly rows: readonly string[];
   readonly text: string;
 }
 
-interface Note {
+export interface Note {
   readonly path: string;
+  /** The note as written. */
+  readonly text: string;
   readonly title: string;
   readonly rows: readonly ChoiceRow[];
   readonly why: readonly WhyParagraph[];
@@ -187,23 +232,67 @@ const NO_NOTE = /^No note rules this\.\s*/;
 /** The rule's number, `R19` or `Check 3`, as its heading's anchor is made from, or undefined for a rule with none. */
 export const numberOf = (rule: WrittenRule): string | undefined =>
   RULE_NUMBER.exec(rule.name)?.[1];
-const thingKey = (thing: string): string =>
+/** What makes two Choice rows' names one: their text, lower case, without code marks. */
+export const thingKey = (thing: string): string =>
   thing.replaceAll("`", "").trim().toLowerCase();
 
-/** A table row's cells, split at each `|` outside a code span. */
+/**
+ * A table row's cells, split at each `|` outside a code span; an escaped `|` is one, in a code span too, as Markdown
+ * renders it.
+ */
 function cellsOf(line: string): string[] {
   const cells: string[] = [];
   let cell = "";
   let code = false;
   for (const char of line.trim().replace(/^\||\|$/g, "")) {
     if (char === "`") code = !code;
-    if (char === "|" && !code) {
+    if (char === "|" && cell.endsWith("\\")) cell = `${cell.slice(0, -1)}|`;
+    else if (char === "|" && !code) {
       cells.push(cell.trim());
       cell = "";
     } else cell += char;
   }
   cells.push(cell.trim());
   return cells;
+}
+
+/** The first cells of each Choice table of a note as Markdown renders it: a "what we do" table under `## Choice`. */
+function choiceTables(text: string): string[][] {
+  const marked = new Marked({ gfm: true });
+  const tables: string[][] = [];
+  let section = "";
+  marked.walkTokens(marked.lexer(text), (token) => {
+    if (token.type === "heading" && (token as Tokens.Heading).depth === 2)
+      section = (token as Tokens.Heading).text.trim();
+    else if (token.type === "table" && section === "Choice") {
+      const { header, rows } = token as Tokens.Table;
+      if (header.some(({ text: cell }) => isWhatWeDo(cell)))
+        tables.push(rows.map(([first]) => first?.text ?? ""));
+    }
+  });
+  return tables;
+}
+
+/** Whether a table's header cell heads the column that says what the runtime does. */
+export const isWhatWeDo = (cell: string): boolean =>
+  cell.trim().toLowerCase() === "what we do";
+
+/**
+ * The Choice row each first cell of a table is, none for a cell no row has: a row goes to the first cell that has its
+ * name, once. `claimed` holds the rows taken by the tables before, and takes these.
+ */
+export function claimRows<Row extends { id: string; thing: string }>(
+  rows: readonly Row[],
+  firstCells: readonly string[],
+  claimed: Set<string>,
+): (Row | undefined)[] {
+  return firstCells.map((cell) => {
+    const row = rows.find(
+      ({ id, thing }) => !claimed.has(id) && thingKey(thing) === thingKey(cell),
+    );
+    if (row !== undefined) claimed.add(row.id);
+    return row;
+  });
 }
 
 function sectionsOf(text: string): Map<string, string[]> {
@@ -277,8 +366,13 @@ function readNote(
     if (ruling < 0) continue;
     const cells = cellsOf(line);
     const done = cells[ruling] ?? "";
+    const base = `row-${slugOf(cells[0] ?? "") || "row"}`;
+    let id = base;
+    for (let again = 2; rows.some((row) => row.id === id); again++)
+      id = `${base}-${again}`;
     rows.push({
       thing: cells[0] ?? "",
+      id,
       rules: [...new Set(rulesNamedIn(done))].filter((number) =>
         rules.has(number),
       ),
@@ -322,7 +416,7 @@ function readNote(
       ];
     });
   const title = /^# (.+)$/m.exec(text)?.[1]?.trim() ?? path;
-  return { path, title, rows, why };
+  return { path, text, title, rows, why };
 }
 
 /** The notes and rows a rule's description names in its first sentence, or none when it does not begin with one. */
@@ -376,29 +470,28 @@ function whyOf(note: Note, row: string): WhyParagraph | undefined {
 }
 
 /**
- * Markdown's code spans, strong text and links, the rest as text. A relative link is to a file beside the note, `#…`
- * to a place in it; a link that is not then http or https is left as its text.
+ * Markdown's code spans, strong text and links, the rest as text. `resolve` gives a link's address from what the note
+ * wrote; a link it gives none for is left as its text.
  */
-function inline(text: string, base: string, note: string): Html {
+function inline(
+  text: string,
+  resolve: (href: string) => string | undefined,
+): Html {
   return new Html(
-    escape(text)
+    text
       .split(/(`[^`]+`|\*\*.+?\*\*|\[[^\]]+\]\([^)]+\))/)
       .map((part) => {
         const code = /^`([^`]+)`$/.exec(part);
-        if (code !== null) return `<code>${code[1] ?? ""}</code>`;
+        if (code !== null) return `<code>${escape(code[1] ?? "")}</code>`;
         const strong = /^\*\*(.+)\*\*$/.exec(part);
-        if (strong !== null) return `<strong>${strong[1] ?? ""}</strong>`;
+        if (strong !== null)
+          return `<strong>${escape(strong[1] ?? "")}</strong>`;
         const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
-        if (link === null) return part;
-        const href = link[2] ?? "";
-        const resolved = /^[a-z][a-z0-9+.-]*:/i.test(href)
-          ? href
-          : href.startsWith("#")
-            ? note + href
-            : base + href;
-        return /^https?:\/\//i.test(resolved)
-          ? `<a href="${resolved}">${link[1] ?? ""}</a>`
-          : (link[1] ?? "");
+        if (link === null) return escape(part);
+        const to = resolve(link[2] ?? "");
+        return to === undefined
+          ? escape(link[1] ?? "")
+          : `<a href="${escape(to)}">${escape(link[1] ?? "")}</a>`;
       })
       .join(""),
   );
@@ -445,8 +538,8 @@ class Spec {
   readonly #notes: ReadonlyMap<string, Note>;
   readonly features: readonly WrittenFeature[];
   readonly kits: readonly { folder: string; feature: WrittenFeature }[];
-  /** Each rule a Choice row's pointer reached, by note and row. */
-  readonly #reached = new Map<string, Set<string>>();
+  /** Each rule a Choice row's pointer reached, by note and row's anchor. */
+  readonly #reached = new Map<string, Map<string, Citation>>();
   /** Each path a Choice row names that is a file of the vocabulary. */
   readonly #files: ReadonlySet<string>;
   /** Each path a Choice row names in a folder of the vocabulary that holds no such file. */
@@ -454,7 +547,13 @@ class Spec {
   /** Each rule that says no note rules it, as `runtime/naming.feature N8`. */
   readonly unnoted: string[] = [];
   /** Each Choice row that names no rule but the issue that will write it. */
-  readonly waiting: { readonly note: string; readonly what: string }[] = [];
+  readonly waiting: {
+    readonly note: string;
+    readonly id: string;
+    readonly what: string;
+  }[] = [];
+  /** Each Choice row the note's page has no table row for, by note and row's anchor. */
+  readonly #unanchored = new Set<string>();
 
   constructor(
     options: SpecOptions,
@@ -475,9 +574,71 @@ class Spec {
     const { iri } = options.vocabulary;
     this.blob = iri.includes("/tree/") ? iri.replace("/tree/", "/blob/") : iri;
     this.tree = iri;
+    this.notes = options.notes;
+    for (const note of notes.values()) {
+      const claimed = new Set<string>();
+      for (const cells of choiceTables(note.text))
+        claimRows(note.rows, cells, claimed);
+      for (const { id, thing } of note.rows) {
+        if (claimed.has(id)) continue;
+        this.#unanchored.add(`${note.path}\n${id}`);
+        this.#warn(
+          "row is in no table of the page",
+          note.path,
+          `row "${thing}" has no row in the table the page renders, so a rule links the note without the row`,
+        );
+      }
+    }
   }
 
   readonly tree: string;
+  readonly notes: string | undefined;
+
+  /** The address of a note: its page when the notes have them and this is one, else the file on GitHub. */
+  noteHref(path: string): string {
+    const page =
+      this.notes !== undefined &&
+      (this.#notes.has(path) || path === "decisions/README.md");
+    return noteHref(path, page ? (this.notes ?? "") : this.blob);
+  }
+
+  /** The address of a note's Choice row: its anchor on the note's page, or the note alone where the page has no row for it. */
+  rowHref(path: string, id: string): string {
+    const anchored =
+      this.notes !== undefined && !this.#unanchored.has(`${path}\n${id}`);
+    return `${this.noteHref(path)}${anchored ? `#${id}` : ""}`;
+  }
+
+  /** Where a link the note at `from` wrote goes. */
+  linkFrom(from: string, href: string): string | undefined {
+    return href.startsWith("#")
+      ? `${this.noteHref(from)}${href}`
+      : noteLinkOf(href, from, {
+          blob: this.blob,
+          tree: this.tree,
+          ...(this.notes === undefined ? {} : { notes: this.notes }),
+          has: (path) =>
+            this.#notes.has(path) || path === "decisions/README.md",
+        });
+  }
+
+  /** The notes read, each Choice row with the rules that cite it. */
+  decisions(): DecisionNotes {
+    return {
+      blob: this.blob,
+      tree: this.tree,
+      notes: [...this.#notes.values()].map((note) => ({
+        ...note,
+        rows: note.rows.map((row) => ({
+          ...row,
+          cited: [
+            ...(this.#reached.get(`${note.path}\n${row.id}`)?.values() ?? []),
+          ],
+          anchored: !this.#unanchored.has(`${note.path}\n${row.id}`),
+        })),
+      })),
+    };
+  }
   /** Each feature file's page, where it is not the one its name gives. */
   readonly pages = new Map<string, string>();
 
@@ -596,11 +757,23 @@ class Spec {
     else if (pointers.length === 0)
       this.#warn("rule names no note", feature.path, `${number} names no note`);
     let why: { note: Note; paragraph: WhyParagraph } | undefined;
-    const shown: { note: Note | undefined; path: string; rows: string[] }[] =
-      [];
+    const shown: {
+      note: Note | undefined;
+      path: string;
+      rows: { name: string; id?: string }[];
+    }[] = [];
     for (const pointer of pointers) {
       const note = this.#notes.get(pointer.note);
-      shown.push({ note, path: pointer.note, rows: [...pointer.rows] });
+      const rows = pointer.rows.map((name): { name: string; id?: string } => {
+        const id = note?.rows.find(
+          (r) => thingKey(r.thing) === thingKey(name),
+        )?.id;
+        return id === undefined ||
+          this.#unanchored.has(`${pointer.note}\n${id}`)
+          ? { name }
+          : { name, id };
+      });
+      shown.push({ note, path: pointer.note, rows });
       if (note === undefined) {
         this.#warn(
           "pointer names nothing",
@@ -621,11 +794,14 @@ class Spec {
           );
           continue;
         }
-        const key = `${note.path}\n${thingKey(row.thing)}`;
-        this.#reached.set(
-          key,
-          (this.#reached.get(key) ?? new Set()).add(number),
-        );
+        const key = `${note.path}\n${row.id}`;
+        const cited = this.#reached.get(key) ?? new Map<string, Citation>();
+        cited.set(`${feature.path}\n${number}`, {
+          feature: feature.path,
+          ...(numberOf(rule) === undefined ? {} : { number }),
+          name: rule.name,
+        });
+        this.#reached.set(key, cited);
         if (row.rules.length > 0 && !row.rules.includes(number))
           this.#warn(
             "row does not name the rule back",
@@ -666,15 +842,16 @@ class Spec {
         if (row.issues.length > 0) {
           this.waiting.push({
             note: note.path,
+            id: row.id,
             what: `row "${row.thing}" waits on ${row.issues.join(", ")}`,
           });
           continue;
         }
-        const by = this.#reached.get(`${note.path}\n${thingKey(row.thing)}`);
+        const by = this.#reached.get(`${note.path}\n${row.id}`);
         this.#warn(
           "row names no rule",
           note.path,
-          `row "${row.thing}" names no rule${by === undefined ? "" : `, though ${[...by].join(", ")} name${by.size === 1 ? "s" : ""} it`}`,
+          `row "${row.thing}" names no rule${by === undefined ? "" : `, though ${[...by.values()].map(({ number, name }) => number ?? name).join(", ")} name${by.size === 1 ? "s" : ""} it`}`,
         );
       }
   }
@@ -762,7 +939,7 @@ ${
         ? markup`<p class="ruled none">No decision note is named by this rule yet.</p>\n`
         : markup`<p class="ruled">Ruled by ${ruled.shown.map(
             ({ note, path, rows }, index) =>
-              markup`${index === 0 ? "" : "; "}<a href="${spec.blob}${path}">${note?.title ?? path}</a>${rows.length === 0 ? ", its Why" : markup`, ${rows.length === 1 ? "row" : "rows"} ${rows.map((row, i) => markup`${i === 0 ? "" : ", "}<q>${row}</q>`)}`}`,
+              markup`${index === 0 ? "" : "; "}<a href="${spec.noteHref(path)}">${note?.title ?? path}</a>${rows.length === 0 ? ", its Why" : markup`, ${rows.length === 1 ? "row" : "rows"} ${rows.map(({ name, id }, i) => markup`${i === 0 ? "" : ", "}${spec.notes === undefined || id === undefined ? markup`<q>${name}</q>` : markup`<a href="${spec.noteHref(path)}#${id}"><q>${name}</q></a>`}`)}`}`,
           )}</p>\n`
 }${prose(ruled === undefined ? rule.description : ruled.rest)}${
       ruled === undefined
@@ -772,11 +949,11 @@ ${
               .filter(({ note }) => note !== undefined)
               .map(
                 ({ note }) =>
-                  markup`<p class="also">Why: <a href="${spec.blob}${note?.path ?? ""}#why">${note?.title ?? ""}</a>, with the alternatives that lost and what would change our mind.</p>\n`,
+                  markup`<p class="also">Why: <a href="${spec.noteHref(note?.path ?? "")}#why">${note?.title ?? ""}</a>, with the alternatives that lost and what would change our mind.</p>\n`,
               )
           : markup`<blockquote class="why">
-<p>${inline(ruled.why.paragraph.text, `${spec.blob}decisions/`, `${spec.blob}${ruled.why.note.path}`)}</p>
-<p class="also"><a href="${spec.blob}${ruled.why.note.path}#why">${ruled.why.note.title}</a>: the whole Why, the alternatives that lost and what would change our mind.</p>
+<p>${inline(ruled.why.paragraph.text, (href) => spec.linkFrom(ruled.why?.note.path ?? "", href))}</p>
+<p class="also"><a href="${spec.noteHref(ruled.why.note.path)}#why">${ruled.why.note.title}</a>: the whole Why, the alternatives that lost and what would change our mind.</p>
 </blockquote>
 `
     }${rule.examples.length === 0 ? "" : markup`<p class="count">${plural(rule.examples.length, "example")}: ${tallied(counted)}</p>\n`}${examples(spec, rule)}${number?.startsWith("Check ") === true ? kitChecks(spec, number) : ""}</section>
@@ -924,13 +1101,13 @@ ${resultsTable(
   "",
 )}
 <h2 class="part" id="warnings">Warnings</h2>
-<p class="prose">A rule and the Choice row that ruled it name each other (<a href="${spec.blob}decisions/README.md">decisions/README.md</a>).
+<p class="prose">A rule and the Choice row that ruled it name each other (<a href="${spec.noteHref("decisions/README.md")}">decisions/README.md</a>).
 ${plural(spec.warnings.length, "place")} where they do not yet:</p>
 <ul class="warnings">
-${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.blob}${where}">${where}</a>: `}${what}</li>\n`)}</ul>
+${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.noteHref(where)}">${where}</a>: `}${what}</li>\n`)}</ul>
 <p class="prose">${plural(spec.unnoted.length, "rule says", "rules say")} no note rules it, and ${plural(spec.waiting.length, "Choice row waits", "Choice rows wait")} on the issue that will write its rule:</p>
 <ul class="warnings">
-${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.blob}${note}">${note}</a>: ${what}</li>\n`)}</ul>
+${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, id, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.rowHref(note, id)}">${note}</a>: ${what}</li>\n`)}</ul>
 <footer>
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">
@@ -1078,6 +1255,7 @@ export async function specPages(options: SpecOptions): Promise<SpecPages> {
     warnings: spec.warnings,
     unnoted: spec.unnoted,
     waiting: spec.waiting,
+    decisions: spec.decisions(),
   };
 }
 

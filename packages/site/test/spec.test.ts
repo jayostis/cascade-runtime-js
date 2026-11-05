@@ -193,7 +193,11 @@ test("a rule with no note, a pointed row no Why paragraph names, a Choice row wh
 test("a rule that says no note rules it, and a row that names the issue that will write its rule, are listed apart from the warnings", () => {
   assert.deepEqual(built.unnoted, ["runtime/the-kit.feature Check 1"]);
   assert.deepEqual(built.waiting, [
-    { note: "decisions/naming.md", what: 'row "scheme" waits on #193' },
+    {
+      note: "decisions/naming.md",
+      id: "row-scheme",
+      what: 'row "scheme" waits on #193',
+    },
   ]);
   const html = pageText("the-kit.html");
   assert.match(
@@ -403,6 +407,7 @@ test("a path a row names under a nested folder of the vocabulary is found, one t
 async function hubWith(
   ran: readonly Assertion[],
   files: { readonly earl?: Uint8Array; readonly table?: Uint8Array } = {},
+  from: MemoryFiles = vocabulary,
 ): Promise<ReadonlyMap<string, Uint8Array>> {
   const report = await readSpecReport(
     earl(ran, "cascade-runtime-js", RAN_WITH),
@@ -411,7 +416,7 @@ async function hubWith(
     sections: [specSection],
     ctx: {
       vocabulary: async () => ({
-        files: vocabulary,
+        files: from,
         builtFrom: [],
         at: "2026-10-24T00:00:00Z",
       }),
@@ -520,4 +525,201 @@ test("a rule is named in parentheses, beside a .feature pointer, after the word 
     named("`runtime/naming.feature` N3 and conformance-review C2 and item A5"),
     ["N3"],
   );
+});
+
+const CURRENCY_NOTE = `# Which revision is current
+
+Status: draft. Names are in [the naming note](naming.md); the lead is in [a query](../queries/current.rq) and [a folder](../queries/).
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| current | git | derived by the ladder (\`runtime/currency.feature\`, C2) | ours |
+| heads | git | named as heads (\`runtime/currency.feature\`, C3) | ours |
+| view | | materialised, \`queries/view.rq\` | ours |
+| \`View\` | | said again | ours |
+| a \\| b | | escaped | ours |
+
+## Why
+
+**Why current is derived.** (row "current") Because [the naming note](naming.md) says a name is not a rank, and [the lead](#why) is.
+
+## Still open
+
+- Nothing, though <script>alert(1)</script> is not run.
+`;
+
+const CURRENCY_FEATURE = `Feature: Currency
+  Rule: C2. Current is derived
+    decisions/currency.md, row "current". The ladder picks it.
+
+    Example: the only revision
+      Given a new pod for Kim on 2026-09-01 at 09:55
+
+  Rule: C3. Heads are named
+    decisions/currency.md, row "heads". A revision names them.
+
+  Rule: C4. A sync unions heads
+    decisions/currency.md, row "heads". A union.
+
+  Rule: A rule with no number
+    decisions/currency.md, row "a | b". Cited, and linked without an anchor.
+
+  Rule: C5. A note that is gone
+    decisions/gone.md, row "x". Nothing to link but the path.
+`;
+
+test("the hub writes each decision note as a page: a rule links the note's row, the row lists the rules that cite it and says when none does, and a note's links to other notes are pages", async () => {
+  const files = new MemoryFiles(TREE);
+  const text = (value: string) => new TextEncoder().encode(value);
+  await files.write(
+    "decisions/README.md",
+    text(
+      "# Decision notes\n\nOne note per question.\n\n## The notes\n\n- [`currency.md`](currency.md): which revision.\n- [issue](https://github.com/jayostis/cascade-vocabulary/issues/130)\n",
+    ),
+  );
+  await files.write("decisions/currency.md", text(CURRENCY_NOTE));
+  await files.write(
+    "decisions/naming.md",
+    text("# How things are named\n\n## Choice\n"),
+  );
+  await files.write("runtime/currency.feature", text(CURRENCY_FEATURE));
+  await files.write("queries/view.rq", text(""));
+  const tree = await hubWith([], {}, files);
+  for (const path of [
+    "decisions/index.html",
+    "decisions/currency.html",
+    "decisions/naming.html",
+  ])
+    assert.ok(tree.has(path), path);
+
+  const rule = readPage(treeText(tree, "spec/currency.html"));
+  assert.ok(rule.hrefs.includes("../decisions/currency.html#row-current"));
+  assert.ok(rule.hrefs.includes("../decisions/currency.html#row-heads"));
+  assert.ok(rule.hrefs.includes("../decisions/currency.html#why"));
+  assert.ok(rule.hrefs.includes("../decisions/currency.html"));
+  assert.ok(rule.hrefs.includes("../decisions/naming.html"));
+  assert.ok(!rule.hrefs.some((href) => href.endsWith("decisions/currency.md")));
+
+  const html = treeText(tree, "decisions/currency.html");
+  const note = readPage(html);
+  assert.equal(note.h1, "Which revision is current");
+  assert.ok(["why", "choice", "still-open"].every((id) => note.ids.has(id)));
+  assert.ok(note.hrefs.includes(`${BLOB}decisions/currency.md`));
+  assert.ok(note.hrefs.includes("naming.html"));
+  assert.ok(note.hrefs.includes("#why"));
+  assert.ok(note.hrefs.includes(`${BLOB}queries/current.rq`));
+  assert.ok(note.hrefs.includes(`${TREE}queries/`));
+  assert.doesNotMatch(html, /<script/);
+  const row = (id: string) =>
+    readPage(
+      html.slice(
+        html.indexOf(`id="${id}"`),
+        html.indexOf("</tr>", html.indexOf(`id="${id}"`)),
+      ),
+    );
+  assert.deepEqual(
+    row("row-current").hrefs.filter((href) => href.startsWith("../spec/")),
+    ["../spec/currency.html#c2"],
+  );
+  assert.deepEqual(
+    row("row-heads").hrefs.filter((href) => href.startsWith("../spec/")),
+    ["../spec/currency.html#c3", "../spec/currency.html#c4"],
+  );
+  assert.match(row("row-view").said, /No rule cites this row/);
+  assert.ok(!row("row-view").hrefs.some((href) => href.includes("spec/")));
+  assert.match(row("row-view-2").said, /No rule cites this row/);
+  assert.match(row("row-a-b").said, /a \| b escaped ours/);
+  assert.deepEqual(
+    row("row-a-b").hrefs.filter((href) => href.startsWith("../spec/")),
+    ["../spec/currency.html"],
+  );
+  assert.ok(rule.hrefs.includes(`${BLOB}decisions/gone.md`));
+
+  const index = readPage(treeText(tree, "decisions/index.html"));
+  assert.equal(index.h1, "Decision notes");
+  assert.ok(index.hrefs.includes("currency.html"));
+  assert.ok(index.hrefs.includes("currency.html#row-view"));
+  assert.ok(!index.hrefs.includes("currency.html#row-heads"));
+  assert.ok(index.hrefs.includes("naming.html"));
+  assert.ok(index.hrefs.includes(`${BLOB}decisions/README.md`));
+  assert.ok(
+    readPage(treeText(tree, "index.html")).hrefs.includes(
+      "decisions/index.html",
+    ),
+  );
+});
+
+const ODD_NOTE = `# Odd layouts
+
+Names are in [a note that is gone](gone.md) and [the currency note](currency.md).
+
+## Earlier
+
+| thing | what we do |
+|---|---|
+| x | a decoy that is no Choice row |
+
+## Choice
+
+| thing | prior art | what we do | borrowed or diverged |
+|---|---|---|---|
+| x | | first (N1) | ours |
+| \`a \\| b\` | | piped (N3) | ours |
+| z | | waits on #193 | ours |
+
+A line that breaks the table.
+
+| y | | more (N2) | ours |
+
+## Row x
+
+Text.
+`;
+
+const ODD_FEATURE = `Feature: Odd
+  Rule: N1. Cites x
+    decisions/odd.md, row "x". Fine.
+
+  Rule: N2. Cites y
+    decisions/odd.md, row "y". Linked without an anchor.
+
+  Rule: N3. Cites the piped one
+    decisions/odd.md, row "a | b". Linked with an anchor.
+`;
+
+test("a note whose layout marked renders otherwise still builds: a Choice row with no table row is a warning and has no anchor, an escaped pipe in a code span and a heading named for a row change nothing, an earlier table is no Choice table, and a link to a note that is gone keeps its GitHub address", async () => {
+  const files = new MemoryFiles(TREE);
+  const text = (value: string) => new TextEncoder().encode(value);
+  await files.write("decisions/README.md", text("# Decision notes\n"));
+  await files.write("decisions/odd.md", text(ODD_NOTE));
+  await files.write("decisions/currency.md", text("# Currency\n"));
+  await files.write("runtime/odd.feature", text(ODD_FEATURE));
+  const tree = await hubWith([], {}, files);
+
+  const spec = treeText(tree, "spec/index.html");
+  const index = readPage(spec);
+  assert.match(index.said, /row "y" has no row in the table the page renders/);
+  assert.doesNotMatch(index.said, /row "x" has no row/);
+  assert.doesNotMatch(index.said, /row "a \| b" has no row/);
+  assert.ok(index.hrefs.includes("../decisions/odd.html"));
+  assert.ok(index.hrefs.includes("../decisions/odd.html#row-z"));
+  assert.ok(!index.hrefs.some((href) => href.startsWith(`${BLOB}decisions/`)));
+
+  const rule = readPage(treeText(tree, "spec/odd.html"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html#row-x"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html#row-a-b"));
+  assert.ok(rule.hrefs.includes("../decisions/odd.html"));
+  assert.ok(!rule.hrefs.includes("../decisions/odd.html#row-y"));
+
+  const html = treeText(tree, "decisions/odd.html");
+  assert.equal(html.match(/id="row-x"/g)?.length, 1);
+  const row = html.slice(html.indexOf('id="row-x"'));
+  assert.match(row.slice(0, row.indexOf("</tr>")), /first/);
+  assert.match(html, /id="row-a-b"[^]*?\.\.\/spec\/odd\.html#n3/);
+  assert.ok(!html.includes('id="row-y"'));
+  const note = readPage(html);
+  assert.ok(note.hrefs.includes(`${BLOB}decisions/gone.md`));
+  assert.ok(note.hrefs.includes("currency.html"));
 });

@@ -1,3 +1,4 @@
+import { decisionPages } from "../decisions.js";
 import { markup } from "../html.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
@@ -11,6 +12,7 @@ import type { PagesContext } from "./context.js";
 
 export const SPEC_FOLDER = "spec/";
 export const CONFORMANCE_FOLDER = "conformance/";
+export const DECISIONS_FOLDER = "decisions/";
 const EARL_FILE = "earl.ttl";
 const TABLE_FILE = "table.md";
 const RESULTS_FILE = "results.json";
@@ -26,9 +28,10 @@ const total = (
 ): number => listed.reduce((sum, result) => sum + result[which], 0);
 
 /**
- * The rules of the vocabulary's `runtime/` features beside their notes and results under `spec/`, and under
- * `conformance/` the same results by feature with the run's own files: the EARL report, its table, and a JSON copy of
- * the results by feature for a tool. Without a report every result reads "not run", and nothing of the run is linked.
+ * The rules of the vocabulary's `runtime/` features beside their notes and results under `spec/`, the notes as pages under
+ * `decisions/`, each Choice row listing the rules that cite it, and under `conformance/` the same results by feature with
+ * the run's own files: the EARL report, its table, and a JSON copy of the results by feature for a tool. Without a report
+ * every result reads "not run", and nothing of the run is linked.
  */
 export const specSection: Section<SpecContext> = {
   path: `${SPEC_FOLDER}index.html`,
@@ -39,10 +42,25 @@ export const specSection: Section<SpecContext> = {
   async build(ctx) {
     const { files: vocabulary, builtFrom, at } = await ctx.vocabulary();
     const { report, earl, table } = await ctx.report();
-    const pages = await specPages({ vocabulary, report, builtFrom, at });
+    const pages = await specPages({
+      vocabulary,
+      report,
+      builtFrom,
+      at,
+      notes: "../",
+    });
     const files = new Map<string, Uint8Array>();
     for (const [path, bytes] of pages.files)
       files.set(`${SPEC_FOLDER}${path}`, bytes);
+    const readme =
+      (await vocabulary.read("decisions/README.md")) ??
+      encoder.encode("# Decision notes\n");
+    for (const [path, bytes] of decisionPages({
+      decisions: pages.decisions,
+      readme: new TextDecoder().decode(readme),
+      spec: `../${SPEC_FOLDER}`,
+    }))
+      files.set(`${DECISIONS_FOLDER}${path}`, bytes);
 
     const features = pages.features.map((result) => ({
       ...result,
@@ -135,6 +153,12 @@ ${ranWithList("The results are of the run with:", report.ranWith)}</footer>
         label: "Conformance results",
         about:
           "the reference runtime's pass and fail for each feature, from the latest run on main.",
+      },
+      {
+        href: `${DECISIONS_FOLDER}index.html`,
+        label: "Decision notes",
+        about:
+          "why each term, rule and shape is as it is, each Choice row beside the rules that apply it.",
       },
     ];
   },
