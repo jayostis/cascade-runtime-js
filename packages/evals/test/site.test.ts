@@ -722,3 +722,24 @@ test("what a judge could have told the arms apart by is said quietly under each 
     false,
   );
 });
+
+test("a report published under a page of its own has a first crumb back to it on every page, from whatever folder, and one built alone has none", () => {
+  const history = renderSite(
+    [
+      { name: "a", results: asModel("a", "claude-opus-5-5") },
+      { name: "b", results: asModel("b", "claude-opus-5-5") },
+    ],
+    true,
+    "../index.html",
+  );
+  assert.ok(history.size > 4);
+  for (const [path, html] of history) {
+    const up = "../".repeat(path.split("/").length - 1);
+    assert.ok(
+      html.includes(`<a href="${up}../index.html">Cascade pods</a>`),
+      `${path} links the page above the report`,
+    );
+  }
+  for (const html of one.values())
+    assert.ok(!html.includes("Cascade pods"), "built alone, it links nowhere");
+});
