@@ -305,7 +305,7 @@ jobs:
   # The name branch protection requires. A part that was skipped is no pass, except starter-kit on a pull request into an alpha/ branch.
   compatibility:
     name: compatibility
-    needs: [tests, browser, starter-kit]
+    needs: [tests, browser, starter-kit, runtime-tests]
     if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions: {}
@@ -314,10 +314,15 @@ jobs:
           TESTS: ${{ needs.tests.result }}
           BROWSER: ${{ needs.browser.result }}
           STARTER: ${{ needs.starter-kit.result }}
+          RUNTIME_TESTS: ${{ needs.runtime-tests.result }}
+          EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
-          echo "tests and conformance: ${TESTS}; docs site: ${BROWSER}; starter-kit: ${STARTER}"
+          echo "tests and conformance: ${TESTS}; docs site: ${BROWSER}; starter-kit: ${STARTER}; runtime tests: ${RUNTIME_TESTS}"
           [ "${TESTS}" = success ] && [ "${BROWSER}" = success ] || exit 1
+          # The suite runs in `runtime-tests` on the nightly run, where `tests and conformance` leaves it out. On a pull
+          # request or a hand-started run that job is skipped, and the suite ran in `tests and conformance`.
+          if [ "${EVENT}" = schedule ]; then [ "${RUNTIME_TESTS}" = success ] || exit 1; fi
           # starter-kit does not run on a pull request into an integration branch; it is skipped by that rule alone.
           case "${BASE}" in
             alpha/*) [ "${STARTER}" = skipped ] || [ "${STARTER}" = success ] ;;
@@ -378,11 +383,11 @@ jobs:
           path: ${{ runner.temp }}/conformance
           if-no-files-found: ignore
 
-  # The runtime's own tests on main, in a job beside `conformance` so that the deploy waits for the longer of the two and not
-  # for both, with a timeout so that a hang cannot hold it. The log stays the spec reporter's; the JUnit file is the test
-  # page's. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
-  # failing case fails the job, and the report is still kept; `build-pages` waits for the job and not for its verdict.
-  # Nightly this is the one run of the suite: `tests and conformance` leaves it out then.
+  # The runtime's own tests on main, in a job the deploy does not wait for: `build-pages` shows the newest finished run's
+  # report, as it shows the vocabulary's. A timeout stops a hang. The log stays the spec reporter's; the JUnit file is the
+  # test page's. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
+  # failing case fails the job, and the report is still kept.
+  # Nightly this is the one run of the suite: `tests and conformance` leaves it out then, and `compatibility` waits for this job.
   runtime-tests:
     name: runtime tests
     if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
@@ -432,13 +437,18 @@ jobs:
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch. On a push to main, and
   # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night. It waits for the conformance
-  # run's report and the runtime tests' report, and not for their verdicts: a red run still deploys, with its failures on
-  # the pages, and a run that kept no report deploys with every result shown as not run.
+  # run's report and not for its verdict: a red run still deploys, with its failures on the pages, and a run that kept no
+  # report deploys with every result shown as not run. It does not wait for the runtime's tests (the page shows their newest
+  # finished run, at most one push behind), so the deploy waits no longer than the conformance job.
   build-pages:
     name: build-pages
-    needs: [conformance, runtime-tests]
+    needs: [conformance]
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    # `actions` lets the test reports' lookup list this repository's runs, which a private one would refuse by default.
+    permissions:
+      contents: read
+      actions: read
     env:
       CASCADE_ROWS_CACHE: ${{ github.workspace }}/.rows-cache
     steps:
@@ -472,42 +482,40 @@ jobs:
         with:
           name: conformance
           path: build/conformance
-      # The unit test page shows the newest run of each suite on main, case by case. The runtime's is this run's own, kept by
-      # the runtime-tests job. The vocabulary's is another repository's artifact, found by the newest push or nightly run of
-      # its check workflow that still holds one (a cancelled or unfinished run does not), which the job's token may not be
-      # allowed to download: then the page says "not available" for it and the deploy goes on.
-      - name: The runtime's test report
-        continue-on-error: true
-        uses: actions/download-artifact@v7
-        with:
-          name: runtime-tests
-          path: build/tests/runtime
-      - name: The vocabulary's test report
+      # The unit test page shows the newest run of each suite on main, case by case: for each repository, the newest push or
+      # nightly run of its check workflow that still holds the report's artifact (a cancelled or unfinished run does not),
+      # so the page is at most one push behind and the deploy never waits for a suite. Where the job's token may not
+      # download it, the page says "not available" for that suite and the deploy goes on.
+      - name: The test reports
         continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          repository=jayostis/cascade-vocabulary
-          kept=build/tests/vocabulary
-          mkdir -p "$kept"
-          if ! runs=$(gh run list -R "$repository" -w check.yml -b main --limit 20 \
-            --json databaseId,event,headSha,createdAt,url \
-            --jq '.[] | select(.event == "push" or .event == "schedule") | [.databaseId, .headSha, .createdAt, .url] | @tsv'); then
-            echo "::warning::cannot list the runs of $repository, so its test report is not available"
-            exit 0
-          fi
-          while IFS=$'\t' read -r id sha at url; do
-            [ -n "$id" ] || continue
-            if gh run download "$id" -R "$repository" -n pytest-junit -D "$kept" >/dev/null 2>&1 && [ -f "$kept/pytest-junit.xml" ]; then
-              mv "$kept/pytest-junit.xml" "$kept/junit.xml"
-              printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$sha" "$at" "$url" > "$kept/run.json"
-              echo "the vocabulary's test report is of run $id ($url)"
-              exit 0
+          # fetch <repository> <artifact> <folder> <the report's file in the artifact>
+          fetch() {
+            local repository=$1 artifact=$2 kept=$3 file=$4 runs id sha at url
+            mkdir -p "$kept"
+            if ! runs=$(gh run list -R "$repository" -w check.yml -b main --limit 20 \
+              --json databaseId,event,headSha,createdAt,url \
+              --jq '.[] | select(.event == "push" or .event == "schedule") | [.databaseId, .headSha, .createdAt, .url] | @tsv'); then
+              echo "::warning::cannot list the runs of $repository, so its test report is not available"
+              return 0
             fi
-          done <<< "$runs"
-          echo "::warning::none of the newest runs of $repository holds a pytest-junit artifact this job can download, so its test report is not available"
+            while IFS=$'\t' read -r id sha at url; do
+              [ -n "$id" ] || continue
+              if gh run download "$id" -R "$repository" -n "$artifact" -D "$kept" >/dev/null 2>&1 && [ -f "$kept/$file" ]; then
+                [ "$file" = junit.xml ] || mv "$kept/$file" "$kept/junit.xml"
+                [ -f "$kept/run.json" ] || printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$sha" "$at" "$url" > "$kept/run.json"
+                echo "the test report of $repository is of run $id ($url)"
+                return 0
+              fi
+            done <<< "$runs"
+            echo "::warning::none of the newest runs of $repository holds a $artifact artifact this job can download, so its test report is not available"
+          }
+          fetch "$GITHUB_REPOSITORY" runtime-tests build/tests/runtime junit.xml
+          fetch jayostis/cascade-vocabulary pytest-junit build/tests/vocabulary pytest-junit.xml
       - name: Build the Pages tree
         run: npm run build:pages -- --report build/conformance/earl.ttl --tests build/tests
         env:

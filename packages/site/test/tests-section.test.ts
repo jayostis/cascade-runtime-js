@@ -115,6 +115,61 @@ const NODE_UNLISTED = `<?xml version="1.0" encoding="utf-8"?>
 </testsuites>
 `;
 
+/**
+ * node 24.16 `--test-reporter=junit` on a test whose subtest throws, a describe with a throwing `it`, and a plain throwing
+ * test: three failed cases are listed, and node's `fail` is 4 because it counts the parent test `p` too. Generated; only the
+ * hostname, the file's folder and the stack frames were replaced.
+ */
+const NODE_ORDINARY_FAILURES = `<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testsuite name="p" time="0.002378" disabled="0" errors="0" tests="1" failures="1" skipped="0" hostname="x">
+		<testcase name="kid" time="0.001062" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js" failure="kid broke">
+			<failure type="testCodeFailure" message="kid broke">
+Error [ERR_TEST_FAILURE]: kid broke
+  code: 'ERR_TEST_FAILURE',
+  failureType: 'testCodeFailure',
+  cause: Error: kid broke
+			</failure>
+		</testcase>
+	</testsuite>
+	<testsuite name="d" time="0.000567" disabled="0" errors="0" tests="1" failures="1" skipped="0" hostname="x">
+		<testcase name="bad" time="0.000213" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js" failure="bad broke">
+			<failure type="testCodeFailure" message="bad broke">
+Error [ERR_TEST_FAILURE]: bad broke
+  code: 'ERR_TEST_FAILURE',
+  failureType: 'testCodeFailure',
+  cause: Error: bad broke
+			</failure>
+		</testcase>
+	</testsuite>
+	<testcase name="plain" time="0.000237" classname="test" file="/home/runner/work/cascade-runtime-js/cascade-runtime-js/packages/site/dist/test/repro.test.js" failure="plain broke">
+		<failure type="testCodeFailure" message="plain broke">
+[Error [ERR_TEST_FAILURE]: plain broke] {
+  code: 'ERR_TEST_FAILURE',
+  failureType: 'testCodeFailure',
+  cause: Error: plain broke
+}
+		</failure>
+	</testcase>
+	<!-- tests 4 -->
+	<!-- suites 1 -->
+	<!-- pass 0 -->
+	<!-- fail 4 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 181.6421 -->
+</testsuites>
+`;
+
+test("a node report whose count is the failed cases plus the tests holding them gives no alarm", async () => {
+  const { page } = await pageWith({
+    runtime: { report: NODE_ORDINARY_FAILURES, ...RUN },
+  });
+  assert.match(page.said, /3 cases: 0 passed, 3 failed, 0 skipped/);
+  assert.doesNotMatch(page.said, /node counts|Failed outside/);
+});
+
 test("a run whose node report counts more failures than it lists says so beside the count, with the run linked", async () => {
   const { markup, page } = await pageWith({
     runtime: { report: NODE_UNLISTED, ...RUN },

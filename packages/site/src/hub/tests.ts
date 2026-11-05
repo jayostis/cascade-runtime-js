@@ -1,7 +1,7 @@
 import { Html, markup } from "../html.js";
 import {
   declaredFailures,
-  parseJunit,
+  readJunit,
   type Result,
   type TestCase,
 } from "../junit.js";
@@ -97,8 +97,9 @@ function part(suite: Suite, run: TestRun | undefined): Html {
 <p class="prose">Not available: this build was given no report of the newest run of the ${suite.key}'s tests on <code>main</code>.</p>
 `;
   let cases: TestCase[];
+  let failingSuites: number;
   try {
-    cases = parseJunit(run.report);
+    ({ cases, failingSuites } = readJunit(run.report));
   } catch (error) {
     return markup`${heading}
 <p class="prose">${runLine(suite, run)}.</p>
@@ -108,8 +109,8 @@ function part(suite: Suite, run: TestRun | undefined): Html {
   const failed = count(cases, "failed");
   const counted = declaredFailures(run.report);
   const unlisted =
-    counted !== undefined && counted > failed
-      ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
+    counted !== undefined && counted > failed + failingSuites
+      ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}${failingSuites === 0 ? "" : markup` and ${failingSuites} ${failingSuites === 1 ? "test" : "tests"} holding them`}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
 `
       : "";
   return markup`${heading}

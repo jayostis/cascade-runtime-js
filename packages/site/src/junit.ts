@@ -67,20 +67,28 @@ interface Building {
 /**
  * The failures node:test counts in the `<!-- fail N -->` comment ending its report, or undefined when there is none (pytest
  * writes no such comment). Its JUnit elements leave out a failure of a test that has subtests, or of a hook, so N can exceed
- * the failed cases the elements list.
+ * the failed cases the elements list; a test whose subtests failed is itself one of the N, and is listed only as the
+ * `testsuite` holding them, which `readJunit` counts.
  */
 export function declaredFailures(xml: string): number | undefined {
   const found = /<!--\s*fail\s+(\d+)\s*-->/.exec(xml);
   return found === null ? undefined : Number(found[1]);
 }
 
+/** The cases of a report, and how many of its `testsuite` elements hold a failed case anywhere below them. */
+export interface JunitReport {
+  readonly cases: TestCase[];
+  readonly failingSuites: number;
+}
+
 /**
- * The cases of a JUnit report, in the order written. Reads what pytest and node:test write: a case is failed when it holds a
+ * The cases of a JUnit report, in the order written, and the count of its suites that hold a failed case (node counts a
+ * test with failed subtests as a failure too). Reads what pytest and node:test write: a case is failed when it holds a
  * `failure` or an `error`, skipped when it holds `skipped`. A case that names its `file` (node:test) is in that file, and
  * the describe blocks it sits in are part of its name; one that names a `classname` (pytest) is in that module.
  * Throws when the text is no JUnit report or stops before its end.
  */
-export function parseJunit(xml: string): TestCase[] {
+export function readJunit(xml: string): JunitReport {
   const text = xml
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<\?[\s\S]*?\?>/g, "")
@@ -88,6 +96,9 @@ export function parseJunit(xml: string): TestCase[] {
   const cases: TestCase[] = [];
   const open: string[] = [];
   const suites: string[] = [];
+  const suiteIds: number[] = [];
+  const failing = new Set<number>();
+  let nextId = 0;
   let building: Building | undefined;
   let roots = 0;
 
@@ -95,10 +106,15 @@ export function parseJunit(xml: string): TestCase[] {
     if (building === undefined) return;
     const { message, ...rest } = building;
     cases.push(message ? { ...rest, message } : rest);
+    if (building.result === "failed")
+      for (const id of suiteIds) failing.add(id);
     building = undefined;
   };
   const close = (tag: string): void => {
-    if (tag === "testsuite") suites.pop();
+    if (tag === "testsuite") {
+      suites.pop();
+      suiteIds.pop();
+    }
     if (tag === "testcase") finish();
   };
 
@@ -119,6 +135,7 @@ export function parseJunit(xml: string): TestCase[] {
     const attribute = attributesOf(source);
     if (tag === "testsuite") {
       suites.push(attribute.get("name") ?? "");
+      suiteIds.push(nextId++);
     } else if (tag === "testcase") {
       const file = attribute.get("file");
       const inside = suites.filter((suite) => suite !== "");
@@ -154,5 +171,5 @@ export function parseJunit(xml: string): TestCase[] {
   if (roots === 0) throw new Error("the report holds no test suites");
   if (roots > 1) throw new Error("the report has more than one root");
   if (open.length > 0) throw new Error("the report is cut short");
-  return cases;
+  return { cases, failingSuites: failing.size };
 }
