@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -30,6 +30,8 @@ before(async () => {
       response.writeHead(text === undefined ? 404 : 200).end(text);
     } else if (path === "/gone" || path.endsWith("/missing.md")) {
       response.writeHead(404).end();
+    } else if (path === "/down") {
+      response.writeHead(503).end();
     } else if (path === "/flaky") {
       const seen = (attempts.get(path) ?? 0) + 1;
       attempts.set(path, seen);
@@ -61,15 +63,42 @@ function write(root: string, files: Record<string, string>): void {
 }
 
 let counter = 0;
-/** The script over a tree of these files and a checkout of these: its exit code and what it said. */
+/** The script over a tree of these files, in which {SHA} is the commit of a checkout of these, and what it said. */
 async function check(
   files: Record<string, string>,
   checkout: Record<string, string> = {},
   more: string[] = [],
 ): Promise<{ code: number; said: string }> {
   const folder = join(SCRATCH, String(counter++));
-  write(join(folder, "tree"), files);
+  mkdirSync(join(folder, "checkout"), { recursive: true });
   write(join(folder, "checkout"), checkout);
+  const git = (...args: string[]): string =>
+    execFileSync(
+      "git",
+      [
+        "-C",
+        join(folder, "checkout"),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t.test",
+        ...args,
+      ],
+      { encoding: "utf8" },
+    ).trim();
+  git("init", "--quiet");
+  git("add", "-A");
+  git("commit", "--quiet", "--allow-empty", "-m", "c");
+  const sha = git("rev-parse", "HEAD");
+  write(
+    join(folder, "tree"),
+    Object.fromEntries(
+      Object.entries(files).map(([path, text]) => [
+        path,
+        text.replaceAll("{SHA}", sha),
+      ]),
+    ),
+  );
   return new Promise((resolve) =>
     execFile(
       process.execPath,
@@ -94,10 +123,9 @@ async function check(
 }
 
 const page = (body: string, title = "A page"): string =>
-  `<!DOCTYPE html><html><head><title>${title}</title><link rel="stylesheet" href="site.css"></head><body><h1 id="top-heading">${title}</h1>${body}</body></html>`;
+  `<!DOCTYPE html><html><head><title>${title}</title><link rel="stylesheet" href="${SITE}site.css"></head><body><h1 id="top-heading">${title}</h1>${body}</body></html>`;
 
-test("a tree whose every link resolves passes: files, folders, anchors, a mailto, an external link that fails once, one that refuses HEAD, an allowlisted host never asked, and a GitHub link into a checkout", async () => {
-  const sha = "a".repeat(40);
+test("a tree whose every link resolves passes: files, folders, anchors, a mailto, an external link that fails once, one that refuses HEAD, one whose host stays down (a warning, not a dead link), an allowlisted host never asked, and a GitHub link into a checkout", async () => {
   const { code, said } = await check(
     {
       "site.css": "body{}",
@@ -110,9 +138,10 @@ test("a tree whose every link resolves passes: files, folders, anchors, a mailto
           `<a href="mailto:a@b.test">mail</a>`,
           `<a href="${origin}/flaky">flaky</a>`,
           `<a href="${origin}/no-head">no head</a>`,
+          `<a href="${origin}/down">down</a>`,
           `<a href="https://loinc.org/never-asked-because-allowlisted">loinc</a>`,
           `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/q.rq">file</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/tree/${sha}/queries/">folder</a>`,
+          `<a href="https://github.com/jayostis/cascade-vocabulary/tree/{SHA}/queries/">folder</a>`,
         ].join(""),
       ),
       "sub/index.html": page(`<a href="page.html">p</a>`),
@@ -122,6 +151,7 @@ test("a tree whose every link resolves passes: files, folders, anchors, a mailto
   );
   assert.equal(code, 0, said);
   assert.ok(!asked.some((line) => line.includes("never-asked")), said);
+  assert.ok(said.includes(`WARN`) && said.includes(`${origin}/down`), said);
 });
 
 test("a tree with a dead file, a dead anchor, a dead external link and a GitHub link to a file the checkout lacks fails naming each link and its page, and only those", async () => {
