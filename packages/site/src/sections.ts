@@ -96,6 +96,13 @@ export function pageOf(link: string): string {
   return path === "" || path.endsWith("/") ? `${path}index.html` : path;
 }
 
+/** The address a link names: a local link is its file, so a folder and its index are one, and a fragment stays. */
+export function addressOf(link: string): string {
+  return isLocal(link)
+    ? `${pageOf(link)}${/#.*$/.exec(link)?.[0] ?? ""}`
+    : link;
+}
+
 function add(
   tree: Map<string, Uint8Array>,
   files: ReadonlyMap<string, Uint8Array>,

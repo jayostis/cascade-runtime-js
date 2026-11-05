@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { FRONT_PAGE, hubFiles, STARTER_TRY } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { SECTIONS } from "../src/node/hub/index.js";
-import { buildTree, pageOf } from "../src/sections.js";
+import { addressOf, buildTree, pageOf } from "../src/sections.js";
 import { readPage } from "./page.js";
 
 const OWNER = "https://github.com/jayostis";
@@ -72,7 +72,7 @@ test("the front page has a Find your way table with a row for each thing a reade
       ["want-contribute", ["#repositories", "decisions/#the-bar"]],
     ].map(([id, links]) => [id, [...(links as string[])].sort()]),
   );
-  const all = readPage(html).hrefs;
+  const all = readPage(html).hrefs.map(addressOf);
   assert.deepEqual(
     all.filter((href, at) => all.indexOf(href) !== at),
     [],
@@ -134,6 +134,13 @@ test("the front page is refused when an address is linked twice, whether by two 
         },
       ],
       "a.html",
+    ],
+    [
+      [
+        { href: "spec/", label: "A" },
+        { href: "spec/index.html", label: "B" },
+      ],
+      "spec/index.html",
     ],
     [
       [{ href: `${OWNER}/cascade-sandbox`, label: "S" }],

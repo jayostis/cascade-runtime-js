@@ -10,7 +10,7 @@ import {
   INDEX_FILE,
   LLMS_FILE,
 } from "../src/agents.js";
-import { FRONT_PAGE, hubFiles } from "../src/front-page.js";
+import { FRONT_PAGE, hubFiles, REPOSITORIES } from "../src/front-page.js";
 import type { PagesContext } from "../src/hub/context.js";
 import { apiSection } from "../src/node/hub/api.js";
 import { evalsSection } from "../src/node/hub/evals.js";
@@ -125,7 +125,7 @@ test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sectio
       ),
     ],
     ctx: {},
-    front,
+    front: () => front(new Map()),
     finishers: [agentFiles],
   });
   const llms = read(tree, LLMS_FILE);
@@ -152,7 +152,49 @@ test("llms.txt is in the llmstxt.org form: a title, a quoted summary, and sectio
     "a section that says nothing is not listed",
   );
   assert.ok(llms.includes("- [Odd \\[name\\]](a/one%20%28two%29.html)"));
-  assert.equal(llms.split("\n- [").length - 1, 5);
+  assert.equal(
+    llms.split("\n- [").length - 1,
+    5 + REPOSITORIES.length + REPOSITORIES.filter(({ site }) => site).length,
+  );
+});
+
+test("llms.txt has a Contribute group with a row that links into a page another row already lists, and every repository", async () => {
+  const { tree } = await buildTree({
+    sections: [
+      made(
+        "d/index.html",
+        "Section D",
+        { "d/index.html": page("D") },
+        {
+          rows: async () => [
+            { href: "d/", label: "Open D" },
+            {
+              href: "d/#the-bar",
+              label: "The bar",
+              about: "what a change must meet",
+              want: "contribute",
+            },
+          ],
+        },
+      ),
+    ],
+    ctx: {},
+    front,
+    finishers: [agentFiles],
+  });
+  const llms = read(tree, LLMS_FILE);
+  assert.ok(llms.includes("- [Open D](d/)"));
+  const group = llms.split(/^## /m).find((part) => /^Contribute\n/.test(part));
+  assert.ok(group, "llms.txt has a Contribute group");
+  assert.ok(group.includes("- [The bar](d/#the-bar): what a change must meet"));
+  for (const { name, site } of REPOSITORIES) {
+    assert.ok(
+      group.includes(`(https://github.com/jayostis/${name})`),
+      `the Contribute group lists ${name}`,
+    );
+    if (site !== undefined)
+      assert.ok(group.includes(`(${site})`), `and ${name}'s site`);
+  }
 });
 
 test("index.json gives each page its title, kind and source, titles decoded, and a section's source is what it says it is built from or else its title", async () => {

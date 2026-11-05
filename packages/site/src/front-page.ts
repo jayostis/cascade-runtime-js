@@ -1,6 +1,6 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
 import { type Content, markup } from "./html.js";
-import type { Row, Rows, Want } from "./sections.js";
+import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
 import { COPY } from "./terms.js";
@@ -29,7 +29,7 @@ export const WANT_ORDER = Object.keys(WANTS) as readonly Want[];
 /** The place on the front page that lists every repository, which the contribute row links. */
 export const REPOSITORIES_ANCHOR = "#repositories";
 
-const OWNER = "https://github.com/jayostis";
+export const OWNER = "https://github.com/jayostis";
 
 export interface Repository {
   readonly name: string;
@@ -204,8 +204,10 @@ function withRepositories(rows: Rows): Rows {
 function checkOnce(rows: Rows): void {
   const seen = new Set<string>();
   const once = (href: string): void => {
-    if (seen.has(href)) throw new Error(`the front page links ${href} twice`);
-    seen.add(href);
+    const address = addressOf(href);
+    if (seen.has(address))
+      throw new Error(`the front page links ${href} twice`);
+    seen.add(address);
   };
   for (const listed of rows.values())
     for (const { href, also } of listed) {

@@ -1,7 +1,20 @@
-import { FRONT_PAGE, WANT_ORDER, WANTS } from "./front-page.js";
+import {
+  FRONT_PAGE,
+  OWNER,
+  REPOSITORIES,
+  WANT_ORDER,
+  WANTS,
+} from "./front-page.js";
 import { Html, markup } from "./html.js";
 import { renderMarkdown, renderWithHeadings } from "./markdown.js";
-import { isLocal, pageOf, type Row, type Walk, type Want } from "./sections.js";
+import {
+  addressOf,
+  isLocal,
+  pageOf,
+  type Row,
+  type Walk,
+  type Want,
+} from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 
 export const LLMS_FILE = "llms.txt";
@@ -122,7 +135,7 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
 
   const listed = new Set<string>([LLMS_FILE]);
   const once = (href: string): boolean => {
-    const target = isLocal(href) ? pageOf(href) : href;
+    const target = addressOf(href);
     if (listed.has(target)) return false;
     listed.add(target);
     return true;
@@ -174,6 +187,13 @@ export async function agentFiles<Ctx extends { readonly base?: string }>(
         if (section.optional !== true) wanted.set(want, lines);
       }
   }
+  wanted.set("contribute", [
+    ...(wanted.get("contribute") ?? []),
+    ...REPOSITORIES.flatMap(({ name, about, site }) => [
+      item(name, `${OWNER}/${name}`, about),
+      ...(site === undefined ? [] : [item(`${name} site`, site)]),
+    ]),
+  ]);
   const parts = WANT_ORDER.filter((want) => wanted.has(want));
 
   const llms = [
