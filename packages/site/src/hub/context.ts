@@ -23,7 +23,7 @@ export interface Conformance {
 export interface TestRun {
   readonly report: string;
   readonly commit: string;
-  /** When the run started. */
+  /** When the run was made. */
   readonly at: string;
   /** The run's page. */
   readonly url: string;

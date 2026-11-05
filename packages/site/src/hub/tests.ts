@@ -74,7 +74,7 @@ function ordered(cases: readonly TestCase[]): TestCase[] {
 }
 
 function runLine(suite: Suite, run: TestRun): Html {
-  return markup`<a href="${run.url}">The run</a> of commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>, started <time datetime="${run.at}">${run.at}</time>`;
+  return markup`<a href="${run.url}">The run</a> of commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>, run at <time datetime="${run.at}">${run.at}</time>`;
 }
 
 function table(cases: readonly TestCase[]): Html {

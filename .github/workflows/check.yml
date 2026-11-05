@@ -325,8 +325,9 @@ jobs:
 
   # The conformance run of main that the Pages tree shows. `tests and conformance` is skipped on a push and its report is
   # not kept for the site, so this job runs the start action alone, on a push and nightly, and keeps the report with the
-  # table the check wrote beside it under the artifact name `conformance`. The tests, the lint and the types are not its
-  # business, and `build-pages` does not wait for them.
+  # table the check wrote beside it under the artifact name `conformance`. It also runs the runtime's own tests, whose JUnit
+  # report it keeps under `runtime-tests` for the Pages tree's test page. The lint and the types are not its business, and
+  # `build-pages` waits for the job and not for its verdict.
   conformance:
     name: conformance
     if: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
@@ -376,6 +377,27 @@ jobs:
           name: conformance
           path: ${{ runner.temp }}/conformance
           if-no-files-found: ignore
+      # npm test transpiles its own sources, so it needs no build first. The log stays the spec reporter's; the JUnit file
+      # is the page's. A failing case fails this step, and the report is still kept.
+      - name: The runtime's tests
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          kept="$RUNNER_TEMP/runtime-tests"
+          mkdir -p "$kept"
+          printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$kept/run.json"
+          npm test -- --test-reporter=junit --test-reporter-destination="$kept/junit.xml" \
+            --test-reporter=spec --test-reporter-destination=stdout
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: runtime-tests
+          path: ${{ runner.temp }}/runtime-tests
+          if-no-files-found: ignore
 
   # The vocabulary, the adapters and the Bridge are each read at the head of their default branch. On a push to main, and
   # nightly, so a merge in the vocabulary or an adapter reaches the pages the next night. It waits for the conformance
@@ -419,8 +441,44 @@ jobs:
         with:
           name: conformance
           path: build/conformance
+      # The unit test page shows the newest run of each suite on main, case by case. The runtime's is this run's own, kept by
+      # the conformance job. The vocabulary's is another repository's artifact, found by the newest push or nightly run of
+      # its check workflow that still holds one (a cancelled or unfinished run does not), which the job's token may not be
+      # allowed to download: then the page says "not available" for it and the deploy goes on.
+      - name: The runtime's test report
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: runtime-tests
+          path: build/tests/runtime
+      - name: The vocabulary's test report
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          repository=jayostis/cascade-vocabulary
+          kept=build/tests/vocabulary
+          mkdir -p "$kept"
+          if ! runs=$(gh run list -R "$repository" -w check.yml -b main --limit 20 \
+            --json databaseId,event,headSha,createdAt,url \
+            --jq '.[] | select(.event == "push" or .event == "schedule") | [.databaseId, .headSha, .createdAt, .url] | @tsv'); then
+            echo "::warning::cannot list the runs of $repository, so its test report is not available"
+            exit 0
+          fi
+          while IFS=$'\t' read -r id sha at url; do
+            [ -n "$id" ] || continue
+            if gh run download "$id" -R "$repository" -n pytest-junit -D "$kept" >/dev/null 2>&1 && [ -f "$kept/pytest-junit.xml" ]; then
+              mv "$kept/pytest-junit.xml" "$kept/junit.xml"
+              printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$sha" "$at" "$url" > "$kept/run.json"
+              echo "the vocabulary's test report is of run $id ($url)"
+              exit 0
+            fi
+          done <<< "$runs"
+          echo "::warning::none of the newest runs of $repository holds a pytest-junit artifact this job can download, so its test report is not available"
       - name: Build the Pages tree
-        run: npm run build:pages -- --report build/conformance/earl.ttl
+        run: npm run build:pages -- --report build/conformance/earl.ttl --tests build/tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # llms.txt links absolutely under the address the deploy serves; the pull request's artifact leaves it unset.

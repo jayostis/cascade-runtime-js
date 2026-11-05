@@ -31,13 +31,12 @@ const NAMED: Readonly<Record<string, string>> = {
 function decode(text: string): string {
   return text
     .replace(/&amp;(quot|apos);/g, "&$1;")
-    .replace(ENTITY, (whole, decimal, hex, name) =>
-      decimal !== undefined
-        ? String.fromCodePoint(Number(decimal))
-        : hex !== undefined
-          ? String.fromCodePoint(parseInt(hex, 16))
-          : (NAMED[String(name).toLowerCase()] ?? whole),
-    );
+    .replace(ENTITY, (whole, decimal, hex, name) => {
+      if (name !== undefined) return NAMED[String(name)] ?? whole;
+      const code =
+        decimal !== undefined ? Number(decimal) : parseInt(String(hex), 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    });
 }
 
 function attributesOf(source: string): ReadonlyMap<string, string> {
