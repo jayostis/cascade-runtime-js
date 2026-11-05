@@ -87,6 +87,8 @@ export interface Path {
   /** The path as the accounting writes it, the form's prefix taken off. */
   readonly path: string;
   readonly forms: readonly string[];
+  /** The path is a member of a Bundle entry, not an element of a resource in any form. */
+  readonly entryMember?: true;
   readonly verdict: string;
   /** The label of the gap the entry names. */
   readonly gap?: string;
@@ -149,6 +151,17 @@ function labels(graph: Graph): ReadonlyMap<string, string> {
 }
 
 const last = (iri: string): string => iri.slice(iri.search(/[^#/]*$/));
+
+/** The paths the accounting writes, with no prefix, for the members of a Bundle entry itself. */
+const ENTRY_MEMBERS: ReadonlySet<string> = new Set([
+  "/fullUrl",
+  "/resource",
+  "/request",
+  "/request/method",
+  "/request/url",
+  "/search",
+  "/search/mode",
+]);
 
 /** The form a FHIR path is written in, and the path without it. */
 function formOf(path: string): [form: string, rest: string] {
@@ -214,6 +227,7 @@ export async function readAccounting(
     const path: Path = {
       path: rest,
       forms: [],
+      ...(form === "" && ENTRY_MEMBERS.has(rest) ? { entryMember: true } : {}),
       verdict: last(verdict.value),
       ...(gap === undefined
         ? {}
@@ -352,15 +366,15 @@ function counts(accounting: Accounting): {
   part: number;
   not: number;
 } {
-  let carried = 0;
-  let part = 0;
-  let not = 0;
-  for (const { verdict } of accounting.paths) {
-    if (verdict === "carried") carried += 1;
-    else if (verdict === "carriedInPart") part += 1;
-    else not += 1;
+  const carried = new Set<string>();
+  const part = new Set<string>();
+  const not = new Set<string>();
+  for (const { verdict, path } of accounting.paths) {
+    if (verdict === "carried") carried.add(path);
+    else if (verdict === "carriedInPart") part.add(path);
+    else not.add(`${verdict} ${path}`);
   }
-  return { carried, part, not };
+  return { carried: carried.size, part: part.size, not: not.size };
 }
 
 const short = (commit: string): string => commit.slice(0, 7);
@@ -393,7 +407,7 @@ ${listed.map((one) => {
   return markup`<tr><td data-label="adapter"><a href="${view.slug}/index.html">${view.title}</a></td><td data-label="built from"><a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a></td><td data-label="paths carried">${carried}</td><td data-label="carried in part">${part}</td><td data-label="not carried">${not}</td></tr>\n`;
 })}</tbody>
 </table>
-<p class="about">A path is counted once, whatever forms the accounting writes it in.</p>
+<p class="about">A path is counted once for each verdict the accounting gives it, whatever forms it is written in and however many reasons it gives.</p>
 `,
   );
 }
@@ -413,7 +427,9 @@ function groupTitle(sourceType: string | undefined): Html {
     : markup`${title} <code>${sourceType}</code>`;
 }
 
-function formsNote(forms: readonly string[], all: boolean): Content {
+function formsNote({ forms, entryMember }: Path, all: boolean): Content {
+  if (entryMember)
+    return markup`<span class="forms">a Bundle entry's own member</span>`;
   if (!all || forms.length === FORMS.length) return "";
   return markup`<span class="forms">only as ${forms.map((form, at) => markup`${at === 0 ? "" : ", "}<code>${form}/x</code>`)}</span>`;
 }
@@ -455,7 +471,7 @@ ${keys.map((key) => {
 <table>
 <thead><tr><th>source path</th><th>becomes</th><th>on</th><th>carried</th></tr></thead>
 <tbody>
-${rows.map(({ path, becomes }) => markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path.forms, withForms)}</td><td data-label="becomes">${termLink(becomes.property, view.declared)}</td><td data-label="on">${termLink(becomes.recordClass, view.declared)}</td><td data-label="carried">${path.verdict === "carried" ? "whole" : markup`<a href="#carriedInPart">in part</a>`}</td></tr>\n`)}</tbody>
+${rows.map(({ path, becomes }) => markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path, withForms)}</td><td data-label="becomes">${termLink(becomes.property, view.declared)}</td><td data-label="on">${termLink(becomes.recordClass, view.declared)}</td><td data-label="carried">${path.verdict === "carried" ? "whole" : markup`<a href="#carriedInPart">in part</a>`}</td></tr>\n`)}</tbody>
 </table>
 `;
 })}${
@@ -466,7 +482,7 @@ ${rows.map(({ path, becomes }) => markup`<tr><td class="path" data-label="source
 <table>
 <thead><tr><th>source path</th><th>carried</th></tr></thead>
 <tbody>
-${unnamed.map((path) => markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path.forms, withForms)}</td><td data-label="carried">${path.verdict === "carried" ? "whole" : markup`<a href="#carriedInPart">in part</a>`}</td></tr>\n`)}</tbody>
+${unnamed.map((path) => markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path, withForms)}</td><td data-label="carried">${path.verdict === "carried" ? "whole" : markup`<a href="#carriedInPart">in part</a>`}</td></tr>\n`)}</tbody>
 </table>
 `
   }`;
@@ -490,13 +506,13 @@ function notCarried(view: AdapterView, withForms: boolean): Html {
           : id === "redundantWith"
             ? "same fact as"
             : undefined;
-    return markup`<h3 id="${id}">${verdict?.title ?? id} <span class="about">${plural(paths.length, "path")}</span></h3>
+    return markup`<h3 id="${id}">${verdict?.title ?? id} <span class="about">${plural(new Set(paths.map(({ path }) => path)).size, "path")}</span></h3>
 <table>
 <thead><tr><th>source path</th>${why === undefined ? "" : markup`<th>${why}</th>`}${id === "carriedInPart" ? markup`<th>carried as</th>` : ""}</tr></thead>
 <tbody>
 ${paths.map(
   (path) =>
-    markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path.forms, withForms)}</td>${
+    markup`<tr><td class="path" data-label="source path"><code>${shownPath(path.path)}</code>${formsNote(path, withForms)}</td>${
       why === undefined
         ? ""
         : markup`<td data-label="${why}">${id === "redundantWith" ? (path.sameFactAs === undefined ? "" : markup`<code>${shownPath(path.sameFactAs)}</code>`) : (path.gap ?? path.because ?? "")}</td>`
@@ -574,7 +590,8 @@ ${
   withForms
     ? markup`<p class="prose" id="forms">A FHIR path is listed once for the forms the accounting writes it in: <code>/x</code> for a resource alone,
 <code>/resource/x</code> for the resource of a Bundle entry, <code>/contained/x</code> for a resource contained in another and
-<code>/resource/contained/x</code> for one contained in an entry's. A row says so where the path is in some of the forms only.</p>
+<code>/resource/contained/x</code> for one contained in an entry's. A row says so where the path is in some of the forms only. The members of a Bundle entry itself (<code>/fullUrl</code>,
+<code>/resource</code>, <code>/request</code> and <code>/search</code> with theirs) are none of the four forms: they belong to the entry, not to a resource.</p>
 `
     : ""
 }${

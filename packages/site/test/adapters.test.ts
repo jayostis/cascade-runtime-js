@@ -85,7 +85,16 @@ const ACCOUNTING = `${PREFIXES}
   bridge:because "A profile claim says what the server validated, which the record does not keep." .
 
 [] a bridge:PathEntry ;
+  bridge:sourcePath "/meta/profile" ;
+  bridge:verdict bridge:ignored ;
+  bridge:because "A profile claim in a contained resource says what the server validated, which the record does not keep." .
+
+[] a bridge:PathEntry ;
   bridge:sourcePath "/resourceType" ;
+  bridge:verdict bridge:consumed .
+
+[] a bridge:PathEntry ;
+  bridge:sourcePath "/fullUrl" ;
   bridge:verdict bridge:consumed .
 
 [] a bridge:PathEntry ;
@@ -282,6 +291,22 @@ test("a path in all four forms is one row that does not name its forms, the page
   assert.match(plain(line("/recordedDate")), /only as \/x ?, \/contained\/x/);
 });
 
+test("a Bundle entry's own member is said to be one, not to be a resource's element in one form only", () => {
+  const line = (code: string) =>
+    fhir.split("\n").find((one) => one.includes(`<code>${code}</code>`)) ?? "";
+  assert.ok(line("/fullUrl") !== "");
+  assert.doesNotMatch(plain(line("/fullUrl")), /only as/);
+  assert.match(plain(line("/fullUrl")), /Bundle entry/);
+});
+
+test("a path is counted once for a verdict, whatever forms and reasons the accounting writes it with", () => {
+  const [built] = rowsAfter(index, "adapters");
+  // carried whole, carried in part, not carried: /recordedDate, /meta/profile, /resourceType, /fullUrl, /code/coding/display
+  assert.deepEqual(built?.cells.slice(2, 5), ["3", "1", "5"]);
+  assert.match(plain(fhir), /5 not carried/);
+  assert.match(plain(fhir), /Deliberately not carried 1 path\b/);
+});
+
 test("what is not carried is grouped by verdict: a noHome path with its gap's label, a path carried in part with its gap and what it does carry, an ignored one with why, a consumed one, and one that restates another", () => {
   const gap =
     "A resource carries the date it was first recorded, and no Cascade predicate carries it.";
@@ -294,18 +319,21 @@ test("what is not carried is grouped by verdict: a noHome path with its gap's la
   assert.match(part?.cells[1] ?? "", /Only the first note of a resource/);
   assert.ok(part?.cells.join(" ").includes("cascade:allergen"));
   assert.ok(part?.hrefs.includes(termHref(`${CASCADE}allergen`, TERMS)));
+  const ignored = rowsAfter(fhir, "ignored");
   assert.deepEqual(
-    rowsAfter(fhir, "ignored").map(({ cells }) => cells.slice(0, 2)),
-    [
-      [
-        "/meta/profile",
+    ignored.map(({ cells }) => cells[0]),
+    ["/meta/profile", "/meta/profile"],
+  );
+  assert.ok(
+    ignored.some(
+      ({ cells }) =>
+        cells[1] ===
         "A profile claim says what the server validated, which the record does not keep.",
-      ],
-    ],
+    ),
   );
   assert.deepEqual(
     rowsAfter(fhir, "consumed").map(({ cells }) => cells[0]),
-    ["/resourceType"],
+    ["/fullUrl", "/resourceType"],
   );
   const [same] = rowsAfter(fhir, "redundantWith");
   assert.equal(same?.cells[0], "/code/coding/display");
