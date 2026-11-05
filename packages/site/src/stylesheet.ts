@@ -34,6 +34,7 @@ table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; vertical-align: top; padding: .3rem .6rem; border-bottom: 1px solid var(--line);
          overflow-wrap: anywhere; }
 th { background: var(--panel); font: 600 .85rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
+table.results th { white-space: normal; }
 #find-your-way ul { margin: 0; padding-left: 1.1rem; }
 #find-your-way th[scope="row"], #repository-list th[scope="row"] { white-space: normal; font: 600 .95rem/1.4 system-ui, sans-serif; width: 14rem; }
 td code { color: var(--quiet); font-size: .8rem; }

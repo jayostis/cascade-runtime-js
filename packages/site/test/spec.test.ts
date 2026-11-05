@@ -452,8 +452,16 @@ test("the hub's spec section writes the spec's pages and the conformance table w
   assert.ok(front.hrefs.includes("conformance/"));
 
   const conformance = readPage(treeText(tree, "conformance/index.html"));
-  assert.match(conformance.said, /Naming 4 1 1 1/);
-  assert.match(conformance.said, /Kim's pod 1 1 0 0 0 1 /);
+  assert.match(
+    conformance.said,
+    /feature rules rules with no example examples pass examples fail examples not run checks pass/,
+  );
+  assert.match(conformance.said, /Naming 4 2 1 1 1/);
+  assert.match(conformance.said, /The conformance kit 2 2 no example/);
+  assert.match(conformance.said, /Kim's pod 1 0 1 0 0 0 1 0/);
+  const rules = readPage(treeText(tree, "spec/index.html"));
+  assert.match(rules.said, /feature rules rules with no example examples pass/);
+  assert.match(rules.said, /The conformance kit 2 2 no example/);
   assert.ok(conformance.hrefs.includes("../spec/naming.html"));
   assert.ok(conformance.hrefs.includes("earl.ttl"));
   assert.ok(conformance.hrefs.includes("table.md"));
@@ -477,6 +485,7 @@ test("the hub's spec section writes the spec's pages and the conformance table w
       page: "spec/naming.html",
       kit: false,
       rules: 4,
+      withoutExample: 2,
       passed: 1,
       failed: 1,
       notRun: 1,
@@ -491,7 +500,7 @@ test("with no conformance report the section still writes both, every result is 
   assert.ok(!tree.has("conformance/table.md"));
   const conformance = readPage(treeText(tree, "conformance/index.html"));
   assert.match(conformance.said, /No result of a conformance report/);
-  assert.match(conformance.said, /Naming 4 0 0 3/);
+  assert.match(conformance.said, /Naming 4 2 0 0 3/);
   assert.ok(!conformance.hrefs.includes("earl.ttl"));
   const json = JSON.parse(treeText(tree, "conformance/results.json")) as {
     ran: boolean;
@@ -577,7 +586,7 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
   await files.write(
     "decisions/README.md",
     text(
-      "# Decision notes\n\nOne note per question.\n\n## The notes\n\n- [`currency.md`](currency.md): which revision.\n- [issue](https://github.com/jayostis/cascade-vocabulary/issues/130)\n",
+      "# Decision notes\n\nOne note per question.\n\n## The sections\n\nA note has these.\n\n## The bar\n\nAdopt the standard.\n\n## The notes\n\n- [`currency.md`](currency.md): which revision.\n- [issue](https://github.com/jayostis/cascade-vocabulary/issues/130)\n",
     ),
   );
   await files.write("decisions/currency.md", text(CURRENCY_NOTE));
@@ -645,6 +654,15 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
   assert.ok(!index.hrefs.includes("currency.html#row-heads"));
   assert.ok(index.hrefs.includes("naming.html"));
   assert.ok(index.hrefs.includes(`${BLOB}decisions/README.md`));
+  const indexHtml = treeText(tree, "decisions/index.html");
+  const at = (id: string) => indexHtml.indexOf(`id="${id}"`);
+  assert.ok(
+    at("the-notes") > 0 &&
+      at("the-notes") < at("every-note") &&
+      at("every-note") < at("the-sections") &&
+      at("the-sections") < at("the-bar"),
+    "the list of notes and the table of every note come before the note format",
+  );
   assert.ok(
     readPage(treeText(tree, "index.html")).hrefs.includes("decisions/"),
   );

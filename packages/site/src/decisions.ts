@@ -133,18 +133,34 @@ function notePage(
   );
 }
 
+/**
+ * The README's opening and its "The notes" section, then every other section: a reader who came for the decisions meets the
+ * list of notes before the format a note is written in.
+ */
+function listFirst(readme: string): readonly [string, string] {
+  const heading = /^## The notes[ \t]*$/m.exec(readme);
+  if (heading === null) return [readme, ""];
+  const end = readme.slice(heading.index + 1).search(/^## /m);
+  const stop = end < 0 ? readme.length : heading.index + 1 + end;
+  const first = readme.search(/^## /m);
+  return [
+    readme.slice(0, first) + readme.slice(heading.index, stop),
+    readme.slice(first, heading.index) + readme.slice(stop),
+  ];
+}
+
 function indexPage({
   decisions,
   readme,
 }: Pick<DecisionOptions, "decisions" | "readme">): Uint8Array {
-  const { html } = renderWithHeadings(readme, {
-    link: linkFrom(README, decisions),
-  });
+  const render = (source: string): Html =>
+    renderWithHeadings(source, { link: linkFrom(README, decisions) }).html;
+  const [opening, format] = listFirst(readme);
   const plain = (thing: string): string => thing.replaceAll("`", "");
   return page(
     "Decision notes",
     { href: noteHref(README, decisions.blob), path: README },
-    markup`${html}<h2 id="every-note">Every note, and the rows no rule cites</h2>
+    markup`${render(opening)}<h2 id="every-note">Every note, and the rows no rule cites</h2>
 <p class="prose">A rule names the Choice row that ruled it in its first sentence, and the note's row lists the rules that name it.
 A row no rule cites is listed here and says so on its note's page: its ruling is applied by a file other than a runtime
 rule, or by a rule that has yet to be written, or by none.</p>
@@ -156,7 +172,7 @@ ${decisions.notes.map((note) => {
   return markup`<tr><td data-label="note"><a href="${pageOf(note.path)}">${note.title}</a></td><td data-label="rows">${note.rows.length}</td><td data-label="cited by a rule">${note.rows.length - none.length}</td><td data-label="cited by none">${none.map(({ id, thing, anchored }, at) => markup`${at === 0 ? "" : ", "}<a href="${pageOf(note.path)}${anchored ? `#${id}` : ""}">${plain(thing)}</a>`)}</td></tr>\n`;
 })}</tbody>
 </table>
-`,
+${render(format)}`,
   );
 }
 
