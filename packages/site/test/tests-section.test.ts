@@ -66,17 +66,29 @@ function rowsOf(markup: string, heading: string): string[][] {
   const table = /<tbody>([\s\S]*?)<\/tbody>/.exec(part)?.[1] ?? "";
   return [...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(([, row]) =>
     [...(row ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) =>
-      (cell ?? "")
-        .replace(/<[^>]*>/g, " ")
-        .replace(/\s+/g, " ")
-        .replaceAll("&lt;", "<")
-        .replaceAll("&gt;", ">")
-        .replaceAll("&#34;", '"')
-        .replaceAll("&amp;", "&")
-        .trim(),
+      text((cell ?? "").replace(/<pre[\s\S]*?<\/pre>/g, "")),
     ),
   );
 }
+
+function text(markup: string): string {
+  return markup
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&#34;", '"')
+    .replaceAll("&amp;", "&")
+    .trim();
+}
+
+/** What the first failed case after the heading said. */
+const failureOf = (markup: string, heading: string): string =>
+  text(
+    /<pre class="failure">([\s\S]*?)<\/pre>/.exec(
+      markup.split(`id="${heading}"`)[1] ?? "",
+    )?.[1] ?? "",
+  );
 
 test("each suite's newest run is a table of its cases with result and time, nested describes in the case, a failed case reading failed, and the run's commit, date and link", async () => {
   const { markup, page } = await pageWith({
@@ -89,12 +101,12 @@ test("each suite's newest run is a table of its cases with result and time, nest
     runtime.map(([suite, name, result]) => [suite, name, result]),
     [
       // failures first, then by suite and case
+      ["packages/site/test/links.test.ts", 'fails <a> "q" & so on', "failed"],
       [
-        "packages/site/test/links.test.ts",
-        'fails <a> "q" & so on',
-        "failed",
+        "packages/runtime/test/other.test.ts",
+        "outer › inner › deep pass",
+        "passed",
       ],
-      ["packages/runtime/test/other.test.ts", "outer › inner › deep pass", "passed"],
       ["packages/runtime/test/other.test.ts", "skipped", "skipped"],
       ["packages/site/test/links.test.ts", "passes", "passed"],
     ],
@@ -103,18 +115,25 @@ test("each suite's newest run is a table of its cases with result and time, nest
     runtime.map((row) => row[3]),
     ["1.50 s", "0 ms", "0 ms", "3 ms"],
   );
-  assert.match(runtime[0]?.[1] ?? "", /1 == 2 and 3 > 2/);
+  assert.equal(failureOf(markup, "runtime"), "1 == 2 and 3 > 2");
 
   const vocabulary = rowsOf(markup, "vocabulary");
   assert.deepEqual(
     vocabulary.map(([suite, name, result]) => [suite, name, result]),
     [
       ["tests.test_queries", "test_gone", "failed"],
-      ["tests.test_naming", "test_a_name[record-from-server]@test_naming", "passed"],
+      [
+        "tests.test_naming",
+        "test_a_name[record-from-server]@test_naming",
+        "passed",
+      ],
       ["tests.test_queries", "test_later", "skipped"],
     ],
   );
-  assert.match(vocabulary[0]?.[1] ?? "", /assert 1 == 2/);
+  assert.equal(
+    failureOf(markup, "vocabulary"),
+    "assert 1 == 2 + where 1 = f()",
+  );
 
   assert.match(page.said, /4 cases: 2 passed, 1 failed, 1 skipped/);
   assert.match(page.said, /3 cases: 1 passed, 1 failed, 1 skipped/);

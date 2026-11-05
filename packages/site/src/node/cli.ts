@@ -40,7 +40,12 @@ import {
   podOf,
   viewTitles,
 } from "../front-page.js";
-import type { Conformance, PagesContext } from "../hub/context.js";
+import type {
+  Conformance,
+  PagesContext,
+  TestReports,
+  TestRun,
+} from "../hub/context.js";
 import { buildTree } from "../sections.js";
 import { Site, type SiteOptions } from "../site.js";
 import { readSpecReport, type SpecReport, specPages } from "../spec.js";
@@ -288,6 +293,58 @@ async function readConformance(
 const reportFileOf = (named: string | undefined): string =>
   absolute(named ?? join(ROOT, "build", "conformance", "earl.nt"));
 
+/**
+ * One suite's newest run on main, kept in a folder as `junit.xml` with `run.json` beside it (`commit`, `at`, `url`). A
+ * folder without both, or a `run.json` that does not name the run, is no run: the page says so for that suite.
+ */
+async function readTestRun(
+  folder: string,
+  suite: string,
+): Promise<TestRun | undefined> {
+  const reportFile = join(folder, "junit.xml");
+  const runFile = join(folder, "run.json");
+  if (!existsSync(reportFile) || !existsSync(runFile)) {
+    log(`no ${suite} test report in ${folder}, so its page says not available`);
+    return undefined;
+  }
+  let run: Partial<Record<"commit" | "at" | "url", unknown>>;
+  try {
+    run = JSON.parse(await readFile(runFile, "utf8")) as typeof run;
+  } catch (error) {
+    log(
+      `${runFile} cannot be read (${error instanceof Error ? error.message : String(error)}), so the ${suite} test report is not available`,
+    );
+    return undefined;
+  }
+  const { commit, at, url } = run;
+  if (
+    typeof commit !== "string" ||
+    typeof at !== "string" ||
+    typeof url !== "string"
+  ) {
+    log(
+      `${runFile} names no commit, time and url, so the ${suite} test report is not available`,
+    );
+    return undefined;
+  }
+  return { report: await readFile(reportFile, "utf8"), commit, at, url };
+}
+
+/** The runtime's and the vocabulary's newest runs on main, from `<folder>/runtime` and `<folder>/vocabulary`. */
+async function readTestReports(folder: string): Promise<TestReports> {
+  const [runtime, vocabulary] = await Promise.all([
+    readTestRun(join(folder, "runtime"), "runtime"),
+    readTestRun(join(folder, "vocabulary"), "vocabulary"),
+  ]);
+  return {
+    ...(runtime === undefined ? {} : { runtime }),
+    ...(vocabulary === undefined ? {} : { vocabulary }),
+  };
+}
+
+const testsFolderOf = (named: string | undefined): string =>
+  absolute(named ?? join(ROOT, "build", "tests"));
+
 /** Runs the work on the first call, and gives the same answer to every call after. */
 function once<T>(work: () => Promise<T>): () => Promise<T> {
   let answer: Promise<T> | undefined;
@@ -301,6 +358,7 @@ function once<T>(work: () => Promise<T>): () => Promise<T> {
 function pagesContext(
   vocabulary: LocalVocabulary,
   reportFile: string,
+  testsFolder: string,
 ): PagesContext {
   return {
     root: ROOT,
@@ -387,6 +445,7 @@ function pagesContext(
       at: clock.now(),
     })),
     report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
+    tests: once(() => readTestReports(testsFolder)),
     start: once(async () => {
       const starter = await latestBuild(
         STARTER_REPOSITORY,
@@ -404,17 +463,27 @@ function pagesContext(
  * Builds the whole Pages tree into build/pages: the hub's sections, the front page above them, and what reads the tree
  * once it is written. The one command that the pull request's docs site and the deploy both run. `--no-kits` leaves out
  * what is made of the kits, which is most of the time. `--report` names the conformance run's EARL report, with its
- * table.md beside it; the spec and conformance pages show every result as not run when there is none.
+ * table.md beside it; the spec and conformance pages show every result as not run when there is none. `--tests` names the
+ * folder of the unit test reports, `runtime/` and `vocabulary/` in it, each with `junit.xml` and `run.json`; the page of
+ * a suite with none says it is not available.
  */
 async function buildPages(args: string[]): Promise<number> {
   const { values } = parseArgs({
     args,
-    options: { "no-kits": { type: "boolean" }, report: { type: "string" } },
+    options: {
+      "no-kits": { type: "boolean" },
+      report: { type: "string" },
+      tests: { type: "string" },
+    },
   });
   const vocabulary = await localVocabulary(ROOT, log);
   const { tree } = await buildTree({
     sections: SECTIONS,
-    ctx: pagesContext(vocabulary, reportFileOf(values.report)),
+    ctx: pagesContext(
+      vocabulary,
+      reportFileOf(values.report),
+      testsFolderOf(values.tests),
+    ),
     front: (rows) => hubFiles(viewTitles(vocabulary.layout), rows),
     finishers: FINISHERS,
     skip: ({ needsKits }) => values["no-kits"] === true && needsKits === true,

@@ -108,6 +108,7 @@ ${listed(true)}
 <h2 class="part">The run's files</h2>
 <ul>
 ${earl === undefined ? "" : markup`<li><a href="${EARL_FILE}">${EARL_FILE}</a>: the EARL report the run wrote.</li>\n`}${table === undefined ? "" : markup`<li><a href="${TABLE_FILE}">${TABLE_FILE}</a>: its results as a table.</li>\n`}<li><a href="${RESULTS_FILE}">${RESULTS_FILE}</a>: the results by feature, for a tool.</li>
+<li><a href="tests/index.html">tests/</a>: the runtime's and the vocabulary's unit tests, case by case.</li>
 </ul>
 </main>
 <footer>

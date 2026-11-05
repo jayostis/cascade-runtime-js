@@ -19,6 +19,22 @@ export interface Conformance {
   readonly table?: Uint8Array;
 }
 
+/** One suite's newest run on main: its JUnit report, as the run wrote it, and which run it was. */
+export interface TestRun {
+  readonly report: string;
+  readonly commit: string;
+  /** When the run started. */
+  readonly at: string;
+  /** The run's page. */
+  readonly url: string;
+}
+
+/** The newest run of each suite; one is absent when the build was given none, or when it could not be fetched. */
+export interface TestReports {
+  readonly runtime?: TestRun;
+  readonly vocabulary?: TestRun;
+}
+
 /**
  * What a section of the hub's Pages tree is built from. The providers do their work on the first call and give the same
  * answer after, so a section that needs the kits asks and one that does not never pays for them.
@@ -39,4 +55,6 @@ export interface PagesContext {
   vocabulary(): Promise<VocabularyRead>;
   /** The latest conformance run's report on main; empty when the build was given none, which shows every result as not run. */
   report(): Promise<Conformance>;
+  /** The newest runs on main of the runtime's tests and the vocabulary's pytest. */
+  tests(): Promise<TestReports>;
 }
