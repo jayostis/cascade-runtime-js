@@ -1107,7 +1107,7 @@ ${plural(spec.warnings.length, "place")} where they do not yet:</p>
 ${spec.warnings.map(({ kind, where, what }) => markup`<li><span class="about">${kind}</span> ${where === "" ? "" : markup`<a href="${spec.noteHref(where)}">${where}</a>: `}${what}</li>\n`)}</ul>
 <p class="prose">${plural(spec.unnoted.length, "rule says", "rules say")} no note rules it, and ${plural(spec.waiting.length, "Choice row waits", "Choice rows wait")} on the issue that will write its rule:</p>
 <ul class="warnings">
-${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, id, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.rowHref(note, id)}">${note}</a>:${what}</li>\n`)}</ul>
+${spec.unnoted.map((rule) => markup`<li><span class="about">no note rules it</span> ${rule}</li>\n`)}${spec.waiting.map(({ note, id, what }) => markup`<li><span class="about">waits on an issue</span> <a href="${spec.rowHref(note, id)}">${note}</a>: ${what}</li>\n`)}</ul>
 <footer>
 <p class="about">Built at <time datetime="${options.at}">${options.at}</time> from:</p>
 <ul class="about">
