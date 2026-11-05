@@ -140,10 +140,9 @@ test("the front page is refused when an address is linked twice, whether by two 
       `${OWNER}/cascade-sandbox`,
     ],
   ] as const)
-    assert.throws(
-      () => front(new Map([["build", rows]])),
-      new RegExp(`links ${twice.replace(/[./]/g, "\$&")} twice`),
-    );
+    assert.throws(() => front(new Map([["build", rows]])), {
+      message: `the front page links ${twice} twice`,
+    });
   const page = new TextDecoder().decode(
     front(new Map([["build", [{ href: "a.html", label: "A" }]]])).get(
       FRONT_PAGE,
