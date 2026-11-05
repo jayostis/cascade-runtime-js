@@ -1,5 +1,18 @@
 # cascade-runtime-js
 
+## Docs
+
+- [The Cascade hub](https://jayostis.github.io/cascade-runtime-js/): where to go for each thing, and every repository.
+- [Quick start](https://jayostis.github.io/cascade-runtime-js/start.html): how to start an app on the runtime.
+- [API](https://jayostis.github.io/cascade-runtime-js/api/): the API an app calls.
+- [Agent guide](https://jayostis.github.io/cascade-runtime-js/AGENTS.md): what a coding agent needs to build on the runtime.
+- [Example pods](https://jayostis.github.io/cascade-runtime-js/examples.html): the example pods, with the stories they tell.
+- [Conformance](https://jayostis.github.io/cascade-runtime-js/conformance/): how the runtime scores against the conformance kits.
+- [Unit-test reports](https://jayostis.github.io/cascade-runtime-js/conformance/tests/): the unit-test reports.
+- [Evals](https://jayostis.github.io/cascade-runtime-js/evals/): the eval runs, with every citation checked and every cost.
+- [An app running in the browser](https://jayostis.github.io/cascade-starter-kit/try/): try a pod in the browser.
+- [The starter kit](https://github.com/jayostis/cascade-starter-kit): the app `create-cascade-app` makes, the command itself, and the page in the browser.
+
 ## What the Cascade Protocol is
 
 The Cascade Protocol is an open standard for health apps that put patients in
@@ -32,24 +45,6 @@ answers questions from it, in Node or entirely in a browser, and proves itself
 against the vocabulary's executable examples.
 
 ## Get going
-
-### Build an app
-
-Start at **[jayostis.github.io/cascade-runtime-js](https://jayostis.github.io/cascade-runtime-js)**:
-what a pod is, the command that starts an app, and the prompt to hand a coding
-agent.
-
-- [The quick start](https://jayostis.github.io/cascade-runtime-js/start.html)
-- [An app running in the browser](https://jayostis.github.io/cascade-starter-kit/try/)
-- [The starter kit](https://github.com/jayostis/cascade-starter-kit): the app
-  `create-cascade-app` makes, the command itself, and the page in the browser
-- [The example pods](https://jayostis.github.io/cascade-runtime-js/examples.html):
-  Alex Rivera's, from Apple Health exports, Priya Natarajan's, from an
-  export and C-CDA downloads together, and Martin Okafor's, two FHIR reports of
-  one variant beside what ClinVar says today
-- [The eval runs](https://jayostis.github.io/cascade-runtime-js/evals/): how the
-  pod, through `cascade-mcp`, does against the same records pasted into a chat,
-  on synthetic people, with every citation checked and every cost
 
 ### In this README
 
