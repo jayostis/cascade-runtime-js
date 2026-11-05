@@ -6,13 +6,21 @@
 //   --checkout <owner/repo>=<folder>  a GitHub blob/tree link into this repository is checked in the folder, at the
 //                                     commit it names when the folder is at that commit; repeatable
 //   --no-external                     leave every address outside the site and the checkouts unasked
+//   --save-external <file>            write the addresses left to ask, with the pages that hold each, as JSON
+//   --only-external <file>            ask only the addresses in such a file; no --tree or --crawl
 //   --readmes                         also read the README of each repository the front page lists
 //   --readmes-from <url>              where READMEs are read: <url><repository>/<ref>/README.md
 //   --readme-ref <repository>=<ref>   read that repository's README at this ref, not HEAD; repeatable
 //
 // Exits 1 when a link does not resolve, naming it and the page it is on.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -24,7 +32,17 @@ const ALLOWED = new Map([
 ]);
 
 /** Addresses known dead and not ours to fix here, each with the issue that tracks it; an entry goes when its issue closes. */
-const KNOWN_DEAD = new Map([]);
+const TRACKED = "https://github.com/jayostis/cascade-vocabulary/issues/352";
+const KNOWN_DEAD = new Map(
+  [
+    "https://mapping-commons.github.io/sssom/spec-model/",
+    "http://prefix.cc/clinvar.file.json",
+    "https://mapping-commons.github.io/sssom/record_id/",
+    "https://w3id.org/sssom/schema/",
+    "https://w3id.org/semapv/vocab/",
+    "https://wiki.hl7.org/CG",
+  ].map((url) => [url, TRACKED]),
+);
 
 const HUB = "https://jayostis.github.io/cascade-runtime-js/";
 const RAW = "https://raw.githubusercontent.com/jayostis/";
@@ -57,6 +75,8 @@ function options(argv) {
     else if (flag === "--crawl") found.crawl = true;
     else if (flag === "--checkout") found.checkout.push(value());
     else if (flag === "--no-external") found.noExternal = true;
+    else if (flag === "--save-external") found.saveExternal = value();
+    else if (flag === "--only-external") found.onlyExternal = value();
     else if (flag === "--readmes") found.readmes = true;
     else if (flag === "--readmes-from") found.readmesFrom = value();
     else if (flag === "--readme-ref") {
@@ -64,8 +84,16 @@ function options(argv) {
       found.ref.set(name, ref);
     } else throw new Error(`unknown option ${flag}`);
   }
-  if ((found.tree === undefined) === (found.crawl === undefined))
+  if (
+    found.onlyExternal === undefined &&
+    (found.tree === undefined) === (found.crawl === undefined)
+  )
     throw new Error("give --tree <folder> or --crawl, one of them");
+  for (const entry of found.checkout) {
+    const folder = entry.split("=")[1];
+    if (folder === undefined || !existsSync(join(folder, ".git")))
+      throw new Error(`--checkout ${entry}: ${folder} is not a git checkout`);
+  }
   found.site = found.site.replace(/\/?$/, "/");
   found.readmesFrom = found.readmesFrom.replace(/\/?$/, "/");
   return found;
@@ -139,6 +167,7 @@ const failures = [];
 const unverified = [];
 const fail = (where, link, why) => failures.push({ where, link, why });
 
+const pending = new Map();
 const counts = {
   pages: 0,
   internal: 0,
@@ -205,7 +234,7 @@ async function ask(url, method = "HEAD") {
         host === new URL(settings.site).host
           ? 16
           : host === "github.com"
-            ? 6
+            ? 3
             : 4,
       ),
     );
@@ -336,6 +365,8 @@ async function checkExternal(url, where, written) {
     counts.known.add(url);
     return;
   }
+  if (settings.saveExternal !== undefined)
+    pending.set(url, [...(pending.get(url) ?? []), where]);
   if (settings.noExternal) return;
   counts.external.add(url);
   const { status, error } = await asked(url, () => ask(url));
@@ -509,8 +540,24 @@ async function readmes() {
 
 // ---- run
 const began = Date.now();
-await pages();
-if (settings.readmes) await readmes();
+if (settings.onlyExternal !== undefined) {
+  const saved = JSON.parse(readFileSync(settings.onlyExternal, "utf8"));
+  await Promise.all(
+    Object.entries(saved).flatMap(([url, held]) =>
+      [...new Set(held)].map((page) => checkExternal(url, page, url)),
+    ),
+  );
+} else {
+  await pages();
+  if (counts.pages === 0)
+    fail("", settings.tree ?? settings.site, "no page to check");
+  if (settings.readmes) await readmes();
+}
+if (settings.saveExternal !== undefined)
+  writeFileSync(
+    settings.saveExternal,
+    JSON.stringify(Object.fromEntries(pending), null, 1),
+  );
 
 const seconds = ((Date.now() - began) / 1000).toFixed(1);
 const where =
@@ -529,29 +576,32 @@ process.stdout.write(
   `link-check ${where}: ${counts.pages} pages, ${counts.internal} links to the site, ${counts.checkout} into a checkout, external addresses ${external}${allowed}${rest}, in ${seconds}s\n`,
 );
 
-/** Each failure once per link and reason, the first pages that hold it named. */
-const grouped = new Map();
-for (const { where: page, link, why } of failures) {
-  const key = `${why}\n${link}`;
-  const entry = grouped.get(key) ?? { link, why, pages: [] };
-  entry.pages.push(page);
-  grouped.set(key, entry);
+/** Each problem once per link and reason, the first pages that hold it named; how many distinct there were. */
+function report(label, list, note = "") {
+  const grouped = new Map();
+  for (const { where: page, link, why } of list) {
+    const entry = grouped.get(`${why}\n${link}`) ?? { link, why, pages: [] };
+    entry.pages.push(page);
+    grouped.set(`${why}\n${link}`, entry);
+  }
+  for (const { link, why, pages: held } of grouped.values()) {
+    const named = [...new Set(held)].sort();
+    const shown = named.slice(0, 3).join(", ");
+    const more = named.length > 3 ? ` and ${named.length - 3} more` : "";
+    process.stdout.write(
+      `${label} ${shown}${more}: ${link === "" ? "" : `${link} -> `}${why}${note}\n`,
+    );
+  }
+  return grouped.size;
 }
-for (const { link, why, pages: held } of grouped.values()) {
-  const named = [...new Set(held)].sort();
-  const shown = named.slice(0, 3).join(", ");
-  const more = named.length > 3 ? ` and ${named.length - 3} more` : "";
-  process.stdout.write(
-    `FAIL ${shown}${more}: ${link === "" ? "" : `${link} -> `}${why}\n`,
-  );
-}
-for (const { where: page, link, why } of unverified.slice(0, 20))
-  process.stdout
-    .write(`WARN ${page}: ${link} -> ${why} (no answer after ${ATTEMPTS} tries; not counted as dead)
-`);
-if (grouped.size > 0) {
-  process.stdout.write(
-    `${grouped.size} link${grouped.size === 1 ? "" : "s"} failed\n`,
-  );
+
+report(
+  "WARN",
+  unverified,
+  ` (no answer after ${ATTEMPTS} tries; not counted as dead)`,
+);
+const dead = report("FAIL", failures);
+if (dead > 0) {
+  process.stdout.write(`${dead} link${dead === 1 ? "" : "s"} failed\n`);
   process.exitCode = 1;
 }

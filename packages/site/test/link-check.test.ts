@@ -182,6 +182,7 @@ test("a tree with a dead file, a dead anchor, a dead external link and a GitHub 
     "gone.png",
   ])
     assert.ok(said.includes(dead), `${dead} is not named in:\n${said}`);
+  assert.ok(said.includes("not in the checkout"), said);
   assert.ok(said.includes("index.html"), said);
   assert.ok(said.includes("sub/page.html"), said);
   assert.ok(!said.includes("sub/page.html#there"), said);
@@ -232,4 +233,29 @@ test("each repository's README must have a Docs block whose first link is the hu
   ])
     assert.ok(said.includes(named), `${named} is not in:\n${said}`);
   assert.ok(!said.includes("README a"), said);
+});
+
+test("the external addresses a check leaves unasked can be saved and asked later on their own, and the second run fails on the dead one naming the page that holds it", async () => {
+  const saved = join(SCRATCH, "saved-external.json");
+  const files = {
+    "index.html": page(
+      `<a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
+    ),
+    "sub.html": page(""),
+    "site.css": "",
+  };
+  const first = await check(files, {}, [
+    "--no-external",
+    "--save-external",
+    saved,
+  ]);
+  assert.equal(first.code, 0, first.said);
+  const second = await check({}, {}, ["--only-external", saved]);
+  assert.equal(second.code, 1, second.said);
+  assert.ok(
+    second.said.includes(`index.html: ${origin}/gone`) &&
+      !second.said.includes(`${origin}/ok`) &&
+      !second.said.includes("sub.html"),
+    second.said,
+  );
 });
