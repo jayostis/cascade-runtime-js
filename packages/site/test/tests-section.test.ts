@@ -73,6 +73,7 @@ function rowsOf(markup: string, heading: string): string[][] {
 
 function text(markup: string): string {
   return markup
+    .replaceAll("<wbr>", "")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .replaceAll("&lt;", "<")
@@ -209,6 +210,7 @@ test("each suite's newest run is a table of its cases with result and time, nest
       ["packages/site/test/links.test.ts", "passes", "passed"],
     ],
   );
+  assert.match(markup, /packages\/<wbr>site\/<wbr>test\/<wbr>links\.test\.ts/);
   assert.deepEqual(
     runtime.map((row) => row[3]),
     ["1.50 s", "0 ms", "0 ms", "3 ms"],
