@@ -130,10 +130,14 @@ A resource whose type is mapped.
 
 const encoder = new TextEncoder();
 
-async function adapter(without: readonly string[] = []): Promise<AdapterRead> {
+async function adapter(
+  without: readonly string[] = [],
+  changed: Readonly<Record<string, string>> = {},
+): Promise<AdapterRead> {
   const files = new MemoryFiles(FHIR_TREE);
   const put = async (path: string, text: string) => {
-    if (!without.includes(path)) await files.write(path, encoder.encode(text));
+    if (!without.includes(path))
+      await files.write(path, encoder.encode(changed[path] ?? text));
   };
   await put("ro-crate-metadata.json", CRATE);
   await put("vocab/fhir-accounting.ttl", ACCOUNTING);
@@ -323,4 +327,47 @@ test("an adapter whose accounting cannot be read is listed as not available, wit
   assert.match(said, /not available/i);
   assert.match(said, /fhir-accounting\.ttl/);
   assert.equal(read.has(FHIR_PAGE), false);
+});
+
+test("a path the accounting calls carried and names no term for is listed, not dropped", async () => {
+  const read = await built([
+    await adapter([], {
+      "vocab/fhir-accounting.ttl": `${ACCOUNTING}
+[] a bridge:PathEntry ; bridge:sourcePath "/id" ; bridge:verdict bridge:carried .
+`,
+    }),
+  ]);
+  const [row] = rowsAfter(read(FHIR_PAGE), "unnamed");
+  assert.equal(row?.cells[0], "/id");
+});
+
+test("an accounting that is not Turtle, a crate whose identifier is a path, and a crate naming no accounting are each listed as not available, and an empty accounting is a page with no rows", async () => {
+  const crate = (identifier: string, accounting?: string) =>
+    JSON.stringify({
+      "@graph": [
+        {
+          "@id": "./",
+          identifier,
+          name: "X",
+          ...(accounting === undefined
+            ? {}
+            : { "bridge:sourceAccounting": { "@id": accounting } }),
+        },
+      ],
+    });
+  const read = await built([
+    await adapter([], { "vocab/fhir-accounting.ttl": "[] a <broken" }),
+    await adapter([], {
+      "ro-crate-metadata.json": crate("../evil", "vocab/fhir-accounting.ttl"),
+    }),
+    await adapter([], { "ro-crate-metadata.json": crate("fhir-r4") }),
+    await adapter([], { "vocab/fhir-accounting.ttl": "" }),
+  ]);
+  const said = plain(read(INDEX));
+  assert.equal(said.match(/Not available/g)?.length, 3);
+  assert.match(said, /cannot be read/);
+  assert.match(said, /no identifier a folder can take its name from/);
+  assert.match(said, /names no bridge:sourceAccounting/);
+  assert.equal(read.has("adapters/evil/index.html"), false);
+  assert.doesNotMatch(read(FHIR_PAGE), /<tbody>/);
 });

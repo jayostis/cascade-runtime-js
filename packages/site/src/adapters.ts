@@ -58,7 +58,7 @@ const TEMPLATES: Readonly<Record<string, string>> = {
   "2.16.840.1.113883.10.20.22.4.1": "Result Organizer",
   "2.16.840.1.113883.10.20.22.4.2": "Result Observation",
   "2.16.840.1.113883.10.20.22.4.4": "Problem Observation",
-  "2.16.840.1.113883.10.20.22.4.7": "Allergy Intolerance Observation",
+  "2.16.840.1.113883.10.20.22.4.7": "Allergy - Intolerance Observation",
   "2.16.840.1.113883.10.20.22.4.14": "Procedure Activity Procedure",
   "2.16.840.1.113883.10.20.22.4.16": "Medication Activity",
   "2.16.840.1.113883.10.20.22.4.52": "Immunization Activity",
@@ -118,6 +118,7 @@ const parsed = async (
   } catch (error) {
     throw new Error(
       `${path} cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 };
@@ -389,7 +390,7 @@ ${listed.map((one) => {
     return markup`<tr><td data-label="adapter"><code>${repositoryOf(one.repository)}</code></td><td data-label="built from"><a href="${one.repository}">${one.repository}</a></td><td data-label="paths carried" colspan="3">Not available: ${one.unavailable}</td></tr>\n`;
   const { view } = one;
   const { carried, part, not } = counts(view.accounting);
-  return markup`<tr><td data-label="adapter"><a href="${view.slug}/index.html">${view.title}</a></td><td data-label="built from"><a href="${view.tree}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a></td><td data-label="paths carried">${carried}</td><td data-label="carried in part">${part}</td><td data-label="not carried">${not}</td></tr>\n`;
+  return markup`<tr><td data-label="adapter"><a href="${view.slug}/index.html">${view.title}</a></td><td data-label="built from"><a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a></td><td data-label="paths carried">${carried}</td><td data-label="carried in part">${part}</td><td data-label="not carried">${not}</td></tr>\n`;
 })}</tbody>
 </table>
 <p class="about">A path is counted once, whatever forms the accounting writes it in.</p>
@@ -560,7 +561,7 @@ export function adapterPage(view: AdapterView): Uint8Array {
     markup`<a href="../../index.html">Cascade pods</a> <a href="../index.html">Adapters</a>`,
     markup`<p class="kind">Adapter</p>
 <h1>${view.title}</h1>
-<p class="about">Read from <a href="${view.tree}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a>,
+<p class="about">Read from <a href="${view.repository}">${repositoryOf(view.repository)}</a> at <a href="${view.tree}"><code>${short(view.commit)}</code></a>,
 the head of its default branch when these pages were built. The accounting is
 <a href="${view.blob}${view.accountingPath}"><code>${view.accountingPath}</code></a>.</p>
 <p class="prose">${plural(carried, "source path")} carried whole, ${part} in part and ${not} not carried, ${plural(accounting.entries, "entry", "entries")} in the accounting.</p>
