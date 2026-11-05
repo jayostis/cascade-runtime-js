@@ -36,6 +36,19 @@ export interface TestReports {
 }
 
 /**
+ * One adapter at the head of its default branch, or why there is none to read. The files are named by the adapter's tree
+ * on GitHub at the commit, so a path under them is also that file's address there.
+ */
+export interface AdapterRead {
+  /** The adapter's repository, as an address. */
+  readonly repository: string;
+  readonly files?: Files;
+  readonly commit?: string;
+  /** Why the adapter could not be read; the pages list it as not available. */
+  readonly unavailable?: string;
+}
+
+/**
  * What a section of the hub's Pages tree is built from. The providers do their work on the first call and give the same
  * answer after, so a section that needs the kits asks and one that does not never pays for them.
  */
@@ -57,4 +70,6 @@ export interface PagesContext {
   report(): Promise<Conformance>;
   /** The newest runs on main of the runtime's tests and the vocabulary's pytest. */
   tests(): Promise<TestReports>;
+  /** Each adapter the runtime follows, at the head of its default branch; one that could not be got is not fatal. */
+  adapters(): Promise<readonly AdapterRead[]>;
 }

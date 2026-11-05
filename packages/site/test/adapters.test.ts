@@ -8,8 +8,10 @@ import { termHref } from "../src/links.js";
 import { buildTree } from "../src/sections.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
-const FHIR_REPOSITORY = "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4";
-const CCDA_REPOSITORY = "https://github.com/jayostis/cascade-bridge-adapter-ccda";
+const FHIR_REPOSITORY =
+  "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4";
+const CCDA_REPOSITORY =
+  "https://github.com/jayostis/cascade-bridge-adapter-ccda";
 const COMMIT = "4aeb5230a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const FHIR_TREE = `${FHIR_REPOSITORY}/tree/${COMMIT}/`;
 const FHIR_BLOB = `${FHIR_REPOSITORY}/blob/${COMMIT}/`;
@@ -128,9 +130,7 @@ A resource whose type is mapped.
 
 const encoder = new TextEncoder();
 
-async function adapter(
-  without: readonly string[] = [],
-): Promise<AdapterRead> {
+async function adapter(without: readonly string[] = []): Promise<AdapterRead> {
   const files = new MemoryFiles(FHIR_TREE);
   const put = async (path: string, text: string) => {
     if (!without.includes(path)) await files.write(path, encoder.encode(text));
@@ -191,8 +191,16 @@ function rowsAfter(markup: string, id: string): Row[] {
   assert.ok(part !== undefined, `no element has the id ${id}`);
   const body = /<tbody>([\s\S]*?)<\/tbody>/.exec(part)?.[1] ?? "";
   return [...body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(([, row]) => ({
+    // A source path's cell may say after the path which forms it is in; the path is its first code.
     cells: [...(row ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(
-      ([, cell]) => plain(cell ?? ""),
+      ([, cell], at) =>
+        plain(
+          (at === 0
+            ? /<code>[\s\S]*?<\/code>/.exec(cell ?? "")?.[0]
+            : undefined) ??
+            cell ??
+            "",
+        ),
     ),
     hrefs: [...(row ?? "").matchAll(/href="([^"]*)"/g)].map(
       ([, href]) => href ?? "",
@@ -220,7 +228,7 @@ test("the adapters page gives one row to each adapter: the one built says the co
   assert.ok(built?.cells.join(" ").includes(COMMIT.slice(0, 7)));
   assert.ok(built?.hrefs.includes("fhir-r4/index.html"));
   assert.ok(missing?.cells.join(" ").includes("cascade-bridge-adapter-ccda"));
-  assert.ok(missing?.cells.join(" ").includes("not available"));
+  assert.match(missing?.cells.join(" ") ?? "", /not available/i);
   assert.ok(missing?.cells.join(" ").includes("the fetch failed"));
   assert.ok(!missing?.hrefs.some((href) => href.startsWith("ccda")));
 });
@@ -255,14 +263,19 @@ test("the crosswalk groups its rows by source record type, one row to a path, pr
   assert.equal(snomed, "../../terms/#cascade:snomedCode");
 });
 
-test("a path in all four forms is one row, and the page says once what the forms are", () => {
+test("a path in all four forms is one row that does not name its forms, the page says once what the forms are, and a path in some forms only says which", () => {
   const onsets = rowsAfter(fhir, "type-Condition").filter(
     ({ cells }) => cells[0] === "/onsetDateTime",
   );
   assert.equal(onsets.length, 1);
   assert.doesNotMatch(plain(fhir), /\/resource\/onsetDateTime/);
   assert.doesNotMatch(plain(fhir), /\/contained\/onsetDateTime/);
-  assert.equal(plain(fhir).split("/resource/contained/x").length - 1, 1);
+  assert.equal(fhir.split('id="forms"').length - 1, 1);
+  const line = (code: string) =>
+    fhir.split("\n").find((one) => one.includes(`<code>${code}</code>`)) ?? "";
+  assert.ok(line("/onsetDateTime") !== "");
+  assert.doesNotMatch(line("/onsetDateTime"), /only as/);
+  assert.match(plain(line("/recordedDate")), /only as \/x ?, \/contained\/x/);
 });
 
 test("what is not carried is grouped by verdict: a noHome path with its gap's label, a path carried in part with its gap and what it does carry, an ignored one with why, a consumed one, and one that restates another", () => {
@@ -307,7 +320,7 @@ test("the page says the commit it was built from, links the accounting file on G
 test("an adapter whose accounting cannot be read is listed as not available, with no page, and the build goes on", async () => {
   const read = await built([await adapter(["vocab/fhir-accounting.ttl"])]);
   const said = plain(read(INDEX));
-  assert.match(said, /not available/);
+  assert.match(said, /not available/i);
   assert.match(said, /fhir-accounting\.ttl/);
   assert.equal(read.has(FHIR_PAGE), false);
 });
