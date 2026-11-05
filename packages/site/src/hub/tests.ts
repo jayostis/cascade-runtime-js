@@ -108,6 +108,7 @@ function part(suite: Suite, run: TestRun | undefined): Html {
   }
   const failed = count(cases, "failed");
   const counted = declaredFailures(run.report);
+  // failingSuites includes describe suites holding a failed case, which node does not count in its failures; the threshold stays so that it never alarms falsely.
   const unlisted =
     counted !== undefined && counted > failed + failingSuites
       ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}${failingSuites === 0 ? "" : markup` and ${failingSuites} ${failingSuites === 1 ? "test" : "tests"} holding them`}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
