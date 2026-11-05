@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import {
   clock,
+  type Followed,
   OxigraphStore,
   podDataset,
   questions,
@@ -41,6 +42,7 @@ import {
   viewTitles,
 } from "../front-page.js";
 import type {
+  AdapterRead,
   Conformance,
   PagesContext,
   TestReports,
@@ -345,6 +347,35 @@ async function readTestReports(folder: string): Promise<TestReports> {
 const testsFolderOf = (named: string | undefined): string =>
   absolute(named ?? join(ROOT, "build", "tests"));
 
+/**
+ * Each adapter the runtime follows, a sibling checkout as it stands or else its default branch's head, fetched shallowly
+ * into the build's cache. One that cannot be got is reported as not available and fails nothing, since the page it feeds is
+ * no reason to stop a deploy.
+ */
+async function readAdapters(
+  followed: readonly Followed[],
+): Promise<AdapterRead[]> {
+  const siblingsIn = await siblingsOf(ROOT);
+  const cache = join(ROOT, "build", "cache");
+  return Promise.all(
+    followed.map(async (adapter): Promise<AdapterRead> => {
+      try {
+        const resolved = await resolve(adapter, { siblingsIn, cache, log });
+        return {
+          repository: adapter.repository,
+          files: new FolderFiles(resolved.folder, resolved.iri),
+          commit: resolved.version,
+        };
+      } catch (error) {
+        const unavailable =
+          error instanceof Error ? error.message : String(error);
+        log(`${adapter.repository} cannot be read: ${unavailable}`);
+        return { repository: adapter.repository, unavailable };
+      }
+    }),
+  );
+}
+
 /** Runs the work on the first call, and gives the same answer to every call after. */
 function once<T>(work: () => Promise<T>): () => Promise<T> {
   let answer: Promise<T> | undefined;
@@ -446,6 +477,7 @@ function pagesContext(
     })),
     report: once(() => readConformance(reportFile, vocabulary.resolved.iri)),
     tests: once(() => readTestReports(testsFolder)),
+    adapters: once(() => readAdapters(vocabulary.config.adapters)),
     start: once(async () => {
       const starter = await latestBuild(
         STARTER_REPOSITORY,

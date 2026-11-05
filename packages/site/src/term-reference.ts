@@ -699,14 +699,8 @@ const parse = async (
   ];
 };
 
-/**
- * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
- * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
- * `termHref` links.
- */
-export async function termReference(vocabulary: Files): Promise<string> {
-  const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
-  const [shapes, shapesText] = await parse(vocabulary, SHAPES);
+/** The terms the ontology declares, each with the entry the page gives it. */
+function entriesOf(ontology: Graph): Map<string, Entry> {
   const typed = new Map<string, Term[]>();
   for (const [subject, predicate, object] of ontology.triples)
     if (subject.termType === "NamedNode" && predicate.value === TYPE)
@@ -719,6 +713,26 @@ export async function termReference(vocabulary: Files): Promise<string> {
         kind: kindOf(types),
         copied: !iri.startsWith(CASCADE),
       });
+  return entries;
+}
+
+/** The IRI of each term the term reference gives an entry, so a page that links `termHref` links only those. */
+export async function declaredTerms(
+  vocabulary: Files,
+): Promise<ReadonlySet<string>> {
+  const [ontology] = await parse(vocabulary, ONTOLOGY);
+  return new Set(entriesOf(ontology).keys());
+}
+
+/**
+ * The term reference: an entry for each term `ontologies/cascade.ttl` declares, this vocabulary's own and those it copies,
+ * saying what it is, the shapes that check it, and each query and rule that names it; each entry's heading carries the id
+ * `termHref` links.
+ */
+export async function termReference(vocabulary: Files): Promise<string> {
+  const [ontology, ontologyText] = await parse(vocabulary, ONTOLOGY);
+  const [shapes, shapesText] = await parse(vocabulary, SHAPES);
+  const entries = entriesOf(ontology);
   const prefixes = new Map([
     ...declaredIn(ontologyText),
     ...declaredIn(shapesText),
