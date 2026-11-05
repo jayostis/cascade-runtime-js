@@ -38,13 +38,40 @@ function slug(html: string): string {
     .replace(/ /g, "-");
 }
 
+/** A column a page adds to a table it knows, and an `id` for each of its rows. */
+export interface TableAddition {
+  readonly heading: string;
+  /** Each body row's `id`, or none; a row beyond the list has none. */
+  readonly ids: readonly (string | undefined)[];
+  /** Each body row's cell in the new column. */
+  readonly cells: readonly Html[];
+}
+
+export interface MarkdownOptions {
+  /** Each heading carries a GitHub-style `id`. */
+  readonly ids?: boolean;
+  /**
+   * Where a link goes, given what the source wrote; undefined shows the link's text alone. A link to a place in the
+   * document (`#why`) is left as written.
+   */
+  readonly link?: (href: string) => string | undefined;
+  /** Called once per table with its header cells and its body rows' first cells, as written; adds a column to it. */
+  readonly table?: (
+    header: readonly string[],
+    firstCells: readonly string[],
+  ) => TableAddition | undefined;
+}
+
 /**
  * Raw HTML in a note is shown as text: only what the Markdown itself makes is a tag. A link or image whose scheme is not
  * http(s) or mailto, and is not relative, is shown as its text. With `ids`, each heading carries an `id` and is listed in
  * `headings`; a slug taken twice gets `-1`, `-2`, as GitHub does, skipping
  * any id already used; a heading with no letters or digits is `section`.
  */
-function markdown(ids: boolean): { marked: Marked; headings: Heading[] } {
+function markdown({ ids = false, link, table }: MarkdownOptions): {
+  marked: Marked;
+  headings: Heading[];
+} {
   const headings: Heading[] = [];
   const taken = new Map<string, number>();
   const used = new Set<string>();
@@ -53,8 +80,33 @@ function markdown(ids: boolean): { marked: Marked; headings: Heading[] } {
     renderer: {
       html: ({ text }) => escape(text),
       link(token) {
-        return safe(token.href) ? false : this.parser.parseInline(token.tokens);
+        if (!safe(token.href)) return this.parser.parseInline(token.tokens);
+        if (link === undefined || token.href.startsWith("#")) return false;
+        const to = link(token.href);
+        if (to === undefined) return this.parser.parseInline(token.tokens);
+        token.href = to;
+        return false;
       },
+      ...(table === undefined
+        ? {}
+        : {
+            table(token) {
+              const added = table(
+                token.header.map(({ text }) => text),
+                token.rows.map(([first]) => first?.text ?? ""),
+              );
+              if (added === undefined) return false;
+              const cells = (row: typeof token.header): string =>
+                row.map((cell) => this.tablecell(cell)).join("");
+              const body = token.rows
+                .map((row, at) => {
+                  const id = added.ids[at];
+                  return `<tr${id === undefined ? "" : ` id="${escape(id)}"`}>\n${cells(row)}<td>${added.cells[at]?.text ?? ""}</td>\n</tr>\n`;
+                })
+                .join("");
+              return `<table>\n<thead>\n<tr>\n${cells(token.header)}<th>${escape(added.heading)}</th>\n</tr>\n</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
+            },
+          }),
       image(token) {
         return safe(token.href) ? false : escape(token.text);
       },
@@ -82,19 +134,22 @@ function markdown(ids: boolean): { marked: Marked; headings: Heading[] } {
   return { marked, headings };
 }
 
-/** The one place a page renders Markdown (GFM). `ids` gives each heading a GitHub-style `id`; nothing else changes. */
+/** The one place a page renders Markdown (GFM). `ids` gives each heading a GitHub-style `id`; `link` and `table` are for a page that knows its source. */
 export function renderMarkdown(
   source: string,
-  { ids = false }: { readonly ids?: boolean } = {},
+  options: MarkdownOptions = {},
 ): Html {
-  return new Html(markdown(ids).marked.parse(source, { async: false }));
+  return new Html(markdown(options).marked.parse(source, { async: false }));
 }
 
 /** The same render with `ids`, and the headings it found, for a contents list. */
-export function renderWithHeadings(source: string): {
+export function renderWithHeadings(
+  source: string,
+  options: Omit<MarkdownOptions, "ids"> = {},
+): {
   readonly html: Html;
   readonly headings: readonly Heading[];
 } {
-  const { marked, headings } = markdown(true);
+  const { marked, headings } = markdown({ ...options, ids: true });
   return { html: new Html(marked.parse(source, { async: false })), headings };
 }

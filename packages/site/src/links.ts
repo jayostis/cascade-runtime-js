@@ -147,10 +147,54 @@ export function sharedPageOf(address: string): string | undefined {
   return shared === undefined ? undefined : `${shared}.html`;
 }
 
+const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+const NOTE_PATH = /^decisions\/([^/]+)\.md$/;
+
 /**
- * A link to a note of the vocabulary, `path` being its path in the vocabulary and `blob` the address of the vocabulary's
- * files on GitHub at the commit the pages were built from. A page of this site replaces it when decisions have one.
+ * A link to a file of the vocabulary, `path` being its path there. `base` is either the address of the vocabulary's files
+ * on GitHub at the commit the pages were built from, which gives the file itself, or the folder of this site that holds
+ * `decisions/` (`""`, `../`), which gives a decision note's page: `decisions/x.md` is `decisions/x.html` and
+ * `decisions/README.md` is `decisions/index.html`. This site has pages for the notes alone.
  */
-export function noteHref(path: string, blob: string): string {
-  return `${away(blob).replace(/\/*$/, "/")}${path.replace(/^\/+/, "")}`;
+export function noteHref(path: string, base: string): string {
+  const bare = path.replace(/^\/+/, "");
+  if (SCHEME.test(base)) return `${away(base).replace(/\/*$/, "/")}${bare}`;
+  const name = NOTE_PATH.exec(bare)?.[1];
+  if (name === undefined)
+    throw new Error(`${path} is no decision note, and only those have a page`);
+  return `${base.replace(/(?<=.)\/*$/, "/")}decisions/${name === "README" ? "index" : name}.html`;
+}
+
+/** Where the files a link written in a note may point to are: GitHub's, and the pages of the notes when this site has them. */
+export interface NoteLinks {
+  /** The vocabulary's files at the commit built, ending in a slash. */
+  readonly blob: string;
+  /** The vocabulary's folders at the commit built, ending in a slash. */
+  readonly tree: string;
+  /** The folder of this site that holds `decisions/`, as {@link noteHref} takes it; absent when the notes have no pages. */
+  readonly notes?: string;
+}
+
+/**
+ * Where a link written in the note at `from` points, `from` being the note's path in the vocabulary: a link to another
+ * note is to its page when `notes` is given, any other relative link is to the file (or folder) on GitHub, an absolute one
+ * is as written for http, https and mailto, and any other scheme has no address. A link to a place in the note itself
+ * (`#why`) is not for this to resolve.
+ */
+export function noteLinkOf(
+  href: string,
+  from: string,
+  { blob, tree, notes }: NoteLinks,
+): string | undefined {
+  const bare = [...href].filter((char) => char > " ").join("");
+  if (SCHEME.test(bare))
+    return /^(?:https?|mailto):/i.test(bare) ? href : undefined;
+  const { pathname, search, hash } = new URL(
+    href,
+    `https://vocabulary.invalid/${from}`,
+  );
+  const path = pathname.slice(1);
+  if (notes !== undefined && NOTE_PATH.test(path))
+    return `${noteHref(path, notes)}${hash}`;
+  return `${path.endsWith("/") ? tree : blob}${path}${search}${hash}`;
 }

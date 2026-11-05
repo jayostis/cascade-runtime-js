@@ -6,6 +6,7 @@ import {
   sharedPageOf,
   type Named,
   noteHref,
+  noteLinkOf,
   ruleHref,
   termHref,
 } from "../src/links.js";
@@ -114,6 +115,35 @@ test("a rule links to its feature's page and its number's anchor, a note to its 
     () => noteHref("decisions/identity.md", host),
     /ns\.cascadeprotocol\.org/,
   );
+});
+
+test("a note links to its page when given the folder that holds decisions/, and a link written in a note goes to a page, the file on GitHub, or nowhere", () => {
+  assert.equal(
+    noteHref("decisions/identity.md", "../"),
+    "../decisions/identity.html",
+  );
+  assert.equal(noteHref("decisions/README.md", ""), "decisions/index.html");
+  assert.throws(() => noteHref("queries/a.rq", "../"), /no decision note/);
+  assert.throws(() => noteHref("decisions/a/b.md", "../"), /no decision note/);
+  const links = {
+    blob: "https://github.com/jayostis/cascade-vocabulary/blob/abc/",
+    tree: "https://github.com/jayostis/cascade-vocabulary/tree/abc/",
+  };
+  const from = "decisions/currency.md";
+  const at = (href: string, notes?: string) =>
+    noteLinkOf(href, from, notes === undefined ? links : { ...links, notes });
+  assert.equal(at("naming.md#why", "../"), "../decisions/naming.html#why");
+  assert.equal(at("README.md", "../"), "../decisions/index.html");
+  assert.equal(at("naming.md"), `${links.blob}decisions/naming.md`);
+  assert.equal(
+    at("../queries/a.rq?x=1", "../"),
+    `${links.blob}queries/a.rq?x=1`,
+  );
+  assert.equal(at("../queries/", "../"), `${links.tree}queries/`);
+  assert.equal(at("https://example.org/a"), "https://example.org/a");
+  assert.equal(at("javascript:alert(1)"), undefined);
+  assert.equal(at(" jav\tascript:alert(1)"), undefined);
+  assert.equal(at("data:text/html,x", "../"), undefined);
 });
 
 test("a page's address is its kind's folder and its name as a slug; things that share one each add the start of their IRI's digest, whatever order they come in", async () => {

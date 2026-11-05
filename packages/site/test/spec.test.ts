@@ -534,6 +534,8 @@ Status: draft. Names are in [the naming note](naming.md); the lead is in [a quer
 | current | git | derived by the ladder (\`runtime/currency.feature\`, C2) | ours |
 | heads | git | named as heads (\`runtime/currency.feature\`, C3) | ours |
 | view | | materialised, \`queries/view.rq\` | ours |
+| \`View\` | | said again | ours |
+| a \\| b | | escaped | ours |
 
 ## Why
 
@@ -556,6 +558,12 @@ const CURRENCY_FEATURE = `Feature: Currency
 
   Rule: C4. A sync unions heads
     decisions/currency.md, row "heads". A union.
+
+  Rule: A rule with no number
+    decisions/currency.md, row "a | b". Cited, and linked without an anchor.
+
+  Rule: C5. A note that is gone
+    decisions/gone.md, row "x". Nothing to link but the path.
 `;
 
 test("the hub writes each decision note as a page: a rule links the note's row, the row lists the rules that cite it and says when none does, and a note's links to other notes are pages", async () => {
@@ -617,6 +625,13 @@ test("the hub writes each decision note as a page: a rule links the note's row, 
   );
   assert.match(row("row-view").said, /No rule cites this row/);
   assert.ok(!row("row-view").hrefs.some((href) => href.includes("spec/")));
+  assert.match(row("row-view-2").said, /No rule cites this row/);
+  assert.match(row("row-a-b").said, /a \| b escaped ours/);
+  assert.deepEqual(
+    row("row-a-b").hrefs.filter((href) => href.startsWith("../spec/")),
+    ["../spec/currency.html"],
+  );
+  assert.ok(rule.hrefs.includes(`${BLOB}decisions/gone.md`));
 
   const index = readPage(treeText(tree, "decisions/index.html"));
   assert.equal(index.h1, "Decision notes");
