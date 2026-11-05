@@ -76,6 +76,8 @@ export interface FeatureResult {
   readonly page: string;
   readonly kit: boolean;
   readonly rules: number;
+  /** The rules with no example, which no result can speak for. */
+  readonly withoutExample: number;
   readonly passed: number;
   readonly failed: number;
   readonly notRun: number;
@@ -1045,6 +1047,9 @@ function featureResult(
     page: spec.pageOf(feature.path),
     kit: kit !== undefined,
     rules: feature.rules.length,
+    withoutExample: feature.rules.filter(
+      ({ examples }) => examples.length === 0,
+    ).length,
     passed: counted.passed,
     failed: counted.failed,
     notRun: counted.notRun,
@@ -1058,10 +1063,10 @@ export function resultsTable(
   base: string,
 ): Html {
   const checked = listed.some(({ checks }) => checks !== undefined);
-  return markup`<table>
-<thead><tr><th>feature</th><th>rules</th><th>pass</th><th>fail</th><th>not run</th>${checked ? markup`<th>checks pass</th><th>checks fail</th><th>checks not run</th>` : ""}</tr></thead>
+  return markup`<table class="results">
+<thead><tr><th>feature</th><th>rules</th><th>rules with no example</th><th>examples pass</th><th>examples fail</th><th>examples not run</th>${checked ? markup`<th>checks pass</th><th>checks fail</th><th>checks not run</th>` : ""}</tr></thead>
 <tbody>
-${listed.map(({ name, page, rules, passed, failed, notRun, checks }) => markup`<tr><td data-label="feature"><a href="${base}${page}">${name}</a></td><td data-label="rules">${rules}</td><td data-label="pass">${passed}</td><td data-label="fail">${failed}</td><td data-label="not run">${notRun}</td>${checked ? markup`<td data-label="checks pass">${checks?.passed ?? ""}</td><td data-label="checks fail">${checks?.failed ?? ""}</td><td data-label="checks not run">${checks?.notRun ?? ""}</td>` : ""}</tr>\n`)}</tbody>
+${listed.map(({ name, page, rules, withoutExample, passed, failed, notRun, checks }) => markup`<tr><td data-label="feature"><a href="${base}${page}">${name}</a></td><td data-label="rules">${rules}</td><td data-label="rules with no example">${withoutExample}</td>${passed + failed + notRun === 0 ? markup`<td data-label="examples" colspan="3" class="about">no example</td>` : markup`<td data-label="examples pass">${passed}</td><td data-label="examples fail">${failed}</td><td data-label="examples not run">${notRun}</td>`}${checked ? markup`<td data-label="checks pass">${checks?.passed ?? ""}</td><td data-label="checks fail">${checks?.failed ?? ""}</td><td data-label="checks not run">${checks?.notRun ?? ""}</td>` : ""}</tr>\n`)}</tbody>
 </table>`;
 }
 

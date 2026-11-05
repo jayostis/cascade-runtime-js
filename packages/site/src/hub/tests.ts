@@ -52,7 +52,13 @@ const STYLES = `
 .result.skipped { background: var(--panel); color: var(--quiet); }
 pre.failure { background: #fdf2f2; white-space: pre-wrap; padding: .5rem; margin: .25rem 0 0; border-radius: 4px; }
 td.time { white-space: nowrap; }
+td.suite { min-width: 12rem; overflow-wrap: normal; }
+td.suite code { overflow-wrap: normal; }
 `;
+
+/** A path that may wrap after a slash, never inside a name. */
+const atSlashes = (path: string): Html =>
+  markup`${path.split("/").map((part, at) => markup`${at === 0 ? "" : markup`/<wbr>`}${part}`)}`;
 
 const encoder = new TextEncoder();
 
@@ -87,7 +93,7 @@ function table(cases: readonly TestCase[]): Html {
   return markup`<table>
 <thead><tr><th>suite</th><th>case</th><th>result</th><th>time</th></tr></thead>
 <tbody>
-${ordered(cases).map(({ suite, name, result, seconds: time, message }) => markup`<tr><td data-label="suite"><code>${suite}</code></td><td data-label="case">${name}${message === undefined ? "" : markup`<pre class="failure">${shown(message)}</pre>`}</td><td data-label="result"><span class="result ${result}">${result}</span></td><td class="time" data-label="time">${seconds(time)}</td></tr>\n`)}</tbody>
+${ordered(cases).map(({ suite, name, result, seconds: time, message }) => markup`<tr><td class="suite" data-label="suite"><code>${atSlashes(suite)}</code></td><td data-label="case">${name}${message === undefined ? "" : markup`<pre class="failure">${shown(message)}</pre>`}</td><td data-label="result"><span class="result ${result}">${result}</span></td><td class="time" data-label="time">${seconds(time)}</td></tr>\n`)}</tbody>
 </table>`;
 }
 
