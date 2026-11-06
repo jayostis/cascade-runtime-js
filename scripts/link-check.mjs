@@ -13,7 +13,8 @@
 //                                     being the one in the link of the repository's row on the front page
 //   --readme-ref <repository>=<ref>   read that repository's README at this ref, not HEAD; repeatable
 //
-// Exits 1 when a link does not resolve, naming it and the page it is on.
+// Exits 1 when a link does not resolve, naming it and the page it is on, and when a page other than the front page
+// has no link to the front page.
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -446,6 +447,21 @@ async function checkLink(written, base, where) {
 }
 
 // ---- the pages
+/** Whether a written address, on the page at `base`, is the front page, with or without `index.html` or a fragment. */
+const isFrontPage = (address) =>
+  address === settings.site || address === `${settings.site}index.html`;
+
+const linksToFrontPage = (base) => (written) => {
+  try {
+    const target = new URL(written, base);
+    target.hash = "";
+    target.search = "";
+    return isFrontPage(target.href);
+  } catch {
+    return false;
+  }
+};
+
 const pageUrls = [];
 const scanned = new Set();
 
@@ -465,9 +481,12 @@ async function scan(url) {
     return;
   }
   counts.pages += 1;
-  const links = HTML.test(new URL(url).pathname)
+  const isHtml = HTML.test(new URL(url).pathname);
+  const links = isHtml
     ? linksOf(found.text)
     : linksOfText(found.text, url.endsWith(".md"));
+  if (isHtml && !isFrontPage(url) && !links.some(linksToFrontPage(url)))
+    fail(where, "", "links no way back to the front page");
   await Promise.all(
     links.map(async (written) => {
       await checkLink(written, url, where);
@@ -592,6 +611,13 @@ async function readmes() {
           where,
           "",
           "no ## Docs block, which every README opens with a link to the hub",
+        );
+      const first = /^## +(.*?) *$/m.exec(outsideCode(readme.text))?.[1];
+      if (first !== "Docs")
+        return fail(
+          where,
+          "",
+          `the ## Docs block is not the first ## section of the README: "${first}" comes before it`,
         );
       const links = markdownLinks(block);
       if (

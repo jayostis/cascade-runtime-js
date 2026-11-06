@@ -1,5 +1,6 @@
 import { decisionPages } from "../decisions.js";
 import { markup } from "../html.js";
+import { frontPageLink } from "../links.js";
 import type { Section } from "../sections.js";
 import { STYLESHEET_FILE } from "../site.js";
 import {
@@ -109,6 +110,7 @@ export const specSection: Section<SpecContext> = {
 <link rel="stylesheet" href="../${STYLESHEET_FILE}">
 </head>
 <body>
+<nav>${frontPageLink(1)}</nav>
 <main>
 <h1>Cascade runtime conformance results</h1>
 <p class="prose">The reference runtime's latest result on <code>main</code> for every example of cascade-vocabulary's

@@ -1,5 +1,6 @@
 import { FILES_JSON, type Layout } from "@cascade-runtime/runtime";
 import { type Content, markup } from "./html.js";
+import { FRONT_PAGE, frontPageLink } from "./links.js";
 import { addressOf, type Row, type Rows, type Want } from "./sections.js";
 import { STYLESHEET_FILE } from "./site.js";
 import { STYLESHEET } from "./stylesheet.js";
@@ -86,7 +87,7 @@ export const REPOSITORIES: readonly Repository[] = [
   },
 ];
 
-export const FRONT_PAGE = "index.html";
+export { FRONT_PAGE };
 export const START_PAGE = "start.html";
 export const EXAMPLES_PAGE = "examples.html";
 /** Where try/ was: a page that sends a visitor on to the starter kit's, with the pod or table they were sent to. */
@@ -139,6 +140,7 @@ export function examplesPage(
 <link rel="stylesheet" href="${STYLESHEET_FILE}">
 </head>
 <body>
+<nav>${frontPageLink(0)}</nav>
 <main>
 <h1>Cascade example pods</h1>
 <p class="prose">These are the example pods the reference runtime, cascade-runtime-js, builds from the conformance kits of
@@ -348,6 +350,7 @@ export function redirectPage(): string {
 <body>
 <main>
 <p>This page has moved to <a href="${STARTER_TRY}">${STARTER_TRY}</a>.</p>
+<p><a href="../${FRONT_PAGE}">Cascade pods</a></p>
 </main>
 </body>
 </html>

@@ -3,12 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FolderFiles } from "@cascade-runtime/runtime/node";
+import { FRONT_PAGE } from "../../links.js";
 import type { PagesContext } from "../../hub/context.js";
 import type { Section } from "../../sections.js";
 
 /** The part of the evals package that writes its report; the site package does not depend on it, so the compiled module is imported by path. */
 interface Evals {
-  buildSite(from: { history: true }, out: string): Promise<string>;
+  buildSite(
+    from: { history: true },
+    out: string,
+    home: string,
+  ): Promise<string>;
 }
 
 /** The eval report from the recorded runs in packages/evals/history, under evals/. */
@@ -27,7 +32,7 @@ export const evalsSection: Section<PagesContext> = {
     )) as Evals;
     const out = await mkdtemp(join(tmpdir(), "evals-site-"));
     try {
-      await buildSite({ history: true }, out);
+      await buildSite({ history: true }, out, `../${FRONT_PAGE}`);
       const folder = new FolderFiles(out);
       const files = new Map<string, Uint8Array>();
       for (const path of await folder.list("")) {

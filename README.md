@@ -1,5 +1,22 @@
 # cascade-runtime-js
 
+The reference runtime, in TypeScript. It files what arrives into a pod and
+answers questions from it, in Node or entirely in a browser, and proves itself
+against the vocabulary's executable examples.
+
+## Docs
+
+- [The Cascade hub](https://jayostis.github.io/cascade-runtime-js/): where to go for each thing, and every repository.
+- [Quick start](https://jayostis.github.io/cascade-runtime-js/start.html): how to start an app on the runtime.
+- [API](https://jayostis.github.io/cascade-runtime-js/api/): the API an app calls.
+- [Agent guide](https://jayostis.github.io/cascade-runtime-js/AGENTS.md): what a coding agent needs to build on the runtime.
+- [Example pods](https://jayostis.github.io/cascade-runtime-js/examples.html): the example pods, with the stories they tell: Alex Rivera's, from Apple Health exports; Priya Natarajan's, from an export and C-CDA downloads together; Martin Okafor's, two FHIR reports of one variant beside what ClinVar says today; and Tamsin Vale's, one demo hospital's FHIR record pulled twice, a year apart, with a medication stopped between the pulls.
+- [Conformance](https://jayostis.github.io/cascade-runtime-js/conformance/): the reference runtime's latest result on main for every example of the vocabulary's features and conformance kits.
+- [Unit-test reports](https://jayostis.github.io/cascade-runtime-js/conformance/tests/): each case of the runtime's and the vocabulary's tests, with its result and time, from the newest run on main.
+- [Evals](https://jayostis.github.io/cascade-runtime-js/evals/): how the pod, through `cascade-mcp`, does against the same records pasted into a chat, on synthetic people, with every citation checked and every cost.
+- [An app running in the browser](https://jayostis.github.io/cascade-starter-kit/try/): try a pod in the browser.
+- [The starter kit](https://github.com/jayostis/cascade-starter-kit): the app `create-cascade-app` makes, the command itself, and the page in the browser.
+
 ## What the Cascade Protocol is
 
 The Cascade Protocol is an open standard for health apps that put patients in
@@ -24,25 +41,6 @@ results and the patient's profile.
 
 Status: a draft. No compatibility is promised before a numbered v1, and no
 claim is made that it is fit for clinical use.
-
-## What this repository is
-
-The reference runtime, in TypeScript. It files what arrives into a pod and
-answers questions from it, in Node or entirely in a browser, and proves itself
-against the vocabulary's executable examples.
-
-## Docs
-
-- [The Cascade hub](https://jayostis.github.io/cascade-runtime-js/): where to go for each thing, and every repository.
-- [Quick start](https://jayostis.github.io/cascade-runtime-js/start.html): how to start an app on the runtime.
-- [API](https://jayostis.github.io/cascade-runtime-js/api/): the API an app calls.
-- [Agent guide](https://jayostis.github.io/cascade-runtime-js/AGENTS.md): what a coding agent needs to build on the runtime.
-- [Example pods](https://jayostis.github.io/cascade-runtime-js/examples.html): the example pods, with the stories they tell: Alex Rivera's, from Apple Health exports; Priya Natarajan's, from an export and C-CDA downloads together; Martin Okafor's, two FHIR reports of one variant beside what ClinVar says today; and Tamsin Vale's, one demo hospital's FHIR record pulled twice, a year apart, with a medication stopped between the pulls.
-- [Conformance](https://jayostis.github.io/cascade-runtime-js/conformance/): the reference runtime's latest result on main for every example of the vocabulary's features and conformance kits.
-- [Unit-test reports](https://jayostis.github.io/cascade-runtime-js/conformance/tests/): each case of the runtime's and the vocabulary's tests, with its result and time, from the newest run on main.
-- [Evals](https://jayostis.github.io/cascade-runtime-js/evals/): how the pod, through `cascade-mcp`, does against the same records pasted into a chat, on synthetic people, with every citation checked and every cost.
-- [An app running in the browser](https://jayostis.github.io/cascade-starter-kit/try/): try a pod in the browser.
-- [The starter kit](https://github.com/jayostis/cascade-starter-kit): the app `create-cascade-app` makes, the command itself, and the page in the browser.
 
 ## In this README
 

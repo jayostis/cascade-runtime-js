@@ -1,3 +1,4 @@
+import { markup } from "./html.js";
 import { prefixed } from "./terms.js";
 
 /** The host whose names do not resolve, on either scheme, with or without a path or port; no page links it. */
@@ -200,3 +201,9 @@ export function noteLinkOf(
     return `${noteHref(path, notes)}${hash}`;
   return `${path.endsWith("/") ? tree : blob}${path}${search}${hash}`;
 }
+
+export const FRONT_PAGE = "index.html";
+
+/** The link back to the front page from a page `depth` folders below it, for the first place in its header. */
+export const frontPageLink = (depth: number) =>
+  markup`<a href="${"../".repeat(depth)}${FRONT_PAGE}">Cascade pods</a>`;

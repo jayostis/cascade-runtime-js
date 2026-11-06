@@ -14,7 +14,14 @@ import {
 import { Marked, type Tokens } from "marked";
 import type { Ingredient } from "./front-page.js";
 import { type Content, escape, Html, markup } from "./html.js";
-import { anchorOf, noteHref, noteLinkOf, pageNameOf, slugOf } from "./links.js";
+import {
+  anchorOf,
+  frontPageLink,
+  noteHref,
+  noteLinkOf,
+  pageNameOf,
+  slugOf,
+} from "./links.js";
 import { STYLESHEET } from "./stylesheet.js";
 
 const EARL = "http://www.w3.org/ns/earl#";
@@ -871,6 +878,7 @@ function page(spec: Spec, title: string, main: Content): Uint8Array {
 </head>
 <body>
 <nav>
+${frontPageLink(1)}
 <a href="${SPEC_INDEX}">The rules</a>
 ${spec.features.map((feature) => markup`<a href="${spec.pageOf(feature.path)}">${feature.name}</a>\n`)}</nav>
 <main>

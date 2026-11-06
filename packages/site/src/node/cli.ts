@@ -36,6 +36,7 @@ import {
 import type * as Published from "cascade-runtime/published";
 import {
   type Example,
+  FRONT_PAGE,
   hubFiles,
   type Ingredient,
   podOf,
@@ -99,10 +100,11 @@ function target(name: string | undefined, pod: string | undefined): Target {
 }
 
 /** Where a kit's site, in a folder of the hub, finds the hub's pages it links: those a section of the hub writes. */
-function inHub(): Pick<SiteOptions, "terms" | "spec"> {
+function inHub(): Pick<SiteOptions, "front" | "terms" | "spec"> {
   const written = (path: string) =>
     SECTIONS.some((section) => section.path === path);
   return {
+    front: `../${FRONT_PAGE}`,
     ...(written(`${TERMS}index.html`) && { terms: `../${TERMS}` }),
     ...(written(`${SPEC_FOLDER}index.html`) && { spec: `../${SPEC_FOLDER}` }),
   };
@@ -114,7 +116,7 @@ function inHub(): Pick<SiteOptions, "terms" | "spec"> {
  */
 async function buildExampleSite(
   args: string[],
-  hub: Pick<SiteOptions, "terms" | "spec"> = {},
+  hub: Pick<SiteOptions, "front" | "terms" | "spec"> = {},
 ): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
@@ -141,7 +143,7 @@ async function writeSite(
   { name, pod, named }: Target,
   outFolder: string | undefined,
   lens: string | undefined,
-  hub: Pick<SiteOptions, "terms" | "spec">,
+  hub: Pick<SiteOptions, "front" | "terms" | "spec">,
 ): Promise<number> {
   const { iri } = vocabulary.resolved;
   const out = absolute(outFolder ?? join(ROOT, "build", name, "site"));
