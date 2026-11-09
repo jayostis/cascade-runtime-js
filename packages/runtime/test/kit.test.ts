@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runConformance } from "../src/conformance.js";
 import { MemoryFiles } from "../src/files.js";
-import { KIT_CHECKS, podAddressesIn } from "../src/kit.js";
-import { iri, relativeTurtle } from "../src/rdf.js";
+import {
+  conformsToShapes,
+  KIT_CHECKS,
+  type KitRun,
+  podAddressesIn,
+} from "../src/kit.js";
+import { iri, relativeTurtle, type Triple } from "../src/rdf.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { Shapes } from "../src/shapes.js";
-import { layout, RUNTIME } from "./vocabulary.js";
+import { layout, RUNTIME, vocabulary } from "./vocabulary.js";
 
 test("a kit whose story has a step the runtime cannot perform reports its checks failed, naming the step's kind, not thrown", async () => {
   const vocabulary = new MemoryFiles("https://vocabulary.example/");
@@ -89,4 +94,45 @@ test("a view written relative to itself writes another view's entry as a relativ
     `${folder}a:b`,
     `${folder}notes.ttl`,
   ]);
+});
+
+const PROV = "http://www.w3.org/ns/prov#";
+const RDF_TYPE = iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+
+async function noActivityLines(
+  typeOfSubject: string | undefined,
+): Promise<string[]> {
+  const subject = iri("urn:example:subject");
+  const run = {
+    layout: await layout(),
+    shapes: await Shapes.read(await vocabulary(), () => new OxigraphStore()),
+  } as KitRun;
+  const lines = await conformsToShapes(
+    run,
+    new Map([
+      [
+        "somewhere.ttl",
+        [
+          [subject, iri(`${PROV}used`), iri("urn:example:thing")],
+          ...(typeOfSubject === undefined
+            ? []
+            : [[subject, RDF_TYPE, iri(typeOfSubject)]]),
+        ] as Triple[],
+      ],
+    ]),
+  );
+  return lines.filter((line) => line.includes("no prov:Activity"));
+}
+
+test("check 3 reports a subject of prov:used that no class of the vocabulary makes a prov:Activity", async () => {
+  assert.deepEqual(await noActivityLines("urn:example:Judgment"), [
+    "<urn:example:subject> has prov:used and is no prov:Activity",
+  ]);
+});
+
+test("check 3 accepts a subject of prov:used typed only by a subclass of prov:Activity the vocabulary declares", async () => {
+  assert.deepEqual(
+    await noActivityLines("https://ns.cascadeprotocol.org/cascade#MatcherRun"),
+    [],
+  );
 });

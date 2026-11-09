@@ -37,6 +37,7 @@ const MERGED_FROM = "https://ns.cascadeprotocol.org/cascade#mergedFrom";
 const MEMBER_CURRENT_VALUES =
   "https://ns.cascadeprotocol.org/cascade#memberCurrentValues";
 const TYPE = `${RDF}type`;
+const SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
 const DRAFT = /^urn:cascade:output-(\d+)$/;
 const UUID_V4 =
   /^urn:uuid:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
@@ -201,8 +202,26 @@ async function viewsEqualExpected(
   return failures;
 }
 
-/** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms, and prov:used only on a prov:Activity. */
-async function conformsToShapes(
+/** prov:Activity and each class the terms make a subclass of it, however far down. */
+function activityKinds(terms: readonly Triple[]): Set<string> {
+  const kinds = new Set([`${PROV}Activity`]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [s, p, o] of terms)
+      if (
+        p.value === SUBCLASS_OF &&
+        kinds.has(o.value) &&
+        !kinds.has(s.value)
+      ) {
+        kinds.add(s.value);
+        grew = true;
+      }
+  }
+  return kinds;
+}
+
+/** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms, and prov:used only on a prov:Activity or a subclass the vocabulary declares. */
+export async function conformsToShapes(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
 ): Promise<string[]> {
@@ -214,9 +233,10 @@ async function conformsToShapes(
   const triples = [...pod]
     .filter(([path]) => !labelled.has(path))
     .flatMap(([, held]) => held);
+  const kinds = activityKinds(run.shapes.terms);
   const acts = new Set(
     triples
-      .filter(([, p, o]) => p.value === TYPE && o.value === `${PROV}Activity`)
+      .filter(([, p, o]) => p.value === TYPE && kinds.has(o.value))
       .map(([s]) => s.value),
   );
   const usedByNoAct = [
