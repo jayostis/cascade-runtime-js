@@ -285,12 +285,15 @@ test("an import with the claim records an About for each unclaimed profile and i
   assert.deepEqual(imported.unclaimed, []);
   assert.deepEqual(
     await pod.ask({
-      query: `${PREFIXES}SELECT ?role WHERE {
-        ?about cascade:verdict cascade:About ; prov:wasAttributedTo ?owner ;
-          prov:wasGeneratedBy/prov:qualifiedAssociation [ prov:agent ?owner ; prov:hadRole ?role ] }`,
+      query: `${PREFIXES}SELECT ?about WHERE {
+        ?about cascade:verdict cascade:About
+        FILTER NOT EXISTS {
+          ?about prov:wasAttributedTo ?owner ;
+            prov:wasGeneratedBy/prov:qualifiedAssociation [ prov:agent ?owner ; prov:hadRole cascade:PatientRole ] }
+      }`,
     }),
-    [{ role: "https://ns.cascadeprotocol.org/cascade#PatientRole" }],
-    "the About's role sits on an association of the act that generated it",
+    [],
+    "every About's role sits on an association of the act that generated it",
   );
   assert.deepEqual(
     await pod.ask({

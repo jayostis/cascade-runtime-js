@@ -106,22 +106,27 @@ interface Arrival {
 }
 
 /** What a document says of how it was reached. */
-interface Reached {
+export interface Reached {
   readonly retrieved?: string;
   readonly answered: boolean;
   /** Its transmitter's IRI, "" when it names none, undefined when no one IRI names its transmitter. */
   readonly transmitter: string | undefined;
 }
 
-function reachedIn(graph: Graph, document: Term): Reached {
-  const transmitters = graph
-    .objects(document, `${PROV}qualifiedAttribution`)
-    .filter(
-      (via) =>
-        graph.match(via, `${PROV}hadRole`, iri(`${CASCADE}TransmitterRole`))
-          .length > 0,
-    )
-    .flatMap((via) => graph.objects(via, `${PROV}agent`));
+export function reachedIn(graph: Graph, document: Term): Reached {
+  const named = new Map<string, Term>();
+  for (const act of graph.objects(document, `${PROV}wasGeneratedBy`))
+    for (const association of graph.objects(act, `${PROV}qualifiedAssociation`))
+      if (
+        graph.match(
+          association,
+          `${PROV}hadRole`,
+          iri(`${CASCADE}TransmitterRole`),
+        ).length > 0
+      )
+        for (const agent of graph.objects(association, `${PROV}agent`))
+          named.set(`${agent.termType} ${agent.value}`, agent);
+  const transmitters = [...named.values()];
   const [transmitter] = transmitters;
   return {
     ...(graph.objects(document, `${PAV}retrievedOn`).map(({ value }) => ({
