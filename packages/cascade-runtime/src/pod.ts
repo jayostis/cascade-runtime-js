@@ -510,7 +510,7 @@ function about(subject: string, profile: string, owner: string): string {
 <${THIS_JUDGMENT}> a cascade:Judgment ;
     cascade:verdict cascade:About ; cascade:subject <${subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] .
+    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${owner}> ; prov:hadRole cascade:PatientRole ] ] .
 <${owner}> a prov:Person .
 `;
 }
@@ -720,10 +720,7 @@ class OpenPod implements Pod {
         OPTIONAL { ?document cascade:serverBaseUrl ?server }
         OPTIONAL {
           FILTER NOT EXISTS { ?document cascade:serverBaseUrl ?anyServer }
-          ?document prov:qualifiedAttribution ?attribution .
-          ?attribution prov:hadRole ?role ;
-            prov:agent/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
-          FILTER (?role IN (cascade:AuthorRole, cascade:CustodianRole))
+          ?document prov:wasAttributedTo/(<http://www.w3.org/2000/01/rdf-schema#label>|^prov:specializationOf/<http://xmlns.com/foaf/0.1/name>) ?author .
         }
       }`);
     const claimedServers = new Set(

@@ -394,12 +394,21 @@ function facts(pull: Described, importStarted: string): Uint8Array {
     ),
     ...scope("refusedForRecordClass", pull.denied),
     `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
-    `${document} <${PROV}qualifiedAttribution> _:attribution .`,
-    `_:attribution <${PROV}agent> _:agent .`,
-    `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
-    `_:attribution <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
+    ...authored(document, pull.source),
   ];
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
+}
+
+/** The source as the document's author: the one act that wrote it, its association, and the document attributed to the same agent. */
+function authored(document: string, source: string): string[] {
+  return [
+    `${document} <${PROV}wasAttributedTo> _:agent .`,
+    `${document} <${PROV}wasGeneratedBy> _:writing .`,
+    `_:writing <${PROV}qualifiedAssociation> _:association .`,
+    `_:association <${PROV}agent> _:agent .`,
+    `_:association <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
+    `_:agent <${RDFS}label> ${quoted(source)} .`,
+  ];
 }
 
 /** What the pull says of a C-CDA document it read, and of its import, as Turtle, for the Bridge to state. */
@@ -418,10 +427,7 @@ function documentFacts(
     `${document} <${PAV}retrievedFrom> <${retrievedFrom}> .`,
     `${document} <${PAV}retrievedOn> ${dateTime(pull.retrievedAt)} .`,
     `${document} <${CASCADE}authenticatedPatient> ${quoted(`Patient/${pull.patient}`)} .`,
-    `${document} <${PROV}qualifiedAttribution> _:attribution .`,
-    `_:attribution <${PROV}agent> _:agent .`,
-    `_:agent <${RDFS}label> ${quoted(pull.source)} .`,
-    `_:attribution <${PROV}hadRole> <${CASCADE}AuthorRole> .`,
+    ...authored(document, pull.source),
   ];
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }

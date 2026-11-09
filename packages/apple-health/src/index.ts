@@ -119,20 +119,22 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
   const lines = [
     `${thisImport} <${RDFS}label> ${quoted("Apple Health export")} .`,
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
+    `${document} <${PROV}wasGeneratedBy> _:writing .`,
   ];
-  const attribution = (label: string, role: string, n: number): void => {
+  const association = (label: string, role: string, n: number): void => {
     lines.push(
-      `${document} <${PROV}qualifiedAttribution> _:attribution${n} .`,
-      `_:attribution${n} <${PROV}agent> _:agent${n} .`,
+      `_:writing <${PROV}qualifiedAssociation> _:association${n} .`,
+      `_:association${n} <${PROV}agent> _:agent${n} .`,
       `_:agent${n} <${RDFS}label> ${quoted(label)} .`,
-      `_:attribution${n} <${PROV}hadRole> <${CASCADE}${role}> .`,
+      `_:association${n} <${PROV}hadRole> <${CASCADE}${role}> .`,
     );
   };
-  attribution("Apple Health", "TransmitterRole", 0);
+  association("Apple Health", "TransmitterRole", 0);
   if (entry !== undefined) {
     const sourceUrl = attribute(entry, "sourceURL");
-    attribution(attribute(entry, "sourceName"), "AuthorRole", 1);
+    association(attribute(entry, "sourceName"), "AuthorRole", 1);
     lines.push(
+      `${document} <${PROV}wasAttributedTo> _:agent1 .`,
       `${document} <${CASCADE}serverBaseUrl> ${quoted(server(sourceUrl))} .`,
       `${document} <${PAV}retrievedFrom> ${iriRef(sourceUrl)} .`,
       `${document} <${PAV}retrievedOn> ${dateTime(utc(attribute(entry, "receivedDate")))} .`,

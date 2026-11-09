@@ -101,9 +101,17 @@ export async function podProvenance(
     "valuesOfMember",
   ]);
   const document = (iri: string) => {
-    const attribution = node(iri, "qualifiedAttribution");
+    const attributed = nodes(iri, "wasAttributedTo");
+    const authors = nodes(iri, "wasGeneratedBy")
+      .flatMap((act) => nodes(act, "qualifiedAssociation"))
+      .filter((association) =>
+        nodes(association, "hadRole").some(
+          (role) => local(role) === "AuthorRole",
+        ),
+      )
+      .flatMap((association) => nodes(association, "agent"));
     const agent =
-      attribution === undefined ? undefined : node(attribution, "agent");
+      attributed.find((it) => authors.includes(it)) ?? attributed[0];
     return {
       iri,
       ...pick({

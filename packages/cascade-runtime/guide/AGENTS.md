@@ -661,7 +661,7 @@ function judgment(pod, reason, statements) {
 <urn:cascade:this-judgment> a cascade:Judgment ;
   ${[...statements, reason && `dct:description ${text(reason)}`].filter(Boolean).join(" ;\n  ")} ;
   prov:wasAttributedTo <${pod.owner}> ;
-  prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
+  prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ] .
 <${pod.owner}> a prov:Person .
 `;
 }

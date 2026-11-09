@@ -101,7 +101,9 @@ test("patient A pulled from two hospitals is one subject in one pod, each record
   const documents = await pod.ask({
     query: `${PREFIXES}SELECT ?server ?on ?patient ?author WHERE {
       ?document cascade:serverBaseUrl ?server ; pav:retrievedOn ?on ; cascade:authenticatedPatient ?patient ;
-        prov:qualifiedAttribution [ prov:hadRole cascade:AuthorRole ; prov:agent/rdfs:label ?author ] .
+        prov:wasAttributedTo ?agent ;
+        prov:wasGeneratedBy/prov:qualifiedAssociation [ prov:hadRole cascade:AuthorRole ; prov:agent ?agent ] .
+      ?agent rdfs:label ?author .
     }`,
   });
   assert.deepEqual(

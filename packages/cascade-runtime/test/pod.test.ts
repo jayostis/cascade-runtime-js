@@ -193,7 +193,7 @@ function about(profile: string, named = "urn:cascade:this-judgment"): string {
 <${named}> a cascade:Judgment ;
     cascade:verdict cascade:About ; cascade:subject <${pod.subject}> ; cascade:basis cascade:OwnerStatement ;
     prov:hadMember <${profile}> ; prov:wasAttributedTo <${pod.owner}> ;
-    prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] .
+    prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ] .
 <${pod.owner}> a prov:Person .`;
 }
 
@@ -283,6 +283,25 @@ test("an import with the claim records an About for each unclaimed profile and i
     [await profileOf("J2")],
   );
   assert.deepEqual(imported.unclaimed, []);
+  assert.deepEqual(
+    await pod.ask({
+      query: `${PREFIXES}SELECT ?about WHERE {
+        ?about cascade:verdict cascade:About
+        FILTER NOT EXISTS {
+          ?about prov:wasAttributedTo ?owner ;
+            prov:wasGeneratedBy/prov:qualifiedAssociation [ prov:agent ?owner ; prov:hadRole cascade:PatientRole ] }
+      }`,
+    }),
+    [],
+    "every About's role sits on an association of the act that generated it",
+  );
+  assert.deepEqual(
+    await pod.ask({
+      query: `${PREFIXES}SELECT ?about WHERE { ?about prov:qualifiedAttribution ?attribution }`,
+    }),
+    [],
+    "nothing in the pod states a role on an attribution",
+  );
   const wrote = imported.matched?.wrote ?? [];
   const judgments = await pod.ask({
     query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?member)) AS ?members) WHERE {

@@ -187,8 +187,11 @@ test("a saved pull is its Bundle as one document, stated with the hospital's bas
         bridge:thisDocument cascade:serverBaseUrl "${BASE}" ;
           pav:retrievedOn "2026-10-07T07:00:00.000Z"^^xsd:dateTime ;
           cascade:authenticatedPatient "Patient/p1" ;
-          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Cascade North Demo Hospital" ] ; prov:hadRole cascade:AuthorRole ] .
-        FILTER NOT EXISTS { ?attribution prov:hadRole cascade:TransmitterRole }
+          prov:wasAttributedTo ?author ;
+          prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent ?author ; prov:hadRole cascade:AuthorRole ] ] .
+        ?author rdfs:label "Cascade North Demo Hospital" .
+        FILTER NOT EXISTS { ?association prov:hadRole cascade:TransmitterRole }
+        FILTER NOT EXISTS { ?s prov:qualifiedAttribution ?o }
       }`),
     true,
   );
@@ -313,6 +316,18 @@ test("each C-CDA document a pull read is a document of its own, stated with wher
       `retrievedFrom ${BASE}/Binary/n2`,
       "retrievedOn 2026-10-07T07:00:00Z",
     ],
+  );
+  assert.equal(
+    facts.query(`PREFIX prov: <http://www.w3.org/ns/prov#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
+      ASK {
+        <https://ns.cascadeprotocol.org/bridge/v1-draft#thisDocument> prov:wasAttributedTo ?author ;
+          prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent ?author ; prov:hadRole cascade:AuthorRole ] ] .
+        ?author rdfs:label ?name .
+        FILTER NOT EXISTS { ?s prov:qualifiedAttribution ?o }
+      }`),
+    true,
+    "a C-CDA document's author is attributed and sits on its generating act's association",
   );
   await assert.rejects(
     fhirPull.documents(

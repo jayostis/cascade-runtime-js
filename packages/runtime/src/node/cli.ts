@@ -231,9 +231,13 @@ async function saveKitBridge(args: string[]): Promise<number> {
           `${step.name}: its importer refuses it: ${String(failure)}`,
         );
       for (const { stem, offered, accepting, repeated } of documents) {
-        if (repeated) console.error(`${step.name} ${stem}: converted before`);
-        else if (accepting === undefined)
+        if (accepting === undefined)
           console.error(`${step.name} ${stem}: no adapter accepts it`);
+        else if (
+          repeated &&
+          (await files.read(`${converted}/${stem}/graph.ttl`)) === undefined
+        )
+          console.error(`${step.name} ${stem}: converted before`);
         else {
           const made = await accepting.convert(offered);
           const folder = join(out, saved, stem);

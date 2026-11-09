@@ -112,7 +112,7 @@ function judgment(
   cascade:verdict cascade:${verdict} ;
   prov:hadMember ${members.map((member) => `<${member}>`).join(" , ")} ;${more}
   prov:wasAttributedTo <${ME}> ;
-  prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${ME}> ; prov:hadRole cascade:PatientRole ] ;
+  prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${ME}> ; prov:hadRole cascade:PatientRole ] ] ;
   prov:generatedAtTime "${at}"^^xsd:dateTime .
 <${ME}> a prov:Person .
 `;
