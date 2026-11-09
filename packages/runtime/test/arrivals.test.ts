@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appleHealthExport } from "@cascade-runtime/apple-health";
 import { ccdaDownload } from "@cascade-runtime/ccda-download";
-import { Revisions } from "../src/arrivals.js";
+import { reachedIn, Revisions } from "../src/arrivals.js";
 import { BridgeError, type LoadedAdapter } from "../src/bridge.js";
 import { vocabularyDerive } from "../src/build.js";
 import { dataset } from "../src/dataset.js";
@@ -614,4 +614,70 @@ test("an export holding the current version restamped, a new version, then the c
     "ni:///sha-256;E64aGZVmGmEPgF7RM5roCn_8WdUdfQAgE1LC9RS2V4E",
     "ni:///sha-256;EQDq-zpj8rTyF7HguJmKgu7Uqsz_dofpTOgIORGnaRM",
   ]);
+});
+
+test("a document's transmitter is the one IRI an association of its generating act names with the transmitter's role, whatever the number of acts", async () => {
+  const doc = "ni:///sha-256;doc";
+  const transmitter = (act: string, agent: string): string =>
+    `${act} prov:qualifiedAssociation [ prov:agent ${agent} ; prov:hadRole cascade:TransmitterRole ] .`;
+  const reached = async (statements: string) =>
+    reachedIn(
+      await parseGraph(
+        new TextEncoder().encode(`@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+@prefix pav: <http://purl.org/pav/> .
+<${doc}> pav:retrievedOn "2026-01-01T00:00:00Z" .
+${statements}`),
+        doc,
+        newStore,
+      ),
+      iri(doc),
+    );
+  const author = `<${doc}> prov:wasAttributedTo <urn:x:author> ; prov:wasGeneratedBy _:writing .
+_:writing prov:qualifiedAssociation [ prov:agent <urn:x:author> ; prov:hadRole cascade:AuthorRole ] .`;
+  assert.equal(
+    (await reached(author)).transmitter,
+    "",
+    "an author is no transmitter",
+  );
+  assert.equal(
+    (
+      await reached(`${author}
+${transmitter("_:writing", "<urn:x:fetcher>")}`)
+    ).transmitter,
+    "urn:x:fetcher",
+  );
+  assert.equal(
+    (
+      await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
+${transmitter("_:a", "<urn:x:fetcher>")}
+${transmitter("_:b", "<urn:x:fetcher>")}`)
+    ).transmitter,
+    "urn:x:fetcher",
+    "two acts naming the one IRI name one transmitter",
+  );
+  assert.equal(
+    (
+      await reached(`<${doc}> prov:wasGeneratedBy _:a , _:b .
+${transmitter("_:a", "<urn:x:fetcher>")}
+${transmitter("_:b", "<urn:x:another>")}`)
+    ).transmitter,
+    undefined,
+    "two IRIs are no one source",
+  );
+  assert.equal(
+    (
+      await reached(`<${doc}> prov:wasGeneratedBy _:a .
+${transmitter("_:a", "[ <http://www.w3.org/2000/01/rdf-schema#label> \"Apple Health\" ]")}`)
+    ).transmitter,
+    undefined,
+    "a transmitter no IRI names is no one source",
+  );
+  assert.equal(
+    (
+      await reached(`<${doc}> prov:qualifiedAttribution [ prov:agent <urn:x:fetcher> ; prov:hadRole cascade:TransmitterRole ] .`)
+    ).transmitter,
+    "",
+    "a role on an attribution is read no more",
+  );
 });

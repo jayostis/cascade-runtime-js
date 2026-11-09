@@ -102,7 +102,7 @@ function judgment(
 <urn:cascade:this-judgment> a cascade:Judgment ; cascade:verdict cascade:${verdict} ;
   prov:hadMember ${members.map((member) => `<${member}>`).join(" , ")} ;
   prov:wasAttributedTo <${pod.owner}> ;
-  prov:qualifiedAttribution [ a prov:Attribution ; prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ;
+  prov:wasGeneratedBy [ prov:qualifiedAssociation [ prov:agent <${pod.owner}> ; prov:hadRole cascade:PatientRole ] ] ;
   prov:generatedAtTime "2026-07-01T12:00:00Z"^^xsd:dateTime .
 <${pod.owner}> a prov:Person .
 `;

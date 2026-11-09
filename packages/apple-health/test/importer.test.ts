@@ -68,18 +68,61 @@ test("an export's documents are its clinical record files, each with what export
         bridge:thisDocument pav:retrievedFrom <https://fhir.example.org/r4/AllergyIntolerance/peanut> ;
           pav:retrievedOn "2026-01-02T10:00:00Z"^^xsd:dateTime ;
           cascade:serverBaseUrl "https://fhir.example.org/r4" ; cascade:sourceFormatVersion "4.0.1" ;
-          prov:qualifiedAttribution [ prov:agent [ rdfs:label "Apple Health" ] ; prov:hadRole cascade:TransmitterRole ] ,
-            [ prov:agent [ rdfs:label "Example Hospital" ] ; prov:hadRole cascade:AuthorRole ] .
+          prov:wasAttributedTo ?author ;
+          prov:wasGeneratedBy [ prov:qualifiedAssociation
+            [ prov:agent [ rdfs:label "Apple Health" ] ; prov:hadRole cascade:TransmitterRole ] ,
+            [ prov:agent ?author ; prov:hadRole cascade:AuthorRole ] ] .
+        ?author rdfs:label "Example Hospital" .
       }`,
     ),
     true,
+    "the author is one agent, attributed and on its association; the transmitter is on the same act",
+  );
+  const rows = (store: oxigraph.Store, query: string): number =>
+    (answer(store, query) as unknown[]).length;
+  assert.equal(
+    rows(
+      facts(0),
+      `SELECT ?act WHERE { bridge:thisDocument prov:wasGeneratedBy ?act }`,
+    ),
+    1,
+    "one act",
+  );
+  assert.equal(
+    rows(
+      facts(0),
+      `SELECT ?agent WHERE { bridge:thisDocument prov:wasAttributedTo ?agent }`,
+    ),
+    1,
+    "the document is attributed to its author alone, never its transmitter",
+  );
+  assert.equal(
+    answer(
+      facts(0),
+      `ASK { { ?s prov:qualifiedAttribution ?o } UNION { ?s a prov:Attribution } }`,
+    ),
+    false,
+    "nothing of the old shape",
   );
   assert.equal(
     answer(
       facts(1),
-      `ASK { bridge:thisDocument prov:qualifiedAttribution/prov:hadRole ?role FILTER (?role != cascade:TransmitterRole) }`,
+      `ASK { bridge:thisDocument prov:wasGeneratedBy/prov:qualifiedAssociation/prov:hadRole ?role FILTER (?role != cascade:TransmitterRole) }`,
     ),
     false,
+  );
+  assert.equal(
+    answer(
+      facts(1),
+      `ASK { bridge:thisDocument prov:wasGeneratedBy/prov:qualifiedAssociation/prov:hadRole cascade:TransmitterRole }`,
+    ),
+    true,
+    "a record the export does not list still names its transmitter",
+  );
+  assert.equal(
+    answer(facts(1), `ASK { bridge:thisDocument prov:wasAttributedTo ?agent }`),
+    false,
+    "a transmitter is never attributed",
   );
 });
 
