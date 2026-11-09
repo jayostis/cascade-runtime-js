@@ -230,9 +230,8 @@ async function saveKitBridge(args: string[]): Promise<number> {
         console.error(
           `${step.name}: its importer refuses it: ${String(failure)}`,
         );
-      for (const { stem, offered, accepting, repeated } of documents) {
-        if (repeated) console.error(`${step.name} ${stem}: converted before`);
-        else if (accepting === undefined)
+      for (const { stem, offered, accepting } of documents) {
+        if (accepting === undefined)
           console.error(`${step.name} ${stem}: no adapter accepts it`);
         else {
           const made = await accepting.convert(offered);

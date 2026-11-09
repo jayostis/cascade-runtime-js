@@ -1,5 +1,6 @@
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://purl.org/pav/retrievedOn> "2026-10-15T00:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Entity> .
+<ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/ns/prov#wasAttributedTo> _:2b6c9e1f4a7d3085c1e6b9d2a4f70c38 .
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/ns/prov#wasAttributedTo> _:803bd8e7ac4ac2d7c8ba65f82b9e9516 .
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <http://www.w3.org/ns/prov#wasGeneratedBy> _:1c5a0e4d7b93f26a8e0d4c7b51f3a9e2 .
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <https://ns.cascadeprotocol.org/cascade#answeredAsOf> "2026-10-15T00:00:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
@@ -7,9 +8,13 @@
 <ni:///sha-256;UhKvP6jJxoy_fEiJXl9dnzVlPrLvzuzV2mE65cYwAJc> <https://ns.cascadeprotocol.org/cascade#serverBaseUrl> "https://cascade-north.demo.invalid/fhir" .
 _:1c5a0e4d7b93f26a8e0d4c7b51f3a9e2 <http://www.w3.org/ns/prov#qualifiedAssociation> _:0a9d3f6e2c81b47d5e0f9a3c6b2d8e14 .
 _:1c5a0e4d7b93f26a8e0d4c7b51f3a9e2 <http://www.w3.org/ns/prov#qualifiedAssociation> _:47f55b8719c62129c5af2cd52aeaebac .
+_:1c5a0e4d7b93f26a8e0d4c7b51f3a9e2 <http://www.w3.org/ns/prov#qualifiedAssociation> _:6d3a8f0b5e2c91747a1b4c8d0e5f2693 .
 _:0a9d3f6e2c81b47d5e0f9a3c6b2d8e14 <http://www.w3.org/ns/prov#agent> _:5e7b1d9a3c4f8620b1d7e5a9c3f0846d .
 _:0a9d3f6e2c81b47d5e0f9a3c6b2d8e14 <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#TransmitterRole> .
 _:47f55b8719c62129c5af2cd52aeaebac <http://www.w3.org/ns/prov#agent> _:803bd8e7ac4ac2d7c8ba65f82b9e9516 .
 _:47f55b8719c62129c5af2cd52aeaebac <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> .
+_:6d3a8f0b5e2c91747a1b4c8d0e5f2693 <http://www.w3.org/ns/prov#agent> _:2b6c9e1f4a7d3085c1e6b9d2a4f70c38 .
+_:6d3a8f0b5e2c91747a1b4c8d0e5f2693 <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#CustodianRole> .
+_:2b6c9e1f4a7d3085c1e6b9d2a4f70c38 <http://www.w3.org/2000/01/rdf-schema#label> "Example Custodian" .
 _:5e7b1d9a3c4f8620b1d7e5a9c3f0846d <http://www.w3.org/2000/01/rdf-schema#label> "Example Fetcher" .
 _:803bd8e7ac4ac2d7c8ba65f82b9e9516 <http://www.w3.org/2000/01/rdf-schema#label> "Cascade North Demo Hospital" .

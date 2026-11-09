@@ -15,8 +15,8 @@ import { ROOT, storyFrom, vocabulary } from "./vocabulary.js";
 const KIT = "conformance/tamsin-vale";
 const CLI = join(ROOT, "packages/runtime/dist/src/node/cli.js");
 
-const kitBridge = (out: string): Promise<unknown> =>
-  promisify(execFile)(process.execPath, [CLI, "kit-bridge", KIT, out], {
+const kitBridge = (out: string, kit = KIT): Promise<unknown> =>
+  promisify(execFile)(process.execPath, [CLI, "kit-bridge", kit, out], {
     cwd: ROOT,
     maxBuffer: 1 << 24,
   });
@@ -78,6 +78,33 @@ test("npm run kit:bridge makes what the kit saves: the same files, and each grap
           .replaceAll("\\", "/"),
       );
     assert.deepEqual(written.sort(), savedFiles.sort());
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("npm run kit:bridge converts a document an earlier step handed on again, so every file a kit saves for one is written", async () => {
+  const alex = "conformance/alex-rivera";
+  const out = await mkdtemp(join(tmpdir(), "kit-bridge-"));
+  try {
+    await kitBridge(out, alex);
+    const files = await vocabulary();
+    const { folder } = await storyFrom(`${alex}/alex-rivera.feature`);
+    const repeats = ["E7", "E10", "E12", "E15"].map(
+      (step) => `${step}/Condition-cond-htn-1/graph.ttl`,
+    );
+    for (const path of repeats) {
+      const saved = await files.read(`${folder}/bridge/${path}`);
+      assert.ok(saved, `${path} is saved`);
+      assert.equal(
+        notIsomorphic(
+          triples(saved),
+          triples(await readFile(join(out, "bridge", path))),
+        ),
+        undefined,
+        path,
+      );
+    }
   } finally {
     await rm(out, { recursive: true, force: true });
   }

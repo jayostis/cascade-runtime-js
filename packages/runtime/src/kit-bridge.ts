@@ -16,8 +16,6 @@ export interface KitDocument {
   readonly offered: BridgeDocument;
   /** The first adapter of its media type that accepts it, if any. */
   readonly accepting: LoadedAdapter | undefined;
-  /** Whether an earlier import step of the story handed the same document on. */
-  readonly repeated: boolean;
 }
 
 /** One import step of a kit's story and the documents its importer found, or why it found none. */
@@ -49,7 +47,6 @@ export async function kitImports(options: {
   readonly adaptersOf: AdaptersOf;
 }): Promise<KitImport[]> {
   const imports: KitImport[] = [];
-  const seen = new Set<string>();
   for (const step of options.steps) {
     const { happened } = step;
     if (happened.kind !== "import") continue;
@@ -89,10 +86,8 @@ export async function kitImports(options: {
         iri,
         offered,
         accepting,
-        repeated: seen.has(iri),
       });
     }
-    for (const { iri } of documents) seen.add(iri);
     imports.push({ step, converted, documents });
   }
   return imports;

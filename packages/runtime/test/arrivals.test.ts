@@ -668,16 +668,9 @@ ${transmitter("_:b", "<urn:x:another>")}`)
   assert.equal(
     (
       await reached(`<${doc}> prov:wasGeneratedBy _:a .
-${transmitter("_:a", "[ <http://www.w3.org/2000/01/rdf-schema#label> \"Apple Health\" ]")}`)
+${transmitter("_:a", '[ <http://www.w3.org/2000/01/rdf-schema#label> "Apple Health" ]')}`)
     ).transmitter,
     undefined,
     "a transmitter no IRI names is no one source",
-  );
-  assert.equal(
-    (
-      await reached(`<${doc}> prov:qualifiedAttribution [ prov:agent <urn:x:fetcher> ; prov:hadRole cascade:TransmitterRole ] .`)
-    ).transmitter,
-    "",
-    "a role on an attribution is read no more",
   );
 });

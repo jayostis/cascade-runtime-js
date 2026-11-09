@@ -590,7 +590,9 @@ async function namesFollowTheirRules(
       const expected = graph.triples
         .filter(([s]) => !arrivals.has(written(s)))
         .map(([s, p, o]) => [swap(s), p, swap(o)] as unknown as Triple);
-      const found: Triple[] = [];
+      const found = new Map<string, Triple>();
+      const keyed = (t: Triple): string =>
+        JSON.stringify(t.map((term) => [term.termType, term.value]));
       for (const subject of new Set(
         expected.flatMap(([s]) =>
           s.termType === "NamedNode" ? [s.value] : [],
@@ -610,13 +612,14 @@ async function namesFollowTheirRules(
             o.value === replayed.runtime
           )
             continue;
-          found.push(
+          for (const t of [
             triple,
             ...(o.termType === "BlankNode" ? whole.closure(o) : []),
-          );
+          ])
+            if (!found.has(keyed(t))) found.set(keyed(t), t);
         }
       }
-      if ((await canonical(expected)) !== (await canonical(found)))
+      if ((await canonical(expected)) !== (await canonical(found.values())))
         failures.push(
           `A9/A11: the pod does not hold ${path} less its arrivals, with step ${name}'s import`,
         );
