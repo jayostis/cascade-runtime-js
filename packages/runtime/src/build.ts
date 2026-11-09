@@ -113,7 +113,7 @@ function marked(
     [iri(file), iri(TYPE), iri(`${CASCADE}View`)],
     ...used.map((version): Triple => [
       iri(file),
-      iri(`${PROV}used`),
+      iri(`${PROV}wasDerivedFrom`),
       iri(version),
     ]),
   ];

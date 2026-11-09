@@ -401,7 +401,7 @@ async function story(seed: number) {
         "Erroneous",
         [record],
         at,
-        `\n  prov:used <${draw.pick(versions)}> ;`,
+        `\n  prov:wasDerivedFrom <${draw.pick(versions)}> ;`,
       );
     });
     judgmentMove("About", 2, async (pod, iri) => {

@@ -514,7 +514,7 @@ test("an entry is filed and matched by default; a person's judgment records the 
   });
   const judged = await pod.judge(judgment("Erroneous", [record]));
   const used = await pod.ask({
-    query: `${PREFIXES}SELECT ?version WHERE { <${judged.judgment ?? ""}> prov:used ?version }`,
+    query: `${PREFIXES}SELECT ?version WHERE { <${judged.judgment ?? ""}> prov:wasDerivedFrom ?version }`,
   });
   assert.deepEqual(used, [current]);
 
@@ -593,7 +593,7 @@ test("a Same whose one member is a finding the pod holds is filed naming no vers
     assert.ok(same.judgment);
     assert.deepEqual(
       await held.ask({
-        query: `${PREFIXES}SELECT ?version WHERE { <${same.judgment}> prov:used ?version }`,
+        query: `${PREFIXES}SELECT ?version WHERE { <${same.judgment}> prov:wasDerivedFrom ?version }`,
       }),
       [],
     );
@@ -884,7 +884,7 @@ test("a kit's story replayed through a step is a pod openPod continues", async (
       const used = await replayed.ask({
         query: `${PREFIXES}SELECT DISTINCT ?version WHERE {
           ?judgment prov:wasAttributedTo <${MATCHER}> .
-          { ?judgment prov:used ?version }
+          { ?judgment prov:wasDerivedFrom ?version }
           UNION { ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion ?version }
           ?version prov:specializationOf/a cascade:ReferenceSeries }`,
       });

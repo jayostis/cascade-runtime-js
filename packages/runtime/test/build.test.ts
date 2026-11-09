@@ -485,7 +485,7 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
   const joinedByCurrentVersion: Keep = async (held) => {
     const { rows } = await held.select(`${PREFIXES}
       SELECT DISTINCT ?claim ?now WHERE {
-        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:used ?input .
+        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:wasDerivedFrom ?input .
         ?input prov:specializationOf ?series .
         ?series pav:hasCurrentVersion ?now .
         FILTER (?now != ?input)
@@ -511,6 +511,19 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
   const counting = await read(joinedByCurrentVersion);
   assert.equal(kept.length, 1);
   assert.equal(await counting.store.ask(counted), true);
+  assert.equal(
+    await counting.store.ask(`${PREFIXES}
+      ASK { GRAPH ?view { ?view a cascade:View ; prov:wasDerivedFrom ?version } ?version prov:specializationOf ?series }`),
+    true,
+    "a view names the reference versions it was built with by prov:wasDerivedFrom",
+  );
+  assert.equal(
+    await counting.store.ask(
+      `${PREFIXES} ASK { GRAPH ?view { ?view a cascade:View ; prov:used ?version } }`,
+    ),
+    false,
+    "prov:used is on an activity",
+  );
 });
 
 test("an entry another view points to is named in the view that gives it members: each variant interpretation's variant is an entry of the variants view", async () => {

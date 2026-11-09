@@ -543,7 +543,7 @@ const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used 
     <${CASCADE}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${CASCADE}matcherRule> ?rule }
   OPTIONAL { ?assertion <${CASCADE}assertedClaim> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
-  OPTIONAL { ?judgment <${PROV}used> ?used }
+  OPTIONAL { ?judgment <${PROV}wasDerivedFrom> ?used }
 }`;
 
 interface Judged {
@@ -1320,7 +1320,7 @@ const DEFINITIONS: Definition[] = [
           `${CASCADE}matcherRule`,
           `${PROV}wasAttributedTo`,
           `${PROV}hadMember`,
-          `${PROV}used`,
+          `${PROV}wasDerivedFrom`,
         ]),
         [`${CASCADE}ClaimAssertion`]: new Set([
           `${RDF}type`,
@@ -1498,7 +1498,7 @@ const DEFINITIONS: Definition[] = [
           `${OA}motivatedBy`,
           `${OA}hasTarget`,
           NO_LONGER_REACHED_UNDER,
-          ...(FINDINGS_OF_RECORDS.has(body) ? [`${PROV}used`] : []),
+          ...(FINDINGS_OF_RECORDS.has(body) ? [`${PROV}wasDerivedFrom`] : []),
         ]);
         const motivations = held
           .objects(finding, `${OA}motivatedBy`)

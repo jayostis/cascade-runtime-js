@@ -27,7 +27,7 @@ const STALE = `${PREFIXES}SELECT DISTINCT ?claim ?rule ?now WHERE {
   ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
   ?input prov:specializationOf ?series .
   FILTER (?now != ?input)
-  ?claim prov:used ?input ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
+  ?claim prov:wasDerivedFrom ?input ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
          cascade:matcherRule ?rule .
 }`;
 
