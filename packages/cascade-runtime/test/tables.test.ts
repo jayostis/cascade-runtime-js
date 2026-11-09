@@ -556,7 +556,7 @@ ${records.join("\n")}`);
     );
     const sames = await pod.ask({
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment cascade:justification cascade:SameMappedCodeAndDate ; prov:used ?used ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameMappedCodeAndDate ; prov:wasDerivedFrom ?used ; prov:hadMember ?record .
         VALUES ?used { <${groups.first}> <${groups.second}> }
         ?record pav:hasCurrentVersion/cascade:vaccineCode ?code
       } GROUP BY ?judgment ?used`,
@@ -571,7 +571,7 @@ ${records.join("\n")}`);
     const [, adopted] = ingredientsLater.versions;
     const brands = await pod.ask({
       query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameMappedCode ; prov:wasDerivedFrom ?used ; prov:hadMember ?record .
         VALUES ?used { <${held}> <${adopted}> }
         ?record pav:hasCurrentVersion/cascade:allergenCode ?code
       } GROUP BY ?judgment ?used`,
@@ -583,7 +583,7 @@ ${records.join("\n")}`);
     const { shipped } = await ruleList();
     const conversions = await pod.ask({
       query: `${PREFIXES}SELECT (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-        ?judgment cascade:justification cascade:SameConvertedCode ; prov:used <${converted}> ; prov:hadMember ?record .
+        ?judgment cascade:justification cascade:SameConvertedCode ; prov:wasDerivedFrom <${converted}> ; prov:hadMember ?record .
         ?assertion cascade:assertedClaim ?judgment ; cascade:assertedUnderRuleListVersion <${shipped}> .
         ?record pav:hasCurrentVersion/cascade:icd10Code ?code
       } GROUP BY ?judgment`,
@@ -2063,7 +2063,7 @@ ${allergies.join("\n")}`);
     (
       await pod.ask({
         query: `${PREFIXES}SELECT ?used (GROUP_CONCAT(STR(?code); separator=" ") AS ?codes) WHERE {
-          ?judgment cascade:justification cascade:SameMappedCode ; prov:used ?used ; prov:hadMember ?record .
+          ?judgment cascade:justification cascade:SameMappedCode ; prov:wasDerivedFrom ?used ; prov:hadMember ?record .
           VALUES ?used { <${oldVersion}> <${newVersion}> }
           ?record pav:hasCurrentVersion/cascade:allergenCode ?code
         } GROUP BY ?judgment ?used`,

@@ -154,6 +154,19 @@ test("the build writes the labels, each view the layout marks written always, a 
         FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
+  assert.deepEqual(
+    await values(store, `GRAPH ?view { ?view a cascade:View ; prov:used ?v }`),
+    [],
+    "a view names what it was built with by prov:wasDerivedFrom, which only an activity's prov:used is not",
+  );
+  assert.ok(
+    (
+      await values(
+        store,
+        `GRAPH ?view { ?view a cascade:View ; prov:wasDerivedFrom ?v }`,
+      )
+    ).length > 0,
+  );
   assert.ok(written.some((file) => file.endsWith("clinical/allergies.ttl")));
   assert.ok(!written.some((file) => file.endsWith("clinical/procedures.ttl")));
   const index = await placed(
@@ -485,7 +498,7 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
   const joinedByCurrentVersion: Keep = async (held) => {
     const { rows } = await held.select(`${PREFIXES}
       SELECT DISTINCT ?claim ?now WHERE {
-        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:used ?input .
+        ?claim prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ; prov:wasDerivedFrom ?input .
         ?input prov:specializationOf ?series .
         ?series pav:hasCurrentVersion ?now .
         FILTER (?now != ?input)

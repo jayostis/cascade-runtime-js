@@ -201,7 +201,7 @@ async function viewsEqualExpected(
   return failures;
 }
 
-/** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms. */
+/** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms, and prov:used only on a prov:Activity. */
 async function conformsToShapes(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
@@ -214,7 +214,19 @@ async function conformsToShapes(
   const triples = [...pod]
     .filter(([path]) => !labelled.has(path))
     .flatMap(([, held]) => held);
-  return run.shapes.violations(triples);
+  const acts = new Set(
+    triples
+      .filter(([, p, o]) => p.value === TYPE && o.value === `${PROV}Activity`)
+      .map(([s]) => s.value),
+  );
+  const usedByNoAct = [
+    ...new Set(
+      triples
+        .filter(([s, p]) => p.value === `${PROV}used` && !acts.has(s.value))
+        .map(([s]) => s.value),
+    ),
+  ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
+  return [...(await run.shapes.violations(triples)), ...usedByNoAct];
 }
 
 /** A file's triples, with the thing named `name`, and every IRI under it, renamed to the placeholder. */
@@ -406,7 +418,7 @@ async function namesFollowTheirRules(
       rule,
       justification,
       members: values(`${PROV}hadMember`),
-      used: values(`${PROV}used`),
+      used: values(`${PROV}wasDerivedFrom`),
     });
     if (name !== judgment.value)
       failures.push(
