@@ -652,7 +652,7 @@ none, and `pod/My active allergies` lists it with the status `not stated`.
 
 A judgment is `<urn:cascade:this-judgment>`, by the owner as the patient, on
 records, never entries. The package adds its time, and to a Same, Different or
-Erroneous each member's current version as `prov:used`. A retraction is named
+Erroneous each member's current version as `prov:wasDerivedFrom`. A retraction is named
 so too: no judgment, but an activity that `prov:invalidated` one.
 
 ```js

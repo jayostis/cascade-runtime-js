@@ -878,7 +878,7 @@ class Matcher {
           ]),
           ...used.map((thing): Triple => [
             claim,
-            iri(`${PROV}used`),
+            iri(`${PROV}wasDerivedFrom`),
             iri(thing),
           ]),
           [claim, iri(`${PROV}wasAttributedTo`), matcher],
@@ -1117,7 +1117,7 @@ class Matcher {
   /**
    * Files a finding for review for each pair a finding rule's query gives, of records of a class it applies to, that
    * the pod holds no finding of: its kind, oa:motivatedBy oa:classifying, the two records as its targets and their
-   * current versions as prov:used, named by its triples (M21: R16, R17).
+   * current versions as prov:wasDerivedFrom, named by its triples (M21: R16, R17).
    */
   async fileFindings(): Promise<void> {
     const { layout, writes } = this.context;
@@ -1141,7 +1141,7 @@ class Matcher {
           [iri(subject), iri(`${OA}motivatedBy`), iri(`${OA}classifying`)],
           ...[one, other].flatMap((record): Triple[] => [
             [iri(subject), iri(`${OA}hasTarget`), iri(record.name)],
-            [iri(subject), iri(`${PROV}used`), iri(record.version)],
+            [iri(subject), iri(`${PROV}wasDerivedFrom`), iri(record.version)],
           ]),
         ];
         const name = await findingName(content(THIS_FINDING));
@@ -1412,7 +1412,7 @@ async function recheckable(dataset: Dataset): Promise<Judged[]> {
     }
     FILTER NOT EXISTS { ?retraction prov:invalidated ?judgment }`;
   const [rules, members, used] = await Promise.all(
-    ["cascade:matcherRule", "prov:hadMember", "prov:used"].map(
+    ["cascade:matcherRule", "prov:hadMember", "prov:wasDerivedFrom"].map(
       async (predicate) =>
         grouped(
           await column(

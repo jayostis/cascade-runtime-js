@@ -640,7 +640,7 @@ export class KeptBuild {
     const claims = await boundValues(
       union,
       described.map((path) => address + path),
-      `GRAPH ?bound { ?version prov:specializationOf ?series } ?found prov:used ?version`,
+      `GRAPH ?bound { ?version prov:specializationOf ?series } ?found prov:wasDerivedFrom ?version`,
     );
     for (const reached of await boundValues(
       union,
@@ -709,7 +709,7 @@ export class KeptBuild {
           union,
           frontier,
           `?claim prov:hadMember ?bound ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
-                  prov:used ?input ; prov:hadMember ?found .
+                  prov:wasDerivedFrom ?input ; prov:hadMember ?found .
            ?found a cascade:Record .
            ?input prov:specializationOf ?series .
            ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
@@ -831,7 +831,7 @@ export class KeptBuild {
       union,
       records,
       `?found prov:hadMember ?bound ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
-              prov:used ?input .
+              prov:wasDerivedFrom ?input .
        ?input prov:specializationOf ?series .
        ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
        FILTER (?now != ?input)`,

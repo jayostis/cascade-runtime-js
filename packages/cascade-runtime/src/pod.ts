@@ -56,6 +56,7 @@ const PAV = "http://purl.org/pav/";
 const BRIDGE = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 const TYPE = `${RDF}type`;
 const USED = `${PROV}used`;
+const DERIVED_FROM = `${PROV}wasDerivedFrom`;
 const GENERATED_AT = `${PROV}generatedAtTime`;
 const STARTED_AT = `${PROV}startedAtTime`;
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX bridge: <${BRIDGE}>`;
@@ -887,6 +888,7 @@ class OpenPod implements Pod {
           !(
             s.value === name &&
             (p.value === USED ||
+              p.value === DERIVED_FROM ||
               p.value === GENERATED_AT ||
               p.value === STARTED_AT)
           ),
@@ -915,7 +917,7 @@ class OpenPod implements Pod {
           throw new Error(
             `${member} has no current version in the pod: it names no record or revision`,
           );
-        used.push([judgment, iri(USED), iri(version)]);
+        used.push([judgment, iri(DERIVED_FROM), iri(version)]);
       }
     }
     const filed = await this.#core.judge({

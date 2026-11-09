@@ -154,19 +154,6 @@ test("the build writes the labels, each view the layout marks written always, a 
         FILTER (!BOUND(?class) || BOUND(?always) || ?class IN (${held.join(", ")})) } }`,
     ),
   );
-  assert.deepEqual(
-    await values(store, `GRAPH ?view { ?view a cascade:View ; prov:used ?v }`),
-    [],
-    "a view names what it was built with by prov:wasDerivedFrom, which only an activity's prov:used is not",
-  );
-  assert.ok(
-    (
-      await values(
-        store,
-        `GRAPH ?view { ?view a cascade:View ; prov:wasDerivedFrom ?v }`,
-      )
-    ).length > 0,
-  );
   assert.ok(written.some((file) => file.endsWith("clinical/allergies.ttl")));
   assert.ok(!written.some((file) => file.endsWith("clinical/procedures.ttl")));
   const index = await placed(
@@ -524,6 +511,19 @@ test("a pod's dataset derives with the Sames M7 keeps, so a matcher Same whose m
   const counting = await read(joinedByCurrentVersion);
   assert.equal(kept.length, 1);
   assert.equal(await counting.store.ask(counted), true);
+  assert.equal(
+    await counting.store.ask(`${PREFIXES}
+      ASK { GRAPH ?view { ?view a cascade:View ; prov:wasDerivedFrom ?version } ?version prov:specializationOf ?series }`),
+    true,
+    "a view names the reference versions it was built with by prov:wasDerivedFrom",
+  );
+  assert.equal(
+    await counting.store.ask(
+      `${PREFIXES} ASK { GRAPH ?view { ?view a cascade:View ; prov:used ?version } }`,
+    ),
+    false,
+    "prov:used is on an activity",
+  );
 });
 
 test("an entry another view points to is named in the view that gives it members: each variant interpretation's variant is an entry of the variants view", async () => {
