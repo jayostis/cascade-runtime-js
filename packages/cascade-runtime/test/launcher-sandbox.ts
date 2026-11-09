@@ -7,7 +7,8 @@ export class SandboxUnavailable extends Error {
 
 /**
  * Whether the sandbox's FHIR server answers a request of its own, outside the runtime: its `metadata`, which needs no
- * token. A request that is not answered in `timeoutMs`, fails in transport, or is answered 429 or 5xx is not an answer.
+ * token. A request that is not answered in `timeoutMs`, fails in transport, or is answered 5xx is not an answer; a 429
+ * is, since a sandbox that rate-limits is up.
  */
 export async function sandboxAnswers(
   fhirBase: string,
@@ -18,7 +19,7 @@ export async function sandboxAnswers(
     const { status } = await fetcher(`${fhirBase}/metadata`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return status !== 429 && status < 500;
+    return status < 500;
   } catch {
     return false;
   }
@@ -27,7 +28,7 @@ export async function sandboxAnswers(
 /**
  * Throws what the live check threw, unless the runtime gave up after its retries and the sandbox does not answer a
  * request of its own either: then it throws `SandboxUnavailable`, so a red run names the sandbox. Any other failure,
- * and any the sandbox could have answered, stays the runtime's.
+ * any the sandbox could have answered, and any that gave up on 429s, stays the runtime's.
  */
 export async function rethrowing(
   error: unknown,
@@ -36,6 +37,7 @@ export async function rethrowing(
   if (
     error instanceof ConnectionFailure &&
     error.kind === "retries-exhausted" &&
+    error.status !== 429 &&
     !(await answers())
   )
     throw new SandboxUnavailable(

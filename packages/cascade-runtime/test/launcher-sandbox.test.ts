@@ -41,6 +41,26 @@ test("a run that gave up after its retries is the sandbox's when the sandbox ans
   assert.equal(up.asked, 1);
 });
 
+test("a run that gave up on 429s is the runtime's, and the sandbox is not asked, while one that gave up on 5xx is the sandbox's", async () => {
+  const rateLimited = new ConnectionFailure(
+    "retries-exhausted",
+    "https://launch.example answered 429 to every try for Patient",
+    { origin: "https://launch.example", status: 429, resourceType: "Patient" },
+  );
+  const limited = await threw(rateLimited, false);
+  assert.equal(limited.thrown, rateLimited);
+  assert.equal(limited.asked, 0);
+
+  const failing = new ConnectionFailure(
+    "retries-exhausted",
+    "https://launch.example answered 503 to every try for Patient",
+    { origin: "https://launch.example", status: 503, resourceType: "Patient" },
+  );
+  const down = await threw(failing, false);
+  assert.ok(down.thrown instanceof SandboxUnavailable);
+  assert.equal(down.asked, 1);
+});
+
 test("a failure that is not the runtime giving up after its retries stays as it was, and the sandbox is not asked", async () => {
   for (const error of [
     new ConnectionFailure("unauthorized", "answered 401"),
@@ -66,7 +86,8 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
   assert.equal(await sandboxAnswers(BASE, answering(200)), true);
   assert.equal(await sandboxAnswers(BASE, answering(404)), true);
   assert.deepEqual(seen, [`${BASE}/metadata`, `${BASE}/metadata`]);
-  for (const status of [429, 500, 503])
+  assert.equal(await sandboxAnswers(BASE, answering(429)), true);
+  for (const status of [500, 503])
     assert.equal(
       await sandboxAnswers(BASE, answering(status)),
       false,
