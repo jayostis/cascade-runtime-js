@@ -14,10 +14,14 @@ export async function sandboxAnswers(
   fetcher: typeof fetch = fetch,
   timeoutMs = 15_000,
 ): Promise<boolean> {
-  void fhirBase;
-  void fetcher;
-  void timeoutMs;
-  return true;
+  try {
+    const { status } = await fetcher(`${fhirBase}/metadata`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return status !== 429 && status < 500;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -29,7 +33,14 @@ export async function rethrowing(
   error: unknown,
   answers: () => Promise<boolean>,
 ): Promise<never> {
-  void ConnectionFailure;
-  void answers;
+  if (
+    error instanceof ConnectionFailure &&
+    error.kind === "retries-exhausted" &&
+    !(await answers())
+  )
+    throw new SandboxUnavailable(
+      `the SMART launcher's sandbox is down, not the runtime: ${error.message}, and its FHIR server answers no request of its own either`,
+      { cause: error },
+    );
   throw error;
 }

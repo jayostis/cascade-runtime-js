@@ -67,7 +67,11 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
   assert.equal(await sandboxAnswers(BASE, answering(404)), true);
   assert.deepEqual(seen, [`${BASE}/metadata`, `${BASE}/metadata`]);
   for (const status of [429, 500, 503])
-    assert.equal(await sandboxAnswers(BASE, answering(status)), false, `${status}`);
+    assert.equal(
+      await sandboxAnswers(BASE, answering(status)),
+      false,
+      `${status}`,
+    );
 
   const refusing: typeof fetch = async () => {
     throw new TypeError("fetch failed");
@@ -76,7 +80,9 @@ test("the sandbox answers when its metadata is answered below 429 and 5xx, and n
 
   const hanging: typeof fetch = (_input, init) =>
     new Promise((_resolve, reject) =>
-      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+      init?.signal?.addEventListener("abort", () =>
+        reject(init.signal?.reason),
+      ),
     );
   assert.equal(await sandboxAnswers(BASE, hanging, 20), false);
 });
