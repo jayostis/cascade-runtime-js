@@ -17,6 +17,7 @@ import {
   launcherSettings,
   withLauncherSettings,
 } from "../test/launcher-settings.js";
+import { rethrowing, sandboxAnswers } from "../test/launcher-sandbox.js";
 
 const LAUNCHER = "https://launch.smarthealthit.org";
 /** A Synthea patient of r4.smarthealthit.org with a good many records, its vital signs paged. */
@@ -120,12 +121,14 @@ test("connect and pull sign in to the launcher's patient and pull every searched
   const seen: Seen = { sent: [], tokens: [], nexts: [] };
   const fetcher = recorded(seen);
   const row = launcherRow();
+  const blamed = (error: unknown) =>
+    rethrowing(error, () => sandboxAnswers(row.fhirBase));
   const connection = await connect(row, REGISTRATION, {
     signIn: direct(fetcher),
     fetch: fetcher,
-  });
+  }).catch(blamed);
   assert.equal(connection.patient, PATIENT);
-  const result = await pull(connection, DEMO_PLAN);
+  const result = await pull(connection, DEMO_PLAN).catch(blamed);
   assert.equal(result.fhirBase, row.fhirBase);
   assert.equal(result.patient, PATIENT);
 
@@ -199,14 +202,19 @@ test("a token the launcher did not sign ends the pull as unauthorized, carrying 
     headers.set("Authorization", "Bearer a-token-the-launcher-did-not-sign");
     return new Request(request, { headers });
   });
-  const connection = await connect(launcherRow(), REGISTRATION, {
+  const row = launcherRow();
+  const blamed = (error: unknown) =>
+    rethrowing(error, () => sandboxAnswers(row.fhirBase));
+  const connection = await connect(row, REGISTRATION, {
     signIn: direct(fetcher),
     fetch: fetcher,
-  });
+  }).catch(blamed);
   const failure = await pull(connection, DEMO_PLAN).then(
     () => assert.fail("the pull succeeded"),
     (error: unknown) => error,
   );
+  if (failure instanceof ConnectionFailure && failure.kind !== "unauthorized")
+    await blamed(failure);
   assert.ok(failure instanceof ConnectionFailure);
   assert.equal(failure.kind, "unauthorized");
   assert.equal(seen.tokens.length, 1);
