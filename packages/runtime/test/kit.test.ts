@@ -117,7 +117,7 @@ async function noActivityLines(
           ...(typeOfSubject === undefined
             ? []
             : [[subject, RDF_TYPE, iri(typeOfSubject)]]),
-        ] as Triple[],
+        ] as unknown as Triple[],
       ],
     ]),
   );
