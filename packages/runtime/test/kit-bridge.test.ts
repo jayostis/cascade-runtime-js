@@ -83,7 +83,7 @@ test("npm run kit:bridge makes what the kit saves: the same files, and each grap
   }
 });
 
-test("npm run kit:bridge converts a document an earlier step handed on again, so every file a kit saves for one is written", async () => {
+test("npm run kit:bridge writes a document an earlier step handed on again only where the kit saves it, so it rewrites the saved files and adds none", async () => {
   const alex = "conformance/alex-rivera";
   const out = await mkdtemp(join(tmpdir(), "kit-bridge-"));
   try {
@@ -105,6 +105,15 @@ test("npm run kit:bridge converts a document an earlier step handed on again, so
         path,
       );
     }
+    const graphs = async (folder: string): Promise<string[]> =>
+      (await readdir(folder, { recursive: true }))
+        .map((path) => path.replaceAll("\\", "/"))
+        .filter((path) => path.endsWith("/graph.ttl"))
+        .sort();
+    assert.deepEqual(
+      await graphs(join(out, "bridge")),
+      await graphs(join(files.folder, folder, "bridge")),
+    );
   } finally {
     await rm(out, { recursive: true, force: true });
   }
