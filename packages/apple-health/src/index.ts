@@ -119,10 +119,10 @@ function facts(entry: Entry | undefined, importStarted: string): Uint8Array {
   const lines = [
     `${thisImport} <${RDFS}label> ${quoted("Apple Health export")} .`,
     `${thisImport} <${PROV}startedAtTime> ${dateTime(importStarted)} .`,
+    `${document} <${PROV}wasGeneratedBy> _:writing .`,
   ];
   const association = (label: string, role: string, n: number): void => {
     lines.push(
-      `${document} <${PROV}wasGeneratedBy> _:writing .`,
       `_:writing <${PROV}qualifiedAssociation> _:association${n} .`,
       `_:association${n} <${PROV}agent> _:agent${n} .`,
       `_:agent${n} <${RDFS}label> ${quoted(label)} .`,
