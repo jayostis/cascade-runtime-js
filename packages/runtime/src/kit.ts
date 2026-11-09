@@ -591,8 +591,7 @@ async function namesFollowTheirRules(
         .filter(([s]) => !arrivals.has(written(s)))
         .map(([s, p, o]) => [swap(s), p, swap(o)] as unknown as Triple);
       const found = new Map<string, Triple>();
-      const keyed = (t: Triple): string =>
-        JSON.stringify(t.map((term) => [term.termType, term.value]));
+      const keyed = (t: Triple): string => t.map(written).join(" ");
       for (const subject of new Set(
         expected.flatMap(([s]) =>
           s.termType === "NamedNode" ? [s.value] : [],
