@@ -658,7 +658,7 @@ describe("Pulling a patient's records from a hospital · pull(), DEMO_PLAN", () 
       );
     });
 
-    it("carries on with the plan's next search", () => {
+    it("returns the records of the last search, which comes after the searches turned down", () => {
       assert.ok(keptOf(result, "AllergyIntolerance").length > 0);
     });
 
