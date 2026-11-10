@@ -5,7 +5,7 @@ import { type Files, MemoryFiles } from "../src/files.js";
 import { Graph } from "../src/graph.js";
 import { randomId } from "../src/ids.js";
 import { HashedSet } from "../src/kept-set.js";
-import { snapshotsFollowTheirRule } from "../src/kit.js";
+import { snapshotFaults } from "../src/kit.js";
 import type { Layout } from "../src/layout.js";
 import { fileDigest, setHash } from "../src/names.js";
 import { featurePod } from "../src/node/story-pod.js";
@@ -84,10 +84,7 @@ test("each act's file is the last its step writes and holds a snapshot its rule 
   assert.equal(acts.length, 3);
   for (const { wrote } of acts)
     assert.match(wrote.at(-1) ?? "", /^provenance\//);
-  assert.deepEqual(
-    await snapshotsFollowTheirRule(story, local.layout, newStore),
-    [],
-  );
+  assert.deepEqual(await snapshotFaults(story, local.layout, newStore), []);
   const record = story.steps
     .flatMap(({ wrote }) => wrote)
     .find((path) => path.startsWith("records/"));
@@ -95,7 +92,7 @@ test("each act's file is the last its step writes and holds a snapshot its rule 
   const failing =
     "N14: the last snapshot's set hash is not the set hash of the files the pod lists of its set";
   assert.deepEqual(
-    await snapshotsFollowTheirRule(
+    await snapshotFaults(
       { ...story, pod: await copied(story.pod, { [record]: undefined }) },
       local.layout,
       newStore,
@@ -105,7 +102,7 @@ test("each act's file is the last its step writes and holds a snapshot its rule 
       `N14: ${record}, of the set the snapshots hash, is missing from the pod`,
     ],
   );
-  const changed = await snapshotsFollowTheirRule(
+  const changed = await snapshotFaults(
     {
       ...story,
       pod: await copied(story.pod, {
@@ -367,10 +364,7 @@ test("an open that migrates a release leaves two acts in one step, each with its
       ?.values("fileAddedToSet")
       .some((path) => path.startsWith("judgments/retractions/")),
   );
-  assert.deepEqual(
-    await snapshotsFollowTheirRule(story, local.layout, newStore),
-    [],
-  );
+  assert.deepEqual(await snapshotFaults(story, local.layout, newStore), []);
 });
 
 test("a set hash multiplied in a few files at a time, in any order, and kept between sessions is the whole set's; a kept set whose files the pod no longer lists is not taken", async () => {

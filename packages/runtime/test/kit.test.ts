@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { runConformance } from "../src/conformance.js";
 import { MemoryFiles } from "../src/files.js";
 import {
-  conformsToShapes,
+  shapeFaults,
   KIT_CHECKS,
   type KitRun,
   podAddressesIn,
@@ -107,7 +107,7 @@ async function noActivityLines(
     layout: await layout(),
     shapes: await Shapes.read(await vocabulary(), () => new OxigraphStore()),
   } as KitRun;
-  const lines = await conformsToShapes(
+  const lines = await shapeFaults(
     run,
     new Map([
       [
