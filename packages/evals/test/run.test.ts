@@ -22,6 +22,8 @@ const { loadPlan, subjectPrompt } = await import("../src/plan.js");
 after(() => rm(folder, { recursive: true, force: true, maxRetries: 5 }));
 
 const MODEL = "claude-haiku-5-5";
+/** The judge is another model than the subjects', so a child's `--model` tells whose job it was given. */
+const JUDGE_MODEL = "claude-sonnet-5-5";
 const JOBS = [
   {
     id: "tamsin-vale.worries.records.haiku-5-5.r1",
@@ -104,7 +106,7 @@ async function planned(
         arms: ["pod", "records"],
         subjects: [MODEL],
         repeats: 1,
-        judges: judges ? [MODEL] : [],
+        judges: judges ? [JUDGE_MODEL] : [],
         cap: { ...cap, usd: 100 },
         concurrency,
       },
@@ -362,7 +364,8 @@ describe("Running a whole eval with one command · showRun(), runEval()", () => 
 
 /**
  * Each job runs as one `claude -p` child that is given only the tools its prompt names and none of the machine's own
- * setup, so neither arm is helped by where it ran.
+ * setup, so neither arm is helped by where it ran. These tests run `runEval()` against a stand-in `claude` that logs how
+ * each child is started.
  */
 describe("Confining a child to its job · childOf(), resolveClaude()", () => {
   describe("given the children `runEval()` starts for a subject on each arm and a judge", () => {
@@ -394,8 +397,13 @@ describe("Confining a child to its job · childOf(), resolveClaude()", () => {
       assert.equal(result.made.length, 3);
       for (const start of result.made) {
         assert.ok(start.args.includes("-p"), start.tag);
-        assert.equal(flag(start.args, "model"), "haiku", start.tag);
+        assert.equal(flag(start.args, "model"), job(start).alias, start.tag);
       }
+      assert.deepEqual(result.made.map((it) => flag(it.args, "model")).sort(), [
+        "haiku",
+        "haiku",
+        "sonnet",
+      ]);
     });
 
     it("gives each only the tools of its kind: Read, Write and Bash on the records arm, Bash and Write on the pod arm, Read and Write for a judge", () => {
@@ -799,11 +807,11 @@ describe("Giving a job back when its child leaves it unfinished · runEval(), gi
         assert.deepEqual(statuses(done), ["done", "done"], example);
     });
 
-    it("hands out every question of the session again, each once", () => {
+    it("hands out every question of the session again, each once, when it exited non-zero", () => {
       assert.deepEqual(outcomes.get("partial")!.asked, ["allergies", "second"]);
     });
 
-    it("counts the tokens of the attempt given back as spent", () => {
+    it("counts the tokens of the attempt given back as spent, when it exited non-zero", () => {
       assert.equal(outcomes.get("partial")!.done.spent.tokens, 3 * 6210);
     });
   });

@@ -18,6 +18,7 @@ type Inputs = Parameters<typeof sessionInputsHash>[0];
 /**
  * A session is not run again when a recorded one had the same inputs, and its inputs hash is how the harness tells.
  * What follows is what that hash and a prompt's version cover, since anything left out is a change that reruns nothing.
+ * In `sessionInputsHash()`, `found` is the case and `session` one of its sessions.
  */
 describe("Reusing a session whose inputs are unchanged · sessionInputsHash(), versionOf(), reusesPreparedPod()", () => {
   describe("sessionInputsHash({ found, session, … })", () => {
