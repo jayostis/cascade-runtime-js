@@ -45,6 +45,16 @@ export class FakeGraphDB {
     return fake;
   }
 
+  /** Forgets everything it was given, as a server just started does. */
+  reset(): void {
+    this.repositories.clear();
+    this.graphs.clear();
+    this.saved = new Map();
+    this.asked.length = 0;
+    this.refuseStatementsAfter = undefined;
+    this.#statements = 0;
+  }
+
   get url(): string {
     return `http://127.0.0.1:${(this.#server.address() as AddressInfo).port}`;
   }
