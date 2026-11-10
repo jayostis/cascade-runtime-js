@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { test } from "node:test";
+import { after, describe, it } from "node:test";
 import type { Prepared } from "../src/cases.js";
 import { checkAnswer } from "../src/checks.js";
 import type { Job } from "../src/results.js";
@@ -11,6 +11,10 @@ import type { Job } from "../src/results.js";
 const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const runs = join("runs-root");
 const id = "tamsin-vale.checkup.pod.opus-5-5.r1";
+
+const downloads = await mkdtemp(join(tmpdir(), "cascade-evals-checks-"));
+await writeFile(join(downloads, "a.json"), "{}");
+after(() => rm(downloads, { recursive: true, force: true, maxRetries: 5 }));
 
 const jobIn = (answeredIn: string, reusedFrom?: string): Job => ({
   id,
@@ -61,17 +65,6 @@ const checked = (job: Job, run: string) =>
     copies: true,
   });
 
-test("a reused job's commands and answer file are checked against the run it was answered in", async () => {
-  const reused = await checked(jobIn("first", `first/${id}`), "second");
-  assert.deepEqual(reused.discipline, { ok: true, violations: [] });
-});
-
-test("a job answered in this run is still held to this run's folder", async () => {
-  const wrong = await checked(jobIn("first"), "second");
-  assert.equal(wrong.discipline.ok, false);
-  assert.equal(wrong.discipline.violations.length, 3);
-});
-
 const elsewhere = "C:/wt/other/packages/evals";
 const recordsJob = (reusedFrom?: string, readCase = "tamsin-vale"): Job => ({
   ...jobIn("first", reusedFrom),
@@ -101,10 +94,8 @@ const recordsJob = (reusedFrom?: string, readCase = "tamsin-vale"): Job => ({
   ],
 });
 
-const checkedRecords = async (job: Job) => {
-  const downloads = await mkdtemp(join(tmpdir(), "reused-"));
-  await writeFile(join(downloads, "a.json"), "{}");
-  return checkAnswer({
+const checkedRecords = (job: Job) =>
+  checkAnswer({
     job,
     question: "checkup",
     answer: {},
@@ -116,79 +107,111 @@ const checkedRecords = async (job: Job) => {
     pod: undefined,
     copies: true,
   });
-};
-
-test("a reused job answered in another checkout is checked with the files and commands of that checkout", async () => {
-  const reused = await checkedRecords(recordsJob(`first/${id}`));
-  assert.deepEqual(reused.discipline, { ok: true, violations: [] });
-  assert.deepEqual(reused.read, ["a.json"]);
-});
-
-test("a read of another case's downloads in that checkout is still a violation", async () => {
-  const reused = await checkedRecords(
-    recordsJob(`first/${id}`, "priya-natarajan"),
-  );
-  assert.equal(reused.discipline.violations.length, 1);
-  assert.match(reused.discipline.violations[0]!, /priya-natarajan/);
-  assert.match(reused.discipline.violations[0]!, /wt.+other/);
-  assert.deepEqual(reused.read, []);
-});
 
 const withPath = (job: Job, file_path: string, name = "Read"): Job => ({
   ...job,
   toolUses: [{ name, input: { file_path } }],
 });
 
-test("a fresh job reading downloads under a path that only looks like a checkout is a violation and reads nothing", async () => {
-  const fresh = await checkedRecords(
-    withPath(
-      recordsJob(),
-      "/tmp/x/packages/evals/work/tamsin-vale/downloads/a.json",
-    ),
-  );
-  assert.equal(fresh.discipline.violations.length, 1);
-  assert.deepEqual(fresh.read, []);
-});
+/**
+ * A subject may read only its case's downloads, run only its own `ask` and `pod` commands and write only its own
+ * answers. `checkAnswer()` reads the job's tool uses and lists each one that went outside as a violation.
+ */
+describe("Holding a job to its own files and commands · checkAnswer()", () => {
+  describe("checkAnswer(options)", () => {
+    it("returns one violation for each command or answer file that names another run's folder", async () => {
+      const wrong = await checked(jobIn("first"), "second");
+      assert.equal(wrong.discipline.ok, false);
+      assert.equal(wrong.discipline.violations.length, 3);
+    });
 
-test("a reused job's `..` out of the case's downloads is a violation and reads nothing", async () => {
-  const escape = await checkedRecords(
-    withPath(
-      recordsJob(`first/${id}`),
-      `${elsewhere}/work/tamsin-vale/downloads/../../priya-natarajan/downloads/a.json`,
-    ),
-  );
-  assert.equal(escape.discipline.violations.length, 1);
-  assert.deepEqual(escape.read, []);
-});
-
-test("a reused job's path under work that is not the case's downloads is a violation", async () => {
-  const other = await checkedRecords(
-    withPath(
-      recordsJob(`first/${id}`),
-      `${elsewhere}/work/tamsin-vale/downloadsX/a.json`,
-    ),
-  );
-  assert.equal(other.discipline.violations.length, 1);
-  assert.deepEqual(other.read, []);
-});
-
-test("a reused job that names two checkouts is held to the first", async () => {
-  const two = await checkedRecords({
-    ...recordsJob(`first/${id}`),
-    toolUses: [
-      {
-        name: "Read",
-        input: { file_path: `${elsewhere}/work/tamsin-vale/downloads/a.json` },
-      },
-      {
-        name: "Read",
-        input: {
-          file_path:
-            "C:/wt/third/packages/evals/work/tamsin-vale/downloads/a.json",
-        },
-      },
-    ],
+    it("returns a violation, and counts nothing as read, for a file outside the case's downloads", async () => {
+      const outside: readonly (readonly [string, Job])[] = [
+        [
+          "a fresh job under a path that only looks like a checkout",
+          withPath(
+            recordsJob(),
+            "/tmp/x/packages/evals/work/tamsin-vale/downloads/a.json",
+          ),
+        ],
+        [
+          "a reused job's `..` out of the case's downloads",
+          withPath(
+            recordsJob(`first/${id}`),
+            `${elsewhere}/work/tamsin-vale/downloads/../../priya-natarajan/downloads/a.json`,
+          ),
+        ],
+        [
+          "a reused job's path under work that is not the case's downloads",
+          withPath(
+            recordsJob(`first/${id}`),
+            `${elsewhere}/work/tamsin-vale/downloadsX/a.json`,
+          ),
+        ],
+      ];
+      for (const [example, job] of outside) {
+        const result = await checkedRecords(job);
+        assert.equal(result.discipline.violations.length, 1, example);
+        assert.deepEqual(result.read, [], example);
+      }
+    });
   });
-  assert.equal(two.discipline.violations.length, 1);
-  assert.match(two.discipline.violations[0]!, /third/);
+
+  describe("given a job reused from an earlier run", () => {
+    it("holds its commands and answer file to the run it was answered in", async () => {
+      const reused = await checked(jobIn("first", `first/${id}`), "second");
+      assert.deepEqual(reused.discipline, { ok: true, violations: [] });
+    });
+  });
+
+  describe("given a job reused from another checkout", () => {
+    it("holds its commands and answer file to that checkout", async () => {
+      const reused = await checkedRecords(recordsJob(`first/${id}`));
+      assert.deepEqual(reused.discipline, { ok: true, violations: [] });
+    });
+
+    it("counts a download read in that checkout as read", async () => {
+      const reused = await checkedRecords(recordsJob(`first/${id}`));
+      assert.deepEqual(reused.read, ["a.json"]);
+    });
+
+    it("returns a violation, naming the case and the checkout, for a read of another case's downloads there", async () => {
+      const reused = await checkedRecords(
+        recordsJob(`first/${id}`, "priya-natarajan"),
+      );
+      assert.equal(reused.discipline.violations.length, 1);
+      assert.match(reused.discipline.violations[0]!, /priya-natarajan/);
+      assert.match(reused.discipline.violations[0]!, /wt.+other/);
+    });
+
+    it("counts nothing as read for a read of another case's downloads there", async () => {
+      const reused = await checkedRecords(
+        recordsJob(`first/${id}`, "priya-natarajan"),
+      );
+      assert.deepEqual(reused.read, []);
+    });
+
+    it("returns a violation, naming it, for a read in a second checkout", async () => {
+      const two = await checkedRecords({
+        ...recordsJob(`first/${id}`),
+        toolUses: [
+          {
+            name: "Read",
+            input: {
+              file_path: `${elsewhere}/work/tamsin-vale/downloads/a.json`,
+            },
+          },
+          {
+            name: "Read",
+            input: {
+              file_path:
+                "C:/wt/third/packages/evals/work/tamsin-vale/downloads/a.json",
+            },
+          },
+        ],
+      });
+      assert.equal(two.discipline.violations.length, 1);
+      assert.match(two.discipline.violations[0]!, /third/);
+    });
+  });
 });
