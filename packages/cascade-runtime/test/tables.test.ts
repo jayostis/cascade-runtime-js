@@ -984,14 +984,34 @@ let brandMade:
 /** What `about` says of a brand that maps to two ingredients, of one that maps to itself and of a code no row maps; made once. */
 function brandIngredients() {
   brandMade ??= (async () => {
-    const { served, versions } = await withMappings(feed, INGREDIENTS, [
+    // An earlier series in the order of preference that maps neither the brand nor ibuprofen.
+    const earlier: Mapping = {
+      ...INGREDIENTS,
+      series: "urn:uuid:7c2e4a1b-5d3f-4b8a-9e6c-1f0a2b3c4d5e",
+      label: "Earlier product ingredients",
+    };
+    const withEarlier = await withMappings(feed, earlier, [[["7052", "7052"]]]);
+    const { served, versions } = await withMappings(
+      withEarlier.served,
+      INGREDIENTS,
       [
-        ["153010", "5640"],
-        ["153010", "7052"],
-        ["5640", "5640"],
+        [
+          ["153010", "5640"],
+          ["153010", "7052"],
+          ["5640", "5640"],
+        ],
       ],
-    ]);
-    const tables = tablesOver(served);
+    );
+    const tables = new Tables({
+      files: new MemoryFiles("urn:test:tables/"),
+      feeds: [FEED],
+      vocabulary: parts.vocabulary,
+      newStore: parts.newStore,
+      fetch: fetchOf(served),
+      preference: {
+        [`${CASCADE}ProductIngredients`]: [earlier.series, INGREDIENTS.series],
+      },
+    });
     await tables.check();
     const [brand, ibuprofen, unmapped] = ["153010", "5640", "999999"].map(
       (code) => RXNORM + code,
@@ -2894,7 +2914,7 @@ describe("Looking up a code in the reference tables · tables.about(), tables.fa
         }
     });
 
-    it("returns a product's ingredients from the first product ingredients series that maps it, with the version that says so", () => {
+    it("returns a product's ingredients from the first product ingredients series in the order of preference that maps it, passing an earlier one that does not, with the version that says so", () => {
       const { about, versions, brand, ibuprofen } = ingredients;
       const mapped = about.get(brand)?.ingredients;
       assert.deepEqual([...(mapped?.codes ?? [])].sort(), [
