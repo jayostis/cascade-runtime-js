@@ -10,6 +10,7 @@ import {
   specPages,
 } from "../spec.js";
 import type { PagesContext } from "./context.js";
+import { nameOf, TESTS_FOLDER } from "./tests.js";
 
 export const SPEC_FOLDER = "spec/";
 export const CONFORMANCE_FOLDER = "conformance/";
@@ -94,7 +95,7 @@ export const specSection: Section<SpecContext> = {
 
     const suites = (await ctx.tests()).map(({ suite }) => ({
       title: suite.title,
-      folder: `tests/${suite.repository.slice(suite.repository.indexOf("/") + 1)}/`,
+      folder: `${TESTS_FOLDER.slice(CONFORMANCE_FOLDER.length)}${nameOf(suite)}/`,
     }));
     const spec = `../${SPEC_FOLDER}`;
     const listed = (kit: boolean) =>
