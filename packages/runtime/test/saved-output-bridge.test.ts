@@ -1,91 +1,125 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { isBridgeError } from "../src/bridge.js";
+import { before, describe, it } from "node:test";
+import {
+  type BridgeDocument,
+  isBridgeError,
+  type LoadedAdapter,
+} from "../src/bridge.js";
 import { MemoryFiles } from "../src/files.js";
 import { documentName } from "../src/names.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { SavedOutputBridge } from "../src/saved-output-bridge.js";
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
+const ADAPTER = { iri: "https://adapter.example/tree/c/", files: new Map() };
+const PEANUT = "s/export/clinical-records/AllergyIntolerance-peanut.json";
 
-test("the saved-output Bridge answers a document from what the step saved, declines one it marks unaccepted, and fails on one it saved nothing for", async () => {
+/** A document of the story's export, named as a runtime names it. */
+async function documentOf(text: string): Promise<BridgeDocument> {
+  const content = bytes(text);
+  return { iri: await documentName(content), bytes: content };
+}
+
+/**
+ * A kit saves, beside each export, the graph and conversion findings the Bridge made of each document.
+ * `SavedOutputBridge` answers a conversion from those files, so a story replays where no Bridge can run, and what the
+ * kit saved stays the expected output every runtime is held to.
+ */
+describe("Converting from a kit's saved output · SavedOutputBridge.of()", () => {
+  const peanut = '{"resourceType": "AllergyIntolerance", "id": "peanut"}';
+  const mango = '{"resourceType": "AllergyIntolerance", "id": "mango"}';
+  const kiwi = '{"resourceType": "AllergyIntolerance", "id": "kiwi"}';
+  const graph = bytes("<urn:record> a <urn:Allergy> .");
   const story = new MemoryFiles("https://vocabulary.example/");
-  const peanut = bytes(
-    '{"resourceType": "AllergyIntolerance", "id": "peanut"}',
-  );
-  const mango = bytes('{"resourceType": "AllergyIntolerance", "id": "mango"}');
-  const kiwi = bytes('{"resourceType": "AllergyIntolerance", "id": "kiwi"}');
-  await story.write(
-    "s/export/clinical-records/AllergyIntolerance-peanut.json",
-    peanut,
-  );
-  await story.write(
-    "s/export/clinical-records/AllergyIntolerance-mango.json",
-    mango,
-  );
-  await story.write(
-    "s/export/clinical-records/AllergyIntolerance-kiwi.json",
-    kiwi,
-  );
-  await story.write(
-    "s/bridge/AllergyIntolerance-kiwi/unaccepted.txt",
-    new Uint8Array(),
-  );
-  await story.write(
-    "s/bridge/AllergyIntolerance-peanut/graph.ttl",
-    bytes("<urn:record> a <urn:Allergy> ."),
-  );
-  await story.write(
-    "s/bridge/AllergyIntolerance-peanut/findings.ttl",
-    bytes("<urn:finding> a <urn:Finding> ."),
-  );
 
-  const bridge = await SavedOutputBridge.of(story, {
-    export: "s/export",
-    converted: "s/bridge",
+  before(async () => {
+    for (const [name, text] of [
+      ["peanut", peanut],
+      ["mango", mango],
+      ["kiwi", kiwi],
+    ] as const)
+      await story.write(
+        `s/export/clinical-records/AllergyIntolerance-${name}.json`,
+        bytes(text),
+      );
+    await story.write(
+      "s/bridge/AllergyIntolerance-kiwi/unaccepted.txt",
+      new Uint8Array(),
+    );
+    await story.write("s/bridge/AllergyIntolerance-peanut/graph.ttl", graph);
+    await story.write(
+      "s/bridge/AllergyIntolerance-peanut/findings.ttl",
+      bytes("<urn:finding> a <urn:Finding> ."),
+    );
   });
-  const adapter = await bridge.load({
-    iri: "https://adapter.example/tree/c/",
-    files: new Map(),
+
+  describe("given a step whose export is a folder of documents", () => {
+    let adapter: LoadedAdapter;
+
+    before(async () => {
+      adapter = await (
+        await SavedOutputBridge.of(story, {
+          export: "s/export",
+          converted: "s/bridge",
+        })
+      ).load(ADAPTER);
+    });
+
+    it("accepts a document the step saved output for", async () => {
+      assert.equal(await adapter.accepts(await documentOf(peanut)), true);
+    });
+
+    it("converts it to the graph and the conversion findings saved under its file's name", async () => {
+      const converted = await adapter.convert(await documentOf(peanut));
+      const store = new OxigraphStore();
+      await store.loadTurtle(converted.graph, { graph: "urn:graph" });
+      await store.loadTurtle(converted.findings, { graph: "urn:findings" });
+      assert.equal(
+        await store.ask(
+          "ASK { GRAPH <urn:graph> { <urn:record> a <urn:Allergy> } }",
+          new Set(),
+        ),
+        true,
+        "the graph",
+      );
+      assert.equal(
+        await store.ask(
+          "ASK { GRAPH <urn:findings> { <urn:finding> a <urn:Finding> } }",
+          new Set(),
+        ),
+        true,
+        "the conversion findings",
+      );
+    });
+
+    it("declines a document the step marks with `unaccepted.txt`", async () => {
+      assert.equal(await adapter.accepts(await documentOf(kiwi)), false);
+    });
+
+    it("accepts a document the step saved nothing for", async () => {
+      assert.equal(await adapter.accepts(await documentOf(mango)), true);
+    });
+
+    it("rejects the conversion of that document with a BridgeError of kind `bridge`", async () => {
+      await assert.rejects(
+        adapter.convert(await documentOf(mango)),
+        (error) => isBridgeError(error) && error.kind === "bridge",
+      );
+    });
   });
-  const document = { iri: await documentName(peanut), bytes: peanut };
-  assert.equal(await adapter.accepts(document), true);
 
-  const { graph, findings } = await adapter.convert(document);
-  const store = new OxigraphStore();
-  await store.loadTurtle(graph, { graph: "urn:graph" });
-  await store.loadTurtle(findings, { graph: "urn:findings" });
-  assert.equal(
-    await store.ask(
-      "ASK { GRAPH <urn:graph> { <urn:record> a <urn:Allergy> } }",
-      new Set(),
-    ),
-    true,
-  );
-  assert.equal(
-    await store.ask(
-      "ASK { GRAPH <urn:findings> { <urn:finding> a <urn:Finding> } }",
-      new Set(),
-    ),
-    true,
-  );
-
-  const downloaded = await (
-    await SavedOutputBridge.of(story, {
-      export: "s/export/clinical-records/AllergyIntolerance-peanut.json",
-      converted: "s/bridge",
-    })
-  ).load({ iri: "https://adapter.example/tree/c/", files: new Map() });
-  assert.deepEqual((await downloaded.convert(document)).graph, graph);
-
-  assert.equal(
-    await adapter.accepts({ iri: await documentName(kiwi), bytes: kiwi }),
-    false,
-  );
-  const unsaved = { iri: await documentName(mango), bytes: mango };
-  assert.equal(await adapter.accepts(unsaved), true);
-  await assert.rejects(
-    adapter.convert(unsaved),
-    (error) => isBridgeError(error) && error.kind === "bridge",
-  );
+  describe("given a step whose export is one document", () => {
+    it("converts the document to the graph saved under its file's name", async () => {
+      const adapter = await (
+        await SavedOutputBridge.of(story, {
+          export: PEANUT,
+          converted: "s/bridge",
+        })
+      ).load(ADAPTER);
+      assert.deepEqual(
+        (await adapter.convert(await documentOf(peanut))).graph,
+        graph,
+      );
+    });
+  });
 });

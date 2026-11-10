@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after, before, test } from "node:test";
+import { after, before, describe, it } from "node:test";
 import {
   type AdaptersOf,
   type BridgeDocument,
@@ -84,20 +84,6 @@ async function loaded(spawn: Spawn): Promise<LoadedAdapter> {
   return fhir;
 }
 
-before(async () => {
-  components = await checkouts(ROOT);
-  compiled = await compiledBridge((await components.bridge()).folder);
-  const configured = await configuredAll(inWorker(compiled));
-  adaptersOf = ofMediaType(configured);
-  everyAdapter = configured.map(({ adapter }) => adapter);
-  [inWorkerAdapter] = everyAdapter as [LoadedAdapter];
-});
-
-after(async () => {
-  for (const adapter of adapters) await adapter.free();
-  for (const bridge of bridges) bridge.close();
-});
-
 interface Saved {
   readonly document: BridgeDocument;
   readonly graph: Triple[];
@@ -175,6 +161,7 @@ async function differences(): Promise<{
   readonly skipped: string[];
   readonly converted: number;
   readonly unaccepted: number;
+  readonly acceptedUnaccepted: number;
 }> {
   const files = await vocabulary();
   const importers = importersNamed(components.config.importers);
@@ -183,6 +170,7 @@ async function differences(): Promise<{
   const seen = new Set<string>();
   let converted = 0;
   let unaccepted = 0;
+  let acceptedUnaccepted = 0;
   for (const kit of await kitsOf(files)) {
     const { story, folder } = await storyFrom(
       `${kit}/${kit.slice(kit.lastIndexOf("/") + 1)}.feature`,
@@ -238,10 +226,7 @@ async function differences(): Promise<{
         if (refused !== undefined) {
           seen.add(known);
           unaccepted++;
-          if (accepting !== undefined)
-            differ.push(
-              `${named}: saved as unaccepted, but an adapter accepts it`,
-            );
+          if (accepting !== undefined) acceptedUnaccepted++;
           continue;
         }
         if (graph === undefined) {
@@ -273,55 +258,8 @@ async function differences(): Promise<{
       }
     }
   }
-  return { differ, skipped, converted, unaccepted };
+  return { differ, skipped, converted, unaccepted, acceptedUnaccepted };
 }
-
-test("every kit's saved conversions are the Bridge's own: each document converts, in a worker, to a graph isomorphic to the saved one with the same findings, and a document saved as unaccepted is accepted by no adapter", async () => {
-  const { differ, skipped, converted, unaccepted } = await differences();
-  assert.deepEqual(differ, []);
-  assert.deepEqual(skipped, ["conformance/priya-natarajan E11"]);
-  assert.equal(converted, 52);
-  assert.equal(unaccepted, 1);
-});
-
-test("a document the adapter cannot read fails with kind document, and the loaded adapter converts the next", async () => {
-  const expected = await saved("e2", "AllergyIntolerance-alg-pcn-1");
-  await assert.rejects(
-    inWorkerAdapter.convert(await standIn(expected.document, "{ not json")),
-    (error) => isBridgeError(error) && error.kind === "document",
-  );
-  same(expected, await inWorkerAdapter.convert(expected.document));
-});
-
-test("a fault in the Bridge ends its worker, and the next document converts in a new one", async () => {
-  const trapping = new URL("./trapping-bridge.js", import.meta.url);
-  trapping.searchParams.set("real", compiled.glue);
-  const adapter = await loaded(
-    inWorker({ glue: trapping.href, module: compiled.module }),
-  );
-  const expected = await saved("e2", "AllergyIntolerance-alg-pcn-1");
-  await assert.rejects(
-    adapter.convert(await standIn(expected.document, "trap")),
-    (error) => isBridgeError(error) && error.kind === "bridge",
-  );
-  same(expected, await adapter.convert(expected.document));
-});
-
-test("a conversion in the main thread is the conversion in a worker", async () => {
-  const expected = await saved("e6", "Immunization-imm-tdap-2026");
-  const [inAWorker, inTheMainThread] = await Promise.all([
-    inWorkerAdapter.convert(expected.document),
-    loaded(inThread(compiled)).then((adapter) =>
-      adapter.convert(expected.document),
-    ),
-  ]);
-  for (const part of ["graph", "findings"] as const) {
-    assert.equal(
-      notIsomorphic(triples(inAWorker[part]), triples(inTheMainThread[part])),
-      undefined,
-    );
-  }
-});
 
 /** A pod's files as one graph, but the imports' own, with each revision and the import that made it as blank nodes. */
 async function filed(pod: MemoryFiles): Promise<Triple[]> {
@@ -358,55 +296,187 @@ async function filed(pod: MemoryFiles): Promise<Triple[]> {
   );
 }
 
-test("an export imported through the WebAssembly Bridge files what it files through the saved output", async () => {
-  const files = await vocabulary();
-  const { story, folder } = await storyFrom(
-    "runtime/arrivals.feature",
-    "the latex allergy arrives under a source version it already has, with other content, and is a revision",
-  );
-  const step = story.steps.find(({ name }) => name === "known-source-version");
-  if (step?.happened.kind !== "import") throw new Error("no such import");
-  const exported = `${folder}/${step.happened.export}`;
-  const importSaved = PERFORMERS.import;
-  assert.ok(importSaved);
-  const pods: Triple[][] = [];
-  for (const perform of [
-    (pod: CorePod, time: StoryTime) =>
-      importSaved(pod, step, {
-        source: files,
-        folder,
-        vocabulary: files,
-        activities: new Map(),
-        time,
-        newStore,
-        writer: () => pod,
-      }),
-    (pod: CorePod, time: StoryTime) => {
-      time.begin(step.when);
-      return pod.import(files, exported, async () => () => [inWorkerAdapter]);
-    },
-  ]) {
-    const pod = new MemoryFiles(story.address);
-    const time = new StoryTime();
-    await perform(
-      new CorePod({
-        runtime: RUNTIME,
-        pod,
-        address: story.address,
-        subject: story.subject,
-        title: "",
-        vocabulary: files,
-        layout: await layout(),
-        newStore,
-        time,
-        importers: [appleHealthExport],
-        references: () => Promise.reject(new Error("an import reads no table")),
-      }),
-      time,
-    );
-    pods.push(await filed(pod));
-  }
-  const [saved, live] = pods;
-  assert.ok((saved?.length ?? 0) > 0);
-  assert.equal(notIsomorphic(saved ?? [], live ?? []), undefined);
+/**
+ * The Bridge is one WebAssembly module, built by cascade-bridge-rs, that runs every adapter. The runtime runs it in a
+ * worker, so a document that crashes it costs one conversion and not the page.
+ */
+describe("Converting a document with the WebAssembly Bridge · WasmBridge, inWorker(), inThread()", () => {
+  before(async () => {
+    components = await checkouts(ROOT);
+    compiled = await compiledBridge((await components.bridge()).folder);
+    const configured = await configuredAll(inWorker(compiled));
+    adaptersOf = ofMediaType(configured);
+    everyAdapter = configured.map(({ adapter }) => adapter);
+    [inWorkerAdapter] = everyAdapter as [LoadedAdapter];
+  });
+
+  after(async () => {
+    for (const adapter of adapters) await adapter.free();
+    for (const bridge of bridges) bridge.close();
+  });
+
+  describe("given every import of every kit", () => {
+    let found: Awaited<ReturnType<typeof differences>>;
+
+    before(async () => {
+      found = await differences();
+    });
+
+    it("converts each document to a graph and conversion findings isomorphic to those the kit saves", () => {
+      assert.deepEqual(found.differ, []);
+      assert.equal(found.converted, 52);
+    });
+
+    it("has no adapter accept the document the kit saves as unaccepted", () => {
+      assert.equal(found.unaccepted, 1);
+      assert.equal(found.acceptedUnaccepted, 0);
+    });
+
+    it("skips only an import whose export its importer cannot read and for which the kit saves nothing", () => {
+      assert.deepEqual(found.skipped, ["conformance/priya-natarajan E11"]);
+    });
+  });
+
+  describe("given an adapter loaded in a worker", () => {
+    let expected: Saved;
+
+    before(async () => {
+      expected = await saved("e2", "AllergyIntolerance-alg-pcn-1");
+    });
+
+    it("rejects a document the adapter cannot read with a BridgeError of kind `document`", async () => {
+      await assert.rejects(
+        inWorkerAdapter.convert(await standIn(expected.document, "{ not json")),
+        (error) => isBridgeError(error) && error.kind === "document",
+      );
+    });
+
+    it("converts the next document with the same loaded adapter", async () => {
+      await inWorkerAdapter
+        .convert(await standIn(expected.document, "{ not json"))
+        .catch(() => undefined);
+      same(expected, await inWorkerAdapter.convert(expected.document));
+    });
+  });
+
+  describe("given a Bridge that faults on one document", () => {
+    let expected: Saved;
+    let adapter: LoadedAdapter;
+    let spawns = 0;
+
+    /** The real Bridge, in workers, that traps on the document "trap" and counts the workers it starts. */
+    before(async () => {
+      expected = await saved("e2", "AllergyIntolerance-alg-pcn-1");
+      const glue = new URL("./trapping-bridge.js", import.meta.url);
+      glue.searchParams.set("real", compiled.glue);
+      const spawn = inWorker({ glue: glue.href, module: compiled.module });
+      adapter = await loaded(() => {
+        spawns++;
+        return spawn();
+      });
+    });
+
+    it("rejects that document with a BridgeError of kind `bridge`", async () => {
+      await assert.rejects(
+        adapter.convert(await standIn(expected.document, "trap")),
+        (error) => isBridgeError(error) && error.kind === "bridge",
+      );
+    });
+
+    it("converts the next document in a new worker", async () => {
+      await adapter.convert(expected.document);
+      const started = spawns;
+      await adapter
+        .convert(await standIn(expected.document, "trap"))
+        .catch(() => undefined);
+      same(expected, await adapter.convert(expected.document));
+      assert.equal(spawns - started, 1, "the workers started after the fault");
+    });
+  });
+
+  describe("inThread(compiled)", () => {
+    it("converts a document, in the main thread, to the graph and conversion findings a worker gives", async () => {
+      const expected = await saved("e6", "Immunization-imm-tdap-2026");
+      const [inAWorker, inTheMainThread] = await Promise.all([
+        inWorkerAdapter.convert(expected.document),
+        loaded(inThread(compiled)).then((adapter) =>
+          adapter.convert(expected.document),
+        ),
+      ]);
+      for (const part of ["graph", "findings"] as const)
+        assert.equal(
+          notIsomorphic(
+            triples(inAWorker[part]),
+            triples(inTheMainThread[part]),
+          ),
+          undefined,
+          part,
+        );
+    });
+  });
+
+  /**
+   * The arrivals example of `runtime/arrivals.feature` A3, in which the latex allergy arrives under a source version it
+   * already has, with other content, and is a revision.
+   * @rule runtime/arrivals.feature A3
+   */
+  describe("given an export imported once through the saved output and once through the WebAssembly Bridge", () => {
+    it("files, the import's own files apart, the same statements both ways", async () => {
+      const files = await vocabulary();
+      const { story, folder } = await storyFrom(
+        "runtime/arrivals.feature",
+        "the latex allergy arrives under a source version it already has, with other content, and is a revision",
+      );
+      const step = story.steps.find(
+        ({ name }) => name === "known-source-version",
+      );
+      if (step?.happened.kind !== "import") throw new Error("no such import");
+      const exported = `${folder}/${step.happened.export}`;
+      const importSaved = PERFORMERS.import;
+      assert.ok(importSaved);
+      const pods: Triple[][] = [];
+      for (const perform of [
+        (pod: CorePod, time: StoryTime) =>
+          importSaved(pod, step, {
+            source: files,
+            folder,
+            vocabulary: files,
+            activities: new Map(),
+            time,
+            newStore,
+            writer: () => pod,
+          }),
+        (pod: CorePod, time: StoryTime) => {
+          time.begin(step.when);
+          return pod.import(files, exported, async () => () => [
+            inWorkerAdapter,
+          ]);
+        },
+      ]) {
+        const pod = new MemoryFiles(story.address);
+        const time = new StoryTime();
+        await perform(
+          new CorePod({
+            runtime: RUNTIME,
+            pod,
+            address: story.address,
+            subject: story.subject,
+            title: "",
+            vocabulary: files,
+            layout: await layout(),
+            newStore,
+            time,
+            importers: [appleHealthExport],
+            references: () =>
+              Promise.reject(new Error("an import reads no table")),
+          }),
+          time,
+        );
+        pods.push(await filed(pod));
+      }
+      const [savedPod, live] = pods;
+      assert.ok((savedPod?.length ?? 0) > 0);
+      assert.equal(notIsomorphic(savedPod ?? [], live ?? []), undefined);
+    });
+  });
 });

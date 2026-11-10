@@ -172,12 +172,12 @@ function entryDifferences(
     : ["  the entries differ in the blank nodes they lead to"];
 }
 
-async function viewsEqualExpected(
+async function viewFaults(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
 ): Promise<string[]> {
   const { vocabulary, kit, replayed, newStore, layout } = run;
-  const failures: string[] = [];
+  const faults: string[] = [];
   const expectedFiles = (await vocabulary.list(`${kit}/expected`)).filter(
     (path) => path.endsWith(".ttl"),
   );
@@ -194,12 +194,12 @@ async function viewsEqualExpected(
       pod.get(view) ?? [],
     );
     if ((await canonical(expected)) !== (await canonical(found)))
-      failures.push(
+      faults.push(
         `${replayed.story.address}${view} is not ${path}:`,
         ...entryDifferences(expected, found),
       );
   }
-  return failures;
+  return faults;
 }
 
 /** prov:Activity and each class the terms make a subclass of it, however far down. */
@@ -220,8 +220,28 @@ function activityKinds(terms: readonly Triple[]): Set<string> {
   return kinds;
 }
 
+/** The part of check 3 that no shape states: a subject of prov:used must be a prov:Activity, or of a subclass the terms declare. */
+export function usedByNoActivity(
+  terms: readonly Triple[],
+  triples: readonly Triple[],
+): string[] {
+  const kinds = activityKinds(terms);
+  const acts = new Set(
+    triples
+      .filter(([, p, o]) => p.value === TYPE && kinds.has(o.value))
+      .map(([s]) => s.value),
+  );
+  return [
+    ...new Set(
+      triples
+        .filter(([s, p]) => p.value === `${PROV}used` && !acts.has(s.value))
+        .map(([s]) => s.value),
+    ),
+  ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
+}
+
 /** Check 3: every RDF file but those that name things only to label them, read together with the vocabulary's terms, and prov:used only on a prov:Activity or a subclass the vocabulary declares. */
-export async function conformsToShapes(
+export async function shapeFaults(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
 ): Promise<string[]> {
@@ -233,20 +253,10 @@ export async function conformsToShapes(
   const triples = [...pod]
     .filter(([path]) => !labelled.has(path))
     .flatMap(([, held]) => held);
-  const kinds = activityKinds(run.shapes.terms);
-  const acts = new Set(
-    triples
-      .filter(([, p, o]) => p.value === TYPE && kinds.has(o.value))
-      .map(([s]) => s.value),
-  );
-  const usedByNoAct = [
-    ...new Set(
-      triples
-        .filter(([s, p]) => p.value === `${PROV}used` && !acts.has(s.value))
-        .map(([s]) => s.value),
-    ),
-  ].map((subject) => `<${subject}> has prov:used and is no prov:Activity`);
-  return [...(await run.shapes.violations(triples)), ...usedByNoAct];
+  return [
+    ...(await run.shapes.resultLines(triples)),
+    ...usedByNoActivity(run.shapes.terms, triples),
+  ];
 }
 
 /** A file's triples, with the thing named `name`, and every IRI under it, renamed to the placeholder. */
@@ -283,14 +293,11 @@ async function inputGraph(
 }
 
 /** Check 4: N1 to N7, N9, N10, N14 and N15, and A9 and A11, from the run's own inputs. */
-async function namesFollowTheirRules(
-  run: KitRun,
-  held: Written,
-): Promise<string[]> {
+async function nameFaults(run: KitRun, held: Written): Promise<string[]> {
   const { replayed, vocabulary, kit, folder, layout } = run;
   const { story } = replayed;
   const { files, whole, by } = held;
-  const failures: string[] = [];
+  const faults: string[] = [];
   const at = (path: string): string => `${folder}/${path}`;
   const activityOf = new Map(
     replayed.steps.flatMap(({ step, activity }) =>
@@ -326,7 +333,7 @@ async function namesFollowTheirRules(
           expectedRecords.add(
             await enteredRecordName(session, Number(position)),
           );
-      if (drafts.size === 0) failures.push(`entry ${name} holds no draft`);
+      if (drafts.size === 0) faults.push(`entry ${name} holds no draft`);
     }
     if (happened.kind === "connect" && activityOf.has(name))
       expectedRecords.add(
@@ -342,10 +349,10 @@ async function namesFollowTheirRules(
   );
   for (const record of records)
     if (!expectedRecords.has(record))
-      failures.push(`N1/N2: ${record} is named by no input`);
+      faults.push(`N1/N2: ${record} is named by no input`);
   for (const record of expectedRecords)
     if (!records.has(record))
-      failures.push(`N1/N2: ${record}, which the inputs name, has no revision`);
+      faults.push(`N1/N2: ${record}, which the inputs name, has no revision`);
 
   // N3, N4: each version and each revision is named from its own triples; a revision follows an earlier one of its record.
   let named = 0;
@@ -360,7 +367,7 @@ async function namesFollowTheirRules(
         (await contentName(placeheld(triples, version.value, THIS_VERSION))) !==
         version.value
       )
-        failures.push(
+        faults.push(
           `N3: ${version.value} in ${path} is not named from its content`,
         );
     }
@@ -371,7 +378,7 @@ async function namesFollowTheirRules(
           placeheld(triples, revision.value, THIS_REVISION),
         )) !== revision.value
       )
-        failures.push(
+        faults.push(
           `N4: ${revision.value} in ${path} is not named from its triples`,
         );
       const step = by.get(path);
@@ -381,7 +388,7 @@ async function namesFollowTheirRules(
         .objects(revision, `${PROV}wasGeneratedBy`)
         .map((t) => t.value);
       if (made === undefined || generatedBy.join() !== made)
-        failures.push(
+        faults.push(
           `N4: ${revision.value} is generated by ${generatedBy.join(", ")}, not by the activity its step made`,
         );
       const record = graph.objects(revision, `${CASCADE}revisionOf`)[0];
@@ -396,14 +403,14 @@ async function namesFollowTheirRules(
           earlierTime === undefined ||
           !earlierInUtc(earlierTime.value, time.value)
         )
-          failures.push(
+          faults.push(
             `N4: ${revision.value} follows ${earlier.value}, which is no earlier revision of its record`,
           );
       }
     }
   }
   if (named === 0)
-    failures.push("N3/N4: the pod holds no version and no revision");
+    faults.push("N3/N4: the pod holds no version and no revision");
 
   // N5: each stored document is named by its bytes, and described.
   for (const [path, step] of by) {
@@ -411,11 +418,11 @@ async function namesFollowTheirRules(
     const bytes = await replayed.pod.read(path);
     const name = bytes === undefined ? "" : await documentName(bytes);
     if (bytes === undefined || !path.endsWith(`/${fileStem(name)}`))
-      failures.push(
+      faults.push(
         `N5: ${path}, which ${step.step.name} wrote, is not named by its bytes`,
       );
     else if (whole.match(iri(name), TYPE, iri(`${PROV}Entity`)).length === 0)
-      failures.push(`N5: ${name}, stored at ${path}, is not described`);
+      faults.push(`N5: ${name}, stored at ${path}, is not described`);
   }
 
   // N6: each matcher judgment is named by the matcher judgment naming rule from its rule, what it judged and what it used, and each of its
@@ -428,7 +435,7 @@ async function namesFollowTheirRules(
     const rules = values(`${CASCADE}matcherRule`);
     const [rule] = rules;
     if (rules.length !== 1 || rule === undefined) {
-      failures.push(
+      faults.push(
         `N6: ${judgment.value} cites ${rules.length} matcher rules, not one`,
       );
       continue;
@@ -441,7 +448,7 @@ async function namesFollowTheirRules(
       used: values(`${PROV}wasDerivedFrom`),
     });
     if (name !== judgment.value)
-      failures.push(
+      faults.push(
         `N6: ${judgment.value} is not named from its members and what it used`,
       );
   }
@@ -465,7 +472,7 @@ async function namesFollowTheirRules(
         matcherJudgment.value,
       )) !== assertion.value
     )
-      failures.push(
+      faults.push(
         `N6: ${assertion.value} is not named from its rule list version and its matcher judgment`,
       );
   }
@@ -484,26 +491,24 @@ async function namesFollowTheirRules(
     const uuid =
       activity === undefined ? undefined : UUID_V4.exec(activity)?.[1];
     if (uuid === undefined)
-      failures.push(
+      faults.push(
         `N7: step ${name} made ${activity ?? "nothing"}, not a version 4 UUID`,
       );
     else if (given.includes(uuid))
-      failures.push(`N7: step ${name}'s ${activity} is given by an input`);
+      faults.push(`N7: step ${name}'s ${activity} is given by an input`);
   }
   for (const run of whole.subjects(TYPE, iri(`${CASCADE}MatcherRun`))) {
     const uuid = UUID_V4.exec(run.value)?.[1];
     if (uuid === undefined)
-      failures.push(`N7: the matcher run ${run.value} is no version 4 UUID`);
+      faults.push(`N7: the matcher run ${run.value} is no version 4 UUID`);
     else if (given.includes(uuid))
-      failures.push(`N7: the matcher run ${run.value} is given by an input`);
+      faults.push(`N7: the matcher run ${run.value} is given by an input`);
   }
   if (new Set(activityOf.values()).size !== activityOf.size)
-    failures.push("N7: two steps made one activity");
+    faults.push("N7: two steps made one activity");
 
   // N7, N14: each act names the runtime, and leaves a snapshot chained to the one before it.
-  failures.push(
-    ...(await snapshotsFollowTheirRule(replayed, layout, run.newStore)),
-  );
+  faults.push(...(await snapshotFaults(replayed, layout, run.newStore)));
 
   // N9: each file is named from the thing it holds, in the fan-out its folder gives.
   for (const [path, triples] of files) {
@@ -523,7 +528,7 @@ async function namesFollowTheirRules(
         }
       })
     )
-      failures.push(`N9: ${path} is named for nothing it holds`);
+      faults.push(`N9: ${path} is named for nothing it holds`);
   }
 
   // N10: each person's judgment, and each person's retraction, keeps the IRI its input gives it.
@@ -542,7 +547,7 @@ async function namesFollowTheirRules(
           files.get(path)?.some(([s]) => s.value === judgment.value),
         )
       )
-        failures.push(`N10: step ${name} files no ${judgment.value}`);
+        faults.push(`N10: step ${name} files no ${judgment.value}`);
     }
   }
 
@@ -568,7 +573,7 @@ async function namesFollowTheirRules(
         rule.value,
       )) !== retraction.value
     )
-      failures.push(
+      faults.push(
         `N15: ${retraction.value} is not named from its release, its assertion and its matcher judgment's rule`,
       );
   }
@@ -603,21 +608,19 @@ async function namesFollowTheirRules(
       const graph = (await inputGraph(run, path)) ?? new Graph([]);
       const [document] = graph.subjects(TYPE, iri(`${PROV}Entity`));
       if (document === undefined) {
-        failures.push(`A9: ${path} describes no document`);
+        faults.push(`A9: ${path} describes no document`);
         continue;
       }
       if (!stored.has(fileStem(document.value))) {
         if (named9.has(document.value))
-          failures.push(
+          faults.push(
             `A11: ${document.value} is not kept, yet the pod names it`,
           );
         continue;
       }
       const [activity] = graph.subjects(`${PROV}used`, document);
       if (activity === undefined || thisImport === undefined) {
-        failures.push(
-          `A11: ${path} names no import, or step ${name} made none`,
-        );
+        faults.push(`A11: ${path} names no import, or step ${name} made none`);
         continue;
       }
       const arrivals = new Set(
@@ -662,7 +665,7 @@ async function namesFollowTheirRules(
         }
       }
       if ((await canonical(expected)) !== (await canonical(found.values())))
-        failures.push(
+        faults.push(
           `A9/A11: the pod does not hold ${path} less its arrivals, with step ${name}'s import`,
         );
       for (const arrival of graph.subjects(`${BRIDGE}arrivedAs`)) {
@@ -697,13 +700,13 @@ async function namesFollowTheirRules(
             ([s, p, o]) => whole.match(s, p.value, o).length === 0,
           )
         )
-          failures.push(
+          faults.push(
             `A9: the revision of ${version?.value ?? "an arrival"} from ${document.value} does not hold its arrival's statements`,
           );
       }
     }
   }
-  return failures;
+  return faults;
 }
 
 /**
@@ -713,13 +716,13 @@ async function namesFollowTheirRules(
  * and the last snapshot's set hash is the set hash of the files the pod lists of that set, so a file of it removed or
  * changed fails the check.
  */
-export async function snapshotsFollowTheirRule(
+export async function snapshotFaults(
   replayed: Replayed,
   layout: Layout,
   newStore: StoreFactory,
 ): Promise<string[]> {
   const { pod, steps, runtime } = replayed;
-  const failures: string[] = [];
+  const faults: string[] = [];
   const listed = new Set(await pod.list(""));
   const digests = new Map<string, Uint8Array>();
   const held: string[] = [];
@@ -774,7 +777,7 @@ export async function snapshotsFollowTheirRule(
           graph.objects(snapshot, predicate).map(({ value }) => value);
         const [act = ""] = values(`${PROV}wasGeneratedBy`);
         if (!actsHere.has(act))
-          failures.push(
+          faults.push(
             `N14: ${snapshot.value} in ${path} is no snapshot of an act that file describes`,
           );
         const first = values(`${CASCADE}firstParentSnapshot`);
@@ -786,13 +789,13 @@ export async function snapshotsFollowTheirRule(
           graph.match(iri(act), `${PROV}wasAssociatedWith`, iri(runtime))
             .length === 0
         )
-          failures.push(`N7: the act of ${where} names no ${runtime}`);
+          faults.push(`N7: the act of ${where} names no ${runtime}`);
         if (first.join() !== (previous ?? ""))
-          failures.push(
+          faults.push(
             `N14: ${where} has the first parent ${first.join() || "none"}, not ${previous ?? "none"}`,
           );
         if ([...added].sort().join() !== [...ofSet].sort().join())
-          failures.push(
+          faults.push(
             `N14: ${where} names as added ${added.length} files, not the ${ofSet.length} of the set its act wrote`,
           );
         const set = held.filter((file) => file !== path);
@@ -800,7 +803,7 @@ export async function snapshotsFollowTheirRule(
           set.every((file) => listed.has(file)) &&
           hash !== (await hashOf(set))
         )
-          failures.push(
+          faults.push(
             `N14: ${where}'s set hash is not the set's after step ${step.name}`,
           );
         const description = graph.triples.filter(
@@ -818,7 +821,7 @@ export async function snapshotsFollowTheirRule(
             setHash: hash,
           }))
         )
-          failures.push(`N14: ${where} is not named by its rule`);
+          faults.push(`N14: ${where} is not named by its rule`);
         previous = snapshot.value;
         last = { set, hash };
       }
@@ -827,26 +830,26 @@ export async function snapshotsFollowTheirRule(
       ...wrote.slice(from).filter((file) => layout.inSnapshotSet(file)),
     );
     if (activity !== undefined && wrote.length > 0 && found === 0)
-      failures.push(`N14: step ${step.name} wrote no snapshot`);
+      faults.push(`N14: step ${step.name} wrote no snapshot`);
     else if (found !== acts)
-      failures.push(
+      faults.push(
         `N14: step ${step.name} wrote ${acts} acts and ${found} snapshots, not one snapshot per act`,
       );
   }
   if (last !== undefined) {
     const present = last.set.filter((path) => listed.has(path));
     if ((await hashOf(present)) !== last.hash) {
-      failures.push(
+      faults.push(
         "N14: the last snapshot's set hash is not the set hash of the files the pod lists of its set",
       );
       for (const path of last.set)
         if (!listed.has(path))
-          failures.push(
+          faults.push(
             `N14: ${path}, of the set the snapshots hash, is missing from the pod`,
           );
     }
   }
-  return failures;
+  return faults;
 }
 
 /** Every text file of the kit, which a run's random IDs must not come from. */
@@ -859,14 +862,14 @@ async function everyInput(vocabulary: Files, kit: string): Promise<string> {
 }
 
 /** Check 5: no file the runtime wrote is out of place, by the vocabulary's question and, for stored documents, by path. */
-async function whereTheLayoutSays(
+async function layoutFaults(
   run: KitRun,
   by: ReadonlyMap<string, ReplayedStep>,
 ): Promise<string[]> {
   const query = await readText(run.vocabulary, OUT_OF_PLACE);
   const { rows } = await run.final.select(query);
   const address = run.replayed.story.address;
-  const failures = rows
+  const faults = rows
     .filter((row) => row.get("file")?.value.startsWith(address))
     .map(
       (row) =>
@@ -881,9 +884,9 @@ async function whereTheLayoutSays(
       name === undefined ||
       !stores.some((placement) => placement.path(name) === path)
     )
-      failures.push(`${path} is no stored document's place`);
+      faults.push(`${path} is no stored document's place`);
   }
-  return failures;
+  return faults;
 }
 
 /** Each IRI the Turtle's bytes write that begins with the pod's address, in the order written. */
@@ -894,7 +897,7 @@ export function podAddressesIn(bytes: Uint8Array, address: string): string[] {
 }
 
 /** Check 6: no view, as the runtime writes or shares it, holds the pod's address. */
-function viewsHoldNoAddress(
+function addressFaults(
   run: KitRun,
   pod: ReadonlyMap<string, Triple[]>,
 ): string[] {
@@ -925,21 +928,21 @@ export async function kitChecks(run: KitRun): Promise<Assertion[]> {
     by,
   };
   const checks: [string, () => Promise<string[]>][] = [
-    [KIT_CHECKS.views, () => viewsEqualExpected(run, pod)],
-    [KIT_CHECKS.shapes, () => conformsToShapes(run, pod)],
-    [KIT_CHECKS.names, () => namesFollowTheirRules(run, held)],
-    [KIT_CHECKS.layout, () => whereTheLayoutSays(run, by)],
-    [KIT_CHECKS.address, () => Promise.resolve(viewsHoldNoAddress(run, pod))],
+    [KIT_CHECKS.views, () => viewFaults(run, pod)],
+    [KIT_CHECKS.shapes, () => shapeFaults(run, pod)],
+    [KIT_CHECKS.names, () => nameFaults(run, held)],
+    [KIT_CHECKS.layout, () => layoutFaults(run, by)],
+    [KIT_CHECKS.address, () => Promise.resolve(addressFaults(run, pod))],
   ];
   const assertions: Assertion[] = [];
   for (const [check, made] of checks) {
     const test = checkTest(run.vocabulary, run.kit, check);
     try {
-      const failures = await made();
+      const faults = await made();
       assertions.push(
-        failures.length === 0
+        faults.length === 0
           ? { ...test, outcome: "passed" }
-          : { ...test, outcome: "failed", why: failures.join("\n") },
+          : { ...test, outcome: "failed", why: faults.join("\n") },
       );
     } catch (error) {
       assertions.push({ ...test, outcome: "failed", why: failure(error) });

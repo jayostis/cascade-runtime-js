@@ -436,7 +436,7 @@ async function showPerson(shown) {
         vocabulary.files,
         () => new OxigraphStore(),
       );
-      assert.deepEqual(await shapes.violations(triples), []);
+      assert.deepEqual(await shapes.resultLines(triples), []);
     });
   });
 
