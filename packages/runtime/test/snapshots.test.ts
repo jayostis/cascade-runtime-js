@@ -12,38 +12,12 @@ import { featurePod } from "../src/node/story-pod.js";
 import { localVocabulary } from "../src/node/runtime.js";
 import { OxigraphStore } from "../src/oxigraph-store.js";
 import { iri, RDF } from "../src/rdf.js";
+import { cleosReplay, copied } from "./cleo.js";
 import { ROOT, RUNTIME, vocabulary } from "./vocabulary.js";
 
 const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
 const ADDRESS = "https://pod.example/";
 const newStore = () => new OxigraphStore();
-
-/** Cleo's import, entry and matcher run, three acts in a row (naming.feature, N14). */
-const replayed = localVocabulary(ROOT).then(async (local) => ({
-  local,
-  replayed: await featurePod(
-    local,
-    "runtime/naming.feature",
-    new MemoryFiles(ADDRESS),
-    {
-      example:
-        "a writer's first snapshot has no first parent, and each later act's names the one before it",
-    },
-  ),
-}));
-
-async function copied(
-  pod: Files,
-  changes: Record<string, Uint8Array | undefined> = {},
-): Promise<MemoryFiles> {
-  const copy = new MemoryFiles(pod.iri);
-  const paths = new Set([...(await pod.list("")), ...Object.keys(changes)]);
-  for (const path of paths) {
-    const bytes = path in changes ? changes[path] : await pod.read(path);
-    if (bytes !== undefined) await copy.write(path, bytes);
-  }
-  return copy;
-}
 
 /** The snapshot an act's file holds: its IRI and the values of each of its properties, by local name. */
 async function snapshotIn(
@@ -79,7 +53,7 @@ async function setHashOf(
 }
 
 test("each act's file is the last its step writes and holds a snapshot its rule names, chained to the one before; a pod with a file of the set removed or changed fails the check", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const acts = story.steps.filter(({ activity }) => activity !== undefined);
   assert.equal(acts.length, 3);
   for (const { wrote } of acts)
@@ -116,7 +90,7 @@ test("each act's file is the last its step writes and holds a snapshot its rule 
 });
 
 test("a writer handed no head the pod holds is a new writer, whose snapshot merges the pod's heads; handed its last, its next session chains to it with no merge", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const pod = await copied(story.pod, {
     ".DS_Store": new Uint8Array([0]),
     "records/allergies/.acl": new TextEncoder().encode("# acl\n"),
@@ -178,7 +152,7 @@ test("a writer handed no head the pod holds is a new writer, whose snapshot merg
 
 /** Cleo's writer over the pod, handed the head, its time fixed. */
 async function cleosWriter(pod: Files, head: Head | undefined) {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   return new CorePod({
     runtime: RUNTIME,
     pod,
@@ -197,7 +171,7 @@ async function cleosWriter(pod: Files, head: Head | undefined) {
 
 /** A writer that, from the replay's last snapshot, entered Cleo's entry. */
 async function entered(entry: string): Promise<CorePod> {
-  const { replayed: story } = await replayed;
+  const { replayed: story } = await cleosReplay();
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -283,7 +257,7 @@ class StopsAtOneWrite implements Files {
 }
 
 test("a receive that stops at any of its writes and is made again writes the sync an unstopped one writes, naming the same acts", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -311,7 +285,7 @@ test("a receive that stops at any of its writes and is made again writes the syn
 });
 
 test("three writers, one receiving the others' files in either order, hold one set hash and leave no head but their own", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -403,7 +377,7 @@ test("a set hash multiplied in a few files at a time, in any order, and kept bet
 
 /** The replay's last snapshot, as the head its writer kept, with no set. */
 async function replayHead(): Promise<Head> {
-  const { replayed: story } = await replayed;
+  const { replayed: story } = await cleosReplay();
   const last = await snapshotIn(
     story.pod,
     story.steps.at(-1)?.wrote.at(-1) ?? "",
@@ -427,7 +401,7 @@ async function enterInto(writer: CorePod, entry: string): Promise<string> {
 }
 
 test("a writer reopened with the head it kept reads no file of the set it kept, and its set hash is the whole set's; handed the head without the set, it reads them", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const pod = new StopsAtOneWrite(await copied(story.pod), -1);
   const first = await cleosWriter(pod, await replayHead());
   await enterInto(first, "second-entry");
@@ -454,7 +428,7 @@ test("a writer reopened with the head it kept reads no file of the set it kept, 
 });
 
 test("a step that fails after hashing the set leaves the next act's set hash the whole set's", async () => {
-  const { local, replayed: story } = await replayed;
+  const { local, replayed: story } = await cleosReplay();
   const pod = new StopsAtOneWrite(await copied(story.pod), -1);
   const writer = await cleosWriter(pod, await replayHead());
   await enterInto(writer, "second-entry");

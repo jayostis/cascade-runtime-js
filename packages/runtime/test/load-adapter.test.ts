@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, describe, it } from "node:test";
 import {
   type Bridge,
   BridgeError,
@@ -72,90 +72,144 @@ async function adapterFiles(): Promise<MemoryFiles> {
   return files;
 }
 
-test("an adapter is given the files its description lists, and each file a call finds missing is fetched and the adapter loaded again", async () => {
-  const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
-  for (const path of ["core.ttl", "records.ttl", "health.ttl"])
-    await vocabulary.write(path, bytes(path));
-  const asked: (string | undefined)[] = [];
-  const loads: Given[] = [];
+/**
+ * An adapter is a folder of files the Bridge runs to convert one kind of document. `loadAdapter()` hands the Bridge
+ * only the files the adapter's description lists and fetches another when the Bridge reports it missing, so a web page
+ * downloads no more of an adapter or of the vocabulary than a conversion reads.
+ */
+describe("Loading an adapter into the Bridge · loadAdapter(), ofMediaType()", () => {
+  describe("loadAdapter(bridge, adapter, vocabularyOf)", () => {
+    const asked: (string | undefined)[] = [];
+    const loads: Given[] = [];
+    let loadedBeforeACall: Given[];
 
-  const { adapter } = await loadAdapter(
-    bridge(loads),
-    { iri: "https://adapter.example/tree/c/", files: await adapterFiles() },
-    (repository) => {
-      asked.push(repository);
-      return Promise.resolve({ iri: vocabulary.iri, files: vocabulary });
-    },
-  );
-  assert.deepEqual(loads, [], "an adapter loaded before a call needed it");
-  await adapter.convert({ iri: "urn:document", bytes: bytes("{}") });
+    before(async () => {
+      const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
+      for (const path of ["core.ttl", "records.ttl", "health.ttl"])
+        await vocabulary.write(path, bytes(path));
+      const { adapter } = await loadAdapter(
+        bridge(loads),
+        {
+          iri: "https://adapter.example/tree/c/",
+          files: await adapterFiles(),
+        },
+        (repository) => {
+          asked.push(repository);
+          return Promise.resolve({ iri: vocabulary.iri, files: vocabulary });
+        },
+      );
+      loadedBeforeACall = [...loads];
+      await adapter.convert({ iri: "urn:document", bytes: bytes("{}") });
+    });
 
-  assert.deepEqual(asked, [REPOSITORY]);
-  assert.deepEqual(loads, [
-    [["in/detect.rq", "ro-crate-metadata.json"], ["core.ttl"]],
-    [
-      ["in/detect.rq", "ro-crate-metadata.json", "schema/imported.xsd"],
-      ["core.ttl"],
-    ],
-    [
-      ["in/detect.rq", "ro-crate-metadata.json", "schema/imported.xsd"],
-      ["core.ttl", "records.ttl"],
-    ],
-  ]);
-});
+    it("loads nothing into the Bridge before a call needs the adapter", () => {
+      assert.deepEqual(loadedBeforeACall, []);
+    });
 
-test("an adapter whose every file is at hand is given them all, without git's", async () => {
-  const loads: Given[] = [];
-  const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
-  await vocabulary.write("core.ttl", bytes("core"));
-  const { adapter } = await loadAdapter(
-    bridge(loads),
-    {
-      iri: "https://adapter.example/tree/c/",
-      files: await adapterFiles(),
-      whole: true,
-    },
-    () => Promise.resolve({ iri: vocabulary.iri, files: vocabulary }),
-  );
-  await adapter.accepts({ iri: "urn:document", bytes: bytes("{}") });
-  assert.deepEqual(
-    loads.map(([adapter]) => adapter),
-    [
-      [
+    it("hands the Bridge, at the first call, the files the description lists of the adapter and of the vocabulary", () => {
+      assert.deepEqual(loads[0], [
+        ["in/detect.rq", "ro-crate-metadata.json"],
+        ["core.ttl"],
+      ]);
+    });
+
+    it("loads again with a file of the adapter that the Bridge reported missing", () => {
+      assert.deepEqual(loads[1], [
+        ["in/detect.rq", "ro-crate-metadata.json", "schema/imported.xsd"],
+        ["core.ttl"],
+      ]);
+    });
+
+    it("loads again with a file of the vocabulary that a conversion reported missing, and then no more", () => {
+      assert.deepEqual(loads.slice(2), [
+        [
+          ["in/detect.rq", "ro-crate-metadata.json", "schema/imported.xsd"],
+          ["core.ttl", "records.ttl"],
+        ],
+      ]);
+    });
+
+    it("asks for the vocabulary once, by the repository the description names", () => {
+      assert.deepEqual(asked, [REPOSITORY]);
+    });
+  });
+
+  describe("given an adapter whose every file is at hand", () => {
+    const loads: Given[] = [];
+
+    before(async () => {
+      const vocabulary = new MemoryFiles("https://vocabulary.example/tree/a/");
+      await vocabulary.write("core.ttl", bytes("core"));
+      const { adapter } = await loadAdapter(
+        bridge(loads),
+        {
+          iri: "https://adapter.example/tree/c/",
+          files: await adapterFiles(),
+          whole: true,
+        },
+        () => Promise.resolve({ iri: vocabulary.iri, files: vocabulary }),
+      );
+      await adapter.accepts({ iri: "urn:document", bytes: bytes("{}") });
+    });
+
+    it("hands the Bridge every file of the adapter in one load", () => {
+      assert.equal(loads.length, 1);
+      assert.deepEqual(loads[0]?.[0], [
         "docs/format.md",
         "in/detect.rq",
         "ro-crate-metadata.json",
         "schema/imported.xsd",
-      ],
-    ],
-  );
-});
+      ]);
+    });
 
-test("a media type's adapters are those whose description declares it, by its essence, in their order", () => {
-  const adapter = (sourceMediaType: string): Loaded => ({
-    description: {
-      graph: new Uint8Array(),
-      iri: `https://adapter.example/${sourceMediaType}/`,
-      sourceMediaType,
-      envelopes: [],
-      loadFiles: [],
-      crateFiles: [],
-    },
-    adapter: {
-      accepts: () => Promise.resolve(true),
-      convert: () => Promise.reject(new Error("unreached")),
-      free: () => Promise.resolve(),
-    },
+    it("leaves out the files under `.git/`", () => {
+      assert.deepEqual(
+        loads[0]?.[0].filter((path) => path.startsWith(".git/")),
+        [],
+      );
+    });
   });
-  const loaded = [
-    "application/fhir+json",
-    "application/cda+xml",
-    "application/xml",
-    "Application/CDA+XML",
-  ].map(adapter);
-  const of = ofMediaType(loaded);
-  const [fhir, cda, , otherCda] = loaded.map(({ adapter }) => adapter);
-  assert.deepEqual(of("application/cda+xml; charset=utf-8"), [cda, otherCda]);
-  assert.deepEqual(of("application/fhir+json"), [fhir]);
-  assert.deepEqual(of("text/plain"), []);
+
+  describe("ofMediaType(loaded)", () => {
+    const adapter = (sourceMediaType: string): Loaded => ({
+      description: {
+        graph: new Uint8Array(),
+        iri: `https://adapter.example/${sourceMediaType}/`,
+        sourceMediaType,
+        envelopes: [],
+        loadFiles: [],
+        crateFiles: [],
+      },
+      adapter: {
+        accepts: () => Promise.resolve(true),
+        convert: () => Promise.reject(new Error("unreached")),
+        free: () => Promise.resolve(),
+      },
+    });
+    const loaded = [
+      "application/fhir+json",
+      "application/cda+xml",
+      "application/xml",
+      "Application/CDA+XML",
+    ].map(adapter);
+    const of = ofMediaType(loaded);
+    const [fhir, cda, , otherCda] = loaded.map(({ adapter }) => adapter);
+
+    it("returns the adapters whose description declares the media type, in the order they were loaded", () => {
+      assert.deepEqual(of("application/fhir+json"), [fhir]);
+      assert.deepEqual(of("application/cda+xml"), [cda, otherCda]);
+    });
+
+    it("compares media types without their parameters and whatever their case", () => {
+      assert.deepEqual(of("application/cda+xml; charset=utf-8"), [
+        cda,
+        otherCda,
+      ]);
+      assert.deepEqual(of("APPLICATION/cda+XML"), [cda, otherCda]);
+    });
+
+    it("returns none for a media type no adapter declares", () => {
+      assert.deepEqual(of("text/plain"), []);
+    });
+  });
 });
