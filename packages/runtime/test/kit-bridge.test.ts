@@ -174,13 +174,13 @@ describe("Writing a kit's saved output again · npm run kit:bridge", () => {
 
   describe("given a folder inside the vocabulary", () => {
     let inside: string;
-    let refused: { code?: number } | undefined;
+    let refused: { code?: number; stderr?: string } | undefined;
 
     before(async () => {
       inside = join((await vocabulary()).folder, KIT, "kit-bridge-refused");
       refused = await kitBridge(inside).then(
         () => undefined,
-        (error: { code?: number }) => error,
+        (error: { code?: number; stderr?: string }) => error,
       );
     });
 
@@ -188,8 +188,9 @@ describe("Writing a kit's saved output again · npm run kit:bridge", () => {
       await rm(inside, { recursive: true, force: true });
     });
 
-    it("exits with code 1", () => {
+    it("exits with code 1, saying the folder is outside the vocabulary", () => {
       assert.equal(refused?.code, 1);
+      assert.match(refused?.stderr ?? "", /outside the vocabulary/);
     });
 
     it("writes nothing there", async () => {
