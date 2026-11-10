@@ -360,9 +360,14 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
     });
 
     it("writes each entry in its view's file as `<#hash>`", () => {
-      assert.ok(texts.size > 0);
-      for (const [view, text] of texts)
-        assert.match(text, /^<#[0-9a-f]{64}> /m, view);
+      assert.ok(members.size > 0, "no view has an entry");
+      for (const [entry, { view }] of members) {
+        const text = texts.get(view) ?? "";
+        assert.ok(
+          text.includes(`<#${entry.slice(view.length + 1)}> `),
+          `${view}: no <#hash> for ${entry}`,
+        );
+      }
     });
 
     it("writes no IRI under the pod's address in a view's file", () => {
