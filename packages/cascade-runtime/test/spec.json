@@ -446,7 +446,6 @@
     {
       "term": "owner-entered record",
       "definition": "a record the owner typed in themselves and filed with `pod.enter()`, such as an allergy they know they have; no source holds it, and being the owner's own it needs no claim.",
-      "vocabulary": "https://ns.cascadeprotocol.org/cascade#EnteredRecordNamingRule",
       "aliases": ["owner-entered records"]
     },
     {
