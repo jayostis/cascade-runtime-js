@@ -370,6 +370,20 @@ describe("Checking a model's reply against a person's records · checkReply(), r
         [["S12 Northbay Clinical Laboratories"], ["S3 Fernhill Family Clinic"]],
       );
       assert.deepEqual(
+        facts.slice(0, 2).map(({ filled }) => {
+          const { entry, label, value, date, dateKind } = filled!;
+          return { entry, label, value, date, dateKind };
+        }),
+        Array(2).fill({
+          entry: `${POD}/lab-results.ttl#cd05f84f584f21389ebd613489d46ab9634387697c9a20caf6af151360307712`,
+          label: A1C_LABEL,
+          value: "6.9 %",
+          date: "2025-09-22",
+          dateKind: "when",
+        }),
+        "the view entry's own name, value and date, whichever source is named",
+      );
+      assert.deepEqual(
         facts.slice(2).map(({ filled }) => filled?.date),
         ["2026-06-22", "2026-01-05"],
         "the note's date is that source's own",
