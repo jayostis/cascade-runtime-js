@@ -119,13 +119,11 @@ export async function samplesOf(
         `${kit}/${POD}.pack.json`,
         encoder.encode(JSON.stringify(packFolder(paths, pod))),
       );
-      for (const [path, bytes] of await answersToPublish(
-        parts,
-        kit,
-        pod,
-        source.runtime,
-        options.look,
-      ))
+      for (const [path, bytes] of await answersToPublish(parts, pod, {
+        name: kit,
+        runtime: source.runtime,
+        look: options.look,
+      }))
         files.set(`${kit}/${path}`, bytes);
     }
   } finally {

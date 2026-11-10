@@ -63,20 +63,24 @@ export async function publishedSamples(
 }
 
 /**
- * The answers a browser keeps for a published pod, `name`, whose files are given, so that a copy of it reads without
- * the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
- * `runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed with.
- * Given `look`, what it asks of the tables about the pod, as the page that shows it asks, is kept as `lookups.json`.
+ * The answers a browser keeps for a published pod, `options.name`, whose files are `podFiles`, so that a copy of it reads
+ * without the engine: `answers.json`, every question under the parts' lens, and `pod.json`, computed with the parts under
+ * `options.runtime`, the version of the browser entry that copies it; `pod.json` also says which `tables` it was computed
+ * with. Given `options.look`, what it asks of the tables about the pod, as the page that shows it asks, is kept as
+ * `lookups.json`.
  */
 export async function answersToPublish(
   parts: Parts,
-  name: string,
-  pod: ReadonlyMap<string, Uint8Array>,
-  runtime: string,
-  look?: (pod: Pod, tables: Tables) => Promise<unknown>,
+  podFiles: ReadonlyMap<string, Uint8Array>,
+  options: {
+    readonly name: string;
+    readonly runtime: string;
+    readonly look?: (pod: Pod, tables: Tables) => Promise<unknown>;
+  },
 ): Promise<Map<string, Uint8Array>> {
+  const { name, runtime, look } = options;
   const files = new MemoryFiles("urn:cascade:published/");
-  for (const [path, bytes] of pod) await files.write(path, bytes);
+  for (const [path, bytes] of podFiles) await files.write(path, bytes);
   const kept = new MemoryFiles("urn:cascade:answers/");
   const opened = await openPodWith(
     {

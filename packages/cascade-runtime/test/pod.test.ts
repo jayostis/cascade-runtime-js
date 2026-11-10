@@ -1047,13 +1047,11 @@ test("a published pod's answers, as the site computes them, are read back withou
   const codes = (await pod.ask(QUESTION)).flatMap((row) =>
     Object.values(row).filter((value) => value.startsWith("http")),
   );
-  for (const [path, bytes] of await answersToPublish(
-    publishing,
-    "pod",
-    published,
-    "published",
-    (_pod, tables) => tables.about(codes),
-  ))
+  for (const [path, bytes] of await answersToPublish(publishing, published, {
+    name: "pod",
+    runtime: "published",
+    look: (_pod, tables) => tables.about(codes),
+  }))
     await answers.write(path, bytes);
   assert.ok(codes.length > 0);
   const lookups = lookupsOf(await answers.read(LOOKUPS));

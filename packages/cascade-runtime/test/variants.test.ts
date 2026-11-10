@@ -540,9 +540,11 @@ test("a report agrees with ClinVar when its value is among the row's, differs wh
     const answers = new MemoryFiles("urn:test:answers/");
     for (const [path, bytes] of await answersToPublish(
       withTables(app),
-      "martin",
       published,
-      "published",
+      {
+        name: "martin",
+        runtime: "published",
+      },
     ))
       await answers.write(path, bytes);
     const { vocabulary, build, lens, layout } = parts;
