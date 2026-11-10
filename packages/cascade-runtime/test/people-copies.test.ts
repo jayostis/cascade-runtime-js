@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { describe, it } from "node:test";
 import {
   checkouts,
   type Components,
@@ -94,42 +94,47 @@ const KIT_PULLS = join(
   "downloads",
 );
 
-test("Martin's two pulls in the kit are the adapter's two fixtures", async () => {
-  for (const [pull, fixture] of [
-    ["harbourline-2022", "martin-okafor-harbourline-panel-2022-with-lab.json"],
-    ["st-columba-2024", "martin-okafor-st-columba-exome-2024-with-lab.json"],
-  ] as const) {
-    const kit = join(KIT_PULLS, pull, "bundle.json");
-    const copy = join(fhirAdapter, "fixtures", "in", fixture);
-    assert.deepEqual(
-      await json(copy),
-      await json(kit),
-      `${copy} differs from ${kit}`,
-    );
-  }
-});
-
-test("the adapter's Patients for Alex and Martin agree with their person.json", async () => {
-  const copies: Record<string, string[]> = {
-    "alex-rivera": ["patient-with-id.json", "bundle-urn-uuid-full-urls.json"],
-    "martin-okafor": [
-      "martin-okafor-harbourline-panel-2022-with-lab.json",
-      "martin-okafor-st-columba-exome-2024-with-lab.json",
-      "bundle-genomics-variants.json",
-      "bundle-genomics-interpretations.json",
-    ],
-  };
-  for (const [id, files] of Object.entries(copies)) {
-    const expected = await person(id);
-    for (const file of files) {
-      const path = join(fhirAdapter, "fixtures", "in", file);
-      const patients = patientsIn(await json(path));
-      assert.equal(patients.length, 1, `${path} holds one Patient`);
+describe("the adapter's fixtures", () => {
+  it("hold Martin's two pulls in the kit", async () => {
+    for (const [pull, fixture] of [
+      [
+        "harbourline-2022",
+        "martin-okafor-harbourline-panel-2022-with-lab.json",
+      ],
+      ["st-columba-2024", "martin-okafor-st-columba-exome-2024-with-lab.json"],
+    ] as const) {
+      const kit = join(KIT_PULLS, pull, "bundle.json");
+      const copy = join(fhirAdapter, "fixtures", "in", fixture);
       assert.deepEqual(
-        disagreements(patients[0]!, expected),
-        [],
-        `${path} disagrees with ${id}'s person.json`,
+        await json(copy),
+        await json(kit),
+        `${copy} differs from ${kit}`,
       );
     }
-  }
+  });
+
+  it("hold Patients for Alex and Martin that agree with their person.json", async () => {
+    const copies: Record<string, string[]> = {
+      "alex-rivera": ["patient-with-id.json", "bundle-urn-uuid-full-urls.json"],
+      "martin-okafor": [
+        "martin-okafor-harbourline-panel-2022-with-lab.json",
+        "martin-okafor-st-columba-exome-2024-with-lab.json",
+        "bundle-genomics-variants.json",
+        "bundle-genomics-interpretations.json",
+      ],
+    };
+    for (const [id, files] of Object.entries(copies)) {
+      const expected = await person(id);
+      for (const file of files) {
+        const path = join(fhirAdapter, "fixtures", "in", file);
+        const patients = patientsIn(await json(path));
+        assert.equal(patients.length, 1, `${path} holds one Patient`);
+        assert.deepEqual(
+          disagreements(patients[0]!, expected),
+          [],
+          `${path} disagrees with ${id}'s person.json`,
+        );
+      }
+    }
+  });
 });

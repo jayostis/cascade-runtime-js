@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
-import { test } from "node:test";
+import { describe, it } from "node:test";
 import { brandsBundle } from "@the-cascade-protocol/sandbox";
 import {
   HOSPITALS_FOLDER,
@@ -18,23 +18,6 @@ const demo = directoryOf(
   "demo",
 );
 const directory = [...demo, ...TEST_DIRECTORY];
-
-test("the demo rows are the demo hospitals, every one of them", async () => {
-  const folders = (await readdir(HOSPITALS_FOLDER, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
-  const hospitals = await Promise.all(
-    folders.map(async (folder) => (await loadHospital(folder)).hospital),
-  );
-  assert.deepEqual(
-    demo
-      .map(({ name, fhirBase, places }) => ({ name, fhirBase, places }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    hospitals
-      .map(({ name, fhirBase, places }) => ({ name, fhirBase, places }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-  );
-});
 
 function brands(endpoint: object, organization: object = {}) {
   return {
@@ -99,7 +82,48 @@ function family(ids: { parent: string; endpoint: string }, child: object) {
   };
 }
 
-test("directoryOf gives a row for each Organization endpoint that is FHIR REST and skips what it cannot read", () => {
+describe("the demo directory", () => {
+  it("has a row for each demo hospital", async () => {
+    const folders = (await readdir(HOSPITALS_FOLDER, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    const hospitals = await Promise.all(
+      folders.map(async (folder) => (await loadHospital(folder)).hospital),
+    );
+    assert.deepEqual(
+      demo
+        .map(({ name, fhirBase, places }) => ({ name, fhirBase, places }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      hospitals
+        .map(({ name, fhirBase, places }) => ({ name, fhirBase, places }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  });
+});
+
+describe("the test directory's launcher row", () => {
+  it("asks for a patient's own login and approval, with PKCE, as a public client", () => {
+    const row = TEST_DIRECTORY.find(
+      ({ vendor }) => vendor === "smart-launcher",
+    );
+    assert.ok(row);
+    const { launchType, patient, skipLogin, skipAuth, clientType, pkce } =
+      launcherSettings(row.fhirBase);
+    assert.deepEqual(
+      { launchType, patient, skipLogin, skipAuth, clientType, pkce },
+      {
+        launchType: 3,
+        patient: "",
+        skipLogin: 0,
+        skipAuth: 0,
+        clientType: 0,
+        pkce: 2,
+      },
+    );
+  });
+});
+
+describe("directoryOf", () => {
   const alder = {
     name: "Alder Clinic",
     vendor: "v",
@@ -112,50 +136,54 @@ test("directoryOf gives a row for each Organization endpoint that is FHIR REST a
   const VERSION =
     "http://hl7.org/fhir/StructureDefinition/endpoint-fhir-version";
   const cases: [string, unknown, unknown[]][] = [
-    ["a good bundle", brands({}), [alder]],
+    ["gives a row for a good bundle", brands({}), [alder]],
     [
-      "a trailing slash",
+      "drops the trailing slash of an address",
       brands({ address: "https://alder.example/fhir/" }),
       [alder],
     ],
     [
-      "an endpoint of another kind",
+      "skips an endpoint of another kind",
       brands({ connectionType: { code: "direct-project" } }),
       [],
     ],
-    ["no endpoint reference", brands({}, { endpoint: undefined }), []],
     [
-      "an endpoint not in the bundle",
+      "skips an Organization with no endpoint reference",
+      brands({}, { endpoint: undefined }),
+      [],
+    ],
+    [
+      "skips an endpoint that is not in the bundle",
       brands({}, { endpoint: [{ reference: "Endpoint/b" }] }),
       [],
     ],
-    ["an endpoint with no address", brands({ address: undefined }), []],
+    ["skips an endpoint with no address", brands({ address: undefined }), []],
     [
-      "no address on the Organization",
+      "gives no places when the Organization has no address",
       brands({}, { address: undefined }),
       [unplaced],
     ],
     [
-      "a city alone",
+      "gives a city alone as the place",
       brands({}, { address: [{ city: "Alder" }] }),
       [{ ...alder, places: ["Alder"] }],
     ],
     [
-      "an endpoint stating R2",
+      "skips an endpoint stating R2",
       brands({
         extension: [{ url: VERSION, valueCode: "1.0.2" }],
       }),
       [],
     ],
     [
-      "an endpoint stating R4",
+      "keeps an endpoint stating R4",
       brands({
         extension: [{ url: VERSION, valueCode: "4.0.1" }],
       }),
       [alder],
     ],
     [
-      "a brand with no endpoint, part of one that has",
+      "gives a brand with no endpoint the endpoint of its parent",
       family(
         { parent: "Organization/p", endpoint: "Endpoint/a" },
         { partOf: { reference: "Organization/p" } },
@@ -163,7 +191,7 @@ test("directoryOf gives a row for each Organization endpoint that is FHIR REST a
       [parent, alder],
     ],
     [
-      "a brand with no endpoint, part of a parent reached by an entry's urn:uuid",
+      "reaches a parent by an entry's urn:uuid",
       family(
         { parent: "urn:uuid:p", endpoint: "urn:uuid:e" },
         { partOf: { reference: "urn:uuid:p" } },
@@ -171,73 +199,70 @@ test("directoryOf gives a row for each Organization endpoint that is FHIR REST a
       [parent, alder],
     ],
     [
-      "a brand part of a parent not in the bundle",
+      "gives a brand no row when its parent is not in the bundle",
       family(
         { parent: "Organization/p", endpoint: "Endpoint/a" },
         { partOf: { reference: "Organization/q" } },
       ),
       [parent],
     ],
-    ["not a bundle", { resourceType: "Patient" }, []],
-    ["not an object", "bundle", []],
-    ["nothing", undefined, []],
+    [
+      "gives no rows for a resource that is no Bundle",
+      { resourceType: "Patient" },
+      [],
+    ],
+    ["gives no rows for a string", "bundle", []],
+    ["gives no rows for nothing", undefined, []],
   ];
   for (const [what, input, rows] of cases)
-    assert.deepEqual(directoryOf(input, "v"), rows, what);
+    it(what, () => {
+      assert.deepEqual(directoryOf(input, "v"), rows, what);
+    });
 });
 
-test("the launcher's row asks for a patient's own login and approval, with PKCE, as a public client", () => {
-  const row = TEST_DIRECTORY.find(({ vendor }) => vendor === "smart-launcher");
-  assert.ok(row);
-  const { launchType, patient, skipLogin, skipAuth, clientType, pkce } =
-    launcherSettings(row.fhirBase);
-  assert.deepEqual(
-    { launchType, patient, skipLogin, skipAuth, clientType, pkce },
-    {
-      launchType: 3,
-      patient: "",
-      skipLogin: 0,
-      skipAuth: 0,
-      clientType: 0,
-      pkce: 2,
-    },
-  );
-});
-
-test("a search of the directory gives the rows whose name or places hold a word beginning with each word given", () => {
-  const cases: [string, string[]][] = [
-    [
-      "",
-      [
-        "Cascade North Demo Hospital",
-        "Cascade South Demo Hospital",
-        "SMART Health IT Sandbox",
-      ],
-    ],
-    [
-      "   ",
-      [
-        "Cascade North Demo Hospital",
-        "Cascade South Demo Hospital",
-        "SMART Health IT Sandbox",
-      ],
-    ],
-    ["north", ["Cascade North Demo Hospital"]],
-    ["cascade", ["Cascade North Demo Hospital", "Cascade South Demo Hospital"]],
-    ["CASCADE south", ["Cascade South Demo Hospital"]],
-    ["bellingham", ["Cascade North Demo Hospital"]],
-    ["olym", ["Cascade South Demo Hospital"]],
-    ["mount vern", ["Cascade North Demo Hospital"]],
-    ["mount m", ["Cascade North Demo Hospital"]],
-    ["Olýmpia", ["Cascade South Demo Hospital"]],
-    ["smart", ["SMART Health IT Sandbox"]],
-    ["orth", []],
-    ["seattle", []],
+describe("searchDirectory", () => {
+  const everyRow = [
+    "Cascade North Demo Hospital",
+    "Cascade South Demo Hospital",
+    "SMART Health IT Sandbox",
   ];
-  for (const [text, names] of cases)
-    assert.deepEqual(
-      searchDirectory(directory, text).map(({ name }) => name),
-      names,
-      text,
-    );
+  const cases: [string, string, string[]][] = [
+    ["", "gives every row for no words", everyRow],
+    ["   ", "gives every row for only spaces", everyRow],
+    ["north", "finds a word of the name", ["Cascade North Demo Hospital"]],
+    [
+      "cascade",
+      "finds every row with the word in its name",
+      ["Cascade North Demo Hospital", "Cascade South Demo Hospital"],
+    ],
+    [
+      "CASCADE south",
+      "ignores case and needs each word",
+      ["Cascade South Demo Hospital"],
+    ],
+    ["bellingham", "finds a word of a place", ["Cascade North Demo Hospital"]],
+    ["olym", "finds the beginning of a word", ["Cascade South Demo Hospital"]],
+    [
+      "mount vern",
+      "needs each word to begin a word of the row",
+      ["Cascade North Demo Hospital"],
+    ],
+    [
+      "mount m",
+      "lets two words begin the same word",
+      ["Cascade North Demo Hospital"],
+    ],
+    ["Olýmpia", "ignores accents", ["Cascade South Demo Hospital"]],
+    ["smart", "finds a row of another vendor", ["SMART Health IT Sandbox"]],
+    ["orth", "finds nothing inside a word", []],
+    ["seattle", "finds nothing for a place no row holds", []],
+  ];
+  for (const [text, what, names] of cases)
+    it(`${what}: "${text}"`, () => {
+      assert.deepEqual(
+        searchDirectory(directory, text).map(({ name }) => name),
+        names,
+        text,
+      );
+    });
 });

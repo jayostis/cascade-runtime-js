@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:net";
-import { before, test } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { Refusal } from "@cascade-runtime/runtime";
 import { type Bundle, recordsAt } from "@the-cascade-protocol/sandbox";
@@ -14,6 +14,7 @@ import {
   type DirectoryRow,
   type FailureKind,
   type Pull,
+  type SavedConnect,
   type SignIn,
   loopbackSignIn,
 } from "cascade-runtime";
@@ -114,322 +115,6 @@ function isSearch(request: Request, type: string): boolean {
   return url.pathname.endsWith(`/${type}`) && url.searchParams.has("patient");
 }
 
-before(async () => {
-  north = await loadHospital("cascade-north");
-  south = await loadHospital("cascade-south");
-  row = rowOf(north);
-  happy = await pulled();
-});
-
-test("a pull from North signed in as patient A holds A's North record, each resource once and as the hospital sent it, with the plan's searches", async () => {
-  const { pull: result, seen } = happy;
-  assert.equal(result.patient, A_NORTH);
-  assert.equal(result.fhirBase, north.hospital.fhirBase);
-  const expected = keyed(north.patients[A_NORTH]!);
-  assert.deepEqual(keysOf(result).sort(), [...expected.keys()].sort());
-  for (const { fullUrl, resource } of result.bundle.entry)
-    assert.deepEqual(
-      resource,
-      expected.get(fullUrl.slice(`${result.fhirBase}/`.length)),
-    );
-  const elsewhere = [
-    ...keyed(north.patients[B_NORTH]!).values(),
-    ...Object.values(south.patients).flatMap((b) => [...keyed(b).values()]),
-  ];
-  for (const { resource } of result.bundle.entry)
-    assert.ok(!elsewhere.some((other) => isDeepStrictEqual(other, resource)));
-  assert.deepEqual(result.missing, []);
-  assert.deepEqual(result.denied, []);
-  assert.deepEqual(result.searches, DEMO_PLAN.searches);
-
-  const urls = seen.requests.map((r) => new URL(r.url));
-  const [hidden] = north.hospital.hiddenFromSearch;
-  assert.ok(urls.some((u) => u.pathname.endsWith(`/${hidden}`)));
-  assert.ok(urls.some((u) => u.searchParams.has("_page")));
-  const searches = urls
-    .filter((u) => u.searchParams.has("patient"))
-    .map((u) => u.href);
-  assert.equal(new Set(searches).size, searches.length);
-  assert.ok(
-    urls.some(
-      (u) =>
-        u.pathname.endsWith("/DiagnosticReport") &&
-        u.searchParams.has("patient"),
-    ),
-    "the plan searches the hospital's diagnostic reports",
-  );
-  const origin = new URL(north.hospital.fhirBase).origin;
-  assert.ok(urls.every((u) => u.origin === origin));
-  const token = seen.requests.findIndex((r) =>
-    new URL(r.url).pathname.endsWith("/token"),
-  );
-  seen.requests.forEach((r, at) =>
-    assert.equal(r.headers.has("Authorization"), at > token, r.url),
-  );
-});
-
-test("a search the hospital refuses (400, 403 or 404, a later page 410, or a page holding another patient's record) is in both searches and denied, keeps only the pages it answered for the patient, and the pull goes on; an OperationOutcome among the entries refuses nothing and is not kept", async () => {
-  const search = (type: string) => ({ type }) as const;
-  const unserved = search("CarePlan");
-  const laterRefused = new Map([
-    ["Condition", 403],
-    ["Observation", 404],
-    ["MedicationRequest", 410],
-  ]);
-  const plan = [
-    unserved,
-    ...[...laterRefused.keys()].map(search),
-    search("Immunization"),
-    search("Encounter"),
-    search("AllergyIntolerance"),
-  ];
-  assert.ok(!north.hospital.types.includes(unserved.type));
-  const typeOf = (request: Request) =>
-    new URL(request.url).pathname.split("/").at(-1)!;
-  const { pull: result } = await pulled({
-    plan: { searches: plan, backfill: [] },
-    alter: async (request, hospital) => {
-      const type = typeOf(request);
-      const later = laterRefused.get(type);
-      if (later !== undefined && new URL(request.url).searchParams.has("page"))
-        return new Response(null, { status: later });
-      if (isSearch(request, "Immunization"))
-        return new Response(null, { status: 400 });
-      const response = await hospital(request);
-      if (!isSearch(request, type)) return response;
-      const body = (await response.json()) as Record<string, unknown>;
-      if (type === "AllergyIntolerance")
-        body.entry = [
-          ...(body.entry as unknown[]),
-          { resource: { resourceType: "OperationOutcome", id: "warning" } },
-        ];
-      else if (type === "Encounter")
-        firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
-      else {
-        const next = new URL(request.url);
-        next.searchParams.set("page", "2");
-        body.link = [{ relation: "next", url: next.href }];
-      }
-      return new Response(JSON.stringify(body), {
-        status: response.status,
-        headers: response.headers,
-      });
-    },
-  });
-  assert.deepEqual(result.searches, plan);
-  assert.deepEqual(result.denied, plan.slice(0, -1));
-  const kept = (type: string) =>
-    keysOf(result).filter((key) => key.startsWith(`${type}/`));
-  for (const type of laterRefused.keys())
-    assert.ok(kept(type).length > 0, `page 1's ${type} records are kept`);
-  assert.deepEqual(
-    kept("Encounter"),
-    [],
-    "no record of a page naming another patient is kept",
-  );
-  assert.ok(
-    kept("AllergyIntolerance").length > 0,
-    "the searches after are made, an OperationOutcome on a page refusing nothing",
-  );
-  assert.deepEqual(kept("OperationOutcome"), [], "an outcome is no record");
-});
-
-test("a demo pull of a patient with notes fetches each of them, by the plan's search for DocumentReference", async () => {
-  const notesOf = (bundle: Bundle) =>
-    recordsAt(bundle)
-      .filter(({ resourceType }) => resourceType === "DocumentReference")
-      .map(({ id }) => `DocumentReference/${id}`);
-  const [patient, bundle] =
-    Object.entries(north.patients).find(
-      ([, each]) => notesOf(each).length > 0,
-    ) ?? assert.fail("no patient at North holds a note");
-  const searches = DEMO_PLAN.searches.filter(
-    ({ type }) => type === "DocumentReference",
-  );
-  assert.equal(searches.length, 1);
-  const { pull: result } = await pulledAt(north, patient, {
-    plan: { searches, backfill: [] },
-  });
-  assert.deepEqual(result.denied, []);
-  assert.deepEqual(
-    keysOf(result)
-      .filter((key) => key.startsWith("DocumentReference/"))
-      .sort(),
-    notesOf(bundle).sort(),
-  );
-});
-
-test("a pull reads the C-CDA document each DocumentReference of one holds, from the hospital with its token, and says why of each it could not read, never stopping for one", async () => {
-  const ccd = '<?xml version="1.0"?><ClinicalDocument xmlns="urn:hl7-org:v3"/>';
-  const base = north.hospital.fhirBase;
-  const structured = {
-    system: "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
-    code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
-  };
-  const reference = (
-    id: string,
-    attachment: Record<string, unknown>,
-    format: object | undefined = structured,
-  ) => ({
-    resourceType: "DocumentReference",
-    id,
-    status: "current",
-    subject: { reference: `Patient/${A_NORTH}` },
-    content: [
-      {
-        attachment: { contentType: "application/pdf", url: `Binary/${id}-pdf` },
-      },
-      {
-        attachment: { contentType: "application/xml", ...attachment },
-        ...(format && { format }),
-      },
-    ],
-  });
-  const references = [
-    reference("raw", { url: "Binary/raw" }),
-    reference("binary", { url: `${base}/Binary/binary` }),
-    reference("inline", { data: btoa(ccd) }),
-    reference("gone", { url: "Binary/gone" }),
-    reference("elsewhere", { url: "https://elsewhere.example/Binary/x" }),
-    reference("large", { url: "Binary/large" }),
-    reference("not-a-ccd", { url: "Binary/not-a-ccd" }),
-    reference(
-      "unstructured",
-      { url: "Binary/unstructured" },
-      {
-        ...structured,
-        code: "urn:hl7-org:sdwg:ccda-nonXMLBody:2.1",
-      },
-    ),
-  ];
-  const isBinary = (request: Request, id: string) =>
-    new URL(request.url).pathname.endsWith(`/Binary/${id}`);
-  const { pull: result, seen } = await pulled({
-    plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
-    limits: { responseBytes: 64 * 1024 },
-    alter: async (request, hospital) => {
-      if (isSearch(request, "DocumentReference"))
-        return Response.json({
-          resourceType: "Bundle",
-          type: "searchset",
-          entry: references.map((resource) => ({ resource })),
-        });
-      if (isBinary(request, "raw"))
-        return new Response(ccd, {
-          headers: { "Content-Type": "application/xml" },
-        });
-      if (isBinary(request, "binary"))
-        return Response.json(
-          {
-            resourceType: "Binary",
-            contentType: "application/xml",
-            data: btoa(ccd),
-          },
-          { headers: { "Content-Type": "application/fhir+json" } },
-        );
-      if (isBinary(request, "gone")) return new Response(null, { status: 404 });
-      if (isBinary(request, "large"))
-        return new Response("<ClinicalDocument>" + " ".repeat(70 * 1024), {
-          headers: { "Content-Type": "application/xml" },
-        });
-      if (isBinary(request, "not-a-ccd"))
-        return new Response("<html/>", {
-          headers: { "Content-Type": "text/html" },
-        });
-      return hospital(request);
-    },
-  });
-  const decoder = new TextDecoder();
-  assert.deepEqual(
-    result.documents?.map(
-      ({ documentReference, content, url, retrievedFrom, bytes, notRead }) => [
-        documentReference,
-        content,
-        url,
-        retrievedFrom,
-        bytes === undefined ? undefined : decoder.decode(bytes),
-        notRead,
-      ],
-    ),
-    [
-      [
-        "DocumentReference/raw",
-        1,
-        "Binary/raw",
-        `${base}/Binary/raw`,
-        ccd,
-        undefined,
-      ],
-      [
-        "DocumentReference/binary",
-        1,
-        `${base}/Binary/binary`,
-        `${base}/Binary/binary`,
-        ccd,
-        undefined,
-      ],
-      [
-        "DocumentReference/inline",
-        1,
-        undefined,
-        `${base}/DocumentReference/inline`,
-        ccd,
-        undefined,
-      ],
-      [
-        "DocumentReference/gone",
-        1,
-        "Binary/gone",
-        undefined,
-        undefined,
-        "the hospital answered 404",
-      ],
-      [
-        "DocumentReference/elsewhere",
-        1,
-        "https://elsewhere.example/Binary/x",
-        undefined,
-        undefined,
-        `it is at https://elsewhere.example, not the FHIR base's origin, where the token is not sent`,
-      ],
-      [
-        "DocumentReference/large",
-        1,
-        "Binary/large",
-        undefined,
-        undefined,
-        `${new URL(base).origin}'s answer for a C-CDA document passed the limit on bytes`,
-      ],
-      [
-        "DocumentReference/not-a-ccd",
-        1,
-        "Binary/not-a-ccd",
-        undefined,
-        undefined,
-        "the hospital's answer is no well-formed C-CDA document",
-      ],
-    ],
-  );
-  const binaries = seen.requests.filter((request) =>
-    new URL(request.url).pathname.includes("/Binary/"),
-  );
-  assert.ok(
-    binaries.every((request) =>
-      request.headers.get("Authorization")?.startsWith("Bearer "),
-    ),
-  );
-  assert.ok(
-    !binaries.some((request) =>
-      /-pdf$|unstructured|elsewhere/.test(request.url),
-    ),
-    "only a structured C-CDA document is read, and only from the FHIR base's origin",
-  );
-  assert.equal(
-    keysOf(result).filter((key) => key.startsWith("DocumentReference/")).length,
-    references.length,
-  );
-});
-
 /** A pull whose one search finds the DocumentReferences, each holding a CCD at the url, its Binaries answered as given. */
 function ccdPulled(
   urls: readonly string[],
@@ -470,630 +155,1157 @@ const CCD_XML =
 const isBinaryRequest = (request: Request) =>
   new URL(request.url).pathname.includes("/Binary/");
 
-test("a cancel while the pull reads its C-CDA documents ends the pull as a cancel, and a 401 on one ends it as a 401", async () => {
-  const controller = new AbortController();
-  await assert.rejects(
-    ccdPulled(
-      ["Binary/a", "Binary/b", "Binary/c"],
-      (request) => {
-        if (!isBinaryRequest(request)) return undefined;
-        controller.abort();
-        return new Response(CCD_XML, {
-          headers: { "Content-Type": "application/xml" },
-        });
-      },
-      { signal: controller.signal },
-    ),
-    (error: unknown) =>
-      error instanceof ConnectionFailure && error.kind === "cancelled",
-  );
-  await assert.rejects(
-    ccdPulled(["Binary/a"], (request) =>
-      isBinaryRequest(request)
-        ? new Response(null, { status: 401 })
-        : undefined,
-    ),
-    (error: unknown) =>
-      error instanceof ConnectionFailure && error.kind === "unauthorized",
-  );
-});
-
-test("a C-CDA document redirected to another host, or at a url with a user name, is not read and not asked for again; one url two DocumentReferences name is read once; and an address the IRI grammar refuses is kept percent-encoded", async () => {
-  const base = north.hospital.fhirBase;
-  const { pull: result, seen } = await ccdPulled(
-    [
-      "Binary/moved",
-      `https://user:pw@${new URL(base).host}${new URL(base).pathname}/Binary/u`,
-      "Binary/one",
-      "Binary/one",
-      "Binary/a|b",
-    ],
-    (request) => {
-      const path = new URL(request.url).pathname;
-      if (path.endsWith("/Binary/moved"))
-        return new Response(null, {
-          status: 302,
-          headers: { Location: "https://evil.example/Binary/x" },
-        });
-      if (/\/Binary\/(one|a(%7C|\|)b)$/.test(path))
-        return new Response(CCD_XML, {
-          headers: { "Content-Type": "application/xml" },
-        });
-      return undefined;
-    },
-  );
-  const documents = result.documents ?? [];
-  assert.deepEqual(
-    documents.map(({ documentReference, retrievedFrom, notRead }) => [
-      documentReference,
-      retrievedFrom,
-      notRead,
-    ]),
-    [
-      [
-        "DocumentReference/ccd-0",
-        undefined,
-        `${new URL(base).origin} redirected a C-CDA document to https://evil.example, which is not the FHIR base's origin`,
-      ],
-      [
-        "DocumentReference/ccd-1",
-        undefined,
-        "its url carries a user name or password",
-      ],
-      ["DocumentReference/ccd-2", `${base}/Binary/one`, undefined],
-      ["DocumentReference/ccd-3", `${base}/Binary/one`, undefined],
-      ["DocumentReference/ccd-4", `${base}/Binary/a%7Cb`, undefined],
-    ],
-  );
-  const binaries = seen.requests
-    .filter(isBinaryRequest)
-    .map((request) => new URL(request.url).pathname.split("/").pop());
-  assert.deepEqual(
-    binaries,
-    ["moved", "one", "a%7Cb"],
-    "each url read once, none with a user name, nothing sent to evil.example",
-  );
-  assert.equal(documents[2]!.bytes, documents[3]!.bytes);
-  const saved = pullFiles(result, "north");
-  assert.deepEqual(
-    [...saved.keys()].filter((path) => path.includes("document-")),
-    ["north/document-1.xml"],
-    "one file for the one document three DocumentReferences name",
-  );
-});
-
-test("a C-CDA document that is not well-formed, fetched or inline, is not read, and the pull keeps the rest; an inline one under a base written with an upper-case host and :443 is read from its canonical URL", async () => {
-  const broken =
-    '<ClinicalDocument xmlns="urn:hl7-org:v3"><component><structuredBody/></component><oops></ClinicalDocument>';
-  const format = {
-    system: "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
-    code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
-  };
-  const reference = (id: string, attachment: Record<string, unknown>) => ({
-    resourceType: "DocumentReference",
-    id,
-    status: "current",
-    subject: { reference: `Patient/${A_NORTH}` },
-    content: [
-      { attachment: { contentType: "application/xml", ...attachment }, format },
-    ],
+describe("connecting to a hospital and pulling its record", () => {
+  before(async () => {
+    north = await loadHospital("cascade-north");
+    south = await loadHospital("cascade-south");
+    row = rowOf(north);
+    happy = await pulled();
   });
-  const written = new URL(north.hospital.fhirBase);
-  const base = `https://${written.host.toUpperCase()}:443${written.pathname}`;
-  const { pull: result } = await pulled({
-    row: { ...rowOf(north), fhirBase: base },
-    plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
-    alter: async (request, hospital) => {
-      if (isSearch(request, "DocumentReference"))
-        return Response.json({
-          resourceType: "Bundle",
-          type: "searchset",
-          entry: [
-            reference("broken", { url: "Binary/broken" }),
-            reference("broken-inline", { data: btoa(broken) }),
-            reference("inline", { data: btoa(CCD_XML) }),
-          ].map((resource) => ({ resource })),
-        });
-      const url = new URL(request.url);
-      if (url.searchParams.get("aud") === base) {
-        url.searchParams.set("aud", north.hospital.fhirBase);
-        return hospital(new Request(url, request));
-      }
-      if (isBinaryRequest(request))
-        return new Response(broken, {
-          headers: { "Content-Type": "application/xml" },
-        });
-      return hospital(request);
-    },
-  });
-  assert.deepEqual(
-    result.documents?.map(({ documentReference, retrievedFrom, notRead }) => [
-      documentReference,
-      retrievedFrom,
-      notRead,
-    ]),
-    [
-      [
-        "DocumentReference/broken",
-        undefined,
-        "the hospital's answer is no well-formed C-CDA document",
-      ],
-      [
-        "DocumentReference/broken-inline",
-        undefined,
-        "its inline data is no well-formed C-CDA document",
-      ],
-      [
-        "DocumentReference/inline",
-        `${written.origin}${written.pathname}/DocumentReference/inline`,
-        undefined,
-      ],
-    ],
-  );
-  assert.ok(
-    pullFiles(result, "north").has("north/document-1.xml"),
-    "the pull is saved, the one document read with it",
-  );
-});
 
-test("a pull reads an Organization its records name and its searches left out, once, by id", async () => {
-  const lab = {
-    resourceType: "Organization",
-    id: "org-lab-1",
-    name: "North Laboratory",
-  };
-  const isLab = (request: Request) =>
-    new URL(request.url).pathname.endsWith("/Organization/org-lab-1");
-  const { pull: result, seen } = await pulled({
-    alter: async (request, hospital) => {
-      if (isLab(request)) return Response.json(lab);
-      const response = await hospital(request);
-      if (!isSearch(request, "Observation")) return response;
-      const body = (await response.json()) as {
-        entry?: { resource: Record<string, unknown> }[];
-      };
-      for (const { resource } of body.entry ?? [])
-        resource.performer = [{ reference: "Organization/org-lab-1" }];
-      return new Response(JSON.stringify(body), {
-        status: response.status,
-        headers: response.headers,
-      });
-    },
-  });
-  assert.equal(seen.requests.filter(isLab).length, 1);
-  assert.deepEqual(
-    result.bundle.entry
-      .filter(
-        ({ resource }) =>
-          (resource as { resourceType?: string }).resourceType ===
-          "Organization",
-      )
-      .map(({ fullUrl, resource }) => [fullUrl, resource]),
-    [[`${result.fhirBase}/Organization/org-lab-1`, lab]],
-  );
-});
+  describe("a pull from North signed in as patient A", () => {
+    it("holds A's North record, each resource once as the hospital sent it", () => {
+      const { pull: result } = happy;
+      assert.equal(result.patient, A_NORTH);
+      assert.equal(result.fhirBase, north.hospital.fhirBase);
+      const expected = keyed(north.patients[A_NORTH]!);
+      assert.deepEqual(keysOf(result).sort(), [...expected.keys()].sort());
+      for (const { fullUrl, resource } of result.bundle.entry)
+        assert.deepEqual(
+          resource,
+          expected.get(fullUrl.slice(`${result.fhirBase}/`.length)),
+        );
+      const elsewhere = [
+        ...keyed(north.patients[B_NORTH]!).values(),
+        ...Object.values(south.patients).flatMap((b) => [...keyed(b).values()]),
+      ];
+      for (const { resource } of result.bundle.entry)
+        assert.ok(
+          !elsewhere.some((other) => isDeepStrictEqual(other, resource)),
+        );
+      assert.deepEqual(result.missing, []);
+      assert.deepEqual(result.denied, []);
+    });
 
-test("the server's report is its CapabilityStatement, asked with no token, with the base, the client id and the SMART configuration the sign-in read, which connectFiles saves", async () => {
-  const { report, seen } = await pulled({ report: true });
-  assert.equal(report?.fhirBase, north.hospital.fhirBase);
-  assert.equal(report?.clientId, REGISTRATION.clientId);
-  const capability = report?.capability as {
-    resourceType?: unknown;
-    implementation?: { url?: unknown };
-  };
-  assert.equal(capability.resourceType, "CapabilityStatement");
-  assert.equal(capability.implementation?.url, north.hospital.fhirBase);
-  const asked = seen.requests.at(-1)!;
-  assert.equal(new URL(asked.url).href, `${north.hospital.fhirBase}/metadata`);
-  assert.equal(asked.headers.has("Authorization"), false);
-  const discovery = seen.requests.filter(({ url }) =>
-    url.endsWith("/.well-known/smart-configuration"),
-  );
-  assert.equal(discovery.length, 1);
-  assert.equal(
-    (report?.smartConfiguration as { authorization_endpoint?: unknown })
-      .authorization_endpoint,
-    `${north.hospital.fhirBase}/authorize`,
-  );
-  assert.equal(connectFiles(report!, "north").size, 3);
-});
-
-test("a pull retries a 503, a 429 and a transport error, and from a base written with a trailing slash names everything without it", async () => {
-  const failed = new Set<string>();
-  const once =
-    (type: string, answer: () => Promise<Response>): Alter =>
-    async (request, hospital) => {
-      if (isSearch(request, type) && !failed.has(type)) {
-        failed.add(type);
-        return answer();
-      }
-      return hospital(request);
-    };
-  const alters = [
-    once("Condition", async () => new Response(null, { status: 503 })),
-    once(
-      "AllergyIntolerance",
-      async () =>
-        new Response(null, { status: 429, headers: { "Retry-After": "0" } }),
-    ),
-    once("Immunization", () => Promise.reject(new TypeError("reset"))),
-  ];
-  const { pull: result } = await pulled({
-    row: { ...row, fhirBase: `${row.fhirBase}/` },
-    limits: { retries: undefined },
-    alter: (request, hospital) =>
-      alters.reduce<Answer>(
-        (next, alter) => (r) => alter(r, next),
-        hospital,
-      )(request),
-  });
-  assert.equal(failed.size, 3);
-  assert.equal(result.fhirBase, row.fhirBase);
-  assert.deepEqual(
-    result.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
-    happy.pull.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
-  );
-});
-
-test("a loopback sign-in takes the redirect with the state sent, ignores another, and closes", async () => {
-  const { port, server } = await freePort();
-  await new Promise((resolve) => server.close(resolve));
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
-  const strays: number[] = [];
-  const { pull: result } = await pulled({
-    registration: { ...REGISTRATION, redirectUri },
-    signIn: (fetch) =>
-      loopbackSignIn({
-        open: async (authorize) => {
-          strays.push(
-            (await globalThis.fetch(`${redirectUri}?code=x&state=other`))
-              .status,
-          );
-          const approved = await fetch(authorize, { redirect: "manual" });
-          await globalThis.fetch(approved.headers.get("Location")!);
-        },
-      }),
-  });
-  assert.deepEqual(strays, [400]);
-  assert.equal(result.patient, A_NORTH);
-  await assert.rejects(globalThis.fetch(redirectUri));
-});
-
-test("connecting and pulling end in a typed outcome, never a Refusal, carrying no secret", async () => {
-  let clock = new Date();
-  const later: Setup = {
-    now: () => clock,
-    between: () => {
-      clock = new Date(clock.getTime() + 2 * 60 * 60 * 1000);
-    },
-  };
-  const swapState: (fetch: Fetch) => SignIn = (fetch) => async (a) => {
-    const back = await direct(fetch)(a);
-    back.searchParams.set("state", "another");
-    return back;
-  };
-  const switched = (simulateError: string): Setup => ({
-    autoApprove: undefined,
-    signIn: (fetch) => (authorize) => {
-      authorize.searchParams.set("simulate_error", simulateError);
-      return answerSignIn(fetch, authorize, A_NORTH);
-    },
-  });
-  const occupied = await freePort();
-  const spare = await freePort();
-  await new Promise((resolve) => spare.server.close(resolve));
-  const rows: [string, () => Setup, FailureKind, RegExp?][] = [
-    [
-      "the switch token_invalid_token",
-      () => switched("token_invalid_token"),
-      "hospital-error",
-      /refused the token exchange with 401: invalid_client/,
-    ],
-    [
-      "the switch token_invalid_scope",
-      () => switched("token_invalid_scope"),
-      "hospital-error",
-      /refused the token exchange with 401: invalid_scope/,
-    ],
-    [
-      "the switch request_invalid_token",
-      () => switched("request_invalid_token"),
-      "unauthorized",
-      /refused Patient with 401: the hospital did not accept the access token \(it may have expired or been revoked\), so connect again/,
-    ],
-    [
-      "the switch request_expired_token",
-      () => switched("request_expired_token"),
-      "unauthorized",
-      /refused Patient with 401: the access token expired, so connect again/,
-    ],
-    [
-      "a switch the sandbox does not know, which it answers with invalid_request",
-      () => ({
-        signIn: (fetch) => async (authorize) => {
-          authorize.searchParams.set("simulate_error", "no_such_switch");
-          return direct(fetch)(authorize);
-        },
-      }),
-      "hospital-error",
-      /the hospital refused the sign-in: invalid_request/,
-    ],
-    [
-      "the sign-in page's Cancel",
-      () => ({
-        autoApprove: undefined,
-        signIn: answering(A_NORTH, "cancel"),
-      }),
-      "cancelled",
-    ],
-    [
-      "the caller's signal aborted",
-      () => ({ connectOptions: { signal: AbortSignal.abort() } }),
-      "cancelled",
-    ],
-    [
-      "the sign-in returns another state",
-      () => ({ signIn: swapState }),
-      "state-mismatch",
-    ],
-    [
-      "the sign-in returns access_denied with another state",
-      () => ({
-        signIn: () => async () =>
-          new URL(`${REGISTRATION.redirectUri}?error=access_denied&state=x`),
-      }),
-      "state-mismatch",
-    ],
-    [
-      "the sign-in returns a URL off the redirect URI",
-      () => ({
-        signIn: (fetch) => async (a) => {
-          const back = await direct(fetch)(a);
-          back.pathname = "/elsewhere";
-          return back;
-        },
-      }),
-      "state-mismatch",
-    ],
-    [
-      "a next link to another host",
-      () => ({
-        alter: nextRewritten((u) => {
-          u.hostname = "elsewhere.demo.invalid";
-          return u;
-        }),
-      }),
-      "host-not-allowed",
-    ],
-    [
-      "a next link over http:",
-      () => ({
-        alter: nextRewritten(
-          (u) => new URL(u.href.replace(/^https:/, "http:")),
+    it("makes the plan's searches, each once", () => {
+      const { pull: result, seen } = happy;
+      assert.deepEqual(result.searches, DEMO_PLAN.searches);
+      const urls = seen.requests.map((r) => new URL(r.url));
+      const [hidden] = north.hospital.hiddenFromSearch;
+      assert.ok(urls.some((u) => u.pathname.endsWith(`/${hidden}`)));
+      assert.ok(urls.some((u) => u.searchParams.has("_page")));
+      const searches = urls
+        .filter((u) => u.searchParams.has("patient"))
+        .map((u) => u.href);
+      assert.equal(new Set(searches).size, searches.length);
+      assert.ok(
+        urls.some(
+          (u) =>
+            u.pathname.endsWith("/DiagnosticReport") &&
+            u.searchParams.has("patient"),
         ),
-      }),
-      "host-not-allowed",
-    ],
-    [
-      "a redirect from a search to another host",
-      () => ({
-        alter: async (request, hospital) =>
-          isSearch(request, "Condition")
-            ? new Response(null, {
-                status: 302,
-                headers: {
-                  Location: "https://elsewhere.demo.invalid/fhir/Condition",
+        "the plan searches the hospital's diagnostic reports",
+      );
+    });
+
+    it("asks only the hospital, and sends the token only after signing in", () => {
+      const { seen } = happy;
+      const urls = seen.requests.map((r) => new URL(r.url));
+      const origin = new URL(north.hospital.fhirBase).origin;
+      assert.ok(urls.every((u) => u.origin === origin));
+      const token = seen.requests.findIndex((r) =>
+        new URL(r.url).pathname.endsWith("/token"),
+      );
+      seen.requests.forEach((r, at) =>
+        assert.equal(r.headers.has("Authorization"), at > token, r.url),
+      );
+    });
+  });
+
+  describe("a search the hospital refuses, or answers with another patient's page", () => {
+    const search = (type: string) => ({ type }) as const;
+    const unserved = search("CarePlan");
+    const laterRefused = new Map([
+      ["Condition", 403],
+      ["Observation", 404],
+      ["MedicationRequest", 410],
+    ]);
+    const plan = [
+      unserved,
+      ...[...laterRefused.keys()].map(search),
+      search("Immunization"),
+      search("Encounter"),
+      search("AllergyIntolerance"),
+    ];
+    let result: Pull;
+    const kept = (type: string) =>
+      keysOf(result).filter((key) => key.startsWith(`${type}/`));
+
+    before(async () => {
+      assert.ok(!north.hospital.types.includes(unserved.type));
+      const typeOf = (request: Request) =>
+        new URL(request.url).pathname.split("/").at(-1)!;
+      ({ pull: result } = await pulled({
+        plan: { searches: plan, backfill: [] },
+        alter: async (request, hospital) => {
+          const type = typeOf(request);
+          const later = laterRefused.get(type);
+          if (
+            later !== undefined &&
+            new URL(request.url).searchParams.has("page")
+          )
+            return new Response(null, { status: later });
+          if (isSearch(request, "Immunization"))
+            return new Response(null, { status: 400 });
+          const response = await hospital(request);
+          if (!isSearch(request, type)) return response;
+          const body = (await response.json()) as Record<string, unknown>;
+          if (type === "AllergyIntolerance")
+            body.entry = [
+              ...(body.entry as unknown[]),
+              {
+                resource: { resourceType: "OperationOutcome", id: "warning" },
+              },
+            ];
+          else if (type === "Encounter")
+            firstResource(body).subject = { reference: `Patient/${B_NORTH}` };
+          else {
+            const next = new URL(request.url);
+            next.searchParams.set("page", "2");
+            body.link = [{ relation: "next", url: next.href }];
+          }
+          return new Response(JSON.stringify(body), {
+            status: response.status,
+            headers: response.headers,
+          });
+        },
+      }));
+    });
+
+    it("is in both searches and denied", () => {
+      assert.deepEqual(result.searches, plan);
+      assert.deepEqual(result.denied, plan.slice(0, -1));
+    });
+
+    it("keeps the pages it answered before a later page is refused", () => {
+      for (const type of laterRefused.keys())
+        assert.ok(kept(type).length > 0, `page 1's ${type} records are kept`);
+    });
+
+    it("keeps no record of a page naming another patient", () => {
+      assert.deepEqual(
+        kept("Encounter"),
+        [],
+        "no record of a page naming another patient is kept",
+      );
+    });
+
+    it("goes on to the searches after it", () => {
+      assert.ok(
+        kept("AllergyIntolerance").length > 0,
+        "the searches after are made, an OperationOutcome on a page refusing nothing",
+      );
+    });
+
+    it("keeps no OperationOutcome among the entries of a page", () => {
+      assert.deepEqual(kept("OperationOutcome"), [], "an outcome is no record");
+    });
+  });
+
+  describe("a pull of a patient with notes", () => {
+    it("fetches each note by the plan's search for DocumentReference", async () => {
+      const notesOf = (bundle: Bundle) =>
+        recordsAt(bundle)
+          .filter(({ resourceType }) => resourceType === "DocumentReference")
+          .map(({ id }) => `DocumentReference/${id}`);
+      const [patient, bundle] =
+        Object.entries(north.patients).find(
+          ([, each]) => notesOf(each).length > 0,
+        ) ?? assert.fail("no patient at North holds a note");
+      const searches = DEMO_PLAN.searches.filter(
+        ({ type }) => type === "DocumentReference",
+      );
+      assert.equal(searches.length, 1);
+      const { pull: result } = await pulledAt(north, patient, {
+        plan: { searches, backfill: [] },
+      });
+      assert.deepEqual(result.denied, []);
+      assert.deepEqual(
+        keysOf(result)
+          .filter((key) => key.startsWith("DocumentReference/"))
+          .sort(),
+        notesOf(bundle).sort(),
+      );
+    });
+  });
+
+  describe("the C-CDA documents of DocumentReferences", () => {
+    describe("given eight DocumentReferences, some unreadable", () => {
+      let result: Pull;
+      let seen: Seen;
+      let base: string;
+      let referenceCount: number;
+
+      before(async () => {
+        const ccd = CCD_XML;
+        base = north.hospital.fhirBase;
+        const structured = {
+          system:
+            "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+          code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+        };
+        const reference = (
+          id: string,
+          attachment: Record<string, unknown>,
+          format: object | undefined = structured,
+        ) => ({
+          resourceType: "DocumentReference",
+          id,
+          status: "current",
+          subject: { reference: `Patient/${A_NORTH}` },
+          content: [
+            {
+              attachment: {
+                contentType: "application/pdf",
+                url: `Binary/${id}-pdf`,
+              },
+            },
+            {
+              attachment: { contentType: "application/xml", ...attachment },
+              ...(format && { format }),
+            },
+          ],
+        });
+        const references = [
+          reference("raw", { url: "Binary/raw" }),
+          reference("binary", { url: `${base}/Binary/binary` }),
+          reference("inline", { data: btoa(ccd) }),
+          reference("gone", { url: "Binary/gone" }),
+          reference("elsewhere", { url: "https://elsewhere.example/Binary/x" }),
+          reference("large", { url: "Binary/large" }),
+          reference("not-a-ccd", { url: "Binary/not-a-ccd" }),
+          reference(
+            "unstructured",
+            { url: "Binary/unstructured" },
+            {
+              ...structured,
+              code: "urn:hl7-org:sdwg:ccda-nonXMLBody:2.1",
+            },
+          ),
+        ];
+        referenceCount = references.length;
+        const isBinary = (request: Request, id: string) =>
+          new URL(request.url).pathname.endsWith(`/Binary/${id}`);
+        ({ pull: result, seen } = await pulled({
+          plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+          limits: { responseBytes: 64 * 1024 },
+          alter: async (request, hospital) => {
+            if (isSearch(request, "DocumentReference"))
+              return Response.json({
+                resourceType: "Bundle",
+                type: "searchset",
+                entry: references.map((resource) => ({ resource })),
+              });
+            if (isBinary(request, "raw"))
+              return new Response(ccd, {
+                headers: { "Content-Type": "application/xml" },
+              });
+            if (isBinary(request, "binary"))
+              return Response.json(
+                {
+                  resourceType: "Binary",
+                  contentType: "application/xml",
+                  data: btoa(ccd),
                 },
-              })
-            : hospital(request),
-      }),
-      "host-not-allowed",
-    ],
-    [
-      "responseBytes below one page",
-      () => ({ limits: { responseBytes: 200 } }),
-      "cap-exceeded",
-    ],
-    [
-      "requests below the plan's count",
-      () => ({ limits: { requests: 3 } }),
-      "cap-exceeded",
-    ],
-    [
-      "the token's hour past before the pull",
-      () => later,
-      "unauthorized",
-      /the access token expired, so connect again/,
-    ],
-    [
-      "a search always answered 503",
-      () => ({
-        limits: { retries: 1 },
-        alter: async (request, hospital) =>
-          isSearch(request, "Condition")
-            ? new Response(null, { status: 503 })
-            : hospital(request),
-      }),
-      "retries-exhausted",
-    ],
-    [
-      "the loopback's port already in use",
-      () => ({
-        registration: {
-          ...REGISTRATION,
-          redirectUri: `http://127.0.0.1:${occupied.port}/callback`,
+                { headers: { "Content-Type": "application/fhir+json" } },
+              );
+            if (isBinary(request, "gone"))
+              return new Response(null, { status: 404 });
+            if (isBinary(request, "large"))
+              return new Response(
+                "<ClinicalDocument>" + " ".repeat(70 * 1024),
+                { headers: { "Content-Type": "application/xml" } },
+              );
+            if (isBinary(request, "not-a-ccd"))
+              return new Response("<html/>", {
+                headers: { "Content-Type": "text/html" },
+              });
+            return hospital(request);
+          },
+        }));
+      });
+
+      it("reads each, and says why of each it could not, never stopping for one", () => {
+        const ccd = CCD_XML;
+        const decoder = new TextDecoder();
+        assert.deepEqual(
+          result.documents?.map(
+            ({
+              documentReference,
+              content,
+              url,
+              retrievedFrom,
+              bytes,
+              notRead,
+            }) => [
+              documentReference,
+              content,
+              url,
+              retrievedFrom,
+              bytes === undefined ? undefined : decoder.decode(bytes),
+              notRead,
+            ],
+          ),
+          [
+            [
+              "DocumentReference/raw",
+              1,
+              "Binary/raw",
+              `${base}/Binary/raw`,
+              ccd,
+              undefined,
+            ],
+            [
+              "DocumentReference/binary",
+              1,
+              `${base}/Binary/binary`,
+              `${base}/Binary/binary`,
+              ccd,
+              undefined,
+            ],
+            [
+              "DocumentReference/inline",
+              1,
+              undefined,
+              `${base}/DocumentReference/inline`,
+              ccd,
+              undefined,
+            ],
+            [
+              "DocumentReference/gone",
+              1,
+              "Binary/gone",
+              undefined,
+              undefined,
+              "the hospital answered 404",
+            ],
+            [
+              "DocumentReference/elsewhere",
+              1,
+              "https://elsewhere.example/Binary/x",
+              undefined,
+              undefined,
+              `it is at https://elsewhere.example, not the FHIR base's origin, where the token is not sent`,
+            ],
+            [
+              "DocumentReference/large",
+              1,
+              "Binary/large",
+              undefined,
+              undefined,
+              `${new URL(base).origin}'s answer for a C-CDA document passed the limit on bytes`,
+            ],
+            [
+              "DocumentReference/not-a-ccd",
+              1,
+              "Binary/not-a-ccd",
+              undefined,
+              undefined,
+              "the hospital's answer is no well-formed C-CDA document",
+            ],
+          ],
+        );
+      });
+
+      it("asks the hospital for them with its token", () => {
+        const binaries = seen.requests.filter((request) =>
+          new URL(request.url).pathname.includes("/Binary/"),
+        );
+        assert.ok(
+          binaries.every((request) =>
+            request.headers.get("Authorization")?.startsWith("Bearer "),
+          ),
+        );
+      });
+
+      it("reads only structured ones, only from the FHIR base's origin", () => {
+        const binaries = seen.requests.filter((request) =>
+          new URL(request.url).pathname.includes("/Binary/"),
+        );
+        assert.ok(
+          !binaries.some((request) =>
+            /-pdf$|unstructured|elsewhere/.test(request.url),
+          ),
+          "only a structured C-CDA document is read, and only from the FHIR base's origin",
+        );
+      });
+
+      it("keeps every DocumentReference as a record", () => {
+        assert.equal(
+          keysOf(result).filter((key) => key.startsWith("DocumentReference/"))
+            .length,
+          referenceCount,
+        );
+      });
+    });
+
+    describe("while the pull reads them", () => {
+      it("ends the pull as a cancel when the caller cancels", async () => {
+        const controller = new AbortController();
+        await assert.rejects(
+          ccdPulled(
+            ["Binary/a", "Binary/b", "Binary/c"],
+            (request) => {
+              if (!isBinaryRequest(request)) return undefined;
+              controller.abort();
+              return new Response(CCD_XML, {
+                headers: { "Content-Type": "application/xml" },
+              });
+            },
+            { signal: controller.signal },
+          ),
+          (error: unknown) =>
+            error instanceof ConnectionFailure && error.kind === "cancelled",
+        );
+      });
+
+      it("ends the pull as unauthorized on a 401", async () => {
+        await assert.rejects(
+          ccdPulled(["Binary/a"], (request) =>
+            isBinaryRequest(request)
+              ? new Response(null, { status: 401 })
+              : undefined,
+          ),
+          (error: unknown) =>
+            error instanceof ConnectionFailure && error.kind === "unauthorized",
+        );
+      });
+    });
+
+    describe("given a redirected one, one at a url with a user name, and one named twice", () => {
+      let result: Pull;
+      let seen: Seen;
+      let base: string;
+
+      before(async () => {
+        base = north.hospital.fhirBase;
+        ({ pull: result, seen } = await ccdPulled(
+          [
+            "Binary/moved",
+            `https://user:pw@${new URL(base).host}${new URL(base).pathname}/Binary/u`,
+            "Binary/one",
+            "Binary/one",
+            "Binary/a|b",
+          ],
+          (request) => {
+            const path = new URL(request.url).pathname;
+            if (path.endsWith("/Binary/moved"))
+              return new Response(null, {
+                status: 302,
+                headers: { Location: "https://evil.example/Binary/x" },
+              });
+            if (/\/Binary\/(one|a(%7C|\|)b)$/.test(path))
+              return new Response(CCD_XML, {
+                headers: { "Content-Type": "application/xml" },
+              });
+            return undefined;
+          },
+        ));
+      });
+
+      it("leaves out a redirected or user-named one; percent-encodes a bad address", () => {
+        assert.deepEqual(
+          (result.documents ?? []).map(
+            ({ documentReference, retrievedFrom, notRead }) => [
+              documentReference,
+              retrievedFrom,
+              notRead,
+            ],
+          ),
+          [
+            [
+              "DocumentReference/ccd-0",
+              undefined,
+              `${new URL(base).origin} redirected a C-CDA document to https://evil.example, which is not the FHIR base's origin`,
+            ],
+            [
+              "DocumentReference/ccd-1",
+              undefined,
+              "its url carries a user name or password",
+            ],
+            ["DocumentReference/ccd-2", `${base}/Binary/one`, undefined],
+            ["DocumentReference/ccd-3", `${base}/Binary/one`, undefined],
+            ["DocumentReference/ccd-4", `${base}/Binary/a%7Cb`, undefined],
+          ],
+        );
+      });
+
+      it("asks for each url once", () => {
+        const binaries = seen.requests
+          .filter(isBinaryRequest)
+          .map((request) => new URL(request.url).pathname.split("/").pop());
+        assert.deepEqual(
+          binaries,
+          ["moved", "one", "a%7Cb"],
+          "each url read once, none with a user name, nothing sent to evil.example",
+        );
+      });
+
+      it("saves one file for the document that two DocumentReferences name", () => {
+        const documents = result.documents ?? [];
+        assert.equal(documents[2]!.bytes, documents[3]!.bytes);
+        const saved = pullFiles(result, "north");
+        assert.deepEqual(
+          [...saved.keys()].filter((path) => path.includes("document-")),
+          ["north/document-1.xml"],
+          "one file for the one document three DocumentReferences name",
+        );
+      });
+    });
+
+    describe("given one that is not well-formed, fetched or inline, and a base written with an upper-case host and :443", () => {
+      let result: Pull;
+      let written: URL;
+
+      before(async () => {
+        const broken =
+          '<ClinicalDocument xmlns="urn:hl7-org:v3"><component><structuredBody/></component><oops></ClinicalDocument>';
+        const format = {
+          system:
+            "http://terminology.hl7.org/CodeSystem/v3-HL7DocumentFormatCodes",
+          code: "urn:hl7-org:sdwg:ccda-structuredBody:2.1",
+        };
+        const reference = (
+          id: string,
+          attachment: Record<string, unknown>,
+        ) => ({
+          resourceType: "DocumentReference",
+          id,
+          status: "current",
+          subject: { reference: `Patient/${A_NORTH}` },
+          content: [
+            {
+              attachment: { contentType: "application/xml", ...attachment },
+              format,
+            },
+          ],
+        });
+        written = new URL(north.hospital.fhirBase);
+        const base = `https://${written.host.toUpperCase()}:443${written.pathname}`;
+        ({ pull: result } = await pulled({
+          row: { ...rowOf(north), fhirBase: base },
+          plan: { searches: [{ type: "DocumentReference" }], backfill: [] },
+          alter: async (request, hospital) => {
+            if (isSearch(request, "DocumentReference"))
+              return Response.json({
+                resourceType: "Bundle",
+                type: "searchset",
+                entry: [
+                  reference("broken", { url: "Binary/broken" }),
+                  reference("broken-inline", { data: btoa(broken) }),
+                  reference("inline", { data: btoa(CCD_XML) }),
+                ].map((resource) => ({ resource })),
+              });
+            const url = new URL(request.url);
+            if (url.searchParams.get("aud") === base) {
+              url.searchParams.set("aud", north.hospital.fhirBase);
+              return hospital(new Request(url, request));
+            }
+            if (isBinaryRequest(request))
+              return new Response(broken, {
+                headers: { "Content-Type": "application/xml" },
+              });
+            return hospital(request);
+          },
+        }));
+      });
+
+      it("skips the malformed ones and reads the inline one from its canonical URL", () => {
+        assert.deepEqual(
+          result.documents?.map(
+            ({ documentReference, retrievedFrom, notRead }) => [
+              documentReference,
+              retrievedFrom,
+              notRead,
+            ],
+          ),
+          [
+            [
+              "DocumentReference/broken",
+              undefined,
+              "the hospital's answer is no well-formed C-CDA document",
+            ],
+            [
+              "DocumentReference/broken-inline",
+              undefined,
+              "its inline data is no well-formed C-CDA document",
+            ],
+            [
+              "DocumentReference/inline",
+              `${written.origin}${written.pathname}/DocumentReference/inline`,
+              undefined,
+            ],
+          ],
+        );
+      });
+
+      it("saves the pull with the one document read", () => {
+        assert.ok(
+          pullFiles(result, "north").has("north/document-1.xml"),
+          "the pull is saved, the one document read with it",
+        );
+      });
+    });
+  });
+
+  describe("a pull of records naming an Organization its searches left out", () => {
+    it("reads the Organization once, by id", async () => {
+      const lab = {
+        resourceType: "Organization",
+        id: "org-lab-1",
+        name: "North Laboratory",
+      };
+      const isLab = (request: Request) =>
+        new URL(request.url).pathname.endsWith("/Organization/org-lab-1");
+      const { pull: result, seen } = await pulled({
+        alter: async (request, hospital) => {
+          if (isLab(request)) return Response.json(lab);
+          const response = await hospital(request);
+          if (!isSearch(request, "Observation")) return response;
+          const body = (await response.json()) as {
+            entry?: { resource: Record<string, unknown> }[];
+          };
+          for (const { resource } of body.entry ?? [])
+            resource.performer = [{ reference: "Organization/org-lab-1" }];
+          return new Response(JSON.stringify(body), {
+            status: response.status,
+            headers: response.headers,
+          });
         },
-        signIn: () => loopbackSignIn({ open: () => undefined }),
-      }),
-      "sign-in-unavailable",
-    ],
-    [
-      "the loopback cannot open the sign-in page",
-      () => ({
-        registration: {
-          ...REGISTRATION,
-          redirectUri: `http://127.0.0.1:${spare.port}/callback`,
-        },
-        signIn: () =>
+      });
+      assert.equal(seen.requests.filter(isLab).length, 1);
+      assert.deepEqual(
+        result.bundle.entry
+          .filter(
+            ({ resource }) =>
+              (resource as { resourceType?: string }).resourceType ===
+              "Organization",
+          )
+          .map(({ fullUrl, resource }) => [fullUrl, resource]),
+        [[`${result.fhirBase}/Organization/org-lab-1`, lab]],
+      );
+    });
+  });
+
+  describe("the server's report", () => {
+    let report: SavedConnect | undefined;
+    let seen: Seen;
+
+    before(async () => {
+      ({ report, seen } = await pulled({ report: true }));
+    });
+
+    it("names the base and the client id", () => {
+      assert.equal(report?.fhirBase, north.hospital.fhirBase);
+      assert.equal(report?.clientId, REGISTRATION.clientId);
+    });
+
+    it("is the CapabilityStatement, asked with no token", () => {
+      const capability = report?.capability as {
+        resourceType?: unknown;
+        implementation?: { url?: unknown };
+      };
+      assert.equal(capability.resourceType, "CapabilityStatement");
+      assert.equal(capability.implementation?.url, north.hospital.fhirBase);
+      const asked = seen.requests.at(-1)!;
+      assert.equal(
+        new URL(asked.url).href,
+        `${north.hospital.fhirBase}/metadata`,
+      );
+      assert.equal(asked.headers.has("Authorization"), false);
+    });
+
+    it("holds the SMART configuration the sign-in read", () => {
+      const discovery = seen.requests.filter(({ url }) =>
+        url.endsWith("/.well-known/smart-configuration"),
+      );
+      assert.equal(discovery.length, 1);
+      assert.equal(
+        (report?.smartConfiguration as { authorization_endpoint?: unknown })
+          .authorization_endpoint,
+        `${north.hospital.fhirBase}/authorize`,
+      );
+    });
+
+    it("is saved by connectFiles as three files", () => {
+      assert.equal(connectFiles(report!, "north").size, 3);
+    });
+  });
+
+  describe("a pull that meets a failing hospital", () => {
+    let result: Pull;
+
+    before(async () => {
+      const failed = new Set<string>();
+      const once =
+        (type: string, answer: () => Promise<Response>): Alter =>
+        async (request, hospital) => {
+          if (isSearch(request, type) && !failed.has(type)) {
+            failed.add(type);
+            return answer();
+          }
+          return hospital(request);
+        };
+      const alters = [
+        once("Condition", async () => new Response(null, { status: 503 })),
+        once(
+          "AllergyIntolerance",
+          async () =>
+            new Response(null, {
+              status: 429,
+              headers: { "Retry-After": "0" },
+            }),
+        ),
+        once("Immunization", () => Promise.reject(new TypeError("reset"))),
+      ];
+      ({ pull: result } = await pulled({
+        row: { ...row, fhirBase: `${row.fhirBase}/` },
+        limits: { retries: undefined },
+        alter: (request, hospital) =>
+          alters.reduce<Answer>(
+            (next, alter) => (r) => alter(r, next),
+            hospital,
+          )(request),
+      }));
+      assert.equal(failed.size, 3);
+    });
+
+    it("retries a 503, a 429 and a transport error, and gets the whole record", () => {
+      assert.deepEqual(
+        result.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
+        happy.pull.bundle.entry.map(({ fullUrl }) => fullUrl).sort(),
+      );
+    });
+
+    it("names everything without the slash of a base written with one", () => {
+      assert.equal(result.fhirBase, row.fhirBase);
+    });
+  });
+
+  describe("a loopback sign-in", () => {
+    let result: Pull;
+    let redirectUri: string;
+    const strays: number[] = [];
+
+    before(async () => {
+      const { port, server } = await freePort();
+      await new Promise((resolve) => server.close(resolve));
+      redirectUri = `http://127.0.0.1:${port}/callback`;
+      ({ pull: result } = await pulled({
+        registration: { ...REGISTRATION, redirectUri },
+        signIn: (fetch) =>
           loopbackSignIn({
-            open: () => {
-              throw new Error("no browser");
+            open: async (authorize) => {
+              strays.push(
+                (await globalThis.fetch(`${redirectUri}?code=x&state=other`))
+                  .status,
+              );
+              const approved = await fetch(authorize, { redirect: "manual" });
+              await globalThis.fetch(approved.headers.get("Location")!);
             },
           }),
-      }),
-      "sign-in-unavailable",
-    ],
-    [
-      "a FHIR base that is no address",
-      () => ({ row: { ...row, fhirBase: "not an address" } }),
-      "hospital-error",
-    ],
-    [
-      "a FHIR base with a query",
-      () => ({ row: { ...row, fhirBase: `${row.fhirBase}?tenant=a` } }),
-      "hospital-error",
-    ],
-    [
-      "a redirect URI that is no address",
-      () => ({
-        registration: { ...REGISTRATION, redirectUri: "not an address" },
-      }),
-      "sign-in-unavailable",
-    ],
-    [
-      "the token endpoint answers 502 with a page",
-      () => ({
-        alter: async (request, hospital) =>
-          isToken(request)
-            ? new Response("<html>Bad gateway</html>", {
-                status: 502,
-                headers: { "Content-Type": "text/html" },
-              })
-            : hospital(request),
-      }),
-      "hospital-error",
-      /refused the token exchange with 502/,
-    ],
-    [
-      "the token endpoint cannot be reached",
-      () => ({
-        alter: async (request, hospital) =>
-          isToken(request)
-            ? Promise.reject(new TypeError("reset"))
-            : hospital(request),
-      }),
-      "retries-exhausted",
-    ],
-    [
-      "the token's patient is not a FHIR id",
-      () => ({
-        alter: rewritten(isToken, (body) => {
-          body.patient = "pt 1001!";
-        }),
-      }),
-      "hospital-error",
-      /token response/,
-    ],
-    [
-      "a searched resource whose id is not a FHIR id",
-      () => ({
-        alter: rewritten(
-          (request) => isSearch(request, "Condition"),
-          (body) => {
-            firstResource(body).id = "not an id!";
-          },
-        ),
-      }),
-      "hospital-error",
-    ],
-    [
-      "a searched resource whose type is not a FHIR type",
-      () => ({
-        alter: rewritten(
-          (request) => isSearch(request, "Condition"),
-          (body) => {
-            firstResource(body).resourceType = "Condition/x";
-          },
-        ),
-      }),
-      "hospital-error",
-    ],
-    [
-      "a next link back to the page it is on",
-      () => ({
-        alter: rewritten(
-          (request) => isSearch(request, "Condition"),
-          (body, request) => {
-            body.link = [{ relation: "next", url: request.url }];
-          },
-        ),
-      }),
-      "hospital-error",
-      /next link/,
-    ],
-    [
-      "a redirect a browser hides the address of",
-      () => ({
-        alter: async (request, hospital) =>
-          isSearch(request, "Condition") ? Response.error() : hospital(request),
-      }),
-      "hospital-error",
-      /browser/,
-    ],
-    [
-      "discovery without S256",
-      () => ({
-        alter: async (request, hospital) => {
-          const response = await hospital(request);
-          if (!request.url.endsWith("/.well-known/smart-configuration"))
-            return response;
-          const body = (await response.json()) as Record<string, unknown>;
-          body.code_challenge_methods_supported = ["plain"];
-          return Response.json(body);
-        },
-      }),
-      "hospital-error",
-    ],
-    [
-      "a search's first page answered 410",
-      () => ({
-        alter: async (request, hospital) =>
-          isSearch(request, "Condition")
-            ? new Response(null, { status: 410 })
-            : hospital(request),
-      }),
-      "hospital-error",
-      /answered 410 to Condition/,
-    ],
-    [
-      "a search answered 405",
-      () => ({
-        alter: async (request, hospital) =>
-          isSearch(request, "Condition")
-            ? new Response(null, { status: 405 })
-            : hospital(request),
-      }),
-      "hospital-error",
-      /answered 405 to Condition/,
-    ],
-  ];
-  try {
-    for (const [change, setup, kind, message] of rows) {
-      const failure = await pulled(setup()).then(
-        () => assert.fail(`${change}: no failure`),
-        (error: unknown) => error,
-      );
-      assert.ok(failure instanceof ConnectionFailure, change);
-      assert.ok(!(failure instanceof Refusal), change);
-      assert.equal(failure.kind, kind, change);
-      if (message) assert.match(failure.message, message, change);
-      assert.equal(failure.cause, undefined, change);
-      const { seen, ...shown } = failure as ConnectionFailure & { seen: Seen };
-      const text = `${failure.message} ${JSON.stringify(shown)}`;
-      for (const secret of seen.secrets)
-        assert.ok(!text.includes(secret), `${change}: carries a secret`);
+      }));
+    });
+
+    it("ignores a redirect with another state", () => {
+      assert.deepEqual(strays, [400]);
+    });
+
+    it("takes the redirect with the state sent", () => {
+      assert.equal(result.patient, A_NORTH);
+    });
+
+    it("closes once it has the redirect", async () => {
+      await assert.rejects(globalThis.fetch(redirectUri));
+    });
+  });
+
+  describe("a connect or a pull that fails", () => {
+    let clock = new Date();
+    const later: Setup = {
+      now: () => clock,
+      between: () => {
+        clock = new Date(clock.getTime() + 2 * 60 * 60 * 1000);
+      },
+    };
+    const swapState: (fetch: Fetch) => SignIn = (fetch) => async (a) => {
+      const back = await direct(fetch)(a);
+      back.searchParams.set("state", "another");
+      return back;
+    };
+    const switched = (simulateError: string): Setup => ({
+      autoApprove: undefined,
+      signIn: (fetch) => (authorize) => {
+        authorize.searchParams.set("simulate_error", simulateError);
+        return answerSignIn(fetch, authorize, A_NORTH);
+      },
+    });
+    let occupied: Awaited<ReturnType<typeof freePort>>;
+    let spare: Awaited<ReturnType<typeof freePort>>;
+
+    before(async () => {
+      occupied = await freePort();
+      spare = await freePort();
+      await new Promise((resolve) => spare.server.close(resolve));
+    });
+
+    after(() => {
+      occupied.server.close();
+    });
+
+    /** Each failure is a `ConnectionFailure`, never a `Refusal`, with no cause and no secret in what it shows. */
+    function ends(
+      change: string,
+      setup: () => Setup,
+      kind: FailureKind,
+      message?: RegExp,
+    ): void {
+      it(change, async () => {
+        const failure = await pulled(setup()).then(
+          () => assert.fail(`${change}: no failure`),
+          (error: unknown) => error,
+        );
+        assert.ok(failure instanceof ConnectionFailure, change);
+        assert.ok(!(failure instanceof Refusal), change);
+        assert.equal(failure.kind, kind, change);
+        if (message) assert.match(failure.message, message, change);
+        assert.equal(failure.cause, undefined, change);
+        const { seen, ...shown } = failure as ConnectionFailure & {
+          seen: Seen;
+        };
+        const text = `${failure.message} ${JSON.stringify(shown)}`;
+        for (const secret of seen.secrets)
+          assert.ok(!text.includes(secret), `${change}: carries a secret`);
+      });
     }
-  } finally {
-    occupied.server.close();
-  }
+
+    describe("as hospital-error", () => {
+      ends(
+        "when the token exchange is refused as invalid_client",
+        () => switched("token_invalid_token"),
+        "hospital-error",
+        /refused the token exchange with 401: invalid_client/,
+      );
+      ends(
+        "when the token exchange is refused as invalid_scope",
+        () => switched("token_invalid_scope"),
+        "hospital-error",
+        /refused the token exchange with 401: invalid_scope/,
+      );
+      ends(
+        "when the sign-in is refused for a switch the sandbox does not know",
+        () => ({
+          signIn: (fetch) => async (authorize) => {
+            authorize.searchParams.set("simulate_error", "no_such_switch");
+            return direct(fetch)(authorize);
+          },
+        }),
+        "hospital-error",
+        /the hospital refused the sign-in: invalid_request/,
+      );
+      ends(
+        "when the token endpoint answers 502 with a page",
+        () => ({
+          alter: async (request, hospital) =>
+            isToken(request)
+              ? new Response("<html>Bad gateway</html>", {
+                  status: 502,
+                  headers: { "Content-Type": "text/html" },
+                })
+              : hospital(request),
+        }),
+        "hospital-error",
+        /refused the token exchange with 502/,
+      );
+      ends(
+        "when the token's patient is not a FHIR id",
+        () => ({
+          alter: rewritten(isToken, (body) => {
+            body.patient = "pt 1001!";
+          }),
+        }),
+        "hospital-error",
+        /token response/,
+      );
+      ends(
+        "when a searched resource's id is not a FHIR id",
+        () => ({
+          alter: rewritten(
+            (request) => isSearch(request, "Condition"),
+            (body) => {
+              firstResource(body).id = "not an id!";
+            },
+          ),
+        }),
+        "hospital-error",
+      );
+      ends(
+        "when a searched resource's type is not a FHIR type",
+        () => ({
+          alter: rewritten(
+            (request) => isSearch(request, "Condition"),
+            (body) => {
+              firstResource(body).resourceType = "Condition/x";
+            },
+          ),
+        }),
+        "hospital-error",
+      );
+      ends(
+        "when a next link goes back to the page it is on",
+        () => ({
+          alter: rewritten(
+            (request) => isSearch(request, "Condition"),
+            (body, request) => {
+              body.link = [{ relation: "next", url: request.url }];
+            },
+          ),
+        }),
+        "hospital-error",
+        /next link/,
+      );
+      ends(
+        "when a redirect hides its address from the browser",
+        () => ({
+          alter: async (request, hospital) =>
+            isSearch(request, "Condition")
+              ? Response.error()
+              : hospital(request),
+        }),
+        "hospital-error",
+        /browser/,
+      );
+      ends(
+        "when discovery does not offer S256",
+        () => ({
+          alter: async (request, hospital) => {
+            const response = await hospital(request);
+            if (!request.url.endsWith("/.well-known/smart-configuration"))
+              return response;
+            const body = (await response.json()) as Record<string, unknown>;
+            body.code_challenge_methods_supported = ["plain"];
+            return Response.json(body);
+          },
+        }),
+        "hospital-error",
+      );
+      ends(
+        "when a search's first page is answered 410",
+        () => ({
+          alter: async (request, hospital) =>
+            isSearch(request, "Condition")
+              ? new Response(null, { status: 410 })
+              : hospital(request),
+        }),
+        "hospital-error",
+        /answered 410 to Condition/,
+      );
+      ends(
+        "when a search is answered 405",
+        () => ({
+          alter: async (request, hospital) =>
+            isSearch(request, "Condition")
+              ? new Response(null, { status: 405 })
+              : hospital(request),
+        }),
+        "hospital-error",
+        /answered 405 to Condition/,
+      );
+      ends(
+        "when the FHIR base is no address",
+        () => ({ row: { ...row, fhirBase: "not an address" } }),
+        "hospital-error",
+      );
+      ends(
+        "when the FHIR base carries a query",
+        () => ({ row: { ...row, fhirBase: `${row.fhirBase}?tenant=a` } }),
+        "hospital-error",
+      );
+    });
+
+    describe("as unauthorized", () => {
+      ends(
+        "when the hospital does not accept the access token",
+        () => switched("request_invalid_token"),
+        "unauthorized",
+        /refused Patient with 401: the hospital did not accept the access token \(it may have expired or been revoked\), so connect again/,
+      );
+      ends(
+        "when the access token expired",
+        () => switched("request_expired_token"),
+        "unauthorized",
+        /refused Patient with 401: the access token expired, so connect again/,
+      );
+      ends(
+        "when the token's hour is past before the pull",
+        () => later,
+        "unauthorized",
+        /the access token expired, so connect again/,
+      );
+    });
+
+    describe("as cancelled", () => {
+      ends(
+        "when the person cancels on the sign-in page",
+        () => ({
+          autoApprove: undefined,
+          signIn: answering(A_NORTH, "cancel"),
+        }),
+        "cancelled",
+      );
+      ends(
+        "when the caller's signal is aborted",
+        () => ({ connectOptions: { signal: AbortSignal.abort() } }),
+        "cancelled",
+      );
+    });
+
+    describe("as state-mismatch", () => {
+      ends(
+        "when the sign-in returns another state",
+        () => ({ signIn: swapState }),
+        "state-mismatch",
+      );
+      ends(
+        "when the sign-in returns access_denied with another state",
+        () => ({
+          signIn: () => async () =>
+            new URL(`${REGISTRATION.redirectUri}?error=access_denied&state=x`),
+        }),
+        "state-mismatch",
+      );
+      ends(
+        "when the sign-in returns a URL off the redirect URI",
+        () => ({
+          signIn: (fetch) => async (a) => {
+            const back = await direct(fetch)(a);
+            back.pathname = "/elsewhere";
+            return back;
+          },
+        }),
+        "state-mismatch",
+      );
+    });
+
+    describe("as host-not-allowed", () => {
+      ends(
+        "when a next link goes to another host",
+        () => ({
+          alter: nextRewritten((u) => {
+            u.hostname = "elsewhere.demo.invalid";
+            return u;
+          }),
+        }),
+        "host-not-allowed",
+      );
+      ends(
+        "when a next link goes over http:",
+        () => ({
+          alter: nextRewritten(
+            (u) => new URL(u.href.replace(/^https:/, "http:")),
+          ),
+        }),
+        "host-not-allowed",
+      );
+      ends(
+        "when a search redirects to another host",
+        () => ({
+          alter: async (request, hospital) =>
+            isSearch(request, "Condition")
+              ? new Response(null, {
+                  status: 302,
+                  headers: {
+                    Location: "https://elsewhere.demo.invalid/fhir/Condition",
+                  },
+                })
+              : hospital(request),
+        }),
+        "host-not-allowed",
+      );
+    });
+
+    describe("as cap-exceeded", () => {
+      ends(
+        "when responseBytes is below one page",
+        () => ({ limits: { responseBytes: 200 } }),
+        "cap-exceeded",
+      );
+      ends(
+        "when requests are below the plan's count",
+        () => ({ limits: { requests: 3 } }),
+        "cap-exceeded",
+      );
+    });
+
+    describe("as retries-exhausted", () => {
+      ends(
+        "when a search is always answered 503",
+        () => ({
+          limits: { retries: 1 },
+          alter: async (request, hospital) =>
+            isSearch(request, "Condition")
+              ? new Response(null, { status: 503 })
+              : hospital(request),
+        }),
+        "retries-exhausted",
+      );
+      ends(
+        "when the token endpoint cannot be reached",
+        () => ({
+          alter: async (request, hospital) =>
+            isToken(request)
+              ? Promise.reject(new TypeError("reset"))
+              : hospital(request),
+        }),
+        "retries-exhausted",
+      );
+    });
+
+    describe("as sign-in-unavailable", () => {
+      ends(
+        "when the loopback's port is already in use",
+        () => ({
+          registration: {
+            ...REGISTRATION,
+            redirectUri: `http://127.0.0.1:${occupied.port}/callback`,
+          },
+          signIn: () => loopbackSignIn({ open: () => undefined }),
+        }),
+        "sign-in-unavailable",
+      );
+      ends(
+        "when the loopback cannot open the sign-in page",
+        () => ({
+          registration: {
+            ...REGISTRATION,
+            redirectUri: `http://127.0.0.1:${spare.port}/callback`,
+          },
+          signIn: () =>
+            loopbackSignIn({
+              open: () => {
+                throw new Error("no browser");
+              },
+            }),
+        }),
+        "sign-in-unavailable",
+      );
+      ends(
+        "when the redirect URI is no address",
+        () => ({
+          registration: { ...REGISTRATION, redirectUri: "not an address" },
+        }),
+        "sign-in-unavailable",
+      );
+    });
+  });
 });

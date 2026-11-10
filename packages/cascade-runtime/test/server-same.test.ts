@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { KeptBuild, type Rebuilding } from "@cascade-runtime/runtime";
 import {
@@ -166,11 +166,16 @@ async function recordUnder(pod: Pod, base: string, id: string) {
   return row.record;
 }
 
-test("the server Same's joins, kept across steps, are what a build of the whole pod derives after each step that files, retracts or reaches them (#518)", async () => {
-  const folder = join(scratch, "pod");
-  const pod = await openPodWith(parts, folder);
-  try {
-    const rebuilding: Rebuilding = {
+describe("the server Same's joins kept across steps (#518)", () => {
+  let folder: string;
+  let pod: Pod;
+  let rebuilding: Rebuilding;
+  let servers: string[];
+
+  before(async () => {
+    folder = join(scratch, "pod");
+    pod = await openPodWith(parts, folder);
+    rebuilding = {
       pod: new FolderFiles(folder),
       layout: parts.layout,
       address: pod.address,
@@ -178,45 +183,6 @@ test("the server Same's joins, kept across steps, are what a build of the whole 
       build: parts.build,
       lens: parts.lens,
       keep: () => Promise.resolve([]),
-    };
-    const state = (at: string) => ({ address: pod.address, at, title: "pod" });
-    /**
-     * The act, with a build kept from before it rebuilt in part after it, which must not fall back to a build of the
-     * whole pod, and equals one.
-     */
-    const inPart = async (
-      name: string,
-      act: () => Promise<{ refused?: string; wrote: readonly string[] }>,
-    ) => {
-      const { kept } = await KeptBuild.whole(
-        rebuilding,
-        state("2026-07-01T00:00:00Z"),
-      );
-      try {
-        const done = await act();
-        assert.equal(done.refused, undefined, name);
-        const after = state("2026-07-02T00:00:00Z");
-        assert.ok(
-          (await kept.step({ written: done.wrote }, after)) !== undefined,
-          `${name} is rebuilt whole`,
-        );
-        await kept.verify(await KeptBuild.whole(rebuilding, after));
-      } finally {
-        kept.free();
-      }
-      return { refused: undefined };
-    };
-    const performed = async (
-      name: string,
-      act: () => Promise<{ refused?: string }>,
-    ) => {
-      const done = await act();
-      assert.equal(done.refused, undefined, name);
-      assert.deepEqual(
-        await everything(pod),
-        await builtWhole(folder, name),
-        `after ${name}, the build kept across steps differs from the build whole`,
-      );
     };
     for (const name of ["hospital", "hospital-at-a-new-path"]) {
       const done = await pod.connect(await connectFiles(name), {
@@ -242,58 +208,140 @@ test("the server Same's joins, kept across steps, are what a build of the whole 
       });
       assert.equal(done.refused, undefined, summary);
     }
-    const servers = (
+    servers = (
       await pod.ask({
         query: `${PREFIXES}SELECT ?server WHERE { ?server a cascade:Server }`,
       })
     ).map(({ server = "" }) => server);
-    assert.equal(servers.length, 2);
-    assert.deepEqual(await joinedIds(pod), []);
+  });
 
-    await performed("a server Same", () =>
-      pod.judge(judgment(pod, "Same", servers)),
-    );
-    assert.deepEqual(await joinedIds(pod), ["a", "b"]);
-
-    await performed("a pull under one of the servers", () =>
-      inPart("a pull under one of the servers", () =>
-        pod.import(pullFiles("again", SECOND, ["c"], "2026-06-10T09:00:00Z"), {
-          match: false,
-        }),
-      ),
-    );
-    assert.deepEqual(await joinedIds(pod), ["a", "b", "c"]);
-
-    const different = judgment(pod, "Different", [
-      await recordUnder(pod, FIRST, "a"),
-      await recordUnder(pod, SECOND, "a"),
-    ]);
-    await performed("a Different over two records it joins", () =>
-      inPart("a Different over two records it joins", () =>
-        pod.judge(different),
-      ),
-    );
-    assert.deepEqual(await joinedIds(pod), ["b", "c"]);
-
-    const organizations = (
-      await pod.ask({
-        query: `${PREFIXES}SELECT ?organization WHERE { ?organization a cascade:Organization }`,
-      })
-    ).map(({ organization = "" }) => organization);
-    assert.equal(organizations.length, 2);
-    await performed("an organization Same", () =>
-      pod.judge(judgment(pod, "Same", organizations)),
-    );
-
-    const [same] = await pod.ask({
-      query: `${PREFIXES}SELECT ?claim WHERE { ?claim a cascade:Judgment ; cascade:verdict cascade:Same ; prov:hadMember <${servers[0]}> }`,
-    });
-    assert.ok(same?.claim);
-    await performed("the server Same retracted", () =>
-      pod.judge(retraction(pod, same.claim ?? "")),
-    );
-    assert.deepEqual(await joinedIds(pod), []);
-  } finally {
+  after(async () => {
     await pod.close();
-  }
+  });
+
+  const state = (at: string) => ({ address: pod.address, at, title: "pod" });
+
+  /**
+   * The act, with a build kept from before it rebuilt in part after it, which must not fall back to a build of the
+   * whole pod, and equals one.
+   */
+  const inPart = async (
+    name: string,
+    act: () => Promise<{ refused?: string; wrote: readonly string[] }>,
+  ) => {
+    const { kept } = await KeptBuild.whole(
+      rebuilding,
+      state("2026-07-01T00:00:00Z"),
+    );
+    try {
+      const done = await act();
+      assert.equal(done.refused, undefined, name);
+      const after = state("2026-07-02T00:00:00Z");
+      assert.ok(
+        (await kept.step({ written: done.wrote }, after)) !== undefined,
+        `${name} is rebuilt whole`,
+      );
+      await kept.verify(await KeptBuild.whole(rebuilding, after));
+    } finally {
+      kept.free();
+    }
+    return { refused: undefined };
+  };
+
+  const performed = async (
+    name: string,
+    act: () => Promise<{ refused?: string }>,
+  ) => {
+    const done = await act();
+    assert.equal(done.refused, undefined, name);
+    assert.deepEqual(
+      await everything(pod),
+      await builtWhole(folder, name),
+      `after ${name}, the build kept across steps differs from the build whole`,
+    );
+  };
+
+  describe("given two servers, each holding records of the same ids", () => {
+    it("joins no record to another before any Same", async () => {
+      assert.equal(servers.length, 2);
+      assert.deepEqual(await joinedIds(pod), []);
+    });
+
+    describe("when the person judges the servers the same", () => {
+      it("keeps what a build of the whole pod derives", async () => {
+        await performed("a server Same", () =>
+          pod.judge(judgment(pod, "Same", servers)),
+        );
+      });
+
+      it("joins the records of the ids both hold", async () => {
+        assert.deepEqual(await joinedIds(pod), ["a", "b"]);
+      });
+    });
+
+    describe("when a pull files another record under one of them", () => {
+      it("is rebuilt in part, as a build of the whole pod", async () => {
+        await performed("a pull under one of the servers", () =>
+          inPart("a pull under one of the servers", () =>
+            pod.import(
+              pullFiles("again", SECOND, ["c"], "2026-06-10T09:00:00Z"),
+              { match: false },
+            ),
+          ),
+        );
+      });
+
+      it("joins that record to the one under the other", async () => {
+        assert.deepEqual(await joinedIds(pod), ["a", "b", "c"]);
+      });
+    });
+
+    describe("when a Different is judged over two records they join", () => {
+      it("is rebuilt in part, as a build of the whole pod", async () => {
+        const different = judgment(pod, "Different", [
+          await recordUnder(pod, FIRST, "a"),
+          await recordUnder(pod, SECOND, "a"),
+        ]);
+        await performed("a Different over two records it joins", () =>
+          inPart("a Different over two records it joins", () =>
+            pod.judge(different),
+          ),
+        );
+      });
+
+      it("leaves them apart and the other records joined", async () => {
+        assert.deepEqual(await joinedIds(pod), ["b", "c"]);
+      });
+    });
+
+    describe("when the person judges the organizations the same", () => {
+      it("keeps what a build of the whole pod derives", async () => {
+        const organizations = (
+          await pod.ask({
+            query: `${PREFIXES}SELECT ?organization WHERE { ?organization a cascade:Organization }`,
+          })
+        ).map(({ organization = "" }) => organization);
+        assert.equal(organizations.length, 2);
+        await performed("an organization Same", () =>
+          pod.judge(judgment(pod, "Same", organizations)),
+        );
+      });
+    });
+
+    describe("when the server Same is retracted", () => {
+      it("keeps what a build of the whole pod derives", async () => {
+        const [same] = await pod.ask({
+          query: `${PREFIXES}SELECT ?claim WHERE { ?claim a cascade:Judgment ; cascade:verdict cascade:Same ; prov:hadMember <${servers[0]}> }`,
+        });
+        assert.ok(same?.claim);
+        await performed("the server Same retracted", () =>
+          pod.judge(retraction(pod, same.claim ?? "")),
+        );
+      });
+
+      it("joins no record to another", async () => {
+        assert.deepEqual(await joinedIds(pod), []);
+      });
+    });
+  });
 });

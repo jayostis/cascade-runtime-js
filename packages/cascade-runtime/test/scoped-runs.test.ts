@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, it } from "node:test";
 import {
   CorePod,
   type IdsAndTime,
@@ -99,82 +99,87 @@ function potassium(index: number, value: string): string {
   cascade:writtenValue "${value}" ; cascade:ucumUnit "mmol/L" .`;
 }
 
-test("a run that takes records writes what it writes reading every record, over a seeded pod of 200 allergies across eight acts and a sync, chained Sames one of which a Different splits, a reconnect and a finding", async () => {
-  const parts = await resolved();
-  const references = await parts.tables.references();
-  const random = seeded(522);
-  const time = new CountedTime();
-  const options = {
-    pod: new MemoryFiles(ADDRESS),
-    address: ADDRESS,
-    subject: SUBJECT,
-    title: "seeded",
-    vocabulary: parts.vocabulary,
-    layout: parts.layout,
-    newStore: parts.newStore,
-    time,
-    importers: parts.importers,
-    runtime: parts.performer,
-    references: () => Promise.resolve(references),
-  };
-  const pod = new CorePod(options);
-  assert.equal((await pod.create()).refused, undefined);
-
-  const compared: string[] = [];
-  /** The run on the activity, scoped and reading every record, from one pod; then the run itself. */
-  const match = async (on: CorePod, clock: CountedTime, activity: string) => {
-    const outcome = async (every: boolean) => {
-      const fork = await on.fork(clock.copy());
-      readEveryRecord(every);
-      let performed: Performed;
-      try {
-        performed = await fork.match(activity);
-      } finally {
-        readEveryRecord(false);
-      }
-      return {
-        ...performed,
-        files: await Promise.all(
-          performed.wrote.map(async (path) => [
-            path,
-            new TextDecoder().decode(await fork.files.read(path)),
-          ]),
-        ),
-      };
+describe("a run that takes records", () => {
+  /**
+   * The pod has 200 allergies across eight acts and a sync, chained Sames one of which a Different splits, a reconnect
+   * and a finding.
+   */
+  it("writes what it writes reading every record, over a seeded pod", async () => {
+    const parts = await resolved();
+    const references = await parts.tables.references();
+    const random = seeded(522);
+    const time = new CountedTime();
+    const options = {
+      pod: new MemoryFiles(ADDRESS),
+      address: ADDRESS,
+      subject: SUBJECT,
+      title: "seeded",
+      vocabulary: parts.vocabulary,
+      layout: parts.layout,
+      newStore: parts.newStore,
+      time,
+      importers: parts.importers,
+      runtime: parts.performer,
+      references: () => Promise.resolve(references),
     };
-    const scoped = await outcome(false);
-    assert.deepEqual(scoped, await outcome(true), activity);
-    compared.push(activity);
-    const performed = await on.match(activity);
-    assert.deepEqual(performed.wrote, scoped.wrote);
-    return performed;
-  };
-  const enter = async (
-    on: CorePod,
-    clock: CountedTime,
-    when: string,
-    outputs: readonly string[],
-  ) => {
-    clock.when = when;
-    const entered = await on.enter(entry(clock.newId(), outputs));
-    assert.equal(entered.refused, undefined);
-    return entered.activity as string;
-  };
-  const allergies = (count: number) =>
-    Array.from({ length: count }, (_, index) =>
-      allergy(index, CODES[Math.floor(random() * CODES.length)] as string),
-    );
+    const pod = new CorePod(options);
+    assert.equal((await pod.create()).refused, undefined);
 
-  const judge = async (
-    verdict: string,
-    members: readonly string[],
-    when: string,
-  ) => {
-    time.when = when;
-    const judged = await pod.judge({
-      name: "judgment.ttl",
-      base: ADDRESS,
-      bytes: new TextEncoder().encode(`@prefix cascade: <${CASCADE}> .
+    const compared: string[] = [];
+    /** The run on the activity, scoped and reading every record, from one pod; then the run itself. */
+    const match = async (on: CorePod, clock: CountedTime, activity: string) => {
+      const outcome = async (every: boolean) => {
+        const fork = await on.fork(clock.copy());
+        readEveryRecord(every);
+        let performed: Performed;
+        try {
+          performed = await fork.match(activity);
+        } finally {
+          readEveryRecord(false);
+        }
+        return {
+          ...performed,
+          files: await Promise.all(
+            performed.wrote.map(async (path) => [
+              path,
+              new TextDecoder().decode(await fork.files.read(path)),
+            ]),
+          ),
+        };
+      };
+      const scoped = await outcome(false);
+      assert.deepEqual(scoped, await outcome(true), activity);
+      compared.push(activity);
+      const performed = await on.match(activity);
+      assert.deepEqual(performed.wrote, scoped.wrote);
+      return performed;
+    };
+    const enter = async (
+      on: CorePod,
+      clock: CountedTime,
+      when: string,
+      outputs: readonly string[],
+    ) => {
+      clock.when = when;
+      const entered = await on.enter(entry(clock.newId(), outputs));
+      assert.equal(entered.refused, undefined);
+      return entered.activity as string;
+    };
+    const allergies = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        allergy(index, CODES[Math.floor(random() * CODES.length)] as string),
+      );
+
+    const judge = async (
+      verdict: string,
+      members: readonly string[],
+      when: string,
+    ) => {
+      time.when = when;
+      const judged = await pod.judge({
+        name: "judgment.ttl",
+        base: ADDRESS,
+        bytes: new TextEncoder().encode(`@prefix cascade: <${CASCADE}> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 <${time.newId()}> a cascade:Judgment ; cascade:verdict cascade:${verdict} ;
@@ -182,126 +187,129 @@ test("a run that takes records writes what it writes reading every record, over 
   prov:wasAttributedTo <${OWNER}> ; prov:generatedAtTime "${when}"^^xsd:dateTime .
 <${OWNER}> a prov:Person .
 `),
-    });
-    assert.equal(judged.refused, undefined);
-  };
-  const coded = async (code: string) =>
-    (
-      await pod.select(`SELECT ?record WHERE { ?record <http://purl.org/pav/hasCurrentVersion> ?version .
+      });
+      assert.equal(judged.refused, undefined);
+    };
+    const coded = async (code: string) =>
+      (
+        await pod.select(`SELECT ?record WHERE { ?record <http://purl.org/pav/hasCurrentVersion> ?version .
         ?version <${CASCADE}allergenCode> <${code}> }`)
-    ).rows
-      .map((row) => row.get("record")?.value as string)
-      .sort();
+      ).rows
+        .map((row) => row.get("record")?.value as string)
+        .sort();
 
-  // A second writer, made now, whose two acts arrive between the first's.
-  const writer = await pod.newWriter();
-  const writerActs: string[] = [];
-  for (let act = 0; act < 8; act++) {
-    const day = String(act * 2 + 2).padStart(2, "0");
-    const activity = await enter(
-      pod,
-      time,
-      `2026-01-${day}T09:00:00Z`,
-      allergies(22),
-    );
-    await match(pod, time, activity);
-    // Two records of one code no run takes, so no Same joins them, arrive before the second writer's record of it.
-    if (act === 0)
-      await enter(pod, time, "2026-01-03T09:00:00Z", [
-        allergy(0, PAIRED),
-        allergy(1, PAIRED),
-      ]);
-    if (act === 2 || act === 5) {
-      const later = String(act * 2 + 3).padStart(2, "0");
-      writerActs.push(
-        await enter(writer, time, `2026-01-${later}T09:00:00Z`, [
-          ...allergies(12),
-          ...(act === 2 ? [allergy(12, PAIRED)] : []),
-        ]),
+    // A second writer, made now, whose two acts arrive between the first's.
+    const writer = await pod.newWriter();
+    const writerActs: string[] = [];
+    for (let act = 0; act < 8; act++) {
+      const day = String(act * 2 + 2).padStart(2, "0");
+      const activity = await enter(
+        pod,
+        time,
+        `2026-01-${day}T09:00:00Z`,
+        allergies(22),
       );
-    }
-    if (act === 3) {
-      const { rows } = await pod.select(`SELECT ?same ?member WHERE {
-        ?same <${CASCADE}verdict> <${CASCADE}Same> ; <http://www.w3.org/ns/prov#hadMember> ?member }`);
-      const members = new Map<string, string[]>();
-      for (const row of rows) {
-        const same = row.get("same")?.value as string;
-        members.set(same, [
-          ...(members.get(same) ?? []),
-          row.get("member")?.value as string,
+      await match(pod, time, activity);
+      // Two records of one code no run takes, so no Same joins them, arrive before the second writer's record of it.
+      if (act === 0)
+        await enter(pod, time, "2026-01-03T09:00:00Z", [
+          allergy(0, PAIRED),
+          allergy(1, PAIRED),
         ]);
-      }
-      // The two ends of a chain of Sames: records no one Same holds together, which the chain makes one entry.
-      const chained = new Map<string, Set<string>>();
-      for (const found of members.values()) {
-        const joined = new Set(
-          found.flatMap((one) => [...(chained.get(one) ?? [one])]),
+      if (act === 2 || act === 5) {
+        const later = String(act * 2 + 3).padStart(2, "0");
+        writerActs.push(
+          await enter(writer, time, `2026-01-${later}T09:00:00Z`, [
+            ...allergies(12),
+            ...(act === 2 ? [allergy(12, PAIRED)] : []),
+          ]),
         );
-        for (const one of joined) chained.set(one, joined);
       }
-      const chain = [...new Set(chained.values())].find(
-        (found) => found.size >= 3,
-      );
-      assert.ok(chain, "a chain of Sames over three records to split");
-      const [first, ...rest] = [...chain] as [string, ...string[]];
-      const apart = rest.find(
-        (other) =>
-          ![...members.values()].some(
-            (found) => found.includes(first) && found.includes(other),
-          ),
-      );
-      assert.ok(apart, "two records of the chain no one Same holds");
-      const star = [first, apart];
-      await judge("Different", star, "2026-01-08T12:00:00Z");
+      if (act === 3) {
+        const { rows } = await pod.select(`SELECT ?same ?member WHERE {
+        ?same <${CASCADE}verdict> <${CASCADE}Same> ; <http://www.w3.org/ns/prov#hadMember> ?member }`);
+        const members = new Map<string, string[]>();
+        for (const row of rows) {
+          const same = row.get("same")?.value as string;
+          members.set(same, [
+            ...(members.get(same) ?? []),
+            row.get("member")?.value as string,
+          ]);
+        }
+        // The two ends of a chain of Sames: records no one Same holds together, which the chain makes one entry.
+        const chained = new Map<string, Set<string>>();
+        for (const found of members.values()) {
+          const joined = new Set(
+            found.flatMap((one) => [...(chained.get(one) ?? [one])]),
+          );
+          for (const one of joined) chained.set(one, joined);
+        }
+        const chain = [...new Set(chained.values())].find(
+          (found) => found.size >= 3,
+        );
+        assert.ok(chain, "a chain of Sames over three records to split");
+        const [first, ...rest] = [...chain] as [string, ...string[]];
+        const apart = rest.find(
+          (other) =>
+            ![...members.values()].some(
+              (found) => found.includes(first) && found.includes(other),
+            ),
+        );
+        assert.ok(apart, "two records of the chain no one Same holds");
+        const star = [first, apart];
+        await judge("Different", star, "2026-01-08T12:00:00Z");
+      }
     }
-  }
-  // A record arriving after the second writer's, which the person judges the same as each of the two: Sames the sync's
-  // run skips, as one member arrived after the record it takes, but only if it reads that member.
-  const lone = await enter(pod, time, "2026-01-18T09:00:00Z", [
-    allergy(0, LONE),
-  ]);
-  await match(pod, time, lone);
-  const [x] = await coded(LONE);
-  const [p1, p2] = await coded(PAIRED);
-  assert.ok(x !== undefined && p1 !== undefined && p2 !== undefined);
-  await judge("Same", [p1, x], "2026-01-19T09:00:00Z");
-  await judge("Same", [x, p2], "2026-01-19T10:00:00Z");
-  time.when = "2026-01-20T09:00:00Z";
-  const synced = await pod.receive(writer.files);
-  assert.equal(synced.refused, undefined);
-  await match(pod, time, synced.activity as string);
+    // A record arriving after the second writer's, which the person judges the same as each of the two: Sames the sync's
+    // run skips, as one member arrived after the record it takes, but only if it reads that member.
+    const lone = await enter(pod, time, "2026-01-18T09:00:00Z", [
+      allergy(0, LONE),
+    ]);
+    await match(pod, time, lone);
+    const [x] = await coded(LONE);
+    const [p1, p2] = await coded(PAIRED);
+    assert.ok(x !== undefined && p1 !== undefined && p2 !== undefined);
+    await judge("Same", [p1, x], "2026-01-19T09:00:00Z");
+    await judge("Same", [x, p2], "2026-01-19T10:00:00Z");
+    time.when = "2026-01-20T09:00:00Z";
+    const synced = await pod.receive(writer.files);
+    assert.equal(synced.refused, undefined);
+    await match(pod, time, synced.activity as string);
 
-  const lab = await enter(pod, time, "2026-01-21T09:00:00Z", [
-    potassium(0, "4.1"),
-    potassium(1, "5.3"),
-  ]);
-  await match(pod, time, lab);
+    const lab = await enter(pod, time, "2026-01-21T09:00:00Z", [
+      potassium(0, "4.1"),
+      potassium(1, "5.3"),
+    ]);
+    await match(pod, time, lab);
 
-  for (const when of ["2026-01-22T09:00:00Z", "2026-01-23T09:00:00Z"]) {
-    time.when = when;
-    const connected = await pod.connect(
-      parts.vocabulary,
-      "runtime/scripted-input/finn/connects/hospital/",
+    for (const when of ["2026-01-22T09:00:00Z", "2026-01-23T09:00:00Z"]) {
+      time.when = when;
+      const connected = await pod.connect(
+        parts.vocabulary,
+        "runtime/scripted-input/finn/connects/hospital/",
+      );
+      assert.equal(connected.refused, undefined);
+      await match(pod, time, connected.activity as string);
+    }
+
+    const counted = async (query: string) =>
+      (await pod.select(`PREFIX cascade: <${CASCADE}> ${query}`)).rows.length;
+    assert.ok(
+      await counted(
+        "SELECT DISTINCT ?f WHERE { ?f a cascade:FindingForReview }",
+      ),
     );
-    assert.equal(connected.refused, undefined);
-    await match(pod, time, connected.activity as string);
-  }
-
-  const counted = async (query: string) =>
-    (await pod.select(`PREFIX cascade: <${CASCADE}> ${query}`)).rows.length;
-  assert.ok(
-    await counted("SELECT DISTINCT ?f WHERE { ?f a cascade:FindingForReview }"),
-  );
-  assert.ok(
-    await counted(
-      "SELECT DISTINCT ?d WHERE { ?d cascade:verdict cascade:Different }",
-    ),
-  );
-  assert.ok(
-    (await counted(
-      "SELECT DISTINCT ?s WHERE { ?s cascade:verdict cascade:Same }",
-    )) > 20,
-  );
-  assert.equal(compared.length, 13);
-  assert.equal(writerActs.length, 2);
+    assert.ok(
+      await counted(
+        "SELECT DISTINCT ?d WHERE { ?d cascade:verdict cascade:Different }",
+      ),
+    );
+    assert.ok(
+      (await counted(
+        "SELECT DISTINCT ?s WHERE { ?s cascade:verdict cascade:Same }",
+      )) > 20,
+    );
+    assert.equal(compared.length, 13);
+    assert.equal(writerActs.length, 2);
+  });
 });
