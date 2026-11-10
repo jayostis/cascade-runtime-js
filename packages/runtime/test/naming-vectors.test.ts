@@ -401,7 +401,7 @@ const filesOf = (files: readonly SetFile[]) =>
  */
 describe("Naming what a pod holds · versionName(), recordFromServerName(), normalisedBaseUrl(), snapshotName()", () => {
   /**
-   * The manifest of the vocabulary's naming vectors, `tests/vectors/naming/manifest.ttl`: each vector names a rule, the
+   * The vocabulary's list of naming vectors, `tests/vectors/naming/manifest.ttl`: each vector names a rule, the
    * inputs it is given and the name it must return, or the base URL it must normalise or refuse.
    */
   describe("given the vocabulary's naming vectors (`tests/vectors/naming/manifest.ttl`)", () => {
@@ -410,9 +410,9 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
       vectors = await readVectors();
     });
 
-    it("has a naming function for the rule of every vector the manifest lists", () => {
+    it("has a naming function for the rule of every vector the list holds", () => {
       const { graph, entries } = vectors;
-      assert.ok(entries.length > 0, "the manifest lists vectors");
+      assert.ok(entries.length > 0, "the list holds vectors");
       for (const kind of [
         "NamingTest",
         "BaseUrlNormalisationTest",
@@ -454,7 +454,7 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
       await reproduceNames(vectors, CONTAINED_OR_ENTERED);
     });
 
-    it("returns each vector's canonical N-Quads, and the name made from them, for a version, a revision, a finding and a table version", async () => {
+    it("returns for each vector of a version, a revision, a finding and a table version the canonical N-Quads the vector holds, and the name those give", async () => {
       await reproduceNames(vectors, BY_NQUADS);
     });
 
@@ -479,7 +479,7 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
     });
   });
 
-  /** The same manifest's vectors of base URLs: the form a server's address is named from, or the reason it is refused. */
+  /** The same list's vectors of base URLs: the form a server's address is named from, or the reason it is refused. */
   describe("normalisedBaseUrl(url)", () => {
     let vectors: Vectors;
     before(async () => {
@@ -489,10 +489,7 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
     it("returns each vector's normalised form of a server's base URL", () => {
       const { graph } = vectors;
       const entries = entriesOfType(vectors, "BaseUrlNormalisationTest");
-      assert.ok(
-        entries.length > 0,
-        "the manifest has no base URL to normalise",
-      );
+      assert.ok(entries.length > 0, "the list has no base URL to normalise");
       for (const entry of entries) {
         const action = one(graph, entry, `${MF}action`);
         const result = one(graph, entry, `${MF}result`);
@@ -506,10 +503,15 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
       }
     });
 
+    // No vector holds U+001F until cascade-vocabulary#371 lands; this one assertion owns it meanwhile.
+    it("throws Refusal for a base URL holding U+001F", () => {
+      assert.throws(() => normalisedBaseUrl("https://h/\u001f"), Refusal);
+    });
+
     it("throws Refusal for each base URL the vectors refuse, in a sentence that repeats no part of the URL", () => {
       const { graph } = vectors;
       const entries = entriesOfType(vectors, "BaseUrlRefusalTest");
-      assert.ok(entries.length > 0, "the manifest has no base URL to refuse");
+      assert.ok(entries.length > 0, "the list has no base URL to refuse");
       for (const entry of entries) {
         assert.deepEqual(
           graph.objects(entry, `${MF}result`),

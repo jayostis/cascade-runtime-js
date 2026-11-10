@@ -328,17 +328,8 @@ describe("Chaining each act's snapshot to the writer's last · CorePod.head, Cor
     });
 
     it("writes as the set hash the hash of every file of the set the pod holds, the act's own file left out", () => {
-      const { first, next } = got(outcome);
-      assert.deepEqual(
-        first.snapshot.values("setHash"),
-        [first.setHash],
-        "first session",
-      );
-      assert.deepEqual(
-        next.snapshot.values("setHash"),
-        [next.setHash],
-        "next session",
-      );
+      const { first } = got(outcome);
+      assert.deepEqual(first.snapshot.values("setHash"), [first.setHash]);
     });
 
     it("leaves out of the set a `.DS_Store` and an `.acl` the pod's folder also holds", () => {
@@ -360,22 +351,16 @@ describe("Chaining each act's snapshot to the writer's last · CorePod.head, Cor
     });
 
     it("names in `fileAddedToSet` each file of the set its act wrote, and no other", () => {
-      const { first, next, layout } = got(outcome);
-      for (const [which, session] of [
-        ["first session", first],
-        ["next session", next],
-      ] as const)
-        assert.deepEqual(
-          session.snapshot.values("fileAddedToSet").sort(),
-          session.wrote.filter((path) => layout.inSnapshotSet(path)).sort(),
-          which,
-        );
+      const { first, layout } = got(outcome);
+      assert.deepEqual(
+        first.snapshot.values("fileAddedToSet").sort(),
+        first.wrote.filter((path) => layout.inSnapshotSet(path)).sort(),
+      );
     });
 
     it("returns the snapshot it wrote as `head`", () => {
-      const { first, next } = got(outcome);
-      assert.equal(first.headSnapshot, first.snapshot.name, "first session");
-      assert.equal(next.headSnapshot, next.snapshot.name, "next session");
+      const { first } = got(outcome);
+      assert.equal(first.headSnapshot, first.snapshot.name);
     });
   });
 
@@ -392,6 +377,24 @@ describe("Chaining each act's snapshot to the writer's last · CorePod.head, Cor
         first.snapshot.name,
       ]);
       assert.deepEqual(next.snapshot.values("mergedParentSnapshot"), []);
+    });
+
+    it("writes as the set hash the hash of every file of the set the pod holds, the act's own file left out", () => {
+      const { next } = got(outcome);
+      assert.deepEqual(next.snapshot.values("setHash"), [next.setHash]);
+    });
+
+    it("names in `fileAddedToSet` each file of the set its act wrote, and no other", () => {
+      const { next, layout } = got(outcome);
+      assert.deepEqual(
+        next.snapshot.values("fileAddedToSet").sort(),
+        next.wrote.filter((path) => layout.inSnapshotSet(path)).sort(),
+      );
+    });
+
+    it("returns the snapshot it wrote as `head`", () => {
+      const { next } = got(outcome);
+      assert.equal(next.headSnapshot, next.snapshot.name);
     });
   });
 

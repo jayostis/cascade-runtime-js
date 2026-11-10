@@ -71,6 +71,10 @@
       "aliases": ["adopts", "adopted", "adopting"]
     },
     {
+      "term": "Argon2id",
+      "definition": "the slow key derivation that turns a secret into a pod's key, so that guessing a secret costs time."
+    },
+    {
       "term": "arrival",
       "definition": "one state of one record as a source reported it, as an adapter hands it to the runtime, before it is filed.",
       "aliases": ["arrivals"]
@@ -462,6 +466,11 @@
       "definition": "on a call's result, why a rule turned the call down; a refused call wrote no file of the person's, though a pod with a build still rewrites its manifest."
     },
     {
+      "term": "register",
+      "definition": "of a code system, to give it a URI space in the vocabulary, from which a code's IRI is made.",
+      "aliases": ["registers", "registered"]
+    },
+    {
       "term": "release",
       "definition": "a version of the rule list as shipped; a release may declare an earlier rule wrong.",
       "aliases": ["releases"]
@@ -585,6 +594,11 @@
       "term": "SPARQL constraint",
       "definition": "a constraint of a shape written as a SPARQL query, each row of which is one thing wrong with the focus node `$this`.",
       "aliases": ["SPARQL constraints"]
+    },
+    {
+      "term": "stand-in",
+      "definition": "in a test, a fast hash used in place of Argon2id where no real key is under test.",
+      "aliases": ["stand-ins"]
     },
     {
       "term": "step",
@@ -739,8 +753,8 @@
     "words.test.ts"
   ],
   "build": [
-    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs",
-    "Tripwire: a code system's IRI stem typed into code"
+    "Tripwire: a code system's IRI stem typed into code",
+    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs"
   ],
   "randomOrder": [
     "arrivals.test.ts",
