@@ -125,8 +125,29 @@ function isVerb(
   );
 }
 
-function namesCodeOrSituation(title: string): boolean {
-  return SITUATION.test(title) || CODE.test(title.trim());
+/** The names a capability lists after its "·": `terms, codeStems` in "Names for vocabulary terms · terms, codeStems". */
+function namesOf(capability: string | undefined): Set<string> {
+  const after = capability?.split("·")[1] ?? "";
+  return new Set(
+    after
+      .split(/,|\band\b|\bor\b/)
+      .map((name) => name.trim())
+      .filter((name) => name !== ""),
+  );
+}
+
+/** A bare word is code only as one of the capability's own names; a call, a dotted name or a backtick writes it as code. */
+function namesCodeOrSituation(
+  title: string,
+  names: ReadonlySet<string>,
+): boolean {
+  const text = title.trim();
+  if (SITUATION.test(text)) return true;
+  if (!CODE.test(text)) return false;
+  return text
+    .split(/,|\s+and\s+|\s+or\s+/)
+    .map((item) => item.trim())
+    .every((item) => /[().`]/.test(item) || names.has(item));
 }
 
 /**
@@ -206,7 +227,11 @@ export function checkShape(
         "depth",
         `the case sits ${levels} levels deep; at most ${MOST_LEVELS}, the leaf counted`,
       );
-    if (!isBuild && second !== undefined && !namesCodeOrSituation(second))
+    if (
+      !isBuild &&
+      second !== undefined &&
+      !namesCodeOrSituation(second, namesOf(capability))
+    )
       found(
         "level-2",
         `"${second}" names neither code nor a situation beginning "when", "given" or "with"`,

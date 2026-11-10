@@ -35,8 +35,9 @@ function xml(
 }
 
 const CAPABILITY = "Opening a pod · openPod()";
+const NAMES = "Names for terms · terms, codeStems";
 const SPEC = {
-  capabilities: [CAPABILITY, "Asking a pod questions · pod.ask()"],
+  capabilities: [CAPABILITY, "Asking a pod questions · pod.ask()", NAMES],
   shaped: ["sample.test.ts"],
   build: ["launch.test.ts"],
   glossary: [{ term: "pod", definition: "one person's records." }],
@@ -73,7 +74,7 @@ describe("checkShape(cases, spec, specPath)", () => {
           "openPod(), sixWords()",
           "is idempotent",
         ],
-        ["sample.test.ts", CAPABILITY, "terms", "has no duplicates"],
+        ["sample.test.ts", NAMES, "terms", "has no duplicates"],
         [
           "sample.test.ts",
           CAPABILITY,
@@ -134,6 +135,36 @@ describe("checkShape(cases, spec, specPath)", () => {
         `${CAPABILITY} › the answers published › returns rows`,
         `${CAPABILITY} › whenever it runs › returns rows`,
       ]);
+    });
+
+    it("reports a bare word the capability does not name as its API", () => {
+      for (const word of ["answers", "files", "Pods", "the", "refusals"])
+        assert.deepEqual(
+          reported(
+            check([["sample.test.ts", NAMES, word, "returns rows"]]).problems,
+            "level-2",
+          ),
+          [`${NAMES} › ${word} › returns rows`],
+          word,
+        );
+    });
+
+    it("accepts a bare word the capability names after its dot, and code written as code", () => {
+      for (const second of [
+        "terms",
+        "codeStems",
+        "terms, codeStems",
+        "`x`",
+        "a.b",
+      ])
+        assert.deepEqual(
+          reported(
+            check([["sample.test.ts", NAMES, second, "returns rows"]]).problems,
+            "level-2",
+          ),
+          [],
+          second,
+        );
     });
   });
 
