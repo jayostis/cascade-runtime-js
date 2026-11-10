@@ -507,6 +507,32 @@ describe("Reading what ClinVar says of a variant · tables.variantClassification
     });
   });
 
+  describe("given an app that read the feed with `tables.check()`, with no starter copies", () => {
+    it("returns `not covered`, with the genes the version states, for a variant of another gene", async () => {
+      const { served, a } = await twoSeries();
+      const app = new Tables({
+        files: new MemoryFiles("urn:test:app/"),
+        feeds: [FEED],
+        vocabulary: parts.vocabulary,
+        newStore: parts.newStore,
+        fetch: fetchOf(served),
+        preference: { [CLASSIFICATIONS]: [A, B] },
+      });
+      await app.check();
+      assert.deepEqual(
+        await app.variantClassification(
+          asked({ gene: "BRCA2", hgvs: ["NM_000059.9:c.1A>G"] }),
+        ),
+        {
+          found: "not covered",
+          series: A,
+          version: a,
+          genes: ["EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"],
+        },
+      );
+    });
+  });
+
   describe("given an index by code, kept beside a version, that was built for other properties", () => {
     let files: MemoryFiles;
     let path: string;
