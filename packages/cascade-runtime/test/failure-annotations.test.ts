@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import annotateFailures from "../test-launcher/failure-annotations.js";
 
-type Event = Parameters<typeof annotateFailures>[0] extends AsyncIterable<
-  infer E
->
-  ? E
-  : never;
+type Event =
+  Parameters<typeof annotateFailures>[0] extends AsyncIterable<infer E>
+    ? E
+    : never;
 
 function fail(
   name: string,
