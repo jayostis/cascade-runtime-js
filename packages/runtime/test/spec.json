@@ -30,7 +30,14 @@
     {
       "term": "accept",
       "definition": "of an adapter, to take a document it can read and convert it. The saved-output Bridge declines a document its step marks `unaccepted.txt`, and accepts one it saved nothing for.",
-      "aliases": ["accepts", "accepted", "unaccepted", "decline", "declines", "declined"]
+      "aliases": [
+        "accepts",
+        "accepted",
+        "unaccepted",
+        "decline",
+        "declines",
+        "declined"
+      ]
     },
     {
       "term": "act",
