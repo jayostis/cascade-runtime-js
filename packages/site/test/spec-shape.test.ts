@@ -178,6 +178,22 @@ describe("Checking that tests read as a specification · checkShape()", () => {
           second,
         );
     });
+
+    it("accepts a Rust path call as code, alone or among others", () => {
+      for (const second of [
+        "Document::from_path(path)",
+        "Type::method()",
+        "Vec::new(), Type::method(a, b) and plain()",
+      ])
+        assert.deepEqual(
+          reported(
+            check([["sample.test.ts", NAMES, second, "returns rows"]]).problems,
+            "level-2",
+          ),
+          [],
+          second,
+        );
+    });
   });
 
   describe("with a leaf that does not begin with a singular present-tense verb", () => {
