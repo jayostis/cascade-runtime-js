@@ -485,10 +485,19 @@ describe("Finding lab changes after a medication starts or stops · findChanges(
     });
 
     it("orders the medications by start of use, and by the day written where no start is stated", () => {
-      assert.deepEqual(
-        timeline.map(({ notation }) => notation),
-        ["333", "444"],
-      );
+      const reversed = timelineIn([
+        written,
+        { ...taken, written: "2024-03-01" },
+      ]);
+      for (const [what, ordered] of [
+        ["given the later one first", timeline],
+        ["given the earlier one first", reversed],
+      ] as const)
+        assert.deepEqual(
+          ordered.map(({ notation }) => notation),
+          ["333", "444"],
+          what,
+        );
     });
   });
 });
