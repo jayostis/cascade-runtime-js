@@ -302,7 +302,7 @@
     },
     {
       "term": "tests page",
-      "definition": "the page of one repository's test results, read as a specification; this is the runtime's.",
+      "definition": "the page of one repository's test results, read as a specification.",
       "aliases": ["tests pages"]
     },
     {

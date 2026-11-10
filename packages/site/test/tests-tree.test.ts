@@ -385,7 +385,7 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
   });
 
   describe("with a test file outside `packages/<name>/test/`", () => {
-    it("shows its cases in one package named for the repository", async () => {
+    it("shows its cases in one package named for the repository, the other cases staying under `runtime`", async () => {
       const outside = NODE.replace(
         /\/home\/runner\/work\/cascade-runtime-js\/cascade-runtime-js\/packages\/site\/dist\/test\/links\.test\.js/g,
         "/home/runner/work/cascade-runtime-js/cascade-runtime-js/scripts/x.test.js",

@@ -194,7 +194,7 @@ describe("Listing the repositories whose tests are shown · suitesOf(), test-sui
       );
     });
 
-    it('throws for a test folder that does not end in "/"', () => {
+    it('throws for a test folder that is not text ending in "/"', () => {
       for (const tests of [3, "host/test"])
         assert.throws(
           () => suitesOf([{ ...VOCABULARY, tests }]),
