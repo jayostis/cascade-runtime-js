@@ -171,7 +171,7 @@ status, depend on the run's date. Judge a fact by meaning, not by the name.
   allergies, two conditions, an immunization, a procedure (E12 in "each import
   and entry writes the scenario's numbers of records, versions, revisions,
   documents and activities"). The app shows what was claimed: that server's one
-  patient profile, as J12 claims it (`claimed` holds it, `unclaimed` is empty).
+  patient profile, as J12 claims it (`claimedProfiles` holds it, `unclaimedProfiles` is empty).
   Sam's three records are in x-e12 unchanged since x-e10: the import writes
   nothing of them and does not claim his profile, so they stay in no view
   (`cascade:PatientNotClaimed` in `record/Why it is in no view`). The matcher joins

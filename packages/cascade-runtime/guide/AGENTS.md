@@ -300,8 +300,8 @@ async function bringIn(folder, options = {}) {
   const imported = await pod.import(folder, { claimProfiles: true, ...options });
   if (imported.refused) await showPerson(`Not brought in: ${imported.refused}`);
   const naming = await recordsBy("profile/Which records name it", "profile");
-  const claimed = imported.claimed.map(({ profile: p }) => [p, naming(p)]);
-  await showPerson({ claimed, unclaimed: imported.unclaimed });
+  const claimedProfiles = imported.claimedProfiles.map(({ profile: p }) => [p, naming(p)]);
+  await showPerson({ claimedProfiles, unclaimedProfiles: imported.unclaimedProfiles });
   return imported;
 }
 
@@ -754,7 +754,7 @@ changes nothing else, or the person judges the pairs one by one.
 ## When an export holds someone else's records
 
 An export can carry another person's records, a child's, under a hospital the
-look shows claimed, and `import` claims that profile too. Only `claimed`, shown
+look shows claimed, and `import` claims that profile too. Only `claimedProfiles`, shown
 to the person, catches it: retract the About of any profile not theirs.
 
 ```js
@@ -762,7 +762,7 @@ const isMine = (profile, naming) =>
   askPerson("Are these your records?", { profile, records: naming(profile) });
 async function confirmClaims(imported) {
   const naming = await recordsBy("profile/Which records name it", "profile");
-  for (const { profile, judgment: claim } of imported?.claimed ?? [])
+  for (const { profile, judgment: claim } of imported?.claimedProfiles ?? [])
     if (!(await isMine(profile, naming)))
       await judged(retraction(pod, claim, "these are someone else's records"));
 }
@@ -773,8 +773,8 @@ await confirmClaims(await bringIn(pickExport()));
 ## The steps run separately
 
 After the yes, `import` with `{ match: false }` only files, and without
-`claim` it claims nothing, so each profile is asked about alone: claim each
-`unclaimed` one with an About, then `match` the import's `activity`; `match()`
+`claimProfiles` it claims nothing, so each profile is asked about alone: claim each
+`unclaimedProfiles` one with an About, then `match` the import's `activity`; `match()`
 rechecks the pod. Then offer each counting join of the matcher's, a pair at a
 time, filing a Different over a pair the person says no to. `replayKit`, behind
 `npm run pod:load`, fills an empty folder with a kit's story on the tables of the
@@ -784,7 +784,7 @@ folder it is in, for tests only.
 const fileOnly = { claimProfiles: false, match: false };
 const filed = await bringIn(pickExport(), fileOnly);
 const naming = await recordsBy("profile/Which records name it", "profile");
-for (const profile of filed?.unclaimed ?? [])
+for (const profile of filed?.unclaimedProfiles ?? [])
   if (await isMine(profile, naming)) await judged(about(pod, profile));
 if (filed?.activity) await pod.match(filed.activity);
 await pod.match();

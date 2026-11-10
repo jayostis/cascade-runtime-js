@@ -434,7 +434,7 @@ describe("Looking into an export before importing · pod.look()", () => {
     fromBytes = await priya.look(await heldExport(download, (bytes) => bytes));
     const imported = await priya.import(download, { match: false });
     stored = await priya.look(download);
-    for (const profile of imported.unclaimed)
+    for (const profile of imported.unclaimedProfiles)
       await priya.judge(about(priya, profile));
     claimed = await priya.look(download);
     const notXml = join(pods, "broken.xml");
@@ -572,11 +572,11 @@ describe("Importing a health export · pod.import()", () => {
   });
 
   describe("when nobody has claimed the export's patient", () => {
-    it("stores the export and returns the patient in `unclaimed`", () => {
+    it("stores the export and returns the patient in `unclaimedProfiles`", () => {
       assert.ok(imported.activity);
       assert.ok(imported.wrote.length > 0);
-      assert.deepEqual(imported.claimed, []);
-      assert.deepEqual(imported.unclaimed, [profile]);
+      assert.deepEqual(imported.claimedProfiles, []);
+      assert.deepEqual(imported.unclaimedProfiles, [profile]);
     });
 
     it("shows none of the export's records in answers", () => {
@@ -594,7 +594,7 @@ describe("Importing a health export · pod.import()", () => {
   });
 
   describe("with `claimProfiles: true`, which claims the export's patient for the owner", () => {
-    it("records one claim for each unclaimed patient and returns it in `claimed`", async () => {
+    it("records one claim for each unclaimed patient and returns it in `claimedProfiles`", async () => {
       const { e2, e4, e6 } = (await alexPod()).imported;
       for (const [name, done, expected] of [
         ["x-e2", e2, [await profileOf("J1")]],
@@ -602,11 +602,11 @@ describe("Importing a health export · pod.import()", () => {
         ["x-e6, whose patients are claimed by then", e6, []],
       ] as const) {
         assert.deepEqual(
-          done.claimed.map((claim) => claim.profile),
+          done.claimedProfiles.map((claim) => claim.profile),
           expected,
           name,
         );
-        assert.deepEqual(done.unclaimed, [], name);
+        assert.deepEqual(done.unclaimedProfiles, [], name);
       }
     });
 
