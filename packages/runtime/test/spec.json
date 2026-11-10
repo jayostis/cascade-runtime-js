@@ -9,10 +9,12 @@
     "Writing a step's files · CorePod.import(), CorePod.open(), CorePod.judge()",
     "Reading a pod between steps · CorePod.dataset(), CorePod.revision(), CorePod.close()",
     "Deriving a pod's state with the vocabulary's queries · Derivations.derive(), entries()",
+    "Building a pod's views, labels and type index · CorePodOptions.build, vocabularyDerive(), podDataset()",
     "Opening a pod with tables other than the ones it was matched with · CorePod.open(), Performed.unheld, CorePod.unheldTableVersions()",
     "Refusing a rule list a run cannot trust · matcherRules(), originsJoining()",
     "Binding a comparison query to a run's records · boundToRecords(), boundToPairs()",
     "Running the matcher on a step's records alone · CorePod.match(), readEveryRecord()",
+    "Matching a pod whose files repeat a statement · CorePod.match()",
     "Reading entries as of a record's arrival · arrivalOrder(), ArrivedEntries",
     "Reading reference tables from a folder · References.of(), References.rows(), tableTerms(), linesAbout()",
     "Reading only the rows a pod's codes find · References.rows(), rowsByCode()",
@@ -231,6 +233,11 @@
       "aliases": ["kept build"]
     },
     {
+      "term": "labels",
+      "definition": "the file the build writes that gives each thing in a pod (a record, a version, a revision, a document, a view entry, the subject) one name a person can read.",
+      "aliases": ["labels file"]
+    },
+    {
       "term": "layout",
       "definition": "the vocabulary's file that says in which folder of a pod each kind of thing is filed."
     },
@@ -300,6 +307,11 @@
       "term": "phrase",
       "definition": "one wording of a step that `runtime/steps.md` defines, such as \"the pod holds no revision\".",
       "aliases": ["phrases"]
+    },
+    {
+      "term": "placeholder",
+      "definition": "the name a view entry has in a pod's derived state, `urn:cascade:entry:` and a hash, until the build names the entry in its view.",
+      "aliases": ["placeholders"]
     },
     {
       "term": "pod",
@@ -485,6 +497,10 @@
       "vocabulary": "https://www.w3.org/TR/turtle/"
     },
     {
+      "term": "type index",
+      "definition": "the file in which a pod lists, for each class of thing, the file or folder that holds it, so that another app can find the pod's views."
+    },
+    {
       "term": "unheld",
       "definition": "of a table version a pod names: not among the tables the pod is opened with."
     },
@@ -533,6 +549,7 @@
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "bridge-package.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
@@ -544,6 +561,7 @@
     "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
+    "pod-build.test.ts",
     "references.test.ts",
     "replay.test.ts",
     "resolver.test.ts",
@@ -554,12 +572,15 @@
     "wasm-bridge.test.ts"
   ],
   "build": [
-    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs"
+    "The developer story's scripts, run from a fresh folder · developer-story/allergies.mjs, developer-story/medications.mjs",
+    "The Bridge package a run from a checkout uses · findBridgePackage()",
+    "Picking the Bridge package for a CI run · pickBuild(), latestBuild(), keptPick(), runOf(), readerOf()"
   ],
   "randomOrder": [
     "arrivals.test.ts",
     "arrived-entries.test.ts",
     "bound-records.test.ts",
+    "bridge-package.test.ts",
     "conformance.test.ts",
     "core-pod.test.ts",
     "derive.test.ts",
@@ -571,6 +592,7 @@
     "load-adapter.test.ts",
     "matcher.test.ts",
     "open.test.ts",
+    "pod-build.test.ts",
     "references.test.ts",
     "replay.test.ts",
     "resolver.test.ts",
