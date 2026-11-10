@@ -61,10 +61,25 @@ describe("checkShape(cases, spec, specPath)", () => {
     it("reports nothing and counts the cases it checked", () => {
       const report = check([
         ["sample.test.ts", CAPABILITY, "openPod()", "returns an address"],
-        ["sample.test.ts", CAPABILITY, "when the folder is empty", "holds nothing"],
-        ["sample.test.ts", CAPABILITY, "openPod(), sixWords()", "is idempotent"],
+        [
+          "sample.test.ts",
+          CAPABILITY,
+          "when the folder is empty",
+          "holds nothing",
+        ],
+        [
+          "sample.test.ts",
+          CAPABILITY,
+          "openPod(), sixWords()",
+          "is idempotent",
+        ],
         ["sample.test.ts", CAPABILITY, "terms", "has no duplicates"],
-        ["sample.test.ts", CAPABILITY, "given a secret", "throws Refusal for none"],
+        [
+          "sample.test.ts",
+          CAPABILITY,
+          "given a secret",
+          "throws Refusal for none",
+        ],
         ["sample.test.ts", CAPABILITY, "pod.ask()", "ends the run"],
         ["sample.test.ts", CAPABILITY, "returns an address"],
       ]);
@@ -157,7 +172,7 @@ describe("checkShape(cases, spec, specPath)", () => {
     });
 
     it("reports a leaf that begins with a capital, a digit or a quote", () => {
-      for (const title of ["Returns rows", "2 rows come back", '"a" is kept'])
+      for (const title of ["Returns rows", "2 rows come back", "'a' is kept"])
         assert.equal(leaf(title).length, 1, title);
     });
 
@@ -168,6 +183,7 @@ describe("checkShape(cases, spec, specPath)", () => {
         "does not return rows",
         "goes nowhere",
         "throws Refusal for none",
+        "throws, naming the reader, when it fails",
         "returns rows",
       ])
         assert.deepEqual(leaf(title), [], title);
@@ -197,6 +213,17 @@ describe("checkShape(cases, spec, specPath)", () => {
       assert.deepEqual(reported(report.problems, "verb"), [
         "Anything at all › should be left alone",
       ]);
+    });
+  });
+
+  describe("with a capability listed under build", () => {
+    it("does not require it to be a listed capability", () => {
+      const spec = { ...SPEC, build: ["Packaging"] };
+      const report = check(
+        [["sample.test.ts", "Packaging", "returns rows"]],
+        spec,
+      );
+      assert.deepEqual(report.problems, []);
     });
   });
 
@@ -299,5 +326,18 @@ describe("node scripts/spec-shape.mjs <junit> <spec.json>", () => {
     const done = run([["flat.test.ts", "should"]], { about: "x" });
     assert.equal(done.status, 0);
     assert.match(done.stdout, /skipped/);
+  });
+
+  it("exits 2 for a report that is not JUnit, and for a missing argument", () => {
+    const junit = join(folder, "not-junit.xml");
+    writeFileSync(junit, "<html></html>");
+    const spec = join(folder, "spec.json");
+    writeFileSync(spec, JSON.stringify(SPEC));
+    for (const args of [[junit, spec], [junit], []]) {
+      const done = spawnSync(process.execPath, [CLI, ...args], {
+        encoding: "utf8",
+      });
+      assert.equal(done.status, 2, args.join(" "));
+    }
   });
 });
