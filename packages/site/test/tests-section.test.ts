@@ -1290,7 +1290,7 @@ const packagesOf = (markup: string): string[] =>
     ([, name]) => name ?? "",
   );
 
-const LISTING = { ...RUNTIME, packages: ["cascade-runtime", "site"] } as Suite;
+const LISTING: Suite = { ...RUNTIME, packages: ["cascade-runtime", "site"] };
 
 test("a suite that lists its packages keeps the order, and refuses a list that is not names", () => {
   assert.deepEqual(

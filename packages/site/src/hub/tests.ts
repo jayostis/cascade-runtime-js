@@ -79,9 +79,19 @@ export function suitesOf(raw: unknown): Suite[] {
       throw new Error(
         `suite ${at + 1} of the list names the tests ${String(tests)}, which is not a folder ending in /`,
       );
+    const packages = given["packages"];
+    if (
+      packages !== undefined &&
+      (!Array.isArray(packages) ||
+        !packages.every((name) => typeof name === "string" && name !== ""))
+    )
+      throw new Error(
+        `suite ${at + 1} of the list names the packages ${JSON.stringify(packages)}, which is not a list of package names`,
+      );
     return {
       repository,
       ...(tests === undefined ? {} : { tests }),
+      ...(packages === undefined ? {} : { packages: packages as string[] }),
       title: text("title"),
       about: text("about"),
       workflow: text("workflow"),
@@ -663,10 +673,16 @@ function packageSections(
   suite: Suite,
   run: TestRun,
 ): Html {
+  const listed = suite.packages ?? [];
   const order = [...byPackage(cases, suite)].sort(
     ([a, held], [b, other]) =>
       Number(other.some((c) => c.result === "failed")) -
-        Number(held.some((c) => c.result === "failed")) || before(a, b),
+        Number(held.some((c) => c.result === "failed")) ||
+      (rankIn(listed, a) === rankIn(listed, b)
+        ? before(a, b)
+        : rankIn(listed, a) < rankIn(listed, b)
+          ? -1
+          : 1),
   );
   return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), specFor(folder, packages, suite, run), suite, run))}`;
 }
