@@ -5,6 +5,7 @@ import {
 import { answerSignIn } from "@the-cascade-protocol/sandbox/testing";
 import {
   connect,
+  type Connection,
   type ConnectOptions,
   DEMO_PLAN,
   type DirectoryRow,
@@ -110,12 +111,18 @@ export interface Setup {
   readonly signal?: AbortSignal;
 }
 
-/** Signs in to the demo hospital as the patient and pulls with `DEMO_PLAN`, unless the setup says otherwise. */
-export async function pulled(
+/** Whether the request is a search for the type, as the plan makes it: for the patient's records of that type. */
+export function isSearch(request: Request, type: string): boolean {
+  const url = new URL(request.url);
+  return url.pathname.endsWith(`/${type}`) && url.searchParams.has("patient");
+}
+
+/** Signs in to the demo hospital as the patient, and gives the connection and what the test's `fetch` saw. */
+export async function signedIn(
   at: Loaded,
   patient: string,
   setup: Setup = {},
-): Promise<{ pull: Pull; seen: Seen; report?: SavedConnect }> {
+): Promise<{ connection: Connection; seen: Seen }> {
   const seen: Seen = { requests: [], secrets: new Set() };
   const fetch = routed(
     [
@@ -138,6 +145,20 @@ export async function pulled(
         ...setup.connectOptions,
       },
     );
+    return { connection, seen };
+  } catch (error) {
+    throw Object.assign(error as object, { seen });
+  }
+}
+
+/** Signs in to the demo hospital as the patient and pulls with `DEMO_PLAN`, unless the setup says otherwise. */
+export async function pulled(
+  at: Loaded,
+  patient: string,
+  setup: Setup = {},
+): Promise<{ pull: Pull; seen: Seen; report?: SavedConnect }> {
+  const { connection, seen } = await signedIn(at, patient, setup);
+  try {
     setup.between?.();
     const result = await pull(connection, setup.plan ?? DEMO_PLAN, {
       limits: { ...FAST, ...setup.limits },

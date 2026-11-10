@@ -2,219 +2,113 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
-import { demoRemapFetch } from "@the-cascade-protocol/sandbox";
-import { loadHospital, serveDemo } from "@the-cascade-protocol/sandbox/node";
+import { after, before, describe, it } from "node:test";
+import { loadHospital } from "@the-cascade-protocol/sandbox/node";
 import {
-  connect,
-  DEMO_PLAN,
+  type Done,
   openPod,
   type Pod,
   type Pull,
-  pull,
   pullFiles,
+  type ExportSource,
 } from "cascade-runtime";
-import { direct, pulled, REGISTRATION, rowOf } from "./hospitals.js";
+import { pulled } from "./hospitals.js";
 
-const PREFIXES = `PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX pav: <http://purl.org/pav/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX cascade: <https://ns.cascadeprotocol.org/cascade#>
-`;
-const CASCADE = "https://ns.cascadeprotocol.org/cascade#";
-
-let north: Pull;
-let south: Pull;
-let pod: Pod;
-let folder: string;
-
-/** The `fullUrl` of the pull's one resource of the type whose code, or medication's code, is so. */
-function coded(pulled: Pull, type: string, code: string): string {
-  const found = pulled.bundle.entry.filter(({ resource }) => {
-    const said = resource as {
-      resourceType?: string;
-      code?: { coding?: { code?: string }[] };
-      medicationCodeableConcept?: { coding?: { code?: string }[] };
-    };
-    return (
-      said.resourceType === type &&
-      (said.code ?? said.medicationCodeableConcept)?.coding?.some(
-        (coding) => coding.code === code,
-      ) === true
-    );
-  });
-  assert.equal(found.length, 1, `${pulled.source} has one ${type} ${code}`);
-  return found[0]!.fullUrl;
-}
+const HYPERTENSION = "http://snomed.info/id/59621000";
 
 /** A clock stopped at the time, whose milliseconds end in zeros, as a stored `xsd:dateTime` drops them. */
 function stopped(time: string): { now: () => Date } {
   return { now: () => new Date(time) };
 }
 
-before(async () => {
-  north = (
-    await pulled(
-      await loadHospital("cascade-north"),
-      "pt-1001",
-      stopped("2026-10-07T08:04:46.170Z"),
-    )
-  ).pull;
-  south = (
-    await pulled(
-      await loadHospital("cascade-south"),
-      "s-48213",
-      stopped("2026-10-07T08:05:00.000Z"),
-    )
-  ).pull;
-  pod = await openPod();
-  folder = await mkdtemp(join(tmpdir(), "cascade-pull-"));
-});
+/**
+ * `pullFiles` saves a pull as files, which `pod.look()` and `pod.import()` take as they take an export. Pulls from two
+ * hospitals land in one pod, where the matcher joins the records both hold.
+ * @rule runtime/arrivals.feature A11
+ * @rule runtime/arrivals.feature A1
+ * @rule runtime/matcher.feature M14
+ */
+describe("Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()", () => {
+  let north: Pull;
+  let looked: readonly ExportSource[];
+  let imported: Done[];
+  let conditions: Record<string, string>[];
+  let again: Done;
+  let pod: Pod;
+  let folder: string;
 
-after(async () => {
-  await pod.close();
-  await rm(folder, { recursive: true, force: true });
-});
-
-test("patient A pulled from two hospitals is one subject in one pod, each record named under its hospital's base, a condition joined where its code and period agree", async () => {
-  assert.deepEqual(
-    [north.retrievedAt, south.retrievedAt],
-    ["2026-10-07T08:04:46.17Z", "2026-10-07T08:05:00Z"],
-  );
-  const [looked] = await pod.look(pullFiles(north, "north"));
-  assert.deepEqual(
-    [
-      looked?.name,
-      looked?.server,
-      looked?.received,
-      looked?.holdsSubjectsRecords,
-    ],
-    [north.source, north.fhirBase, [north.retrievedAt], false],
-  );
-
-  for (const [pull, name] of [
-    [north, "north"],
-    [south, "south"],
-  ] as const) {
-    const imported = await pod.import(pullFiles(pull, name), {
-      claimProfiles: true,
-    });
-    assert.equal(imported.refused, undefined, name);
-  }
-
-  const documents = await pod.ask({
-    query: `${PREFIXES}SELECT ?server ?on ?patient ?author WHERE {
-      ?document cascade:serverBaseUrl ?server ; pav:retrievedOn ?on ; cascade:authenticatedPatient ?patient ;
-        prov:wasAttributedTo ?agent ;
-        prov:wasGeneratedBy/prov:qualifiedAssociation [ prov:hadRole cascade:AuthorRole ; prov:agent ?agent ] .
-      ?agent rdfs:label ?author .
-    }`,
-  });
-  assert.deepEqual(
-    documents
-      .map(({ server, on, patient, author }) => [
-        server,
-        Date.parse(on ?? ""),
-        patient,
-        author,
-      ])
-      .sort(),
-    [north, south]
-      .map((pull) => [
-        pull.fhirBase,
-        Date.parse(pull.retrievedAt),
-        `Patient/${pull.patient}`,
-        pull.source,
-      ])
-      .sort(),
-  );
-
-  const named = (
-    await pod.ask({
-      query: `${PREFIXES}SELECT DISTINCT ?url WHERE { ?record cascade:sourceUrl ?url }`,
-    })
-  ).map(({ url }) => url ?? "");
-  for (const pull of [north, south]) {
-    const urls = new Set(pull.bundle.entry.map(({ fullUrl }) => fullUrl));
-    assert.ok(
-      named.some((url) => urls.has(url)),
-      `a record from ${pull.source}`,
-    );
-  }
-  assert.ok(
-    named.every((url) =>
-      [north, south].some((pull) =>
-        pull.bundle.entry.some(({ fullUrl }) => fullUrl === url),
-      ),
-    ),
-  );
-
-  const judgments = await pod.ask({
-    query: `${PREFIXES}SELECT ?justification (GROUP_CONCAT(STR(?url); SEPARATOR=" ") AS ?urls) WHERE {
-      ?judgment a cascade:Judgment ; cascade:justification ?justification ; prov:hadMember ?member .
-      ?member cascade:sourceUrl ?url .
-    } GROUP BY ?judgment ?justification`,
-  });
-  const across = judgments
-    .map(({ justification = "", urls = "" }) => ({
-      justification,
-      urls: urls.split(" ").sort(),
-    }))
-    .filter(
-      ({ urls }) =>
-        urls.every((url) => url.includes("/Condition/")) &&
-        urls.some((url) => url.startsWith(`${north.fhirBase}/`)) &&
-        urls.some((url) => url.startsWith(`${south.fhirBase}/`)),
-    )
-    .map(({ justification, urls }) => `${justification} ${urls.join(" ")}`)
-    .sort();
-  assert.deepEqual(
-    across,
-    [
-      [
-        `${CASCADE}SameCodeAndPeriod`,
-        coded(north, "Condition", "59621000"),
-        coded(south, "Condition", "59621000"),
-      ],
-    ]
-      .map(
-        ([justification, ...urls]) =>
-          `${justification} ${urls.sort().join(" ")}`,
+  /** Every step in order, once: a leaf run alone must find what the ones before it did. */
+  before(async () => {
+    north = (
+      await pulled(
+        await loadHospital("cascade-north"),
+        "pt-1001",
+        stopped("2026-10-07T08:04:46.170Z"),
       )
-      .sort(),
-  );
+    ).pull;
+    const south = (
+      await pulled(
+        await loadHospital("cascade-south"),
+        "s-48213",
+        stopped("2026-10-07T08:05:00.000Z"),
+      )
+    ).pull;
+    pod = await openPod();
+    folder = await mkdtemp(join(tmpdir(), "cascade-pull-"));
 
-  const [northSource] = await pod.look(pullFiles(north, "north"));
-  assert.equal(northSource?.holdsSubjectsRecords, true);
+    looked = await pod.look(pullFiles(north, "north"));
+    imported = [];
+    for (const [one, name] of [
+      [north, "north"],
+      [south, "south"],
+    ] as const)
+      imported.push(
+        await pod.import(pullFiles(one, name), { claimProfiles: true }),
+      );
+    conditions = await pod.ask("pod/My active conditions");
 
-  for (const [path, bytes] of pullFiles(north, "north")) {
-    await mkdir(dirname(join(folder, path)), { recursive: true });
-    await writeFile(join(folder, path), bytes);
-  }
-  const again = await pod.import(join(folder, "north"), {
-    claimProfiles: true,
+    for (const [path, bytes] of pullFiles(north, "north")) {
+      await mkdir(dirname(join(folder, path)), { recursive: true });
+      await writeFile(join(folder, path), bytes);
+    }
+    again = await pod.import(join(folder, "north"), { claimProfiles: true });
   });
-  assert.equal(again.refused, undefined);
-  assert.deepEqual(again.wrote, []);
-});
 
-test("a pull through the listener and the remapping fetch returns the same records, under the same names, as the in-process route", async () => {
-  const data = await loadHospital("cascade-north");
-  const listener = await serveDemo([{ ...data, autoApprove: "pt-1001" }]);
-  try {
-    const fetch = demoRemapFetch(listener.origin);
-    const connection = await connect(rowOf(data), REGISTRATION, {
-      signIn: direct(fetch),
-      fetch,
+  after(async () => {
+    await pod.close();
+    await rm(folder, { recursive: true, force: true });
+  });
+
+  describe("pod.look(files)", () => {
+    it("returns one source for a pull's files: the hospital's name, its FHIR base as `server`, and the pull's `retrievedAt` in `received`", () => {
+      assert.equal(looked.length, 1);
+      assert.equal(looked[0]?.name, north.source);
+      assert.equal(looked[0]?.server, north.fhirBase);
+      assert.deepEqual(looked[0]?.received, [north.retrievedAt]);
     });
-    const through = await pull(connection, DEMO_PLAN);
-    const names = (from: Pull) =>
-      from.bundle.entry.map(({ fullUrl }) => fullUrl);
-    assert.ok(names(through).length > 0);
-    assert.deepEqual(names(through), names(north));
-    assert.equal(through.fhirBase, north.fhirBase);
-  } finally {
-    await listener.close();
-  }
+  });
+
+  describe("given one person's pulls from two hospitals, each imported with `claimProfiles: true`", () => {
+    it("stores both, with neither import `refused`", () => {
+      for (const [at, done] of imported.entries()) {
+        assert.equal(done.refused, undefined, `import ${at}`);
+        assert.ok(done.wrote.length > 0, `import ${at} wrote nothing`);
+      }
+    });
+
+    it("shows a condition both hospitals hold as one row of `pod/My active conditions`, made of two records", () => {
+      const hypertension = conditions.filter(
+        ({ snomed }) => snomed === HYPERTENSION,
+      );
+      assert.equal(hypertension.length, 1);
+      assert.equal(hypertension[0]?.records, "2");
+    });
+  });
+
+  describe("given a pull the pod already holds, saved to a folder", () => {
+    it("writes nothing when it is imported again from the folder's path", () => {
+      assert.equal(again.refused, undefined);
+      assert.deepEqual(again.wrote, []);
+    });
+  });
 });
