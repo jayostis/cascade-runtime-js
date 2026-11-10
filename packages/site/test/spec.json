@@ -339,15 +339,6 @@
       "aliases": ["vocabulary terms", "terms of the vocabulary"]
     }
   ],
-  "shaped": [
-    "tests-page.test.ts",
-    "tests-tree.test.ts",
-    "tests-glossary.test.ts",
-    "junit.test.ts",
-    "ctrf.test.ts",
-    "junit-reporter.test.ts",
-    "spec-shape.test.ts"
-  ],
   "build": [
     "The evals pages as a section of the site · evalsSection",
     "The suite list as checked in · test-suites.json"
@@ -359,6 +350,21 @@
     "junit.test.ts",
     "ctrf.test.ts",
     "junit-reporter.test.ts",
-    "spec-shape.test.ts"
+    "spec-shape.test.ts",
+    "sections.test.ts",
+    "find-your-way.test.ts",
+    "first-pages.test.ts",
+    "api-page.test.ts",
+    "term-reference.test.ts",
+    "spec-pages.test.ts",
+    "decision-notes.test.ts",
+    "conformance.test.ts",
+    "adapters.test.ts",
+    "pod-site.test.ts",
+    "shown.test.ts",
+    "agent-files.test.ts",
+    "links.test.ts",
+    "addresses.test.ts",
+    "markdown.test.ts"
   ]
 }
