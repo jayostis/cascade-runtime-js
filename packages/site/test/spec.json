@@ -1,0 +1,349 @@
+{
+  "about": "The generator of Cascade's documentation site: the pages of a sample pod, the specification, the term reference, and the unit-test pages, of which this is one. Nothing installs it: it runs when the site is built, and this page is for whoever changes the site or sends it a test report.",
+  "capabilities": [
+    "Building a site from sections · buildTree()",
+    "The front page · hubFiles()",
+    "A newcomer's first pages · startSection, examplesSection, trySection",
+    "The API page · apiSection",
+    "The term reference · termReference(), termsSection",
+    "The specification's pages · specPages()",
+    "Decision notes as pages · specSection",
+    "Warnings about rules and decision notes · specPages().warnings, rulesNamedIn(), filesNamed()",
+    "Conformance results on the specification · readSpecReport(), specSection",
+    "The adapters page and an adapter's crosswalk · adaptersSection",
+    "The pages of a pod · Site.build(), Site.files()",
+    "Where a pod's pages link · Site.files(), Site.page(), viewRules()",
+    "Text, times and codes as a page shows them · markup, shown(), code(), codePage()",
+    "Files for an agent · agentFiles(), llms.txt, index.json, AGENTS.md",
+    "Linking a vocabulary term, a rule or a decision note · termHref(), ruleHref(), noteHref(), noteLinkOf()",
+    "An address for each page of a pod's site · addressesOf(), sharedPageOf()",
+    "Rendering Markdown as a page · renderMarkdown()",
+    "Checking a site's links · scripts/link-check.mjs",
+    "A page of test results for each repository · testsSection",
+    "Listing the repositories whose tests are shown · suitesOf(), test-suites.json",
+    "Packages, capabilities and situations as a tree · testsSection, spec.json",
+    "Linking a capability to the rules it reaches · @rule",
+    "A package's glossary on its page · glossaryOf(), Links",
+    "The summary bar and its controls · testsSection",
+    "Reading a report from each test runner · readJunit()",
+    "Writing doc comments into a report · scripts/junit-reporter.mjs",
+    "Failures node:test leaves out of its report · declaredFailures()",
+    "Test results for an agent · <repository>.ctrf.json",
+    "Checking that tests read as a specification · checkShape()",
+    "Checking a package's tests from the command line · scripts/spec-shape.mjs"
+  ],
+  "glossary": [
+    {
+      "term": "about line",
+      "definition": "the one sentence, under a package's name on its tests page, that says what the package is and who calls it; it is the `about` of the package's `spec.json`."
+    },
+    {
+      "term": "accounting",
+      "definition": "an adapter's own list of every source path of its format, each with a verdict: carried into a record, and as which vocabulary term, or not carried, and why."
+    },
+    {
+      "term": "adapter",
+      "definition": "the program that converts an export into records; `import` loads it on first use.",
+      "aliases": ["adapters"]
+    },
+    {
+      "term": "build section",
+      "definition": "the closed section at the end of a package on a tests page, headed \"Build and packaging\", for checks of how the package is built; it is not part of the specification.",
+      "aliases": ["build check", "build checks"]
+    },
+    {
+      "term": "C-CDA",
+      "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
+    },
+    {
+      "term": "capability",
+      "definition": "one thing a package does for whoever calls it, named as a developer would search for it, with its API after a dot: the top level of a tests page, and the outermost `describe` of a test file.",
+      "aliases": ["capabilities"]
+    },
+    {
+      "term": "case",
+      "definition": "one test as a report records it: its name, whether it passed, failed or was skipped, and how long it took. On a tests page a case is a leaf: it completes the sentence \"it …\".",
+      "aliases": ["cases", "leaf"]
+    },
+    {
+      "term": "Choice row",
+      "definition": "one line of the Choice table of a decision note: a thing that was decided, the prior art, and what the vocabulary does, which names the rule the decision led to.",
+      "aliases": ["Choice rows"]
+    },
+    {
+      "term": "code system",
+      "aliases": ["code systems"],
+      "definition": "a published list of codes for one kind of thing, such as RxNorm for medicines, LOINC for lab tests and SNOMED CT for clinical findings."
+    },
+    {
+      "term": "conformance results",
+      "definition": "what one run of the vocabulary's features against a runtime found: for each example, passed, failed or not run. The run writes them in EARL."
+    },
+    {
+      "term": "crosswalk",
+      "definition": "the page the site makes from an adapter's accounting: each source path beside the vocabulary term it is carried as, and the source paths that are not carried.",
+      "aliases": ["crosswalks"]
+    },
+    {
+      "term": "CTRF",
+      "definition": "Common Test Report Format, an open JSON format for test results (ctrf.io); the site writes each suite's results in it beside the page, for an agent."
+    },
+    {
+      "term": "decision note",
+      "definition": "a Markdown file in the vocabulary's `decisions/` folder that settles one design question: a Choice table of what was decided, and a Why section whose paragraphs each give the reason for a Choice row. A rule names the note and the Choice row that ruled it.",
+      "aliases": ["decision notes"]
+    },
+    {
+      "term": "digest",
+      "definition": "the SHA-256 hash of a text, written in hexadecimal; a few of its first digits tell apart two things of one name."
+    },
+    {
+      "term": "doc comment",
+      "definition": "a `/** … */` comment directly above a `describe` or a test; the tests page shows it as that level's description.",
+      "aliases": ["doc comments", "description", "descriptions"]
+    },
+    {
+      "term": "Docs block",
+      "definition": "the `## Docs` section a repository's README opens with: links into the site, the front page first.",
+      "aliases": ["Docs blocks"]
+    },
+    {
+      "term": "EARL",
+      "definition": "Evaluation and Report Language, a W3C format for test results as Turtle; conformance results are written in it.",
+      "vocabulary": "https://www.w3.org/TR/EARL10-Schema/"
+    },
+    {
+      "term": "example",
+      "definition": "under a rule in a feature, one worked scenario: a pod made a certain way, and what must then be true of it. A conformance run passes or fails each.",
+      "aliases": ["examples"]
+    },
+    {
+      "term": "feature",
+      "definition": "a file of the vocabulary that states its rules on one subject, each with examples, in Gherkin, such as `runtime/arrivals.feature`; a kit has one of its own.",
+      "aliases": ["features"]
+    },
+    {
+      "term": "FHIR",
+      "definition": "Fast Healthcare Interoperability Resources: HL7's standard for health records as JSON.",
+      "vocabulary": "https://hl7.org/fhir/R4/"
+    },
+    {
+      "term": "finisher",
+      "definition": "a function the site's build calls last, with every file the sections wrote, which returns more files made from them, such as an index.",
+      "aliases": ["finishers"]
+    },
+    {
+      "term": "front page",
+      "definition": "the site's `index.html`: a \"Find your way\" table of what a reader may have come for, and a list of the project's repositories."
+    },
+    {
+      "term": "gap",
+      "definition": "a named reason a source path is not carried, or is carried in part, such as \"only the first note is carried\"; an adapter lists its gaps in a file of its own.",
+      "aliases": ["gaps"]
+    },
+    {
+      "term": "glossary",
+      "definition": "the words a package's tests use in one sense, each with a one-sentence definition, listed in the package's `spec.json` and shown under its about line; a term may have aliases, other forms of the word that link to the same definition.",
+      "aliases": ["term", "terms", "alias", "aliases"]
+    },
+    {
+      "term": "guide",
+      "definition": "`guide/AGENTS.md` of the cascade-runtime package: the document for a developer, or a coding agent, who is building an app on a pod. The site shows it as the API page and copies it as `AGENTS.md`."
+    },
+    {
+      "term": "IRI",
+      "definition": "a web-style identifier, such as `https://ns.cascadeprotocol.org/cascade#allergen`; every vocabulary term, record and view entry is named by one.",
+      "aliases": ["IRIs"]
+    },
+    {
+      "term": "JUnit",
+      "definition": "an XML format for test results that most test runners can write; each runner fills it in its own way."
+    },
+    {
+      "term": "kit",
+      "definition": "a story and the exports it uses, which the vocabulary carries for testing, such as `alex-rivera`.",
+      "aliases": ["kits"]
+    },
+    {
+      "term": "lens",
+      "definition": "a choice of which judgments count when a question is answered: `everyday` is the default, and `export` is stricter, for records sent elsewhere.",
+      "aliases": ["lenses"]
+    },
+    {
+      "term": "level",
+      "definition": "a heading of a tests page that holds cases or other levels: a capability, or a situation under it. In a test file it is a `describe`.",
+      "aliases": ["levels"]
+    },
+    {
+      "term": "llms.txt",
+      "definition": "a Markdown file at a site's root, in the form llmstxt.org proposes, that lists the site's main links in groups for a language model to read."
+    },
+    {
+      "term": "matcher",
+      "definition": "the part of a runtime that compares a pod's records and writes a Same for those its rules find to be one thing, such as one allergy reported by two sources.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#CascadeMatcher",
+      "aliases": ["matchers"]
+    },
+    {
+      "term": "named question",
+      "definition": "a query the vocabulary carries under a name, such as `pod/My active allergies`.",
+      "aliases": ["named questions"]
+    },
+    {
+      "term": "namespace",
+      "definition": "the shared start of the IRIs of one vocabulary, such as `http://xmlns.com/foaf/0.1/`, which a prefix such as `foaf:` stands for.",
+      "aliases": ["namespaces", "prefix", "prefixes"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "record",
+      "definition": "one thing said about a person's health, such as an allergy, a medication or a lab result.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#Record",
+      "aliases": ["records"]
+    },
+    {
+      "term": "report",
+      "definition": "the JUnit file one run of a repository's tests wrote; the site reads the newest from `main`."
+    },
+    {
+      "term": "resource",
+      "definition": "one record in FHIR, named by its type and its id, such as `Observation/ldl-1`.",
+      "aliases": ["resources"]
+    },
+    {
+      "term": "row",
+      "definition": "a line of the front page's \"Find your way\" table: one thing a reader may have come for, such as \"build an app\", and the links that serve it. Each section says which row its links go in.",
+      "aliases": ["rows"]
+    },
+    {
+      "term": "rule",
+      "definition": "a numbered requirement in the vocabulary that every runtime must meet, such as A14 in `runtime/arrivals.feature`; a heading on this page links the rules its API reaches.",
+      "aliases": ["rules"]
+    },
+    {
+      "term": "runner",
+      "definition": "the program that runs a repository's tests and writes the report: node:test, pytest, vitest or nextest.",
+      "aliases": ["runners", "test runner"]
+    },
+    {
+      "term": "runtime",
+      "definition": "software that reads and writes pods as the vocabulary requires; this package is one.",
+      "aliases": ["runtimes"]
+    },
+    {
+      "term": "section",
+      "definition": "one part of the site, such as the term reference or the specification: the files it writes, among them its entry page, and the links it lists for the front page.",
+      "aliases": ["sections"]
+    },
+    {
+      "term": "shapes",
+      "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
+      "vocabulary": "https://www.w3.org/TR/shacl/",
+      "aliases": ["shape"]
+    },
+    {
+      "term": "situation",
+      "definition": "the second level of a tests page: the function under test, written as code, or a circumstance beginning \"when\", \"given\" or \"with\".",
+      "aliases": ["situations"]
+    },
+    {
+      "term": "slug",
+      "definition": "a name made fit for an address: lowercase letters and digits, with one hyphen for each run of anything else.",
+      "aliases": ["slugs"]
+    },
+    {
+      "term": "source path",
+      "definition": "where a value sits in a record of a source format, written as a path such as `/code/coding/code` in FHIR.",
+      "aliases": ["source paths"]
+    },
+    {
+      "term": "spec.json",
+      "definition": "the file `test/spec.json` of a package: its about line, its capabilities in the order the page shows them, its glossary, and which capabilities are build checks."
+    },
+    {
+      "term": "specification",
+      "definition": "the vocabulary's features, read as the rules a pod and a runtime must meet; the site shows them under `spec/`."
+    },
+    {
+      "term": "starter kit",
+      "definition": "cascade-starter-kit: the app template that `create-cascade-app` makes, and the `try/` page that runs one in a browser."
+    },
+    {
+      "term": "suite",
+      "definition": "one repository's tests, as `packages/site/test-suites.json` lists them: where its newest report is found and which runner wrote it.",
+      "aliases": ["suites", "suite list"]
+    },
+    {
+      "term": "summary bar",
+      "definition": "the strip that stays at the top of a tests page: the package, the commit, the counts of passed, failed and skipped cases, the run time and three buttons."
+    },
+    {
+      "term": "term reference",
+      "definition": "the page of the site, at `terms/`, that has an entry for every vocabulary term."
+    },
+    {
+      "term": "tests page",
+      "definition": "the page of one repository's test results, read as a specification; this is the runtime's.",
+      "aliases": ["tests pages"]
+    },
+    {
+      "term": "Turtle",
+      "definition": "a W3C text format for writing statements in the vocabulary's terms; `pod.enter()` and `pod.judge()` take it.",
+      "vocabulary": "https://www.w3.org/TR/turtle/"
+    },
+    {
+      "term": "verdict",
+      "definition": "what an accounting says an adapter does with a source path: carried, carried in part, no home in the vocabulary, ignored, consumed in reading the record, or redundant with another source path.",
+      "aliases": ["verdicts"]
+    },
+    {
+      "term": "view",
+      "definition": "a pod's records of one kind, such as medications, as its judgments leave them: one line for each thing however many sources reported it. A named question such as `pod/My medication history` returns a view's rows.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#View",
+      "aliases": ["views"]
+    },
+    {
+      "term": "view entry",
+      "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
+      "aliases": ["view entries"]
+    },
+    {
+      "term": "vocabulary",
+      "definition": "cascade-vocabulary, the project that defines the words health data is written in, the requirements every pod meets, and a set of ready-made questions.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#",
+      "aliases": ["vocabularies"]
+    },
+    {
+      "term": "vocabulary term",
+      "definition": "one word the vocabulary defines, such as `cascade:allergen`: a class, a property or a named value, named by an IRI.",
+      "aliases": ["vocabulary terms", "terms of the vocabulary"]
+    }
+  ],
+  "shaped": [
+    "tests-page.test.ts",
+    "tests-tree.test.ts",
+    "tests-glossary.test.ts",
+    "junit.test.ts",
+    "ctrf.test.ts",
+    "junit-reporter.test.ts",
+    "spec-shape.test.ts"
+  ],
+  "build": [
+    "The evals pages as a section of the site · evalsSection",
+    "The suite list as checked in · test-suites.json"
+  ],
+  "randomOrder": [
+    "tests-page.test.ts",
+    "tests-tree.test.ts",
+    "tests-glossary.test.ts",
+    "junit.test.ts",
+    "ctrf.test.ts",
+    "junit-reporter.test.ts",
+    "spec-shape.test.ts"
+  ]
+}

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { after, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { readJunit } from "../src/junit.js";
 import { checkShape, type ShapeProblem } from "../src/spec-shape.js";
@@ -57,7 +57,18 @@ function reported(
   return problems.filter((one) => one.rule === rule).map((one) => one.case);
 }
 
-describe("checkShape(cases, spec, specPath)", () => {
+/** The problems of the verb rule for a leaf of that name, under the first listed capability. */
+const leaf = (title: string) =>
+  reported(
+    check([["sample.test.ts", CAPABILITY, "openPod()", title]]).problems,
+    "verb",
+  );
+
+/**
+ * `checkShape()` reads a package's cases from a JUnit report and the `spec.json` beside its tests, and reports each case
+ * whose titles break the grammar of a tests page. It is the gate that keeps a page a specification as tests are added.
+ */
+describe("Checking that tests read as a specification · checkShape()", () => {
   describe("with cases that read as a specification", () => {
     it("reports nothing and counts the cases it checked", () => {
       const report = check([
@@ -170,12 +181,6 @@ describe("checkShape(cases, spec, specPath)", () => {
   });
 
   describe("with a leaf that does not begin with a singular present-tense verb", () => {
-    const leaf = (title: string) =>
-      reported(
-        check([["sample.test.ts", CAPABILITY, "openPod()", title]]).problems,
-        "verb",
-      );
-
     it("reports one that begins with should", () => {
       assert.deepEqual(leaf("should return an address"), [
         `${CAPABILITY} › openPod() › should return an address`,
@@ -233,6 +238,17 @@ describe("checkShape(cases, spec, specPath)", () => {
         assert.equal(leaf(title).length, 1, title);
     });
 
+    it("still reports a noun, a gerund or a past tense after an adverb", () => {
+      for (const title of [
+        "never rows are kept",
+        "only returned rows",
+        "always",
+      ])
+        assert.equal(leaf(title).length, 1, title);
+    });
+  });
+
+  describe("with a leaf the -s rule would misread", () => {
     it("accepts the irregular singular verbs and any other word ending in s", () => {
       for (const title of [
         "is empty",
@@ -261,15 +277,6 @@ describe("checkShape(cases, spec, specPath)", () => {
         "writes.",
       ])
         assert.deepEqual(leaf(title), [], title);
-    });
-
-    it("still reports a noun, a gerund or a past tense after an adverb", () => {
-      for (const title of [
-        "never rows are kept",
-        "only returned rows",
-        "always",
-      ])
-        assert.equal(leaf(title).length, 1, title);
     });
 
     it("accepts a first word the spec's allow list names", () => {
@@ -387,7 +394,7 @@ describe("checkShape(cases, spec, specPath)", () => {
   });
 
   describe("with a spec that lists no capabilities", () => {
-    it("is skipped, and says so", () => {
+    it("checks nothing and says why", () => {
       for (const spec of [{}, { capabilities: [] }, { capabilities: "x" }]) {
         const report = check([["flat.test.ts", "should"]], spec);
         assert.deepEqual(report.problems, []);
@@ -396,17 +403,29 @@ describe("checkShape(cases, spec, specPath)", () => {
       }
     });
 
-    it("is skipped when the spec is not an object", () => {
+    it("checks nothing when the spec is not an object", () => {
       for (const spec of [null, 3, "x", []])
         assert.match(check([], spec).skipped ?? "", /no capabilities/);
     });
   });
 });
 
-describe("node scripts/spec-shape.mjs <junit> <spec.json>", () => {
-  const folder = mkdtempSync(join(tmpdir(), "spec-shape-"));
-  after(() => rmSync(folder, { recursive: true, force: true }));
+/**
+ * `node scripts/spec-shape.mjs <junit> <spec.json>` runs the check in CI on each package's `spec.json`. Its exit status says
+ * which of three things happened: the tests read as a specification, a title breaks a rule, or it could not check.
+ */
+describe("Checking a package's tests from the command line · scripts/spec-shape.mjs", () => {
+  let folder: string;
 
+  before(() => {
+    folder = mkdtempSync(join(tmpdir(), "spec-shape-"));
+  });
+
+  after(() => {
+    if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
+  });
+
+  /** The command over a report of `cases` and a `spec.json` of `spec` in the package's own folder. */
   const run = (cases: Parameters<typeof xml>[0], spec: unknown) => {
     const junit = join(folder, "junit.xml");
     const specFile = join(folder, FOLDER, "test", "spec.json");
@@ -418,54 +437,73 @@ describe("node scripts/spec-shape.mjs <junit> <spec.json>", () => {
     });
   };
 
-  it("exits 1 and names each case that breaks a rule", () => {
-    const done = run(
-      [
-        ["sample.test.ts", "Something else", "returns rows"],
-        ["sample.test.ts", CAPABILITY, "openPod()", "should return rows"],
-      ],
-      SPEC,
-    );
-    assert.equal(done.status, 1);
-    assert.match(done.stdout, /Something else › returns rows/);
-    assert.match(done.stdout, /should return rows/);
-  });
-
-  it("exits 1 for a spec whose absolute path matches none of the report, since it then owns no case", () => {
-    const junit = join(folder, "own.xml");
-    const specFile = join(folder, "py", "tests", "spec.json");
-    mkdirSync(dirname(specFile), { recursive: true });
-    writeFileSync(
-      junit,
-      xml([["sample.test.ts", CAPABILITY, "openPod()", "returns rows"]]),
-    );
-    writeFileSync(
-      specFile,
-      JSON.stringify({ capabilities: SPEC.capabilities }),
-    );
-    const done = spawnSync(process.execPath, [CLI, junit, specFile], {
-      encoding: "utf8",
+  describe("with a case that breaks a rule", () => {
+    it("exits 1, naming each case", () => {
+      const done = run(
+        [
+          ["sample.test.ts", "Something else", "returns rows"],
+          ["sample.test.ts", CAPABILITY, "openPod()", "should return rows"],
+        ],
+        SPEC,
+      );
+      assert.equal(done.status, 1);
+      assert.match(done.stdout, /Something else › returns rows/);
+      assert.match(done.stdout, /should return rows/);
     });
-    assert.equal(done.status, 1);
-    assert.match(done.stdout, /owns: /);
   });
 
-  it("exits 0 for a spec that lists no capabilities, and says it skipped", () => {
-    const done = run([["flat.test.ts", "should"]], { about: "x" });
-    assert.equal(done.status, 0);
-    assert.match(done.stdout, /skipped/);
-  });
-
-  it("exits 2 for a report that is not JUnit, and for a missing argument", () => {
-    const junit = join(folder, "not-junit.xml");
-    writeFileSync(junit, "<html></html>");
-    const spec = join(folder, "spec.json");
-    writeFileSync(spec, JSON.stringify(SPEC));
-    for (const args of [[junit, spec], [junit], []]) {
-      const done = spawnSync(process.execPath, [CLI, ...args], {
+  describe("with a spec whose absolute path matches none of the report", () => {
+    it("exits 1, since the spec then owns no case", () => {
+      const junit = join(folder, "own.xml");
+      const specFile = join(folder, "py", "tests", "spec.json");
+      mkdirSync(dirname(specFile), { recursive: true });
+      writeFileSync(
+        junit,
+        xml([["sample.test.ts", CAPABILITY, "openPod()", "returns rows"]]),
+      );
+      writeFileSync(
+        specFile,
+        JSON.stringify({ capabilities: SPEC.capabilities }),
+      );
+      const done = spawnSync(process.execPath, [CLI, junit, specFile], {
         encoding: "utf8",
       });
-      assert.equal(done.status, 2, args.join(" "));
-    }
+      assert.equal(done.status, 1);
+      assert.match(done.stdout, /owns: /);
+    });
+  });
+
+  describe("with a spec that lists no capabilities", () => {
+    it("exits 0, saying it checked nothing", () => {
+      const done = run([["flat.test.ts", "should"]], { about: "x" });
+      assert.equal(done.status, 0);
+      assert.match(done.stdout, /skipped, the spec lists no capabilities/);
+    });
+  });
+
+  describe("with a report that is not JUnit", () => {
+    it("exits 2", () => {
+      const junit = join(folder, "not-junit.xml");
+      writeFileSync(junit, "<html></html>");
+      const spec = join(folder, "spec.json");
+      writeFileSync(spec, JSON.stringify(SPEC));
+      const done = spawnSync(process.execPath, [CLI, junit, spec], {
+        encoding: "utf8",
+      });
+      assert.equal(done.status, 2);
+    });
+  });
+
+  describe("with a missing argument", () => {
+    it("exits 2", () => {
+      const junit = join(folder, "report.xml");
+      writeFileSync(junit, xml([]));
+      for (const args of [[junit], []]) {
+        const done = spawnSync(process.execPath, [CLI, ...args], {
+          encoding: "utf8",
+        });
+        assert.equal(done.status, 2, args.join(" "));
+      }
+    });
   });
 });

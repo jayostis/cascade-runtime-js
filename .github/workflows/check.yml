@@ -93,6 +93,7 @@ jobs:
           node scripts/random-order.mjs ccda-download
           node scripts/random-order.mjs graphdb
           node scripts/random-order.mjs mcp
+          node scripts/random-order.mjs site
       # The same for the files packages/runtime/test/spec.json lists. random-order.mjs preloads cascade-runtime's offline.js for every package.
       - name: Tests of the runtime core in random order
         if: ${{ !cancelled() && env.CASCADE_CONFORMANCE_REPORT != '' }}
@@ -124,6 +125,7 @@ jobs:
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/graphdb/test/spec.json
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/mcp/test/spec.json
           node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "$RUNNER_TEMP/junit.xml" packages/site/test/spec.json
 
   # The docs site as Pages would serve it: `build-pages` runs the same command, and this job keeps the tree it wrote.
   browser:
@@ -551,6 +553,7 @@ jobs:
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/graphdb/test/spec.json
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/mcp/test/spec.json
           node scripts/spec-shape.mjs "$kept/junit.xml" packages/runtime/test/spec.json
+          node scripts/spec-shape.mjs "$kept/junit.xml" packages/site/test/spec.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
