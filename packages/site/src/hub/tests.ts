@@ -79,9 +79,19 @@ export function suitesOf(raw: unknown): Suite[] {
       throw new Error(
         `suite ${at + 1} of the list names the tests ${String(tests)}, which is not a folder ending in /`,
       );
+    const packages = given["packages"];
+    if (
+      packages !== undefined &&
+      (!Array.isArray(packages) ||
+        !packages.every((name) => typeof name === "string" && name !== ""))
+    )
+      throw new Error(
+        `suite ${at + 1} of the list names the packages ${JSON.stringify(packages)}, which is not a list of package names`,
+      );
     return {
       repository,
       ...(tests === undefined ? {} : { tests }),
+      ...(packages === undefined ? {} : { packages: packages as string[] }),
       title: text("title"),
       about: text("about"),
       workflow: text("workflow"),
@@ -331,7 +341,7 @@ function placeOf(file: string, suite: Suite): string[] {
 
 /** Where a case is written, as a string that sorts in the order of a file and then its lines. */
 const positionOf = (one: TestCase): string =>
-  `${one.suite}\0${one.line === undefined ? "~" : String(one.line).padStart(8, "0")}`;
+  `${one.file}\0${one.line === undefined ? "~" : String(one.line).padStart(8, "0")}`;
 
 function merged(
   a: Described | undefined,
@@ -445,7 +455,7 @@ function named(name: string, source: string, links: Links): Html {
 }
 
 function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
-  const source = `${repositoryUrl(suite)}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
+  const source = `${repositoryUrl(suite)}/blob/${run.commit}/${one.file}${one.line === undefined ? "" : `#L${one.line}`}`;
   const said =
     one.description === undefined && one.rules.length === 0
       ? ""
@@ -483,7 +493,7 @@ function capabilitiesOf(
 ): Capability[] {
   const groups = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const name = one.describes[0] ?? placeOf(one.suite, suite)[1] ?? one.suite;
+    const name = one.describes[0] ?? placeOf(one.file, suite)[1] ?? one.file;
     groups.set(name, [...(groups.get(name) ?? []), one]);
   }
   return [...groups].map(([name, held]) => {
@@ -491,9 +501,9 @@ function capabilitiesOf(
     let info: Described | undefined;
     for (const one of held) {
       const line = one.described[0]?.line;
-      const known = files.get(one.suite);
+      const known = files.get(one.file);
       files.set(
-        one.suite,
+        one.file,
         known === undefined || (line !== undefined && line < known)
           ? line
           : known,
@@ -542,20 +552,26 @@ ${children}</ul></details></li>\n`;
 const unreleased = (version: string): boolean =>
   version === "0.0.0" || version.includes("-");
 
-const rankIn = (order: readonly string[], name: string): number => {
-  const at = order.indexOf(name);
-  return at === -1 ? Infinity : at;
-};
+/** Names in the order a list gives them, the unlisted after them by name. */
+const byRank =
+  (order: readonly string[]) =>
+  (a: string, b: string): number => {
+    const rank = (name: string): number => {
+      const at = order.indexOf(name);
+      return at === -1 ? Infinity : at;
+    };
+    const [x, y] = [rank(a), rank(b)];
+    return x === y ? before(a, b) : x < y ? -1 : 1;
+  };
 
 /** Capabilities in the order a spec lists them, the unlisted after them by name. */
 const arranged = (
   list: readonly Capability[],
   order: readonly string[],
-): Capability[] =>
-  [...list].sort((a, b) => {
-    const [x, y] = [rankIn(order, a.name), rankIn(order, b.name)];
-    return x === y ? before(a.name, b.name) : x < y ? -1 : 1;
-  });
+): Capability[] => {
+  const ranked = byRank(order);
+  return [...list].sort((a, b) => ranked(a.name, b.name));
+};
 
 /** The spec of a package's tests: the one its report carries, or for the repository's own, its artifact's `spec.json`. */
 function specFor(
@@ -650,23 +666,24 @@ function byPackage(
 ): Map<string, TestCase[]> {
   const found = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const folder = placeOf(one.suite, suite)[0] || nameOf(suite);
+    const folder = placeOf(one.file, suite)[0] || nameOf(suite);
     found.set(folder, [...(found.get(folder) ?? []), one]);
   }
   return found;
 }
 
 /** A suite's cases as the page reads them: each package, with its capabilities in the order its spec gives. */
-function tree(
+function packageSections(
   cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
   suite: Suite,
   run: TestRun,
 ): Html {
+  const listed = byRank(suite.packages ?? []);
   const order = [...byPackage(cases, suite)].sort(
     ([a, held], [b, other]) =>
       Number(other.some((c) => c.result === "failed")) -
-        Number(held.some((c) => c.result === "failed")) || before(a, b),
+        Number(held.some((c) => c.result === "failed")) || listed(a, b),
   );
   return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), specFor(folder, packages, suite, run), suite, run))}`;
 }
@@ -750,7 +767,7 @@ function ctrf(
         duration: Math.round((one.seconds ?? 0) * 1000),
         ...(one.describes.length === 0 ? {} : { suite: [...one.describes] }),
         ...extraOf(one),
-        filePath: one.suite,
+        filePath: one.file,
         ...(one.line === undefined ? {} : { line: one.line }),
         ...(one.message === undefined ? {} : { message: one.message }),
       })),
@@ -799,7 +816,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
 `
       : "";
   const shownCases =
-    cases.length === 0 ? "" : tree(cases, packages, suite, run);
+    cases.length === 0 ? "" : packageSections(cases, packages, suite, run);
   const milliseconds =
     declaredDuration(run.report) ??
     cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);

@@ -50,6 +50,11 @@ export interface Suite {
    * runtime's own suite has none: its packages' `packages/<name>/test/` are read as packages.
    */
   readonly tests?: string;
+  /**
+   * The packages of the repository in the order a reader should meet them. A package with a failed case comes first,
+   * then these, then any other by name.
+   */
+  readonly packages?: readonly string[];
   readonly runner: "node:test" | "pytest" | "vitest" | "nextest";
 }
 

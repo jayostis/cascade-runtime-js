@@ -6,7 +6,18 @@
     "workflow": "check.yml",
     "artifact": "runtime-tests",
     "report": "junit.xml",
-    "runner": "node:test"
+    "runner": "node:test",
+    "packages": [
+      "cascade-runtime",
+      "mcp",
+      "fhir-pull",
+      "ccda-download",
+      "apple-health",
+      "graphdb",
+      "runtime",
+      "evals",
+      "site"
+    ]
   },
   {
     "repository": "jayostis/cascade-vocabulary",

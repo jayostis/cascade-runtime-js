@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
-import { chromium } from "playwright";
+import { after, before, describe, it } from "node:test";
+import { chromium, type Browser } from "playwright";
 import { servePages } from "../src/node/serve.js";
 import {
   FRONT_TITLE,
@@ -64,51 +64,124 @@ function fixture(
     }
 }
 
-test("the walkthrough passes a front page that has every row, and fails, naming it, one with a row removed and one whose link reaches a page of another title", async () => {
-  const folder = mkdtempSync(join(tmpdir(), "walkthrough-"));
-  const browser = await chromium.launch();
-  try {
-    const run = async (options: {
-      without?: string;
-      retitled?: string;
-    }): Promise<void> => {
-      rmSync(folder, { recursive: true, force: true });
-      fixture(folder, options);
-      const site = await servePages(folder);
-      try {
-        await walk(browser, site.url, { external: false });
-      } finally {
-        await site.close();
-      }
-    };
-    await run({});
-    await assert.rejects(
-      run({ without: "want-conformance" }),
-      /want-conformance/,
-    );
-    await assert.rejects(
-      run({ retitled: "The runtime's tests · Cascade unit test reports" }),
-      /The runtime's tests · Cascade unit test reports/,
-    );
-  } finally {
-    await browser.close();
-    rmSync(folder, { recursive: true, force: true });
-  }
-});
+const TREE = process.env["WALK_TREE"];
+const LIVE = process.env["PAGES_URL"];
+const RETITLED = "The runtime's tests · Cascade unit test reports";
 
-test("a newcomer reaches what they came for from the front page in one click and from each README's Docs block in two, as a person does", async () => {
-  const tree = process.env["WALK_TREE"];
-  const live = process.env["PAGES_URL"];
-  if (tree === undefined && live === undefined)
-    throw new Error("set WALK_TREE or PAGES_URL to run the walkthrough");
-  const served = tree === undefined ? undefined : await servePages(tree);
-  const site = served?.url ?? (live as string).replace(/\/?$/, "/");
-  const browser = await chromium.launch();
-  try {
-    await walk(browser, site, { external: live !== undefined });
-    if (live !== undefined) await walkFromReadmes(browser, site);
-  } finally {
-    await browser.close();
-    await served?.close();
-  }
+/**
+ * A newcomer starts at the front page or at a repository's README. `walk()` clicks every link of every row of the front
+ * page in Chromium and checks the page each reaches by its title; `walkFromReadmes()` starts on GitHub. A run with
+ * neither `WALK_TREE` nor `PAGES_URL` is red on purpose: a walkthrough that walked nothing must not pass.
+ */
+describe("Walking the site as a newcomer · walk(), walkFromReadmes()", () => {
+  let browser: Browser;
+  let folder: string;
+
+  before(async () => {
+    folder = mkdtempSync(join(tmpdir(), "walkthrough-"));
+    browser = await chromium.launch();
+  });
+
+  after(async () => {
+    await browser?.close();
+    if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
+  });
+
+  /** The walk over a fixture site made as `options` say, served from a folder of its own for the walk. */
+  const walkFixture = async (options: {
+    without?: string;
+    retitled?: string;
+  }): Promise<void> => {
+    rmSync(folder, { recursive: true, force: true });
+    fixture(folder, options);
+    const site = await servePages(folder);
+    try {
+      await walk(browser, site.url, { external: false });
+    } finally {
+      await site.close();
+    }
+  };
+
+  describe("given a front page that has every row", () => {
+    it("passes", async () => {
+      await walkFixture({});
+    });
+  });
+
+  describe("given a front page with a row removed", () => {
+    it("fails, naming the row", async () => {
+      await assert.rejects(
+        walkFixture({ without: "want-conformance" }),
+        /want-conformance/,
+      );
+    });
+  });
+
+  describe("given a link that reaches a page of another title", () => {
+    it("fails, naming the title it expected", async () => {
+      await assert.rejects(
+        walkFixture({ retitled: RETITLED }),
+        new RegExp(RETITLED),
+      );
+    });
+  });
+
+  describe("given the built site, in `WALK_TREE`", () => {
+    let served: Awaited<ReturnType<typeof servePages>> | undefined;
+
+    before(async () => {
+      if (TREE !== undefined) served = await servePages(TREE);
+    });
+
+    after(async () => {
+      await served?.close();
+    });
+
+    it(
+      "passes the walk of the front page's rows and repositories",
+      { skip: TREE === undefined ? "WALK_TREE is not set" : false },
+      async () => {
+        assert.ok(served);
+        await walk(browser, served.url, { external: false });
+      },
+    );
+  });
+
+  describe("given the deployed site, in `PAGES_URL`", () => {
+    const site = LIVE?.replace(/\/?$/, "/");
+    const skip = site === undefined ? "PAGES_URL is not set" : false;
+
+    it(
+      "passes the same walk, following links to other sites too",
+      { skip },
+      async () => {
+        assert.ok(site);
+        await walk(browser, site, { external: true });
+      },
+    );
+
+    it(
+      "reaches the front page from each README's Docs block in one click, and the quick start in a second",
+      { skip },
+      async () => {
+        assert.ok(site);
+        await walkFromReadmes(browser, site);
+      },
+    );
+  });
+
+  describe("given neither", () => {
+    it(
+      "fails, saying which to set",
+      {
+        skip:
+          TREE === undefined && LIVE === undefined
+            ? false
+            : "WALK_TREE or PAGES_URL is set",
+      },
+      () => {
+        throw new Error("set WALK_TREE or PAGES_URL to run the walkthrough");
+      },
+    );
+  });
 });
