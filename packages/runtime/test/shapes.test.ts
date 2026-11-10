@@ -134,9 +134,21 @@ describe("Checking a graph against the vocabulary's shapes · Shapes.read(), Sha
     });
 
     /** A kit's check 3 and an entry session's refusal both print these lines. */
-    it("returns from `resultLines()` that result as one line of its focus node, its path and its message", async () => {
+    it("returns from `resultLines()` that result as one line of its focus node and its message, with no path", async () => {
       assert.deepEqual(await shapes.resultLines(tampered), [
         `urn:uuid:6d03d846-ac92-8492-ac9f-e810307f7bdb : ${SERVER_NAME}`,
+      ]);
+    });
+
+    it("returns from `resultLines()` a result of a property constraint as one line of its focus node, its path and its message", async () => {
+      const lines = await (
+        await shapesOf(
+          `ex:Labelled sh:targetSubjectsOf ex:label ;
+       sh:property [ sh:path ex:label ; sh:datatype xsd:string ; sh:message "A label is a string."@en ] .`,
+        )
+      ).resultLines(await data(`ex:a ex:label 7 .`));
+      assert.deepEqual(lines, [
+        "https://example.org/a https://example.org/label: A label is a string.",
       ]);
     });
   });
@@ -158,11 +170,10 @@ describe("Checking a graph against the vocabulary's shapes · Shapes.read(), Sha
      ex:BySubject sh:targetSubjectsOf ex:p ; ${everyNode} .
      ex:ByObject sh:targetObjectsOf ex:p ; ${everyNode} .
      ex:ByNode sh:targetNode ex:e ; ${everyNode} .`,
-        `ex:Kind rdfs:subClassOf ex:Thing .`,
       );
       return (
         await shapes.results(
-          await data(`ex:a a ex:Kind .
+          await data(`ex:a a ex:Thing .
        ex:b ex:p ex:c .
        ex:c ex:r 1 .
        ex:e ex:r 2 .
@@ -186,9 +197,15 @@ describe("Checking a graph against the vocabulary's shapes · Shapes.read(), Sha
     });
 
     it("takes an instance of a subclass the vocabulary's terms declare as an instance of its class", async () => {
+      const results = await (
+        await shapesOf(
+          `ex:ByClass sh:targetClass ex:Thing ; ${everyNode} .`,
+          `ex:Kind rdfs:subClassOf ex:Thing .`,
+        )
+      ).results(await data(`ex:s a ex:Kind .`));
       assert.deepEqual(
-        (await targetedResults()).filter(([shape]) => shape === "ex:ByClass"),
-        [["ex:ByClass", "ex:a"]],
+        results.map(({ focusNode }) => focusNode.value),
+        ["https://example.org/s"],
       );
     });
 
