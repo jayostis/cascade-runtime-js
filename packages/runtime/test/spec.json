@@ -633,6 +633,11 @@
       "aliases": ["table kinds"]
     },
     {
+      "term": "table version",
+      "definition": "one release of a reference table: the rows a table kind holds as of one date, named by an IRI the pod's files use.",
+      "aliases": ["table versions"]
+    },
+    {
       "term": "target",
       "definition": "what a shape names to say which nodes it checks: a class, the subjects or objects of a property, or one node.",
       "aliases": ["targets"]

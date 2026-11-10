@@ -394,7 +394,9 @@ const filesOf = (files: readonly SetFile[]) =>
 /**
  * Everything a pod holds is named by a naming rule of the vocabulary, from its content or from the inputs the rule
  * lists, so two runtimes give one thing one name. The vocabulary publishes vectors, inputs with the name each must give,
- * and every naming function of this package is held to them here.
+ * and every naming function of this package is held to them here. A name is an IRI, `ni:///sha-256;` and a digest
+ * worked out from a thing's canonical N-Quads or from its listed inputs; each rule in the list is matched to its
+ * naming function by the rule's IRI.
  * @rule runtime/naming.feature N3
  * @rule runtime/naming.feature N4
  * @rule runtime/naming.feature N14
@@ -504,7 +506,7 @@ describe("Naming what a pod holds · versionName(), recordFromServerName(), norm
     });
 
     // No vector holds U+001F until cascade-vocabulary#371 lands; this one assertion owns it meanwhile.
-    it("throws Refusal for a base URL holding U+001F", () => {
+    it("throws Refusal for a base URL holding U+001F, a control character", () => {
       assert.throws(() => normalisedBaseUrl("https://h/\u001f"), Refusal);
     });
 
