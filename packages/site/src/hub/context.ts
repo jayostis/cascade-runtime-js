@@ -27,12 +27,36 @@ export interface TestRun {
   readonly at: string;
   /** The run's page. */
   readonly url: string;
+  /** The `spec.json` the run's artifact held beside its report, as JSON. */
+  readonly spec?: unknown;
 }
 
-/** The newest run of each suite; one is absent when the build was given none, or when it could not be fetched. */
-export interface TestReports {
-  readonly runtime?: TestRun;
-  readonly vocabulary?: TestRun;
+/**
+ * One repository's tests as `packages/site/test-suites.json` lists them: where the deploy finds its newest report, and
+ * what wrote it. The page of each is `conformance/tests/<repository's name>/`.
+ */
+export interface Suite {
+  /** `owner/name` on GitHub. */
+  readonly repository: string;
+  readonly title: string;
+  readonly about: string;
+  /** The workflow file whose push and nightly runs on main upload the report. */
+  readonly workflow: string;
+  readonly artifact: string;
+  /** The report's file in the artifact. */
+  readonly report: string;
+  /**
+   * The repository's test folder, as its tests' paths begin (`host/test/`), when it is not `test/` or `tests/`. The
+   * runtime's own suite has none: its packages' `packages/<name>/test/` are read as packages.
+   */
+  readonly tests?: string;
+  readonly runner: "node:test" | "pytest" | "vitest" | "nextest";
+}
+
+/** A suite and its newest run; the run is absent when the build was given none, or when it could not be fetched. */
+export interface SuiteRun {
+  readonly suite: Suite;
+  readonly run?: TestRun;
 }
 
 /**
@@ -68,8 +92,8 @@ export interface PagesContext {
   vocabulary(): Promise<VocabularyRead>;
   /** The latest conformance run's report on main; empty when the build was given none, which shows every result as not run. */
   report(): Promise<Conformance>;
-  /** The newest runs on main of the runtime's tests and the vocabulary's pytest. */
-  tests(): Promise<TestReports>;
+  /** Each listed suite, with its newest run on main. */
+  tests(): Promise<readonly SuiteRun[]>;
   /** Each adapter the runtime follows, at the head of its default branch; one that could not be got is not fatal. */
   adapters(): Promise<readonly AdapterRead[]>;
 }

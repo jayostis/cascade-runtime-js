@@ -18,6 +18,18 @@ async function frontPage(): Promise<string> {
         title: folder.toUpperCase(),
         site: new Map(),
       })),
+    tests: async () =>
+      ["cascade-runtime-js", "cascade-vocabulary"].map((name) => ({
+        suite: {
+          repository: `jayostis/${name}`,
+          title: `The tests of ${name}`,
+          about: "a runner over it",
+          workflow: "check.yml",
+          artifact: "unit-tests",
+          report: "junit.xml",
+          runner: "node:test",
+        },
+      })),
   } as unknown as PagesContext;
   const { tree } = await buildTree({
     sections: SECTIONS.map((section) => ({
@@ -61,7 +73,14 @@ test("the front page has a Find your way table with a row for each thing a reade
       ["want-model", ["terms/"]],
       ["want-why", ["decisions/"]],
       ["want-rules", ["spec/"]],
-      ["want-conformance", ["conformance/", "conformance/tests/"]],
+      [
+        "want-conformance",
+        [
+          "conformance/",
+          "conformance/tests/cascade-runtime-js/",
+          "conformance/tests/cascade-vocabulary/",
+        ],
+      ],
       ["want-adapters", ["adapters/"]],
       [
         "want-pods",

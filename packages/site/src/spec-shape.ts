@@ -6,7 +6,7 @@ import type { TestCase } from "./junit.js";
  * addendum; what a title means is for a reader to judge, and is not checked here.
  */
 export type ShapeRule =
-  "capability" | "depth" | "level-2" | "verb" | "shaped" | "glossary";
+  "owns" | "capability" | "depth" | "level-2" | "verb" | "shaped" | "glossary";
 
 export interface ShapeProblem {
   readonly rule: ShapeRule;
@@ -261,6 +261,13 @@ export function checkShape(
         `the leaf begins "${word}", not a singular present-tense verb such as "returns"`,
       );
   }
+
+  if (checked === 0)
+    problems.push({
+      rule: "owns",
+      case: specPath,
+      message: `the spec lists capabilities and owns no case of the report; pass its path relative to the repository root, as in the repository, so its package is found`,
+    });
 
   for (const file of shaped ?? [])
     if (!seen.has(file))
