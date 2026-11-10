@@ -5,19 +5,20 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { findRoot } from "@cascade-runtime/runtime/node";
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 const SITE = "https://hub.test/cascade/";
 const SCRATCH = mkdtempSync(join(tmpdir(), "link-check-"));
+const GITHUB = "https://github.com/jayostis/cascade-vocabulary";
 
 let origin = "";
 let close = async (): Promise<void> => {};
 const asked: string[] = [];
 
-/** Answers by path: `/gone` is dead, `/flaky` fails once, `/no-head` refuses HEAD, `/readme/<repo>` is that README. */
+/** Answers by path: `/gone` is dead, `/flaky` fails its first two requests, `/no-head` refuses HEAD, `/readme/<repo>` is that README. */
 const READMES = new Map<string, string>();
 /** The deployed site the crawl reads, at `/site/`: a path to its text, or to a status. */
 const LIVE = new Map<string, string | number>();
@@ -44,7 +45,7 @@ before(async () => {
     } else if (path === "/flaky") {
       const seen = (attempts.get(path) ?? 0) + 1;
       attempts.set(path, seen);
-      response.writeHead(seen === 1 ? 503 : 200).end();
+      response.writeHead(seen <= 2 ? 503 : 200).end();
     } else if (path === "/no-head" && request.method === "HEAD") {
       response.writeHead(405).end();
     } else {
@@ -71,6 +72,13 @@ function write(root: string, files: Record<string, string>): void {
   }
 }
 
+interface Checked {
+  readonly code: number;
+  readonly said: string;
+  /** The commit of the checkout `{SHA}` stood for. */
+  readonly sha: string;
+}
+
 let counter = 0;
 /** The script over a tree of these files, in which {SHA} is the commit of a checkout of these, and what it said. */
 async function check(
@@ -78,7 +86,7 @@ async function check(
   checkout: Record<string, string> = {},
   more: string[] = [],
   uncommitted: Record<string, string> = {},
-): Promise<{ code: number; said: string }> {
+): Promise<Checked> {
   const folder = join(SCRATCH, String(counter++));
   mkdirSync(join(folder, "checkout"), { recursive: true });
   write(join(folder, "checkout"), checkout);
@@ -110,15 +118,18 @@ async function check(
       ]),
     ),
   );
-  return run([
-    "--tree",
-    join(folder, "tree"),
-    "--site",
-    SITE,
-    "--checkout",
-    `jayostis/cascade-vocabulary=${join(folder, "checkout")}`,
-    ...more,
-  ]);
+  return {
+    ...(await run([
+      "--tree",
+      join(folder, "tree"),
+      "--site",
+      SITE,
+      "--checkout",
+      `jayostis/cascade-vocabulary=${join(folder, "checkout")}`,
+      ...more,
+    ])),
+    sha,
+  };
 }
 
 function run(args: string[]): Promise<{ code: number; said: string }> {
@@ -142,89 +153,6 @@ const bare = (body: string, title = "A page"): string =>
 const page = (body: string, title = "A page"): string =>
   bare(`<nav><a href="${SITE}">Cascade pods</a></nav>${body}`, title);
 
-test("a tree whose every link resolves passes: files, folders, anchors, a mailto, an external link that fails once, one that refuses HEAD, one whose host stays down (a warning, not a dead link), an allowlisted host never asked, and a GitHub link into a checkout", async () => {
-  const { code, said } = await check(
-    {
-      "site.css": "body{}",
-      "index.html": page(
-        [
-          `<a href="sub/">folder</a>`,
-          `<a href="sub/page.html#there">anchor</a>`,
-          `<a href="${SITE}sub/page.html">absolute</a>`,
-          `<a href="#top-heading">same page</a>`,
-          `<a href="mailto:a@b.test">mail</a>`,
-          `<a href="${origin}/flaky">flaky</a>`,
-          `<a href="${origin}/no-head">no head</a>`,
-          `<a href="${origin}/down">down</a>`,
-          `<a href="https://loinc.org/never-asked-because-allowlisted">loinc</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/q.rq">file</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/tree/{SHA}/queries/">folder</a>`,
-        ].join(""),
-      ),
-      "sub/index.html": page(`<a href="page.html">p</a>`),
-      "sub/page.html": page(`<p id="there">here</p>`),
-    },
-    { "queries/q.rq": "SELECT * {}" },
-  );
-  assert.equal(code, 0, said);
-  assert.ok(!asked.some((line) => line.includes("never-asked")), said);
-  assert.ok(said.includes(`WARN`) && said.includes(`${origin}/down`), said);
-});
-
-test("a tree with a dead file, a dead anchor, a dead external link and a GitHub link to a file the checkout lacks fails naming each link and its page, and only those", async () => {
-  const { code, said } = await check(
-    {
-      "site.css": "body{}",
-      "index.html": page(
-        [
-          `<a href="missing.html">dead file</a>`,
-          `<a href="sub/page.html#nowhere">dead anchor</a>`,
-          `<a href="#no-such-id">dead same-page anchor</a>`,
-          `<a href="${origin}/gone">dead external</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/gone.rq">dead checkout file</a>`,
-          `<a href="sub/page.html#there">fine</a>`,
-        ].join(""),
-      ),
-      "sub/page.html": page(`<p id="there">here</p><img src="gone.png">`),
-    },
-    { "queries/q.rq": "SELECT * {}" },
-  );
-  assert.equal(code, 1, said);
-  for (const dead of [
-    "missing.html",
-    "sub/page.html#nowhere",
-    "#no-such-id",
-    `${origin}/gone`,
-    "queries/gone.rq",
-    "gone.png",
-  ])
-    assert.ok(said.includes(dead), `${dead} is not named in:\n${said}`);
-  assert.ok(said.includes("not in the checkout"), said);
-  assert.ok(said.includes("index.html"), said);
-  assert.ok(said.includes("sub/page.html"), said);
-  assert.ok(!said.includes("sub/page.html#there"), said);
-});
-
-test("every page but the front page must link the front page, as a folder or index.html, relative or absolute, with a fragment, and the check names each page that does not", async () => {
-  const { code, said } = await check({
-    "site.css": "",
-    "index.html": bare(`<a href="a.html">a</a>`),
-    "a.html": bare(`<a href="sub/e.html">e</a>`),
-    "sub/b.html": bare(`<a href="../index.html">front</a>`),
-    "sub/c.html": bare(`<a href="../#top-heading">front</a>`),
-    "sub/d.html": bare(`<a href="${SITE}index.html#top-heading">front</a>`),
-    "sub/e.html": bare(`<a href="../sub/">not the front</a>`),
-    "sub/index.html": bare(`<a href="${SITE}">front</a>`),
-    "terms/index.html": bare(""),
-    "llms.txt": "a text file needs no link",
-  });
-  assert.equal(code, 1, said);
-  const failed = said.split("\n").filter((line) => line.startsWith("FAIL"));
-  assert.deepEqual(failed, [
-    "FAIL a.html, sub/e.html, terms/index.html: links no way back to the front page",
-  ]);
-});
-
 const HUB = SITE;
 const tree = (): Record<string, string> => ({
   "site.css": "",
@@ -239,157 +167,448 @@ const tree = (): Record<string, string> => ({
   "terms/index.html": page(`<h2 id="foaf:name">n</h2>`),
 });
 
-test("each repository's README must have a Docs block whose first link is the hub and whose links all resolve, and the check names the README that does not", async () => {
-  READMES.clear();
-  READMES.set("jayostis/f", "503");
-  READMES.set(
-    "someone-else/a",
-    `# a\n\n## Docs\n\n- [The hub](${HUB}): home\n- [Terms](${HUB}terms/#foaf:name): terms\n- [Elsewhere](${origin}/ok)\n- [Local](docs/guide.md)\n\n## Other\n\n[ignored](${origin}/gone)`,
-  );
-  READMES.set("jayostis/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
-  READMES.set(
-    "jayostis/g",
-    `# g\n\nintro\n\n\`\`\`\n## Docs in a fence\n\`\`\`\n\n## What it is\n\n## Docs\n\n- [The hub](${HUB})`,
-  );
-  READMES.set(
-    "jayostis/c",
-    `# c\n\n## Docs\n\n- [Terms first](${HUB}terms/)\n- [The hub](${HUB})`,
-  );
-  READMES.set(
-    "jayostis/d",
-    `# d\n\n## Docs\n\n- [The hub](${HUB})\n- [Dead](${origin}/gone)\n- [Anchor](${HUB}terms/#nope)\n- [Gone](docs/missing.md)\n\n### More\n\n- [Deeper](deeper/missing.md)\n\n## Other`,
-  );
-  const { code, said } = await check(tree(), {}, [
-    "--readmes",
-    "--readmes-from",
-    `${origin}/readmes/`,
-  ]);
-  assert.equal(code, 1, said);
-  for (const named of [
-    "README b: no ## Docs block",
-    "README c: the first link in the Docs block is",
-    `${origin}/gone`,
-    `${HUB}terms/#nope`,
-    "docs/missing.md",
-    "deeper/missing.md",
-    'README g: the ## Docs block is not the first ## section of the README: "What it is" comes before it',
-    "README e: no README",
-    "WARN README f: ",
-  ])
-    assert.ok(said.includes(named), `${named} is not in:\n${said}`);
-  assert.ok(!said.includes("README a"), said);
-  assert.ok(!said.includes("FAIL README f"), said);
-});
-
-test("the external addresses a check leaves unasked can be saved and asked later on their own, and the second run fails on the dead one naming the page that holds it", async () => {
-  const saved = join(SCRATCH, "saved-external.json");
-  const files = {
-    "index.html": page(
-      `<a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
-    ),
-    "sub.html": page(""),
-    "site.css": "",
-  };
-  const first = await check(files, {}, [
-    "--no-external",
-    "--save-external",
-    saved,
-  ]);
-  assert.equal(first.code, 0, first.said);
-  const second = await check({}, {}, ["--only-external", saved]);
-  assert.equal(second.code, 1, second.said);
-  assert.ok(
-    second.said.includes(`index.html: ${origin}/gone`) &&
-      !second.said.includes(`${origin}/ok`) &&
-      !second.said.includes("sub.html"),
-    second.said,
-  );
-});
-
-test("a GitHub link into a checkout at its HEAD is checked in git: a file that is only on disk, untracked, is not there", async () => {
-  const { code, said } = await check(
-    {
-      "site.css": "",
-      "index.html": page(
-        [
-          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/q.rq">tracked</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/blob/main/queries/local.rq">untracked</a>`,
-          `<a href="https://github.com/jayostis/cascade-vocabulary/tree/{SHA}/queries/">folder</a>`,
-        ].join(""),
-      ),
-    },
-    { "queries/q.rq": "SELECT * {}" },
-    [],
-    { "queries/local.rq": "SELECT * {}" },
-  );
-  assert.equal(code, 1, said);
-  assert.ok(said.includes("queries/local.rq"), said);
-  assert.ok(!said.includes("queries/q.rq"), said);
-});
-
-test("an anchor counts ids and the names of anchors, not the name of a meta tag", async () => {
-  const { code, said } = await check({
-    "site.css": "",
-    "index.html": page(
-      `<meta name="viewport" content="x"><a name="old-anchor"></a><a href="#old-anchor">fine</a><a href="#viewport">dead</a>`,
-    ),
-  });
-  assert.equal(code, 1, said);
-  assert.ok(said.includes("#viewport") && !said.includes("#old-anchor"), said);
-});
-
-test("the .txt and .md files a site serves are checked too, their links resolved against their own address: markdown links and bare URLs", async () => {
-  const { code, said } = await check({
-    "site.css": "",
-    "index.html": page(""),
-    "llms.txt": `# Hub\n\n- [Fine](index.html): ok\n- [Dead](missing-page.html): gone\n\nSee ${origin}/gone for more.`,
-    "docs/AGENTS.md": `[Up](../index.html) [Sibling](nope.md)\n\nIn a span \`${origin}/in-span/missing.md\` and\n\n\`\`\`\n${origin}/in-fence/missing.md\n\`\`\`\n`,
-  });
-  assert.equal(code, 1, said);
-  for (const dead of ["missing-page.html", `${origin}/gone`, "nope.md"])
-    assert.ok(said.includes(dead), `${dead} is not named in:\n${said}`);
-  assert.ok(!said.includes("in-span/missing.md"), said);
-  assert.ok(!said.includes("in-fence/missing.md"), said);
-  assert.ok(
-    !said.includes("-> 404: https://hub.test/cascade/index.html"),
-    said,
-  );
-  assert.ok(said.includes("llms.txt") && said.includes("docs/AGENTS.md"), said);
-});
-
 const live = (body: string): string =>
   `<!DOCTYPE html><html><body><a href="${origin}/site/">Cascade pods</a>${body}</body></html>`;
 
-test("the crawl follows links from the front page to pages of the site, however deep, and fails on a dead link there", async () => {
-  LIVE.clear();
-  const site = `${origin}/site/`;
-  LIVE.set("", live(`<a href="${site}a.html">a</a>`));
-  LIVE.set("a.html", live(`<a href="b.html">b</a><a href="notes.txt">n</a>`));
-  LIVE.set("b.html", live(`<a href="dead.html">dead</a>`));
-  LIVE.set("notes.txt", `[gone](${site}dead-from-text.html)`);
-  const { code, said } = await run(["--crawl", "--site", site]);
-  assert.equal(code, 1, said);
-  assert.ok(said.includes("b.html") && said.includes("dead.html"), said);
-  assert.ok(said.includes("dead-from-text.html"), said);
-  assert.ok(said.includes("4 pages"), said);
-});
+/** The lines the script asked of the server for `path`, in order. */
+const askedOf = (path: string): string[] =>
+  asked.filter((line) => line.endsWith(` ${path}`));
 
-test("a page of the live site that never answers 2xx is a dead link, 5xx or 404; an external address that answers 5xx is a warning", async () => {
-  LIVE.clear();
-  const site = `${origin}/site/`;
-  LIVE.set("", live(`<a href="${origin}/down">elsewhere</a>`));
-  const external = await run(["--crawl", "--site", site]);
-  assert.equal(external.code, 0, external.said);
-  assert.ok(external.said.includes("WARN"), external.said);
-  LIVE.set("", live(`<a href="down.html">down</a>`));
-  LIVE.set("down.html", 503);
-  const down = await run(["--crawl", "--site", site, "--no-external"]);
-  assert.equal(down.code, 1, down.said);
-  assert.ok(
-    down.said.includes("FAIL") && down.said.includes("down.html"),
-    down.said,
-  );
-  LIVE.set("", live(`<a href="gone.html">gone</a>`));
-  const gone = await run(["--crawl", "--site", site, "--no-external"]);
-  assert.equal(gone.code, 1, gone.said);
+/**
+ * `node scripts/link-check.mjs` follows every link of a built or deployed site: to a file, an anchor, another site, or a
+ * file of a repository on GitHub. It exits 1 naming each dead link and the page that holds it, so that a pull request
+ * cannot publish one. Each level runs the script once, over its own site, and its tests read what it said.
+ */
+describe("Checking a site's links · scripts/link-check.mjs", () => {
+  describe("with a built site whose every link resolves", () => {
+    let result: Checked;
+
+    before(async () => {
+      result = await check({
+        "site.css": "body{}",
+        "index.html": page(
+          [
+            `<a href="sub/">folder</a>`,
+            `<a href="sub/page.html#there">anchor</a>`,
+            `<a href="${SITE}sub/page.html">absolute</a>`,
+            `<a href="#top-heading">same page</a>`,
+            `<a href="mailto:a@b.test">mail</a>`,
+            `<a href="${origin}/flaky">flaky</a>`,
+            `<a href="${origin}/no-head">no head</a>`,
+            `<a href="${origin}/down">down</a>`,
+            `<a href="https://loinc.org/never-asked-because-allowlisted">loinc</a>`,
+          ].join(""),
+        ),
+        "sub/index.html": page(`<a href="page.html">p</a>`),
+        "sub/page.html": page(`<p id="there">here</p>`),
+      });
+    });
+
+    it("exits 0", () => {
+      assert.equal(result.code, 0, result.said);
+    });
+
+    it("asks with GET an address that refuses HEAD", () => {
+      const asks = askedOf("/no-head");
+      assert.ok(asks.includes("HEAD /no-head"), asks.join());
+      assert.ok(
+        asks.indexOf("GET /no-head") > asks.indexOf("HEAD /no-head"),
+        asks.join(),
+      );
+    });
+
+    it("asks again an address whose host fails at first", () => {
+      // It fails its first two requests: HEAD and the GET after it. A third is the retry.
+      assert.ok(askedOf("/flaky").length >= 3, askedOf("/flaky").join());
+      assert.ok(!result.said.includes("/flaky"), result.said);
+    });
+
+    it("warns of a host that stays down, and does not fail", () => {
+      assert.ok(result.said.includes("WARN"), result.said);
+      assert.ok(result.said.includes(`${origin}/down`), result.said);
+    });
+
+    it("never asks a host on its allow list", () => {
+      assert.ok(!asked.some((line) => line.includes("never-asked")));
+    });
+  });
+
+  describe("with dead links", () => {
+    let result: Checked;
+
+    before(async () => {
+      result = await check({
+        "site.css": "body{}",
+        "index.html": page(
+          [
+            `<a href="missing.html">dead file</a>`,
+            `<a href="sub/page.html#nowhere">dead anchor</a>`,
+            `<a href="#no-such-id">dead same-page anchor</a>`,
+            `<a href="${origin}/gone">dead external</a>`,
+            `<a href="sub/page.html#there">fine</a>`,
+          ].join(""),
+        ),
+        "sub/page.html": page(`<p id="there">here</p><img src="gone.png">`),
+      });
+    });
+
+    it("exits 1", () => {
+      assert.equal(result.code, 1, result.said);
+    });
+
+    it("names each dead file, anchor, image and outside address", () => {
+      for (const dead of [
+        "missing.html",
+        "sub/page.html#nowhere",
+        "#no-such-id",
+        `${origin}/gone`,
+        "gone.png",
+      ])
+        assert.ok(
+          result.said.includes(dead),
+          `${dead} is not named in:\n${result.said}`,
+        );
+    });
+
+    it("names the page that holds each", () => {
+      const line = result.said
+        .split("\n")
+        .find((one) => one.includes("gone.png"));
+      assert.ok(line?.includes("sub/page.html"), result.said);
+      assert.ok(
+        result.said
+          .split("\n")
+          .some(
+            (one) => one.includes("missing.html") && one.includes("index.html"),
+          ),
+        result.said,
+      );
+    });
+
+    it("leaves a link that resolves unnamed", () => {
+      assert.ok(!result.said.includes("sub/page.html#there"), result.said);
+    });
+  });
+
+  describe("with a GitHub link into a repository given as `--checkout`", () => {
+    let result: Checked;
+
+    before(async () => {
+      result = await check(
+        {
+          "site.css": "",
+          "index.html": page(
+            [
+              `<a href="${GITHUB}/blob/main/queries/q.rq">tracked</a>`,
+              `<a href="${GITHUB}/tree/{SHA}/queries/">folder</a>`,
+              `<a href="${GITHUB}/blob/main/queries/gone.rq">not at that commit</a>`,
+              `<a href="${GITHUB}/blob/main/queries/local.rq">untracked</a>`,
+            ].join(""),
+          ),
+        },
+        { "queries/q.rq": "SELECT * {}" },
+        [],
+        { "queries/local.rq": "SELECT * {}" },
+      );
+    });
+
+    it("accepts a file and a folder the checkout's commit holds", () => {
+      assert.ok(!result.said.includes("queries/q.rq"), result.said);
+      assert.ok(!result.said.includes(`tree/${result.sha}`), result.said);
+    });
+
+    it("names a file the commit lacks as not in the checkout", () => {
+      const line = result.said
+        .split("\n")
+        .find((one) => one.includes("queries/gone.rq"));
+      assert.ok(line?.includes("not in the checkout"), result.said);
+    });
+
+    it("names a file that is on disk but not in git", () => {
+      assert.equal(result.code, 1, result.said);
+      assert.ok(result.said.includes("queries/local.rq"), result.said);
+    });
+  });
+
+  describe("with an anchor", () => {
+    let result: Checked;
+
+    before(async () => {
+      result = await check({
+        "site.css": "",
+        "index.html": page(
+          `<meta name="viewport" content="x"><a name="old-anchor"></a><a href="#old-anchor">fine</a><a href="#viewport">dead</a>`,
+        ),
+      });
+    });
+
+    it("accepts an `id` and the `name` of an `<a>`", () => {
+      assert.ok(!result.said.includes("#old-anchor"), result.said);
+    });
+
+    it("names a link to the `name` of a `<meta>` tag as dead", () => {
+      assert.equal(result.code, 1, result.said);
+      assert.ok(result.said.includes("#viewport"), result.said);
+    });
+  });
+
+  describe("with a page that links no way back to the front page", () => {
+    let result: Checked;
+    let failed: string[];
+
+    before(async () => {
+      result = await check({
+        "site.css": "",
+        "index.html": bare(`<a href="a.html">a</a>`),
+        "a.html": bare(`<a href="sub/e.html">e</a>`),
+        "sub/b.html": bare(`<a href="../index.html">front</a>`),
+        "sub/c.html": bare(`<a href="../#top-heading">front</a>`),
+        "sub/d.html": bare(`<a href="${SITE}index.html#top-heading">front</a>`),
+        "sub/e.html": bare(`<a href="../sub/">not the front</a>`),
+        "sub/index.html": bare(`<a href="${SITE}">front</a>`),
+        "terms/index.html": bare(""),
+        "llms.txt": "a text file needs no link",
+      });
+      failed = result.said
+        .split("\n")
+        .filter((line) => line.startsWith("FAIL"));
+    });
+
+    it("exits 1, naming every such page on one line", () => {
+      assert.equal(result.code, 1, result.said);
+      assert.deepEqual(failed, [
+        "FAIL a.html, sub/e.html, terms/index.html: links no way back to the front page",
+      ]);
+    });
+
+    it("accepts a link to the front page as a folder or `index.html`, relative or absolute, with a fragment", () => {
+      for (const path of [
+        "sub/b.html",
+        "sub/c.html",
+        "sub/d.html",
+        "sub/index.html",
+      ])
+        assert.ok(!failed.join().includes(path), path);
+    });
+
+    it("asks no such link of a text file", () => {
+      assert.ok(!failed.join().includes("llms.txt"));
+    });
+  });
+
+  describe("with the `.txt` and `.md` files a site serves", () => {
+    let result: Checked;
+
+    before(async () => {
+      result = await check({
+        "site.css": "",
+        "index.html": page(""),
+        "llms.txt": `# Hub\n\n- [Fine](index.html): ok\n- [Dead](missing-page.html): gone\n\nSee ${origin}/gone for more.`,
+        "docs/AGENTS.md": `[Up](../index.html) [Sibling](nope.md)\n\nIn a span \`${origin}/in-span/missing.md\` and\n\n\`\`\`\n${origin}/in-fence/missing.md\n\`\`\`\n`,
+      });
+    });
+
+    it("names a dead Markdown link and a dead bare address, each resolved against its own file", () => {
+      assert.equal(result.code, 1, result.said);
+      for (const dead of ["missing-page.html", `${origin}/gone`, "nope.md"])
+        assert.ok(
+          result.said.includes(dead),
+          `${dead} is not named in:\n${result.said}`,
+        );
+      assert.ok(result.said.includes("llms.txt"), result.said);
+      assert.ok(result.said.includes("docs/AGENTS.md"), result.said);
+      assert.ok(
+        !result.said.includes("-> 404: https://hub.test/cascade/index.html"),
+        result.said,
+      );
+    });
+
+    it("skips an address written in a code span or a fenced block", () => {
+      assert.ok(!result.said.includes("in-span/missing.md"), result.said);
+      assert.ok(!result.said.includes("in-fence/missing.md"), result.said);
+    });
+  });
+
+  describe("with `--readmes`", () => {
+    let result: Checked;
+
+    before(async () => {
+      READMES.clear();
+      READMES.set("jayostis/f", "503");
+      READMES.set(
+        "someone-else/a",
+        `# a\n\n## Docs\n\n- [The hub](${HUB}): home\n- [Terms](${HUB}terms/#foaf:name): terms\n- [Elsewhere](${origin}/ok)\n- [Local](docs/guide.md)\n\n## Other\n\n[ignored](${origin}/gone)`,
+      );
+      READMES.set("jayostis/b", `# b\n\nno docs block here\n\n[x](${HUB})`);
+      READMES.set(
+        "jayostis/g",
+        `# g\n\nintro\n\n\`\`\`\n## Docs in a fence\n\`\`\`\n\n## What it is\n\n## Docs\n\n- [The hub](${HUB})`,
+      );
+      READMES.set(
+        "jayostis/c",
+        `# c\n\n## Docs\n\n- [Terms first](${HUB}terms/)\n- [The hub](${HUB})`,
+      );
+      READMES.set(
+        "jayostis/d",
+        `# d\n\n## Docs\n\n- [The hub](${HUB})\n- [Dead](${origin}/gone)\n- [Anchor](${HUB}terms/#nope)\n- [Gone](docs/missing.md)\n\n### More\n\n- [Deeper](deeper/missing.md)\n\n## Other`,
+      );
+      result = await check(tree(), {}, [
+        "--readmes",
+        "--readmes-from",
+        `${origin}/readmes/`,
+      ]);
+    });
+
+    it("accepts a README whose Docs block opens with the front page and whose links resolve", () => {
+      // The owner of README a is read from the row's link: `someone-else`. Its link outside the block is dead and is not read.
+      assert.equal(result.code, 1, result.said);
+      assert.ok(!result.said.includes("README a"), result.said);
+    });
+
+    it("names a README with no Docs block", () => {
+      assert.ok(result.said.includes("README b: no ## Docs block"));
+    });
+
+    it("names a README whose Docs block is not its first `##` section", () => {
+      // A `## Docs` inside a fence is no heading.
+      assert.ok(
+        result.said.includes(
+          'README g: the ## Docs block is not the first ## section of the README: "What it is" comes before it',
+        ),
+        result.said,
+      );
+    });
+
+    it("names a README whose first Docs link is not the front page", () => {
+      assert.ok(
+        result.said.includes("README c: the first link in the Docs block is"),
+        result.said,
+      );
+    });
+
+    it("names each dead link of a Docs block, those under its sub-headings too", () => {
+      for (const dead of [
+        `${origin}/gone`,
+        `${HUB}terms/#nope`,
+        "docs/missing.md",
+        "deeper/missing.md",
+      ])
+        assert.ok(
+          result.said.includes(dead),
+          `${dead} is not named in:\n${result.said}`,
+        );
+    });
+
+    it("names a repository with no README", () => {
+      assert.ok(result.said.includes("README e: no README"), result.said);
+    });
+
+    it("warns of a README its host fails to serve, and does not fail for it", () => {
+      assert.ok(result.said.includes("WARN README f: "), result.said);
+      assert.ok(!result.said.includes("FAIL README f"), result.said);
+    });
+  });
+
+  describe("with `--no-external --save-external`, then `--only-external`", () => {
+    let first: Checked;
+    let second: Checked;
+    let askedBySecond = 0;
+    let unaskedByFirst = 0;
+
+    before(async () => {
+      const saved = join(SCRATCH, "saved-external.json");
+      const before = askedOf("/gone").length + askedOf("/ok").length;
+      first = await check(
+        {
+          "index.html": page(
+            `<a href="${origin}/gone">dead</a><a href="${origin}/ok">fine</a><a href="sub.html">in</a>`,
+          ),
+          "sub.html": page(""),
+          "site.css": "",
+        },
+        {},
+        ["--no-external", "--save-external", saved],
+      );
+      unaskedByFirst = askedOf("/gone").length + askedOf("/ok").length - before;
+      askedBySecond = askedOf("/gone").length;
+      second = await check({}, {}, ["--only-external", saved]);
+      askedBySecond = askedOf("/gone").length - askedBySecond;
+    });
+
+    it("exits 0 at first, with the addresses of other sites unasked", () => {
+      assert.equal(first.code, 0, first.said);
+      assert.equal(unaskedByFirst, 0);
+    });
+
+    it("exits 1 when they are asked, naming the dead one and the page that held it", () => {
+      assert.equal(second.code, 1, second.said);
+      assert.ok(askedBySecond > 0, "the second run asked the dead address");
+      assert.ok(
+        second.said.includes(`index.html: ${origin}/gone`),
+        second.said,
+      );
+      assert.ok(!second.said.includes(`${origin}/ok`), second.said);
+      assert.ok(!second.said.includes("sub.html"), second.said);
+    });
+  });
+
+  describe("with `--crawl`, over a deployed site", () => {
+    const site = () => `${origin}/site/`;
+    let followed: { code: number; said: string };
+    let external: { code: number; said: string };
+    let down: { code: number; said: string };
+    let gone: { code: number; said: string };
+
+    before(async () => {
+      LIVE.clear();
+      LIVE.set("", live(`<a href="${site()}a.html">a</a>`));
+      LIVE.set(
+        "a.html",
+        live(`<a href="b.html">b</a><a href="notes.txt">n</a>`),
+      );
+      LIVE.set("b.html", live(`<a href="dead.html">dead</a>`));
+      LIVE.set("notes.txt", `[gone](${site()}dead-from-text.html)`);
+      followed = await run(["--crawl", "--site", site()]);
+
+      LIVE.clear();
+      LIVE.set("", live(`<a href="${origin}/down">elsewhere</a>`));
+      external = await run(["--crawl", "--site", site()]);
+
+      LIVE.set("", live(`<a href="down.html">down</a>`));
+      LIVE.set("down.html", 503);
+      down = await run(["--crawl", "--site", site(), "--no-external"]);
+
+      LIVE.set("", live(`<a href="gone.html">gone</a>`));
+      LIVE.delete("down.html");
+      gone = await run(["--crawl", "--site", site(), "--no-external"]);
+    });
+
+    it("follows links from the front page to every page of the site, and counts them", () => {
+      assert.ok(followed.said.includes("4 pages"), followed.said);
+    });
+
+    it("names a dead link in a page and in a text file", () => {
+      assert.equal(followed.code, 1, followed.said);
+      assert.ok(
+        followed.said.includes("b.html") && followed.said.includes("dead.html"),
+        followed.said,
+      );
+      assert.ok(followed.said.includes("dead-from-text.html"), followed.said);
+    });
+
+    it("names a page of the site that answers 503 or 404", () => {
+      assert.equal(down.code, 1, down.said);
+      assert.ok(
+        down.said.includes("FAIL") && down.said.includes("down.html"),
+        down.said,
+      );
+      assert.equal(gone.code, 1, gone.said);
+      assert.ok(gone.said.includes("gone.html"), gone.said);
+    });
+
+    it("warns of another site's address that answers 503, and does not fail", () => {
+      assert.equal(external.code, 0, external.said);
+      assert.ok(external.said.includes("WARN"), external.said);
+    });
+  });
 });
