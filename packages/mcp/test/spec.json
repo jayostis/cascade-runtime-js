@@ -1,0 +1,47 @@
+{
+  "about": "`cascade-mcp`, a command that serves a folder of pods to an MCP client, such as Claude Desktop or VS Code, over its standard input and output. It offers the tools of `cascade-runtime/tools`, which only read.",
+  "capabilities": [
+    "Serving a folder of pods to an MCP client · cascade-mcp --pods, --check-tables",
+    "Starting cascade-mcp · --pods, --help"
+  ],
+  "glossary": [
+    {
+      "term": "MCP",
+      "definition": "Model Context Protocol: an open standard by which an app that runs a model, the MCP client, starts a program, the MCP server, and calls the tools it offers.",
+      "aliases": ["MCP client", "MCP clients", "MCP server"]
+    },
+    {
+      "term": "model",
+      "definition": "a language model that an app lets answer a person's questions about their records.",
+      "aliases": ["models"]
+    },
+    {
+      "term": "pod",
+      "definition": "one person's records, and what that person has said about them, kept as files in one folder.",
+      "aliases": ["pods"]
+    },
+    {
+      "term": "reference tables",
+      "definition": "public code lists, such as RxNorm for medicines, that tell a runtime when two codes mean one thing.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries",
+      "aliases": ["reference table"]
+    },
+    {
+      "term": "Refusal",
+      "definition": "the error thrown when the package declines a request it understood, such as a name it does not have; it has written nothing."
+    },
+    {
+      "term": "standard error",
+      "definition": "a program's second output stream, where it writes what it has to say to a person; cascade-mcp's standard output carries only the protocol.",
+      "aliases": ["standard output", "standard input"]
+    },
+    {
+      "term": "tool",
+      "definition": "a function a model may call: a name, a description, a JSON Schema for its input, and the code that runs it.",
+      "aliases": ["tools"]
+    }
+  ],
+  "shaped": ["mcp.test.ts"],
+  "build": [],
+  "randomOrder": ["mcp.test.ts"]
+}
