@@ -162,6 +162,7 @@ function namesCodeOrSituation(
   if (SITUATION.test(text)) return true;
   if (!CODE.test(text)) return false;
   return text
+    .replace(/\([^)]*\)/g, "()")
     .split(/,|\s+and\s+|\s+or\s+/)
     .map((item) => item.trim())
     .every((item) => /[().`]/.test(item) || names.has(item));

@@ -151,6 +151,7 @@ describe("checkShape(cases, spec, specPath)", () => {
 
     it("accepts a bare word the capability names after its dot, and code written as code", () => {
       for (const second of [
+        "replayKit(kit, folder, { through })",
         "terms",
         "codeStems",
         "terms, codeStems",
