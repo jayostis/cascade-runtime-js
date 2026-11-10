@@ -4,7 +4,7 @@ import * as oxigraph from "oxigraph";
 import {
   ccdaDownload,
   type DownloadFiles,
-  received,
+  dateOrUtcTimeOf,
   scopesOf,
 } from "../src/index.js";
 
@@ -131,7 +131,7 @@ test("a CDA time is a UTC time where it gives an hour and its offset, else its d
     ["20250403250000+0000", undefined],
     ["2025-04-03", undefined],
   ])
-    assert.equal(received(time ?? ""), when, time);
+    assert.equal(dateOrUtcTimeOf(time ?? ""), when, time);
 });
 
 test("a document's records are scoped by the custodian id its organization is named by, the NPI, else the least type and value, and its one patient's first id; with no custodian id naming an organization, or not one patient with an id, it states no scope, and a file that is no C-CDA has none", () => {

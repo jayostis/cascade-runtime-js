@@ -224,10 +224,10 @@ export function isCdaDocument(bytes: Uint8Array): boolean {
  * A CDA time, `YYYYMMDD[hh[mm[ss[.f]]]][±hhmm]`, as an `xsd:dateTime` in UTC where it states an hour and its offset, or
  * else as the `xsd:date` it falls on; undefined where it is no such time or names no such day.
  */
-export function received(time: string): string | undefined {
+export function dateOrUtcTimeOf(cdaTime: string): string | undefined {
   const parts =
     /^(\d{4})(\d\d)(\d\d)(?:(\d\d)(?:(\d\d)(?:(\d\d)(?:\.\d+)?)?)?)?(?:([+-]\d\d)(\d\d))?$/.exec(
-      time,
+      cdaTime,
     );
   if (parts === null) return undefined;
   const field = (index: number): number => Number(parts[index] ?? 0);
@@ -317,7 +317,7 @@ export const ccdaDownload = {
     if (found === undefined) return undefined;
     const { custodian, effectiveTime, sections } = found.header;
     const when =
-      effectiveTime === undefined ? undefined : received(effectiveTime);
+      effectiveTime === undefined ? undefined : dateOrUtcTimeOf(effectiveTime);
     return sections.flatMap(({ title, entries }) =>
       Array.from({ length: entries }, () => ({
         ...(custodian === undefined || custodian === ""
