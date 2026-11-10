@@ -576,9 +576,22 @@ describe("Pulling a patient's records from a hospital · pull(), DEMO_PLAN", () 
       search("AllergyIntolerance"),
     ];
     let result: Pull;
+    let ofNoPatient: Pull;
 
     before(async () => {
       assert.ok(!north.hospital.types.includes("CarePlan"));
+      ({ pull: ofNoPatient } = await pulled({
+        plan: { searches: [search("MedicationRequest")], backfill: [] },
+        alter: rewritten(
+          (request) => isSearch(request, "MedicationRequest"),
+          (body) => {
+            (body.entry as unknown[]).push({
+              resource: { resourceType: "Medication", id: "med-1" },
+              search: { mode: "include" },
+            });
+          },
+        ),
+      }));
       const typeOf = (request: Request) =>
         new URL(request.url).pathname.split("/").at(-1)!;
       ({ pull: result } = await pulled({
@@ -631,41 +644,34 @@ describe("Pulling a patient's records from a hospital · pull(), DEMO_PLAN", () 
         );
     });
 
-    it("keeps the pages before one that comes back 403, 404 or 410, and lists the search in `denied`", () => {
-      for (const [type, status] of laterTurnedDown) {
+    it("keeps the pages before one that comes back 403, 404 or 410", () => {
+      for (const [type, status] of laterTurnedDown)
         assert.ok(
           keptOf(result, type).length > 0,
           `the pages of ${type} before the page that comes back ${status}`,
         );
+    });
+
+    it("lists in `denied` a search whose second page comes back 403, 404 or 410", () => {
+      for (const [type, status] of laterTurnedDown)
         assert.ok(
           result.denied.some((denied) => denied.type === type),
           `${type}, whose second page comes back ${status}`,
         );
-      }
     });
 
-    it("keeps nothing of a page that holds a record of another patient, or of no patient, and lists the search in `denied`", async () => {
+    it("keeps nothing of a page that holds a record of another patient, or of no patient", () => {
       assert.deepEqual(keptOf(result, "Encounter"), [], "another patient's");
-      assert.ok(result.denied.some(({ type }) => type === "Encounter"));
-
-      const { pull: ofNoPatient } = await pulled({
-        plan: { searches: [search("MedicationRequest")], backfill: [] },
-        alter: rewritten(
-          (request) => isSearch(request, "MedicationRequest"),
-          (body) => {
-            (body.entry as unknown[]).push({
-              resource: { resourceType: "Medication", id: "med-1" },
-              search: { mode: "include" },
-            });
-          },
-        ),
-      });
-      assert.deepEqual(ofNoPatient.denied, [search("MedicationRequest")]);
       assert.deepEqual(
         keptOf(ofNoPatient, "MedicationRequest"),
         [],
         "no patient's",
       );
+    });
+
+    it("lists in `denied` a search whose page holds a record of another patient, or of no patient", () => {
+      assert.ok(result.denied.some(({ type }) => type === "Encounter"));
+      assert.deepEqual(ofNoPatient.denied, [search("MedicationRequest")]);
     });
 
     it("returns the records of the last search, which comes after the searches turned down", () => {
@@ -698,7 +704,7 @@ describe("Pulling a patient's records from a hospital · pull(), DEMO_PLAN", () 
       };
     };
 
-    it("retries a search that comes back 503 or 429, or gets no response, and returns the same records", async () => {
+    it("returns the same records as from a hospital that never fails, for a search that comes back 503 or 429, or gets no response, once", async () => {
       const failed = new Set<string>();
       const alters = [
         failingOnce(
