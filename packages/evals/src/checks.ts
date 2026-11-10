@@ -20,7 +20,7 @@ import { type Key, loadKey, prepare, type Prepared } from "./cases.js";
 import type { Job, SubjectChecks, ToolCallRecord, ToolUse } from "./results.js";
 import { answerPath } from "./sessions.js";
 
-/** Every citation of the case's key, checked against its downloads: a key whose evidence does not hold is no key. The keys `claims` and `claim` of what it returns are what `check-key` has always printed. */
+/** Every citation of the case's key, checked against its downloads: a key whose evidence does not hold is no key. */
 export async function checkKey(id: string, log: (line: string) => void) {
   const prepared = await prepare(id, log);
   const { key } = await loadKey(id);
