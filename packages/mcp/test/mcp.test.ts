@@ -121,7 +121,7 @@ describe("Serving a folder of pods to an MCP client · cascade-mcp --pods, --che
       ]);
     });
 
-    it("returns a tool's result as JSON text", async () => {
+    it("returns the `ask` tool's rows, for a named question of a pod in the folder, as JSON text", async () => {
       const { value } = await call("ask", {
         pod: "alex-rivera",
         question: "pod/My active allergies",
@@ -129,7 +129,7 @@ describe("Serving a folder of pods to an MCP client · cascade-mcp --pods, --che
       const { rows } = value as { rows: Record<string, string>[] };
       assert.ok(
         rows.length > 0,
-        "Alex's pod holds an allergy once J1 judges the first export about the person",
+        "a pod of the folder holds an allergy once J1 judges the first export about the person",
       );
     });
   });

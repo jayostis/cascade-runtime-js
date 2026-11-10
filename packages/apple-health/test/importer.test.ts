@@ -87,7 +87,9 @@ const rows = (store: oxigraph.Store, query: string): number =>
 /**
  * An Apple Health export is a folder: `export.xml`, which lists the clinical records Apple Health received from
  * hospitals, and one FHIR resource in each file of `clinical-records/`. `documents` hands each of those files on as
- * a document, whether or not `export.xml` lists it, and refuses an `export.xml` it cannot read.
+ * a document, whether or not `export.xml` lists it, and refuses an `export.xml` it cannot read. `files` is what reads
+ * the export's files, by path (`read(path)`, and `list(folder)` for the paths under a folder), and `folder` names the
+ * export's folder in it.
  * @rule runtime/arrivals.feature A14
  */
 describe("Finding the documents of an Apple Health export · appleHealthExport.documents()", () => {
@@ -99,7 +101,7 @@ describe("Finding the documents of an Apple Health export · appleHealthExport.d
       );
     });
 
-    it("returns each `.json` file directly under `clinical-records/` as a document of media type `application/fhir+json`", async () => {
+    it("returns each `.json` file directly under `clinical-records/`, listed in `export.xml` or not, as a document of media type `application/fhir+json`", async () => {
       const documents = (await appleHealthExport.documents(EXPORT, "e")) ?? [];
       assert.deepEqual(
         documents.map(({ path, mediaType, envelope }) => [
@@ -119,14 +121,6 @@ describe("Finding the documents of an Apple Health export · appleHealthExport.d
             "#envelope-resource",
           ],
         ],
-      );
-    });
-
-    it("returns a file that `export.xml` does not list", async () => {
-      const documents = (await appleHealthExport.documents(EXPORT, "e")) ?? [];
-      assert.equal(
-        documents[1]?.path,
-        "e/clinical-records/Condition-unlisted.json",
       );
     });
 

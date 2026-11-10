@@ -344,7 +344,8 @@ function statements(store: oxigraph.Store, predicates: string): string[] {
 /**
  * `pullFiles` turns what `pull()` fetched from a hospital into the files of one folder, which `pod.look()` and
  * `pod.import()` take as they take an export: `bundle.json`, the FHIR resources; `pull.json`, everything else the
- * pull holds; and a file for each C-CDA document the pull read.
+ * pull holds; and a file for each C-CDA document the pull read. `pull` is what `pull()` fetched, and `name` is the name
+ * of the folder the files are saved under.
  */
 describe("Saving a pull as files · pullFiles()", () => {
   describe("pullFiles(pull, name)", () => {
@@ -375,7 +376,9 @@ describe("Saving a pull as files · pullFiles()", () => {
       );
     });
 
-    it("keeps, for a document it could not read, why, and no path", () => {
+    // A C-CDA document the pull asked for and did not get, such as one the hospital answered 404 for, is kept in
+    // `pull.json` as `notRead`, holding the hospital's words.
+    it("keeps, for a document the hospital would not give, its words in `notRead`, and no `path`", () => {
       assert.deepEqual(
         (jsonOf(saved, "north/pull.json").documents as unknown[])[1],
         {
@@ -437,7 +440,8 @@ describe("Saving a pull as files · pullFiles()", () => {
 /**
  * An import states where a pull came from, so a pull whose `pull.json` does not say so plainly is refused, with a
  * sentence that says which part. `pullFiles` refuses it before it is saved, and `documents` refuses one saved some other
- * way. Each sentence reaches the person who asked for the import.
+ * way. Each sentence reaches the person who asked for the import. `files` is what reads a saved folder's files, by path
+ * (`read(path)`, and `list(folder)` for the paths under a folder), and `folder` names the saved pull's folder in it.
  * @rule runtime/arrivals.feature A14
  */
 describe("Refusing a pull an import cannot state · PullRefused, pullFiles(), fhirPull.documents()", () => {
@@ -477,7 +481,7 @@ describe("Refusing a pull an import cannot state · PullRefused, pullFiles(), fh
   });
 
   describe("fhirPull.documents(files, folder)", () => {
-    it("rejects, with the sentence `pullFiles()` gives, for each of those in a `pull.json`", async () => {
+    it("rejects with `PullRefused`, giving the sentence `pullFiles()` gives, for each pull `pullFiles()` refuses, saved as a `pull.json`", async () => {
       for (const [name, changed, part] of REFUSED)
         await assert.rejects(
           fhirPull.documents(withPull(changed), "north"),
@@ -525,24 +529,6 @@ describe("Refusing a pull an import cannot state · PullRefused, pullFiles(), fh
           retrievedFrom,
         );
     });
-
-    it("rejects for a folder with no `bundle.json`", async () => {
-      const saved = new Map(pullFiles(PULL, "north"));
-      saved.delete("north/bundle.json");
-      await assert.rejects(fhirPull.documents(filesOf(saved), "north"), {
-        message: "the pull holds no bundle.json",
-      });
-    });
-
-    it("rejects for a folder without a document that `pull.json` names", async () => {
-      const saved = new Map(
-        pullFiles({ ...PULL, documents: DOCUMENTS }, "north"),
-      );
-      saved.delete("north/document-1.xml");
-      await assert.rejects(fhirPull.documents(filesOf(saved), "north"), {
-        message: "the pull holds no document-1.xml",
-      });
-    });
   });
 });
 
@@ -584,6 +570,24 @@ describe("Reading a saved pull as documents · fhirPull.documents()", () => {
         ["north/document-1.xml", "application/cda+xml", undefined],
       );
       assert.deepEqual(found[1]!.bytes, CCD);
+    });
+
+    it("rejects for a folder with no `bundle.json`", async () => {
+      const saved = new Map(pullFiles(PULL, "north"));
+      saved.delete("north/bundle.json");
+      await assert.rejects(fhirPull.documents(filesOf(saved), "north"), {
+        message: "the pull holds no bundle.json",
+      });
+    });
+
+    it("rejects for a folder without a document that `pull.json` names", async () => {
+      const saved = new Map(
+        pullFiles({ ...PULL, documents: DOCUMENTS }, "north"),
+      );
+      saved.delete("north/document-1.xml");
+      await assert.rejects(fhirPull.documents(filesOf(saved), "north"), {
+        message: "the pull holds no document-1.xml",
+      });
     });
   });
 });
@@ -838,7 +842,7 @@ describe("Listing a saved pull's records before an import · fhirPull.index()", 
       );
     });
 
-    it("returns, after those, one for each `entry` element of each C-CDA document read, by its custodian and section", async () => {
+    it("returns, after the Bundle's, one index entry for each `entry` element of each C-CDA document read, by its custodian and section", async () => {
       const ccd = encoder.encode(`<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3">
   <effectiveTime value="20260901"/>
@@ -1045,7 +1049,7 @@ describe("Saving and reading what a hospital's server said of itself · connectF
   });
 
   describe("connectFiles(connect, name)", () => {
-    it("throws `ConnectRefused`, with the sentence `readConnect()` gives, for each of those", () => {
+    it("throws `ConnectRefused`, with the sentence `readConnect()` gives, for each connection `readConnect()` refuses", () => {
       for (const [name, connect, why] of CONNECT_REFUSED)
         assert.throws(
           () => connectFiles(connect, "north"),

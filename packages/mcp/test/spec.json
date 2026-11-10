@@ -6,6 +6,10 @@
   ],
   "glossary": [
     {
+      "term": "isError",
+      "definition": "the flag on an MCP tool's result that says the call failed; the result's text is then the reason."
+    },
+    {
       "term": "MCP",
       "definition": "Model Context Protocol: an open standard by which an app that runs a model, the MCP client, starts a program, the MCP server, and calls the tools it offers.",
       "aliases": ["MCP client", "MCP clients", "MCP server"]

@@ -79,7 +79,8 @@ const one = patient(
 /**
  * A download is what a person saves from a patient portal: one C-CDA file. `documents` hands it on whole, once it is
  * sure it is one, and leaves any other file to another importer; a file that claims to be one and is not well-formed is
- * refused, not skipped.
+ * refused, not skipped. `files` is what reads the download's files, by path (`read(path)`), and `path` names the one
+ * file asked about.
  * @rule runtime/arrivals.feature A14
  */
 describe("Recognising a downloaded C-CDA document · ccdaDownload.documents(), isCdaDocument()", () => {
@@ -108,7 +109,7 @@ describe("Recognising a downloaded C-CDA document · ccdaDownload.documents(), i
         );
     });
 
-    it("returns undefined for a file whose name does not end in `.xml`, and for no file", async () => {
+    it("returns undefined for a file whose name does not end in `.xml`, and for a path, `absent.xml`, that names no file", async () => {
       for (const path of ["summary.txt", "absent.xml"])
         assert.equal(
           await ccdaDownload.documents(download, path),
@@ -195,7 +196,7 @@ describe("Listing a C-CDA document's entries before an import · ccdaDownload.in
       entries = (await ccdaDownload.index(download, "kestrel.xml")) ?? [];
     });
 
-    it("returns one index entry for each `entry` element of each section", () => {
+    it("returns one index entry for each `entry` element of each section, counting once an `entry` that holds another, and giving a section's title whole when an element breaks it", () => {
       assert.deepEqual(
         entries.map(({ section }) => section),
         [
@@ -204,13 +205,6 @@ describe("Listing a C-CDA document's entries before an import · ccdaDownload.in
           "Medications",
           "Social History",
         ],
-      );
-    });
-
-    it("counts once an `entry` element that holds another", () => {
-      assert.equal(
-        entries.filter(({ section }) => section === "Medications").length,
-        1,
       );
     });
 
@@ -224,10 +218,6 @@ describe("Listing a C-CDA document's entries before an import · ccdaDownload.in
         entries.map(({ source }) => source),
         Array(4).fill("Kestrel Harbor Hospital"),
       );
-    });
-
-    it("gives a section's title whole when an element breaks it", () => {
-      assert.equal(entries[0]?.section, "Allergies and Intolerances");
     });
 
     it("gives the document's time as `dateOrUtcTimeOf(cdaTime)` returns it", () => {

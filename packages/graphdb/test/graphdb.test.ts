@@ -68,7 +68,8 @@ async function triples(ntriples: string | undefined): Promise<Set<string>> {
  * `load` copies a pod into a GraphDB server, so that a developer can explore its records in GraphDB's workbench: it
  * creates a repository, sends each file of the pod as a named graph and the derived state as one more, and saves each
  * named question as a saved query. A load that fails leaves no half-filled repository behind, which a second load
- * would refuse. The tests run against `test/fake-graphdb.ts`, a local server that answers as GraphDB does.
+ * would refuse. `title` is the pod's title, `store` holds the pod's statements, and `questions` is the named questions
+ * by name. The tests run against `test/fake-graphdb.ts`, a local server that answers as GraphDB does.
  */
 describe("Loading a pod into GraphDB · load(), GraphDB", () => {
   const load_ = (said?: (line: string) => void) =>

@@ -6,8 +6,13 @@
   ],
   "glossary": [
     {
+      "term": "derivation",
+      "definition": "a query a lens carries that works out statements from a pod's files which the files do not hold themselves; what the derivations of a lens work out is the pod's derived state under it.",
+      "aliases": ["derivations"]
+    },
+    {
       "term": "derived state",
-      "definition": "what a lens's derivations construct over a pod's files that the files do not already hold. It is kept in a graph of its own, named for the lens, apart from the files."
+      "definition": "what a lens works out from a pod's files and keeps beside them: statements the files do not hold themselves. It is kept in a graph of its own, named for the lens (`urn:cascade:derived:<lens>`), apart from the files."
     },
     {
       "term": "GraphDB",
