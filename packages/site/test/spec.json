@@ -22,7 +22,7 @@
     "A page of test results for each repository · testsSection",
     "Listing the repositories whose tests are shown · suitesOf(), test-suites.json",
     "Packages, capabilities and situations as a tree · testsSection, spec.json",
-    "Linking a capability to the rules it reaches · @rule",
+    "Linking a capability to the rules it bears on · @rule",
     "A package's glossary on its page · glossaryOf(), Links",
     "The summary bar and its controls · testsSection",
     "Reading a report from each test runner · readJunit()",
@@ -48,7 +48,7 @@
     },
     {
       "term": "build section",
-      "definition": "the closed section at the end of a package on a tests page, headed \"Build and packaging\", for checks of how the package is built; it is not part of the specification.",
+      "definition": "the closed section at the end of a package on a tests page, headed \"Build and packaging\", for the cases of a file or capability that a package's `spec.json` lists under `build`, checks of how the package is built; it is not part of the specification.",
       "aliases": ["build check", "build checks"]
     },
     {
@@ -165,6 +165,11 @@
       "aliases": ["kits"]
     },
     {
+      "term": "kit check",
+      "definition": "one of the five things `runtime/the-kit.feature` requires of a replay of a kit's story, numbered 2 to 6, such as check 3, \"every file conforms to the shapes\". Check 1 is that every example passes.",
+      "aliases": ["kit checks"]
+    },
+    {
       "term": "lens",
       "definition": "a choice of which judgments count when a question is answered: `everyday` is the default, and `export` is stricter, for records sent elsewhere.",
       "aliases": ["lenses"]
@@ -193,6 +198,11 @@
       "term": "namespace",
       "definition": "the shared start of the IRIs of one vocabulary, such as `http://xmlns.com/foaf/0.1/`, which a prefix such as `foaf:` stands for.",
       "aliases": ["namespaces", "prefix", "prefixes"]
+    },
+    {
+      "term": "package",
+      "definition": "one folder `packages/<name>/` of a repository, with its own `test/` and `spec.json`: a tests page shows each as one top-level group of capabilities; a repository with no `packages/` is one package named for it.",
+      "aliases": ["packages"]
     },
     {
       "term": "pod",
@@ -262,7 +272,7 @@
     },
     {
       "term": "spec.json",
-      "definition": "the file `test/spec.json` of a package: its about line, its capabilities in the order the page shows them, its glossary, and which capabilities are build checks."
+      "definition": "the file `test/spec.json` of a package: its about line, its capabilities in the order the page shows them, its glossary, and the files and capabilities it lists under `build`, which are build checks."
     },
     {
       "term": "specification",
@@ -284,6 +294,11 @@
     {
       "term": "term reference",
       "definition": "the page of the site, at `terms/`, that has an entry for every vocabulary term."
+    },
+    {
+      "term": "test folder",
+      "definition": "where a repository's test files sit when that is not `test/` or `tests/`, as `test-suites.json` gives it in `tests`, ending in \"/\"; the page leaves it off the names of the files.",
+      "aliases": ["test folders"]
     },
     {
       "term": "tests page",

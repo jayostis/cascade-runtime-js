@@ -377,7 +377,7 @@ describe("Checking that tests read as a specification · checkShape()", () => {
     });
   });
 
-  describe("with a spec that owns no case of the report", () => {
+  describe("with a spec whose package has no case in the report", () => {
     it("reports it, naming the spec path it resolved, rather than passing silently", () => {
       const report = checkShape(
         readJunit(
@@ -452,8 +452,8 @@ describe("Checking a package's tests from the command line · scripts/spec-shape
     });
   });
 
-  describe("with a spec whose absolute path matches none of the report", () => {
-    it("exits 1, since the spec then owns no case", () => {
+  describe("with a spec outside every folder the report names", () => {
+    it("exits 1, since no case of the report is of the spec's package", () => {
       const junit = join(folder, "own.xml");
       const specFile = join(folder, "py", "tests", "spec.json");
       mkdirSync(dirname(specFile), { recursive: true });

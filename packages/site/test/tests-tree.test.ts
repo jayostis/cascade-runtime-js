@@ -405,10 +405,10 @@ describe("Packages, capabilities and situations as a tree · testsSection, spec.
 });
 
 /**
- * A `@rule` tag in a describe's doc comment names a rule of the vocabulary that the API reaches. The page shows it as a
+ * A `@rule` tag in a describe's doc comment names a rule of the vocabulary that the API's behaviour bears on. The page shows it as a
  * link to the rule, so a reader can go from what the package does to the requirement behind it.
  */
-describe("Linking a capability to the rules it reaches · @rule", () => {
+describe("Linking a capability to the rules it bears on · @rule", () => {
   describe("with a `@rule` tag that names a feature and a rule", () => {
     it("links the rule on the feature's page", async () => {
       const { page } = await pageWith({
@@ -421,8 +421,8 @@ describe("Linking a capability to the rules it reaches · @rule", () => {
     });
   });
 
-  describe("with a `@rule` tag that names a kit's feature and a check", () => {
-    it("links the check on the kit's page", async () => {
+  describe("with a `@rule` tag that names a kit's feature and one of its checks", () => {
+    it("links the kit check on the kit's page", async () => {
       const kit = report(
         "",
         described(

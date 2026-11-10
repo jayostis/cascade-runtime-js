@@ -158,9 +158,9 @@ describe("A page of test results for each repository · testsSection", () => {
 });
 
 /**
- * `packages/site/test-suites.json` lists each repository whose tests get a page: where the deploy finds its newest report,
+ * `packages/site/test-suites.json` lists each repository whose tests get a page: where the site's build finds its newest report,
  * which runner wrote it, and in what order its packages are shown. `suitesOf()` reads the list and refuses an entry the
- * deploy could not use.
+ * build could not use.
  */
 describe("Listing the repositories whose tests are shown · suitesOf(), test-suites.json", () => {
   describe("suitesOf(list)", () => {
@@ -234,7 +234,7 @@ const checkedIn = (): ReturnType<typeof suitesOf> =>
   );
 
 /**
- * The list as it is in the repository, which the deploy reads to find each repository's newest report: a refusal here
+ * The list as it is in the repository, which the site's build reads to find each repository's newest report: a refusal here
  * would stop the site from building.
  */
 describe("The suite list as checked in · test-suites.json", () => {
