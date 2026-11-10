@@ -67,6 +67,11 @@
       "aliases": ["components"]
     },
     {
+      "term": "CONSTRUCT",
+      "definition": "the form of a SPARQL query that returns statements it builds, where SELECT returns rows.",
+      "aliases": ["CONSTRUCTs"]
+    },
+    {
       "term": "content-addressed file",
       "definition": "a file named by a hash of what it holds: a document or a version."
     },
@@ -122,6 +127,11 @@
       "aliases": ["graphs", "named graph"]
     },
     {
+      "term": "hash",
+      "definition": "a short code worked out from a file's bytes: the same bytes always give the same hash, and any change gives another.",
+      "aliases": ["hashes"]
+    },
+    {
       "term": "import",
       "definition": "the act of bringing an export's documents into a pod; its own file lists the documents it kept.",
       "aliases": ["imports"]
@@ -130,6 +140,11 @@
       "term": "index",
       "definition": "a file kept beside a version of a reference table that says which rows each code finds, so that the rows need not all be read.",
       "aliases": ["indexes", "index by code"]
+    },
+    {
+      "term": "IRI",
+      "definition": "the name of one thing, written as an address, such as `urn:uuid:3b9e2d47-8c15-4f6a-a0d2-7e5c1b9f4a63` or `https://ns.cascadeprotocol.org/cascade#allergen`; it need not be one a browser can open.",
+      "aliases": ["IRIs"]
     },
     {
       "term": "judgment",
@@ -340,6 +355,10 @@
     {
       "term": "transmitter",
       "definition": "the party that passed a document on without writing it, as Apple Health does a hospital's record."
+    },
+    {
+      "term": "tripwire",
+      "definition": "a check that turns red on a change someone should look at, not on a fault in the package."
     },
     {
       "term": "Turtle",

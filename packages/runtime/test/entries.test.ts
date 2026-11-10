@@ -175,7 +175,7 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
   /**
    * Red means the vocabulary changed `entries.rq`. The pod is still right, because the changed query runs as it is
    * written, but slowly (#246), until `entries()` is checked against the new text and `ENTRIES_TEXT` in `src/entries.ts`
-   * is pinned to it.
+   * is set to the new text's hash.
    */
   describe("given the vocabulary's own `entries.rq` (tripwire)", () => {
     let answered: boolean;
@@ -187,7 +187,7 @@ describe("Deriving a pod's state with the vocabulary's queries · Derivations.de
       pinned = await derivedWith(text);
     });
 
-    it("answers it by `entries`, without running it", () => {
+    it("returns its triples through `entries`, without running it", () => {
       assert.ok(answered);
       assert.equal(pinned.constructs, 1);
       assert.ok(pinned.lines.length > 0);
