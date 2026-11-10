@@ -2,24 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ConnectionFailure } from "cascade-runtime";
 import {
-  rethrowing,
+  failureToReport,
   LauncherUnavailable,
   launcherAnswers,
 } from "./launcher-sandbox.js";
 
 const BASE = "https://launch.example/v/r4/sim/abc/fhir";
 
-/** What `rethrowing` threw, and whether it asked the launcher. */
-async function threw(error: unknown, answering: boolean) {
+/** What `failureToReport` gave, and how many times it asked the launcher. */
+async function reportedFor(error: unknown, answering: boolean) {
   let asked = 0;
-  const thrown = await rethrowing(error, async () => {
+  const reported = await failureToReport(error, async () => {
     asked += 1;
     return answering;
-  }).then(
-    () => assert.fail("it did not throw"),
-    (caught: unknown) => caught,
-  );
-  return { thrown, asked };
+  });
+  return { reported, asked };
 }
 
 const gaveUp = new ConnectionFailure(
@@ -29,15 +26,15 @@ const gaveUp = new ConnectionFailure(
 );
 
 test("a run that gave up after its retries is the sandbox's when the sandbox answers nothing either, and the runtime's when it answers", async () => {
-  const down = await threw(gaveUp, false);
-  assert.ok(down.thrown instanceof LauncherUnavailable);
-  assert.match(down.thrown.message, /sandbox/i);
-  assert.match(down.thrown.message, /not the runtime/i);
-  assert.ok(down.thrown.message.includes(gaveUp.message));
+  const down = await reportedFor(gaveUp, false);
+  assert.ok(down.reported instanceof LauncherUnavailable);
+  assert.match(down.reported.message, /sandbox/i);
+  assert.match(down.reported.message, /not the runtime/i);
+  assert.ok(down.reported.message.includes(gaveUp.message));
   assert.equal(down.asked, 1);
 
-  const up = await threw(gaveUp, true);
-  assert.equal(up.thrown, gaveUp);
+  const up = await reportedFor(gaveUp, true);
+  assert.equal(up.reported, gaveUp);
   assert.equal(up.asked, 1);
 });
 
@@ -47,8 +44,8 @@ test("a run that gave up on 429s is the runtime's, and the sandbox is not asked,
     "https://launch.example answered 429 to every try for Patient",
     { origin: "https://launch.example", status: 429, resourceType: "Patient" },
   );
-  const limited = await threw(rateLimited, false);
-  assert.equal(limited.thrown, rateLimited);
+  const limited = await reportedFor(rateLimited, false);
+  assert.equal(limited.reported, rateLimited);
   assert.equal(limited.asked, 0);
 
   const failing = new ConnectionFailure(
@@ -56,8 +53,8 @@ test("a run that gave up on 429s is the runtime's, and the sandbox is not asked,
     "https://launch.example answered 503 to every try for Patient",
     { origin: "https://launch.example", status: 503, resourceType: "Patient" },
   );
-  const down = await threw(failing, false);
-  assert.ok(down.thrown instanceof LauncherUnavailable);
+  const down = await reportedFor(failing, false);
+  assert.ok(down.reported instanceof LauncherUnavailable);
   assert.equal(down.asked, 1);
 });
 
@@ -69,8 +66,8 @@ test("a failure that is not the runtime giving up after its retries stays as it 
     new Error("the runtime is broken"),
     "not an error",
   ]) {
-    const { thrown, asked } = await threw(error, false);
-    assert.equal(thrown, error);
+    const { reported, asked } = await reportedFor(error, false);
+    assert.equal(reported, error);
     assert.equal(asked, 0);
   }
 });

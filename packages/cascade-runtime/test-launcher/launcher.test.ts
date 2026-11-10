@@ -17,7 +17,7 @@ import {
   launcherSettings,
   withLauncherSettings,
 } from "../test/launcher-settings.js";
-import { rethrowing, launcherAnswers } from "../test/launcher-sandbox.js";
+import { failureToReport, launcherAnswers } from "../test/launcher-sandbox.js";
 
 const LAUNCHER = "https://launch.smarthealthit.org";
 /** A Synthea patient of r4.smarthealthit.org with a good many records, its vital signs paged. */
@@ -121,8 +121,9 @@ test("connect and pull sign in to the launcher's patient and pull every searched
   const seen: Seen = { sent: [], tokens: [], nexts: [] };
   const fetcher = recorded(seen);
   const row = launcherRow();
-  const blamed = (error: unknown) =>
-    rethrowing(error, () => launcherAnswers(row.fhirBase));
+  const blamed = async (error: unknown): Promise<never> => {
+    throw await failureToReport(error, () => launcherAnswers(row.fhirBase));
+  };
   const connection = await connect(row, REGISTRATION, {
     signIn: direct(fetcher),
     fetch: fetcher,
@@ -203,8 +204,9 @@ test("a token the launcher did not sign ends the pull as unauthorized, carrying 
     return new Request(request, { headers });
   });
   const row = launcherRow();
-  const blamed = (error: unknown) =>
-    rethrowing(error, () => launcherAnswers(row.fhirBase));
+  const blamed = async (error: unknown): Promise<never> => {
+    throw await failureToReport(error, () => launcherAnswers(row.fhirBase));
+  };
   const connection = await connect(row, REGISTRATION, {
     signIn: direct(fetcher),
     fetch: fetcher,

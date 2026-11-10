@@ -26,23 +26,24 @@ export async function launcherAnswers(
 }
 
 /**
- * Throws what the live check threw, unless the runtime gave up after its retries and the launcher does not answer a
- * request of its own either: then it throws `LauncherUnavailable`, so a red run names the launcher. Any other failure,
- * any the launcher could have answered, and any that gave up on 429s, stays the runtime's.
+ * The failure a red run of the launcher check reports: what the check threw, unless the runtime gave up after its
+ * retries and the launcher does not answer a request of its own either, which is `LauncherUnavailable`, so a red run
+ * names the launcher. Any other failure, any the launcher could have answered, and any that gave up on 429s, is the
+ * runtime's.
  */
-export async function rethrowing(
+export async function failureToReport(
   error: unknown,
-  answers: () => Promise<boolean>,
-): Promise<never> {
+  launcherAnswers: () => Promise<boolean>,
+): Promise<unknown> {
   if (
     error instanceof ConnectionFailure &&
     error.kind === "retries-exhausted" &&
     error.status !== 429 &&
-    !(await answers())
+    !(await launcherAnswers())
   )
-    throw new LauncherUnavailable(
+    return new LauncherUnavailable(
       `the SMART launcher's sandbox is down, not the runtime: ${error.message}, and its FHIR server answers no request of its own either`,
       { cause: error },
     );
-  throw error;
+  return error;
 }
