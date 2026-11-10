@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,22 +12,36 @@ import { openPod, sixWords } from "cascade-runtime";
 import { replayKit } from "cascade-runtime/fixtures";
 import { TOOLS } from "cascade-runtime/tools";
 
-/** A folder cascade-mcp's and cascade-runtime's tarballs are installed in, to run `npx --no-install cascade-mcp` as a person would. */
+/** A folder cascade-mcp's and cascade-runtime's tarballs are installed in, to run the `cascade-mcp` bin they installed. */
 const APP =
   process.env.CASCADE_RUNTIME_APP === undefined
     ? undefined
     : resolve(process.env.CASCADE_RUNTIME_APP);
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
+
+/** The script to start: the installed package's `cascade-mcp` bin, or this package's own. `npx` is `npx.cmd` on Windows, so node starts the script. */
+const CLI =
+  APP === undefined
+    ? fileURLToPath(new URL("../src/cli.js", import.meta.url))
+    : join(
+        APP,
+        "node_modules",
+        "cascade-mcp",
+        (
+          JSON.parse(
+            readFileSync(
+              join(APP, "node_modules", "cascade-mcp", "package.json"),
+              "utf8",
+            ),
+          ) as { bin: { "cascade-mcp": string } }
+        ).bin["cascade-mcp"],
+      );
 
 /** The command, its arguments and its folder that start cascade-mcp with `args`, as the tests start it. */
-const command = (args: string[]) =>
-  APP === undefined
-    ? { command: process.execPath, args: [CLI, ...args] }
-    : {
-        command: "npx",
-        args: ["--no-install", "cascade-mcp", ...args],
-        cwd: APP,
-      };
+const command = (args: string[]) => ({
+  command: process.execPath,
+  args: [CLI, ...args],
+  ...(APP === undefined ? {} : { cwd: APP }),
+});
 
 let folder: string;
 let client: Client;
