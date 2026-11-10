@@ -18,55 +18,78 @@ import {
   type Entry,
   Links,
 } from "./glossary.js";
-import type { PagesContext, TestRun } from "./context.js";
+import type { PagesContext, Suite, TestRun } from "./context.js";
 import { SPEC_FOLDER } from "./spec.js";
 
 export const TESTS_FOLDER = "conformance/tests/";
-export const TESTS_PAGE = `${TESTS_FOLDER}index.html`;
 
 /** What the section reads of the context. */
 export type TestsContext = Pick<PagesContext, "tests">;
 
-interface Suite {
-  readonly key: "runtime" | "vocabulary";
-  readonly title: string;
-  readonly repository: string;
-  readonly about: string;
-  /** What ran the suite, as CTRF names its tool. */
-  readonly tool: string;
-  /** Whether its cases are shown as a tree of package, file and describe, or as one table. */
-  readonly tree: boolean;
-}
+/** A suite's repository's name, which names its page's folder and its CTRF file. */
+export const nameOf = (suite: Suite): string =>
+  suite.repository.slice(suite.repository.indexOf("/") + 1);
 
-const SUITES: readonly Suite[] = [
-  {
-    key: "runtime",
-    title: "The runtime's tests",
-    repository: "https://github.com/jayostis/cascade-runtime-js",
-    about: "npm test, node:test over every package",
-    tool: "node:test",
-    tree: true,
-  },
-  {
-    key: "vocabulary",
-    title: "The vocabulary's tests",
-    repository: "https://github.com/jayostis/cascade-vocabulary",
-    about: "pytest over the shapes, queries, kits and features",
-    tool: "pytest",
-    tree: false,
-  },
+/** A suite's page: one per repository, with no index above them. */
+export const testsPageOf = (suite: Suite): string =>
+  `${TESTS_FOLDER}${nameOf(suite)}/index.html`;
+
+/** Where an agent reads a suite's results: CTRF, beside its page. */
+const ctrfFileOf = (suite: Suite): string => `${nameOf(suite)}.ctrf.json`;
+
+/** The hub's own repository's page, which the section always writes. */
+const OWN_PAGE = `${TESTS_FOLDER}cascade-runtime-js/index.html`;
+
+const RUNNERS: readonly Suite["runner"][] = [
+  "node:test",
+  "pytest",
+  "vitest",
+  "nextest",
 ];
 
-/** Where an agent reads a suite's results: CTRF, beside the page. */
-export const ctrfFile = (key: Suite["key"]): string =>
-  `${TESTS_FOLDER}${key}.ctrf.json`;
+/** The suites of `packages/site/test-suites.json`; throws, naming it, at an entry missing a field or naming no known runner. */
+export function suitesOf(raw: unknown): Suite[] {
+  if (!Array.isArray(raw)) throw new Error("the suite list is not a list");
+  return raw.map((entry: unknown, at) => {
+    const given = (
+      typeof entry === "object" && entry !== null ? entry : {}
+    ) as Record<string, unknown>;
+    const text = (key: string): string => {
+      const value = given[key];
+      if (typeof value !== "string" || value === "")
+        throw new Error(`suite ${at + 1} of the list names no ${key}`);
+      return value;
+    };
+    const runner = text("runner");
+    if (!RUNNERS.includes(runner as Suite["runner"]))
+      throw new Error(
+        `suite ${at + 1} of the list names the runner ${runner}, which is not one of ${RUNNERS.join(", ")}`,
+      );
+    const repository = text("repository");
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repository))
+      throw new Error(
+        `suite ${at + 1} of the list names the repository ${repository}, which is not owner/name`,
+      );
+    return {
+      repository,
+      title: text("title"),
+      about: text("about"),
+      workflow: text("workflow"),
+      artifact: text("artifact"),
+      report: text("report"),
+      runner: runner as Suite["runner"],
+    };
+  });
+}
+
+const repositoryUrl = (suite: Suite): string =>
+  `https://github.com/${suite.repository}`;
+
+/** A suite's title inside a sentence: "the runtime's tests". */
+const titleInSentence = (suite: Suite): string =>
+  suite.title.replace(/^The /, "the ");
 
 const FAILURE_SHOWN = 400;
-const ORDER: Readonly<Record<Result, number>> = {
-  failed: 0,
-  passed: 1,
-  skipped: 1,
-};
 
 const STYLES = `
 :root { --ok: #14672d; --ok-bg: #e1f3e6; --bad: #a3201f; --bad-bg: #fbe5e5; --mono: ui-monospace, SFMono-Regular, Consolas, monospace; }
@@ -107,8 +130,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visibl
 .failures-only .no-failures { display: block; }
 pre.failure { background: var(--bad-bg); color: var(--text); border-left: 3px solid var(--bad); white-space: pre-wrap;
               padding: .5rem .75rem; margin: .35rem 0 0; border-radius: 4px; overflow-x: auto; }
-td.suite { min-width: 12rem; overflow-wrap: normal; }
-td.suite code { overflow-wrap: normal; }
 .time { color: var(--quiet); font: .8rem/1.4 var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 ul.tree { list-style: none; margin: .1rem 0 .1rem .55rem; padding: 0 0 0 .9rem; border-left: 1px solid var(--line); }
 ul.tree.top { margin-left: 0; padding-left: 0; border-left: 0; }
@@ -156,7 +177,6 @@ h3.package { margin: 0 0 .2rem; display: flex; flex-wrap: wrap; align-items: bas
 .glossary .none-match { color: var(--quiet); }
 details.build { margin-top: 1.4rem; }
 details.build > summary { font-weight: 600; color: var(--text); }
-table.cases td.time { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--quiet); white-space: nowrap; }
 @media (max-width: 40rem) {
   .glossary dl { grid-template-columns: 1fr; gap: 0; }
   .glossary dd { margin-bottom: .5rem; }
@@ -166,7 +186,6 @@ table.cases td.time { text-align: right; font-family: var(--mono); font-variant-
   ul.tree { padding-left: .6rem; }
   li.capability > details > :not(summary) { margin-left: .5rem; margin-right: .5rem; }
   li.capability > details > ul.tree { margin: .4rem .5rem .6rem .6rem; }
-  table.cases td.time { text-align: left; }
 }
 `;
 
@@ -206,10 +225,6 @@ document.querySelectorAll("input[data-glossary-filter]").forEach(function (input
 });
 `;
 
-/** A path that may wrap after a slash, never inside a name. */
-const atSlashes = (path: string): Html =>
-  markup`${path.split("/").map((part, at) => markup`${at === 0 ? "" : markup`/<wbr>`}${part}`)}`;
-
 const encoder = new TextEncoder();
 
 const count = (cases: readonly TestCase[], result: Result): number =>
@@ -227,17 +242,8 @@ const shown = (message: string): string =>
 
 const before = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-function ordered(cases: readonly TestCase[]): TestCase[] {
-  return [...cases].sort(
-    (a, b) =>
-      ORDER[a.result] - ORDER[b.result] ||
-      before(a.suite, b.suite) ||
-      before(a.name, b.name),
-  );
-}
-
 function runLine(suite: Suite, run: TestRun): Html {
-  return markup`<a href="${run.url}">The run</a> of commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>, run at <time datetime="${run.at}">${run.at}</time>`;
+  return markup`<a href="${run.url}">The run</a> of commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>, run at <time datetime="${run.at}">${run.at}</time>`;
 }
 
 const ICON: Readonly<Record<Result, string>> = {
@@ -253,14 +259,6 @@ const status = (result: Result): Html =>
 /** A count of cases with one result, as a pill. */
 const badge = (result: Result, n: number): Html =>
   markup`<span class="badge ${result}" data-status="${result}" data-count="${String(n)}"><span class="icon" aria-hidden="true">${ICON[result]}</span> ${String(n)} ${result}</span>`;
-
-function table(cases: readonly TestCase[]): Html {
-  return markup`<table class="cases">
-<thead><tr><th>suite</th><th>case</th><th>result</th><th>time</th></tr></thead>
-<tbody>
-${ordered(cases).map(({ suite, name, result, seconds: time, message }) => markup`<tr data-result="${result}"><td class="suite" data-label="suite"><code>${atSlashes(suite)}</code></td><td data-label="case">${name}${message === undefined ? "" : markup`<pre class="failure">${shown(message)}</pre>`}</td><td data-label="result">${status(result)}</td><td class="time" data-label="time">${seconds(time)}</td></tr>\n`)}</tbody>
-</table>`;
-}
 
 /** The `spec.json` of a package's tests: what its page says first, the order of its capabilities, and what is build. */
 interface Spec {
@@ -302,10 +300,15 @@ interface Level {
 
 const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
 
-/** A node:test case's file, as its package and its path under that package's `test/`. */
+/**
+ * A case's file as its package and its path under that package's `test/`: a package of the runtime's `packages/`, or else
+ * the whole repository (`""`), its path read under its `test/` or `tests/`.
+ */
 function placeOf(file: string): string[] {
   const found = /^packages\/([^/]+)\/test\/(.+)$/.exec(file);
-  return found === null ? ["", file] : [found[1] ?? "", found[2] ?? ""];
+  return found === null
+    ? ["", file.replace(/^tests?\//, "")]
+    : [found[1] ?? "", found[2] ?? ""];
 }
 
 /** Where a case is written, as a string that sorts in the order of a file and then its lines. */
@@ -396,7 +399,7 @@ function ruleOf(tag: string): { feature: string; id: string; href: string } {
   const path = feature.includes("/")
     ? feature
     : `runtime/${feature.replace(/\.feature$/, "")}.feature`;
-  const base = `../../${SPEC_FOLDER}`;
+  const base = `../../../${SPEC_FOLDER}`;
   return {
     feature,
     id,
@@ -424,7 +427,7 @@ function named(name: string, source: string, links: Links): Html {
 }
 
 function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
-  const source = `${suite.repository}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
+  const source = `${repositoryUrl(suite)}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
   const said =
     one.description === undefined && one.rules.length === 0
       ? ""
@@ -506,7 +509,7 @@ function capability(
       : leaf(entry, suite, run, links),
   );
   const files = [...one.files].map(([file, line]) => {
-    const href = `${suite.repository}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
+    const href = `${repositoryUrl(suite)}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
     return markup`<a class="src" href="${href}">${placeOf(file)[1] ?? file}</a>`;
   });
   return markup`<li class="capability" data-failed="${String(count(one.cases, "failed"))}"><details open><summary>${title(one.name)} ${counts(one.cases)}</summary>
@@ -533,14 +536,28 @@ const arranged = (
     return x === y ? before(a.name, b.name) : x < y ? -1 : 1;
   });
 
+/** The spec of a package's tests: the one its report carries, or for the repository's own, its artifact's `spec.json`. */
+function specFor(
+  folder: string,
+  packages: ReadonlyMap<string, PackageInfo>,
+  suite: Suite,
+  run: TestRun,
+): Spec {
+  const given =
+    folder === nameOf(suite)
+      ? (run.spec ?? packages.get(folder)?.spec)
+      : packages.get(folder)?.spec;
+  return specOf(given, folder);
+}
+
 function packageSection(
   folder: string,
   cases: readonly TestCase[],
   info: PackageInfo | undefined,
+  spec: Spec,
   suite: Suite,
   run: TestRun,
 ): Html {
-  const spec = specOf(info?.spec, folder);
   const all = capabilitiesOf(cases);
   const inBuild = (one: Capability): boolean =>
     spec.build.includes(one.name) ||
@@ -556,7 +573,7 @@ function packageSection(
   const line =
     info === undefined
       ? ""
-      : markup`<p class="package-line"><code>${info.name}</code> ${info.version} · commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>${unreleased(info.version) ? " · unreleased: what main does today, not a compatibility promise" : ""}</p>\n`;
+      : markup`<p class="package-line"><code>${info.name}</code> ${info.version} · commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a>${unreleased(info.version) ? " · unreleased: what main does today, not a compatibility promise" : ""}</p>\n`;
   return markup`<section class="pkg" data-failed="${String(count(cases, "failed"))}">
 <h3 class="package"><code>${folder}</code> ${counts(cases)}</h3>
 ${line}${spec.about === undefined ? "" : markup`<p class="what">${spec.about}</p>\n`}${spec.glossary.length === 0 ? "" : glossaryList(spec.glossary)}<ul class="tree top">
@@ -596,36 +613,41 @@ function summaryBar(
   milliseconds: number,
 ): Html {
   const known = packages.size > 0 ? packagesOf(packages) : markup``;
-  const controls = suite.tree
-    ? markup`<button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button>`
-    : markup``;
-  return markup`<div class="summary-bar" role="group" aria-label="Summary of the ${suite.key}'s tests">
-${known}<span class="run">commit <a href="${suite.repository}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a></span>
+  return markup`<div class="summary-bar" role="group" aria-label="Summary of ${titleInSentence(suite)}">
+${known}<span class="run">commit <a href="${repositoryUrl(suite)}/commit/${run.commit}"><code>${run.commit.slice(0, 7)}</code></a></span>
 <span class="tallies">${badge("passed", count(cases, "passed"))}${count(cases, "failed") === 0 ? "" : badge("failed", count(cases, "failed"))}${badge("skipped", count(cases, "skipped"))}</span>
 <span class="duration" title="run time">${seconds(milliseconds / 1000)}</span>
-<span class="controls" data-controls hidden>${controls}<button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
+<span class="controls" data-controls hidden><button type="button" data-action="expand-all">Expand all</button><button type="button" data-action="collapse-all">Collapse all</button><button type="button" data-action="failures-only" aria-pressed="false">Failures only</button></span>
 </div>
 `;
 }
 
-/** The runtime's cases as the page reads them: each package, with its capabilities in the order its spec gives. */
+/** A repository's cases by package: the runtime's `packages/`, or one, the repository itself, named for it. */
+function byPackage(
+  cases: readonly TestCase[],
+  suite: Suite,
+): Map<string, TestCase[]> {
+  const found = new Map<string, TestCase[]>();
+  for (const one of cases) {
+    const folder = placeOf(one.suite)[0] || nameOf(suite);
+    found.set(folder, [...(found.get(folder) ?? []), one]);
+  }
+  return found;
+}
+
+/** A suite's cases as the page reads them: each package, with its capabilities in the order its spec gives. */
 function tree(
   cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
   suite: Suite,
   run: TestRun,
 ): Html {
-  const byPackage = new Map<string, TestCase[]>();
-  for (const one of cases) {
-    const folder = placeOf(one.suite)[0] ?? "";
-    byPackage.set(folder, [...(byPackage.get(folder) ?? []), one]);
-  }
-  const order = [...byPackage].sort(
+  const order = [...byPackage(cases, suite)].sort(
     ([a, held], [b, other]) =>
       Number(other.some((c) => c.result === "failed")) -
         Number(held.some((c) => c.result === "failed")) || before(a, b),
   );
-  return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), suite, run))}`;
+  return markup`${order.map(([folder, held]) => packageSection(folder, held, packages.get(folder), specFor(folder, packages, suite, run), suite, run))}`;
 }
 
 /** What each level above a case, and the case, say of themselves, with their rules as links, for an agent reading CTRF. */
@@ -654,12 +676,17 @@ function extraOf(one: TestCase): { extra?: unknown } {
 /** The glossary of each package that has one, for an agent reading CTRF. */
 function extraOfGlossaries(
   suite: Suite,
+  run: TestRun,
+  cases: readonly TestCase[],
   packages: ReadonlyMap<string, PackageInfo>,
 ): { extra?: unknown } {
-  if (!suite.tree) return {};
   const glossary: Record<string, unknown[]> = {};
-  for (const [folder, info] of packages) {
-    const entries = specOf(info.spec, folder).glossary;
+  const folders = new Set([
+    ...packages.keys(),
+    ...byPackage(cases, suite).keys(),
+  ]);
+  for (const folder of folders) {
+    const entries = specFor(folder, packages, suite, run).glossary;
     if (entries.length > 0) glossary[folder] = entries.map(ctrfEntry);
   }
   return Object.keys(glossary).length === 0 ? {} : { extra: { glossary } };
@@ -683,9 +710,9 @@ function ctrf(
     specVersion: "0.2.0",
     timestamp: run.at,
     generatedBy: "cascade-runtime-js packages/site",
-    ...extraOfGlossaries(suite, packages),
+    ...extraOfGlossaries(suite, run, cases, packages),
     results: {
-      tool: { name: suite.tool },
+      tool: { name: suite.runner },
       summary: {
         tests: cases.length,
         passed: count(cases, "passed"),
@@ -696,21 +723,18 @@ function ctrf(
         start: Number.isNaN(start) ? 0 : start,
         stop: Number.isNaN(start) ? 0 : start + Math.round(duration),
       },
-      tests: cases.map((one) => {
-        const names = suite.tree ? one.describes : [one.suite];
-        return {
-          name: one.name,
-          status: one.result,
-          duration: Math.round((one.seconds ?? 0) * 1000),
-          ...(names.length === 0 ? {} : { suite: [...names] }),
-          ...(suite.tree ? extraOf(one) : {}),
-          ...(suite.tree ? { filePath: one.suite } : {}),
-          ...(one.line === undefined ? {} : { line: one.line }),
-          ...(one.message === undefined ? {} : { message: one.message }),
-        };
-      }),
+      tests: cases.map((one) => ({
+        name: one.name,
+        status: one.result,
+        duration: Math.round((one.seconds ?? 0) * 1000),
+        ...(one.describes.length === 0 ? {} : { suite: [...one.describes] }),
+        ...extraOf(one),
+        filePath: one.suite,
+        ...(one.line === undefined ? {} : { line: one.line }),
+        ...(one.message === undefined ? {} : { message: one.message }),
+      })),
       environment: {
-        repositoryUrl: suite.repository,
+        repositoryUrl: repositoryUrl(suite),
         commit: run.commit,
         buildUrl: run.url,
         branchName: "main",
@@ -725,12 +749,11 @@ interface Part {
   readonly ctrf?: unknown;
 }
 
+/** What a suite's page shows of its run: the summary, the counts and the tree, or why there is none. */
 function part(suite: Suite, run: TestRun | undefined): Part {
-  const heading = markup`<h2 class="part" id="${suite.key}">${suite.title}</h2>`;
   if (run === undefined)
     return {
-      html: markup`${heading}
-<p class="prose">Not available: this build was given no report of the newest run of the ${suite.key}'s tests on <code>main</code>.</p>
+      html: markup`<p class="prose">Not available: this build was given no report of the newest run of ${titleInSentence(suite)} on <code>main</code>.</p>
 `,
     };
   let cases: TestCase[];
@@ -740,8 +763,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
     ({ cases, failingSuites, packages } = readJunit(run.report));
   } catch (error) {
     return {
-      html: markup`${heading}
-<p class="prose">${runLine(suite, run)}.</p>
+      html: markup`<p class="prose">${runLine(suite, run)}.</p>
 <p class="prose">Not available: the report of that run cannot be read (${error instanceof Error ? error.message : String(error)}).</p>
 `,
     };
@@ -756,11 +778,7 @@ function part(suite: Suite, run: TestRun | undefined): Part {
 `
       : "";
   const shownCases =
-    cases.length === 0
-      ? ""
-      : suite.tree
-        ? tree(cases, packages, suite, run)
-        : table(cases);
+    cases.length === 0 ? "" : tree(cases, packages, suite, run);
   const milliseconds =
     declaredDuration(run.report) ??
     cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
@@ -769,11 +787,8 @@ function part(suite: Suite, run: TestRun | undefined): Part {
       ? markup`<p class="no-failures">No failures.</p>\n`
       : "";
   return {
-    html: markup`<section data-part="${suite.key}">
-${heading}
-${summaryBar(suite, run, cases, packages, milliseconds)}<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span> For an agent: <a href="${suite.key}.ctrf.json"><code>${suite.key}.ctrf.json</code></a>.</p>
-${unlisted}${none}${shownCases}</section>
-`,
+    html: markup`${summaryBar(suite, run, cases, packages, milliseconds)}<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span> For an agent: <a href="${ctrfFileOf(suite)}"><code>${ctrfFileOf(suite)}</code></a>.</p>
+${unlisted}${none}${shownCases}`,
     ctrf: ctrf(
       suite,
       run,
@@ -785,73 +800,67 @@ ${unlisted}${none}${shownCases}</section>
   };
 }
 
-/**
- * The newest run on `main` of the runtime's tests and the vocabulary's pytest, case by case, under `conformance/tests/`:
- * the runtime's as a tree of package, capability and situation, each case linked to its line at the commit run; the vocabulary's
- * as one table. Each suite's results are also written as CTRF beside the page, for an agent.
- * A suite whose report was not fetched, or cannot be read, says so and the page is written all the same.
- */
-export const testsSection: Section<TestsContext> = {
-  path: TESTS_PAGE,
-  title: "Unit test reports",
-  want: "conformance",
-  about:
-    "the newest run on main of the runtime's tests and the vocabulary's pytest, case by case.",
-  source:
-    "the JUnit reports of the newest runs on main of cascade-runtime-js and cascade-vocabulary",
-  async build(ctx) {
-    const reports = await ctx.tests();
-    const parts = SUITES.map((suite) => ({
-      suite,
-      ...part(suite, reports[suite.key]),
-    }));
-    const written = parts.filter((one) => one.ctrf !== undefined);
-    return new Map([
-      [
-        TESTS_PAGE,
-        encoder.encode(
-          markup`<!DOCTYPE html>
+function page(suite: Suite, shown: Part): Html {
+  const name = nameOf(suite);
+  return markup`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cascade unit test reports</title>
-<link rel="stylesheet" href="../../${STYLESHEET_FILE}">
+<title>${suite.title} · Cascade unit test reports</title>
+<link rel="stylesheet" href="../../../${STYLESHEET_FILE}">
 <style>${new Html(STYLES)}</style>
 </head>
 <body>
 <nav>
-${frontPageLink(2)}
-<a href="../index.html">Conformance results</a></nav>
+${frontPageLink(3)}
+<a href="../../index.html">Conformance results</a></nav>
 <main>
-<h1>Cascade unit test reports</h1>
-<p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's. The runtime's read as
-a tree of package, capability and situation, each with what it is for and each case linked to its source; the vocabulary's as one table.
+<h1>${suite.title}</h1>
+<p class="prose">The newest run on <code>main</code> of the tests of <a href="${repositoryUrl(suite)}"><code>${name}</code></a>, read as a
+tree of package, capability and situation, each with what it is for and each case linked to its source.
 Failures come first within a capability, and the levels that hold one are open.</p>
-${parts.map(({ html }) => html)}</main>
+<section data-part="${name}" id="${name}">
+${shown.html}</section>
+</main>
 <script>${new Html(SCRIPT)}</script>
 </body>
 </html>
-`.text,
-        ),
-      ],
-      ...written.map(
-        ({ suite, ctrf: results }) =>
-          [
-            ctrfFile(suite.key),
-            encoder.encode(`${JSON.stringify(results, null, 2)}\n`),
-          ] as const,
-      ),
-    ]);
+`;
+}
+
+/**
+ * The newest run on `main` of each listed repository's tests, case by case, each on its own page under
+ * `conformance/tests/<repository>/`, with no index above them: a tree of package, capability and situation, each case linked
+ * to its line at the commit run. Each suite's results are also written as CTRF beside its page, for an agent. A suite
+ * whose report was not fetched, or cannot be read, says so and its page is written all the same.
+ */
+export const testsSection: Section<TestsContext> = {
+  path: OWN_PAGE,
+  title: "Unit test reports",
+  want: "conformance",
+  about:
+    "the newest run on main of each Cascade repository's unit tests, case by case, a page for each.",
+  source:
+    "the JUnit reports of the newest runs on main of each repository packages/site/test-suites.json lists",
+  async build(ctx) {
+    const files = new Map<string, Uint8Array>();
+    for (const { suite, run } of await ctx.tests()) {
+      const shown = part(suite, run);
+      files.set(testsPageOf(suite), encoder.encode(page(suite, shown).text));
+      if (shown.ctrf !== undefined)
+        files.set(
+          `${TESTS_FOLDER}${nameOf(suite)}/${ctrfFileOf(suite)}`,
+          encoder.encode(`${JSON.stringify(shown.ctrf, null, 2)}\n`),
+        );
+    }
+    return files;
   },
-  async rows() {
-    return [
-      {
-        href: TESTS_FOLDER,
-        label: "Unit test reports",
-        about:
-          "the newest run on main of the runtime's tests and the vocabulary's pytest, case by case.",
-      },
-    ];
+  async rows(ctx) {
+    return (await ctx.tests()).map(({ suite }) => ({
+      href: `${TESTS_FOLDER}${nameOf(suite)}/`,
+      label: suite.title,
+      about: `the newest run on main, case by case: ${suite.about}.`,
+    }));
   },
 };

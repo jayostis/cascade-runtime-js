@@ -1,13 +1,23 @@
 import { existsSync, readFileSync } from "node:fs";
 import { SourceMap } from "node:module";
-import { basename, dirname, join, resolve } from "node:path";
+import process from "node:process";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { junit } from "node:test/reporters";
 import { fileURLToPath } from "node:url";
 
 /**
  * node:test's JUnit report, each `testcase` also given the `line` of the TypeScript source it is declared on, and that
  * source as its `file`, so the published page can link a case to its line. node's reporter writes no line, and the
- * runner sees only the transpiled file; its source map says where the case was written.
+ * runner sees only the transpiled file; its source map says where the case was written. The file is named from the
+ * directory the tests run in, the repository's root, so any repository that runs this reporter gets links into itself.
  *
  * The leading doc comment of each describe and each test is its description. It is written as a `<properties>` entry of
  * the `testsuite` or `testcase`: `description` is the prose, a `rule` is each `@rule <feature> <id>` tag, and `line` is
@@ -44,6 +54,14 @@ function located({ file, line, column }) {
     ? fileURLToPath(origin.fileName)
     : resolve(dirname(path), origin.fileName);
   return { file: source, line: origin.lineNumber };
+}
+
+/** A file under the working directory by its path from there, with `/`; one outside it as it is. */
+function fromHere(file) {
+  const path = relative(process.cwd(), file);
+  return path === "" || path.startsWith("..") || isAbsolute(path)
+    ? file
+    : path.split(sep).join("/");
 }
 
 function linesOf(file) {
@@ -166,7 +184,7 @@ async function* withLines(source) {
       data: {
         ...data,
         name: `${data.name}${SEPARATOR}${number}${SEPARATOR}`,
-        ...(result ? { file: at.file } : {}),
+        ...(result ? { file: fromHere(at.file) } : {}),
         ...(result && data.classname === undefined && !suite
           ? { classname: `${MARK}${at.line}` }
           : {}),

@@ -225,9 +225,7 @@ test("a run whose node report counts more failures than it lists says so beside 
 
 /** The page of the suite whose part has that id, from the part to the page's end. */
 function partOf(markup: string, heading: string): string {
-  return (
-    (markup.split(`id="${heading}"`)[1] ?? "").split("<!DOCTYPE")[0] ?? ""
-  );
+  return (markup.split(`id="${heading}"`)[1] ?? "").split("<!DOCTYPE")[0] ?? "";
 }
 
 /** The levels (package, file, describe) after the heading, as the text of each summary, in the page's order. */
@@ -291,10 +289,7 @@ test("each suite's newest run shows its cases with result and time as a tree of 
       `https://github.com/jayostis/cascade-vocabulary/blob/${OTHER_RUN.commit}/tests/test_queries.py`,
     ),
   );
-  assert.equal(
-    failureOf(markup, V),
-    "assert 1 == 2 + where 1 = f()",
-  );
+  assert.equal(failureOf(markup, V), "assert 1 == 2 + where 1 = f()");
 
   assert.match(page.said, /4 cases: 2 passed, 1 failed, 1 skipped/);
   assert.match(page.said, /3 cases: 1 passed, 1 failed, 1 skipped/);
@@ -413,8 +408,9 @@ assertion failed: kept</failure>
 `;
 
 test("a pytest, vitest or nextest report reads as a tree of capability, situation and case, on its own page for a repository the hub did not know", async () => {
-  const at = (repository: string): TestRun => ({
+  const at = (repository: string, report: string): TestRun => ({
     ...RUN,
+    report,
     url: `https://github.com/${repository}/actions/runs/7`,
   });
   const cases = [
@@ -477,7 +473,7 @@ test("a pytest, vitest or nextest report reads as a tree of capability, situatio
     {},
     cases.map(({ suite: one, report, spec }) => ({
       suite: one,
-      run: { report, ...at(one.repository), ...(spec ? { spec } : {}) },
+      run: { ...at(one.repository, report), ...(spec ? { spec } : {}) },
     })),
   );
   const front = new TextDecoder().decode(tree.get("index.html"));
@@ -544,8 +540,10 @@ test("the suite list names each repository's workflow, artifact, report and runn
       ["jayostis/cascade-bridge-spec", "validate.yml", "pytest"],
     ],
   );
-  const { artifact: _, ...noArtifact } = VOCABULARY;
-  assert.throws(() => suitesOf([noArtifact]), /artifact/);
+  assert.throws(
+    () => suitesOf([{ ...VOCABULARY, artifact: undefined }]),
+    /artifact/,
+  );
   assert.throws(() => suitesOf([{ ...VOCABULARY, runner: "jest" }]), /jest/);
 });
 
@@ -651,9 +649,7 @@ test("the CTRF file is linked once, in its part, and a file outside packages/<pk
   const { markup: other } = await pageWith({
     runtime: { report: outside, ...RUN },
   });
-  assert.ok(
-    levelsOf(other, R).some((l) => /^x\.test\.js|scripts\/x/.test(l)),
-  );
+  assert.ok(levelsOf(other, R).some((l) => /^x\.test\.js|scripts\/x/.test(l)));
 });
 
 /** A property element, the way scripts/junit-reporter.mjs writes it. */
@@ -1078,11 +1074,9 @@ test("the CTRF report carries the glossary in its extra, and a package without o
     runtime: { report: WITH_GLOSSARY, ...RUN },
   });
   const ctrfOf = (files: typeof tree) =>
-    JSON.parse(
-      new TextDecoder().decode(
-        files.get(ctrfPath(R)),
-      ),
-    ) as { extra?: { glossary?: Record<string, unknown[]> } };
+    JSON.parse(new TextDecoder().decode(files.get(ctrfPath(R)))) as {
+      extra?: { glossary?: Record<string, unknown[]> };
+    };
   const glossary = ctrfOf(tree).extra?.glossary?.["cascade-runtime"];
   assert.equal(glossary?.length, 3);
   assert.deepEqual(glossary?.[0], {

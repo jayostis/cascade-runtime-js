@@ -1,0 +1,74 @@
+[
+  {
+    "repository": "jayostis/cascade-runtime-js",
+    "title": "The runtime's tests",
+    "about": "npm test, node:test over every package",
+    "workflow": "check.yml",
+    "artifact": "runtime-tests",
+    "report": "junit.xml",
+    "runner": "node:test"
+  },
+  {
+    "repository": "jayostis/cascade-vocabulary",
+    "title": "The vocabulary's tests",
+    "about": "pytest over the shapes, queries, kits and features",
+    "workflow": "check.yml",
+    "artifact": "pytest-junit",
+    "report": "pytest-junit.xml",
+    "runner": "pytest"
+  },
+  {
+    "repository": "jayostis/cascade-starter-kit",
+    "title": "The starter kit's tests",
+    "about": "npm test, node:test over the kit",
+    "workflow": "check.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "node:test"
+  },
+  {
+    "repository": "jayostis/cascade-sandbox",
+    "title": "The sandbox's tests",
+    "about": "npm test, node:test over the sandbox",
+    "workflow": "check.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "node:test"
+  },
+  {
+    "repository": "jayostis/cascade-reference-tables",
+    "title": "The reference tables' tests",
+    "about": "npm test, node:test over the tables' host",
+    "workflow": "check.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "node:test"
+  },
+  {
+    "repository": "jayostis/cascade-health-assistant",
+    "title": "The health assistant's tests",
+    "about": "npm test, vitest over the app",
+    "workflow": "check.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "vitest"
+  },
+  {
+    "repository": "jayostis/cascade-bridge-rs",
+    "title": "The Rust Bridge's tests",
+    "about": "cargo nextest over every crate",
+    "workflow": "test.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "nextest"
+  },
+  {
+    "repository": "jayostis/cascade-bridge-spec",
+    "title": "The Bridge specification's tests",
+    "about": "pytest over the specification's files, the adapter profile and the compatibility tool",
+    "workflow": "validate.yml",
+    "artifact": "unit-tests",
+    "report": "junit.xml",
+    "runner": "pytest"
+  }
+]

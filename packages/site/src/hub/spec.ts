@@ -19,7 +19,7 @@ const TABLE_FILE = "table.md";
 const RESULTS_FILE = "results.json";
 
 /** What the section reads of the context. */
-export type SpecContext = Pick<PagesContext, "vocabulary" | "report">;
+export type SpecContext = Pick<PagesContext, "vocabulary" | "report" | "tests">;
 
 const encoder = new TextEncoder();
 
@@ -92,6 +92,10 @@ export const specSection: Section<SpecContext> = {
     if (table !== undefined)
       files.set(`${CONFORMANCE_FOLDER}${TABLE_FILE}`, table);
 
+    const suites = (await ctx.tests()).map(({ suite }) => ({
+      title: suite.title,
+      folder: `tests/${suite.repository.slice(suite.repository.indexOf("/") + 1)}/`,
+    }));
     const spec = `../${SPEC_FOLDER}`;
     const listed = (kit: boolean) =>
       resultsTable(
@@ -128,8 +132,16 @@ ${listed(true)}
 <h2 class="part">The run's files</h2>
 <ul>
 ${earl === undefined ? "" : markup`<li><a href="${EARL_FILE}">${EARL_FILE}</a>: the EARL report the run wrote.</li>\n`}${table === undefined ? "" : markup`<li><a href="${TABLE_FILE}">${TABLE_FILE}</a>: its results as a table.</li>\n`}<li><a href="${RESULTS_FILE}">${RESULTS_FILE}</a>: the results by feature, for a tool.</li>
-<li><a href="tests/index.html">tests/</a>: the runtime's and the vocabulary's unit tests, case by case.</li>
 </ul>
+${
+  suites.length === 0
+    ? ""
+    : markup`<h2 class="part">The unit tests</h2>
+<p class="prose">Each repository's newest run on <code>main</code>, case by case, a page for each:</p>
+<ul>
+${suites.map(({ title, folder }) => markup`<li><a href="${folder}index.html">${folder}</a>: ${title.replace(/^The /, "the ")}.</li>\n`)}</ul>
+`
+}
 </main>
 <footer>
 <p class="about">Built at <time datetime="${at}">${at}</time> from:</p>
