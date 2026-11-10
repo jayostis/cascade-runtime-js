@@ -545,17 +545,19 @@ describe("The summary bar and its controls · testsSection", () => {
       }
     });
 
-    /**
-     * The runtime's page here has no glossary, whose filter is hidden too until script runs.
-     */
-    it("hides nothing else", () => {
+    it("hides only the three controls, where the package has no glossary", () => {
       assert.doesNotMatch(
         partOf(markup, R).replace(/<span class="controls"[\s\S]*?<\/span>/, ""),
         /\shidden[\s>]/,
       );
     });
+  });
 
-    it("marks each case with its result and each capability with its count of failed cases", () => {
+  describe("with a run's cases", () => {
+    it("marks each case with its result and each capability with its count of failed cases", async () => {
+      const { markup } = await pageWith({
+        runtime: { report: NODE, ...RUN },
+      });
       const runtime = partOf(markup, R);
       assert.match(runtime, /<li class="case" data-result="failed">/);
       assert.match(runtime, /<li class="case" data-result="passed">/);
