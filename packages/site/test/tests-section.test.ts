@@ -707,3 +707,133 @@ test("the reporter writes each describe's and each test's doc comment as a descr
   );
   assert.doesNotMatch(xml, /⁣/, "no marker is left in the report");
 });
+
+const GLOSSARY = [
+  {
+    term: "claim",
+    definition: "A patient's say-so that a record is theirs.",
+    vocabulary: "https://ns.cascadeprotocol.org/cascade#Claim",
+    aliases: ["claims", "claimed"],
+  },
+  { term: "pod", definition: "The person's own store." },
+  {
+    term: "export",
+    definition: "A file from a hospital.",
+    vocabulary: "https://example.org/vocab#Export",
+  },
+];
+
+const WITH_GLOSSARY = report(
+  packageProperty("cascade-runtime", "cascade-runtime", "0.0.0", {
+    about: "The library an app calls.",
+    capabilities: ["Importing", "Asking"],
+    glossary: GLOSSARY,
+  }),
+  [
+    described(
+      "Importing",
+      {
+        description:
+          "A claim is kept in the pod. Claims stay; the claim `claim` and disclaimed things are not links.",
+        line: 3,
+      },
+      described(
+        "when the Pod holds claims",
+        { description: "The pod again.", line: 8 },
+        leafOf("keeps what was claimed", pod, 12),
+      ),
+    ) +
+      described(
+        "Asking",
+        { description: "Asks a claim of the pod.", line: 20 },
+        leafOf("returns the export", pod, 22),
+      ),
+  ].join(""),
+);
+
+const hrefsTo = (markup: string, anchor: string): number =>
+  markup.split(`href="#glossary-cascade-runtime-${anchor}"`).length - 1;
+
+test("a package's glossary is an open definition list under its about line, each entry anchored and linked to its term", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: WITH_GLOSSARY, ...RUN },
+  });
+  const part = partOf(markup, "runtime");
+  assert.ok(part.indexOf("The library an app calls.") < part.indexOf("<dl"));
+  assert.match(part, /<details class="glossary" open>/);
+  for (const anchor of ["claim", "pod", "export"])
+    assert.match(
+      part,
+      new RegExp(`<dt id="glossary-cascade-runtime-${anchor}"`),
+    );
+  assert.match(part, /claims, claimed/);
+  assert.ok(part.includes('href="../../terms/#cascade:Claim"'));
+  assert.ok(part.includes('href="https://example.org/vocab#Export"'));
+});
+
+test("the first use of a term or alias in each capability links to its entry, as a whole word outside code spans and links", async () => {
+  const { markup } = await pageWith({
+    runtime: { report: WITH_GLOSSARY, ...RUN },
+  });
+  const part = partOf(markup, "runtime");
+  const importing = part.slice(
+    part.indexOf("Importing"),
+    part.indexOf("Asking <span"),
+  );
+  assert.equal(hrefsTo(importing, "claim"), 1);
+  assert.match(
+    importing,
+    /<a href="#glossary-cascade-runtime-claim">claim<\/a> is kept in the pod/,
+  );
+  assert.match(importing, /Claims stay/);
+  assert.doesNotMatch(importing, /`claim`<\/a>|>claim<\/a>`/);
+  assert.doesNotMatch(importing, /dis<a|>disclaimed/);
+  assert.equal(hrefsTo(importing, "pod"), 1);
+  const asking = part.slice(part.indexOf("Asking <span"));
+  assert.equal(hrefsTo(asking, "claim"), 1, "a second capability links again");
+  assert.equal(hrefsTo(asking, "export"), 1, "a leaf name links");
+  assert.doesNotMatch(
+    asking,
+    /<a [^>]*>[^<]*<a /,
+    "no link sits inside a link",
+  );
+});
+
+test("a level name and a leaf name link the first use, the leaf keeping its source link", async () => {
+  const { markup } = await pageWith({
+    runtime: {
+      report: WITH_GLOSSARY.replace(/"A claim is kept[^"]*"/, '"Reads."'),
+      ...RUN,
+    },
+  });
+  const part = partOf(markup, "runtime");
+  assert.match(
+    part,
+    /<summary>when the <a href="#glossary-cascade-runtime-pod">Pod<\/a> holds claims/,
+  );
+  assert.match(
+    part,
+    /<a href="[^"]*pod\.test\.ts#L12">keeps what was <\/a><a href="#glossary-cascade-runtime-claim">claimed<\/a>/,
+  );
+});
+
+test("the CTRF report carries the glossary in its extra, and a package without one adds nothing", async () => {
+  const { tree } = await pageWith({
+    runtime: { report: WITH_GLOSSARY, ...RUN },
+  });
+  const ctrfOf = (files: typeof tree) =>
+    JSON.parse(
+      new TextDecoder().decode(
+        files.get("conformance/tests/runtime.ctrf.json"),
+      ),
+    ) as { extra?: { glossary?: Record<string, unknown[]> } };
+  const glossary = ctrfOf(tree).extra?.glossary?.["cascade-runtime"];
+  assert.equal(glossary?.length, 3);
+  assert.deepEqual(glossary?.[0], {
+    id: "glossary-cascade-runtime-claim",
+    ...GLOSSARY[0],
+  });
+  const none = await pageWith({ runtime: { report: GROUPED, ...RUN } });
+  assert.equal(ctrfOf(none.tree).extra, undefined);
+  assert.doesNotMatch(none.markup, /class="glossary"/);
+});
