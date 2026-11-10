@@ -189,31 +189,54 @@ test("a run whose node report counts more failures than it lists says so beside 
   assert.doesNotMatch(honest.page.said, /node counts/);
 });
 
-test("each suite's newest run is a table of its cases with result and time, nested describes in the case, a failed case reading failed, and the run's commit, date and link", async () => {
+/** The levels (package, file, describe) after the heading, as the text of each summary, in the page's order. */
+function levelsOf(markup: string, heading: string): string[] {
+  const part = (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+  return [...part.matchAll(/<summary>([\s\S]*?)<\/summary>/g)].map(([, said]) =>
+    text(said ?? ""),
+  );
+}
+
+/** The cases of the tree after the heading, as their name, result and time, in the page's order. */
+function casesOf(markup: string, heading: string): string[][] {
+  const part = (markup.split(`id="${heading}"`)[1] ?? "").split("<h2")[0] ?? "";
+  return [...part.matchAll(/<li class="case">([\s\S]*?)<\/li>/g)].map(
+    ([, item]) => {
+      const leaf = (item ?? "").replace(/<pre[\s\S]*?<\/pre>/g, "");
+      const pick = (pattern: RegExp) => text(pattern.exec(leaf)?.[1] ?? "");
+      return [
+        pick(/<a [^>]*>([\s\S]*?)<\/a>/),
+        pick(/<span class="result [^"]*">([\s\S]*?)<\/span>/),
+        pick(/<span class="time">([\s\S]*?)<\/span>/),
+      ];
+    },
+  );
+}
+
+test("each suite's newest run shows its cases with result and time, the runtime's as a tree of package, file and describe, a failed case reading failed, and the run's commit, date and link", async () => {
   const { markup, page } = await pageWith({
     runtime: { report: NODE, ...RUN },
     vocabulary: { report: PYTEST, ...OTHER_RUN },
   });
 
-  const runtime = rowsOf(markup, "runtime");
-  assert.deepEqual(
-    runtime.map(([suite, name, result]) => [suite, name, result]),
-    [
-      // failures first, then by suite and case
-      ["packages/site/test/links.test.ts", 'fails <a> "q" & so on', "failed"],
-      [
-        "packages/runtime/test/other.test.ts",
-        "outer › inner › deep pass",
-        "passed",
-      ],
-      ["packages/runtime/test/other.test.ts", "skipped", "skipped"],
-      ["packages/site/test/links.test.ts", "passes", "passed"],
-    ],
-  );
-  assert.match(markup, /packages\/<wbr>site\/<wbr>test\/<wbr>links\.test\.ts/);
-  assert.deepEqual(
-    runtime.map((row) => row[3]),
-    ["1.50 s", "0 ms", "0 ms", "3 ms"],
+  assert.deepEqual(levelsOf(markup, "runtime"), [
+    // failures first, then packages and files by name, describes and cases as written
+    "site 1 passed, 1 failed",
+    "links.test.ts 1 passed, 1 failed",
+    "runtime 1 passed, 1 skipped",
+    "other.test.ts 1 passed, 1 skipped",
+    "outer 1 passed",
+    "inner 1 passed",
+  ]);
+  assert.deepEqual(casesOf(markup, "runtime"), [
+    ['fails <a> "q" & so on', "failed", "1.50 s"],
+    ["passes", "passed", "3 ms"],
+    ["skipped", "skipped", "0 ms"],
+    ["deep pass", "passed", "0 ms"],
+  ]);
+  assert.doesNotMatch(
+    (markup.split('id="runtime"')[1] ?? "").split("<h2")[0] ?? "",
+    /<table/,
   );
   assert.equal(failureOf(markup, "runtime"), "1 == 2 and 3 > 2");
 
