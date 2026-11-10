@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hubFiles } from "../src/front-page.js";
 import type { TestReports } from "../src/hub/context.js";
+import { glossaryOf, Links } from "../src/hub/glossary.js";
 import { readJunit } from "../src/junit.js";
 import { testsSection } from "../src/hub/tests.js";
 import { buildTree } from "../src/sections.js";
@@ -839,4 +840,28 @@ test("the CTRF report carries the glossary in its extra, and a package without o
   const none = await pageWith({ runtime: { report: GROUPED, ...RUN } });
   assert.equal(ctrfOf(none.tree).extra, undefined);
   assert.doesNotMatch(none.markup, /class="glossary"/);
+});
+
+test("a glossary term written with a capital links only as written, so plain English is not linked", () => {
+  const entries = glossaryOf(
+    [
+      {
+        term: "Same",
+        definition: "A judgment that two records are one thing.",
+      },
+      { term: "claim", definition: "The owner's say-so.", aliases: ["claims"] },
+    ],
+    "cascade-runtime",
+  );
+  const linked = (text: string) =>
+    new Links(entries)
+      .pieces(text)
+      .filter((piece) => typeof piece !== "string");
+  assert.deepEqual(linked("the same record, and the different one"), []);
+  assert.deepEqual(linked("files a Same over them"), [
+    { text: "Same", id: "glossary-cascade-runtime-same" },
+  ]);
+  assert.deepEqual(linked("Claims are kept"), [
+    { text: "Claims", id: "glossary-cascade-runtime-claim" },
+  ]);
 });

@@ -62,22 +62,27 @@ export type Piece = string | { readonly text: string; readonly id: string };
 const escapeRegExp = (text: string): string =>
   text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const capitalised = (word: string): boolean => /^\p{Lu}/u.test(word);
+
 /**
- * Finds the first use of each entry in the texts it is given, one capability's worth: whole words, any case, never
- * inside a code span.
+ * Finds the first use of each entry in the texts it is given, one capability's worth: whole words, never inside a code
+ * span. A word written with a capital, a verdict such as Same, matches only as written, so English "same" is no use of
+ * it; any other matches in any case.
  */
 export class Links {
   private readonly used = new Set<string>();
   private readonly pattern: RegExp | undefined;
   private readonly byWord = new Map<string, Entry>();
+  private readonly asWritten = new Map<string, Entry>();
 
   constructor(entries: readonly Entry[]) {
     const words: string[] = [];
     for (const entry of entries)
       for (const word of [entry.term, ...entry.aliases]) {
-        const key = word.toLowerCase();
-        if (this.byWord.has(key)) continue;
-        this.byWord.set(key, entry);
+        const map = capitalised(word) ? this.asWritten : this.byWord;
+        const key = capitalised(word) ? word : word.toLowerCase();
+        if (map.has(key)) continue;
+        map.set(key, entry);
         words.push(word);
       }
     words.sort((a, b) => b.length - a.length);
@@ -102,7 +107,9 @@ export class Links {
       }
       let from = 0;
       for (const found of part.matchAll(pattern)) {
-        const entry = this.byWord.get(found[0].toLowerCase());
+        const entry =
+          this.asWritten.get(found[0]) ??
+          this.byWord.get(found[0].toLowerCase());
         if (entry === undefined || this.used.has(entry.id)) continue;
         this.used.add(entry.id);
         const start = found.index ?? 0;
