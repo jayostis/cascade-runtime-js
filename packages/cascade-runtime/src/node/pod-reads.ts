@@ -10,7 +10,7 @@ import type { Pod } from "../pod.js";
 import type { Tables } from "../tables.js";
 import {
   CHANGE_TOOLS,
-  citedFinding,
+  citedLabChange,
   type PodReads,
   type TableLookups,
   unknownChangeTool,
@@ -121,7 +121,7 @@ export function podReads(
         input,
       );
       const found = await findChanges(pod, input);
-      return { value: found.map(citedFinding), found };
+      return { value: found.map(citedLabChange), found };
     },
     ...(options.tables === true &&
       host.tables !== undefined && {
