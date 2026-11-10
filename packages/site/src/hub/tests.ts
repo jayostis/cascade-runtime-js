@@ -1,6 +1,7 @@
 import { Html, markup } from "../html.js";
 import { frontPageLink } from "../links.js";
 import {
+  declaredDuration,
   declaredFailures,
   readJunit,
   type Result,
@@ -21,6 +22,10 @@ interface Suite {
   readonly title: string;
   readonly repository: string;
   readonly about: string;
+  /** What ran the suite, as CTRF names its tool. */
+  readonly tool: string;
+  /** Whether its cases are shown as a tree of package, file and describe, or as one table. */
+  readonly tree: boolean;
 }
 
 const SUITES: readonly Suite[] = [
@@ -29,14 +34,22 @@ const SUITES: readonly Suite[] = [
     title: "The runtime's tests",
     repository: "https://github.com/jayostis/cascade-runtime-js",
     about: "npm test, node:test over every package",
+    tool: "node:test",
+    tree: true,
   },
   {
     key: "vocabulary",
     title: "The vocabulary's tests",
     repository: "https://github.com/jayostis/cascade-vocabulary",
     about: "pytest over the shapes, queries, kits and features",
+    tool: "pytest",
+    tree: false,
   },
 ];
+
+/** Where an agent reads a suite's results: CTRF, beside the page. */
+export const ctrfFile = (key: Suite["key"]): string =>
+  `${TESTS_FOLDER}${key}.ctrf.json`;
 
 const FAILURE_SHOWN = 400;
 const ORDER: Readonly<Record<Result, number>> = {
@@ -55,6 +68,13 @@ pre.failure { background: #fdf2f2; white-space: pre-wrap; padding: .5rem; margin
 td.time { white-space: nowrap; }
 td.suite { min-width: 12rem; overflow-wrap: normal; }
 td.suite code { overflow-wrap: normal; }
+ul.tree { list-style: none; margin: .1rem 0; padding-left: 1.2rem; }
+ul.tree.top { padding-left: 0; }
+ul.tree li { margin: .15rem 0; }
+ul.tree summary { cursor: pointer; }
+.counts { color: var(--quiet); font-size: .85rem; margin-left: .4rem; }
+.counts .failed { color: #a3201f; font-weight: 600; }
+.case .time { color: var(--quiet); font-size: .8rem; margin-left: .4rem; white-space: nowrap; }
 `;
 
 /** A path that may wrap after a slash, never inside a name. */
@@ -76,8 +96,9 @@ const shown = (message: string): string =>
     ? `${message.slice(0, FAILURE_SHOWN)}…`
     : message;
 
+const before = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 function ordered(cases: readonly TestCase[]): TestCase[] {
-  const before = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   return [...cases].sort(
     (a, b) =>
       ORDER[a.result] - ORDER[b.result] ||
@@ -98,21 +119,175 @@ ${ordered(cases).map(({ suite, name, result, seconds: time, message }) => markup
 </table>`;
 }
 
-function part(suite: Suite, run: TestRun | undefined): Html {
+/** A level of the tree: a package, a file or a describe, holding levels and cases in the order the report gave them. */
+interface Level {
+  readonly name: string;
+  readonly depth: number;
+  readonly levels: Map<string, Level>;
+  readonly entries: (Level | TestCase)[];
+  readonly cases: TestCase[];
+}
+
+const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
+
+/** A node:test case's file, as its package and its path under that package's `test/`. */
+function placeOf(file: string): string[] {
+  const found = /^packages\/([^/]+)\/test\/(.+)$/.exec(file);
+  return found === null ? [file] : [found[1] ?? "", found[2] ?? ""];
+}
+
+function levelOf(name: string, depth: number): Level {
+  return { name, depth, levels: new Map(), entries: [], cases: [] };
+}
+
+function grow(cases: readonly TestCase[]): Level {
+  const root = levelOf("", 0);
+  for (const one of cases) {
+    let at = root;
+    at.cases.push(one);
+    for (const name of [...placeOf(one.suite), ...one.describes]) {
+      let next = at.levels.get(name);
+      if (next === undefined) {
+        next = levelOf(name, at.depth + 1);
+        at.levels.set(name, next);
+        at.entries.push(next);
+      }
+      next.cases.push(one);
+      at = next;
+    }
+    at.entries.push(one);
+  }
+  return root;
+}
+
+const failing = (entry: Level | TestCase): boolean =>
+  isLevel(entry)
+    ? entry.cases.some((one) => one.result === "failed")
+    : entry.result === "failed";
+
+const firstLine = (entry: Level | TestCase): number =>
+  isLevel(entry)
+    ? Math.min(...entry.cases.map((one) => one.line ?? Infinity))
+    : (entry.line ?? Infinity);
+
+/**
+ * A level's entries, failures first. Packages and files then go by name; describes and cases by the line they are written
+ * on, so a file reads in the order its author wrote it, and in the report's order where no line is given.
+ */
+function inOrder(level: Level): (Level | TestCase)[] {
+  const byName = level.depth < 2;
+  return level.entries
+    .map((entry, index) => ({ entry, index }))
+    .sort(
+      (a, b) =>
+        Number(failing(b.entry)) - Number(failing(a.entry)) ||
+        (byName && isLevel(a.entry) && isLevel(b.entry)
+          ? before(a.entry.name, b.entry.name)
+          : firstLine(a.entry) - firstLine(b.entry) || 0) ||
+        a.index - b.index,
+    )
+    .map(({ entry }) => entry);
+}
+
+function counts(cases: readonly TestCase[]): Html {
+  const failed = count(cases, "failed");
+  const skipped = count(cases, "skipped");
+  return markup`<span class="counts">${count(cases, "passed")} passed${failed === 0 ? "" : markup`, <span class="failed">${failed} failed</span>`}${skipped === 0 ? "" : `, ${skipped} skipped`}</span>`;
+}
+
+function leaf(one: TestCase, suite: Suite, run: TestRun): Html {
+  const source = `${suite.repository}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
+  return markup`<li class="case"><span class="result ${one.result}">${one.result}</span> <a href="${source}">${one.name}</a><span class="time">${seconds(one.seconds)}</span>${one.message === undefined ? "" : markup`<pre class="failure">${shown(one.message)}</pre>`}</li>\n`;
+}
+
+function branch(level: Level, suite: Suite, run: TestRun): Html {
+  const children = inOrder(level).map((entry) =>
+    isLevel(entry) ? branch(entry, suite, run) : leaf(entry, suite, run),
+  );
+  if (level.depth === 0) return markup`<ul class="tree top">\n${children}</ul>`;
+  const name =
+    level.depth <= 2 ? markup`<code>${level.name}</code>` : level.name;
+  const open = level.depth === 1 || failing(level) ? " open" : "";
+  return markup`<li><details${new Html(open)}><summary>${name} ${counts(level.cases)}</summary>
+<ul class="tree">
+${children}</ul></details></li>\n`;
+}
+
+/** A suite's results as CTRF (https://ctrf.io), each case with the describes it sits in as its suite. */
+function ctrf(
+  suite: Suite,
+  run: TestRun,
+  cases: readonly TestCase[],
+  report: string,
+): unknown {
+  const start = Date.parse(run.at);
+  const duration =
+    declaredDuration(report) ??
+    cases.reduce((sum, one) => sum + (one.seconds ?? 0) * 1000, 0);
+  return {
+    reportFormat: "CTRF",
+    specVersion: "0.2.0",
+    timestamp: run.at,
+    generatedBy: "cascade-runtime-js packages/site",
+    results: {
+      tool: { name: suite.tool },
+      summary: {
+        tests: cases.length,
+        passed: count(cases, "passed"),
+        failed: count(cases, "failed"),
+        skipped: count(cases, "skipped"),
+        pending: 0,
+        other: 0,
+        start: Number.isNaN(start) ? 0 : start,
+        stop: Number.isNaN(start) ? 0 : start + Math.round(duration),
+      },
+      tests: cases.map((one) => {
+        const names = suite.tree ? one.describes : [one.suite];
+        return {
+          name: one.name,
+          status: one.result,
+          duration: Math.round((one.seconds ?? 0) * 1000),
+          ...(names.length === 0 ? {} : { suite: [...names] }),
+          ...(suite.tree ? { filePath: one.suite } : {}),
+          ...(one.line === undefined ? {} : { line: one.line }),
+          ...(one.message === undefined ? {} : { message: one.message }),
+        };
+      }),
+      environment: {
+        repositoryUrl: suite.repository,
+        commit: run.commit,
+        buildUrl: run.url,
+        branchName: "main",
+      },
+    },
+  };
+}
+
+interface Part {
+  readonly html: Html;
+  /** The suite's CTRF, when its report could be read. */
+  readonly ctrf?: unknown;
+}
+
+function part(suite: Suite, run: TestRun | undefined): Part {
   const heading = markup`<h2 class="part" id="${suite.key}">${suite.title}</h2>`;
   if (run === undefined)
-    return markup`${heading}
+    return {
+      html: markup`${heading}
 <p class="prose">Not available: this build was given no report of the newest run of the ${suite.key}'s tests on <code>main</code>.</p>
-`;
+`,
+    };
   let cases: TestCase[];
   let failingSuites: number;
   try {
     ({ cases, failingSuites } = readJunit(run.report));
   } catch (error) {
-    return markup`${heading}
+    return {
+      html: markup`${heading}
 <p class="prose">${runLine(suite, run)}.</p>
 <p class="prose">Not available: the report of that run cannot be read (${error instanceof Error ? error.message : String(error)}).</p>
-`;
+`,
+    };
   }
   const failed = count(cases, "failed");
   const counted = declaredFailures(run.report);
@@ -122,13 +297,24 @@ function part(suite: Suite, run: TestRun | undefined): Html {
       ? markup`<p class="prose"><strong>Failed outside the cases below:</strong> node counts ${counted} ${counted === 1 ? "failure" : "failures"} but the report lists ${failed} failed ${failed === 1 ? "case" : "cases"}${failingSuites === 0 ? "" : markup` and ${failingSuites} ${failingSuites === 1 ? "test" : "tests"} holding them`}. A test with subtests or a hook that failed is left out of the report; <a href="${run.url}">the run's log</a> names it.</p>
 `
       : "";
-  return markup`${heading}
-<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span></p>
-${unlisted}${cases.length === 0 ? "" : table(cases)}`;
+  const shownCases =
+    cases.length === 0
+      ? ""
+      : suite.tree
+        ? branch(grow(cases), suite, run)
+        : table(cases);
+  return {
+    html: markup`${heading}
+<p class="prose">${runLine(suite, run)}. ${cases.length} ${cases.length === 1 ? "case" : "cases"}: ${count(cases, "passed")} passed, ${failed} failed, ${count(cases, "skipped")} skipped. <span class="about">${suite.about}.</span> For an agent: <a href="${suite.key}.ctrf.json"><code>${suite.key}.ctrf.json</code></a>.</p>
+${unlisted}${shownCases}`,
+    ctrf: ctrf(suite, run, cases, run.report),
+  };
 }
 
 /**
- * The newest run on `main` of the runtime's tests and the vocabulary's pytest, case by case, under `conformance/tests/`.
+ * The newest run on `main` of the runtime's tests and the vocabulary's pytest, case by case, under `conformance/tests/`:
+ * the runtime's as a tree of package, file and describe, each case linked to its line at the commit run; the vocabulary's
+ * as one table. Each suite's results are also written as CTRF beside the page, for an agent.
  * A suite whose report was not fetched, or cannot be read, says so and the page is written all the same.
  */
 export const testsSection: Section<TestsContext> = {
@@ -141,6 +327,16 @@ export const testsSection: Section<TestsContext> = {
     "the JUnit reports of the newest runs on main of cascade-runtime-js and cascade-vocabulary",
   async build(ctx) {
     const reports = await ctx.tests();
+    const parts = SUITES.map((suite) => ({
+      suite,
+      ...part(suite, reports[suite.key]),
+    }));
+    const written = parts.filter((one) => one.ctrf !== undefined);
+    const forAgents =
+      written.length === 0
+        ? ""
+        : markup`<p class="prose">The same results for an agent, in <a href="https://ctrf.io">CTRF</a>: ${written.map(({ suite }, at) => markup`${at === 0 ? "" : " and "}<a href="${suite.key}.ctrf.json"><code>${suite.key}.ctrf.json</code></a>`)}.</p>
+`;
     return new Map([
       [
         TESTS_PAGE,
@@ -160,14 +356,22 @@ ${frontPageLink(2)}
 <a href="../index.html">Conformance results</a></nav>
 <main>
 <h1>Cascade unit test reports</h1>
-<p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's, each case with its result
-and time. Failed cases come first, then every case by file and name.</p>
-${SUITES.map((suite) => part(suite, reports[suite.key]))}</main>
+<p class="prose">The newest run on <code>main</code> of the runtime's tests and of the vocabulary's. The runtime's read as
+a tree of package, file and describe, each case linked to its source; the vocabulary's as one table. Failures come first,
+and the levels that hold one are open.</p>
+${forAgents}${parts.map(({ html }) => html)}</main>
 </body>
 </html>
 `.text,
         ),
       ],
+      ...written.map(
+        ({ suite, ctrf: results }) =>
+          [
+            ctrfFile(suite.key),
+            encoder.encode(`${JSON.stringify(results, null, 2)}\n`),
+          ] as const,
+      ),
     ]);
   },
   async rows() {

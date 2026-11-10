@@ -4,7 +4,11 @@ export type Result = "passed" | "failed" | "skipped";
 export interface TestCase {
   /** The file (node:test) or module (pytest) the case is in. */
   readonly suite: string;
+  /** The describe blocks the case sits in, outermost first (node:test); none for pytest. */
+  readonly describes: readonly string[];
   readonly name: string;
+  /** The line of the source the case is declared on, when the report says. */
+  readonly line?: number;
   readonly result: Result;
   /** Seconds, when the report says. */
   readonly seconds?: number;
@@ -58,7 +62,9 @@ function sourceOf(file: string): string {
 
 interface Building {
   suite: string;
+  describes: string[];
   name: string;
+  line?: number;
   result: Result;
   seconds?: number;
   message?: string;
@@ -75,6 +81,12 @@ export function declaredFailures(xml: string): number | undefined {
   return found === null ? undefined : Number(found[1]);
 }
 
+/** How long node:test says its run took, in milliseconds, from the `<!-- duration_ms N -->` ending its report. */
+export function declaredDuration(xml: string): number | undefined {
+  const found = /<!--\s*duration_ms\s+([\d.]+)\s*-->/.exec(xml);
+  return found === null ? undefined : Number(found[1]);
+}
+
 /** The cases of a report, and how many of its `testsuite` elements hold a failed case anywhere below them. */
 export interface JunitReport {
   readonly cases: TestCase[];
@@ -84,8 +96,8 @@ export interface JunitReport {
 /**
  * The cases of a JUnit report, in the order written, and the count of its suites that hold a failed case (node counts a
  * test with failed subtests as a failure too). Reads what pytest and node:test write: a case is failed when it holds a
- * `failure` or an `error`, skipped when it holds `skipped`. A case that names its `file` (node:test) is in that file, and
- * the describe blocks it sits in are part of its name; one that names a `classname` (pytest) is in that module.
+ * `failure` or an `error`, skipped when it holds `skipped`. A case that names its `file` (node:test) is in that file, under
+ * the describe blocks it sits in; one that names a `classname` (pytest) is in that module.
  * Throws when the text is no JUnit report or stops before its end.
  */
 export function readJunit(xml: string): JunitReport {
@@ -142,16 +154,16 @@ export function readJunit(xml: string): JunitReport {
       const name = attribute.get("name") ?? "";
       const seconds = Number(attribute.get("time"));
       const failure = attribute.get("failure");
+      const line = Number(attribute.get("line"));
       building = {
         suite:
           file !== undefined
             ? sourceOf(file)
             : (attribute.get("classname") ?? inside.at(-1) ?? ""),
+        describes: file !== undefined ? inside : [],
         // pytest-xdist's `loadgroup` appends `@<group>` to every id; it is the worker's, not the test's.
-        name:
-          file !== undefined
-            ? [...inside, name].join(" › ")
-            : name.replace(/@\w+$/, ""),
+        name: file !== undefined ? name : name.replace(/@\w+$/, ""),
+        ...(Number.isInteger(line) && line > 0 ? { line } : {}),
         result: failure === undefined ? "passed" : "failed",
         ...(attribute.has("time") && !Number.isNaN(seconds) ? { seconds } : {}),
         ...(failure === undefined ? {} : { message: failure }),

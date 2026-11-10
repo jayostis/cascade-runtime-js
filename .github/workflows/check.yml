@@ -448,7 +448,7 @@ jobs:
 
   # The runtime's own tests on main, in a job the deploy does not wait for: `build-pages` shows the newest finished run's
   # report, as it shows the vocabulary's. A timeout stops a hang. The log stays the spec reporter's; the JUnit file is the
-  # test page's. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
+  # test page's, node's own with each case's line in its TypeScript source added, for the page to link to. The tests read the vocabulary beside this checkout, which the start action checks out and does not run. A
   # failing case fails the job, and the report is still kept.
   # Nightly this is the one run of the suite: `tests and conformance` leaves it out then, and `compatibility` waits for this job.
   runtime-tests:
@@ -489,7 +489,7 @@ jobs:
           mkdir -p "$kept"
           printf '{"commit":"%s","at":"%s","url":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$kept/run.json"
-          npm test -- --test-reporter=junit --test-reporter-destination="$kept/junit.xml" \
+          npm test -- --test-reporter=./scripts/junit-reporter.mjs --test-reporter-destination="$kept/junit.xml" \
             --test-reporter=spec --test-reporter-destination=stdout
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
