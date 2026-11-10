@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <title>Hand-made narrative, with no author, for the recorded dates of its lines</title>
+  <component><structuredBody><component><section>
+    <text><table><tbody>
+      <tr><td>Patient reported, May 14, 2026</td></tr>
+      <tr><td>Recorded on 2026-05-14</td></tr>
+      <tr><td>Documented 2026-05-14</td></tr>
+      <tr><td>Started on 2026-05-14</td></tr>
+      <tr><td>Unreported 2026-05-14</td></tr>
+      <tr><td>Not documented on 2026-05-14</td></tr>
+      <tr><td>Never recorded 2026-05-14</td></tr>
+      <tr><td>Misreported 2026-05-14</td></tr>
+    </tbody></table></text>
+  </section></component></structuredBody></component>
+</ClinicalDocument>

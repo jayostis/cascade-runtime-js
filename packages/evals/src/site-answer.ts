@@ -122,7 +122,7 @@ export function replyHtml(t: Turn): string {
 
 // ---------------------------------------------------------------- what the agent relied on
 
-const claimOf = (f: Fact) =>
+const reliedOnFor = (f: Fact) =>
   pointsAtEntry(f)
     ? [
         `field ${f.field}${f.source === undefined ? "" : ` of ${f.source}`}`,
@@ -250,7 +250,7 @@ const factNode = (t: Turn, item: Item, f: Fact, i: number): GNode => {
       : { check: c.ok ? ("ok" as const) : ("bad" as const) }),
     detail: kv([
       ["says", esc(f.says)],
-      ["relies on the record for", esc(claimOf(f))],
+      ["relies on the record for", esc(reliedOnFor(f))],
       [
         "the pod holds",
         c?.filled === undefined ? undefined : esc(heldLine(f, c.filled)),

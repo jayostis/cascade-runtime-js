@@ -196,6 +196,13 @@
           }
         ]
       }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "p-2",
+        "deceasedBoolean": true
+      }
     }
   ]
 }

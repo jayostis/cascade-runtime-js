@@ -20,7 +20,7 @@ import type {
   CheckedItem,
   CheckedReply,
   CitedRecord,
-  Claim,
+  Citation,
   DateKind,
   FactField,
   FilledFact,
@@ -34,7 +34,7 @@ import type {
 } from "./index.js";
 
 export type Named = [
-  Absence, Backing, Call, Cite, CheckedAbsence, CheckedFact, CheckedItem, CitedRecord, Claim, DateKind, FactField,
+  Absence, Backing, Call, Cite, CheckedAbsence, CheckedFact, CheckedItem, CitedRecord, Citation, DateKind, FactField,
   FilledFact, Fields, PodReplyFact, Pointed, RecordsReplyFact, Reply, ReplyFact, Verdict,
 ];
 export const none: CheckedReply = { errors: [], items: [] };
