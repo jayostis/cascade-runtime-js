@@ -67,7 +67,15 @@ const FALSE_FRIENDS = new Set([
   "axis",
   "https",
   "ids",
+  "alias",
+  "canvas",
+  "lens",
+  "focus",
+  "versus",
 ]);
+
+/** Second words that show the first is a noun the leaf is about, not a verb: "rows are returned", "renewals of one drug". */
+const NOUN_PARTNERS = new Set(["are", "were", "have", "do", "of"]);
 
 const IDENTIFIER = String.raw`[A-Za-z_$][\w$]*(?:\.[\w$]+)*(?:\([^)]*\))?`;
 const CODE_ITEM = String.raw`\`?${IDENTIFIER}\`?`;
@@ -100,12 +108,21 @@ function firstWord(title: string): string {
 }
 
 /** Whether a leaf's first word is a singular present-tense verb: a listed one, or a lower-case word ending in `s`. */
-function isVerb(word: string, allowed: ReadonlySet<string>): boolean {
+function isVerb(
+  word: string,
+  next: string,
+  allowed: ReadonlySet<string>,
+): boolean {
   if (allowed.has(word)) return true;
   if (!/^[a-z][a-z'-]*$/.test(word)) return false;
   if (VERBS.has(word)) return true;
-  if (FALSE_FRIENDS.has(word)) return false;
-  return word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("'s");
+  if (FALSE_FRIENDS.has(word) || NOUN_PARTNERS.has(next)) return false;
+  return (
+    word.endsWith("s") &&
+    !word.endsWith("ss") &&
+    !word.endsWith("'s") &&
+    !word.endsWith("ous")
+  );
 }
 
 function namesCodeOrSituation(title: string): boolean {
@@ -195,7 +212,8 @@ export function checkShape(
         `"${second}" names neither code nor a situation beginning "when", "given" or "with"`,
       );
     const word = firstWord(one.name);
-    if (!isVerb(word, allowed))
+    const next = one.name.trim().split(/\s+/)[1] ?? "";
+    if (!isVerb(word, next, allowed))
       found(
         "verb",
         `the leaf begins "${word}", not a singular present-tense verb such as "returns"`,

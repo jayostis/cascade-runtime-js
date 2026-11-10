@@ -171,6 +171,31 @@ describe("checkShape(cases, spec, specPath)", () => {
         assert.equal(leaf(title).length, 1, title);
     });
 
+    it("reports a plural noun that leads a passive or a possessive leaf", () => {
+      for (const title of [
+        "rows are found",
+        "tables were taken",
+        "files have changed",
+        "rows do not match",
+        "renewals of one drug are merged",
+      ])
+        assert.equal(leaf(title).length, 1, title);
+    });
+
+    it("reports a word ending in -ous, and the false friends alias, canvas, lens, focus and versus", () => {
+      for (const title of [
+        "previous rows are kept",
+        "various rows come back",
+        "obvious rows come back",
+        "alias is kept",
+        "canvas is drawn",
+        "lens is used",
+        "focus is kept",
+        "versus is not a verb",
+      ])
+        assert.equal(leaf(title).length, 1, title);
+    });
+
     it("reports a leaf that begins with a capital, a digit or a quote", () => {
       for (const title of ["Returns rows", "2 rows come back", "'a' is kept"])
         assert.equal(leaf(title).length, 1, title);
