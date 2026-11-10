@@ -152,7 +152,7 @@ describe("Loading an adapter into the Bridge · loadAdapter(), ofMediaType()", (
       await adapter.accepts({ iri: "urn:document", bytes: bytes("{}") });
     });
 
-    it("hands the Bridge every file of the adapter in one load", () => {
+    it("hands the Bridge every file of the adapter in one load, but none under `.git/`", () => {
       assert.equal(loads.length, 1);
       assert.deepEqual(loads[0]?.[0], [
         "docs/format.md",
@@ -160,13 +160,6 @@ describe("Loading an adapter into the Bridge · loadAdapter(), ofMediaType()", (
         "ro-crate-metadata.json",
         "schema/imported.xsd",
       ]);
-    });
-
-    it("leaves out the files under `.git/`", () => {
-      assert.deepEqual(
-        loads[0]?.[0].filter((path) => path.startsWith(".git/")),
-        [],
-      );
     });
   });
 
