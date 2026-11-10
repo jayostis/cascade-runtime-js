@@ -235,7 +235,7 @@ describe("Checking what a reply says a pod lacks · checkAbsence()", () => {
       query: { tool: "ask", input: labsInput },
     });
 
-    it("ignores a matching row whose dates are all before that day", () => {
+    it("ignores a matching row whose date is before that day", () => {
       assert.deepEqual(
         checkAbsence(a1cAfter("2026-02-17"), [a1cOn("2026-02-16T16:00:00Z")]),
         stillBacked,
