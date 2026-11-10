@@ -29,6 +29,11 @@
       "aliases": ["adapters"]
     },
     {
+      "term": "adopt",
+      "definition": "of an open, to take a newer version of a table the pod uses as the pod's current one.",
+      "aliases": ["adopts", "adopted", "adopting"]
+    },
+    {
       "term": "arrival",
       "definition": "one state of one record as a source reported it, as an adapter hands it to the runtime, before it is filed.",
       "aliases": ["arrivals"]
@@ -94,6 +99,16 @@
       "term": "derivation",
       "definition": "a query of the vocabulary that adds to a pod's dataset what follows from its files, such as which revision of a record is current.",
       "aliases": ["derivations", "derived"]
+    },
+    {
+      "term": "description of a version",
+      "definition": "the file in the pod that says which series a table version belongs to, its number, and which version it revises.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ReferenceSeries",
+      "aliases": [
+        "descriptions of a version",
+        "descriptions of the versions",
+        "version's description"
+      ]
     },
     {
       "term": "Different",
@@ -238,11 +253,11 @@
     },
     {
       "term": "Refusal",
-      "definition": "the error thrown when the package declines a request it understood, such as a name it does not have; it has written nothing."
+      "definition": "the error thrown when the package declines a request it understood, such as a name it does not have; it has written no file of the person's."
     },
     {
       "term": "refused",
-      "definition": "on a call's result, why a rule turned the call down; a refused call wrote nothing."
+      "definition": "on a call's result, why a rule turned the call down; a refused call wrote no file of the person's, though a pod with a build still rewrites its manifest."
     },
     {
       "term": "release",
