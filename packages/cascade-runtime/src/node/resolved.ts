@@ -30,7 +30,7 @@ import {
 import { bridgeLoaded, type Parts } from "../pod.js";
 import { Tables } from "../tables.js";
 import { builderAt, localBuilds, withFiles } from "./builders.js";
-import { keptRows } from "./rowCache.js";
+import { withKeptRows } from "./rowCache.js";
 
 export interface ResolvedParts extends Parts {
   /** The vocabulary as a folder, which a kit is replayed from. */
@@ -156,7 +156,7 @@ export async function partsOf(
   const local = { ...found, config };
   const { files, layout, build } = local;
   const newStore = () => new OxigraphStore();
-  const fetching = withFiles(keptRows(options.fetch ?? fetch));
+  const fetching = withFiles(withKeptRows(options.fetch ?? fetch));
   const { feeds, preference, builders } = config.tables;
   const tablesOver = (store: Files, pods?: string): Tables =>
     new Tables({

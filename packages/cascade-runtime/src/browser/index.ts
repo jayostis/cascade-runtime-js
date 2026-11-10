@@ -856,7 +856,7 @@ export async function openPod(
       if (described?.tables !== undefined)
         void resolved()
           .then(({ tables }) =>
-            tables.opened(described.address, described.tables ?? [], name),
+            tables.recordOpen(described.address, described.tables ?? [], name),
           )
           .catch(() => undefined);
     }

@@ -23,6 +23,14 @@
     "Bringing a pull into a pod · pullFiles(), pod.look(), pod.import()",
     "Telling why a connection failed · ConnectionFailure",
     "Keeping reference tables up to date · tablesBeside(), tables.check()",
+    "Starting from the tables the package carries · tables.start()",
+    "Choosing an app's feeds and settings · configureTables(), cascade-runtime.json",
+    "Opening a pod with newer reference tables · openPod(), pod.opened, pod.unheldTableVersions()",
+    "Listing and searching the reference tables · tables.held(), tables.uses(), tables.search(), tables.codeNamed()",
+    "Looking up a code in the reference tables · tables.about(), tables.facts(), tables.inPanels(), tables.classedElsewhere()",
+    "Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()",
+    "Asking a pod what the reference tables say of its records · pod.medicationClasses(), pod.panelResults(), pod.joinedBy()",
+    "Reading only the rows a pod's codes find · tables.references()",
     "Finding lab changes after a medication starts or stops · findChanges(), changesIn()",
     "Tools a model reads a pod with · TOOLS",
     "Reading a folder of pods for the tools · podReads()",
@@ -94,6 +102,11 @@
       "aliases": ["brands bundles"]
     },
     {
+      "term": "builder",
+      "definition": "a program that builds a reference table on the app's own machine from its publisher's release, as is needed where a licence keeps a feed from publishing the rows.",
+      "aliases": ["builders"]
+    },
+    {
       "term": "bundler",
       "definition": "a program, such as Vite or esbuild, that joins an app's modules into the files a web page loads.",
       "aliases": ["bundlers"]
@@ -129,6 +142,11 @@
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#VariantClassifications"
     },
     {
+      "term": "ClinVar ID",
+      "definition": "the number ClinVar gives one variant, which a pod holds as `clinvarVariationId`.",
+      "aliases": ["ClinVar IDs"]
+    },
+    {
       "term": "code system",
       "aliases": ["code systems"],
       "definition": "a published list of codes for one kind of thing, such as RxNorm for medicines, LOINC for lab tests and SNOMED CT for clinical findings."
@@ -137,6 +155,11 @@
       "term": "coding expression",
       "definition": "a variant written in HGVS notation against a gene's transcript, such as `NM_000249.3:c.2042C>T`.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#hgvsCodingDnaExpression"
+    },
+    {
+      "term": "combination",
+      "definition": "a medicine with more than one active ingredient, such as a tablet of lisinopril with hydrochlorothiazide.",
+      "aliases": ["combinations", "combination product"]
     },
     {
       "term": "compact read",
@@ -153,6 +176,12 @@
       "term": "criticality",
       "definition": "how dangerous a reaction to an allergen could be, as a source states it: `low`, `high` or `unable-to-assess`.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#allergyCriticality"
+    },
+    {
+      "term": "current version",
+      "definition": "of a series, the version a pod opened now is given: the newest one the app has kept.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#defaultTableVersion",
+      "aliases": ["current versions"]
     },
     {
       "term": "custodian",
@@ -185,6 +214,17 @@
       "term": "download",
       "definition": "a file of a person's records as a hospital's server or portal gave it, before any import: FHIR resources in JSON, or a C-CDA document.",
       "aliases": ["downloads"]
+    },
+    {
+      "term": "drug class",
+      "definition": "a group of medicines that work alike or are built alike, such as ACE inhibitors, as the US Food and Drug Administration assigns them.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#DrugClasses",
+      "aliases": ["drug classes", "class", "classes", "classed"]
+    },
+    {
+      "term": "entry",
+      "definition": "a record the owner typed in themselves, which no source holds.",
+      "aliases": ["entries"]
     },
     {
       "term": "entry point",
@@ -262,6 +302,11 @@
       "aliases": ["hosts"]
     },
     {
+      "term": "index",
+      "definition": "a file kept beside a version of a reference table that says which rows each code finds, so that the rows need not all be read.",
+      "aliases": ["indexes", "index by code"]
+    },
+    {
       "term": "interpretation",
       "definition": "a laboratory's flag on a result, such as `H` for high.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#resultInterpretationCode",
@@ -299,6 +344,11 @@
       "aliases": ["lab changes"]
     },
     {
+      "term": "label",
+      "definition": "of a series, its name as a person reads it, such as 'Vaccine groups'; a feed gives it and a check updates it.",
+      "aliases": ["labels"]
+    },
+    {
       "term": "launcher",
       "definition": "the SMART Health IT launcher, `launch.smarthealthit.org`: a public test hospital on the internet, kept by the SMART project, which this project did not write."
     },
@@ -317,6 +367,11 @@
       "definition": "the machine's own network interface, `127.0.0.1`. An app with no server of its own gives a redirect URI there, and `loopbackSignIn()` listens on it for the hospital's redirect."
     },
     {
+      "term": "map",
+      "definition": "of a table row, to give for one code the code it stands for in another series.",
+      "aliases": ["maps", "mapped"]
+    },
+    {
       "term": "matched",
       "definition": "on a call's result, the result of the matcher's run that followed it."
     },
@@ -325,6 +380,11 @@
       "definition": "the part of a runtime that compares a pod's records and writes a Same for those its rules find to be one thing, such as one allergy reported by two sources.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#CascadeMatcher",
       "aliases": ["matchers"]
+    },
+    {
+      "term": "matcher judgment",
+      "definition": "a Same the matcher wrote for records its rules found to be one thing; it names the version of each reference table it used.",
+      "aliases": ["matcher judgments"]
     },
     {
       "term": "member",
@@ -358,6 +418,10 @@
     {
       "term": "OperationOutcome",
       "definition": "FHIR's resource for a server's warning or error message; it is no record of the patient."
+    },
+    {
+      "term": "order of preference",
+      "definition": "for a table kind, the series an app reads first when several hold a code, set as `preference`; a code's name comes from the first series in it that names the code."
     },
     {
       "term": "Organization",
@@ -428,6 +492,17 @@
       "aliases": ["pods"]
     },
     {
+      "term": "precise ingredient",
+      "definition": "a particular form of an ingredient, such as lisinopril anhydrous of lisinopril, which some medicine products are tied to.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#hasPreciseIngredient",
+      "aliases": ["precise ingredients"]
+    },
+    {
+      "term": "product ingredients",
+      "definition": "the reference table that gives each medicine product its active ingredient, from RxNorm.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#ProductIngredients"
+    },
+    {
       "term": "profile",
       "aliases": ["profiles"],
       "definition": "one source's record of its patient, which the owner claims; `claimedProfiles` and `unclaimedProfiles` list them."
@@ -494,6 +569,11 @@
       "aliases": ["contract", "contracts"]
     },
     {
+      "term": "report",
+      "definition": "one laboratory's classification of one of a person's variants, as a pod holds it; `pod.agreement()` compares each with ClinVar. (A hospital server's `serverReport()` is another thing: what the server says of itself.)",
+      "aliases": ["reports"]
+    },
+    {
       "term": "resource",
       "definition": "one record in FHIR, named by its type and its id, such as `Observation/ldl-1`.",
       "aliases": ["resources"]
@@ -505,9 +585,25 @@
       "aliases": ["retractions", "retract", "retracts", "retracted"]
     },
     {
+      "term": "review status",
+      "definition": "ClinVar's statement of how well a classification is supported, such as `criteria provided, multiple submitters, no conflicts`.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#clinvarReviewStatus"
+    },
+    {
+      "term": "row",
+      "definition": "one line of a table: of a view, what one view entry holds, a cell per column; of a reference table, what it says of one code or variant.",
+      "aliases": ["rows"]
+    },
+    {
       "term": "rule",
       "definition": "a numbered requirement in the vocabulary that every runtime must meet, such as A14 in `runtime/arrivals.feature`; a heading on this page links the rules its API reaches.",
       "aliases": ["rules"]
+    },
+    {
+      "term": "rule list",
+      "definition": "the vocabulary's list of what the matcher compares, each line naming a query and the table kind it reads; it has versions, as a reference table has.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#RuleListRow",
+      "aliases": ["rule lists"]
     },
     {
       "term": "runtime",
@@ -544,6 +640,11 @@
       "term": "search",
       "definition": "one request to a hospital for a patient's records of one type, such as Condition; a plan lists them, and a hospital may answer a search a page at a time.",
       "aliases": ["searches"]
+    },
+    {
+      "term": "search list",
+      "definition": "a version's codes and their names kept as one file beside its rows, which a search reads.",
+      "aliases": ["search lists"]
     },
     {
       "term": "secret",
@@ -596,9 +697,18 @@
       "vocabulary": "https://www.w3.org/TR/sparql11-query/"
     },
     {
+      "term": "starter copies",
+      "definition": "the reference tables as the package carries them, which a new app uses until it has read a feed.",
+      "aliases": ["starter"]
+    },
+    {
       "term": "step",
       "definition": "one scripted action on a pod, such as making it, an import, an entry session or a judgment, named by a letter and a number such as `J10`.",
       "aliases": ["steps"]
+    },
+    {
+      "term": "store",
+      "definition": "where an app keeps its reference tables: the folder `.tables/` beside its pods in Node, a database in a browser."
     },
     {
       "term": "story",
@@ -614,6 +724,22 @@
       "definition": "the person a pod is about.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#Subject",
       "aliases": ["subjects"]
+    },
+    {
+      "term": "submitter",
+      "definition": "a laboratory that sent ClinVar its classification of a variant.",
+      "aliases": ["submitters"]
+    },
+    {
+      "term": "table kind",
+      "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
+      "aliases": ["table kinds"]
+    },
+    {
+      "term": "table search",
+      "definition": "to find the codes of a series whose name holds the text asked, as `tables.search()` does, a page at a time.",
+      "aliases": ["search the tables", "table searches"]
     },
     {
       "term": "template",
@@ -664,6 +790,15 @@
       "aliases": ["variants"]
     },
     {
+      "term": "verdict",
+      "definition": "the column of `pod.agreement()`'s rows saying how a report stands to ClinVar: `agrees` when its classification is among the row's, `differs` when the row holds another, and none when ClinVar cannot say."
+    },
+    {
+      "term": "verify",
+      "definition": "to check a version's rows, once fetched, against the checksum the feed gives for them and against the version's own name, which is worked out from the rows.",
+      "aliases": ["verifies", "verified"]
+    },
+    {
       "term": "version",
       "definition": "what a record says at one time; when a source changes a record, the pod keeps the old version and adds a new one. (Of a reference table or the runtime, \"version\" has its everyday meaning.)",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#version",
@@ -679,7 +814,7 @@
       "term": "view entry",
       "definition": "one thing in a view, such as one medication or one lab result: the records that are one thing, shown as one. A row names it in `entry`, by an IRI that ends in `#` and 64 hexadecimal digits.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#inEntry",
-      "aliases": ["view entries", "entry", "entries"]
+      "aliases": ["view entries"]
     },
     {
       "term": "vocabulary",
@@ -711,12 +846,15 @@
     "pod.test.ts",
     "pull.test.ts",
     "reply.test.ts",
+    "rowCache.test.ts",
     "server-same.test.ts",
     "stories.test.ts",
     "story-pulls.test.ts",
+    "tables.test.ts",
     "terms.test.ts",
     "tools.test.ts",
     "transpile.test.ts",
+    "variants.test.ts",
     "vite.test.ts"
   ],
   "build": [
@@ -724,6 +862,8 @@
     "The launcher check, when the launcher responds",
     "The launcher check, when the runtime's failure is not one the launcher's silence explains",
     "cascade-runtime/tools in a browser bundle",
+    "Row files kept between builds of the package",
+    "Starter copies of the reference tables, as the package is built with them",
     "Transpiling before the tests · scripts/transpile.mjs",
     "Dependencies of the packed package · mergedDependencies(), undeclaredImports(), vendored()",
     "Annotating a red run's failures · failure-annotations.ts",

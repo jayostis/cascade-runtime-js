@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, before, test } from "node:test";
+import { after, before, describe, it } from "node:test";
 import {
   canonical,
   codeIri,
@@ -220,167 +220,20 @@ async function twoSeries() {
   };
 }
 
-test("what ClinVar says of a variant is read from the app's current version of the first held series that covers its gene, by its ID when it has one and by its expression when it has none", async () => {
-  const { served, a, b } = await twoSeries();
-  const app = await appOver(served);
-  const asked = (
-    variant: Partial<VariantAsked> & { gene?: string },
-  ): VariantAsked => ({ hgvs: [], variations: [], ...variant });
-  const says = async (variant: Partial<VariantAsked>) =>
-    app.variantClassification(asked(variant));
-  const found = async (variant: Partial<VariantAsked>) => {
-    const answered = await says(variant);
-    return answered.found === "rows"
-      ? [answered.version, answered.rows.map(({ variation }) => variation)]
-      : answered.found;
-  };
-  const pathogenic = [a, [`${CLINVAR}90011`]];
+let twoSeriesMade: Promise<{ app: Tables; a: string; b: string }> | undefined;
 
-  assert.deepEqual(
-    await found({ gene: "MLH1", variations: ["90011"] }),
-    pathogenic,
-  );
-  assert.deepEqual(
-    await found({ gene: "MLH1", hgvs: ["NM_000249.3:c.2042C>T"] }),
-    pathogenic,
-  );
-  assert.deepEqual(await found({ variations: ["90011"] }), pathogenic);
-  // The ID is read and the expression is not: an ID on no row is not found, though its expression is on a row.
-  assert.equal(
-    await found({
-      gene: "MLH1",
-      variations: ["12345"],
-      hgvs: ["NM_000249.4:c.2042C>T"],
-    }),
-    "not found",
-  );
-  assert.equal(
-    await found({ gene: "MLH1", hgvs: ["NM_000249.9:c.1A>G"] }),
-    "not found",
-  );
-  assert.equal(
-    await found({
-      gene: "MLH1",
-      hgvs: ["NM_000251.3:c.100A>G", "NM_000251.3:c.200A>G"],
-    }),
-    "not found",
-  );
-  assert.deepEqual(
-    await says({ gene: "BRCA2", hgvs: ["NM_000059.9:c.1A>G"] }),
-    {
-      found: "not covered",
-      series: A,
-      version: a,
-      genes: ["EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"],
-    },
-  );
-  // A version that states no genes covers none by name, and answers where it holds a row.
-  assert.deepEqual(
-    await found({ gene: "BRCA2", hgvs: ["NM_000059.4:c.1114A>C"] }),
-    [b, [`${CLINVAR}80001`]],
-  );
+/** An app over two series, made once and then only read. */
+function twoSeriesApp(): Promise<{ app: Tables; a: string; b: string }> {
+  twoSeriesMade ??= (async () => {
+    const { served, a, b } = await twoSeries();
+    return { app: await appOver(served), a, b };
+  })();
+  return twoSeriesMade;
+}
 
-  const alone = await says({ variations: ["90011"] });
-  assert.deepEqual(alone.found === "rows" ? alone.rows : [], [
-    {
-      variation: `${CLINVAR}90011`,
-      classification: [
-        { iri: `${CASCADE}LikelyPathogenic`, label: "Likely pathogenic" },
-        { iri: `${CASCADE}Pathogenic`, label: "Pathogenic" },
-      ],
-      reviewStatus: {
-        iri: `${CASCADE}ClinVarMultipleSubmittersNoConflicts`,
-        label: "criteria provided, multiple submitters, no conflicts",
-      },
-      lastEvaluated: "2024-12-11",
-      contributingSubmitters: 5,
-    },
-  ]);
-
-  assert.deepEqual(
-    await (
-      await appOver(NOTHING)
-    ).variantClassification(asked({ gene: "MLH1" })),
-    { found: "no series" },
-  );
-});
-
-test("the labels are the vocabulary's, and a classification is a variation's fact and no mapping", async () => {
-  const { served, a } = await twoSeries();
-  const app = await appOver(served);
-  assert.deepEqual(
-    [
-      ...(await app.labels([
-        `${CASCADE}UncertainSignificance`,
-        `${CASCADE}ClinVarConflicting`,
-        "urn:test:unlabelled",
-      ])),
-    ],
-    [
-      [`${CASCADE}UncertainSignificance`, "Uncertain significance"],
-      [
-        `${CASCADE}ClinVarConflicting`,
-        "Conflicting classifications of pathogenicity",
-      ],
-    ],
-  );
-  const facts = await app.facts(`${CLINVAR}90011`);
-  assert.deepEqual(facts.mappings, []);
-  assert.deepEqual(
-    facts.classifications.map(({ series, version, contributingSubmitters }) => [
-      series,
-      version,
-      contributingSubmitters,
-    ]),
-    [[A, a, 5]],
-  );
-  assert.deepEqual((await app.facts(`${CLINVAR}1`)).classifications, []);
-  assert.deepEqual(facts.page, {
-    href: "https://www.ncbi.nlm.nih.gov/clinvar/variation/90011/",
-    system: "ClinVar",
-  });
-  assert.equal(
-    (
-      await app.facts(
-        "https://ns.cascadeprotocol.org/codes/hgvs/NM_000249.3%3Ac.2042C%3ET",
-      )
-    ).page,
-    undefined,
-  );
-});
-
-test("an index of rows by code that is missing or was built for other properties is made again from the version's rows and kept beside it", async () => {
-  const { served, a } = await twoSeries();
-  const files = new MemoryFiles("urn:test:app/");
-  const app = await appOver(served, files);
-  await app.start();
-  const path = (await files.list("")).find((each) =>
-    each.endsWith(`${fileStem(a)}.codes.json`),
-  );
-  assert.ok(path);
-  await files.write(path, new TextEncoder().encode('{"foundBy":[],"rows":{}}'));
-  const again = await appOver(served, files);
-  const answered = await again.variantClassification({
-    gene: "MLH1",
-    hgvs: [],
-    variations: ["90013"],
-  });
-  assert.equal(answered.found, "rows");
-  assert.ok(
-    new TextDecoder()
-      .decode(await files.read(path))
-      .includes(
-        codeIri(
-          "https://ns.cascadeprotocol.org/codes/hgvs/",
-          "NM_000251.3:c.200A>G",
-        ),
-      ),
-  );
-  assert.equal(
-    (await again.facts(`${CLINVAR}90013`)).classifications[0]?.version,
-    a,
-  );
-});
+const asked = (
+  variant: Partial<VariantAsked> & { gene?: string },
+): VariantAsked => ({ hgvs: [], variations: [], ...variant });
 
 /** One variant and the report it was given, whose verdict the cases below name by its gene. */
 interface Case {
@@ -404,19 +257,6 @@ const CASES: readonly Case[] = [
     verdict: "differs",
   },
   {
-    gene: "MSH6",
-    variant: `cascade:clinvarVariationId "90023"`,
-    report: "cascade:Pathogenic",
-    verdict: "labs disagree",
-  },
-  {
-    gene: "PMS2",
-    variant: `cascade:hgvsCodingDnaExpression "NM_000535.7:c.400A>G"`,
-    report: "cascade:Benign",
-    verdict: "as ClinVar writes it",
-  },
-  { gene: "EPCAM", variant: `cascade:clinvarVariationId "90025"` },
-  {
     gene: "BRCA1",
     variant: `cascade:hgvsCodingDnaExpression "NM_007294.4:c.500A>G"`,
     report: "cascade:Pathogenic",
@@ -434,17 +274,6 @@ const agreementRows = (says90021: string): string =>
       ["NM_000251.3:c.300A>G"],
       `cascade:clinvarClassification cascade:Pathogenic , cascade:LikelyPathogenic`,
     ),
-    row(
-      "90023",
-      [],
-      `cascade:clinvarClassification cascade:ClinVarConflicting`,
-    ),
-    row(
-      "90024",
-      ["NM_000535.7:c.400A>G"],
-      `cascade:clinvarClassification cascade:ClinVarDrugResponse`,
-    ),
-    row("90025", [], `cascade:clinvarClassification cascade:Benign`),
     row(
       "90026",
       ["NM_007294.4:c.500A>G"],
@@ -497,92 +326,404 @@ async function verdictsByGene(pod: Pod): Promise<Record<string, string>> {
   );
 }
 
-test("a report agrees with ClinVar when its value is among the row's, differs when the row holds another of the five, and is left alone where the row says something else, the variant has two rows or the report has no value; the verdicts write nothing, a newer version of the series is a new key, and a kept pod reads them without the engine", async () => {
-  const first = await withClassifications(NOTHING, A, [
-    { rows: agreementRows(PATHOGENIC), genes: LYNCH },
-  ]);
-  // The same expression on a row of a second series, so that its variant finds two rows.
-  const held = await withClassifications(first.served, B, [
-    {
-      rows: row(
-        "80026",
-        ["NM_007294.4:c.500A>G"],
-        `cascade:clinvarClassification cascade:Benign`,
-      ),
-    },
-  ]);
-  const app = await appOver(held.served);
-  const folder = join(scratch, "martin");
-  const withTables = (tables: Tables): Parts => ({
-    ...parts,
-    tables,
-    answers: { runtime: "test", at: answersBeside },
-  });
-  const pod = await openPodWith(withTables(app), folder);
-  try {
-    const entered = await pod.enter(entry(CASES, pod.subject, pod.owner));
-    assert.equal(entered.refused, undefined, entered.refused);
-    const written = await filesOf(folder);
-    const expected = Object.fromEntries(
-      CASES.flatMap(({ gene, verdict }) =>
-        verdict === undefined ? [] : [[gene, verdict]],
-      ),
-    );
-    assert.deepEqual(await verdictsByGene(pod), expected);
-    assert.deepEqual(await filesOf(folder), written);
+/** The parts a pod is opened with over the tables, keeping its answers beside it. */
+const withTables = (tables: Tables): Parts => ({
+  ...parts,
+  tables,
+  answers: { runtime: "test", at: answersBeside },
+});
 
-    const files = new FolderFiles(folder);
-    const published = new Map<string, Uint8Array>();
-    for (const path of await files.list("")) {
-      const bytes = await files.read(path);
-      if (bytes !== undefined) published.set(path, bytes);
-    }
-    const answers = new MemoryFiles("urn:test:answers/");
-    for (const [path, bytes] of await answersToPublish(
-      withTables(app),
-      published,
+interface Martin {
+  readonly folder: string;
+  readonly app: Tables;
+  /** The verdict of each report that has one, by the gene of its variant. */
+  readonly verdicts: Record<string, string>;
+  /** The files of the folder before the verdicts were asked, and after. */
+  readonly written: { readonly before: string[]; readonly after: string[] };
+}
+
+let martinMade: Promise<Martin> | undefined;
+
+/**
+ * A pod of three variants, each with a report, over tables of two series: MLH1's variant is on a row by its ID, MSH2's
+ * by an expression, and BRCA1's expression is on a row of each series. Entered, its verdicts read once, and closed.
+ */
+function martinPod(): Promise<Martin> {
+  martinMade ??= (async () => {
+    const first = await withClassifications(NOTHING, A, [
+      { rows: agreementRows(PATHOGENIC), genes: LYNCH },
+    ]);
+    // The same expression on a row of a second series, so that its variant finds two rows.
+    const held = await withClassifications(first.served, B, [
       {
-        name: "martin",
-        runtime: "published",
-      },
-    ))
-      await answers.write(path, bytes);
-    const { vocabulary, build, lens, layout } = parts;
-    const read = await keptPod(
-      {
-        vocabulary,
-        build,
-        lens,
-        tables: app,
-        layout: Layout.of(
-          layout.turtle,
-          JSON.parse(JSON.stringify(layout.placements)) as Placed[],
+        rows: row(
+          "80026",
+          ["NM_007294.4:c.500A>G"],
+          `cascade:clinvarClassification cascade:Benign`,
         ),
       },
-      files,
-      new Answers(answers, "published"),
-    );
-    assert.deepEqual(
-      (await read?.agreement())?.map(({ verdict }) => verdict).sort(),
-      Object.values(expected).sort(),
-    );
-  } finally {
-    await pod.close();
-  }
+    ]);
+    const app = await appOver(held.served);
+    const folder = join(scratch, "martin");
+    const pod = await openPodWith(withTables(app), folder);
+    try {
+      const entered = await pod.enter(entry(CASES, pod.subject, pod.owner));
+      assert.equal(entered.refused, undefined, entered.refused);
+      const filesBefore = await filesOf(folder);
+      const verdicts = await verdictsByGene(pod);
+      return {
+        folder,
+        app,
+        verdicts,
+        written: { before: filesBefore, after: await filesOf(folder) },
+      };
+    } finally {
+      await pod.close();
+    }
+  })();
+  return martinMade;
+}
 
-  // The series' next version reclassifies 90021; the pod, unchanged, is a new key.
-  const next = await withClassifications(NOTHING, A, [
-    { rows: agreementRows(PATHOGENIC), genes: LYNCH },
-    { rows: agreementRows("cascade:UncertainSignificance"), genes: LYNCH },
-  ]);
-  const later = await openPodWith(
-    withTables(await appOver(next.served)),
-    folder,
-    { adopt: false },
-  );
-  try {
-    assert.equal((await verdictsByGene(later)).MLH1, "differs");
-  } finally {
-    await later.close();
-  }
+/**
+ * ClinVar is a public archive of how laboratories classify genetic variants, which an app holds as reference tables.
+ * `variantClassification` returns what the app's copy says of one variant, and `pod.agreement()` returns, for each
+ * laboratory's report of a variant in a pod, whether the report agrees with it.
+ * @rule runtime/matcher.feature M17
+ */
+describe("Reading what ClinVar says of a variant · tables.variantClassification(), pod.agreement()", () => {
+  describe("tables.variantClassification(variant)", () => {
+    let app: Tables;
+    let a: string;
+    let b: string;
+
+    before(async () => {
+      ({ app, a, b } = await twoSeriesApp());
+    });
+
+    const says = (variant: Partial<VariantAsked> & { gene?: string }) =>
+      app.variantClassification(asked(variant));
+    const found = async (
+      variant: Partial<VariantAsked> & { gene?: string },
+    ) => {
+      const answered = await says(variant);
+      return answered.found === "rows"
+        ? [answered.version, answered.rows.map(({ variation }) => variation)]
+        : answered.found;
+    };
+
+    it("finds the variant's row by its ClinVar ID", async () => {
+      assert.deepEqual(await found({ gene: "MLH1", variations: ["90011"] }), [
+        a,
+        [`${CLINVAR}90011`],
+      ]);
+    });
+
+    it("finds the row by a coding expression when the variant has no ID", async () => {
+      assert.deepEqual(
+        await found({ gene: "MLH1", hgvs: ["NM_000249.3:c.2042C>T"] }),
+        [a, [`${CLINVAR}90011`]],
+      );
+    });
+
+    it("returns `not found` for an ID on no row, though the variant's expression is on one", async () => {
+      assert.equal(
+        await found({
+          gene: "MLH1",
+          variations: ["12345"],
+          hgvs: ["NM_000249.4:c.2042C>T"],
+        }),
+        "not found",
+      );
+    });
+
+    it("returns `not found` for an expression on no row, and for two expressions of one variant, each on a different row", async () => {
+      assert.equal(
+        await found({ gene: "MLH1", hgvs: ["NM_000249.9:c.1A>G"] }),
+        "not found",
+        "an expression on no row",
+      );
+      assert.equal(
+        await found({
+          gene: "MLH1",
+          hgvs: ["NM_000251.3:c.100A>G", "NM_000251.3:c.200A>G"],
+        }),
+        "not found",
+        "two expressions of one variant, each on a different row",
+      );
+    });
+
+    it("reads every series when the variant names no gene", async () => {
+      assert.deepEqual(await found({ variations: ["90011"] }), [
+        a,
+        [`${CLINVAR}90011`],
+      ]);
+    });
+
+    it("returns `not covered`, with the genes the first series covers, for a variant of another gene that no series holds", async () => {
+      assert.deepEqual(
+        await says({ gene: "BRCA2", hgvs: ["NM_000059.9:c.1A>G"] }),
+        {
+          found: "not covered",
+          series: A,
+          version: a,
+          genes: ["EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"],
+        },
+      );
+    });
+
+    it("returns the row from a series that states no genes, for a gene the first series does not cover", async () => {
+      assert.deepEqual(
+        await found({ gene: "BRCA2", hgvs: ["NM_000059.4:c.1114A>C"] }),
+        [b, [`${CLINVAR}80001`]],
+      );
+    });
+
+    it("returns the row's classifications by the vocabulary's labels, with its review status, when it was last evaluated and how many submitters contributed", async () => {
+      const alone = await says({ variations: ["90011"] });
+      assert.deepEqual(alone.found === "rows" ? alone.rows : [], [
+        {
+          variation: `${CLINVAR}90011`,
+          classification: [
+            { iri: `${CASCADE}LikelyPathogenic`, label: "Likely pathogenic" },
+            { iri: `${CASCADE}Pathogenic`, label: "Pathogenic" },
+          ],
+          reviewStatus: {
+            iri: `${CASCADE}ClinVarMultipleSubmittersNoConflicts`,
+            label: "criteria provided, multiple submitters, no conflicts",
+          },
+          lastEvaluated: "2024-12-11",
+          contributingSubmitters: 5,
+        },
+      ]);
+    });
+
+    it("returns `no series` when the app holds no variant classifications series", async () => {
+      assert.deepEqual(
+        await (
+          await appOver(NOTHING)
+        ).variantClassification(asked({ gene: "MLH1" })),
+        { found: "no series" },
+      );
+    });
+  });
+
+  describe("given an app that read the feed with `tables.check()`, with no starter copies", () => {
+    it("returns `not covered`, with the genes the version states, for a variant of another gene", async () => {
+      const { served, a } = await twoSeries();
+      const app = new Tables({
+        files: new MemoryFiles("urn:test:app/"),
+        feeds: [FEED],
+        vocabulary: parts.vocabulary,
+        newStore: parts.newStore,
+        fetch: fetchOf(served),
+        preference: { [CLASSIFICATIONS]: [A, B] },
+      });
+      await app.check();
+      assert.deepEqual(
+        await app.variantClassification(
+          asked({ gene: "BRCA2", hgvs: ["NM_000059.9:c.1A>G"] }),
+        ),
+        {
+          found: "not covered",
+          series: A,
+          version: a,
+          genes: ["EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"],
+        },
+      );
+    });
+  });
+
+  describe("given an index by code, kept beside a version, that was built for other properties", () => {
+    let files: MemoryFiles;
+    let path: string;
+    let again: Tables;
+    let answered: Awaited<ReturnType<Tables["variantClassification"]>>;
+    let version: string;
+    let a: string;
+
+    before(async () => {
+      const series = await twoSeries();
+      a = series.a;
+      files = new MemoryFiles("urn:test:app/");
+      await (await appOver(series.served, files)).start();
+      const found = (await files.list("")).find((each) =>
+        each.endsWith(`${fileStem(a)}.codes.json`),
+      );
+      assert.ok(found);
+      path = found;
+      await files.write(
+        path,
+        new TextEncoder().encode('{"foundBy":[],"rows":{}}'),
+      );
+      again = await appOver(series.served, files);
+      answered = await again.variantClassification(
+        asked({ gene: "MLH1", variations: ["90013"] }),
+      );
+      version = (await again.facts(`${CLINVAR}90013`)).classifications[0]
+        ?.version as string;
+    });
+
+    it("finds the variant's row all the same", () => {
+      assert.equal(answered.found, "rows", "by the lookup");
+      assert.equal(version, a, "by what the tables say of the variation");
+    });
+
+    it("keeps a new index beside the version", async () => {
+      assert.ok(
+        new TextDecoder()
+          .decode(await files.read(path))
+          .includes(
+            codeIri(
+              "https://ns.cascadeprotocol.org/codes/hgvs/",
+              "NM_000251.3:c.200A>G",
+            ),
+          ),
+      );
+    });
+  });
+
+  describe("tables.labels(concepts)", () => {
+    it("returns the vocabulary's label for each concept it names, and nothing for any other", async () => {
+      const { app } = await twoSeriesApp();
+      assert.deepEqual(
+        [
+          ...(await app.labels([
+            `${CASCADE}UncertainSignificance`,
+            `${CASCADE}ClinVarConflicting`,
+            "urn:test:unlabelled",
+          ])),
+        ],
+        [
+          [`${CASCADE}UncertainSignificance`, "Uncertain significance"],
+          [
+            `${CASCADE}ClinVarConflicting`,
+            "Conflicting classifications of pathogenicity",
+          ],
+        ],
+      );
+    });
+  });
+
+  describe("tables.facts(code)", () => {
+    it("returns under `classifications` what the series' current version says of a variation, and nothing under `mappings`", async () => {
+      const { app, a } = await twoSeriesApp();
+      const facts = await app.facts(`${CLINVAR}90011`);
+      assert.deepEqual(facts.mappings, []);
+      assert.deepEqual(
+        facts.classifications.map(
+          ({ series, version, contributingSubmitters }) => [
+            series,
+            version,
+            contributingSubmitters,
+          ],
+        ),
+        [[A, a, 5]],
+      );
+    });
+
+    it("returns no classification for a variation on no row", async () => {
+      const { app } = await twoSeriesApp();
+      assert.deepEqual((await app.facts(`${CLINVAR}1`)).classifications, []);
+    });
+
+    it("returns the variation's page at ClinVar, and no page for a coding expression", async () => {
+      const { app } = await twoSeriesApp();
+      assert.deepEqual((await app.facts(`${CLINVAR}90011`)).page, {
+        href: "https://www.ncbi.nlm.nih.gov/clinvar/variation/90011/",
+        system: "ClinVar",
+      });
+      assert.equal(
+        (
+          await app.facts(
+            "https://ns.cascadeprotocol.org/codes/hgvs/NM_000249.3%3Ac.2042C%3ET",
+          )
+        ).page,
+        undefined,
+      );
+    });
+  });
+
+  /** Which `verdict` a report gets is the vocabulary's `tests/fixtures/variant-classifications-agreement`. */
+  describe("pod.agreement()", () => {
+    let martin: Martin;
+
+    before(async () => {
+      martin = await martinPod();
+    });
+
+    it("returns `agrees` for a report whose value is among the row's, the row found by the variant's ClinVar ID", () => {
+      assert.equal(martin.verdicts.MLH1, "agrees");
+    });
+
+    it("returns `differs` for a report whose value the row does not hold, the row found by a coding expression", () => {
+      assert.equal(martin.verdicts.MSH2, "differs");
+    });
+
+    it("returns no `verdict` for a variant that finds a row in each of two series", () => {
+      assert.ok(!("BRCA1" in martin.verdicts));
+    });
+
+    it("writes nothing to the pod", () => {
+      assert.deepEqual(martin.written.after, martin.written.before);
+    });
+  });
+
+  describe("given the pod's published answers", () => {
+    it("returns each report's `verdict` without the query engine", async () => {
+      const { folder, app, verdicts } = await martinPod();
+      const files = new FolderFiles(folder);
+      const published = new Map<string, Uint8Array>();
+      for (const path of await files.list("")) {
+        const bytes = await files.read(path);
+        if (bytes !== undefined) published.set(path, bytes);
+      }
+      const answers = new MemoryFiles("urn:test:answers/");
+      for (const [path, bytes] of await answersToPublish(
+        withTables(app),
+        published,
+        { name: "martin", runtime: "published" },
+      ))
+        await answers.write(path, bytes);
+      const { vocabulary, build, lens, layout } = parts;
+      const read = await keptPod(
+        {
+          vocabulary,
+          build,
+          lens,
+          tables: app,
+          layout: Layout.of(
+            layout.turtle,
+            JSON.parse(JSON.stringify(layout.placements)) as Placed[],
+          ),
+        },
+        files,
+        new Answers(answers, "published"),
+      );
+      assert.deepEqual(
+        (await read?.agreement())?.map(({ verdict }) => verdict).sort(),
+        Object.values(verdicts).sort(),
+      );
+    });
+  });
+
+  describe("given a newer version of the series that classifies a variant otherwise", () => {
+    it("returns `differs` for the report that agreed", async () => {
+      const { folder } = await martinPod();
+      // The series' next version reclassifies 90021; the pod, unchanged, is a new key.
+      const next = await withClassifications(NOTHING, A, [
+        { rows: agreementRows(PATHOGENIC), genes: LYNCH },
+        { rows: agreementRows("cascade:UncertainSignificance"), genes: LYNCH },
+      ]);
+      const later = await openPodWith(
+        withTables(await appOver(next.served)),
+        folder,
+        { adopt: false },
+      );
+      try {
+        assert.equal((await verdictsByGene(later)).MLH1, "differs");
+      } finally {
+        await later.close();
+      }
+    });
+  });
 });
