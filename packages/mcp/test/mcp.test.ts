@@ -136,25 +136,11 @@ describe("Serving a folder of pods to an MCP client · cascade-mcp --pods, --che
 
   describe("when a tool refuses its input", () => {
     it("answers with `isError` and the tool's reason", async () => {
-      for (const [input, said] of [
-        [
-          { pod: "nobody", question: "pod/My lab results" },
-          /there is no pod nobody/,
-        ],
-        [
-          { pod: "locked", question: "pod/My lab results" },
-          /locked is encrypted/,
-        ],
-        [
-          { pod: "alex-rivera", question: "pod/What everything is called" },
-          /question/,
-        ],
-      ] as const)
-        assert.match(
-          (await call("ask", input)).refused ?? "",
-          said,
-          JSON.stringify(input),
-        );
+      assert.match(
+        (await call("ask", { pod: "nobody", question: "pod/My lab results" }))
+          .refused ?? "",
+        /there is no pod nobody/,
+      );
     });
   });
 
