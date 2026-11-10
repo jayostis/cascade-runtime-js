@@ -55,3 +55,14 @@ test("percent, carriage return and line feed are escaped as GitHub's workflow co
     "::error::100%25%0Aof%0Dit: 50%25 done\n",
   );
 });
+
+test("a failing test marked todo or skip is not annotated, because node does not fail the run for it", async () => {
+  const todo = fail("todo fail", "expected to fail");
+  const skipped = fail("skipped fail", "never ran");
+  Object.assign(todo.data, { todo: true });
+  Object.assign(skipped.data, { skip: "not now" });
+  assert.equal(
+    await annotations([todo, skipped, fail("real", "it broke")]),
+    "::error::real: it broke\n",
+  );
+});

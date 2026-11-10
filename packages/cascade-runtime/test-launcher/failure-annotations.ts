@@ -4,6 +4,8 @@ interface TestEvent {
   type: string;
   data: {
     name?: string;
+    todo?: boolean | string;
+    skip?: boolean | string;
     details?: { error?: { message?: string; failureType?: string } };
   };
 }
@@ -31,7 +33,7 @@ export default async function* failureAnnotations(
   source: AsyncIterable<TestEvent>,
 ): AsyncGenerator<string> {
   for await (const { type, data } of source) {
-    if (type !== "test:fail") continue;
+    if (type !== "test:fail" || data.todo || data.skip) continue;
     const error = data.details?.error;
     if (error?.failureType === "subtestsFailed") continue;
     yield `::error::${escape(`${data.name ?? "a test"}: ${firstLine(error?.message ?? "") || "failed"}`)}\n`;
