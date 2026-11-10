@@ -1561,7 +1561,7 @@ describe("Checking what a reply says downloads lack · checkRecordsAbsence()", (
       match: { codes: ["4548-4"], after },
     });
 
-    it("ignores a matching record dated before that day, and returns `records hold it` for one dated after it", async () => {
+    it("returns `backed` for a matching record dated before that day, and `records hold it` for one dated after it", async () => {
       assert.deepEqual(
         await inFolder(a1cAfter("2025-08-19")),
         { backed: true },
@@ -1606,19 +1606,19 @@ describe("Checking what a reply says downloads lack · checkRecordsAbsence()", (
       );
     });
 
-    it("returns `records hold it` for a narrative row dated in words on that day, and ignores one dated the day before", async () => {
+    it("returns `records hold it` for a narrative row dated in words on that day, and `backed` for one dated the day before", async () => {
       const row = narrativeRow(
         "<td>Hemoglobin A1c 4548-4</td><td>February 16, 2026</td>",
       );
       assert.deepEqual(
         await inRecords("2026-02-16", [], row, ["4548-4"]),
         holdsIt("b"),
-        "after the day before",
+        "the row's own day",
       );
       assert.deepEqual(
         await inRecords("2026-02-17", [], row, ["4548-4"]),
         { backed: true },
-        "after the day itself",
+        "the day after the row's",
       );
     });
 
