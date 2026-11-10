@@ -14,7 +14,7 @@ export interface ShapeProblem {
   readonly case: string;
   readonly message: string;
   /** The test file (or module) and the line the case is declared on, when the report says. */
-  readonly suite?: string;
+  readonly file?: string;
   readonly line?: number;
 }
 
@@ -200,8 +200,8 @@ export function checkShape(
   const root = tests.split("/").slice(0, -1).join("/");
   const under = (file: string): string =>
     tests === "" ? file : `${tests}/${file}`;
-  const own = (suite: string): boolean =>
-    root === "" || suite.startsWith(`${root}/`);
+  const own = (file: string): boolean =>
+    root === "" || file.startsWith(`${root}/`);
   const shaped = Array.isArray(object["shaped"])
     ? stringsOf(object["shaped"]).map(under)
     : undefined;
@@ -213,13 +213,13 @@ export function checkShape(
   let checked = 0;
 
   for (const one of cases) {
-    const suite = posix(one.suite);
-    if (!own(suite)) continue;
-    const inBuildFile = buildFiles.has(suite);
-    if (shaped !== undefined && !inBuildFile && !shaped.includes(suite))
+    const file = posix(one.file);
+    if (!own(file)) continue;
+    const inBuildFile = buildFiles.has(file);
+    if (shaped !== undefined && !inBuildFile && !shaped.includes(file))
       continue;
     const isBuild = inBuildFile || built.includes(one.describes[0] ?? "");
-    seen.add(suite);
+    seen.add(file);
     checked += 1;
     const title = [...one.describes, one.name].join(SEPARATOR);
     const found = (rule: ShapeRule, message: string): void => {
@@ -227,7 +227,7 @@ export function checkShape(
         rule,
         case: title,
         message,
-        suite,
+        file,
         ...(one.line === undefined ? {} : { line: one.line }),
       });
     };

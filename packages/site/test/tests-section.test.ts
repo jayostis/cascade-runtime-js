@@ -531,17 +531,17 @@ test("a pytest case with no hook's properties sits under its classes, at its 1-b
   const [broken] = readJunit(
     `<testsuites name="pytest tests"><testsuite name="pytest" timestamp="t"><testcase classname="" name="tests.test_broken" time="0.000"><error message="collection failure">ImportError</error></testcase></testsuite></testsuites>`,
   ).cases;
-  assert.equal(broken?.suite, "tests/test_broken.py");
+  assert.equal(broken?.file, "tests/test_broken.py");
   assert.equal(broken?.result, "failed");
   assert.deepEqual(
     {
-      suite: first?.suite,
+      file: first?.file,
       describes: first?.describes,
       name: first?.name,
       line: first?.line,
     },
     {
-      suite: "tests/test_pod.py",
+      file: "tests/test_pod.py",
       describes: ["TestImporting", "TestWhenUnclaimed"],
       name: "test_keeps_it[a]",
       line: 12,
@@ -966,7 +966,7 @@ test("the reporter writes each describe's and each test's doc comment as a descr
   const keeps = byName.get("keeps them");
   assert.deepEqual(keeps?.describes, ["Importing", "when unclaimed"]);
   assert.equal(
-    keeps?.suite,
+    keeps?.file,
     "x.test.ts",
     "the file is named from the directory the tests ran in, so another repository's links reach it",
   );

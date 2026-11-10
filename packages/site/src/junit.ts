@@ -19,7 +19,7 @@ export interface PackageInfo {
 /** One test case of a JUnit report. */
 export interface TestCase {
   /** The file the case is in, from the repository's root with `/` (nextest: the test binary, unless a property names it). */
-  readonly suite: string;
+  readonly file: string;
   /** The levels the case sits in, outermost first: describes, classes or modules, as its runner's dialect reads them. */
   readonly describes: readonly string[];
   /** What each of those describes says of itself, one for each. */
@@ -215,7 +215,7 @@ function caseOf(runner: Runner, building: Building): TestCase {
   const line = lineOf(one("line")) ?? place.line;
   const seconds = Number(attribute.get("time"));
   return {
-    suite: one("file") ?? place.file,
+    file: one("file") ?? place.file,
     describes: place.levels.map(
       (name, at) => one(`describe:${at + 1}:title`) ?? name,
     ),

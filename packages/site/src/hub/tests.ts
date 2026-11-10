@@ -331,7 +331,7 @@ function placeOf(file: string, suite: Suite): string[] {
 
 /** Where a case is written, as a string that sorts in the order of a file and then its lines. */
 const positionOf = (one: TestCase): string =>
-  `${one.suite}\0${one.line === undefined ? "~" : String(one.line).padStart(8, "0")}`;
+  `${one.file}\0${one.line === undefined ? "~" : String(one.line).padStart(8, "0")}`;
 
 function merged(
   a: Described | undefined,
@@ -445,7 +445,7 @@ function named(name: string, source: string, links: Links): Html {
 }
 
 function leaf(one: TestCase, suite: Suite, run: TestRun, links: Links): Html {
-  const source = `${repositoryUrl(suite)}/blob/${run.commit}/${one.suite}${one.line === undefined ? "" : `#L${one.line}`}`;
+  const source = `${repositoryUrl(suite)}/blob/${run.commit}/${one.file}${one.line === undefined ? "" : `#L${one.line}`}`;
   const said =
     one.description === undefined && one.rules.length === 0
       ? ""
@@ -483,7 +483,7 @@ function capabilitiesOf(
 ): Capability[] {
   const groups = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const name = one.describes[0] ?? placeOf(one.suite, suite)[1] ?? one.suite;
+    const name = one.describes[0] ?? placeOf(one.file, suite)[1] ?? one.file;
     groups.set(name, [...(groups.get(name) ?? []), one]);
   }
   return [...groups].map(([name, held]) => {
@@ -491,9 +491,9 @@ function capabilitiesOf(
     let info: Described | undefined;
     for (const one of held) {
       const line = one.described[0]?.line;
-      const known = files.get(one.suite);
+      const known = files.get(one.file);
       files.set(
-        one.suite,
+        one.file,
         known === undefined || (line !== undefined && line < known)
           ? line
           : known,
@@ -650,7 +650,7 @@ function byPackage(
 ): Map<string, TestCase[]> {
   const found = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const folder = placeOf(one.suite, suite)[0] || nameOf(suite);
+    const folder = placeOf(one.file, suite)[0] || nameOf(suite);
     found.set(folder, [...(found.get(folder) ?? []), one]);
   }
   return found;
@@ -750,7 +750,7 @@ function ctrf(
         duration: Math.round((one.seconds ?? 0) * 1000),
         ...(one.describes.length === 0 ? {} : { suite: [...one.describes] }),
         ...extraOf(one),
-        filePath: one.suite,
+        filePath: one.file,
         ...(one.line === undefined ? {} : { line: one.line }),
         ...(one.message === undefined ? {} : { message: one.message }),
       })),

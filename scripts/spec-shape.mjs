@@ -33,11 +33,11 @@ function run([junit, specFile, ...rest]) {
     return 0;
   }
   const annotate = process.env.GITHUB_ACTIONS === "true";
-  for (const { rule, case: title, message, suite, line } of report.problems) {
+  for (const { rule, case: title, message, file, line } of report.problems) {
     process.stdout.write(`${rule}: ${title}: ${message}\n`);
-    if (annotate && suite !== undefined)
+    if (annotate && file !== undefined)
       process.stdout.write(
-        `::error file=${suite}${line === undefined ? "" : `,line=${line}`}::${rule}: ${title}: ${message}\n`,
+        `::error file=${file}${line === undefined ? "" : `,line=${line}`}::${rule}: ${title}: ${message}\n`,
       );
   }
   process.stdout.write(
