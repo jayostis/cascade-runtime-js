@@ -52,10 +52,6 @@
       "definition": "of a point in an answer, matching no key item; a judge gives each a verdict of its own: fair, true but not planted, speculative, or contradicted by the records."
     },
     {
-      "term": "C-CDA",
-      "definition": "Consolidated Clinical Document Architecture: HL7's standard for the XML summary documents patient portals hand out."
-    },
-    {
       "term": "cap",
       "definition": "the most tokens and dollars a config lets a run spend; a job that would pass it is not started.",
       "aliases": ["caps"]
@@ -179,11 +175,6 @@
       "term": "model",
       "definition": "a language model that an app lets answer a person's questions about their records.",
       "aliases": ["models"]
-    },
-    {
-      "term": "named question",
-      "definition": "a query the vocabulary carries under a name, such as `pod/My active allergies`.",
-      "aliases": ["named questions"]
     },
     {
       "term": "packet",

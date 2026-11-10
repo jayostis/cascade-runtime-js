@@ -150,7 +150,7 @@ describe("Resolving a citation to what it cites · passageOf(), podProvenance(),
       assert.deepEqual([line?.from, line?.to, line?.text], [3, 3, lines[2]]);
     });
 
-    it("returns with the passage the source and retrieval time of the download the file is in", () => {
+    it("returns, with the passage, the source and retrieval time of the download the file is in", () => {
       assert.deepEqual(resource?.download, PULL);
     });
 
