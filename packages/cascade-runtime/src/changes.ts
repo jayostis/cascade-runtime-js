@@ -6,11 +6,11 @@ import type { Row } from "./pod.js";
 export const MINIMUM_RESULTS = 3;
 /** The least score at which a pair with enough results is a change. */
 export const MINIMUM_SCORE = 1;
-/** How many findings `findChanges` gives unless asked for more. */
+/** How many lab changes `findChanges` gives unless asked for more. */
 export const DEFAULT_LIMIT = 5;
 
 /** What the results on one side of a medication's day came to; the first and last are days. */
-export interface FindingSide {
+export interface LabChangeSide {
   count: number;
   mean: number;
   min: number;
@@ -19,7 +19,7 @@ export interface FindingSide {
   last: string;
 }
 
-export interface Finding {
+export interface LabChange {
   /** Short and stable for the same pod: `start:<RxNorm>:<LOINC>` or `stop:<RxNorm>:<LOINC>`. */
   key: string;
   kind: "after start" | "after stop";
@@ -35,8 +35,8 @@ export interface Finding {
   test: { code: string; notation?: string; name?: string };
   unit: string;
   direction: "up" | "down" | "not enough results";
-  before: FindingSide;
-  after: FindingSide;
+  before: LabChangeSide;
+  after: LabChangeSide;
   /**
    * What was left out of both sides: a value that is not a number, a number in another unit, a result with no full
    * day (a missing or partial date).
@@ -48,11 +48,11 @@ export interface Finding {
   rows: { before: Row[]; after: Row[]; left: Row[] };
 }
 
-/** The medication date a finding is placed on (decision row 9 of one-meaning-per-term). */
+/** The medication date a lab change is placed on (decision row 9 of one-meaning-per-term). */
 export type DateIs = "start of use" | "prescription written" | "end of use";
 
-export type CompactFinding = Omit<Finding, "rows" | "medication"> & {
-  medication: Omit<Finding["medication"], "entry">;
+export type CompactLabChange = Omit<LabChange, "rows" | "medication"> & {
+  medication: Omit<LabChange["medication"], "entry">;
 };
 
 export interface ChangeOptions {
@@ -99,13 +99,13 @@ interface Result {
 }
 
 interface Event {
-  kind: Finding["kind"];
+  kind: LabChange["kind"];
   day: string;
   dateIs: DateIs;
   row: Row;
 }
 
-function sideOf(results: readonly Result[]): FindingSide {
+function sideOf(results: readonly Result[]): LabChangeSide {
   if (results.length === 0)
     return { count: 0, mean: 0, min: 0, max: 0, first: "", last: "" };
   const values = results.map(({ value }) => value!);
@@ -214,7 +214,7 @@ function pair(
   const score = enough ? scoreOf(first, second) : 0;
   const sideBefore = sideOf(first);
   const sideAfter = sideOf(second);
-  const direction: Finding["direction"] = !enough
+  const direction: LabChange["direction"] = !enough
     ? "not enough results"
     : sideAfter.mean > sideBefore.mean
       ? "up"
@@ -224,7 +224,7 @@ function pair(
   const name = event.row.medication ?? "";
   const label = notation ?? name;
   const testName = series.find(({ row }) => row.test)?.row.test;
-  const finding: Finding = {
+  const change: LabChange = {
     key: `${event.kind === "after start" ? "start" : "stop"}:${label}:${testNotation ?? test}`,
     kind: event.kind,
     medication: {
@@ -259,7 +259,7 @@ function pair(
       ],
     },
   };
-  return finding;
+  return change;
 }
 
 /** A medication's place in time: its start of use, else the day its prescription was written, and which it is. */
@@ -271,7 +271,7 @@ function placeOf(row: Row): { day: string; dateIs: DateIs } | undefined {
 }
 
 /**
- * A drug's entries as one therapy, keyed as a finding's key is: the earliest start and the latest end, so yearly
+ * A drug's entries as one therapy, keyed as a lab change's key is: the earliest start and the latest end, so yearly
  * renewals of one drug are one start, not as many as there are renewals. The first entry with the earliest start
  * stands for it.
  */
@@ -317,7 +317,7 @@ export function changesIn(
   medications: readonly Row[],
   labs: readonly Row[],
   options: ChangeOptions = {},
-): Finding[] {
+): LabChange[] {
   const limit = options.limit ?? DEFAULT_LIMIT;
   if (!(limit >= 1))
     throw new Refusal(`limit must be at least 1, not ${String(limit)}`);
@@ -337,7 +337,7 @@ export function changesIn(
     );
     if (tests.length === 0) throw new Refusal(`no test ${wanted} in the pod`);
   }
-  const found = new Map<string, Finding>();
+  const found = new Map<string, LabChange>();
   for (const { row, started, ended } of therapies(chosen)) {
     const events: Event[] = [];
     if (started) events.push({ kind: "after start", ...started, row });
@@ -350,13 +350,13 @@ export function changesIn(
       });
     for (const event of events)
       for (const test of tests) {
-        const finding = pair(
+        const change = pair(
           event,
           test,
           series.get(test)!,
           undated.get(test) ?? [],
         );
-        if (finding !== undefined) found.set(finding.key, finding);
+        if (change !== undefined) found.set(change.key, change);
       }
   }
   const all = [...found.values()];
@@ -372,11 +372,11 @@ export function changesIn(
   return [...changes, ...thin].slice(0, limit);
 }
 
-/** The findings of a pod: `changesIn` over what the pod's questions give. */
+/** The lab changes of a pod: `changesIn` over what the pod's questions give. */
 export async function findChanges(
   pod: ChangesPod,
   options: ChangeOptions = {},
-): Promise<Finding[]> {
+): Promise<LabChange[]> {
   const [medications, labs] = await Promise.all([
     pod.ask("pod/My medication history"),
     pod.ask("pod/My lab results"),
@@ -384,8 +384,8 @@ export async function findChanges(
   return changesIn(medications, labs, options);
 }
 
-/** A finding without its rows and entry IRIs: tens of tokens, reached again by its `key`. */
-export function compact(finding: Finding): CompactFinding {
+/** A lab change without its rows and entry IRIs: tens of tokens, reached again by its `key`. */
+export function compact(change: LabChange): CompactLabChange {
   const {
     key,
     kind,
@@ -397,7 +397,7 @@ export function compact(finding: Finding): CompactFinding {
     after,
     left,
     score,
-  } = finding;
+  } = change;
   const { name, code, notation, date, dateIs } = medication;
   return {
     key,

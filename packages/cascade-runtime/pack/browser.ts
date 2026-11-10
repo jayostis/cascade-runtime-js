@@ -34,7 +34,7 @@ export interface BrowserBuild {
   readonly bridge: string;
 }
 
-/** The bundled browser entry's code, without its version: what tells one uncommitted build from another. */
+/** The bundled browser build's code, without its version: what tells one uncommitted build from another. */
 async function codeOf(entry: string): Promise<string> {
   const { outputFiles } = await build({
     ...BUNDLED,
@@ -49,7 +49,7 @@ async function codeOf(entry: string): Promise<string> {
 
 /**
  * Writes the browser build into `out`: the entry, the input checker, the tables' worker, Argon2's and the Bridge's, the Bridge's glue
- * bundled into its worker, with Oxigraph's module and the Bridge's beside them. Gives the entry's version, fixed in
+ * bundled into its worker, with Oxigraph's module and the Bridge's beside them. Gives the build's version, fixed in
  * it here: the commit's package version, or for an uncommitted build that and its code's name, with the components.
  */
 export async function bundleBrowser(
@@ -74,7 +74,7 @@ export async function bundleBrowser(
     },
     outdir: out,
     define: {
-      CASCADE_ENTRY_VERSION: JSON.stringify(version),
+      CASCADE_BROWSER_BUILD_VERSION: JSON.stringify(version),
       CASCADE_RUNTIME_COMMIT: JSON.stringify(packing.commit),
       CASCADE_RUNTIME_DIRTY: JSON.stringify(packing.dirty),
     },
