@@ -85,7 +85,7 @@ export type {
   Backing,
   Call,
   Cite,
-  Claim,
+  Citation,
   DateKind,
   Fields,
   Pointed,
