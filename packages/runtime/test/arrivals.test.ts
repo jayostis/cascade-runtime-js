@@ -365,7 +365,7 @@ _:writing prov:qualifiedAssociation [ prov:agent <urn:x:author> ; prov:hadRole c
       assert.equal((await reached(author)).transmitter, "");
     });
 
-    it("returns the IRI of the party the document names as its transmitter", async () => {
+    it("returns, as the document's transmitter, the IRI of the agent an act that generated it names with the transmitter's role", async () => {
       assert.equal(
         (
           await reached(`${author}
@@ -723,7 +723,7 @@ describe("Refusing a step that cannot be filed · Performed.refused", () => {
         assert.deepEqual(step.wrote, [], step.step.name);
     });
 
-    it("leaves the step after it to be performed", () => {
+    it("does not stop `replay()`, which performs the step after it", () => {
       assert.equal(bad.stopped, undefined);
       assert.notDeepEqual(bad.steps.at(-1)?.wrote, []);
       assert.equal(blank.steps[3]?.refused, undefined);
@@ -750,7 +750,9 @@ describe("Refusing a step that cannot be filed · Performed.refused", () => {
           on,
         );
     });
+  });
 
+  describe("given an adapter that breaks, which throws rather than refuses", () => {
     it("rejects with the error for a `BridgeError` of kind `bridge`", async () => {
       for (const on of ["accepts", "convert"] as const)
         await assert.rejects(importWith(failing(on, "bridge")), /it fails/, on);
