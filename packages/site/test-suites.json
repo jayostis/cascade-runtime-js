@@ -42,7 +42,8 @@
     "workflow": "check.yml",
     "artifact": "unit-tests",
     "report": "junit.xml",
-    "runner": "node:test"
+    "runner": "node:test",
+    "tests": "host/test/"
   },
   {
     "repository": "jayostis/cascade-health-assistant",

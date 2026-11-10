@@ -38,7 +38,8 @@ export const testsPageOf = (suite: Suite): string =>
 const ctrfFileOf = (suite: Suite): string => `${nameOf(suite)}.ctrf.json`;
 
 /** The hub's own repository's page, which the section always writes. */
-const OWN_PAGE = `${TESTS_FOLDER}cascade-runtime-js/index.html`;
+const RUNTIME_NAME = "cascade-runtime-js";
+const OWN_PAGE = `${TESTS_FOLDER}${RUNTIME_NAME}/index.html`;
 
 const RUNNERS: readonly Suite["runner"][] = [
   "node:test",
@@ -70,8 +71,17 @@ export function suitesOf(raw: unknown): Suite[] {
       throw new Error(
         `suite ${at + 1} of the list names the repository ${repository}, which is not owner/name`,
       );
+    const tests = given["tests"];
+    if (
+      tests !== undefined &&
+      (typeof tests !== "string" || !tests.endsWith("/"))
+    )
+      throw new Error(
+        `suite ${at + 1} of the list names the tests ${String(tests)}, which is not a folder ending in /`,
+      );
     return {
       repository,
+      ...(tests === undefined ? {} : { tests }),
       title: text("title"),
       about: text("about"),
       workflow: text("workflow"),
@@ -301,14 +311,22 @@ interface Level {
 const isLevel = (entry: Level | TestCase): entry is Level => "levels" in entry;
 
 /**
- * A case's file as its package and its path under that package's `test/`: a package of the runtime's `packages/`, or else
- * the whole repository (`""`), its path read under its `test/` or `tests/`.
+ * A case's file as its package and its path under that package's tests: a package of the runtime's `packages/`, or else
+ * the whole repository (`""`), its path read under the test folder its suite names, or `test/` or `tests/`.
  */
-function placeOf(file: string): string[] {
-  const found = /^packages\/([^/]+)\/test\/(.+)$/.exec(file);
-  return found === null
-    ? ["", file.replace(/^tests?\//, "")]
-    : [found[1] ?? "", found[2] ?? ""];
+function placeOf(file: string, suite: Suite): string[] {
+  const found =
+    suite.tests === undefined && nameOf(suite) === RUNTIME_NAME
+      ? /^packages\/([^/]+)\/test\/(.+)$/.exec(file)
+      : null;
+  if (found !== null) return [found[1] ?? "", found[2] ?? ""];
+  const folder = suite.tests;
+  return [
+    "",
+    folder !== undefined && file.startsWith(folder)
+      ? file.slice(folder.length)
+      : file.replace(/^tests?\//, ""),
+  ];
 }
 
 /** Where a case is written, as a string that sorts in the order of a file and then its lines. */
@@ -459,10 +477,13 @@ interface Capability {
   readonly cases: TestCase[];
 }
 
-function capabilitiesOf(cases: readonly TestCase[]): Capability[] {
+function capabilitiesOf(
+  cases: readonly TestCase[],
+  suite: Suite,
+): Capability[] {
   const groups = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const name = one.describes[0] ?? placeOf(one.suite)[1] ?? one.suite;
+    const name = one.describes[0] ?? placeOf(one.suite, suite)[1] ?? one.suite;
     groups.set(name, [...(groups.get(name) ?? []), one]);
   }
   return [...groups].map(([name, held]) => {
@@ -510,7 +531,7 @@ function capability(
   );
   const files = [...one.files].map(([file, line]) => {
     const href = `${repositoryUrl(suite)}/blob/${run.commit}/${file}${line === undefined ? "" : `#L${line}`}`;
-    return markup`<a class="src" href="${href}">${placeOf(file)[1] ?? file}</a>`;
+    return markup`<a class="src" href="${href}">${placeOf(file, suite)[1] ?? file}</a>`;
   });
   return markup`<li class="capability" data-failed="${String(count(one.cases, "failed"))}"><details open><summary>${title(one.name)} ${counts(one.cases)}</summary>
 ${said}<p class="source">${rulesOf(one.info?.rules ?? [])}<span class="label">Source</span> ${files.map((link, at) => markup`${at === 0 ? "" : ", "}${link}`)}</p>
@@ -558,11 +579,11 @@ function packageSection(
   suite: Suite,
   run: TestRun,
 ): Html {
-  const all = capabilitiesOf(cases);
+  const all = capabilitiesOf(cases, suite);
   const inBuild = (one: Capability): boolean =>
     spec.build.includes(one.name) ||
     [...one.files.keys()].every((file) =>
-      spec.build.includes(placeOf(file)[1] ?? file),
+      spec.build.includes(placeOf(file, suite)[1] ?? file),
     );
   const main = arranged(
     all.filter((one) => !inBuild(one)),
@@ -629,7 +650,7 @@ function byPackage(
 ): Map<string, TestCase[]> {
   const found = new Map<string, TestCase[]>();
   for (const one of cases) {
-    const folder = placeOf(one.suite)[0] || nameOf(suite);
+    const folder = placeOf(one.suite, suite)[0] || nameOf(suite);
     found.set(folder, [...(found.get(folder) ?? []), one]);
   }
   return found;

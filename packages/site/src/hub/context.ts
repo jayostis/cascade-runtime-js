@@ -45,6 +45,11 @@ export interface Suite {
   readonly artifact: string;
   /** The report's file in the artifact. */
   readonly report: string;
+  /**
+   * The repository's test folder, as its tests' paths begin (`host/test/`), when it is not `test/` or `tests/`. The
+   * runtime's own suite has none: its packages' `packages/<name>/test/` are read as packages.
+   */
+  readonly tests?: string;
   readonly runner: "node:test" | "pytest" | "vitest" | "nextest";
 }
 

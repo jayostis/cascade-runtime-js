@@ -498,6 +498,33 @@ test("a pytest, vitest or nextest report reads as a tree of capability, situatio
   assert.ok(!tree.has("conformance/tests/index.html"), "there is no index");
 });
 
+test("a suite that names its test folder shows its files under it, and a repository other than the runtime is one package", async () => {
+  const given = {
+    ...suite("someone/host-thing", "vitest"),
+    tests: "host/test/",
+  };
+  const { markup } = await pageWith({}, [
+    {
+      suite: given,
+      run: {
+        ...RUN,
+        report: VITEST.replaceAll("test/a.test.ts", "host/test/a.test.ts"),
+        url: "https://github.com/someone/host-thing/actions/runs/7",
+      },
+    },
+  ]);
+  assert.deepEqual(levelsOf(markup, "host-thing"), [
+    "Importing a record 1 passed, 1 failed, 1 skipped",
+    "when the pod is empty 1 passed, 1 failed",
+    "a.test.ts 1 passed",
+  ]);
+  assert.deepEqual(
+    suitesOf([{ ...VOCABULARY, tests: "host/test/" }]).map((one) => one.tests),
+    ["host/test/"],
+  );
+  assert.throws(() => suitesOf([{ ...VOCABULARY, tests: 3 }]), /tests/);
+});
+
 test("a pytest case with no hook's properties sits under its classes, at its 1-based line, named as pytest names it, and a module that failed to collect is in its file", () => {
   const bare = PYTEST_XUNIT1.replace(/<properties>.*?<\/properties>/g, "");
   const [first] = readJunit(bare).cases;
