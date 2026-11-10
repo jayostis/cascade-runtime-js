@@ -194,8 +194,13 @@
       "aliases": ["graphs", "named graph"]
     },
     {
+      "term": "group",
+      "definition": "in SPARQL, the patterns between one pair of braces. A query's WHERE group is the one its WHERE keyword opens, not one inside a sub-select, OPTIONAL, MINUS or UNION.",
+      "aliases": ["groups"]
+    },
+    {
       "term": "hash",
-      "definition": "a short code worked out from a file's bytes: the same bytes always give the same hash, and any change gives another.",
+      "definition": "a short code worked out from bytes, such as a file's or the text of an IRI: the same bytes always give the same hash, and any change gives another.",
       "aliases": ["hashes"]
     },
     {
@@ -467,6 +472,11 @@
       "definition": "what a reference table's rows say, such as product ingredients or vaccine groups; the vocabulary declares each kind.",
       "vocabulary": "https://ns.cascadeprotocol.org/cascade#TableKind",
       "aliases": ["table kinds"]
+    },
+    {
+      "term": "table version",
+      "definition": "one release of a reference table: the rows a table kind holds as of one date, named by an IRI the pod's files use.",
+      "aliases": ["table versions"]
     },
     {
       "term": "target",

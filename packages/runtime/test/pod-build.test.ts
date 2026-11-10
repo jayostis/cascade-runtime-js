@@ -353,7 +353,7 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
         );
     });
 
-    it("names each entry its view's address, `#`, and the hash `viewEntryName()` gives its members", async () => {
+    it("names each entry its view's address, `#`, and the hash `viewEntryName()` gives of its least member's IRI", async () => {
       assert.ok(members.size > 0, "no view has an entry");
       for (const [entry, { view, members: of }] of members)
         assert.equal(entry, await viewEntryName(view, of));
@@ -431,6 +431,10 @@ describe("Building a pod's views, labels and type index · CorePodOptions.build,
     });
   });
 
+  /**
+   * A view is an entity, so it names the table versions it came from with `prov:wasDerivedFrom`; `prov:used` is said
+   * only of an activity.
+   */
   describe("given a pod whose matcher Same used a table version that is no longer the current version, read with `podDataset()`", () => {
     /** The Same the example says counts on, by the name it gives it. */
     const same = "urn:uuid:d9369a14-2bff-818e-9628-53cd1a1577b5";
