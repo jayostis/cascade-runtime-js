@@ -146,7 +146,7 @@ test("a step whose files are written one by one and fail part way reads the pod 
 test("a read names the pod's current version of a series its tables do not hold, which a matcher Same that used another version is read without (M7)", async () => {
   const pod = new MemoryFiles(ADDRESS);
   await pod.write(
-    "judgments/claim.ttl",
+    "judgments/matcher-judgment.ttl",
     new TextEncoder()
       .encode(`@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix pav: <http://purl.org/pav/> .
@@ -154,9 +154,9 @@ test("a read names the pod's current version of a series its tables do not hold,
 <urn:x:map> a cascade:ReferenceSeries ; cascade:tableKind cascade:SubstanceIngredients .
 <urn:x:map-1> prov:specializationOf <urn:x:map> ; pav:version "1" .
 <urn:x:map-2> prov:specializationOf <urn:x:map> ; pav:version "2" ; prov:wasRevisionOf <urn:x:map-1> .
-<urn:x:claim> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;
+<urn:x:matcher-judgment> a cascade:Judgment ; cascade:verdict cascade:Same ; prov:wasAttributedTo cascade:CascadeMatcher ;
     cascade:matcherRule cascade:SameMappedCodeRule ; prov:wasDerivedFrom <urn:x:map-1> ; prov:hadMember <urn:x:a> , <urn:x:b> .
-<urn:x:assertion> a cascade:ClaimAssertion ; cascade:assertedClaim <urn:x:claim> .
+<urn:x:assertion> a cascade:MatcherJudgmentAssertion ; cascade:assertedJudgment <urn:x:matcher-judgment> .
 `),
   );
   const held = {

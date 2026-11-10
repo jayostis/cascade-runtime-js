@@ -4,13 +4,13 @@ import type { Files } from "./files.js";
 import { Graph } from "./graph.js";
 import { podFiles } from "./dataset.js";
 import {
-  assertionName,
+  matcherJudgmentAssertionName,
   byCodePoint,
-  claimName,
+  matcherJudgmentName,
   documentName,
   findingName,
   inUtc,
-  retractionName,
+  releaseRetractionName,
 } from "./names.js";
 import { codeIri, iri, literal, ntriples, RDF, type Triple } from "./rdf.js";
 import { type References, tableTerms, type TableTerms } from "./references.js";
@@ -27,7 +27,7 @@ const TYPE = `${RDF}type`;
 /** The graph holding the descriptions of the versions a comparison reads and of their series, and no others. */
 const DESCRIBED = "urn:cascade:references";
 const PREFIXES = `PREFIX cascade: <${CASCADE}> PREFIX prov: <${PROV}> PREFIX pav: <${PAV}> PREFIX dct: <${DCT}> PREFIX oa: <${OA}> PREFIX xsd: <${XSD}>`;
-const NO_LONGER_REACHED = `${CASCADE}ClaimsNoLongerReached`;
+const NO_LONGER_REACHED = `${CASCADE}MatcherJudgmentsNoLongerReached`;
 const THIS_FINDING = "urn:cascade:this-finding";
 
 export const MATCHER = `${CASCADE}CascadeMatcher`;
@@ -42,7 +42,7 @@ export interface MatcherRule {
   /** The record classes it compares. */
   readonly appliesTo: ReadonlySet<string>;
   readonly query: string;
-  /** The name of the query's bytes, which the rule's claims are asserted with. */
+  /** The name of the query's bytes, which the rule's matcher judgments are asserted with. */
   readonly hash: string;
   readonly kind?: string;
   /** Whether the rule files findings for review of the kind `justification` names rather than judgments (R16, R17). */
@@ -458,10 +458,10 @@ interface Pod {
   readonly different: ReadonlySet<string>;
   /** The entry each of the subject's records is in, as the derived state the run reads gives it. */
   readonly entryOf: ReadonlyMap<string, string>;
-  /** The matcher's claims retracted, or replaced by a judgment not itself retracted. */
+  /** The matcher's judgments retracted, or replaced by a judgment not itself retracted. */
   readonly withdrawn: ReadonlySet<string>;
   /**
-   * The query hashes each claim is asserted with: those of its rule's row in each version it is asserted under, by an
+   * The query hashes each matcher judgment is asserted with: those of its rule's row in each version it is asserted under, by an
    * assertion no retraction invalidates (N15).
    */
   readonly asserted: ReadonlyMap<string, ReadonlySet<string>>;
@@ -470,9 +470,9 @@ interface Pod {
   readonly revised: ReadonlySet<string>;
   /** Each ordered pair of members of a retracted matcher Same. */
   readonly retracted: ReadonlySet<string>;
-  /** Each rule list version a finding of the claims it no longer reaches names. */
+  /** Each rule list version a finding of the matcher judgments it no longer reaches names. */
   readonly noLongerReachedUnder: ReadonlySet<string>;
-  /** Each claim a finding of claims no longer reached names. */
+  /** Each matcher judgment a finding of matcher judgments no longer reached names. */
   readonly namedByFinding: ReadonlySet<string>;
   /** Each finding for review the pod holds, by its name. */
   readonly findings: ReadonlySet<string>;
@@ -820,8 +820,8 @@ class Matcher {
   }
 
   /**
-   * Writes the rule's claim of the members by the origin's rows, unless the pod holds it, and its assertion under the
-   * rule list's version, unless the claim is asserted with the rule's query hash already (M5, M8, M9).
+   * Writes the rule's matcher judgment of the members by the origin's rows, unless the pod holds it, and its assertion under the
+   * rule list's version, unless the matcher judgment is asserted with the rule's query hash already (M5, M8, M9).
    */
   private async same(
     rule: MatcherRule,
@@ -838,7 +838,7 @@ class Matcher {
     const names = [...new Set(members.map(({ name }) => name))].sort(
       byCodePoint,
     );
-    const name = await claimName({
+    const name = await matcherJudgmentName({
       maker: MATCHER,
       rule: rule.term,
       justification: rule.justification,
@@ -861,37 +861,44 @@ class Matcher {
       return;
     this.#filed.add(name);
     this.entries.add(names);
-    const claim = iri(name);
+    const matcherJudgment = iri(name);
     const matcher = iri(MATCHER);
     if (!this.pod.held.has(name))
       writes.add(
         layout.place(`${CASCADE}Judgment`).path(name),
         ntriples([
-          [claim, iri(TYPE), iri(`${CASCADE}Judgment`)],
-          [claim, iri(`${CASCADE}verdict`), iri(`${CASCADE}Same`)],
-          [claim, iri(`${CASCADE}justification`), iri(rule.justification)],
-          [claim, iri(`${CASCADE}matcherRule`), iri(rule.term)],
+          [matcherJudgment, iri(TYPE), iri(`${CASCADE}Judgment`)],
+          [matcherJudgment, iri(`${CASCADE}verdict`), iri(`${CASCADE}Same`)],
+          [
+            matcherJudgment,
+            iri(`${CASCADE}justification`),
+            iri(rule.justification),
+          ],
+          [matcherJudgment, iri(`${CASCADE}matcherRule`), iri(rule.term)],
           ...names.map((member): Triple => [
-            claim,
+            matcherJudgment,
             iri(`${PROV}hadMember`),
             iri(member),
           ]),
           ...used.map((thing): Triple => [
-            claim,
+            matcherJudgment,
             iri(`${PROV}wasDerivedFrom`),
             iri(thing),
           ]),
-          [claim, iri(`${PROV}wasAttributedTo`), matcher],
+          [matcherJudgment, iri(`${PROV}wasAttributedTo`), matcher],
           [matcher, iri(TYPE), iri(`${PROV}SoftwareAgent`)],
           [matcher, iri(`${RDFS}label`), literal("Cascade matcher")],
         ]),
       );
-    const assertion = await assertionName(this.rulesVersion, name);
+    const assertion = await matcherJudgmentAssertionName(
+      this.rulesVersion,
+      name,
+    );
     writes.add(
-      layout.place(`${CASCADE}ClaimAssertion`).path(assertion),
+      layout.place(`${CASCADE}MatcherJudgmentAssertion`).path(assertion),
       ntriples([
-        [iri(assertion), iri(TYPE), iri(`${CASCADE}ClaimAssertion`)],
-        [iri(assertion), iri(`${CASCADE}assertedClaim`), claim],
+        [iri(assertion), iri(TYPE), iri(`${CASCADE}MatcherJudgmentAssertion`)],
+        [iri(assertion), iri(`${CASCADE}assertedJudgment`), matcherJudgment],
         [
           iri(assertion),
           iri(`${CASCADE}assertedUnderRuleListVersion`),
@@ -905,7 +912,7 @@ class Matcher {
    * The record and, of each entry among the records it matched, the least of those it matched and is not judged different
    * from, or the least of them all when it is judged different from each, in code point order of their names: a star, so a record matched with every earlier copy of one fact names one of them (M5). The entries
    * are those the counting Sames make as same-pairs.rq derives them, with the Sames the run has filed so far and
-   * without any Same that holds the record, so a run again over the same records reaches the same claims (M9).
+   * without any Same that holds the record, so a run again over the same records reaches the same matcher judgments (M9).
    */
   private star(
     record: TakenRecord,
@@ -991,7 +998,7 @@ class Matcher {
   }
 
   /**
-   * Files again each claim of the matcher's that used a version the tables revise whose current version does not join
+   * Files again each judgment of the matcher's that used a version the tables revise whose current version does not join
    * its members, or whose rule the current rule list runs with a query it is not asserted with, and still joins two of
    * its members (M7).
    */
@@ -1056,11 +1063,11 @@ class Matcher {
   }
 
   /**
-   * Files the rule list version's finding of the claims it no longer reaches (M18), when the version revises another and
-   * the pod holds no such finding of it: every claim of the matcher's nothing withdraws that is asserted with the query
+   * Files the rule list version's finding of the matcher judgments it no longer reaches (M18), when the version revises another and
+   * the pod holds no such finding of it: every judgment of the matcher's nothing withdraws that is asserted with the query
    * hash of its rule's row in any version this one revises, directly or not, as the rows the pod describes give it, and
    * not with this version's row for it, this run's assertions counted, and that no finding the pod holds names, so the
-   * claims it names do not depend on which versions the pod's runs went through. None when it would name none.
+   * matcher judgments it names do not depend on which versions the pod's runs went through. None when it would name none.
    */
   async fileNoLongerReached(): Promise<void> {
     const version = this.rulesVersion;
@@ -1071,7 +1078,7 @@ class Matcher {
         earlier.set(rule, (earlier.get(rule) ?? new Set()).add(hash));
     if (earlier.size === 0) return;
     const hashesNow = new Map(this.rules.map(({ term, hash }) => [term, hash]));
-    const claims: string[] = [];
+    const matcherJudgments: string[] = [];
     for (const judged of this.pod.judgments) {
       if (
         this.#filed.has(judged.name) ||
@@ -1088,9 +1095,9 @@ class Matcher {
         )
       )
         continue;
-      claims.push(judged.name);
+      matcherJudgments.push(judged.name);
     }
-    if (claims.length === 0) return;
+    if (matcherJudgments.length === 0) return;
     const content = (subject: string): Triple[] => [
       [iri(subject), iri(TYPE), iri(`${CASCADE}FindingForReview`)],
       [iri(subject), iri(`${OA}hasBody`), iri(NO_LONGER_REACHED)],
@@ -1100,10 +1107,10 @@ class Matcher {
         iri(`${CASCADE}noLongerReachedUnderRuleListVersion`),
         iri(version),
       ],
-      ...claims.map((claim): Triple => [
+      ...matcherJudgments.map((matcherJudgment): Triple => [
         iri(subject),
         iri(`${OA}hasTarget`),
-        iri(claim),
+        iri(matcherJudgment),
       ]),
     ];
     const name = await findingName(content(THIS_FINDING));
@@ -1155,9 +1162,9 @@ class Matcher {
   }
 
   /**
-   * Files again, by its rule over the entries as they now are, each claim's star that a Different has split: its
+   * Files again, by its rule over the entries as they now are, each matcher judgment's star that a Different has split: its
    * latest-arriving member's rule matches a record it is not judged different from that the entries keep apart from it
-   * (M7). A star filed again joins it, so a claim triggers this once. The claims go in order of that member's arrival,
+   * (M7). A star filed again joins it, so a matcher judgment triggers this once. The matcher judgments go in order of that member's arrival,
    * as a run stars the records it takes.
    */
   private async resplit(
@@ -1480,7 +1487,7 @@ async function withPartners(
 }
 
 /**
- * The things `describe` and a claim's filing ask whether the pod holds, among those it does: each series and version
+ * The things `describe` and a matcher judgment's filing ask whether the pod holds, among those it does: each series and version
  * the tables describe that the pod states anything of, and each judgment.
  */
 async function heldOf(
@@ -1565,10 +1572,10 @@ async function read(
     "record",
     "entry",
   );
-  const claims = await column(
+  const matcherJudgments = await column(
     dataset,
-    `SELECT DISTINCT ?claim WHERE { ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
-    "claim",
+    `SELECT DISTINCT ?matcherJudgment WHERE { ?matcherJudgment prov:wasAttributedTo <${MATCHER}> ; cascade:verdict cascade:Same }`,
+    "matcherJudgment",
   );
   const sames = grouped(
     await column(
@@ -1596,8 +1603,8 @@ async function read(
   );
   const namedByFinding = await column(
     dataset,
-    `SELECT DISTINCT ?claim WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?claim }`,
-    "claim",
+    `SELECT DISTINCT ?matcherJudgment WHERE { ?finding oa:hasBody <${NO_LONGER_REACHED}> ; oa:hasTarget ?matcherJudgment }`,
+    "matcherJudgment",
   );
   const rows = await column(
     dataset,
@@ -1622,13 +1629,13 @@ async function read(
   const asserted = grouped(
     await column(
       dataset,
-      `SELECT DISTINCT ?claim ?hash WHERE {
-        ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+      `SELECT DISTINCT ?matcherJudgment ?hash WHERE {
+        ?assertion cascade:assertedJudgment ?matcherJudgment ; cascade:assertedUnderRuleListVersion ?version .
         FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
-        ?claim cascade:matcherRule ?rule .
+        ?matcherJudgment cascade:matcherRule ?rule .
         ?row cascade:rowOfRuleListVersion ?version ; cascade:matcherRule ?rule ; cascade:queryHash ?hash
       }`,
-      "claim",
+      "matcherJudgment",
       "hash",
     ),
   );
@@ -1642,7 +1649,10 @@ async function read(
       ]),
     ),
     asserted: new Map(
-      [...asserted].map(([claim, hashes]) => [claim, new Set(hashes)]),
+      [...asserted].map(([matcherJudgment, hashes]) => [
+        matcherJudgment,
+        new Set(hashes),
+      ]),
     ),
     subject,
     records: await takenRecords(
@@ -1654,8 +1664,10 @@ async function read(
     ),
     judgments,
     withdrawn: new Set(
-      claims.flatMap(([claim]) =>
-        claim === undefined || counted.has(claim) ? [] : [claim],
+      matcherJudgments.flatMap(([matcherJudgment]) =>
+        matcherJudgment === undefined || counted.has(matcherJudgment)
+          ? []
+          : [matcherJudgment],
       ),
     ),
     entryOf: new Map(
@@ -1667,7 +1679,9 @@ async function read(
     noLongerReachedUnder: new Set(
       noLongerReachedUnder.flatMap(([version]) => version ?? []),
     ),
-    namedByFinding: new Set(namedByFinding.flatMap(([claim]) => claim ?? [])),
+    namedByFinding: new Set(
+      namedByFinding.flatMap(([matcherJudgment]) => matcherJudgment ?? []),
+    ),
     findings: new Set(findings.flatMap(([finding]) => finding ?? [])),
     ruleHashes,
     retracted: new Set(
@@ -1803,7 +1817,7 @@ export interface ReleaseRetraction {
 /**
  * The retractions the rule list version migration writes (N15): for each version on the line up to the pod's current
  * rule list version, itself among them, that declares a matcher rule wrong, oldest first, a retraction of each assertion
- * of that rule's claim under a version it revises that no retraction invalidates. The current version is the one an
+ * of that rule's matcher judgment under a version it revises that no retraction invalidates. The current version is the one an
  * open adopts when `opening`. None, without reading the pod, when no version the tables describe declares a rule wrong,
  * or when the pod's current version is not one the tables can name.
  */
@@ -1851,8 +1865,8 @@ export async function releaseRetractions(
     union,
     `SELECT DISTINCT ?assertion ?rule ?version WHERE {
       VALUES ?rule { ${rules.map((rule) => `<${rule}>`).join(" ")} }
-      ?claim prov:wasAttributedTo <${MATCHER}> ; cascade:matcherRule ?rule .
-      ?assertion cascade:assertedClaim ?claim ; cascade:assertedUnderRuleListVersion ?version .
+      ?matcherJudgment prov:wasAttributedTo <${MATCHER}> ; cascade:matcherRule ?rule .
+      ?assertion cascade:assertedJudgment ?matcherJudgment ; cascade:assertedUnderRuleListVersion ?version .
       FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
     }`,
     "assertion",
@@ -1871,7 +1885,7 @@ export async function releaseRetractions(
         !revises.has(version)
       )
         continue;
-      const name = await retractionName(release, assertion, rule);
+      const name = await releaseRetractionName(release, assertion, rule);
       const retraction = iri(name);
       taken.set(assertion, {
         name,

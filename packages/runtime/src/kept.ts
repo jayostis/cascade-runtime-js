@@ -23,22 +23,22 @@ PREFIX prov: <http://www.w3.org/ns/prov#>
  * Each matcher Same that used a version of a series whose current version is another, its rule, and that version. Its
  * members and its rule's hash are asked apart: Oxigraph's JavaScript build joins all three patterns in quadratic time.
  */
-const STALE = `${PREFIXES}SELECT DISTINCT ?claim ?rule ?now WHERE {
+const STALE = `${PREFIXES}SELECT DISTINCT ?matcherJudgment ?rule ?now WHERE {
   ?series a cascade:ReferenceSeries ; pav:hasCurrentVersion ?now .
   ?input prov:specializationOf ?series .
   FILTER (?now != ?input)
-  ?claim prov:wasDerivedFrom ?input ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
+  ?matcherJudgment prov:wasDerivedFrom ?input ; prov:wasAttributedTo cascade:CascadeMatcher ; cascade:verdict cascade:Same ;
          cascade:matcherRule ?rule .
 }`;
 
-const MEMBERS = `${PREFIXES}SELECT DISTINCT ?claim ?member ?current WHERE {
-  ?claim prov:wasAttributedTo cascade:CascadeMatcher ; prov:hadMember ?member .
+const MEMBERS = `${PREFIXES}SELECT DISTINCT ?matcherJudgment ?member ?current WHERE {
+  ?matcherJudgment prov:wasAttributedTo cascade:CascadeMatcher ; prov:hadMember ?member .
   OPTIONAL { ?member pav:hasCurrentVersion ?current }
 }`;
 
-/** Each matcher claim with an assertion no retraction invalidates: one whose every assertion a release retracted is kept by none. */
-const ASSERTED = `${PREFIXES}SELECT DISTINCT ?claim WHERE {
-  ?assertion cascade:assertedClaim ?claim .
+/** Each matcher judgment with an assertion no retraction invalidates: one whose every assertion a release retracted is kept by none. */
+const ASSERTED = `${PREFIXES}SELECT DISTINCT ?matcherJudgment WHERE {
+  ?assertion cascade:assertedJudgment ?matcherJudgment .
   FILTER NOT EXISTS { ?retraction prov:invalidated ?assertion }
 }`;
 
@@ -72,11 +72,11 @@ function comparisons(vocabulary: Files): Promise<Map<string, string>> {
 }
 
 interface Stale {
-  readonly claim: string;
+  readonly matcherJudgment: string;
   readonly now: string;
   readonly hash: string;
   readonly members: readonly string[];
-  /** What decides the answer: the claim, the version, the query and each member's current version. */
+  /** What decides the answer: the matcher judgment, the version, the query and each member's current version. */
   readonly key: string;
 }
 
@@ -102,10 +102,10 @@ let describedGraphs = 0;
  * whether the query the current rule list's row for its rule names, evaluated with ?record and ?other bound to each two
  * of its members over the union and the rows the tables hold of the series' current version, joins one member to each
  * other member by that version. A version the tables do not hold joins nothing, and is named unheld. Each answer is
- * kept by the claim, the version, the query and its members' current versions, none of which ever changes, so a later
+ * kept by the matcher judgment, the version, the query and its members' current versions, none of which ever changes, so a later
  * read evaluates only the Sames it has not answered so.
  */
-export class KeptClaims {
+export class KeptMatcherJudgments {
   readonly #options: KeptOptions;
   readonly #joined = new Map<string, boolean>();
 
@@ -128,32 +128,42 @@ export class KeptClaims {
       ]);
     const members = new Map<string, Map<string, string>>();
     for (const row of (await union.select(MEMBERS)).rows) {
-      const claim = value(row, "claim");
-      const of = members.get(claim) ?? new Map<string, string>();
+      const matcherJudgment = value(row, "matcherJudgment");
+      const of = members.get(matcherJudgment) ?? new Map<string, string>();
       of.set(value(row, "member"), value(row, "current"));
-      members.set(claim, of);
+      members.set(matcherJudgment, of);
     }
     const asserted = new Set(
-      (await union.select(ASSERTED)).rows.map((row) => value(row, "claim")),
+      (await union.select(ASSERTED)).rows.map((row) =>
+        value(row, "matcherJudgment"),
+      ),
     );
     const unheld = new Set<string>();
     const stale = new Map<string, Stale>();
     for (const row of rows) {
-      const [claim, rule, now] = ["claim", "rule", "now"].map((name) =>
-        value(row, name),
-      ) as [string, string, string];
-      if (!asserted.has(claim)) continue;
+      const [matcherJudgment, rule, now] = [
+        "matcherJudgment",
+        "rule",
+        "now",
+      ].map((name) => value(row, name)) as [string, string, string];
+      if (!asserted.has(matcherJudgment)) continue;
       if (references.seriesOf(now) === undefined) {
         unheld.add(now);
         continue;
       }
-      const of = members.get(claim) ?? new Map<string, string>();
+      const of = members.get(matcherJudgment) ?? new Map<string, string>();
       const current = [...of]
         .map(([member, version]) => `${member} ${version}`)
         .sort();
       for (const hash of hashes.get(rule) ?? []) {
-        const key = [claim, now, hash, ...current].join("|");
-        stale.set(key, { claim, now, hash, members: [...of.keys()], key });
+        const key = [matcherJudgment, now, hash, ...current].join("|");
+        stale.set(key, {
+          matcherJudgment,
+          now,
+          hash,
+          members: [...of.keys()],
+          key,
+        });
       }
     }
     const asked = [...stale.values()].filter(
@@ -161,10 +171,10 @@ export class KeptClaims {
     );
     if (asked.length > 0) await this.#ask(union, references, asked);
     const triples = new Map<string, Triple>();
-    for (const { claim, now, key } of stale.values())
+    for (const { matcherJudgment, now, key } of stale.values())
       if (this.#joined.get(key) === true)
-        triples.set(`${claim} ${now}`, [
-          iri(claim),
+        triples.set(`${matcherJudgment} ${now}`, [
+          iri(matcherJudgment),
           iri(MEMBERS_JOINED),
           iri(now),
         ]);
@@ -262,10 +272,11 @@ export class KeptClaims {
   }
 }
 
-/** The triples a `KeptClaims` of its own gives over the union. */
-export async function keptClaims(
+/** The triples a `KeptMatcherJudgments` of its own gives over the union. */
+export async function keptMatcherJudgments(
   union: Union,
   options: KeptOptions & { readonly references: () => Promise<References> },
 ): Promise<readonly Triple[]> {
-  return (await new KeptClaims(options).of(union, options.references)).triples;
+  return (await new KeptMatcherJudgments(options).of(union, options.references))
+    .triples;
 }

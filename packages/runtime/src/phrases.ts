@@ -52,7 +52,7 @@ const OA = "http://www.w3.org/ns/oa#";
 const NO_LONGER_REACHED_UNDER = `${CASCADE}noLongerReachedUnderRuleListVersion`;
 /** Each kind of finding, by its words: its skos:prefLabel. */
 const FINDING_KINDS: Readonly<Record<string, string>> = {
-  "claims no longer reached": `${CASCADE}ClaimsNoLongerReached`,
+  "matcher judgments no longer reached": `${CASCADE}MatcherJudgmentsNoLongerReached`,
   "different result values at one instant": `${CASCADE}DifferentResultValuesAtOneInstant`,
   "different result units at one instant": `${CASCADE}DifferentResultUnitsAtOneInstant`,
 };
@@ -542,17 +542,17 @@ const MATCHER_JUDGMENTS = `SELECT ?judgment ?justification ?member ?under ?used 
   ?judgment <${PROV}wasAttributedTo> <${MATCHER}> ; <${CASCADE}verdict> <${CASCADE}Same> ;
     <${CASCADE}justification> ?justification ; <${PROV}hadMember> ?member .
   OPTIONAL { ?judgment <${CASCADE}matcherRule> ?rule }
-  OPTIONAL { ?assertion <${CASCADE}assertedClaim> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
+  OPTIONAL { ?assertion <${CASCADE}assertedJudgment> ?judgment ; <${CASCADE}assertedUnderRuleListVersion> ?under }
   OPTIONAL { ?judgment <${PROV}wasDerivedFrom> ?used }
 }`;
 
 interface Judged {
   readonly name: string;
   readonly justification: string;
-  /** The matcher rule terms the claim cites. */
+  /** The matcher rule terms the matcher judgment cites. */
   readonly rules: Set<string>;
   readonly members: Set<string>;
-  /** The rule list versions the claim is asserted under. */
+  /** The rule list versions the matcher judgment is asserted under. */
   readonly assertedUnder: Set<string>;
   readonly used: Set<string>;
 }
@@ -610,7 +610,7 @@ function judgmentRow(
           return sorted(judged.used);
         case "inputs":
           return [
-            "cascade:ClaimNamingRule",
+            "cascade:MatcherJudgmentNamingRule",
             ...[MATCHER, ...judged.rules, judged.justification].map(termShown),
             `(${[...judged.members].sort(byCodePoint).join(", ")})`,
             `(${[...judged.used].sort(byCodePoint).join(", ")})`,
@@ -1277,20 +1277,20 @@ const DEFINITIONS: Definition[] = [
       if (step === undefined) return "no such step";
       const failures: string[] = [];
       const heldGraph = await wroteGraph(reading, [step]);
-      const claims = new Set(
+      const judgedNames = new Set(
         heldGraph
           .subjects(`${RDF}type`, iri(`${CASCADE}Judgment`))
           .map(({ value }) => value),
       );
       const assertions = new Set(
         heldGraph
-          .subjects(`${RDF}type`, iri(`${CASCADE}ClaimAssertion`))
+          .subjects(`${RDF}type`, iri(`${CASCADE}MatcherJudgmentAssertion`))
           .map(({ value }) => value),
       );
       const asserted = new Set(
         [...assertions].flatMap((assertion) =>
           heldGraph
-            .objects(iri(assertion), `${CASCADE}assertedClaim`)
+            .objects(iri(assertion), `${CASCADE}assertedJudgment`)
             .map(({ value }) => value),
         ),
       );
@@ -1322,15 +1322,15 @@ const DEFINITIONS: Definition[] = [
           `${PROV}hadMember`,
           `${PROV}wasDerivedFrom`,
         ]),
-        [`${CASCADE}ClaimAssertion`]: new Set([
+        [`${CASCADE}MatcherJudgmentAssertion`]: new Set([
           `${RDF}type`,
-          `${CASCADE}assertedClaim`,
+          `${CASCADE}assertedJudgment`,
           `${CASCADE}assertedUnderRuleListVersion`,
         ]),
       };
       for (const [kind, names] of [
-        [`${CASCADE}Judgment`, claims],
-        [`${CASCADE}ClaimAssertion`, assertions],
+        [`${CASCADE}Judgment`, judgedNames],
+        [`${CASCADE}MatcherJudgmentAssertion`, assertions],
       ] as const)
         for (const name of names)
           for (const [, p, o] of heldGraph.match(iri(name)))
@@ -1339,7 +1339,7 @@ const DEFINITIONS: Definition[] = [
               (p.value === `${RDF}type` && o.value !== kind)
             )
               failures.push(`${name} also states ${p.value} ${written(o)}`);
-      for (const name of claims)
+      for (const name of judgedNames)
         if (!asserted.has(name))
           failures.push(`${name} is written and not asserted`);
       for (const name of asserted)
@@ -1349,7 +1349,7 @@ const DEFINITIONS: Definition[] = [
         .subjects(`${RDF}type`)
         .concat(heldGraph.triples.map(([s]) => s))) {
         const value = subject.value;
-        if (claims.has(value) || assertions.has(value)) continue;
+        if (judgedNames.has(value) || assertions.has(value)) continue;
         if (actOf.has(value)) continue;
         if (value === MATCHER) {
           const described = heldGraph
@@ -1393,19 +1393,22 @@ const DEFINITIONS: Definition[] = [
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
       const held = await wroteGraph(reading, [step]);
-      const claims = new Map(
+      const judgedNames = new Map(
         (await matcherJudgments(reading.store)).map((judged) => [
           judged.name,
           judged,
         ]),
       );
-      const claimOf = new Map(
+      const matcherJudgmentOf = new Map(
         (
           await selected(
             reading.store,
-            `SELECT ?assertion ?claim WHERE { ?assertion <${CASCADE}assertedClaim> ?claim }`,
+            `SELECT ?assertion ?matcherJudgment WHERE { ?assertion <${CASCADE}assertedJudgment> ?matcherJudgment }`,
           )
-        ).map(([assertion = "", claim = ""]) => [assertion, claim]),
+        ).map(([assertion = "", matcherJudgment = ""]) => [
+          assertion,
+          matcherJudgment,
+        ]),
       );
       const failures: string[] = [];
       /** Each row found, shown once the table's words are read, which names its records. */
@@ -1414,7 +1417,7 @@ const DEFINITIONS: Definition[] = [
         const [assertion = ""] = held
           .objects(retraction, `${PROV}invalidated`)
           .map(({ value }) => value);
-        const claim = claimOf.get(assertion) ?? "";
+        const matcherJudgment = matcherJudgmentOf.get(assertion) ?? "";
         const [release = ""] = held
           .objects(retraction, `${PROV}used`)
           .map(({ value }) => value);
@@ -1429,10 +1432,10 @@ const DEFINITIONS: Definition[] = [
         ].sort();
         if (described.join("\n") !== wanted.join("\n"))
           failures.push(`${retraction.value} states ${described.join("; ")}`);
-        const judged = claims.get(claim);
+        const judged = judgedNames.get(matcherJudgment);
         if (judged === undefined) {
           failures.push(
-            `${retraction.value} invalidates ${assertion}, no assertion of a claim of the matcher's`,
+            `${retraction.value} invalidates ${assertion}, no assertion of a judgment of the matcher's`,
           );
           continue;
         }
@@ -1441,7 +1444,7 @@ const DEFINITIONS: Definition[] = [
             .map((column) =>
               column === "inputs"
                 ? [
-                    "cascade:RetractionNamingRule",
+                    "cascade:ReleaseRetractionNamingRule",
                     release,
                     assertion,
                     ...[...judged.rules].map(termShown),
@@ -1473,7 +1476,7 @@ const DEFINITIONS: Definition[] = [
       const [step] = stepsOf(reading, said as string);
       if (step === undefined) return "no such step";
       const held = await wroteGraph(reading, [step]);
-      const claims = new Map(
+      const judgedNames = new Map(
         (await matcherJudgments(reading.store)).map((judged) => [
           judged.name,
           judged,
@@ -1549,10 +1552,10 @@ const DEFINITIONS: Definition[] = [
           finding,
           `${OA}hasTarget`,
         )) {
-          const judged = claims.get(target);
+          const judged = judgedNames.get(target);
           if (judged === undefined) {
             failures.push(
-              `${finding.value} names ${target}, no claim of the matcher's`,
+              `${finding.value} names ${target}, no judgment of the matcher's`,
             );
             continue;
           }
