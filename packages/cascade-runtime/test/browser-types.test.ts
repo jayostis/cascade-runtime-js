@@ -97,7 +97,7 @@ describe("Importing the package in a web page · browserBuildVersion()", () => {
       assert.deepEqual(right, []);
     });
 
-    it("rejects a checked reply whose `errors` are numbers", () => {
+    it("fails to type-check a `CheckedReply` whose `errors` are numbers", () => {
       assert.equal(wrong.length, 1);
       assert.match(wrong[0]!, /not assignable to type 'string'/);
     });
