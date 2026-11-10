@@ -2,5 +2,32 @@
   "about": "The library an app calls to import a person's health records into their pod, store them, and query them.",
   "capabilities": [],
   "build": [],
-  "randomOrder": []
+  "randomOrder": [
+    "browser-types.test.ts",
+    "changes.test.ts",
+    "check.test.ts",
+    "citations.test.ts",
+    "connect.test.ts",
+    "directory.test.ts",
+    "entry.test.ts",
+    "guide.test.ts",
+    "kinds-read.test.ts",
+    "launcher-sandbox.test.ts",
+    "outcomes.test.ts",
+    "pack-dependencies.test.ts",
+    "people-copies.test.ts",
+    "pod-tools.test.ts",
+    "pull.test.ts",
+    "reply.test.ts",
+    "rowCache.test.ts",
+    "scoped-runs.test.ts",
+    "server-same.test.ts",
+    "stories.test.ts",
+    "story-pulls.test.ts",
+    "terms.test.ts",
+    "tools.test.ts",
+    "transpile.test.ts",
+    "variants.test.ts",
+    "vite.test.ts"
+  ]
 }
