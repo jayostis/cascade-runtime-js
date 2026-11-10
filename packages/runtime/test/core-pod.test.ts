@@ -134,7 +134,7 @@ describe("Writing a step's files · CorePod.import(), CorePod.open(), CorePod.ju
       }
     });
 
-    it("writes its judgments first, then the descriptions of the versions it adopts, oldest first, and its run's file last", () => {
+    it("writes its judgments first, then the description of each version it adopts, oldest first, and the file of its matcher run last", () => {
       assert.deepEqual(kinds, [
         "judgment",
         "assertion",
@@ -329,7 +329,7 @@ describe("Reading a pod between steps · CorePod.dataset(), CorePod.revision(), 
       assert.deepEqual(read.createdAfterRefusal, ["2026-02-02T08:00:00Z"]);
     });
 
-    it("returns another `revision()`, after a refused step too", () => {
+    it("returns a different `revision()` after a refused step than after the creation before it", () => {
       assert.ok(read.refused);
       assert.notEqual(read.revisions.refused, read.revisions.created);
     });
